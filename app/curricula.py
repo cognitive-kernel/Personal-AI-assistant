@@ -104,14 +104,32 @@ CURRICULA: dict[str, dict[str, Any]] = {
         "title": "Microsoft SQL Server",
         "category": "Database",
         "prerequisites": ["مبانی SQL"],
+        "reference_urls": [
+            {"title": "W3Schools — SQL Tutorial", "url": "https://www.w3schools.com/sql/default.asp",
+             "description": "مرجع مفاهیم عمومی SQL؛ برای معماری و قابلیت‌های اختصاصی SQL Server به مستندات Microsoft نیز مراجعه کنید."},
+            {"title": "Microsoft Learn — SQL Server", "url": "https://learn.microsoft.com/en-us/sql/sql-server/",
+             "description": "مستندات رسمی محصول برای رفتارها و قابلیت‌های اختصاصی SQL Server."},
+        ],
         "topics": [
-            "معماری SQL Server، Database Engine و ابزارهای مدیریت", "T-SQL، عملیات CRUD و مدیریت خطاهای query",
-            "JOIN، subquery، CTE و window function", "مدل‌سازی رابطه‌ای، کلید و constraint",
-            "ایندکس، آمار و execution plan", "transaction، isolation level و lock",
-            "stored procedure، function و trigger", "login، user، role و least privilege",
-            "backup، restore و بازیابی نقطه‌ای", "Query Store، DMV و Extended Events",
-            "بهینه‌سازی query و رفع deadlock", "High Availability و Disaster Recovery",
-            "ارتقا، migration و سازگاری نسخه", "پروژه نهایی DBA و performance",
+            "معماری SQL Server، Database Engine و ابزارهای مدیریت",
+            "T-SQL، عملیات CRUD و مدیریت خطاهای query",
+            "JOIN، subquery، CTE و window function",
+            "مدل‌سازی رابطه‌ای، کلید و constraint",
+            "ایندکس، آمار و execution plan",
+            "transaction، isolation level و lock",
+            "stored procedure، function و trigger",
+            "login، user، role و least privilege",
+            "backup، restore و بازیابی نقطه‌ای",
+            "Query Store، DMV و Extended Events",
+            "بهینه‌سازی query و رفع deadlock",
+            "High Availability و Disaster Recovery",
+            "ارتقا، migration و سازگاری نسخه",
+            "TempDB و مدیریت اشیای موقت",
+            "امنیت پیشرفته، auditing و hardening",
+            "پایش production و عیب‌یابی SQL Server",
+            "اتصال برنامه‌ها، connection pooling و driverها",
+            "SQL Server روی Linux و containerها",
+            "پروژه نهایی DBA و performance",
         ],
     },
     "mysql": {
@@ -309,6 +327,7 @@ def list_curricula() -> list[dict[str, Any]]:
                 for level in _learning_levels(item["topics"])
             ],
             "notes": item.get("notes"),
+            "reference_urls": list(item.get("reference_urls", [])),
         })
     return result
 
