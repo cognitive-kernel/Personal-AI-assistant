@@ -50,7 +50,7 @@ def run_job(job_id: int) -> None:
     prompt = {
         "topic": topic,
         "source_text": source_text,
-        "instruction": "Create a concise Persian learning note. Return only a JSON object with keys lesson (string), questions (array of 3 strings), answer_key (array of 3 strings). Do not claim sources were verified. If source_text is empty, explicitly say the note is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
+        "instruction": "Write a useful Persian lesson of about 120-180 words with a definition, key points, and one concrete example. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
     }
     try:
         settings = get_settings()
@@ -78,7 +78,7 @@ def run_job(job_id: int) -> None:
                 ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
                  json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
                  json.dumps(quality, ensure_ascii=False),
-                 None if quality["accepted"] else "خروجی از فیلتر ارزش ذخیره‌سازی عبور نکرد؛ متن درس و متن منبع حذف شد.", job_id))
+                 None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
             if quality["accepted"]:
