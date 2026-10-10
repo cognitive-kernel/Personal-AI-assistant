@@ -215,40 +215,74 @@ def _ensure_dependencies(dev: bool) -> None:
 def _download_once(url: str, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = destination.with_name(destination.name + ".download.json")
+    part_path = destination.with_name(destination.name + ".part")
+    part_manifest_path = destination.with_name(destination.name + ".part.json")
+
     if destination.is_file() and destination.stat().st_size > 0:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if int(manifest["size"]) == destination.stat().st_size:
+            if int(manifest["size"]) == destination.stat().st_size and manifest.get("url") == url:
                 print(f"استفاده از فایل ذخیره‌شده: {destination}", flush=True)
                 return destination
         except (OSError, ValueError, TypeError, KeyError):
             pass
-        print("فایل ذخیره‌شده تأیید نشده است؛ دانلود دوباره انجام می‌شود.", flush=True)
+        print("فایل ذخیره‌شده تأیید نشده است؛ دانلود با قابلیت ادامه از سرور بررسی می‌شود.", flush=True)
 
-    print(f"شروع دانلود: {url}", flush=True)
-    temp_path: Path | None = None
-    started = time.monotonic()
-    downloaded = 0
+    # Keep partial bytes in a deterministic file so the next run can send
+    # an HTTP Range request instead of downloading from byte zero again.
     try:
-        with urllib.request.urlopen(url, timeout=30) as response:
-            total_header = response.headers.get("Content-Length")
-            total = int(total_header) if total_header and total_header.isdigit() else 0
-            with tempfile.NamedTemporaryFile(
-                dir=destination.parent, prefix=destination.name + ".", delete=False
-            ) as temporary:
-                temp_path = Path(temporary.name)
+        part_metadata = json.loads(part_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        part_metadata = {}
+    if part_path.exists() and part_metadata.get("url") != url:
+        part_path.unlink(missing_ok=True)
+    part_manifest_path.write_text(
+        json.dumps({"url": url}, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+    offset = part_path.stat().st_size if part_path.is_file() else 0
+    if offset:
+        print(
+            f"ادامه دانلود از فایل موقت: {offset / (1024 * 1024):.1f} MB دریافت شده است.",
+            flush=True,
+        )
+    else:
+        print(f"شروع دانلود: {url}", flush=True)
+
+    request_headers = {"Range": f"bytes={offset}-"} if offset else {}
+    request = urllib.request.Request(url, headers=request_headers)
+    started = time.monotonic()
+    session_downloaded = 0
+    try:
+        response = urllib.request.urlopen(request, timeout=30)
+        with response:
+            status = getattr(response, "status", response.getcode())
+            content_range = response.headers.get("Content-Range", "")
+            range_match = re.match(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", content_range)
+            if offset and status == 206 and range_match and int(range_match.group(1)) == offset:
+                mode = "ab"
+                total = int(range_match.group(3)) if range_match.group(3) != "*" else 0
+            else:
+                # Server ignored Range (or returned an invalid range): restart
+                # this response from byte zero rather than corrupting the file.
+                mode = "wb"
+                offset = 0
+                total_header = response.headers.get("Content-Length")
+                total = int(total_header) if total_header and total_header.isdigit() else 0
+
+            with part_path.open(mode) as temporary:
                 while True:
                     chunk = response.read(256 * 1024)
                     if not chunk:
                         break
                     temporary.write(chunk)
-                    downloaded += len(chunk)
+                    session_downloaded += len(chunk)
+                    current_size = offset + session_downloaded
                     elapsed = max(time.monotonic() - started, 0.001)
-                    speed = downloaded / elapsed
-                    done_mb = downloaded / (1024 * 1024)
-                    speed_mb = speed / (1024 * 1024)
+                    speed_mb = session_downloaded / elapsed / (1024 * 1024)
+                    done_mb = current_size / (1024 * 1024)
                     if total:
-                        percent = min(100, downloaded * 100 // total)
+                        percent = min(100, current_size * 100 // total)
                         total_mb = total / (1024 * 1024)
                         bar_width = 24
                         filled = int(bar_width * percent / 100)
@@ -262,26 +296,33 @@ def _download_once(url: str, destination: Path) -> Path:
                             f"\rدریافت‌شده: {done_mb:.1f} MB | سرعت: {speed_mb:.2f} MB/s",
                             end="", flush=True,
                         )
-        if downloaded == 0:
+
+        final_size = part_path.stat().st_size if part_path.exists() else 0
+        if final_size == 0:
             raise RuntimeError(f"سرور فایل خالی برگرداند: {url}")
-        if total and downloaded != total:
+        if total and final_size != total:
             raise RuntimeError(
-                f"دانلود ناقص است: {downloaded / (1024 * 1024):.1f} از "
-                f"{total / (1024 * 1024):.1f} MB دریافت شد؛ فایل ناقص ذخیره نخواهد شد."
+                f"دانلود هنوز کامل نیست: {final_size / (1024 * 1024):.1f} از "
+                f"{total / (1024 * 1024):.1f} MB دریافت شده است. فایل موقت حفظ شد؛ "
+                "دوباره run.py را اجرا کنید تا دانلود از ادامه ادامه یابد."
             )
-        temp_path.replace(destination)
-        temp_path = None
+
+        part_path.replace(destination)
+        part_manifest_path.unlink(missing_ok=True)
         manifest_path.write_text(
-            json.dumps({"size": downloaded, "url": url}, ensure_ascii=False, indent=2),
+            json.dumps({"size": final_size, "url": url}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         elapsed = max(time.monotonic() - started, 0.001)
-        print(f"\nدانلود کامل شد: {destination} ({downloaded / (1024 * 1024):.1f} MB در {elapsed:.1f} ثانیه)", flush=True)
+        print(
+            f"\nدانلود کامل شد: {destination} ({final_size / (1024 * 1024):.1f} MB؛ "
+            f"{elapsed:.1f} ثانیه در این نوبت)",
+            flush=True,
+        )
         return destination
-    finally:
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
-
+    except Exception:
+        # Intentionally keep .part and its URL metadata for the next run.
+        raise
 
 def _find_ollama() -> str | None:
     found = shutil.which("ollama")
