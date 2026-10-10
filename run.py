@@ -123,47 +123,77 @@ def _write_cache_manifest(fingerprint: str) -> None:
     CACHE_MANIFEST.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _probe_local_wheelhouse(requirements: list[str]) -> subprocess.CompletedProcess[str]:
+    """Resolve the full dependency graph using only artifacts already cached locally."""
+    with tempfile.TemporaryDirectory(prefix="prerequisites-probe-") as temporary:
+        return subprocess.run(
+            [
+                sys.executable, "-m", "pip", "download", "--no-index",
+                "--find-links", str(WHEELHOUSE), "--dest", temporary, *requirements,
+            ],
+            cwd=ROOT, text=True, capture_output=True, check=False,
+        )
+
+
+def _ensure_wheelhouse(requirements: list[str], fingerprint: str) -> None:
+    if _cache_is_complete(fingerprint):
+        return
+
+    # When no package artifacts exist yet, one resolver pass is the fastest way
+    # to cache every direct and transitive dependency, even if already installed.
+    if not _cached_package_pins():
+        print("ساخت مخزن محلی پیش‌نیازها؛ دریافت بسته‌ها در prerequisites/wheels ...", flush=True)
+        download = _run([
+            sys.executable, "-m", "pip", "download",
+            "--dest", str(WHEELHOUSE), *requirements,
+        ])
+        if download.returncode != 0:
+            raise RuntimeError(
+                "دریافت پیش‌نیازها ناموفق بود. اتصال اینترنت و دسترسی pip به مخزن بسته‌ها را بررسی کنید."
+            )
+        _write_cache_manifest(fingerprint)
+        return
+
+    # For a partial cache, first ask pip to resolve entirely offline. If an
+    # artifact is missing, fetch only that missing distribution (without its
+    # dependencies), then retry. Existing cached files are never fetched again.
+    for _attempt in range(200):
+        probe = _probe_local_wheelhouse(requirements)
+        if probe.returncode == 0:
+            _write_cache_manifest(fingerprint)
+            return
+
+        output = (probe.stdout or "") + "\\n" + (probe.stderr or "")
+        missing = re.search(r"No matching distribution found for ([^\\r\\n]+)", output)
+        if not missing:
+            raise RuntimeError(
+                "بررسی آفلاین مخزن پیش‌نیازها شکست خورد و بسته مفقود قابل تشخیص نبود. "
+                "جزئیات خطا: " + output[-1200:]
+            )
+        requirement = missing.group(1).strip().rstrip(".")
+        print(f"بسته مفقود از مخزن محلی دریافت می‌شود: {requirement}", flush=True)
+        download = _run([
+            sys.executable, "-m", "pip", "download", "--no-deps",
+            "--dest", str(WHEELHOUSE), "--find-links", str(WHEELHOUSE), requirement,
+        ])
+        if download.returncode != 0:
+            raise RuntimeError(
+                f"دریافت بسته مفقود «{requirement}» ناموفق بود؛ اجرای برنامه متوقف شد."
+            )
+
+    raise RuntimeError("تعداد تلاش‌های تکمیل مخزن پیش‌نیازها از حد مجاز گذشت.")
+
+
 def _ensure_dependencies(dev: bool) -> None:
     PREREQUISITES.mkdir(parents=True, exist_ok=True)
     WHEELHOUSE.mkdir(parents=True, exist_ok=True)
     requirements = _requirements(dev) + ["setuptools>=68", "wheel"]
     fingerprint = _requirements_fingerprint(requirements, dev)
 
-    # Even if a dependency is already installed, cache its distribution for later
-    # offline recovery. Existing cached distributions are offered to pip first.
-    if not _cache_is_complete(fingerprint):
-        pins = _cached_package_pins()
-        constraints = PREREQUISITES / "cached-constraints.txt"
-        constraints.write_text(
-            "".join(f"{name}=={version}\n" for name, version in sorted(pins.items())),
-            encoding="utf-8",
-        )
-        print("بررسی مخزن پیش‌نیازها؛ فقط بسته‌های موجودنبوده دریافت می‌شوند ...", flush=True)
-        command = [
-            sys.executable, "-m", "pip", "download",
-            "--dest", str(WHEELHOUSE),
-            "--find-links", str(WHEELHOUSE),
-        ]
-        if pins:
-            command.extend(["--constraint", str(constraints)])
-        command.extend(requirements)
-        download = _run(command)
-        if download.returncode != 0 and pins:
-            # A cached version may no longer satisfy a changed version constraint.
-            # Retry resolution without stale pins; pip still searches the local wheelhouse.
-            download = _run([
-                sys.executable, "-m", "pip", "download",
-                "--dest", str(WHEELHOUSE), "--find-links", str(WHEELHOUSE), *requirements,
-            ])
-        if download.returncode != 0:
-            raise RuntimeError(
-                "آماده‌سازی مخزن پیش‌نیازها ناموفق بود. اتصال اینترنت و دسترسی pip را بررسی کنید."
-            )
-        _write_cache_manifest(fingerprint)
+    # Keep an offline-reusable copy of every required package, regardless of
+    # whether the current virtual environment already has it installed.
+    _ensure_wheelhouse(requirements, fingerprint)
 
-    # pip checks the declared version constraints as well as presence. If the
-    # installed environment already satisfies them, this is a no-op; otherwise
-    # it installs the compatible cached distributions without reaching the network.
     print("بررسی و نصب وابستگی‌ها از مخزن محلی prerequisites/wheels ...", flush=True)
     install = _run([
         sys.executable, "-m", "pip", "install", "--no-index",
@@ -180,7 +210,6 @@ def _ensure_dependencies(dev: bool) -> None:
     ])
     if project.returncode != 0:
         raise RuntimeError("نصب خود پروژه ناموفق بود.")
-
 
 def _download_once(url: str, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
