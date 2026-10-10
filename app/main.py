@@ -243,6 +243,16 @@ def start_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.post("/api/learning/paths/{path_id}/topics/{topic_id}/regenerate", status_code=202)
+def regenerate_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
+    try:
+        return learning.regenerate_topic_learning(path_id, topic_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning path or topic not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/learning/paths/{path_id}/topics/{topic_id}/stop")
 def stop_learning_path_topic(path_id: int, topic_id: int) -> dict[str, Any]:
     try:
