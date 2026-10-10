@@ -17,7 +17,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{opacity:.75;font-size:.92
 <section><h2>گفتگو</h2><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد.</p><pre id="learning-output"></pre></section></div>
+<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
 <section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
@@ -44,12 +44,38 @@ el("chat-form").addEventListener("submit", async event => {
  event.preventDefault(); el("chat-output").textContent="در حال پاسخ‌گویی…";
  try { el("chat-output").textContent=(await api("/api/chat",{method:"POST",body:JSON.stringify({message:el("message").value})})).reply; } catch(error) { el("chat-output").textContent=error.message; }
 });
+function showLearningJob(result) {
+ el("learning-output").textContent=JSON.stringify(result,null,2);
+ const container=el("assessment-form-container");
+ container.replaceChildren();
+ const questions=result.assessment?.questions;
+ if (!questions || result.status!=="completed") return;
+ const form=document.createElement("form");
+ const heading=document.createElement("h3"); heading.textContent="آزمون درس"; form.append(heading);
+ questions.forEach((question,index)=>{
+  const label=document.createElement("label"); label.textContent=(index+1)+". "+question;
+  const answer=document.createElement("textarea"); answer.required=true; answer.maxLength=2000; answer.rows=2;
+  answer.name="answer"; label.append(answer); form.append(label);
+ });
+ const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ثبت پاسخ‌ها"; form.append(submit);
+ form.addEventListener("submit",async event=>{
+  event.preventDefault(); submit.disabled=true;
+  try {
+   const answers=Array.from(form.querySelectorAll("textarea")).map(input=>input.value);
+   const attempt=await api("/api/learning/jobs/"+result.id+"/assessment",{method:"POST",body:JSON.stringify({answers})});
+   el("learning-output").textContent=JSON.stringify({job:await api("/api/learning/jobs/"+result.id),latest_attempt:attempt},null,2);
+   showLearningJob(await api("/api/learning/jobs/"+result.id));
+  } catch(error) { el("learning-output").textContent=error.message; submit.disabled=false; }
+ });
+ container.append(form);
+}
 el("learning-form").addEventListener("submit", async event => {
  event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
+ el("assessment-form-container").replaceChildren();
  try {
   const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
-  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);el("learning-output").textContent=JSON.stringify(result,null,2);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
-  el("learning-output").textContent=JSON.stringify(job,null,2);setTimeout(poll,1000);
+  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
+  showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
 el("settings-form").addEventListener("submit", async event => {
