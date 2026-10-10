@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 import venv
 from pathlib import Path
@@ -214,14 +215,56 @@ def _ensure_dependencies(dev: bool) -> None:
 def _download_once(url: str, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.is_file() and destination.stat().st_size > 0:
+        print(f"استفاده از فایل ذخیره‌شده: {destination}", flush=True)
         return destination
-    with urllib.request.urlopen(url, timeout=60) as response, tempfile.NamedTemporaryFile(
-        dir=destination.parent, prefix=destination.name + ".", delete=False
-    ) as temporary:
-        temp_path = Path(temporary.name)
-        shutil.copyfileobj(response, temporary)
-    temp_path.replace(destination)
-    return destination
+
+    print(f"شروع دانلود: {url}", flush=True)
+    temp_path: Path | None = None
+    started = time.monotonic()
+    downloaded = 0
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            total_header = response.headers.get("Content-Length")
+            total = int(total_header) if total_header and total_header.isdigit() else 0
+            with tempfile.NamedTemporaryFile(
+                dir=destination.parent, prefix=destination.name + ".", delete=False
+            ) as temporary:
+                temp_path = Path(temporary.name)
+                while True:
+                    chunk = response.read(256 * 1024)
+                    if not chunk:
+                        break
+                    temporary.write(chunk)
+                    downloaded += len(chunk)
+                    elapsed = max(time.monotonic() - started, 0.001)
+                    speed = downloaded / elapsed
+                    done_mb = downloaded / (1024 * 1024)
+                    speed_mb = speed / (1024 * 1024)
+                    if total:
+                        percent = min(100, downloaded * 100 // total)
+                        total_mb = total / (1024 * 1024)
+                        bar_width = 24
+                        filled = int(bar_width * percent / 100)
+                        bar = "#" * filled + "-" * (bar_width - filled)
+                        print(
+                            f"\\r[{bar}] {percent:3d}% | {done_mb:.1f}/{total_mb:.1f} MB | {speed_mb:.2f} MB/s",
+                            end="", flush=True,
+                        )
+                    else:
+                        print(
+                            f"\\rدریافت‌شده: {done_mb:.1f} MB | سرعت: {speed_mb:.2f} MB/s",
+                            end="", flush=True,
+                        )
+        if downloaded == 0:
+            raise RuntimeError(f"سرور فایل خالی برگرداند: {url}")
+        temp_path.replace(destination)
+        temp_path = None
+        elapsed = max(time.monotonic() - started, 0.001)
+        print(f"\\nدانلود کامل شد: {destination} ({downloaded / (1024 * 1024):.1f} MB در {elapsed:.1f} ثانیه)", flush=True)
+        return destination
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
 
 
 def _find_ollama() -> str | None:
@@ -241,16 +284,18 @@ def _find_ollama() -> str | None:
 
 def _ensure_ollama() -> None:
     system = platform.system()
-    installer: Path | None = None
-    if system == "Windows":
-        installer = _download_once("https://ollama.com/download/OllamaSetup.exe", INSTALLERS / "OllamaSetup.exe")
-    elif system == "Linux":
-        installer = _download_once("https://ollama.com/install.sh", INSTALLERS / "ollama-install.sh")
-    elif system == "Darwin":
-        # Keep the official archive for recovery even when Ollama is already installed.
-        installer = _download_once("https://ollama.com/download/Ollama-darwin.zip", INSTALLERS / "Ollama-darwin.zip")
-
+    # Detect an existing installation before downloading any installer. This is
+    # especially important for local-first setups where Ollama is already ready.
     executable = _find_ollama()
+    installer: Path | None = None
+    if not executable:
+        if system == "Windows":
+            installer = _download_once("https://ollama.com/download/OllamaSetup.exe", INSTALLERS / "OllamaSetup.exe")
+        elif system == "Linux":
+            installer = _download_once("https://ollama.com/install.sh", INSTALLERS / "ollama-install.sh")
+        elif system == "Darwin":
+            installer = _download_once("https://ollama.com/download/Ollama-darwin.zip", INSTALLERS / "Ollama-darwin.zip")
+
     if not executable and installer:
         print("Ollama نصب نیست؛ اجرای نصب‌کننده ذخیره‌شده در prerequisites/installers ...", flush=True)
         if system == "Windows":
