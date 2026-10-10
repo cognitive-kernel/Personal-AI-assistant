@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import db, learning, ollama
+from . import curricula, db, learning, ollama
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -82,6 +82,19 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         return db.update_settings(values)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/api/learning/curricula")
+def learning_curricula() -> dict[str, Any]:
+    return {"curricula": curricula.list_curricula()}
+
+
+@app.get("/api/learning/curricula/{slug}")
+def learning_curriculum(slug: str) -> dict[str, Any]:
+    result = curricula.get_curriculum(slug)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Learning curriculum not found.")
+    return result
+
 
 @app.post("/api/learning/jobs", status_code=202)
 def create_learning_job(request: LearningRequest) -> dict[str, Any]:
