@@ -12,7 +12,7 @@ const learningDelay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function waitForLearningJob(jobId, output) {
  for (let attempt = 0; attempt < 120; attempt += 1) {
   const job = await learningApi("/api/learning/jobs/" + jobId);
-  if (["completed", "rejected", "failed"].includes(job.status)) return job;
+  if (["completed", "rejected", "failed", "cancelled"].includes(job.status)) return job;
   output.textContent = "درس در حال تولید است… وضعیت: " + job.status + " (شناسه کار: " + jobId + ")";
   await learningDelay(1500);
  }
@@ -93,26 +93,46 @@ function renderLessonResult(output, job, path, topic) {
  output.append(caveat);
 }
 
-async function startLesson(path, topic, button, output) {
+async function startLesson(path, topic, button, stopButton, output) {
  button.disabled = true;
- output.textContent = "در حال ثبت کار یادگیری…";
+ stopButton.disabled = false;
+ output.textContent = "در حال ثبت یا ادامه کار یادگیری…";
  try {
   await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id, {
    method: "PATCH",
    body: JSON.stringify({status: "in_progress"})
   });
   topic.statusSelect.value = "in_progress";
-  const job = await learningApi("/api/learning/jobs", {
-   method: "POST",
-   body: JSON.stringify({topic: topic.topic})
+  const job = await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id + "/start", {
+   method: "POST"
   });
-  output.textContent = "کار یادگیری ثبت شد؛ شناسه: " + job.id;
+  topic.lessonActiveJobId = job.id;
+  if (job.status === "completed") {
+   renderLessonResult(output, job, path, topic);
+   stopButton.disabled = true;
+   return;
+  }
+  output.textContent = "کار یادگیری ثبت شد؛ شناسه: " + job.id + "؛ برای توقف از دکمه «توقف درس» استفاده کنید.";
   const finished = await waitForLearningJob(job.id, output);
   renderLessonResult(output, finished, path, topic);
+  stopButton.disabled = true;
  } catch (error) {
-  output.textContent = "خطا در شروع درس: " + error.message;
+  output.textContent = "خطا در شروع یا ادامه درس: " + error.message;
  } finally {
   button.disabled = false;
+ }
+}
+
+async function stopLesson(path, topic, stopButton, output) {
+ stopButton.disabled = true;
+ try {
+  const result = await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id + "/stop", {
+   method: "POST"
+  });
+  output.textContent = result.message;
+ } catch (error) {
+  output.textContent = "خطا در توقف درس: " + error.message;
+  stopButton.disabled = false;
  }
 }
 
@@ -161,7 +181,8 @@ async function loadLearningPaths() {
      const result = await learningApi("/api/learning/paths/" + path.id + "/start", {method: "POST"});
      bulkOutput.textContent = result.message + " تعداد افزوده‌شده: " + result.queued_count +
       "؛ از قبل فعال: " + result.skipped_active_count +
-      "؛ تکمیل‌شده و ردشده: " + result.skipped_completed_count + ".";
+      "؛ درس‌های قبلاً تولیدشده و حفظ‌شده: " + result.skipped_existing_lesson_count +
+      "؛ مسیرهای تکمیل‌شده: " + result.skipped_completed_count + ".";
      path.topics.forEach(topic => {
       if (topic.status !== "completed") topic.statusSelect.value = "in_progress";
      });
@@ -233,11 +254,16 @@ async function loadLearningPaths() {
     });
     const start = document.createElement("button");
     start.type = "button";
-    start.textContent = "شروع درس";
+    start.textContent = "شروع / ادامه درس";
+    const stop = document.createElement("button");
+    stop.type = "button";
+    stop.textContent = "توقف درس";
+    stop.disabled = true;
     const output = document.createElement("div");
     output.className = "path-topic-lesson";
-    start.addEventListener("click", () => startLesson(path, topic, start, output));
-    row.append(label, status, score, save, start, output);
+    start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
+    stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
+    row.append(label, status, score, save, start, stop, output);
     details.append(row);
    });
    container.append(details);
