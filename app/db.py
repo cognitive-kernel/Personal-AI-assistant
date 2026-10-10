@@ -59,6 +59,14 @@ def init_databases() -> None:
             job_id INTEGER NOT NULL UNIQUE REFERENCES learning_jobs(id) ON DELETE CASCADE,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(topic, version))""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge_items(topic, version DESC)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS assessment_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
+            answers_json TEXT NOT NULL, score REAL NOT NULL,
+            correct_count INTEGER NOT NULL, question_count INTEGER NOT NULL,
+            scoring_method TEXT NOT NULL DEFAULT 'normalized_exact_match',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_attempts_job ON assessment_attempts(job_id, id DESC)")
 
 def get_settings() -> dict[str, Any]:
     with settings_connection() as conn:
