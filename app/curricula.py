@@ -215,7 +215,7 @@ CURRICULA: dict[str, dict[str, Any]] = {
     "mcse-windows-server": {
         "title": "Windows Server و مسیر آموزشی MCSE",
         "category": "Systems Administration",
-        "prerequisites": ["مبانی شبکه", "مبانی Windows"],
+        "prerequisites": ["آشنایی مقدماتی با رایانه و سخت‌افزار", "مبانی Windows", "مبانی شبکه"],
         "topics": [
             "معماری Windows Server و نصب در آزمایشگاه", "مدیریت Server Core و ابزارهای مدیریتی",
             "Active Directory Domain Services و domain design", "DNS در محیط دامنه",
@@ -232,7 +232,7 @@ CURRICULA: dict[str, dict[str, Any]] = {
     "mikrotik-routeros": {
         "title": "MikroTik RouterOS و مدیریت شبکه",
         "category": "Networking",
-        "prerequisites": ["TCP/IP", "مبانی routing و switching"],
+        "prerequisites": ["مبانی رایانه و شبکه", "TCP/IP مقدماتی", "مفاهیم پایه routing و switching"],
         "topics": [
             "RouterOS، RouterBOARD و آزمایشگاه امن", "WinBox، WebFig، CLI و مدیریت دسترسی",
             "Bridge، interface و VLAN", "IPv4/IPv6، subnetting و address list",
@@ -248,7 +248,7 @@ CURRICULA: dict[str, dict[str, Any]] = {
     "vmware-esxi": {
         "title": "VMware ESXi و vSphere",
         "category": "Virtualization",
-        "prerequisites": ["مبانی سرور", "شبکه", "ذخیره‌سازی"],
+        "prerequisites": ["مبانی رایانه و سخت‌افزار سرور", "مبانی سیستم‌عامل", "مبانی شبکه", "مبانی ذخیره‌سازی"],
         "topics": [
             "مفاهیم hypervisor و معماری ESXi/vSphere", "سازگاری سخت‌افزار و نصب ESXi در آزمایشگاه",
             "ESXi Host Client و مدیریت host", "ساخت VM، virtual hardware و guest tools",
@@ -283,6 +283,18 @@ ALIASES = {
 }
 
 
+def _learning_levels(topics: list[str]) -> list[dict[str, Any]]:
+    """Expose every course as an ordered foundation-to-advanced learning path."""
+    count = len(topics)
+    first = (count + 2) // 3
+    second = (count - first + 1) // 2
+    return [
+        {"level": "beginner", "title": "پایه", "topics": list(topics[:first])},
+        {"level": "intermediate", "title": "میانی", "topics": list(topics[first:first + second])},
+        {"level": "advanced", "title": "پیشرفته", "topics": list(topics[first + second:])},
+    ]
+
+
 def list_curricula() -> list[dict[str, Any]]:
     result = []
     for slug, item in CURRICULA.items():
@@ -292,6 +304,10 @@ def list_curricula() -> list[dict[str, Any]]:
             "category": item["category"],
             "prerequisites": list(item.get("prerequisites", [])),
             "topic_count": len(item["topics"]),
+            "levels": [
+                {"level": level["level"], "title": level["title"], "topic_count": len(level["topics"])}
+                for level in _learning_levels(item["topics"])
+            ],
             "notes": item.get("notes"),
         })
     return result
@@ -303,5 +319,7 @@ def get_curriculum(slug: str) -> dict[str, Any] | None:
     item = CURRICULA.get(key)
     if item is None:
         return None
-    return {"slug": key, **item.copy(), "topics": list(item["topics"]),
+    topics = list(item["topics"])
+    return {"slug": key, **item.copy(), "topics": topics,
+            "levels": _learning_levels(topics),
             "prerequisites": list(item.get("prerequisites", []))}
