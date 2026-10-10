@@ -19,6 +19,33 @@ async function waitForLearningJob(jobId, output) {
  throw new Error("زمان انتظار تمام شد؛ کار ممکن است هنوز در پس‌زمینه در حال اجرا باشد. شناسه کار: " + jobId);
 }
 
+async function regenerateLesson(path, topic, button, output) {
+ button.disabled = true;
+ output.textContent = "در حال تولید نسخه تازه درس…";
+ try {
+  const job = await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id + "/regenerate", {
+   method: "POST"
+  });
+  topic.lessonActiveJobId = job.id;
+  const finished = ["completed", "rejected", "failed", "cancelled"].includes(job.status)
+   ? job
+   : await waitForLearningJob(job.id, output);
+  renderLessonResult(output, finished, path, topic);
+ } catch (error) {
+  output.textContent = "خطا در تولید مجدد درس: " + error.message;
+ } finally {
+  button.disabled = false;
+ }
+}
+
+function addRegenerateButton(output, path, topic) {
+ const button = document.createElement("button");
+ button.type = "button";
+ button.textContent = "تولید مجدد درس";
+ button.addEventListener("click", () => regenerateLesson(path, topic, button, output));
+ output.append(button);
+}
+
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
  if (job.quality && topic.row) {
@@ -31,15 +58,19 @@ function renderLessonResult(output, job, path, topic) {
    qualityNote.textContent = "امتیاز کیفیت خودکار: " + job.quality.score + " از 100.";
    output.append(qualityNote);
   }
-  output.textContent = job.error || (job.status === "rejected"
-   ? "درس به دلیل کنترل کیفیت ذخیره نشد. موضوع را دقیق‌تر کنید و دوباره تلاش کنید."
+  const errorNote = document.createElement("p");
+  errorNote.textContent = job.error || (job.status === "rejected"
+   ? "درس به دلیل کنترل کیفیت ذخیره نشد. می‌توانید نسخه تازه‌ای تولید کنید."
    : "تولید درس موفق نبود. وضعیت کار: " + job.status);
+  output.append(errorNote);
+  addRegenerateButton(output, path, topic);
   return;
  }
 
  const qualityNote = document.createElement("p");
  qualityNote.textContent = "امتیاز کیفیت خودکار درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
  output.append(qualityNote);
+ addRegenerateButton(output, path, topic);
  const lesson = document.createElement("p");
  lesson.textContent = job.lesson || "متن درس در پاسخ موجود نیست.";
  output.append(lesson);
