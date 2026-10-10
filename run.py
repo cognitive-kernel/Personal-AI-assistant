@@ -25,7 +25,11 @@ DEFAULT_MODEL = "qwen2.5:7b"
 
 
 def _run(command: list[str], *, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, text=True, check=False)
+    try:
+        return subprocess.run(command, cwd=cwd, text=True, check=False)
+    except KeyboardInterrupt:
+        # Ctrl+C is expected when stopping the local server; avoid noisy tracebacks.
+        return subprocess.CompletedProcess(command, 130)
 
 
 def _python_in_venv() -> Path:
