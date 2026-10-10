@@ -9,10 +9,18 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     normalized = re.sub(r"\s+", " ", text.lower())
     words = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
     unique_ratio = len(set(words)) / max(1, len(words))
-    # A lesson needs observable teaching substance, not merely sufficient length.
-    technical_terms = set(re.findall(r"(?u)\b(?:SQL Server|SQL|T-SQL|SSMS|DMV|CTE|JOIN|SELECT|WHERE|HTTP|API|JSON|Python|Rust|PHP|JavaScript|Android|iOS|Cisco|VLAN|TCP/IP|DNS|DHCP|firewall|RouterOS|ESXi|VMware|Forex|MetaTrader|MQL4|MQL5|INDEX|TRANSACTION|execution plan|index|transaction|query|function|variable|pointer|memory|thread|process|database|server|model|test|log|protocol|کلید اصلی|کلید خارجی|ایندکس|تراکنش|قفل|پشتیبان|بازیابی|پرس‌وجو|پرس و جو|تابع|متغیر|اشاره‌گر|حافظه|سرور|پایگاه داده|آزمون|گزارش|پروتکل|مسیر اجرا)\b", normalized, flags=re.IGNORECASE))
-    has_example = any(marker in normalized for marker in ("برای مثال", "مثال عملی", "در این مثال", "نمونهٔ", "نمونه ", "مثلاً", "در عمل"))
-    has_explanation = any(marker in normalized for marker in ("زیرا", "در نتیجه", "به این دلیل", "باعث می‌شود", "برای اینکه", "هنگامی که"))
+    # Apply language-aware heuristics: English technical lessons are valid inputs too.
+    persian_chars = len(re.findall(r"[\u0600-\u06FF]", normalized))
+    latin_chars = len(re.findall(r"[a-z]", normalized))
+    is_english = latin_chars > persian_chars
+    technical_terms = set(re.findall(
+        r"(?iu)\b(?:SQL Server|SQL|T-SQL|SSMS|DMV|CTE|JOIN|SELECT|WHERE|HTTP|API|JSON|Python|Rust|PHP|JavaScript|Android|iOS|Cisco|VLAN|TCP/IP|DNS|DHCP|firewall|RouterOS|ESXi|VMware|Forex|MetaTrader|MQL4|MQL5|execution plan|index|transaction|query|function|variable|pointer|memory|thread|process|database|server|model|test|log|protocol|decorator|callable|functools|wraps|wrapper|metadata|logging|caching|authorization|descriptor|method|parameter|return|argument|class|keyword|exception|module|array|object|endpoint|request|response|authentication|encryption|routing|switching|کلید اصلی|کلید خارجی|ایندکس|تراکنش|قفل|پشتیبان|بازیابی|پرس‌وجو|پرس و جو|تابع|متغیر|اشاره‌گر|حافظه|سرور|پایگاه داده|آزمون|گزارش|پروتکل|مسیر اجرا)\b",
+        normalized, flags=re.IGNORECASE
+    ))
+    example_markers = ("for example", "e.g.", "such as", "a simple ", "example:", "مثال", "برای مثال", "نمونه", "مثلاً", "در عمل")
+    explanation_markers = ("because", "therefore", "as a result", "so that", "when", "which means", "this allows", "this is useful", "زیرا", "در نتیجه", "به این دلیل", "باعث می‌شود", "برای اینکه", "هنگامی که")
+    has_example = any(marker in normalized for marker in example_markers)
+    has_explanation = any(marker in normalized for marker in explanation_markers)
     signals = [
         "version target", "source unavailability", "network restrictions",
         "403 forbidden", "local/private/reserved network targets",
@@ -46,19 +54,22 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
         len(questions) == 3
         and all(isinstance(item, str) and len(item.strip()) >= 12 for item in questions)
     )
+    minimum_answer_chars = 5 if is_english else 15
     valid_answers = (
         len(answer_key) == 3
-        and all(isinstance(item, str) and len(item.strip()) >= 15 for item in answer_key)
+        and all(isinstance(item, str) and len(item.strip()) >= minimum_answer_chars for item in answer_key)
     )
 
     score = 100
     reasons: list[str] = []
-    if len(words) < 120:
+    minimum_words = 80 if is_english else 120
+    target_words = 120 if is_english else 160
+    if len(words) < minimum_words:
         score -= 35
-        reasons.append("درس کوتاه‌تر از حداقل ۱۲۰ واژه آموزشی است.")
-    elif len(words) < 160:
+        reasons.append(f"درس کوتاه‌تر از حداقل {minimum_words} واژه آموزشی است.")
+    elif len(words) < target_words:
         score -= 10
-        reasons.append("درس از بازه هدف ۱۶۰ تا ۲۲۰ واژه کوتاه‌تر است.")
+        reasons.append(f"درس از بازه هدف {target_words} تا {target_words + 60} واژه کوتاه‌تر است.")
     if unique_ratio < 0.48:
         score -= 20
         reasons.append("تکرار متن زیاد است و اطلاعات تازه کمی دارد.")
@@ -95,7 +106,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = max(0, min(100, score))
     accepted = (
-        score >= 75 and len(words) >= 120 and unique_ratio >= 0.48
+        score >= 75 and len(words) >= minimum_words and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example and has_explanation
         and valid_questions and valid_answers and not mixed_script_tokens
         and not malformed_phrases and len(matched) < 2 and bool(text)
