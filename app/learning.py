@@ -69,7 +69,7 @@ def run_job(job_id: int) -> None:
             raise LearningError("Model response did not match the expected learning format.")
         assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
-        quality["source_evidence_available"] = bool(source_text)
+        quality["user_provided_source_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         if not quality["accepted"]:
@@ -114,7 +114,7 @@ def run_job(job_id: int) -> None:
                 retry_quality = evaluate_learning_value(
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
-                retry_quality["source_evidence_available"] = bool(source_text)
+                retry_quality["user_provided_source_available"] = bool(source_text)
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
