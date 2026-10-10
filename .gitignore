@@ -12,5 +12,4 @@ dist/
 build/
 
 # Downloaded runtime prerequisites and local virtual environment
-prerequisites/wheels/
-prerequisites/installers/
+prerequisites/
