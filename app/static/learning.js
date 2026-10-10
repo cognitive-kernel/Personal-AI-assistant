@@ -316,6 +316,58 @@ async function loadLearningPaths() {
    summary.textContent = path.title + " — " + path.progress_percent + "٪ (" + path.completed_count + "/" + path.topic_count + ")";
    details.append(summary);
 
+   if (Array.isArray(path.reference_urls) && path.reference_urls.length) {
+    const references = document.createElement("div");
+    references.className = "path-reference-links";
+    const referenceHeading = document.createElement("p");
+    referenceHeading.textContent = "منابع پیشنهادی (پیوندها مرجع‌اند؛ متن آن‌ها خودکار دریافت یا راستی‌آزمایی نمی‌شود):";
+    references.append(referenceHeading);
+    path.reference_urls.forEach(reference => {
+     const link = document.createElement("a");
+     link.href = reference.url;
+     link.textContent = reference.title;
+     link.target = "_blank";
+     link.rel = "noopener noreferrer";
+     link.style.display = "inline-block";
+     link.style.marginInlineEnd = "12px";
+     references.append(link);
+     if (reference.description) {
+      const description = document.createElement("p");
+      description.textContent = reference.description;
+      references.append(description);
+     }
+    });
+    details.append(references);
+   }
+
+   const syncControls = document.createElement("div");
+   syncControls.className = "path-sync-controls";
+   const syncButton = document.createElement("button");
+   syncButton.type = "button";
+   syncButton.textContent = "همگام‌سازی سرفصل‌ها";
+   const syncOutput = document.createElement("p");
+   syncOutput.setAttribute("role", "status");
+   syncButton.addEventListener("click", async () => {
+    syncButton.disabled = true;
+    syncOutput.textContent = "در حال بررسی مسیر و حفظ سوابق موجود…";
+    try {
+     const result = await learningApi("/api/learning/paths/" + path.id + "/sync", {method: "POST"});
+     const summary = result.sync || {};
+     await loadLearningPaths();
+     learningEl("paths-output").textContent =
+      "همگام‌سازی انجام شد. سرفصل جدید: " + (summary.added_topic_count || 0) +
+      "؛ سرفصل قدیمیِ بدون سابقه حذف‌شده: " + (summary.removed_legacy_count || 0) +
+      "؛ سرفصل قدیمی دارای سابقه و حفظ‌شده: " + (summary.retained_legacy_count || 0) +
+      ". وضعیت‌ها، امتیازها و کارهای مرتبط حفظ شدند.";
+    } catch (error) {
+     syncOutput.textContent = "خطا در همگام‌سازی مسیر: " + error.message;
+    } finally {
+     syncButton.disabled = false;
+    }
+   });
+   syncControls.append(syncButton, syncOutput);
+   details.append(syncControls);
+
    const bulkControls = document.createElement("div");
    bulkControls.className = "path-bulk-controls";
    const startAll = document.createElement("button");
