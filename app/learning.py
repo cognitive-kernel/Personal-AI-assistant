@@ -79,6 +79,16 @@ def run_job(job_id: int) -> None:
                  json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
                  json.dumps(quality, ensure_ascii=False),
                  None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
+            # Automatically persist the lesson-quality score on its curriculum topic.
+            # This is a content-quality score, not a score for the learner's understanding.
+            path_topic_id = conn.execute(
+                "SELECT path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
+            ).fetchone()["path_topic_id"]
+            if path_topic_id is not None:
+                conn.execute(
+                    "UPDATE learning_path_topics SET latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    (float(quality["score"]), path_topic_id),
+                )
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
             if quality["accepted"]:
