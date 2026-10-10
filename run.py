@@ -163,8 +163,8 @@ def _ensure_wheelhouse(requirements: list[str], fingerprint: str) -> None:
             _write_cache_manifest(fingerprint)
             return
 
-        output = (probe.stdout or "") + "\\n" + (probe.stderr or "")
-        missing = re.search(r"No matching distribution found for ([^\\r\\n]+)", output)
+        output = (probe.stdout or "") + "\n" + (probe.stderr or "")
+        missing = re.search(r"No matching distribution found for ([^\r\n]+)", output)
         if not missing:
             raise RuntimeError(
                 "بررسی آفلاین مخزن پیش‌نیازها شکست خورد و بسته مفقود قابل تشخیص نبود. "
