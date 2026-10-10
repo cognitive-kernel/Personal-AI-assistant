@@ -70,6 +70,15 @@ def init_databases() -> None:
             scoring_method TEXT NOT NULL DEFAULT 'normalized_exact_match',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_attempts_job ON assessment_attempts(job_id, id DESC)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS lesson_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
+            outcomes_json TEXT NOT NULL,
+            value_rating INTEGER NOT NULL CHECK(value_rating BETWEEN 1 AND 5),
+            takeaway TEXT NOT NULL DEFAULT '',
+            issues TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_lesson_reviews_job ON lesson_reviews(job_id, id DESC)")
         conn.execute("""CREATE TABLE IF NOT EXISTS learning_paths (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             curriculum_slug TEXT NOT NULL UNIQUE,
