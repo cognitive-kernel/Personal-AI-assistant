@@ -214,9 +214,16 @@ def _ensure_dependencies(dev: bool) -> None:
 
 def _download_once(url: str, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path = destination.with_name(destination.name + ".download.json")
     if destination.is_file() and destination.stat().st_size > 0:
-        print(f"استفاده از فایل ذخیره‌شده: {destination}", flush=True)
-        return destination
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if int(manifest["size"]) == destination.stat().st_size:
+                print(f"استفاده از فایل ذخیره‌شده: {destination}", flush=True)
+                return destination
+        except (OSError, ValueError, TypeError, KeyError):
+            pass
+        print("فایل ذخیره‌شده تأیید نشده است؛ دانلود دوباره انجام می‌شود.", flush=True)
 
     print(f"شروع دانلود: {url}", flush=True)
     temp_path: Path | None = None
@@ -257,8 +264,17 @@ def _download_once(url: str, destination: Path) -> Path:
                         )
         if downloaded == 0:
             raise RuntimeError(f"سرور فایل خالی برگرداند: {url}")
+        if total and downloaded != total:
+            raise RuntimeError(
+                f"دانلود ناقص است: {downloaded / (1024 * 1024):.1f} از "
+                f"{total / (1024 * 1024):.1f} MB دریافت شد؛ فایل ناقص ذخیره نخواهد شد."
+            )
         temp_path.replace(destination)
         temp_path = None
+        manifest_path.write_text(
+            json.dumps({"size": downloaded, "url": url}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         elapsed = max(time.monotonic() - started, 0.001)
         print(f"\nدانلود کامل شد: {destination} ({downloaded / (1024 * 1024):.1f} MB در {elapsed:.1f} ثانیه)", flush=True)
         return destination
