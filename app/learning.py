@@ -71,12 +71,11 @@ def run_job(job_id: int) -> None:
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         quality["source_evidence_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if source_text else "unverified"
-        # Short outputs are a common failure mode on small local models. Make one
-        # targeted repair attempt before rejecting the lesson outright.
-        if not quality["accepted"] and quality["word_count"] < 100:
+        # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
+        if not quality["accepted"]:
             retry_prompt = dict(prompt)
             retry_prompt["instruction"] = (
-                "بازنویسی کامل انجام بده. پاسخ قبلی به حداقل طول نرسید. "
+                "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ آن را کامل بازنویسی کن. "
                 "فقط یک شیء JSON معتبر با کلیدهای lesson و questions و answer_key برگردان. "
                 "متن lesson باید فارسی روان و دست‌کم 160 واژه فارسی باشد (نه شمارش تقریبی توکن)، "
                 "در 4 تا 6 بند آموزشی، شامل تعریف دقیق، اجزای اصلی، توضیح کاربرد هر جزء، "
