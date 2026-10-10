@@ -69,6 +69,10 @@ def run_job(job_id: int) -> None:
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 VALUES (?, 'model_output', 'ollama', NULL, ?)""",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
+            latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
+            conn.execute("""INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+                VALUES (?, ?, ?, ?, 'unverified', ?)""",
+                (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
