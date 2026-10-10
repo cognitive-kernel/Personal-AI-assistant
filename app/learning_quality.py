@@ -23,8 +23,21 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
             "داده‌های رеляتیوی",
             "داده های رеляتیوی",
             "منجر به بهبود بهره‌وری",
+            "سطوح سطوحی",
+            "سطح کاربری سه‌بعدی",
+            "سطح کاربری سه بعدی",
+            "ساختار و سطوح سطوحی",
+            "به کار کاربران اجازه می‌دهد تا",
         ) if phrase in normalized
     ]
+    # Flag recurring signs of vague, fabricated architecture descriptions.
+    vague_architecture = bool(
+        re.search(r"معماری.{0,30}(سطح داده|سطح سیستم|سطح کاربر)", normalized)
+        and any(term in normalized for term in ("سطح داده", "سطح سیستم", "سطح کاربر"))
+        and any(term in normalized for term in ("سه‌بعدی", "سه بعدی", "سطوح سطوحی"))
+    )
+    if vague_architecture and "معماری سطح‌بندی‌شده نامعتبر" not in malformed_phrases:
+        malformed_phrases.append("معماری سطح‌بندی‌شده نامعتبر")
     valid_questions = (
         len(questions) == 3
         and all(isinstance(item, str) and len(item.strip()) >= 12 for item in questions)
