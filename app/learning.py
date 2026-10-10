@@ -22,8 +22,9 @@ def create_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
     source_text = (source_text or "").strip()
-    if len(source_text) > 100000:
-        raise ValueError("Source text is too large (limit: 100,000 characters).")
+    source_limit = max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))
+    if len(source_text) > source_limit:
+        raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
     with learning_connection() as conn:
         cursor = conn.execute("INSERT INTO learning_jobs(topic, status, source_kind) VALUES (?, 'queued', ?)", (topic, source_kind))

@@ -68,7 +68,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             raise HTTPException(status_code=422, detail="Only loopback Ollama URLs are supported.")
         values["ollama_base_url"] = url
     for key, low, high in [("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
-                           ("ollama_num_thread", 0, 64), ("learning_max_concurrent_jobs", 1, 2)]:
+                           ("ollama_num_thread", 0, 64), ("learning_max_concurrent_jobs", 1, 2), ("learning_source_max_chars", 1000, 100000)]:
         if key in values:
             try:
                 values[key] = int(values[key])

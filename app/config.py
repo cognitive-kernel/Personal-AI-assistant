@@ -25,4 +25,5 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ollama_num_ctx": defaults.ollama_num_ctx,
     "ollama_num_thread": defaults.ollama_num_thread,
     "learning_max_concurrent_jobs": 1,
+    "learning_source_max_chars": 12000,
 }
