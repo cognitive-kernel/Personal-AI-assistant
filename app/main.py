@@ -223,6 +223,14 @@ def enroll_learning_path(request: CurriculumEnrollment) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Learning curriculum not found.") from exc
 
 
+@app.post("/api/learning/paths/{path_id}/sync")
+def sync_learning_path(path_id: int) -> dict[str, Any]:
+    try:
+        return learning.sync_curriculum_path(path_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning path or curriculum not found.") from exc
+
+
 @app.post("/api/learning/paths/{path_id}/start")
 def start_learning_path(path_id: int) -> dict[str, Any]:
     try:

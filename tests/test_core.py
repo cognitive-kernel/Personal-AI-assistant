@@ -291,3 +291,86 @@ def test_learning_path_rejects_invalid_status_and_unknown_curriculum(tmp_path, m
         pass
     else:
         raise AssertionError("Unknown curriculum should be rejected")
+
+
+
+def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("sql-server")
+    with db.learning_connection() as conn:
+        next_position = conn.execute(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM learning_path_topics WHERE path_id=?",
+            (path["id"],),
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
+            (path["id"], "Legacy unstarted duplicate", next_position),
+        )
+        conn.execute(
+            "INSERT INTO learning_path_topics(path_id, topic, position, status) VALUES (?, ?, ?, 'completed')",
+            (path["id"], "Legacy completed topic", next_position + 1),
+        )
+        legacy_job_id = conn.execute(
+            "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
+            (path["id"], "Legacy topic with job", next_position + 2),
+        ).lastrowid
+    job = learning.create_job("Legacy topic with job", path_topic_id=legacy_job_id)
+    result = learning.sync_curriculum_path(path["id"])
+    topics = {item["topic"]: item for item in result["topics"]}
+    assert "Legacy unstarted duplicate" not in topics
+    assert topics["Legacy completed topic"]["status"] == "completed"
+    assert "Legacy topic with job" in topics
+    assert learning.get_job(job["id"])["path_topic_id"] == legacy_job_id
+    assert result["sync"]["removed_legacy_count"] == 1
+    assert result["sync"]["retained_legacy_count"] == 2
+    assert result["sync"]["progress_preserved"] is True
+    assert len(result["topics"]) == 21
+
+
+def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    lesson = (
+        "در SQL Server، Database Engine مسئول ذخیره‌سازی و اجرای پرس‌وجوها است. "
+        "درخواست T-SQL ابتدا تجزیه و بهینه‌سازی می‌شود و سپس برنامه اجرایی مناسب انتخاب می‌شود. "
+        "execution plan نشان می‌دهد داده‌ها چگونه خوانده می‌شوند؛ برای نمونه، اسکن جدول ممکن است "
+        "در جدول کوچک مناسب باشد، اما برای جست‌وجوی پرتکرار روی ستون انتخابی، ایندکس مناسب می‌تواند "
+        "تعداد صفحات خوانده‌شده را کاهش دهد. این بهبود قطعی نیست، زیرا هزینه نگهداری ایندکس و "
+        "توزیع داده نیز بر تصمیم بهینه‌ساز اثر می‌گذارند. SSMS ابزار مدیریت و مشاهده برنامه اجرا است، "
+        "در حالی که DMVها اطلاعاتی درباره وضعیت و کارایی نمونه سرور ارائه می‌کنند. در عمل، ابتدا "
+        "پرس‌وجو را با داده نماینده اجرا کنید، سپس execution plan و آمار ورودی/خروجی را بررسی کنید. "
+        "اگر ایندکس جدیدی پیشنهاد شد، اثر آن را با بار کاری واقعی و پس از ثبت خط مبنا بسنجید. "
+        "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
+        "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
+        "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
+        "نه تضمین خودکار برای درست بودن طراحی."
+    )
+    payloads = []
+    def fake_request(_path, payload, **_kwargs):
+        payloads.append(payload)
+        return {"message": {"content": json.dumps({
+            "lesson": lesson,
+            "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
+            "questions": [
+                "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
+                "چرا ایندکس همیشه باعث بهبود عملکرد نمی‌شود؟",
+                "چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
+            ],
+            "answer_key": [
+                "نشان می‌دهد موتور چگونه داده را می‌خواند و چه عملگرهایی را اجرا می‌کند.",
+                "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
+                "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
+            ],
+        }, ensure_ascii=False)}}
+    monkeypatch.setattr(learning, "_request", fake_request)
+    job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+    assert payloads[0]["options"]["num_predict"] >= 1000
+    assert finished["status"] == "completed"
+    assert finished["quality"]["accepted"] is True

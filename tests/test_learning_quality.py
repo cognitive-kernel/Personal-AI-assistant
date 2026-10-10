@@ -55,3 +55,14 @@ def test_accepts_structured_technical_lesson_with_example_and_explanation():
     assert result["accepted"] is True
     assert result["has_concrete_example"] is True
     assert result["technical_detail_count"] >= 3
+
+
+
+def test_sql_server_curriculum_has_curated_reference_links():
+    from app.curricula import get_curriculum
+
+    course = get_curriculum("sql-server")
+    refs = {item["title"]: item["url"] for item in course["reference_urls"]}
+    assert refs["W3Schools — SQL Tutorial"] == "https://www.w3schools.com/sql/default.asp"
+    assert refs["Microsoft Learn — SQL Server"] == "https://learn.microsoft.com/en-us/sql/sql-server/"
+    assert len(course["topics"]) == 19

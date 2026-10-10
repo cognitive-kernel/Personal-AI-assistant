@@ -104,6 +104,12 @@ CURRICULA: dict[str, dict[str, Any]] = {
         "title": "Microsoft SQL Server",
         "category": "Database",
         "prerequisites": ["مبانی SQL"],
+        "reference_urls": [
+            {"title": "W3Schools — SQL Tutorial", "url": "https://www.w3schools.com/sql/default.asp",
+             "description": "مرجع مفاهیم عمومی SQL؛ برای معماری و قابلیت‌های اختصاصی SQL Server به مستندات Microsoft نیز مراجعه کنید."},
+            {"title": "Microsoft Learn — SQL Server", "url": "https://learn.microsoft.com/en-us/sql/sql-server/",
+             "description": "مستندات رسمی محصول برای رفتارها و قابلیت‌های اختصاصی SQL Server."},
+        ],
         "topics": [
             "معماری SQL Server، Database Engine و ابزارهای مدیریت", "T-SQL، عملیات CRUD و مدیریت خطاهای query",
             "JOIN، subquery، CTE و window function", "مدل‌سازی رابطه‌ای، کلید و constraint",
@@ -309,6 +315,7 @@ def list_curricula() -> list[dict[str, Any]]:
                 for level in _learning_levels(item["topics"])
             ],
             "notes": item.get("notes"),
+            "reference_urls": list(item.get("reference_urls", [])),
         })
     return result
 
