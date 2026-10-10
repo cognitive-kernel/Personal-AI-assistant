@@ -67,6 +67,21 @@ def init_databases() -> None:
             scoring_method TEXT NOT NULL DEFAULT 'normalized_exact_match',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_attempts_job ON assessment_attempts(job_id, id DESC)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS learning_paths (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            curriculum_slug TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS learning_path_topics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path_id INTEGER NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
+            topic TEXT NOT NULL, position INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            latest_score REAL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(path_id, topic), UNIQUE(path_id, position))""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_path_topics_status ON learning_path_topics(path_id, status, position)")
 
 def get_settings() -> dict[str, Any]:
     with settings_connection() as conn:
