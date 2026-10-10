@@ -98,11 +98,13 @@ async function startLesson(path, topic, button, stopButton, output) {
  stopButton.disabled = false;
  output.textContent = "در حال ثبت یا ادامه کار یادگیری…";
  try {
-  await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id, {
-   method: "PATCH",
-   body: JSON.stringify({status: "in_progress"})
-  });
-  topic.statusSelect.value = "in_progress";
+  if (topic.statusSelect.value !== "completed") {
+   await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id, {
+    method: "PATCH",
+    body: JSON.stringify({status: "in_progress"})
+   });
+   topic.statusSelect.value = "in_progress";
+  }
   const job = await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id + "/start", {
    method: "POST"
   });
