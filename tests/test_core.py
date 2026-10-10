@@ -90,16 +90,28 @@ def test_learning_quality_gate_accepts_substantive_lesson():
     assert result["score"] >= 65
 
 
-def test_startup_bootstrap_reads_project_dependencies():
-    import run
+def _load_startup_bootstrap():
+    import importlib.util
+    from pathlib import Path
 
-    requirements = run._requirements(dev=False)
+    path = Path(__file__).resolve().parents[1] / "run.py"
+    spec = importlib.util.spec_from_file_location("startup_bootstrap", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_startup_bootstrap_reads_project_dependencies():
+    bootstrap = _load_startup_bootstrap()
+
+    requirements = bootstrap._requirements(dev=False)
     assert any(item.startswith("fastapi") for item in requirements)
     assert any(item.startswith("uvicorn") for item in requirements)
-    assert run.MIN_PYTHON == (3, 11)
+    assert bootstrap.MIN_PYTHON == (3, 11)
 
 
 def test_startup_bootstrap_detects_missing_distribution():
-    import run
+    bootstrap = _load_startup_bootstrap()
 
-    assert not run._installed("a-package-that-does-not-exist-anywhere-987654")
+    assert not bootstrap._installed("a-package-that-does-not-exist-anywhere-987654")
