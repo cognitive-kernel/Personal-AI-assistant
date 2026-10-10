@@ -10,7 +10,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     words = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
     unique_ratio = len(set(words)) / max(1, len(words))
     # A lesson needs observable teaching substance, not merely sufficient length.
-    technical_terms = re.findall(r"(?u)\b(?:SQL|T-SQL|SSMS|DMV|CTE|JOIN|SELECT|WHERE|INDEX|TRANSACTION|execution plan|execution plan|کلید اصلی|کلید خارجی|ایندکس|تراکنش|قفل|پشتیبان|بازیابی|پرس‌وجو|پرس و جو|مثال|برای نمونه|در عمل|در این مثال)\b", normalized, flags=re.IGNORECASE)
+    technical_terms = set(re.findall(r"(?u)\b(?:SQL Server|SQL|T-SQL|SSMS|DMV|CTE|JOIN|SELECT|WHERE|HTTP|API|JSON|Python|Rust|PHP|JavaScript|Android|iOS|Cisco|VLAN|TCP/IP|DNS|DHCP|firewall|RouterOS|ESXi|VMware|Forex|MetaTrader|MQL4|MQL5|INDEX|TRANSACTION|execution plan|index|transaction|query|function|variable|pointer|memory|thread|process|database|server|model|test|log|protocol|کلید اصلی|کلید خارجی|ایندکس|تراکنش|قفل|پشتیبان|بازیابی|پرس‌وجو|پرس و جو|تابع|متغیر|اشاره‌گر|حافظه|سرور|پایگاه داده|آزمون|گزارش|پروتکل|مسیر اجرا)\b", normalized, flags=re.IGNORECASE))
     has_example = any(marker in normalized for marker in ("برای مثال", "مثال عملی", "در این مثال", "نمونهٔ", "نمونه ", "مثلاً", "در عمل"))
     has_explanation = any(marker in normalized for marker in ("زیرا", "در نتیجه", "به این دلیل", "باعث می‌شود", "برای اینکه", "هنگامی که"))
     signals = [
