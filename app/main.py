@@ -35,6 +35,13 @@ class LearningRequest(BaseModel):
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
 
+class CurriculumEnrollment(BaseModel):
+    slug: str = Field(min_length=1, max_length=100)
+
+class PathTopicProgress(BaseModel):
+    status: str = Field(min_length=1, max_length=30)
+    latest_score: float | None = Field(default=None, ge=0, le=100)
+
 @app.get("/api/health")
 def api_health() -> dict[str, Any]:
     hardware = detect_hardware()
@@ -120,6 +127,29 @@ def knowledge_items(limit: int = 100) -> dict[str, Any]:
             (max(1, min(300, limit)),),
         ).fetchall()
     return {"items": [dict(row) for row in rows]}
+
+@app.get("/api/learning/paths")
+def learning_paths() -> dict[str, Any]:
+    return {"paths": learning.list_learning_paths()}
+
+
+@app.post("/api/learning/paths", status_code=201)
+def enroll_learning_path(request: CurriculumEnrollment) -> dict[str, Any]:
+    try:
+        return learning.enroll_curriculum(request.slug)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning curriculum not found.") from exc
+
+
+@app.patch("/api/learning/paths/{path_id}/topics/{topic_id}")
+def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicProgress) -> dict[str, Any]:
+    try:
+        return learning.update_path_topic(path_id, topic_id, request.status, request.latest_score)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning path or topic not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 @app.post("/api/learning/jobs/{job_id}/assessment")
 def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> dict[str, Any]:
