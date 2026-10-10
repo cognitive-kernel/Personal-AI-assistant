@@ -160,3 +160,43 @@ def test_prerequisite_manifest_skips_download_when_cache_is_complete(tmp_path, m
     monkeypatch.setattr(bootstrap, "CACHE_MANIFEST", manifest)
     assert bootstrap._cache_is_complete("abc")
     assert not bootstrap._cache_is_complete("changed")
+
+def test_expanded_curriculum_catalog_contains_advanced_learning_paths():
+    from app import curricula
+
+    ai = curricula.get_curriculum("AI")
+    forex = curricula.get_curriculum("Forex")
+    python = curricula.get_curriculum("Python")
+    assert len(ai["topics"]) >= 120
+    assert len(forex["topics"]) >= 115
+    assert len(python["topics"]) >= 35
+    assert any("MQL5" in topic for topic in forex["topics"])
+    assert any("Expert Python capstone" in topic for topic in python["topics"])
+
+
+def test_partial_prerequisite_cache_downloads_only_missing_distribution(tmp_path, monkeypatch):
+    import subprocess
+
+    bootstrap = _load_startup_bootstrap()
+    monkeypatch.setattr(bootstrap, "WHEELHOUSE", tmp_path / "wheels")
+    bootstrap.WHEELHOUSE.mkdir()
+    (bootstrap.WHEELHOUSE / "existing-1.0-py3-none-any.whl").write_bytes(b"cached")
+    monkeypatch.setattr(bootstrap, "_cache_is_complete", lambda _fingerprint: False)
+    monkeypatch.setattr(bootstrap, "_cached_package_pins", lambda: {"existing": "1.0"})
+    probes = [
+        subprocess.CompletedProcess([], 1, "", "ERROR: No matching distribution found for missing-dep>=2"),
+        subprocess.CompletedProcess([], 0, "", ""),
+    ]
+    monkeypatch.setattr(bootstrap, "_probe_local_wheelhouse", lambda _requirements: probes.pop(0))
+    commands = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "_write_cache_manifest", lambda _fingerprint: None)
+    bootstrap._ensure_wheelhouse(["demo>=1"], "fingerprint")
+    assert len(commands) == 1
+    assert "--no-deps" in commands[0]
+    assert commands[0][-1] == "missing-dep>=2"
