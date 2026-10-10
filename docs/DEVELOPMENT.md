@@ -27,8 +27,7 @@ python run.py
 ## اجرای آزمون‌ها
 
 ```bash
-python run.py --dev
-# در ترمینال جداگانه، پس از آماده شدن محیط:
+python run.py --dev --check-only
 .venv/bin/python -m pytest
 ```
 
