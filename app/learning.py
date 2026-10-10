@@ -252,7 +252,7 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         if exists is None:
             raise KeyError(topic_id)
         conn.execute(
-            "UPDATE learning_path_topics SET status=?, latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
+            "UPDATE learning_path_topics SET status=?, latest_score=COALESCE(?, latest_score), updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (status, latest_score, topic_id, path_id),
         )
         conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
