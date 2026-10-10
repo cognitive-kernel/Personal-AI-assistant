@@ -19,7 +19,7 @@ _learning_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="learn
 _learning_gate = threading.Condition()
 _active_learning_jobs = 0
 
-def create_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
+def create_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
@@ -29,7 +29,7 @@ def create_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
     with learning_connection() as conn:
-        cursor = conn.execute("INSERT INTO learning_jobs(topic, status, source_kind) VALUES (?, 'queued', ?)", (topic, source_kind))
+        cursor = conn.execute("INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id) VALUES (?, 'queued', ?, ?)", (topic, source_kind, path_topic_id))
         job_id = int(cursor.lastrowid)
         if source_text:
             digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
@@ -70,6 +70,10 @@ def run_job(job_id: int) -> None:
         assessment = {"questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         with learning_connection() as conn:
+            current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+            # If the user stopped the path while Ollama was generating, discard this result.
+            if current is None or current["status"] != "running":
+                return
             conn.execute("UPDATE learning_jobs SET status=?, lesson=?, assessment_json=?, quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
                  json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
@@ -87,7 +91,7 @@ def run_job(job_id: int) -> None:
                     ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
     except Exception as exc:
         with learning_connection() as conn:
-            conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
 
 def get_job(job_id: int) -> dict[str, Any]:
@@ -177,8 +181,8 @@ def _run_with_budget(job_id: int) -> None:
             _learning_gate.notify_all()
 
 
-def submit_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
-    job = create_job(topic, source_text)
+def submit_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
+    job = create_job(topic, source_text, path_topic_id)
     _learning_executor.submit(_run_with_budget, job["id"])
     return job
 
@@ -257,3 +261,66 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         )
         conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
     return get_learning_path(path_id)
+
+
+def start_path_learning(path_id: int) -> dict[str, Any]:
+    path = get_learning_path(path_id)
+    queued_ids: list[int] = []
+    skipped_active = 0
+    skipped_completed = 0
+    for topic in path["topics"]:
+        if topic["status"] == "completed":
+            skipped_completed += 1
+            continue
+        with learning_connection() as conn:
+            active = conn.execute(
+                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') LIMIT 1",
+                (topic["id"],),
+            ).fetchone()
+        if active:
+            skipped_active += 1
+            continue
+        job = create_job(topic["topic"], path_topic_id=topic["id"])
+        with learning_connection() as conn:
+            conn.execute(
+                "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
+                (topic["id"], path_id),
+            )
+        _learning_executor.submit(_run_with_budget, job["id"])
+        queued_ids.append(job["id"])
+    return {
+        "path_id": path_id,
+        "queued_count": len(queued_ids),
+        "job_ids": queued_ids,
+        "skipped_active_count": skipped_active,
+        "skipped_completed_count": skipped_completed,
+        "message": "درس‌های باقی‌مانده به صف یادگیری اضافه شدند.",
+    }
+
+
+def stop_path_learning(path_id: int) -> dict[str, Any]:
+    # Mark both queued and currently running jobs as cancelled. Ollama requests already
+    # in flight cannot be interrupted, but their results are discarded when they return.
+    with learning_connection() as conn:
+        exists = conn.execute("SELECT id FROM learning_paths WHERE id=?", (path_id,)).fetchone()
+        if exists is None:
+            raise KeyError(path_id)
+        rows = conn.execute(
+            "SELECT id, status FROM learning_jobs WHERE path_topic_id IN "
+            "(SELECT id FROM learning_path_topics WHERE path_id=?) AND status IN ('queued', 'running')",
+            (path_id,),
+        ).fetchall()
+        queued = sum(1 for row in rows if row["status"] == "queued")
+        running = sum(1 for row in rows if row["status"] == "running")
+        conn.execute(
+            "UPDATE learning_jobs SET status='cancelled', error='یادگیری گروهی توسط کاربر متوقف شد.', updated_at=CURRENT_TIMESTAMP "
+            "WHERE path_topic_id IN (SELECT id FROM learning_path_topics WHERE path_id=?) AND status IN ('queued', 'running')",
+            (path_id,),
+        )
+    return {
+        "path_id": path_id,
+        "cancelled_count": len(rows),
+        "cancelled_queued_count": queued,
+        "cancelled_running_count": running,
+        "message": "صف یادگیری متوقف شد؛ درخواست‌هایی که به Ollama ارسال شده‌اند ممکن است تا پایان پردازش مصرف منابع داشته باشند، اما نتیجه‌شان ذخیره نمی‌شود.",
+    }
