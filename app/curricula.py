@@ -105,9 +105,9 @@ CURRICULA: dict[str, dict[str, Any]] = {
         "category": "Database",
         "prerequisites": ["مبانی SQL"],
         "topics": [
-            "معماری SQL Server و ابزارهای مدیریت", "T-SQL و عملیات CRUD",
-            "join، subquery، CTE و window function", "مدل‌سازی، کلید و constraint",
-            "index و execution plan", "transaction، isolation و lock",
+            "معماری SQL Server، Database Engine و ابزارهای مدیریت", "T-SQL، عملیات CRUD و مدیریت خطاهای query",
+            "JOIN، subquery، CTE و window function", "مدل‌سازی رابطه‌ای، کلید و constraint",
+            "ایندکس، آمار و execution plan", "transaction، isolation level و lock",
             "stored procedure، function و trigger", "login، user، role و least privilege",
             "backup، restore و بازیابی نقطه‌ای", "Query Store، DMV و Extended Events",
             "بهینه‌سازی query و رفع deadlock", "High Availability و Disaster Recovery",
