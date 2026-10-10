@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from pathlib import Path
 from typing import Any
 from fastapi import FastAPI, HTTPException
@@ -10,6 +11,32 @@ from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
+
+logger = logging.getLogger("personal_ai_assistant.http")
+
+# توضیح فارسی برای 404ها؛ این لاگ‌ها علت احتمالی را مشخص می‌کنند و جایگزین رفع خطای واقعی نیستند.
+_KNOWN_404_EXPLANATIONS = {
+    "/learning/status": "مسیر وضعیت یادگیری در نسخه فعلی تعریف نشده است؛ نسخه جدید برنامه را دریافت و سرور را دوباره اجرا کنید.",
+    "/learning/active": "مسیر کارهای فعال یادگیری در نسخه فعلی تعریف نشده است؛ نسخه جدید برنامه را دریافت و سرور را دوباره اجرا کنید.",
+    "/scheduler/status": "مسیر وضعیت زمان‌بند تعریف نشده است؛ ممکن است زمان‌بندی خودکار هنوز پیاده‌سازی نشده باشد.",
+    "/.well-known/appspecific/com.chrome.devtools.json": "درخواست خودکار Chrome DevTools است؛ معمولاً برای عملکرد برنامه ضروری نیست و می‌توان آن را نادیده گرفت.",
+}
+
+@app.middleware("http")
+async def log_http_error_explanation(request, call_next):
+    response = await call_next(request)
+    if response.status_code == 404:
+        path = request.url.path
+        explanation = _KNOWN_404_EXPLANATIONS.get(
+            path,
+            "مسیر در سرور پیدا نشد؛ آدرس درخواست، نسخه اجراشده برنامه و endpointهای تعریف‌شده را بررسی کنید.",
+        )
+        # درخواست شناخته‌شده DevTools خطای کاربردی محسوب نمی‌شود؛ سایر 404ها هشدار هستند.
+        if path == "/.well-known/appspecific/com.chrome.devtools.json":
+            logger.info("توضیح فارسی 404 | مسیر: %s | دلیل: %s", path, explanation)
+        else:
+            logger.warning("توضیح فارسی 404 | مسیر: %s | دلیل: %s", path, explanation)
+    return response
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
