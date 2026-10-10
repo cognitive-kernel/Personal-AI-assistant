@@ -254,3 +254,40 @@ def test_assessment_rejects_wrong_answer_count(tmp_path, monkeypatch):
         assert "count must match" in str(exc)
     else:
         raise AssertionError("Wrong answer count should be rejected")
+
+
+def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("Python")
+    assert path["topic_count"] > 0
+    assert path["completed_count"] == 0
+    assert path["progress_percent"] == 0
+    first_topic = path["topics"][0]
+    updated = learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+    assert updated["completed_count"] == 1
+    assert updated["progress_percent"] > 0
+    again = learning.enroll_curriculum("Python")
+    assert again["id"] == path["id"]
+    assert again["completed_count"] == 1
+    assert len(again["topics"]) == path["topic_count"]
+
+
+def test_learning_path_rejects_invalid_status_and_unknown_curriculum(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("MCSE")
+    try:
+        learning.update_path_topic(path["id"], path["topics"][0]["id"], "skipped")
+    except ValueError as exc:
+        assert "Status must be" in str(exc)
+    else:
+        raise AssertionError("Invalid progress status should be rejected")
+    try:
+        learning.enroll_curriculum("unknown-course")
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("Unknown curriculum should be rejected")
