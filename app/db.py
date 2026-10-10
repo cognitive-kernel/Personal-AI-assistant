@@ -5,10 +5,18 @@ from pathlib import Path
 from typing import Any
 from .config import SETTING_DEFAULTS, defaults
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def _connect(path: str) -> sqlite3.Connection:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(target), timeout=10)
+    conn = sqlite3.connect(str(target), timeout=10, factory=ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 10000")
