@@ -94,6 +94,17 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
 
+
+@app.get("/api/knowledge")
+def knowledge_items(limit: int = 100) -> dict[str, Any]:
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            """SELECT id, topic, content, source_kind, version, status, job_id, created_at
+               FROM knowledge_items ORDER BY id DESC LIMIT ?""",
+            (max(1, min(300, limit)),),
+        ).fetchall()
+    return {"items": [dict(row) for row in rows]}
+
 @app.get("/api/learning/jobs/{job_id}")
 def learning_job(job_id: int) -> dict[str, Any]:
     try:
