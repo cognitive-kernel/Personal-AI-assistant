@@ -161,16 +161,19 @@ def _ensure_dependencies(dev: bool) -> None:
             )
         _write_cache_manifest(fingerprint)
 
-    missing = [item for item in requirements if not _installed(item)]
+    # pip checks the declared version constraints as well as presence. If the
+    # installed environment already satisfies them, this is a no-op; otherwise
+    # it installs the compatible cached distributions without reaching the network.
+    print("بررسی و نصب وابستگی‌ها از مخزن محلی prerequisites/wheels ...", flush=True)
+    install = _run([
+        sys.executable, "-m", "pip", "install", "--no-index",
+        "--find-links", str(WHEELHOUSE), *requirements,
+    ])
+    if install.returncode != 0:
+        raise RuntimeError("نصب پیش‌نیازها از مخزن محلی ناموفق بود.")
     check = _run([sys.executable, "-m", "pip", "check"])
-    if missing or check.returncode != 0:
-        print("نصب پیش‌نیازها از مخزن محلی prerequisites/wheels ...", flush=True)
-        install = _run([
-            sys.executable, "-m", "pip", "install", "--no-index",
-            "--find-links", str(WHEELHOUSE), *requirements,
-        ])
-        if install.returncode != 0:
-            raise RuntimeError("نصب پیش‌نیازها از مخزن محلی ناموفق بود.")
+    if check.returncode != 0:
+        raise RuntimeError("بررسی سازگاری وابستگی‌های نصب‌شده ناموفق بود.")
     project = _run([
         sys.executable, "-m", "pip", "install", "--no-index",
         "--find-links", str(WHEELHOUSE), "--no-build-isolation", "--no-deps", "-e", ".",
