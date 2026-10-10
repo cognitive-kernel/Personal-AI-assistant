@@ -21,13 +21,25 @@ async function waitForLearningJob(jobId, output) {
 
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
+ if (job.quality && topic.row) {
+  const scoreField = topic.row.querySelector(".path-topic-score");
+  if (scoreField) scoreField.textContent = "امتیاز کیفیت درس: " + job.quality.score + " از 100 (خودکار)";
+ }
  if (job.status !== "completed") {
+  if (job.quality) {
+   const qualityNote = document.createElement("p");
+   qualityNote.textContent = "امتیاز کیفیت خودکار: " + job.quality.score + " از 100.";
+   output.append(qualityNote);
+  }
   output.textContent = job.error || (job.status === "rejected"
    ? "درس به دلیل کنترل کیفیت ذخیره نشد. موضوع را دقیق‌تر کنید و دوباره تلاش کنید."
    : "تولید درس موفق نبود. وضعیت کار: " + job.status);
   return;
  }
 
+ const qualityNote = document.createElement("p");
+ qualityNote.textContent = "امتیاز کیفیت خودکار درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
+ output.append(qualityNote);
  const lesson = document.createElement("p");
  lesson.textContent = job.lesson || "متن درس در پاسخ موجود نیست.";
  output.append(lesson);
