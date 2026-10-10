@@ -7,6 +7,7 @@ from typing import Any
 from .db import learning_connection, get_settings
 from .ollama import _request
 from .hardware import detect_hardware, runtime_limits
+from .learning_quality import evaluate_learning_value
 
 class LearningError(RuntimeError):
     pass
@@ -66,16 +67,23 @@ def run_job(job_id: int) -> None:
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
         assessment = {"questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         with learning_connection() as conn:
-            conn.execute("""UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?, error=NULL,
-                updated_at=CURRENT_TIMESTAMP WHERE id=?""", (result["lesson"], json.dumps(assessment, ensure_ascii=False), job_id))
-            conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                VALUES (?, 'model_output', 'ollama', NULL, ?)""",
+            conn.execute("UPDATE learning_jobs SET status=?, lesson=?, assessment_json=?, quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
+                 json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
+                 json.dumps(quality, ensure_ascii=False),
+                 None if quality["accepted"] else "خروجی از فیلتر ارزش ذخیره‌سازی عبور نکرد؛ متن درس و متن منبع حذف شد.", job_id))
+            conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
-            latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
-            conn.execute("""INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
-                VALUES (?, ?, ?, ?, 'unverified', ?)""",
-                (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
+            if quality["accepted"]:
+                latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
+                conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
+                    (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
+            else:
+                conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
+                conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
+                    ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -88,6 +96,7 @@ def get_job(job_id: int) -> dict[str, Any]:
             raise KeyError(job_id)
         result = dict(row)
         result["assessment"] = json.loads(result.pop("assessment_json")) if result.get("assessment_json") else None
+        result["quality"] = json.loads(result.pop("quality_json")) if result.get("quality_json") else None
         result["evidence"] = [dict(item) for item in conn.execute(
             "SELECT evidence_type, source_ref, content_hash, note, created_at FROM learning_evidence WHERE job_id=? ORDER BY id", (job_id,)
         ).fetchall()]
