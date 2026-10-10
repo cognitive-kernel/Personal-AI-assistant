@@ -32,6 +32,9 @@ class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
 
+class AssessmentSubmission(BaseModel):
+    answers: list[str] = Field(min_length=1, max_length=3)
+
 @app.get("/api/health")
 def api_health() -> dict[str, Any]:
     hardware = detect_hardware()
@@ -117,6 +120,16 @@ def knowledge_items(limit: int = 100) -> dict[str, Any]:
             (max(1, min(300, limit)),),
         ).fetchall()
     return {"items": [dict(row) for row in rows]}
+
+@app.post("/api/learning/jobs/{job_id}/assessment")
+def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> dict[str, Any]:
+    try:
+        return learning.submit_assessment(job_id, request.answers)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning job not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 @app.get("/api/learning/jobs/{job_id}")
 def learning_job(job_id: int) -> dict[str, Any]:
