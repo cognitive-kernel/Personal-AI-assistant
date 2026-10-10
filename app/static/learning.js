@@ -141,6 +141,56 @@ async function loadLearningPaths() {
    const summary = document.createElement("summary");
    summary.textContent = path.title + " — " + path.progress_percent + "٪ (" + path.completed_count + "/" + path.topic_count + ")";
    details.append(summary);
+
+   const bulkControls = document.createElement("div");
+   bulkControls.className = "path-bulk-controls";
+   const startAll = document.createElement("button");
+   startAll.type = "button";
+   startAll.textContent = "شروع یادگیری همه درس‌ها";
+   const stopAll = document.createElement("button");
+   stopAll.type = "button";
+   stopAll.textContent = "توقف یادگیری همه درس‌ها";
+   const bulkOutput = document.createElement("p");
+   bulkOutput.setAttribute("role", "status");
+
+   startAll.addEventListener("click", async () => {
+    startAll.disabled = true;
+    stopAll.disabled = true;
+    bulkOutput.textContent = "در حال افزودن درس‌های باقی‌مانده به صف…";
+    try {
+     const result = await learningApi("/api/learning/paths/" + path.id + "/start", {method: "POST"});
+     bulkOutput.textContent = result.message + " تعداد افزوده‌شده: " + result.queued_count +
+      "؛ از قبل فعال: " + result.skipped_active_count +
+      "؛ تکمیل‌شده و ردشده: " + result.skipped_completed_count + ".";
+     await loadLearningPaths();
+    } catch (error) {
+     bulkOutput.textContent = "خطا در شروع گروهی: " + error.message;
+    } finally {
+     startAll.disabled = false;
+     stopAll.disabled = false;
+    }
+   });
+
+   stopAll.addEventListener("click", async () => {
+    startAll.disabled = true;
+    stopAll.disabled = true;
+    bulkOutput.textContent = "در حال توقف صف یادگیری…";
+    try {
+     const result = await learningApi("/api/learning/paths/" + path.id + "/stop", {method: "POST"});
+     bulkOutput.textContent = result.message + " تعداد متوقف‌شده: " + result.cancelled_count +
+      " (در صف: " + result.cancelled_queued_count + "، در حال اجرا: " + result.cancelled_running_count + ").";
+     await loadLearningPaths();
+    } catch (error) {
+     bulkOutput.textContent = "خطا در توقف گروهی: " + error.message;
+    } finally {
+     startAll.disabled = false;
+     stopAll.disabled = false;
+    }
+   });
+
+   bulkControls.append(startAll, stopAll, bulkOutput);
+   details.append(bulkControls);
+
    path.topics.forEach(topic => {
     const row = document.createElement("div");
     row.className = "path-topic";
