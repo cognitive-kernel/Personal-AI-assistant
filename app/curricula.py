@@ -264,6 +264,12 @@ CURRICULA: dict[str, dict[str, Any]] = {
     },
 }
 
+
+# Load the full technical curricula before serving the learning catalog.
+from .curricula_expansion import extend_curricula
+
+extend_curricula(CURRICULA)
+
 ALIASES = {
     "ai": "artificial-intelligence", "machine learning": "artificial-intelligence",
     "هوش مصنوعی": "artificial-intelligence", "یادگیری ماشین": "artificial-intelligence",
