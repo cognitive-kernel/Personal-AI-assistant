@@ -133,6 +133,11 @@ def test_learning_curriculum_aliases_and_topics():
     esx = get_curriculum("ESX")
     assert esx["slug"] == "vmware-esxi"
     assert any("vMotion" in topic for topic in esx["topics"])
+    for course in (get_curriculum("Python"), get_curriculum("MCSE"),
+                   get_curriculum("MikroTik"), esx):
+        assert [level["level"] for level in course["levels"]] == ["beginner", "intermediate", "advanced"]
+        assert [topic for level in course["levels"] for topic in level["topics"]] == course["topics"]
+    assert "آشنایی مقدماتی با رایانه و سخت‌افزار" in get_curriculum("MCSE")["prerequisites"]
     assert get_curriculum("not-a-real-course") is None
 
 
