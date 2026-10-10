@@ -315,11 +315,21 @@ def _ensure_ollama() -> None:
     if not executable:
         raise RuntimeError("Ollama در PATH یا مسیرهای نصب متداول پیدا نشد؛ نصب‌کننده در prerequisites/installers قرار دارد.")
 
-    listed = _run([executable, "list"])
+    listed = subprocess.run(
+        [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
+    )
+    if listed.stdout:
+        print(listed.stdout, end="" if listed.stdout.endswith("\n") else "\n", flush=True)
+    if listed.stderr:
+        print(listed.stderr, file=sys.stderr, flush=True)
     if listed.returncode != 0:
         raise RuntimeError("Ollama نصب است اما سرویس آن در دسترس نیست. سرویس Ollama را اجرا کنید و دوباره تلاش کنید.")
     model = os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
-    if model not in listed.stdout:
+    installed_models = {
+        line.split()[0] for line in (listed.stdout or "").splitlines()
+        if line.strip() and not line.lstrip().startswith("NAME ")
+    }
+    if model not in installed_models:
         print(f"مدل {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
         pulled = _run([executable, "pull", model])
         if pulled.returncode != 0:
