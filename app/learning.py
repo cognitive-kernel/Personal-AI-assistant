@@ -69,6 +69,8 @@ def run_job(job_id: int) -> None:
             raise LearningError("Model response did not match the expected learning format.")
         assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
+        quality["source_evidence_available"] = bool(source_text)
+        quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Short outputs are a common failure mode on small local models. Make one
         # targeted repair attempt before rejecting the lesson outright.
         if not quality["accepted"] and quality["word_count"] < 100:
@@ -113,6 +115,8 @@ def run_job(job_id: int) -> None:
                 retry_quality = evaluate_learning_value(
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
+                retry_quality["source_evidence_available"] = bool(source_text)
+                retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         with learning_connection() as conn:
