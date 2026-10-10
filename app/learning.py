@@ -263,22 +263,76 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
     return get_learning_path(path_id)
 
 
+def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
+    with learning_connection() as conn:
+        topic = conn.execute(
+            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            (topic_id, path_id),
+        ).fetchone()
+        if topic is None:
+            raise KeyError(topic_id)
+        latest = conn.execute(
+            "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
+            (topic_id,),
+        ).fetchone()
+        if latest and latest["status"] == "completed":
+            return get_job(int(latest["id"]))
+        if latest and latest["status"] in {"queued", "running"}:
+            return get_job(int(latest["id"]))
+        conn.execute(
+            "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
+            (topic_id, path_id),
+        )
+    job = create_job(topic["topic"], path_topic_id=topic_id)
+    _learning_executor.submit(_run_with_budget, job["id"])
+    return job
+
+
+def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
+    with learning_connection() as conn:
+        topic = conn.execute(
+            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?",
+            (topic_id, path_id),
+        ).fetchone()
+        if topic is None:
+            raise KeyError(topic_id)
+        rows = conn.execute(
+            "SELECT id, status FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running')",
+            (topic_id,),
+        ).fetchall()
+        conn.execute(
+            "UPDATE learning_jobs SET status='cancelled', error='یادگیری این درس توسط کاربر متوقف شد.', updated_at=CURRENT_TIMESTAMP "
+            "WHERE path_topic_id=? AND status IN ('queued', 'running')",
+            (topic_id,),
+        )
+    return {
+        "topic_id": topic_id,
+        "cancelled_count": len(rows),
+        "message": "درس متوقف شد. برای ادامه، «ادامه درس» را بزنید.",
+    }
+
+
 def start_path_learning(path_id: int) -> dict[str, Any]:
     path = get_learning_path(path_id)
     queued_ids: list[int] = []
     skipped_active = 0
     skipped_completed = 0
+    skipped_existing_lesson = 0
     for topic in path["topics"]:
         if topic["status"] == "completed":
             skipped_completed += 1
             continue
         with learning_connection() as conn:
-            active = conn.execute(
-                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') LIMIT 1",
+            latest = conn.execute(
+                "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
                 (topic["id"],),
             ).fetchone()
-        if active:
+        if latest and latest["status"] in {"queued", "running"}:
             skipped_active += 1
+            continue
+        if latest and latest["status"] == "completed":
+            # Preserve generated lessons when resuming a path; do not regenerate them.
+            skipped_existing_lesson += 1
             continue
         job = create_job(topic["topic"], path_topic_id=topic["id"])
         with learning_connection() as conn:
@@ -294,9 +348,9 @@ def start_path_learning(path_id: int) -> dict[str, Any]:
         "job_ids": queued_ids,
         "skipped_active_count": skipped_active,
         "skipped_completed_count": skipped_completed,
-        "message": "درس‌های باقی‌مانده به صف یادگیری اضافه شدند.",
+        "skipped_existing_lesson_count": skipped_existing_lesson,
+        "message": "یادگیری از درس‌های ناتمام ادامه پیدا می‌کند؛ درس‌های تولیدشده دوباره ساخته نمی‌شوند.",
     }
-
 
 def stop_path_learning(path_id: int) -> dict[str, Any]:
     # Mark both queued and currently running jobs as cancelled. Ollama requests already
