@@ -284,18 +284,18 @@ def _find_ollama() -> str | None:
 
 def _ensure_ollama() -> None:
     system = platform.system()
-    # Detect an existing installation before downloading any installer. This is
-    # especially important for local-first setups where Ollama is already ready.
-    executable = _find_ollama()
+    # Cache the official installer once for offline recovery, even if Ollama
+    # is already installed. _download_once reuses the completed cached file.
     installer: Path | None = None
-    if not executable:
-        if system == "Windows":
-            installer = _download_once("https://ollama.com/download/OllamaSetup.exe", INSTALLERS / "OllamaSetup.exe")
-        elif system == "Linux":
-            installer = _download_once("https://ollama.com/install.sh", INSTALLERS / "ollama-install.sh")
-        elif system == "Darwin":
-            installer = _download_once("https://ollama.com/download/Ollama-darwin.zip", INSTALLERS / "Ollama-darwin.zip")
+    if system == "Windows":
+        installer = _download_once("https://ollama.com/download/OllamaSetup.exe", INSTALLERS / "OllamaSetup.exe")
+    elif system == "Linux":
+        installer = _download_once("https://ollama.com/install.sh", INSTALLERS / "ollama-install.sh")
+    elif system == "Darwin":
+        installer = _download_once("https://ollama.com/download/Ollama-darwin.zip", INSTALLERS / "Ollama-darwin.zip")
 
+    # Installer download and installed-software detection are separate steps.
+    executable = _find_ollama()
     if not executable and installer:
         print("Ollama نصب نیست؛ اجرای نصب‌کننده ذخیره‌شده در prerequisites/installers ...", flush=True)
         if system == "Windows":
