@@ -247,12 +247,12 @@ def _download_once(url: str, destination: Path) -> Path:
                         filled = int(bar_width * percent / 100)
                         bar = "#" * filled + "-" * (bar_width - filled)
                         print(
-                            f"\\r[{bar}] {percent:3d}% | {done_mb:.1f}/{total_mb:.1f} MB | {speed_mb:.2f} MB/s",
+                            f"\r[{bar}] {percent:3d}% | {done_mb:.1f}/{total_mb:.1f} MB | {speed_mb:.2f} MB/s",
                             end="", flush=True,
                         )
                     else:
                         print(
-                            f"\\rدریافت‌شده: {done_mb:.1f} MB | سرعت: {speed_mb:.2f} MB/s",
+                            f"\rدریافت‌شده: {done_mb:.1f} MB | سرعت: {speed_mb:.2f} MB/s",
                             end="", flush=True,
                         )
         if downloaded == 0:
@@ -260,7 +260,7 @@ def _download_once(url: str, destination: Path) -> Path:
         temp_path.replace(destination)
         temp_path = None
         elapsed = max(time.monotonic() - started, 0.001)
-        print(f"\\nدانلود کامل شد: {destination} ({downloaded / (1024 * 1024):.1f} MB در {elapsed:.1f} ثانیه)", flush=True)
+        print(f"\nدانلود کامل شد: {destination} ({downloaded / (1024 * 1024):.1f} MB در {elapsed:.1f} ثانیه)", flush=True)
         return destination
     finally:
         if temp_path is not None:
