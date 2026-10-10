@@ -76,12 +76,7 @@ function renderLessonResult(output, job, path, topic) {
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
     outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
     outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
-   const scoreField = topic.row.querySelector(".path-topic-score");
-   if (scoreField) scoreField.value = String(outcome.score);
-   await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id, {
-    method: "PATCH",
-    body: JSON.stringify({status: "in_progress", latest_score: outcome.score})
-   });
+   result.textContent += " این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود.";
   } catch (error) {
    result.textContent = "خطا در ثبت آزمون: " + error.message;
    submit.disabled = false;
@@ -230,23 +225,19 @@ async function loadLearningPaths() {
     status.value = topic.status;
     topic.statusSelect = status;
     topic.row = row;
-    const score = document.createElement("input");
+    const score = document.createElement("span");
     score.className = "path-topic-score";
-    score.type = "number";
-    score.min = "0";
-    score.max = "100";
-    score.step = "0.01";
-    score.placeholder = "نمره اختیاری";
-    score.value = topic.latest_score == null ? "" : topic.latest_score;
+    score.textContent = topic.latest_score == null
+     ? "امتیاز کیفیت درس: پس از تولید خودکار محاسبه می‌شود"
+     : "امتیاز کیفیت درس: " + topic.latest_score + " از 100 (خودکار)";
     const save = document.createElement("button");
     save.type = "button";
     save.textContent = "ذخیره وضعیت";
     save.addEventListener("click", async () => {
      save.disabled = true;
      try {
-      const latest_score = score.value === "" ? null : Number(score.value);
       await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id, {
-       method: "PATCH", body: JSON.stringify({status: status.value, latest_score})
+       method: "PATCH", body: JSON.stringify({status: status.value})
       });
       await loadLearningPaths();
      } catch (error) {
