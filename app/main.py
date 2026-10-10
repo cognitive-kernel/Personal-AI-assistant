@@ -117,6 +117,55 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
 
+# Backward-compatible status endpoints used by older local UI clients.
+@app.get("/learning/status", include_in_schema=False)
+def legacy_learning_status() -> dict[str, Any]:
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS count FROM learning_jobs GROUP BY status"
+        ).fetchall()
+        knowledge_count = conn.execute("SELECT COUNT(*) AS count FROM knowledge_items").fetchone()["count"]
+        unverified_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM knowledge_items WHERE status='unverified'"
+        ).fetchone()["count"]
+    counts = {row["status"]: row["count"] for row in rows}
+    return {
+        "status": "ok",
+        "jobs": {
+            "total": sum(counts.values()),
+            "queued": counts.get("queued", 0),
+            "running": counts.get("running", 0),
+            "completed": counts.get("completed", 0),
+            "rejected": counts.get("rejected", 0),
+            "failed": counts.get("failed", 0),
+        },
+        "knowledge": {"total": knowledge_count, "unverified": unverified_count},
+        "web_learning": "not_implemented",
+        "independent_verification": "not_implemented",
+    }
+
+
+@app.get("/learning/active", include_in_schema=False)
+def legacy_active_learning() -> dict[str, Any]:
+    with db.learning_connection() as conn:
+        ids = [
+            row["id"] for row in conn.execute(
+                "SELECT id FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
+            ).fetchall()
+        ]
+    jobs = [learning.get_job(job_id) for job_id in ids]
+    return {"count": len(jobs), "jobs": jobs}
+
+
+@app.get("/scheduler/status", include_in_schema=False)
+def legacy_scheduler_status() -> dict[str, Any]:
+    # Report the actual implementation state rather than pretending a scheduler exists.
+    return {
+        "enabled": False,
+        "status": "not_implemented",
+        "message": "زمان‌بندی خودکار یادگیری هنوز پیاده‌سازی نشده است.",
+    }
+
 
 @app.get("/api/knowledge")
 def knowledge_items(limit: int = 100) -> dict[str, Any]:
