@@ -88,3 +88,20 @@ def test_learning_quality_gate_accepts_substantive_lesson():
     result = learning.evaluate_learning_value(lesson, ["What does a decorator receive?", "Why use wraps?", "When are decorators useful?"], ["A callable.", "To preserve metadata.", "For reusable cross-cutting behavior."])
     assert result["accepted"] is True
     assert result["score"] >= 65
+
+
+def test_startup_bootstrap_reads_project_dependencies():
+    import run
+
+    requirements = run._requirements(dev=False)
+    assert any(item.startswith("fastapi") for item in requirements)
+    assert any(item.startswith("uvicorn") for item in requirements)
+    assert run.MIN_PYTHON == (3, 11)
+
+
+def test_startup_bootstrap_detects_missing_distribution():
+    import run
+
+    assert run._installed("a-package-that-does-not-exist-anywhere-987654")
+    is_missing = not run._installed("a-package-that-does-not-exist-anywhere-987654")
+    assert is_missing
