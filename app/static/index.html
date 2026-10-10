@@ -7,7 +7,7 @@
 :root{color-scheme:light dark;font-family:system-ui,sans-serif}body{max-width:980px;margin:0 auto;padding:24px;line-height:1.65}
 header,section{border:1px solid #8886;border-radius:12px;padding:16px;margin:14px 0}
 textarea,input,button{font:inherit;padding:9px;border-radius:7px}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}button{cursor:pointer;margin:4px 0}
-pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{opacity:.75;font-size:.92rem}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-template-columns:minmax(160px,2fr) minmax(130px,1fr) minmax(100px,.7fr) auto;gap:8px;align-items:center;border-bottom:1px solid #8884;padding:8px 0}.path-topic label{margin:0}.path-topic select,.path-topic input{width:100%;min-width:0;box-sizing:border-box}.muted{opacity:.75;font-size:.92rem}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:700px){.row{grid-template-columns:1fr}}
 </style></head>
 <body>
@@ -18,6 +18,12 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{opacity:.75;font-size:.92
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<section><h2>مسیرهای آموزشی</h2>
+<p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
+<label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
+<button id="enroll-curriculum" type="button">ثبت‌نام در دوره</button>
+<button id="refresh-paths" type="button">بارگذاری مسیرهای من</button>
+<pre id="paths-output"></pre><div id="paths-container"></div></section>
 <section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
@@ -84,4 +90,4 @@ el("settings-form").addEventListener("submit", async event => {
  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
 });
 refresh();
-</script></body></html>
+</script><script src="/static/learning.js"></script></body></html>
