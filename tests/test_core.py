@@ -205,3 +205,52 @@ def test_partial_prerequisite_cache_downloads_only_missing_distribution(tmp_path
     assert len(commands) == 1
     assert "--no-deps" in commands[0]
     assert commands[0][-1] == "missing-dep>=2"
+
+
+def test_assessment_answers_are_persisted_and_answer_key_is_hidden_until_submission(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Python decorators")
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE learning_jobs SET status='completed', lesson=?, assessment_json=?
+               WHERE id=?""",
+            ("Lesson text", json.dumps({
+                "questions": ["What does a decorator receive?", "Why use wraps?", "When is it useful?"],
+                "answer_key": ["A callable", "To preserve metadata", "Reusable behavior"],
+                "independently_verified": False,
+            }), job["id"]),
+        )
+    before = learning.get_job(job["id"])
+    assert before["assessment"]["questions"]
+    assert "answer_key" not in before["assessment"]
+    result = learning.submit_assessment(job["id"], ["A callable", "wrong", "Reusable behavior"])
+    assert result["correct_count"] == 2
+    assert result["score"] == 66.67
+    assert result["independent_verification"] is False
+    after = learning.get_job(job["id"])
+    assert after["assessment"]["answer_key"][0] == "A callable"
+    assert after["assessment_attempts"][0]["score"] == 66.67
+
+
+def test_assessment_rejects_wrong_answer_count(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("HTTP")
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps({"questions": ["Q1", "Q2"], "answer_key": ["A1", "A2"]}), job["id"]),
+        )
+    try:
+        learning.submit_assessment(job["id"], ["A1"])
+    except ValueError as exc:
+        assert "count must match" in str(exc)
+    else:
+        raise AssertionError("Wrong answer count should be rejected")
