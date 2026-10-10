@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from .db import learning_connection, get_settings
 from .ollama import _request
+from . import curricula
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
@@ -180,3 +181,79 @@ def submit_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
     job = create_job(topic, source_text)
     _learning_executor.submit(_run_with_budget, job["id"])
     return job
+
+
+def get_learning_path(path_id: int) -> dict[str, Any]:
+    with learning_connection() as conn:
+        path = conn.execute("SELECT * FROM learning_paths WHERE id=?", (path_id,)).fetchone()
+        if path is None:
+            raise KeyError(path_id)
+        topics = [dict(row) for row in conn.execute(
+            "SELECT id, topic, position, status, latest_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
+            (path_id,),
+        ).fetchall()]
+    total = len(topics)
+    completed = sum(1 for item in topics if item["status"] == "completed")
+    in_progress = sum(1 for item in topics if item["status"] == "in_progress")
+    result = dict(path)
+    result.update({
+        "topics": topics, "topic_count": total, "completed_count": completed,
+        "in_progress_count": in_progress,
+        "progress_percent": round(100 * completed / total, 2) if total else 0.0,
+    })
+    return result
+
+
+def list_learning_paths() -> list[dict[str, Any]]:
+    with learning_connection() as conn:
+        ids = [row["id"] for row in conn.execute("SELECT id FROM learning_paths ORDER BY id DESC").fetchall()]
+    return [get_learning_path(path_id) for path_id in ids]
+
+
+def enroll_curriculum(slug: str) -> dict[str, Any]:
+    course = curricula.get_curriculum(slug)
+    if course is None:
+        raise KeyError(slug)
+    with learning_connection() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO learning_paths(curriculum_slug, title) VALUES (?, ?)",
+            (course["slug"], course["title"]),
+        )
+        path = conn.execute("SELECT id FROM learning_paths WHERE curriculum_slug=?", (course["slug"],)).fetchone()
+        path_id = int(path["id"])
+        existing = {row["topic"] for row in conn.execute(
+            "SELECT topic FROM learning_path_topics WHERE path_id=?", (path_id,)
+        ).fetchall()}
+        next_position = int(conn.execute(
+            "SELECT COALESCE(MAX(position), 0) AS position FROM learning_path_topics WHERE path_id=?",
+            (path_id,),
+        ).fetchone()["position"])
+        for topic in course["topics"]:
+            if topic not in existing:
+                next_position += 1
+                conn.execute(
+                    "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
+                    (path_id, topic, next_position),
+                )
+        conn.execute("UPDATE learning_paths SET title=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                     (course["title"], path_id))
+    return get_learning_path(path_id)
+
+
+def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: float | None = None) -> dict[str, Any]:
+    if status not in {"pending", "in_progress", "completed"}:
+        raise ValueError("Status must be pending, in_progress, or completed.")
+    if latest_score is not None and not 0 <= latest_score <= 100:
+        raise ValueError("Score must be between 0 and 100.")
+    with learning_connection() as conn:
+        exists = conn.execute(
+            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?", (topic_id, path_id)
+        ).fetchone()
+        if exists is None:
+            raise KeyError(topic_id)
+        conn.execute(
+            "UPDATE learning_path_topics SET status=?, latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
+            (status, latest_score, topic_id, path_id),
+        )
+        conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
+    return get_learning_path(path_id)
