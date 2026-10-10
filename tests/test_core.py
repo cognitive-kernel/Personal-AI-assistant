@@ -115,3 +115,22 @@ def test_startup_bootstrap_detects_missing_distribution():
     bootstrap = _load_startup_bootstrap()
 
     assert not bootstrap._installed("a-package-that-does-not-exist-anywhere-987654")
+
+
+def test_learning_curriculum_catalog_includes_requested_system_tracks():
+    from app import curricula
+
+    listed = {item["slug"] for item in curricula.list_curricula()}
+    assert {"python", "sql-server", "forex-metatrader", "mcse-windows-server",
+            "mikrotik-routeros", "vmware-esxi"} <= listed
+
+
+def test_learning_curriculum_aliases_and_topics():
+    from app.curricula import get_curriculum
+
+    assert get_curriculum("MCSE")["slug"] == "mcse-windows-server"
+    assert get_curriculum("MikroTik")["slug"] == "mikrotik-routeros"
+    esx = get_curriculum("ESX")
+    assert esx["slug"] == "vmware-esxi"
+    assert any("vMotion" in topic for topic in esx["topics"])
+    assert get_curriculum("not-a-real-course") is None
