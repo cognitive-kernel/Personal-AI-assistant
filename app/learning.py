@@ -298,6 +298,31 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     return job
 
 
+
+def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
+    """Always create a fresh lesson unless this topic already has an active job."""
+    with learning_connection() as conn:
+        topic = conn.execute(
+            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            (topic_id, path_id),
+        ).fetchone()
+        if topic is None:
+            raise KeyError(topic_id)
+        latest = conn.execute(
+            "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
+            (topic_id,),
+        ).fetchone()
+        if latest and latest["status"] in {"queued", "running"}:
+            return get_job(int(latest["id"]))
+        conn.execute(
+            "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
+            (topic_id, path_id),
+        )
+    job = create_job(topic["topic"], path_topic_id=topic_id)
+    _learning_executor.submit(_run_with_budget, job["id"])
+    return job
+
+
 def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
