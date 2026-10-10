@@ -134,3 +134,29 @@ def test_learning_curriculum_aliases_and_topics():
     assert esx["slug"] == "vmware-esxi"
     assert any("vMotion" in topic for topic in esx["topics"])
     assert get_curriculum("not-a-real-course") is None
+
+
+def test_prerequisite_cache_pins_existing_wheels(tmp_path, monkeypatch):
+    bootstrap = _load_startup_bootstrap()
+    monkeypatch.setattr(bootstrap, "WHEELHOUSE", tmp_path / "wheels")
+    bootstrap.WHEELHOUSE.mkdir()
+    (bootstrap.WHEELHOUSE / "fastapi-0.115.0-py3-none-any.whl").write_bytes(b"cached")
+    (bootstrap.WHEELHOUSE / "pydantic_core-2.20.0-cp311-cp311-manylinux.whl").write_bytes(b"cached")
+    pins = bootstrap._cached_package_pins()
+    assert pins["fastapi"] == "0.115.0"
+    assert pins["pydantic-core"] == "2.20.0"
+
+
+def test_prerequisite_manifest_skips_download_when_cache_is_complete(tmp_path, monkeypatch):
+    import json
+
+    bootstrap = _load_startup_bootstrap()
+    wheelhouse = tmp_path / "wheels"
+    wheelhouse.mkdir()
+    (wheelhouse / "cached.whl").write_bytes(b"cached")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(json.dumps({"fingerprint": "abc", "files": ["cached.whl"]}), encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "WHEELHOUSE", wheelhouse)
+    monkeypatch.setattr(bootstrap, "CACHE_MANIFEST", manifest)
+    assert bootstrap._cache_is_complete("abc")
+    assert not bootstrap._cache_is_complete("changed")
