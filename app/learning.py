@@ -50,7 +50,7 @@ def run_job(job_id: int) -> None:
     prompt = {
         "topic": topic,
         "source_text": source_text,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 160-220 Persian words, in 4-6 paragraphs, with a precise definition, key components, explanation of how they work, and one concrete technical example. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
+        "instruction": "Write a natural, grammatical Persian technical lesson of 160-220 Persian words, in 4-6 paragraphs, with a precise definition, key components, explanation of how they work, and one concrete technical example. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
     }
     try:
         settings = get_settings()
@@ -67,7 +67,7 @@ def run_job(job_id: int) -> None:
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
-        assessment = {"questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         # Short outputs are a common failure mode on small local models. Make one
         # targeted repair attempt before rejecting the lesson outright.
@@ -83,7 +83,7 @@ def run_job(job_id: int) -> None:
                 "دقیقاً 3 سؤال مرتبط و برای هرکدام یک پاسخ مستقیم و توضیحی در answer_key بده. "
                 "از حروف و واژه‌های غیر فارسیِ نامربوط استفاده نکن. "
                 "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. "
-                "پاسخ فقط JSON باشد."
+                "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند، نه عبارت مبهم. پاسخ فقط JSON باشد."
             )
             retry_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
@@ -105,6 +105,7 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("answer_key"), list)
             ):
                 retry_assessment = {
+                    "learning_outcomes": retry_result.get("learning_outcomes", retry_result["questions"])[:3],
                     "questions": retry_result["questions"][:3],
                     "answer_key": retry_result["answer_key"][:3],
                     "independently_verified": False,
@@ -168,6 +169,13 @@ def get_job(job_id: int) -> dict[str, Any]:
                 assessment.pop("answer_key", None)
         result["assessment"] = assessment
         result["assessment_attempts"] = attempts
+        latest_review = conn.execute(
+            "SELECT id, outcomes_json, value_rating, takeaway, issues, created_at FROM lesson_reviews WHERE job_id=? ORDER BY id DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        result["latest_review"] = dict(latest_review) if latest_review else None
+        if result["latest_review"]:
+            result["latest_review"]["outcomes"] = json.loads(result["latest_review"].pop("outcomes_json"))
         result["evidence"] = [dict(item) for item in conn.execute(
             "SELECT evidence_type, source_ref, content_hash, note, created_at FROM learning_evidence WHERE job_id=? ORDER BY id", (job_id,)
         ).fetchall()]
@@ -212,6 +220,38 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         "independent_verification": False,
         "note": "نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و تأیید علمی یا فهم معنایی را اثبات نمی‌کند.",
     }
+
+def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, takeaway: str = "", issues: str = "") -> dict[str, Any]:
+    if not isinstance(outcomes, list) or not 1 <= len(outcomes) <= 5:
+        raise ValueError("Submit a status for each of 1–5 learning outcomes.")
+    allowed = {"mastered", "partial", "review"}
+    if any(item not in allowed for item in outcomes):
+        raise ValueError("Outcome status must be mastered, partial, or review.")
+    if not isinstance(value_rating, int) or isinstance(value_rating, bool) or not 1 <= value_rating <= 5:
+        raise ValueError("Value rating must be between 1 and 5.")
+    if not isinstance(takeaway, str) or len(takeaway) > 3000:
+        raise ValueError("Takeaway must be at most 3000 characters.")
+    if not isinstance(issues, str) or len(issues) > 3000:
+        raise ValueError("Issues must be at most 3000 characters.")
+    with learning_connection() as conn:
+        row = conn.execute("SELECT status, assessment_json FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        if row is None:
+            raise KeyError(job_id)
+        if row["status"] != "completed" or not row["assessment_json"]:
+            raise ValueError("This lesson is not ready for review.")
+        assessment = json.loads(row["assessment_json"])
+        expected = assessment.get("learning_outcomes") or assessment.get("questions") or []
+        if len(outcomes) != len(expected):
+            raise ValueError("Outcome status count must match the lesson outcomes.")
+        cursor = conn.execute(
+            "INSERT INTO lesson_reviews(job_id, outcomes_json, value_rating, takeaway, issues) VALUES (?, ?, ?, ?, ?)",
+            (job_id, json.dumps(outcomes, ensure_ascii=False), value_rating, takeaway.strip(), issues.strip()),
+        )
+        review_id = int(cursor.lastrowid)
+    return {"review_id": review_id, "job_id": job_id, "outcomes": outcomes, "value_rating": value_rating,
+            "takeaway": takeaway.strip(), "issues": issues.strip(),
+            "note": "این بازخورد، خودارزیابی یادگیرنده است و به‌تنهایی صحت علمی درس را تأیید نمی‌کند."}
+
 
 def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     with learning_connection() as conn:
