@@ -1,13 +1,18 @@
 from __future__ import annotations
 import hashlib
 import json
-import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from .db import learning_connection, get_settings
 from .ollama import _request
 
 class LearningError(RuntimeError):
     pass
+
+
+# One worker prevents unbounded simultaneous loads on the local model.
+# A durable, configurable queue is a later milestone.
+_learning_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="learning")
 
 def create_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
     topic = topic.strip()
@@ -86,5 +91,5 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
 
 def submit_job(topic: str, source_text: str | None = None) -> dict[str, Any]:
     job = create_job(topic, source_text)
-    threading.Thread(target=run_job, args=(job["id"],), daemon=True, name=f"learning-{job['id']}").start()
+    _learning_executor.submit(run_job, job["id"])
     return job
