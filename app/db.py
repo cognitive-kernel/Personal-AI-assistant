@@ -38,7 +38,7 @@ def init_databases() -> None:
     with learning_connection() as conn:
         conn.execute("""CREATE TABLE IF NOT EXISTS learning_jobs (
             id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, status TEXT NOT NULL,
-            source_kind TEXT NOT NULL, lesson TEXT, assessment_json TEXT, error TEXT,
+            source_kind TEXT NOT NULL, lesson TEXT, assessment_json TEXT, quality_json TEXT, error TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
         conn.execute("""CREATE TABLE IF NOT EXISTS learning_evidence (
@@ -49,6 +49,9 @@ def init_databases() -> None:
         conn.execute("""CREATE TABLE IF NOT EXISTS learning_source_text (
             job_id INTEGER PRIMARY KEY REFERENCES learning_jobs(id) ON DELETE CASCADE,
             content TEXT NOT NULL)""")
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(learning_jobs)").fetchall()}
+        if "quality_json" not in columns:
+            conn.execute("ALTER TABLE learning_jobs ADD COLUMN quality_json TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_learning_jobs_status ON learning_jobs(status)")
         conn.execute("""CREATE TABLE IF NOT EXISTS knowledge_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, content TEXT NOT NULL,
