@@ -76,6 +76,120 @@ function renderLessonResult(output, job, path, topic) {
  output.append(lesson);
 
  const assessment = job.assessment;
+ if (assessment) {
+  const reviewForm = document.createElement("form");
+  reviewForm.className = "lesson-review-form";
+  const reviewHeading = document.createElement("h4");
+  reviewHeading.textContent = "بررسی ارزش آموزشی و میزان یادگیری";
+  reviewForm.append(reviewHeading);
+  const intro = document.createElement("p");
+  intro.textContent = "برای هر هدف مشخص کن چقدر بر آن مسلطی. این ارزیابی از نمره خودکار کیفیت درس جداست.";
+  reviewForm.append(intro);
+  const outcomes = Array.isArray(assessment.learning_outcomes) && assessment.learning_outcomes.length
+   ? assessment.learning_outcomes : (assessment.questions || []);
+  const previous = job.latest_review || null;
+  const outcomeFields = [];
+  const statusLabels = [
+   ["mastered", "مسلط هستم"],
+   ["partial", "تا حدی یاد گرفته‌ام"],
+   ["review", "نیاز به آموزش دوباره دارم"]
+  ];
+  outcomes.forEach((outcome, index) => {
+   const label = document.createElement("label");
+   label.textContent = (index + 1) + ". " + outcome;
+   label.style.display = "block";
+   label.style.margin = "10px 0 4px";
+   const select = document.createElement("select");
+   select.required = true;
+   select.style.display = "block";
+   select.style.maxWidth = "100%";
+   statusLabels.forEach(([value, title]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = title;
+    select.append(option);
+   });
+   if (previous && previous.outcomes && previous.outcomes[index]) select.value = previous.outcomes[index];
+   label.append(select);
+   reviewForm.append(label);
+   outcomeFields.push(select);
+  });
+  const ratingLabel = document.createElement("label");
+  ratingLabel.textContent = "این درس چقدر ارزشمند و کاربردی بود؟ (۱ = کم، ۵ = بسیار زیاد)";
+  ratingLabel.style.display = "block";
+  const rating = document.createElement("select");
+  rating.required = true;
+  for (let score = 1; score <= 5; score += 1) {
+   const option = document.createElement("option");
+   option.value = String(score);
+   option.textContent = String(score);
+   rating.append(option);
+  }
+  if (previous && previous.value_rating) rating.value = String(previous.value_rating);
+  ratingLabel.append(rating);
+  reviewForm.append(ratingLabel);
+
+  const takeawayLabel = document.createElement("label");
+  takeawayLabel.textContent = "مهم‌ترین چیزی که از این درس یاد گرفتم";
+  takeawayLabel.style.display = "block";
+  const takeaway = document.createElement("textarea");
+  takeaway.rows = 3;
+  takeaway.maxLength = 3000;
+  takeaway.style.display = "block";
+  takeaway.style.width = "100%";
+  takeaway.value = previous ? (previous.takeaway || "") : "";
+  takeaway.placeholder = "با زبان خودت بنویس چه چیزی یاد گرفتی یا حالا چه کاری می‌توانی انجام بدهی.";
+  takeawayLabel.append(takeaway);
+  reviewForm.append(takeawayLabel);
+
+  const issuesLabel = document.createElement("label");
+  issuesLabel.textContent = "اشکال‌ها، بخش‌های مبهم یا چیزهایی که باید بهتر آموزش داده شوند";
+  issuesLabel.style.display = "block";
+  const issues = document.createElement("textarea");
+  issues.rows = 3;
+  issues.maxLength = 3000;
+  issues.style.display = "block";
+  issues.style.width = "100%";
+  issues.value = previous ? (previous.issues || "") : "";
+  issues.placeholder = "مثلاً تعریف نادرست، مثال ناکافی، عبارت نامفهوم یا موضوع جاافتاده.";
+  issuesLabel.append(issues);
+  reviewForm.append(issuesLabel);
+
+  const saveReview = document.createElement("button");
+  saveReview.type = "submit";
+  saveReview.textContent = previous ? "ذخیره بررسی جدید" : "ذخیره بررسی درس";
+  reviewForm.append(saveReview);
+  const reviewResult = document.createElement("p");
+  reviewResult.setAttribute("role", "status");
+  if (previous) reviewResult.textContent = "آخرین بررسی ذخیره‌شده: ارزش درس " + previous.value_rating + " از 5.";
+  reviewForm.append(reviewResult);
+  reviewForm.addEventListener("submit", async event => {
+   event.preventDefault();
+   saveReview.disabled = true;
+   reviewResult.textContent = "در حال ذخیره بررسی…";
+   try {
+    const saved = await learningApi("/api/learning/jobs/" + job.id + "/review", {
+     method: "POST",
+     body: JSON.stringify({
+      outcomes: outcomeFields.map(field => field.value),
+      value_rating: Number(rating.value),
+      takeaway: takeaway.value,
+      issues: issues.value
+     })
+    });
+    reviewResult.textContent = "بررسی ذخیره شد. ارزش درس: " + saved.value_rating + " از 5. " + saved.note;
+    saveReview.textContent = "ذخیره بررسی جدید";
+   } catch (error) {
+    reviewResult.textContent = "خطا در ذخیره بررسی: " + error.message;
+   } finally {
+    saveReview.disabled = false;
+   }
+  });
+  const caveat = document.createElement("p");
+  caveat.textContent = "این فرم خودارزیابی و بازخورد شما را ثبت می‌کند؛ به‌تنهایی صحت علمی درس را اثبات نمی‌کند.";
+  reviewForm.append(caveat);
+  output.append(reviewForm);
+ }
  if (!assessment || !Array.isArray(assessment.questions) || assessment.questions.length === 0) {
   const note = document.createElement("p");
   note.textContent = "برای این درس آزمون قابل ارائه‌ای وجود ندارد.";
