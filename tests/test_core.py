@@ -102,6 +102,4 @@ def test_startup_bootstrap_reads_project_dependencies():
 def test_startup_bootstrap_detects_missing_distribution():
     import run
 
-    assert run._installed("a-package-that-does-not-exist-anywhere-987654")
-    is_missing = not run._installed("a-package-that-does-not-exist-anywhere-987654")
-    assert is_missing
+    assert not run._installed("a-package-that-does-not-exist-anywhere-987654")
