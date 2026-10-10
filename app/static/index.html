@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>دستیار هوش مصنوعی شخصی</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{max-width:980px;margin:0 auto;padding:24px;line-height:1.65}
+header,section{border:1px solid #8886;border-radius:12px;padding:16px;margin:14px 0}
+textarea,input,button{font:inherit;padding:9px;border-radius:7px}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}button{cursor:pointer;margin:4px 0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{opacity:.75;font-size:.92rem}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.row{grid-template-columns:1fr}}
+</style></head>
+<body>
+<header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
+<button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
+<div class="row">
+<section><h2>گفتگو</h2><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
+<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
+<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد.</p><pre id="learning-output"></pre></section></div>
+<section><h2>تنظیمات محلی</h2><form id="settings-form">
+<label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
+<label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
+<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
+<script>
+const el = id => document.getElementById(id);
+async function api(path, options = {}) {
+ const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
+ const data = await response.json().catch(() => ({}));
+ if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
+ return data;
+}
+async function refresh() {
+ try { el("health").textContent = JSON.stringify(await api("/api/health"), null, 2); } catch(error) { el("health").textContent = error.message; }
+ try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; } catch(error) { el("settings-output").textContent=error.message; }
+}
+el("refresh").addEventListener("click", refresh);
+el("chat-form").addEventListener("submit", async event => {
+ event.preventDefault(); el("chat-output").textContent="در حال پاسخ‌گویی…";
+ try { el("chat-output").textContent=(await api("/api/chat",{method:"POST",body:JSON.stringify({message:el("message").value})})).reply; } catch(error) { el("chat-output").textContent=error.message; }
+});
+el("learning-form").addEventListener("submit", async event => {
+ event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
+ try {
+  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
+  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);el("learning-output").textContent=JSON.stringify(result,null,2);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
+  el("learning-output").textContent=JSON.stringify(job,null,2);setTimeout(poll,1000);
+ } catch(error) { el("learning-output").textContent=error.message; }
+});
+el("settings-form").addEventListener("submit", async event => {
+ event.preventDefault();
+ try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value)};
+ el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
+});
+refresh();
+</script></body></html>
