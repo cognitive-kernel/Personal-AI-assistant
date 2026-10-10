@@ -65,6 +65,12 @@ class AssessmentSubmission(BaseModel):
 class CurriculumEnrollment(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
 
+class LessonReviewSubmission(BaseModel):
+    outcomes: list[str] = Field(min_length=1, max_length=5)
+    value_rating: int = Field(ge=1, le=5)
+    takeaway: str = Field(default="", max_length=3000)
+    issues: str = Field(default="", max_length=3000)
+
 class PathTopicProgress(BaseModel):
     status: str = Field(min_length=1, max_length=30)
     latest_score: float | None = Field(default=None, ge=0, le=100)
@@ -275,6 +281,18 @@ def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicPr
 def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> dict[str, Any]:
     try:
         return learning.submit_assessment(job_id, request.answers)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning job not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/jobs/{job_id}/review")
+def submit_learning_review(job_id: int, request: LessonReviewSubmission) -> dict[str, Any]:
+    try:
+        return learning.submit_lesson_review(
+            job_id, request.outcomes, request.value_rating, request.takeaway, request.issues
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
     except ValueError as exc:
