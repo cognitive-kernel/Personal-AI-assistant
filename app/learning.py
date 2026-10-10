@@ -116,7 +116,7 @@ def get_job(job_id: int) -> dict[str, Any]:
 
 def _normalize_answer(value: str) -> str:
     import re
-    return re.sub(r"[^\\w]+", "", value.casefold(), flags=re.UNICODE)
+    return re.sub(r"\W+", "", value.casefold(), flags=re.UNICODE)
 
 
 def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
