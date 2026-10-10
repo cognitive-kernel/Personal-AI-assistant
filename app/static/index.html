@@ -21,7 +21,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.muted{opacity:.75;font-size:.92
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
-<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
+<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
 <script>
 const el = id => document.getElementById(id);
 async function api(path, options = {}) {
@@ -32,7 +32,7 @@ async function api(path, options = {}) {
 }
 async function refresh() {
  try { el("health").textContent = JSON.stringify(await api("/api/health"), null, 2); } catch(error) { el("health").textContent = error.message; }
- try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; } catch(error) { el("settings-output").textContent=error.message; }
+ try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; } catch(error) { el("settings-output").textContent=error.message; }
 }
 el("refresh").addEventListener("click", refresh);
 el("chat-form").addEventListener("submit", async event => {
@@ -49,7 +49,7 @@ el("learning-form").addEventListener("submit", async event => {
 });
 el("settings-form").addEventListener("submit", async event => {
  event.preventDefault();
- try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value)};
+ try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value)};
  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
 });
 refresh();
