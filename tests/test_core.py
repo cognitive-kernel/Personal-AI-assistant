@@ -36,3 +36,16 @@ def test_learning_job_records_source_provenance(tmp_path, monkeypatch):
     assert job["source_kind"] == "user_provided_text"
     assert job["evidence"][0]["content_hash"]
     assert job["evidence"][0]["evidence_type"] == "user_text"
+
+def test_knowledge_is_not_automatically_verified(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("HTTP fundamentals")
+    with db.learning_connection() as conn:
+        conn.execute(
+            "INSERT INTO knowledge_items(topic, content, source_kind, version, job_id) VALUES (?, ?, ?, ?, ?)",
+            ("HTTP fundamentals", "Generated note", job["source_kind"], 1, job["id"]),
+        )
+        row = conn.execute("SELECT status FROM knowledge_items WHERE job_id=?", (job["id"],)).fetchone()
+    assert row["status"] == "unverified"
