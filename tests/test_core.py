@@ -1,4 +1,4 @@
-from app import db, hardware, learning
+from app import db, hardware, learning, ollama
 
 def test_databases_are_separate(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
@@ -49,3 +49,27 @@ def test_knowledge_is_not_automatically_verified(tmp_path, monkeypatch):
         )
         row = conn.execute("SELECT status FROM knowledge_items WHERE job_id=?", (job["id"],)).fetchone()
     assert row["status"] == "unverified"
+
+def test_learning_source_limit_is_configurable_and_enforced(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    try:
+        learning.create_job("Long source", "x" * 12001)
+    except ValueError as exc:
+        assert "current limit: 12000" in str(exc)
+    else:
+        raise AssertionError("Oversized source should be rejected")
+
+
+def test_ollama_rejects_non_loopback_endpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    db.update_settings({"ollama_base_url": "http://example.com:11434"})
+    try:
+        ollama._base_url()
+    except ollama.OllamaError as exc:
+        assert "loopback" in str(exc)
+    else:
+        raise AssertionError("Remote Ollama endpoints should be rejected")
