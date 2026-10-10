@@ -162,7 +162,9 @@ async function loadLearningPaths() {
      bulkOutput.textContent = result.message + " تعداد افزوده‌شده: " + result.queued_count +
       "؛ از قبل فعال: " + result.skipped_active_count +
       "؛ تکمیل‌شده و ردشده: " + result.skipped_completed_count + ".";
-     await loadLearningPaths();
+     path.topics.forEach(topic => {
+      if (topic.status !== "completed") topic.statusSelect.value = "in_progress";
+     });
     } catch (error) {
      bulkOutput.textContent = "خطا در شروع گروهی: " + error.message;
     } finally {
@@ -179,7 +181,6 @@ async function loadLearningPaths() {
      const result = await learningApi("/api/learning/paths/" + path.id + "/stop", {method: "POST"});
      bulkOutput.textContent = result.message + " تعداد متوقف‌شده: " + result.cancelled_count +
       " (در صف: " + result.cancelled_queued_count + "، در حال اجرا: " + result.cancelled_running_count + ").";
-     await loadLearningPaths();
     } catch (error) {
      bulkOutput.textContent = "خطا در توقف گروهی: " + error.message;
     } finally {
