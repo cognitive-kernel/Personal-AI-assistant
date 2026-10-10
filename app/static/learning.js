@@ -10,13 +10,13 @@ async function learningApi(path, options = {}) {
 const learningDelay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function waitForLearningJob(jobId, output) {
- for (let attempt = 0; attempt < 120; attempt += 1) {
+ for (let attempt = 0; attempt < 600; attempt += 1) {
   const job = await learningApi("/api/learning/jobs/" + jobId);
   if (["completed", "rejected", "failed", "cancelled"].includes(job.status)) return job;
   output.textContent = "درس در حال تولید است… وضعیت: " + job.status + " (شناسه کار: " + jobId + ")";
   await learningDelay(1500);
  }
- throw new Error("زمان انتظار تمام شد؛ کار ممکن است هنوز در پس‌زمینه در حال اجرا باشد. شناسه کار: " + jobId);
+ throw new Error("پس از ۱۵ دقیقه انتظار، هنوز نتیجه نهایی دریافت نشد؛ کار ممکن است در پس‌زمینه ادامه داشته باشد. شناسه کار: " + jobId);
 }
 
 async function regenerateLesson(path, topic, button, output) {
