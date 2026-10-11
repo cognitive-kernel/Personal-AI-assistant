@@ -94,17 +94,31 @@ def run_job(job_id: int) -> None:
         # Repair rejected lessons and lessons below the language-aware target length.
         if not quality["accepted"] or quality["word_count"] < quality["target_word_count"]:
             retry_prompt = dict(prompt)
+            # Give the repair pass measurable feedback, not just a generic rejection label.
+            retry_prompt["quality_feedback"] = {
+                "score": quality.get("score"),
+                "word_count": quality.get("word_count"),
+                "unique_word_ratio": quality.get("unique_word_ratio"),
+                "required_unique_word_ratio": 0.48,
+                "has_explanatory_reasoning": quality.get("has_explanatory_reasoning"),
+                "technical_detail_count": quality.get("technical_detail_count"),
+                "reasons": quality.get("reasons", []),
+            }
             retry_prompt["instruction"] = (
-                "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ آن را کامل بازنویسی کن. "
+                "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ متن تازه‌ای بنویس و جمله‌های قبلی را بازنویسی سطحی نکن. "
+                "بازخورد عددی quality_feedback را دقیق بخوان. نسبت واژه‌های یکتا باید دست‌کم 0.48 باشد؛ "
+                "برای افزایش آن، هر جمله باید یک واقعیت، سازوکار، شرط، پیامد یا محدودیت تازه اضافه کند و از تکرار تعریف‌ها پرهیز کن. "
+                "اگر توضیح علت‌ومعلولی ناکافی است، زنجیره «شرط یا ورودی → رفتار موتور/سامانه → پیامد قابل مشاهده» را با جزئیات موضوعی توضیح بده. "
                 "دلایل رد در ارزیابی قبلی: " + "؛ ".join(quality.get("reasons", [])) + ". "
                 "برای هر دلیل، مستقیماً در متن اصلاح انجام بده؛ فقط واژه‌های کلیدی را اضافه نکن. "
-                "فقط یک شیء JSON معتبر با کلیدهای lesson و questions و answer_key برگردان. "
-                "متن lesson باید فارسی روان و دست‌کم 160 واژه فارسی باشد (نه شمارش تقریبی توکن)، "
-                "در 4 تا 6 بند آموزشی، شامل تعریف دقیق، اجزای اصلی، توضیح کاربرد هر جزء، "
-                "یک مثال فنی مشخص و جمع‌بندی باشد. موضوع را واقعاً آموزش بده؛ "
+                "فقط یک شیء JSON معتبر با کلیدهای lesson و learning_outcomes و questions و answer_key برگردان. "
+                "متن lesson باید فارسی روان و 160 تا 220 واژه آموزشی باشد، در 4 تا 6 بند، شامل تعریف دقیق، "
+                "اجزای اصلی، توضیح چگونگی کار هر جزء، رابطه علت‌ومعلولی، یک مثال فنی مشخص با ورودی و نتیجه، "
+                "یک محدودیت یا trade-off واقعی و جمع‌بندی باشد. موضوع را واقعاً آموزش بده؛ "
                 "گزارش وضعیت، متن عذرخواهی، توضیح عمومی یا جمله‌های تکراری ننویس. "
                 "دقیقاً 3 سؤال مرتبط و برای هرکدام یک پاسخ مستقیم و توضیحی در answer_key بده. "
                 "از حروف و واژه‌های غیر فارسیِ نامربوط استفاده نکن. "
+                "اگر منبعی داده شده، ادعاهای قابل پشتیبانی را به آن متصل کن و چیزی را به منبع نسبت نده که در آن نیست. "
                 "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. "
                 "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند، نه عبارت مبهم. پاسخ فقط JSON باشد."
             )
