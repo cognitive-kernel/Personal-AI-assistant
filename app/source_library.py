@@ -72,9 +72,13 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
 def _validate_url(url: str) -> urllib.parse.ParseResult:
     if not isinstance(url, str) or len(url) > 2048:
         raise SourceError("URL نامعتبر یا بیش از حد طولانی است.")
-    parsed = urllib.parse.urlparse(url)
-    host = (parsed.hostname or "").lower().rstrip(".")
-    if parsed.scheme != "https" or host not in ALLOWED_HOSTS or parsed.username or parsed.password or parsed.port not in (None, 443):
+    try:
+        parsed = urllib.parse.urlparse(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        port = parsed.port
+    except ValueError as exc:
+        raise SourceError("ساختار URL یا شماره پورت نامعتبر است.") from exc
+    if parsed.scheme != "https" or host not in ALLOWED_HOSTS or parsed.username or parsed.password or port not in (None, 443):
         raise SourceError("فقط HTTPS روی دامنه‌های آموزشی مجاز پشتیبانی می‌شود.")
     try:
         addresses = {item[4][0] for item in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)}
