@@ -1,0 +1,23 @@
+from app.learning_quality import evaluate_learning_value
+
+
+def test_persian_causal_explanation_marker_is_recognized():
+    lesson = (
+        "در SQL Server، دستور SELECT ستون‌های موردنیاز را از جدول می‌خواند. "
+        "اگر شرط WHERE روی ستون مناسب باشد، تعداد ردیف‌های بررسی‌شده کمتر می‌شود. "
+        "اما این بهبود به توزیع داده و ایندکس وابسته است. "
+        "برای مثال، SELECT Name FROM Customers WHERE CustomerId = 7 یک ردیف را جست‌وجو می‌کند. "
+        "در نتیجه، باید برنامه اجرا و تعداد خواندن‌ها را هم بررسی کرد. "
+    ) * 5
+    questions = [
+        "دستور SELECT چه کاری انجام می‌دهد؟",
+        "چرا شرط WHERE می‌تواند مفید باشد؟",
+        "چگونه اثر پرس‌وجو را بررسی می‌کنیم؟",
+    ]
+    answers = [
+        "ستون‌های انتخاب‌شده را از جدول برمی‌گرداند.",
+        "چون می‌تواند ردیف‌های نامرتبط را فیلتر کند.",
+        "با بررسی برنامه اجرا و تعداد خواندن‌ها.",
+    ]
+    result = evaluate_learning_value(lesson, questions, answers)
+    assert result["has_explanatory_reasoning"] is True
