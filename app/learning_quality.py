@@ -125,6 +125,8 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
         "score": score,
         "accepted": accepted,
         "word_count": len(words),
+        "target_word_count": target_words,
+        "minimum_word_count": minimum_words,
         "has_concrete_example": has_example,
         "has_explanatory_reasoning": has_explanation,
         "technical_detail_count": len(technical_terms),
