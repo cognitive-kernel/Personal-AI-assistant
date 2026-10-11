@@ -65,7 +65,7 @@ class _TextExtractor(HTMLParser):
 
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _validate_url(newurl)
+        _validate_url(urllib.parse.urljoin(req.full_url, newurl))
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -214,13 +214,14 @@ def retrieve(topic: str, limit: int = 4) -> list[dict[str, Any]]:
         ranked.append((score, dict(row)))
     ranked.sort(key=lambda item: (item[0], item[1]["fetched_at"]), reverse=True)
     selected: list[dict[str, Any]] = []
-    seen_urls: set[str] = set()
+    seen_chunks: set[str] = set()
     for score, item in ranked:
-        if item["url"] in seen_urls:
+        fingerprint = hashlib.sha256(item["content"].encode("utf-8")).hexdigest()
+        if fingerprint in seen_chunks:
             continue
         item["retrieval_score"] = round(score, 3)
         selected.append(item)
-        seen_urls.add(item["url"])
+        seen_chunks.add(fingerprint)
         if len(selected) >= max(1, min(8, limit)):
             break
     return selected
