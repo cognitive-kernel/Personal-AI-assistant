@@ -55,6 +55,17 @@ def run_job(job_id: int) -> None:
         for item in retrieved
     )
     effective_source_text = "\n\n".join(part for part in (source_text, retrieved_text) if part)
+    # Provenance describes the inputs actually used, not whether claims were verified.
+    if source_text and retrieved:
+        source_kind = "user_provided_text_and_retrieved_source"
+    elif source_text:
+        source_kind = "user_provided_text"
+    elif retrieved:
+        source_kind = "retrieved_knowledge_source"
+    else:
+        source_kind = "model_knowledge_no_external_source"
+    with learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET source_kind=? WHERE id=? AND status='running'", (source_kind, job_id))
     prompt = {
         "topic": topic,
         "source_text": effective_source_text,
@@ -80,8 +91,8 @@ def run_job(job_id: int) -> None:
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         quality["user_provided_source_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
-        # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
-        if not quality["accepted"]:
+        # Repair rejected lessons and lessons below the language-aware target length.
+        if not quality["accepted"] or quality["word_count"] < quality["target_word_count"]:
             retry_prompt = dict(prompt)
             retry_prompt["instruction"] = (
                 "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ آن را کامل بازنویسی کن. "
@@ -127,9 +138,15 @@ def run_job(job_id: int) -> None:
                 )
                 retry_quality["user_provided_source_available"] = bool(source_text)
                 retry_quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
-                # Prefer the repaired candidate on ties; otherwise the first candidate can
-                # survive unchanged even when the retry fixed the specific rejection reason.
-                if retry_quality["accepted"] or retry_quality["score"] >= quality["score"]:
+                # Acceptance and target-length compliance take precedence over raw score.
+                def candidate_rank(candidate_quality: dict[str, Any]) -> tuple[int, int, int, int]:
+                    return (
+                        int(candidate_quality["accepted"]),
+                        int(candidate_quality["word_count"] >= candidate_quality["target_word_count"]),
+                        int(candidate_quality["score"]),
+                        int(candidate_quality["word_count"]),
+                    )
+                if candidate_rank(retry_quality) > candidate_rank(quality):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
