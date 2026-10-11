@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama
+from . import curricula, db, learning, ollama, source_library
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -58,6 +58,9 @@ class SettingsPatch(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+
+class SourceIngestionRequest(BaseModel):
+    urls: list[str] = Field(min_length=1, max_length=10)
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
@@ -145,6 +148,20 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
         return learning.submit_job(request.topic, request.source_text)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+@app.get("/api/learning/sources")
+def learning_sources() -> dict[str, Any]:
+    return {"sources": source_library.list_sources(), "allowed_hosts": sorted(source_library.ALLOWED_HOSTS)}
+
+@app.post("/api/learning/sources/ingest", status_code=200)
+def ingest_learning_sources(request: SourceIngestionRequest) -> dict[str, Any]:
+    results = []
+    for url in request.urls:
+        try:
+            results.append({"ok": True, **source_library.ingest_source(url)})
+        except source_library.SourceError as exc:
+            results.append({"ok": False, "url": url, "error": str(exc)})
+    return {"results": results, "ingested_count": sum(1 for item in results if item["ok"])}
 
 @app.get("/api/learning/jobs")
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
