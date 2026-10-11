@@ -54,8 +54,8 @@ def run_job(job_id: int) -> None:
         # Prefer locally stored, curated source evidence over ungrounded model recall.
         retrieved_sources = source_library.retrieve(topic, limit=4)
         if retrieved_sources:
-            source_text = "\\n\\n".join(
-                f"[منبع: {item['title']} | URL: {item['url']} | هش محتوا: {item['content_hash']}]\\n{item['content']}"
+            source_text = "\n\n".join(
+                f"[منبع: {item['title']} | URL: {item['url']} | هش محتوا: {item['content_hash']}]\n{item['content']}"
                 for item in retrieved_sources
             )
             source_kind = "curated_web_retrieval"
