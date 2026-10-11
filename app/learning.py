@@ -50,7 +50,7 @@ def run_job(job_id: int) -> None:
     prompt = {
         "topic": topic,
         "source_text": source_text,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 160-220 Persian words, in 4-6 paragraphs, with a precise definition, key components, explanation of how they work, and one concrete technical example. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
+        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
     }
     try:
         settings = get_settings()
@@ -75,16 +75,20 @@ def run_job(job_id: int) -> None:
         if not quality["accepted"]:
             retry_prompt = dict(prompt)
             retry_prompt["instruction"] = (
-                "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ آن را کامل بازنویسی کن. "
-                "فقط یک شیء JSON معتبر با کلیدهای lesson و questions و answer_key برگردان. "
-                "متن lesson باید فارسی روان و دست‌کم 160 واژه فارسی باشد (نه شمارش تقریبی توکن)، "
-                "در 4 تا 6 بند آموزشی، شامل تعریف دقیق، اجزای اصلی، توضیح کاربرد هر جزء، "
-                "یک مثال فنی مشخص و جمع‌بندی باشد. موضوع را واقعاً آموزش بده؛ "
+                "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ این بار با توجه به دلیل‌های مشخص زیر، آن را کامل بازنویسی کن: "
+                + "؛ ".join(quality.get("reasons", []))
+                + ". فقط یک شیء JSON معتبر با کلیدهای lesson و learning_outcomes و questions و answer_key برگردان. "
+                "متن lesson باید فارسی روان و آموزشی و بین 200 تا 260 واژه فارسی باشد و مطلقاً کمتر از 180 واژه نباشد؛ "
+                "پس از نوشتن، طول متن را بررسی کن و اگر کوتاه است پیش از پاسخ گسترش بده. "
+                "متن را در 5 تا 7 بند منسجم بنویس: تعریف دقیق، اجزای اصلی، نقش هر جزء، روند کار مرحله‌به‌مرحله، "
+                "مثال فنی قابل اجرا یا قابل پیگیری، تفسیر نتیجه مثال و جمع‌بندی. "
+                "حداقل یک رابطه علت‌ومعلولی را صریح توضیح بده: چه اتفاقی می‌افتد، چرا رخ می‌دهد و چه پیامدی دارد؛ "
+                "صرفاً نام ابزارها یا اجزا را فهرست نکن. "
                 "گزارش وضعیت، متن عذرخواهی، توضیح عمومی یا جمله‌های تکراری ننویس. "
                 "دقیقاً 3 سؤال مرتبط و برای هرکدام یک پاسخ مستقیم و توضیحی در answer_key بده. "
-                "از حروف و واژه‌های غیر فارسیِ نامربوط استفاده نکن. "
-                "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. "
-                "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند، نه عبارت مبهم. پاسخ فقط JSON باشد."
+                "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند. "
+                "از حروف سیریلیک و واژه‌های نامربوط استفاده نکن. "
+                "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. پاسخ فقط JSON باشد."
             )
             retry_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
