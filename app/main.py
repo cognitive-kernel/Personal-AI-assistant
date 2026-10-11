@@ -55,6 +55,16 @@ class ChatRequest(BaseModel):
 class SettingsPatch(BaseModel):
     values: dict[str, Any]
 
+class KnowledgeSourceRequest(BaseModel):
+    url: str = Field(min_length=1, max_length=2000)
+    title: str | None = Field(default=None, max_length=300)
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
@@ -198,6 +208,29 @@ def legacy_scheduler_status() -> dict[str, Any]:
         "status": "not_implemented",
         "message": "زمان‌بندی خودکار یادگیری هنوز پیاده‌سازی نشده است.",
     }
+
+
+@app.post("/api/knowledge/sources", status_code=201)
+def ingest_knowledge_source(request: KnowledgeSourceRequest) -> dict[str, Any]:
+    from . import knowledge_base
+    try:
+        return knowledge_base.ingest_url(request.url, title=request.title)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, TimeoutError) as exc:
+        raise HTTPException(status_code=502, detail=f"Source could not be fetched: {exc}") from exc
+
+
+@app.post("/api/knowledge/search")
+def search_knowledge(request: KnowledgeSearchRequest) -> dict[str, Any]:
+    from . import knowledge_base
+    return {"query": request.query, "results": knowledge_base.search(request.query, request.limit)}
+
+
+@app.get("/api/knowledge/sources")
+def list_knowledge_sources() -> dict[str, Any]:
+    from . import knowledge_base
+    return {"sources": knowledge_base.list_sources()}
 
 
 @app.get("/api/knowledge")
