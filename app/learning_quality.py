@@ -18,7 +18,14 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
         normalized, flags=re.IGNORECASE
     ))
     example_markers = ("for example", "e.g.", "such as", "a simple ", "example:", "مثال", "برای مثال", "نمونه", "مثلاً", "در عمل")
-    explanation_markers = ("because", "therefore", "as a result", "so that", "when", "which means", "this allows", "this is useful", "زیرا", "در نتیجه", "به این دلیل", "باعث می‌شود", "برای اینکه", "هنگامی که")
+    explanation_markers = (
+        "because", "therefore", "as a result", "so that", "when", "which means",
+        "this allows", "this is useful", "if ", "however", "but ", "therefore",
+        "زیرا", "چون", "بنابراین", "در نتیجه", "به این دلیل", "به همین دلیل",
+        "باعث می‌شود", "منجر می‌شود", "برای اینکه", "هنگامی که", "در صورتی که",
+        "اگر", "اما", "با این حال", "درحالی‌که", "در حالی که", "به‌جای",
+        "این یعنی", "این کار", "برای جلوگیری", "وابسته است"
+    )
     has_example = any(marker in normalized for marker in example_markers)
     has_explanation = any(marker in normalized for marker in explanation_markers)
     signals = [
