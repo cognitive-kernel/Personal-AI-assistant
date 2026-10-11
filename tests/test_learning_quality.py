@@ -66,3 +66,20 @@ def test_sql_server_curriculum_has_curated_reference_links():
     assert refs["W3Schools — SQL Tutorial"] == "https://www.w3schools.com/sql/default.asp"
     assert refs["Microsoft Learn — SQL Server"] == "https://learn.microsoft.com/en-us/sql/sql-server/"
     assert len(course["topics"]) == 19
+
+
+
+def test_quality_filter_exposes_language_aware_word_targets():
+    english_lesson = (
+        "SQL Server executes a query using an execution plan. For example, "
+        "an index can reduce reads for a selective query, but it also adds "
+        "maintenance cost. Database administrators should compare logical reads "
+        "and elapsed time before and after a change using representative data. "
+        "The optimizer chooses operators based on statistics and estimated cost. "
+        "A plan is evidence about execution, not a guarantee that the query is optimal."
+    )
+    questions = ["What does an execution plan show?", "Why can an index add cost?", "How should a change be checked?"]
+    answers = ["It shows operators used to execute the query.", "Indexes require storage and maintenance.", "Compare reads and elapsed time on representative data."]
+    result = evaluate_learning_value(english_lesson, questions, answers)
+    assert result["target_word_count"] == 120
+    assert result["minimum_word_count"] == 80
