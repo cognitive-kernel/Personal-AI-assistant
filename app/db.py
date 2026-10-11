@@ -94,6 +94,17 @@ def init_databases() -> None:
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(path_id, topic), UNIQUE(path_id, position))""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_path_topics_status ON learning_path_topics(path_id, status, position)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS knowledge_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE, title TEXT NOT NULL,
+            content_hash TEXT NOT NULL, license_note TEXT NOT NULL DEFAULT 'Reuse terms not independently reviewed; retain source attribution.',
+            status TEXT NOT NULL DEFAULT 'indexed', fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS knowledge_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_id INTEGER NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+            chunk_index INTEGER NOT NULL, content TEXT NOT NULL, UNIQUE(source_id, chunk_index))""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_id, chunk_index)")
+        conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(content)")
 
 def get_settings() -> dict[str, Any]:
     with settings_connection() as conn:
