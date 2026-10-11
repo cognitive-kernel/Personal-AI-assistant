@@ -18,9 +18,19 @@ _TIMEOUT_SECONDS = 12
 _CHUNK_CHARS = 1800
 _OVERLAP_CHARS = 250
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a small number of redirects, validating every target against the URL policy."""
+    _MAX_REDIRECTS = 3
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        if len(getattr(req, "redirect_dict", {})) >= self._MAX_REDIRECTS:
+            return None
+        target = urllib.parse.urljoin(req.full_url, newurl)
+        try:
+            _validate_url(target)
+        except ValueError:
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, target)
 
 class _TextExtractor(HTMLParser):
     def __init__(self):
@@ -65,7 +75,7 @@ def _validate_url(url: str) -> urllib.parse.SplitResult:
 
 def _fetch(url: str) -> tuple[str, str]:
     parsed = _validate_url(url)
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(_SafeRedirect)
     request = urllib.request.Request(urllib.parse.urlunsplit(parsed),
         headers={"User-Agent": "Personal-AI-Assistant-KnowledgeIndexer/0.1", "Accept": "text/html"}, method="GET")
     try:
@@ -76,7 +86,8 @@ def _fetch(url: str) -> tuple[str, str]:
             raw = response.read(_MAX_BYTES + 1)
             charset = response.headers.get_content_charset() or "utf-8"
     except urllib.error.HTTPError as exc:
-        if 300 <= exc.code < 400: raise ValueError("redirect خودکار برای امنیت غیرفعال است؛ URL نهایی را مستقیم وارد کنید.") from exc
+        if 300 <= exc.code < 400:
+            raise ValueError("redirect به مقصد غیرمجاز یا بیش از ۳ مرحله بود؛ مقصد باید HTTPS و در فهرست دامنه‌های مجاز باشد.") from exc
         raise OSError(f"HTTP {exc.code}") from exc
     if len(raw) > _MAX_BYTES: raise ValueError("حجم صفحه از سقف ۲ مگابایت بیشتر است.")
     try: page = raw.decode(charset, errors="replace")
