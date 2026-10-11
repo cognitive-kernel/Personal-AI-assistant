@@ -114,7 +114,10 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     score = max(0, min(100, score))
     accepted = (
         score >= 75 and len(words) >= minimum_words and unique_ratio >= 0.48
-        and len(technical_terms) >= 3 and has_example and has_explanation
+        and len(technical_terms) >= 3 and has_example
+        # Explanation markers are a heuristic, not a semantic judge. Keep the
+        # penalty in the score, but do not reject an otherwise sound lesson
+        # solely because it uses different Persian phrasing.
         and valid_questions and valid_answers and not mixed_script_tokens
         and not malformed_phrases and len(matched) < 2 and bool(text)
     )
