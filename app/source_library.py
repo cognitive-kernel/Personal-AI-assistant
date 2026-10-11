@@ -139,25 +139,24 @@ def _ensure_schema() -> None:
 
 
 def _chunks(text: str) -> list[str]:
-    paragraphs = [p.strip() for p in re.split(r"(?<=[.!?؟])\s+|\n+", text) if p.strip()]
+    # Fixed-size sliding windows guarantee a hard size cap and retain context
+    # across boundaries. Prefer a nearby word boundary when possible.
+    normalized = re.sub(r"\\s+", " ", text).strip()
     chunks: list[str] = []
-    current = ""
-    for paragraph in paragraphs:
-        while len(paragraph) > CHUNK_CHARS:
-            if current:
-                chunks.append(current)
-                current = ""
-            chunks.append(paragraph[:CHUNK_CHARS])
-            paragraph = paragraph[CHUNK_CHARS - CHUNK_OVERLAP:]
-        if current and len(current) + len(paragraph) + 1 > CHUNK_CHARS:
-            chunks.append(current)
-            current = (current[-CHUNK_OVERLAP:] + " " + paragraph).strip()
-        else:
-            current = (current + " " + paragraph).strip()
-    if current:
-        chunks.append(current)
+    start = 0
+    while start < len(normalized):
+        end = min(len(normalized), start + CHUNK_CHARS)
+        if end < len(normalized):
+            boundary = normalized.rfind(" ", start + CHUNK_CHARS // 2, end)
+            if boundary > start:
+                end = boundary
+        chunk = normalized[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        if end >= len(normalized):
+            break
+        start = max(start + 1, end - CHUNK_OVERLAP)
     return chunks
-
 
 def ingest_source(url: str) -> dict[str, Any]:
     _ensure_schema()
