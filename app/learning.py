@@ -79,7 +79,7 @@ def run_job(job_id: int) -> None:
         assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         quality["user_provided_source_available"] = bool(source_text)
-        quality["verification_status"] = "needs_review" if source_text else "unverified"
+        quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         if not quality["accepted"]:
             retry_prompt = dict(prompt)
@@ -124,7 +124,7 @@ def run_job(job_id: int) -> None:
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
                 retry_quality["user_provided_source_available"] = bool(source_text)
-                retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
+                retry_quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         with learning_connection() as conn:
@@ -149,6 +149,16 @@ def run_job(job_id: int) -> None:
                 )
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
+            # Preserve provenance for the source chunks used to draft this lesson.
+            seen_source_urls = set()
+            for item in retrieved:
+                if item["url"] in seen_source_urls:
+                    continue
+                seen_source_urls.add(item["url"])
+                conn.execute(
+                    "INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'retrieved_source', ?, NULL, ?)",
+                    (job_id, item["url"], f"منبع بازیابی‌شده: {item['title']}؛ chunk_id={item['chunk_id']}؛ صحت مستقل تأیید نشده است."),
+                )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
