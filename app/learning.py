@@ -85,6 +85,8 @@ def run_job(job_id: int) -> None:
             retry_prompt = dict(prompt)
             retry_prompt["instruction"] = (
                 "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ آن را کامل بازنویسی کن. "
+                "دلایل رد در ارزیابی قبلی: " + "؛ ".join(quality.get("reasons", [])) + ". "
+                "برای هر دلیل، مستقیماً در متن اصلاح انجام بده؛ فقط واژه‌های کلیدی را اضافه نکن. "
                 "فقط یک شیء JSON معتبر با کلیدهای lesson و questions و answer_key برگردان. "
                 "متن lesson باید فارسی روان و دست‌کم 160 واژه فارسی باشد (نه شمارش تقریبی توکن)، "
                 "در 4 تا 6 بند آموزشی، شامل تعریف دقیق، اجزای اصلی، توضیح کاربرد هر جزء، "
@@ -125,7 +127,9 @@ def run_job(job_id: int) -> None:
                 )
                 retry_quality["user_provided_source_available"] = bool(source_text)
                 retry_quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
-                if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
+                # Prefer the repaired candidate on ties; otherwise the first candidate can
+                # survive unchanged even when the retry fixed the specific rejection reason.
+                if retry_quality["accepted"] or retry_quality["score"] >= quality["score"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
