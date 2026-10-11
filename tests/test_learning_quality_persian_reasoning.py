@@ -21,3 +21,26 @@ def test_persian_causal_explanation_marker_is_recognized():
     ]
     result = evaluate_learning_value(lesson, questions, answers)
     assert result["has_explanatory_reasoning"] is True
+
+
+def test_lesson_is_not_rejected_only_for_missing_explanation_marker():
+    lesson = (
+        "در SQL Server دستور SELECT ستون‌ها را از جدول برمی‌گرداند. "
+        "JOIN ردیف‌های دو جدول را بر اساس شرط اتصال ترکیب می‌کند. "
+        "برای مثال SELECT c.Name FROM Customers AS c JOIN Orders AS o "
+        "ON c.Id = o.CustomerId نام مشتریان دارای سفارش را نمایش می‌دهد. "
+        "انتخاب ستون‌های مشخص خواندن داده‌های غیرضروری را کم می‌کند. "
+    ) * 5
+    questions = [
+        "دستور SELECT چه چیزی برمی‌گرداند؟",
+        "JOIN چه کاری انجام می‌دهد؟",
+        "چگونه مشتریان دارای سفارش را پیدا می‌کنیم؟",
+    ]
+    answers = [
+        "ستون‌های انتخاب‌شده از جدول را برمی‌گرداند.",
+        "ردیف‌های دو جدول را با شرط اتصال ترکیب می‌کند.",
+        "با اتصال Customers به Orders روی شناسه مشتری.",
+    ]
+    result = evaluate_learning_value(lesson, questions, answers)
+    assert result["has_explanatory_reasoning"] is False
+    assert result["accepted"] is True
