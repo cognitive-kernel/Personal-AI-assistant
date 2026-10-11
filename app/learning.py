@@ -47,10 +47,19 @@ def run_job(job_id: int) -> None:
         topic, source_kind = row["topic"], row["source_kind"]
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
+    # Retrieve source-backed chunks for every lesson; explicit user text remains available too.
+    from . import knowledge_base
+    retrieved = knowledge_base.search(topic, limit=5)
+    retrieved_text = "\n\n".join(
+        f"[منبع: {item['title']} | URL: {item['url']}]\n{item['content']}"
+        for item in retrieved
+    )
+    effective_source_text = "\n\n".join(part for part in (source_text, retrieved_text) if part)
     prompt = {
         "topic": topic,
-        "source_text": source_text,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 160-220 Persian words, in 4-6 paragraphs, with a precise definition, key components, explanation of how they work, and one concrete technical example. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
+        "source_text": effective_source_text,
+        "retrieved_sources": [{"title": item["title"], "url": item["url"]} for item in retrieved],
+        "instruction": "Write a natural, grammatical Persian technical lesson of 160-220 Persian words, in 4-6 paragraphs, with a precise definition, key components, explanation of how they work, and one concrete technical example. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Never invent citations or imply a source supports a claim it does not contain. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If sources are supplied, prioritize them, cite their URLs in a short Sources section in the lesson, and distinguish source-backed facts from additional explanation."
     }
     try:
         settings = get_settings()
