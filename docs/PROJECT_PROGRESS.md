@@ -104,3 +104,11 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - The coordinator branch has a real documentation commit `666a37c9c3d866df498c85fedb31ec73364bf3a8`; this follow-up records the later PR #11 and its verified CI.
 - Automation metadata shows recent last-run timestamps, but no per-task execution report was available in the connector output. Therefore, repository work is confirmed, but attribution of individual commits to each of the three automation runs remains unverified.
 - No numeric retrieval Recall@5/MRR, Persian/English answer-quality benchmark, or live Ollama integration result was found. AI workstream remains incomplete. No PR was merged in this coordination pass.
+
+
+## Durable automation reporting protocol — introduced 2026-10-12
+
+- Reporting rules and the required schema now live in [docs/automation-reports/README.md](automation-reports/README.md) and [the report template](automation-reports/TEMPLATE.md).
+- Each worker must create one timestamped UTC report per attempted run under `docs/automation-reports/`, including blocked/no-change runs; cite exact branches, SHAs, PRs, test commands/results, CI runs, and acceptance criteria. Do not invent a platform run ID when it is not exposed.
+- Worker reports belong on dedicated branches and must be linked from PRs. The coordinator alone owns this dashboard, verifies evidence and exact-head CI, and records a summary here. A report alone does not authorize merge.
+- **Rollout status: protocol committed to this dashboard PR; recurring automation prompts are being updated.** Do not claim end-to-end reporting is operational until a subsequent real scheduled run produces a report and the coordinator verifies it.
