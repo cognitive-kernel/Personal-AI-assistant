@@ -119,6 +119,7 @@ def _remember_chat_result(
     sources: list[dict[str, Any]],
     prior_experience_ids: list[int],
     research_metadata: dict[str, Any],
+    query_variants: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Persist the test outcome. A source-less or uncited answer is never verified."""
     evidence: list[dict[str, Any]] = []
@@ -244,13 +245,13 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
             if all(item["passed"] for item in repaired_checks):
                 _remember_chat_result(
                     query=message, answer=repaired, sources=[], prior_experience_ids=[],
-                    research_metadata=research_metadata,
+                    research_metadata=research_metadata, query_variants=variants,
                 )
                 return repaired
             initial = repaired
         _remember_chat_result(
             query=message, answer=initial, sources=[], prior_experience_ids=[],
-            research_metadata=research_metadata,
+            research_metadata=research_metadata, query_variants=variants,
         )
         return initial
 
@@ -334,6 +335,6 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
     _remember_chat_result(
         query=message, answer=revised, sources=sources,
         prior_experience_ids=[item["id"] for item in verified],
-        research_metadata=research_metadata,
+        research_metadata=research_metadata, query_variants=variants,
     )
     return revised
