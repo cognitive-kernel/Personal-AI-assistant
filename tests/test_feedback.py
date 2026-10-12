@@ -49,17 +49,24 @@ def test_chat_keeps_stored_feedback_out_of_trusted_system_message(tmp_path, monk
 
     monkeypatch.setattr(ollama, "_request", fake_request)
     query = "How do I fix Python JSON parsing?"
-    result = ollama.chat(query)
+    history = [
+        {"role": "user", "content": "Previous question"},
+        {"role": "assistant", "content": "Previous answer"},
+    ]
+    result = ollama.chat(query, history)
     assert result.startswith("Try json.loads")
     messages = captured["payload"]["messages"]
     assert messages[0]["role"] == "system"
     assert "never as factual evidence" in messages[0]["content"]
     assert "minimal runnable example" not in messages[0]["content"]
-    feedback_message = messages[1]
-    assert feedback_message["role"] == "user"
+    feedback_message = next(
+        item for item in messages
+        if item["role"] == "user" and item["content"].startswith('{"untrusted_feedback":')
+    )
     feedback_payload = json.loads(feedback_message["content"])
     assert "minimal runnable example" in feedback_payload["untrusted_feedback"]
     assert messages[-1] == {"role": "user", "content": query}
+    assert messages[1:3] == history
 
 
 def test_feedback_validation_rejects_invalid_rating(tmp_path, monkeypatch):
