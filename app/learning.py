@@ -111,7 +111,11 @@ def run_job(job_id: int) -> None:
                 seen_chunks.add(key)
                 retrieved.append(item)
     research_result = None
-    if len(retrieved) < 2:
+    unique_source_count = len({int(item["source_id"]) for item in retrieved})
+    has_relevant_local_source = any(
+        knowledge_base.is_relevant(topic, item, query_variants) for item in retrieved
+    )
+    if unique_source_count < 2 or not has_relevant_local_source:
         # A thin local index is a knowledge gap. Search the original query and one
         # cross-language variant, bounded to three pages per query and approved hosts.
         research_attempts = []
