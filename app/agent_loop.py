@@ -6,7 +6,9 @@ experience memory. "Verified" describes these checks, not independent fact proof
 """
 from __future__ import annotations
 
+import ast
 import json
+import re
 from typing import Any
 
 from . import experience, knowledge_base, ollama
@@ -33,6 +35,64 @@ _UNCERTAINTY_MARKERS = (
     "ممکن است اشتباه", "ممکن است قدیمی",
 )
 
+
+
+def _static_code_checks(answer: str) -> list[dict[str, Any]]:
+    """Validate fenced Python/JSON without executing generated code."""
+    checks: list[dict[str, Any]] = []
+    fence = r"\x60{3}"
+    python_pattern = fence + r"[ \t]*(python|py)[ \t]*\n(.*?)" + fence
+    json_pattern = fence + r"[ \t]*json[ \t]*\n(.*?)" + fence
+    for index, match in enumerate(re.finditer(python_pattern, answer, flags=re.IGNORECASE | re.DOTALL), start=1):
+        try:
+            ast.parse(match.group(2))
+            checks.append({"test": f"python_syntax_block_{index}", "passed": True, "actual": "ast.parse succeeded"})
+        except SyntaxError as exc:
+            checks.append({
+                "test": f"python_syntax_block_{index}", "passed": False,
+                "actual": {"error": exc.msg, "line": exc.lineno, "offset": exc.offset},
+            })
+    for index, match in enumerate(re.finditer(json_pattern, answer, flags=re.IGNORECASE | re.DOTALL), start=1):
+        try:
+            json.loads(match.group(1))
+            checks.append({"test": f"json_syntax_block_{index}", "passed": True, "actual": "json.loads succeeded"})
+        except json.JSONDecodeError as exc:
+            checks.append({
+                "test": f"json_syntax_block_{index}", "passed": False,
+                "actual": {"error": exc.msg, "line": exc.lineno, "column": exc.colno},
+            })
+    return checks
+
+
+def _repair_static_code(message: str, draft: str, checks: list[dict[str, Any]]) -> str | None:
+    failures = [item for item in checks if not item["passed"]]
+    if not failures:
+        return None
+    settings = get_settings()
+    limits = runtime_limits(settings, detect_hardware())
+    prompt = {
+        "user_request": message,
+        "draft": draft,
+        "failed_checks": failures,
+        "instruction": (
+            "Repair only the code syntax failures shown by the deterministic parser. "
+            "Preserve the user's language and intended behavior. Do not claim runtime correctness; "
+            "the code is not executed. Return the complete corrected answer and code blocks."
+        ),
+    }
+    try:
+        response = _request("/api/chat", {
+            "model": str(settings["ollama_model"]), "stream": False,
+            "messages": [
+                {"role": "system", "content": "You are a careful code repair assistant. Fix reported syntax errors only and never claim code was executed."},
+                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
+        })
+        value = response.get("message", {}).get("content")
+        return value.strip() if isinstance(value, str) and value.strip() else None
+    except ollama.OllamaError:
+        return None
 
 def should_use_learning_loop(message: str, initial_answer: str = "") -> bool:
     """Keep ordinary small talk fast; research technical, troubleshooting, and explicit research requests."""
@@ -107,6 +167,10 @@ def _remember_chat_result(
         {"test": "non_empty_answer", "passed": nonempty_pass, "runner": "chat-learning-loop-v1"},
         {"test": "source_attribution", "passed": citation_pass, "runner": "chat-learning-loop-v1"},
         {"test": "source_excerpt_integrity", "passed": excerpt_pass, "runner": "chat-learning-loop-v1"},
+        *[
+            {**item, "runner": "chat-learning-loop-v1"}
+            for item in _static_code_checks(answer)
+        ],
     ]
     if not sources and not prior_experience_ids:
         # Record the knowledge gap for future research, but don't manufacture an answer or a verified memory.
@@ -159,6 +223,17 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
     verified = experience.search_relevant_experiences(message, variants, limit=3)
     failures = experience.search_relevant_failures(message, variants, limit=3)
     if not sources and not verified and not failures:
+        static_checks = _static_code_checks(initial)
+        repaired = _repair_static_code(message, initial, static_checks)
+        if repaired:
+            repaired_checks = _static_code_checks(repaired)
+            if all(item["passed"] for item in repaired_checks):
+                _remember_chat_result(
+                    query=message, answer=repaired, sources=[], prior_experience_ids=[],
+                    research_metadata=research_metadata,
+                )
+                return repaired
+            initial = repaired
         _remember_chat_result(
             query=message, answer=initial, sources=[], prior_experience_ids=[],
             research_metadata=research_metadata,
@@ -211,9 +286,17 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
     if not isinstance(revised, str) or not revised.strip():
         return initial
 
-    if sources and not any(item["url"] in revised for item in sources):
+    static_checks = _static_code_checks(revised)
+    citation_missing = bool(sources) and not any(item["url"] in revised for item in sources)
+    static_failures = [item for item in static_checks if not item["passed"]]
+    if citation_missing or static_failures:
         retry = dict(prompt)
-        retry["revision_feedback"] = "The draft omitted exact source URLs. Revise once and include at least one relevant supplied URL; if no source supports a claim, label it as inference."
+        feedback = []
+        if citation_missing:
+            feedback.append("The draft omitted exact source URLs. Include at least one relevant supplied URL; never invent sources.")
+        if static_failures:
+            feedback.append("Fix these deterministic syntax-check failures only: " + json.dumps(static_failures, ensure_ascii=False))
+        retry["revision_feedback"] = " ".join(feedback)
         try:
             retry_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False,
@@ -229,6 +312,7 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
         if isinstance(retry_text, str) and retry_text.strip():
             revised = retry_text
 
+    static_checks = _static_code_checks(revised)
     if sources and not any(item["url"] in revised for item in sources):
         # Do not imply the model cited a source. Append a neutral list of retrieved references.
         revised = revised.rstrip() + "\n\nReferences retrieved (not independent proof of every claim):\n" + "\n".join(item["url"] for item in sources[:3])
