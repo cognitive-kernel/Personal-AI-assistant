@@ -126,6 +126,7 @@ def update_experience(
                 raise ValueError("Cannot verify an experience without a test plan.")
             if not results or not any(item.get("passed") is True for item in results):
                 raise ValueError("Cannot verify an experience without a passing test result.")
+        _store_version_snapshot(conn, row)
         conn.execute(
             """UPDATE learning_experiences SET status=?, source_evidence_json=?, test_plan_json=?,
                test_results_json=?, takeaway=?, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
@@ -134,6 +135,19 @@ def update_experience(
              row["takeaway"] if takeaway is None else takeaway.strip(), experience_id),
         )
     return get_experience(experience_id)
+
+
+def _store_version_snapshot(conn, row) -> None:
+    """Store an immutable snapshot before changing a learning experience."""
+    conn.execute(
+        """INSERT OR IGNORE INTO learning_experience_versions(
+            experience_id, version, topic, problem, hypothesis, status,
+            source_evidence_json, test_plan_json, test_results_json, takeaway)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (row["id"], row["version"], row["topic"], row["problem"], row["hypothesis"],
+         row["status"], row["source_evidence_json"], row["test_plan_json"],
+         row["test_results_json"], row["takeaway"]),
+    )
 
 
 def get_experience(experience_id: int) -> dict[str, Any]:
