@@ -211,6 +211,27 @@ def run_job(job_id: int) -> None:
                     )
                 if candidate_rank(retry_quality) > candidate_rank(quality):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        experience_verification = None
+        if quality["accepted"]:
+            # A successful generation is not automatically trusted: run deterministic
+            # artifact/provenance checks and persist the exact verification scope.
+            try:
+                from .experience_loop import verify_learning_artifact
+                experience_verification = verify_learning_artifact(
+                    topic=topic,
+                    lesson=result["lesson"],
+                    assessment=assessment,
+                    quality=quality,
+                    retrieved_sources=retrieved,
+                    job_id=job_id,
+                )
+            except Exception as verification_exc:
+                experience_verification = {
+                    "status": "verification_error",
+                    "error": str(verification_exc)[:300],
+                    "verification_scope": "not verified",
+                }
+        quality["experience_verification"] = experience_verification
         if not quality["accepted"]:
             # Persist a detected weakness instead of discarding the failure signal.
             # This is explicitly a heuristic-quality failure, not a factual verification result.
