@@ -33,6 +33,14 @@ def init_experience_tables() -> None:
         )""")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_learning_experiences_topic ON learning_experiences(topic, id DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_learning_experiences_status ON learning_experiences(status, id DESC)")
+        conn.execute("""CREATE TABLE IF NOT EXISTS learning_experience_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            experience_id INTEGER NOT NULL REFERENCES learning_experiences(id) ON DELETE CASCADE,
+            version INTEGER NOT NULL, topic TEXT NOT NULL, problem TEXT NOT NULL, hypothesis TEXT NOT NULL,
+            status TEXT NOT NULL, source_evidence_json TEXT NOT NULL, test_plan_json TEXT NOT NULL,
+            test_results_json TEXT NOT NULL, takeaway TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(experience_id, version))""")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_experience_versions_lookup ON learning_experience_versions(experience_id, version DESC)")
 
 
 def _json_list(value: Any, field: str) -> list[dict[str, Any]]:
