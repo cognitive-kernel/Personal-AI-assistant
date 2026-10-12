@@ -43,6 +43,7 @@ def test_controlled_loop_verifies_only_when_quality_contract_and_source_integrit
     assert saved["status"] == "verified"
     assert saved["test_results"][0]["runner"] == "experience-loop-v1"
     assert saved["source_evidence"][0]["excerpt"] == excerpt[:400]
+    assert saved["source_evidence"][0]["original_language"] == "en"
     assert "not independently establish factual correctness" in saved["takeaway"]
 
 
@@ -107,3 +108,11 @@ def test_static_code_checks_pass_valid_examples_and_report_no_code_case():
         "passed": True,
         "actual": "No fenced Python or JSON blocks were present; no code execution was attempted.",
     }]
+
+
+
+def test_source_language_metadata_preserves_persian_and_english_labels():
+    from app.experience_loop import _source_language
+
+    assert _source_language("مستندات فنی برای پایگاه داده") == "fa"
+    assert _source_language("Official documentation for databases") == "en"
