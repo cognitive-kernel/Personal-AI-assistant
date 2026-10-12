@@ -29,7 +29,7 @@ def test_sql_sandbox_rejects_writes_and_unsafe_operations(query):
 
 
 def test_sql_sandbox_limits_result_rows_and_query_size():
-    with pytest.raises(ValueError, match="row limit"):
+    with pytest.raises(ValueError, match="result limit"):
         run_sql("SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3", max_rows=2)
     with pytest.raises(ValueError, match="characters"):
         run_sql("SELECT 1 -- " + "x" * 10_000)
