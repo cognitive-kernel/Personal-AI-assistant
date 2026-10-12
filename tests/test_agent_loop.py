@@ -144,3 +144,27 @@ def test_failed_syntax_repair_is_persisted_when_research_finds_no_sources(tmp_pa
     assert records[0]["status"] == "needs_review"
     syntax = [item for item in records[0]["test_results"] if item["test"] == "python_syntax_block_1"]
     assert syntax and syntax[0]["passed"] is False
+
+
+def test_chat_verification_uses_cross_language_query_variants(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    source_url = "https://docs.python.org/3/library/json.html"
+    source_content = (
+        "The Python documentation describes JSON decoding behavior. "
+        "Applications should handle malformed input and report decoding errors. "
+        "This exact excerpt is retained for provenance and attribution verification."
+    )
+    result = agent_loop._remember_chat_result(
+        query="خطای رمزگشایی JSON در پایتون",
+        query_variants=["Python JSON decoding error"],
+        answer=f"Handle malformed JSON and decoding errors. Source: {source_url}",
+        sources=[{
+            "source_id": 1, "chunk_id": 1, "title": "Python JSON docs",
+            "url": source_url, "content": source_content,
+        }],
+        prior_experience_ids=[],
+        research_metadata={"attempts": []},
+    )
+    assert result["status"] == "verified"
+    relevance = next(check for check in result["checks"] if check["test"] == "source_relevance")
+    assert relevance["passed"] is True
