@@ -16,6 +16,7 @@ from .db import get_settings
 from .hardware import detect_hardware, runtime_limits
 from .learning import _expand_retrieval_query, _language_name
 from .ollama import _request
+from .claim_review import review_answer_claims
 
 
 _TECHNICAL_MARKERS = (
@@ -121,8 +122,9 @@ def _remember_chat_result(
     prior_experience_ids: list[int],
     research_metadata: dict[str, Any],
     query_variants: list[str] | None = None,
+    semantic_review: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Persist the test outcome. A source-less or uncited answer is never verified."""
+    """Persist the test outcome; verification requires source-grounded claim review."""
     evidence: list[dict[str, Any]] = []
     seen_urls: set[str] = set()
     for source in sources:
@@ -163,6 +165,12 @@ def _remember_chat_result(
         {"test": "source_relevance", "passed": bool(relevant_source_ids), "actual": {"relevant_source_count": len(relevant_source_ids)}, "runner": "chat-learning-loop-v1"},
         {"test": "source_attribution", "passed": citation_pass, "runner": "chat-learning-loop-v1"},
         {"test": "source_excerpt_integrity", "passed": excerpt_pass, "runner": "chat-learning-loop-v1"},
+        {
+            "test": "semantic_claim_review",
+            "passed": bool(semantic_review and semantic_review.get("passed") is True),
+            "actual": semantic_review or {"passed": False, "error": "review_not_run"},
+            "runner": "local-ollama-claim-review-v1",
+        },
         *[
             {**item, "runner": "chat-learning-loop-v1"}
             for item in _static_code_checks(answer)
@@ -221,7 +229,8 @@ def _remember_chat_result(
         takeaway=(
             answer[:6000] + "\n\nVerification scope: non-empty output, URL attribution, source excerpt SHA-256 integrity, "
             "and static Python/JSON syntax parsing. Research attempts are recorded in the source-attribution test result. "
-            "Factual claims were not independently verified."
+            "Factual review used the same local Ollama model in a separate skeptical pass; this is not independent proof. "
+            "Claim-level verdicts are stored in the semantic_claim_review test result."
         ),
         _controlled_run=True,
     )
@@ -335,9 +344,11 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
         # Do not imply the model cited a source. Append a neutral list of retrieved references.
         revised = revised.rstrip() + "\n\nReferences retrieved (not independent proof of every claim):\n" + "\n".join(item["url"] for item in sources[:3])
 
+    semantic_review = review_answer_claims(message, revised, sources)
     _remember_chat_result(
         query=message, answer=revised, sources=sources,
         prior_experience_ids=[item["id"] for item in verified],
         research_metadata=research_metadata, query_variants=variants,
+        semantic_review=semantic_review,
     )
     return revised
