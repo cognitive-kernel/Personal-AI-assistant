@@ -62,7 +62,7 @@ def static_code_checks(text: str) -> list[dict[str, Any]]:
 
 def _source_language(text: str) -> str:
     """Label the dominant script without translating source material."""
-    persian = sum("\\u0600" <= char <= "\\u06ff" for char in text)
+    persian = sum("\u0600" <= char <= "\u06ff" for char in text)
     latin = sum(char.isascii() and char.isalpha() for char in text)
     if persian > latin:
         return "fa"
