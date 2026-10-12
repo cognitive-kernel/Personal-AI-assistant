@@ -60,6 +60,38 @@ def list_models() -> list[dict[str, Any]]:
     return [{"name": item.get("name"), "size": item.get("size"), "modified_at": item.get("modified_at")}
             for item in models if isinstance(item, dict)]
 
+def embed(texts: list[str], model: str = "nomic-embed-text") -> list[list[float]]:
+    """Return validated local embeddings; callers may fall back when the model is unavailable."""
+    if not isinstance(texts, list) or not texts or len(texts) > 64:
+        raise ValueError("Embedding input must contain between 1 and 64 texts.")
+    if any(not isinstance(text, str) or not text.strip() or len(text) > 20000 for text in texts):
+        raise ValueError("Each embedding input must contain 1–20000 non-empty characters.")
+    if not isinstance(model, str) or not model.strip() or len(model) > 200:
+        raise ValueError("Embedding model name is invalid.")
+    response = _request("/api/embed", {"model": model, "input": texts})
+    vectors = response.get("embeddings")
+    if not isinstance(vectors, list) or len(vectors) != len(texts):
+        raise OllamaError("Ollama returned an unexpected embedding response.")
+    normalized: list[list[float]] = []
+    dimension = None
+    for vector in vectors:
+        if not isinstance(vector, list) or not vector:
+            raise OllamaError("Ollama returned an empty embedding vector.")
+        try:
+            values = [float(value) for value in vector]
+        except (TypeError, ValueError) as exc:
+            raise OllamaError("Ollama returned a non-numeric embedding vector.") from exc
+        import math
+        if not all(math.isfinite(value) for value in values):
+            raise OllamaError("Ollama returned a non-finite embedding value.")
+        if dimension is None:
+            dimension = len(values)
+        elif len(values) != dimension:
+            raise OllamaError("Ollama returned inconsistent embedding dimensions.")
+        normalized.append(values)
+    return normalized
+
+
 def chat(message: str, history: list[dict[str, str]] | None = None) -> str:
     settings = get_settings()
     limits = runtime_limits(settings, detect_hardware())
