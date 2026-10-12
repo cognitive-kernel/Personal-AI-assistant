@@ -166,6 +166,33 @@ def list_experience_versions(experience_id: int) -> list[dict[str, Any]]:
     return versions
 
 
+def rollback_experience(experience_id: int, target_version: int, *, _controlled_run: bool = False) -> dict[str, Any]:
+    """Restore an older snapshot as a new version; reserved for the controlled runner."""
+    if not _controlled_run:
+        raise ValueError("Only the controlled experience runner can roll back an experience.")
+    init_experience_tables()
+    with learning_connection() as conn:
+        current = conn.execute("SELECT * FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
+        if current is None:
+            raise KeyError(experience_id)
+        target = conn.execute(
+            "SELECT * FROM learning_experience_versions WHERE experience_id=? AND version=?",
+            (experience_id, int(target_version)),
+        ).fetchone()
+        if target is None or int(target_version) >= int(current["version"]):
+            raise ValueError("Target version must be an available older snapshot.")
+        _store_version_snapshot(conn, current)
+        conn.execute(
+            """UPDATE learning_experiences SET topic=?, problem=?, hypothesis=?, status=?,
+               source_evidence_json=?, test_plan_json=?, test_results_json=?, takeaway=?,
+               version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (target["topic"], target["problem"], target["hypothesis"], target["status"],
+             target["source_evidence_json"], target["test_plan_json"], target["test_results_json"],
+             target["takeaway"], experience_id),
+        )
+    return get_experience(experience_id)
+
+
 def get_experience(experience_id: int) -> dict[str, Any]:
     init_experience_tables()
     with learning_connection() as conn:
