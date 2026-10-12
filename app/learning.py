@@ -61,12 +61,34 @@ def _assessment_contract_passes(assessment: dict[str, Any]) -> bool:
 
 
 
-def _source_attribution_passes(lesson: str, retrieved_sources: list[dict[str, Any]]) -> bool:
-    """Require generated lessons to cite at least one exact URL for retrieved sources."""
-    if not retrieved_sources:
-        return True
-    return any(
+def _ensure_source_attribution(lesson: str, retrieved_sources: list[dict[str, Any]]) -> str:
+    """Append a deterministic source list from actually retrieved URLs when the model omits citations."""
+    if not retrieved_sources or any(
         isinstance(item.get("url"), str) and item["url"] in lesson
+        for item in retrieved_sources
+    ):
+        return lesson
+    # Never ask the model to invent citations: use only URLs returned by the retriever.
+    unique_sources: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for item in retrieved_sources:
+        url = item.get("url")
+        if isinstance(url, str) and url.startswith("https://") and url not in seen_urls:
+            seen_urls.add(url)
+            unique_sources.append(item)
+    if not unique_sources:
+        return lesson
+    lines = ["", "", "Sources (retrieved; relevance and factual support are not independently verified):"]
+    lines.extend(f"- {str(item.get('title') or 'Official documentation').strip()} — {item['url']}" for item in unique_sources[:5])
+    return lesson.rstrip() + "\n".join(lines) + "\n"
+
+
+def _source_attribution_passes(lesson: str, retrieved_sources: list[dict[str, Any]]) -> bool:
+    """Check exact URL attribution against retrieved sources; source absence is not a citation pass."""
+    if not retrieved_sources:
+        return False
+    return any(
+        isinstance(item.get("url"), str) and item["url"].startswith("https://") and item["url"] in lesson
         for item in retrieved_sources
     )
 
@@ -279,6 +301,9 @@ def run_job(job_id: int) -> None:
                     )
                 if candidate_rank(retry_quality, retry_assessment, retry_result["lesson"]) > candidate_rank(quality, assessment, result["lesson"]):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        # Citation formatting is deterministic: append only URLs actually returned by retrieval.
+        # This repairs a missing source list without inventing claims or URLs.
+        result["lesson"] = _ensure_source_attribution(result["lesson"], retrieved)
         syntax_checks = static_code_checks(result["lesson"])
         if any(not item["passed"] for item in syntax_checks):
             quality["accepted"] = False
@@ -382,10 +407,10 @@ def run_job(job_id: int) -> None:
             if current is None or current["status"] != "running":
                 return
             conn.execute("UPDATE learning_jobs SET status=?, lesson=?, assessment_json=?, quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
-                 json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
+                ("completed" if quality["accepted"] else "rejected", result["lesson"],
+                 json.dumps(assessment, ensure_ascii=False),
                  json.dumps(quality, ensure_ascii=False),
-                 None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
+                 None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " پیش‌نویس و شواهد منبع برای بررسی حفظ شدند.", job_id))
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -413,9 +438,9 @@ def run_job(job_id: int) -> None:
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
                     (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
             else:
-                conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
+                # Preserve source text and draft for diagnosis and bounded retry; rejection is not deletion.
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
-                    ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
+                    ("متن ورودی حفظ شد؛ پیش‌نویس درس رد شده و نیازمند بررسی/اصلاح است.", job_id))
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
