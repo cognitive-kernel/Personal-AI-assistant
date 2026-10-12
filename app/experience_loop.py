@@ -17,6 +17,49 @@ from . import experience
 RUNNER_VERSION = "experience-loop-v1"
 
 
+
+def static_code_checks(text: str) -> list[dict[str, Any]]:
+    """Parse fenced Python and JSON examples without executing untrusted code."""
+    import ast
+    import re
+
+    checks: list[dict[str, Any]] = []
+    fence = r"\x60{3}"
+    patterns = (
+        ("python", re.compile(fence + r"[ \t]*(?:python|py)[ \t]*\n(.*?)" + fence, re.IGNORECASE | re.DOTALL)),
+        ("json", re.compile(fence + r"[ \t]*json[ \t]*\n(.*?)" + fence, re.IGNORECASE | re.DOTALL)),
+    )
+    for language, pattern in patterns:
+        for index, match in enumerate(pattern.finditer(text), start=1):
+            try:
+                if language == "python":
+                    ast.parse(match.group(1))
+                else:
+                    json.loads(match.group(1))
+                checks.append({
+                    "test": f"{language}_syntax_block_{index}",
+                    "passed": True,
+                    "actual": f"{language} parser accepted the block",
+                })
+            except (SyntaxError, json.JSONDecodeError) as exc:
+                actual: dict[str, Any] = {"error": str(exc)[:300]}
+                if isinstance(exc, SyntaxError):
+                    actual.update({"line": exc.lineno, "offset": exc.offset})
+                elif isinstance(exc, json.JSONDecodeError):
+                    actual.update({"line": exc.lineno, "column": exc.colno})
+                checks.append({
+                    "test": f"{language}_syntax_block_{index}",
+                    "passed": False,
+                    "actual": actual,
+                })
+    if not checks:
+        checks.append({
+            "test": "code_syntax_contract",
+            "passed": True,
+            "actual": "No fenced Python or JSON blocks were present; no code execution was attempted.",
+        })
+    return checks
+
 def _source_evidence(retrieved_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -98,6 +141,7 @@ def verify_learning_artifact(
             ),
             "actual": {"source_count": len(evidence), "excerpt_hashes_checked": len(evidence)},
         },
+        *static_code_checks(lesson),
     ]
     all_passed = all(item["passed"] for item in checks)
     problem = (
@@ -107,7 +151,7 @@ def verify_learning_artifact(
     takeaway = (
         f"Reusable lesson artifact for topic: {topic}\n\n"
         + lesson[:6000]
-        + "\n\nVerification scope: deterministic quality, assessment-contract, and source-excerpt-integrity checks only. "
+        + "\n\nVerification scope: deterministic quality, assessment-contract, source-excerpt-integrity, and Python/JSON syntax checks only. "
         "These checks do not independently establish factual correctness of lesson claims."
     )
     record = experience.create_experience(
@@ -137,5 +181,5 @@ def verify_learning_artifact(
         "runner_version": RUNNER_VERSION,
         "checks": checks,
         "source_evidence_count": len(evidence),
-        "verification_scope": "artifact quality and provenance; not independent factual verification",
+        "verification_scope": "artifact quality, provenance, and static Python/JSON syntax; not independent factual verification or runtime testing",
     }
