@@ -173,21 +173,36 @@ def _remember_chat_result(
         ],
     ]
     if not sources and not prior_experience_ids:
-        # Record the knowledge gap for future research, but don't manufacture an answer or a verified memory.
+        # Record both the knowledge gap and actual static test outcomes. A missing
+        # source must never hide a syntax failure from the experience history.
+        static_checks = _static_code_checks(answer)
+        checks.extend(static_checks)
         record = experience.create_experience(
             query[:300],
             "The chat learning loop could not retrieve approved source excerpts for this technical request.",
-            "Try alternate cross-language queries or approved official documentation before treating the answer as source-backed.",
+            "Research official documentation and repair any deterministic syntax failures before reuse.",
         )
+        retrieval_result = {
+            "test": "approved_source_retrieval",
+            "passed": False,
+            "actual": {"research": research_metadata, "runner": "chat-learning-loop-v1"},
+        }
+        test_results = [retrieval_result, *static_checks]
         experience.update_experience(
             record["id"],
             status="needs_review",
-            test_plan=[{"test": "approved_source_retrieval", "runner": "chat-learning-loop-v1"}],
-            test_results=[{
-                "test": "approved_source_retrieval", "passed": False,
-                "actual": {"research": research_metadata, "runner": "chat-learning-loop-v1"},
-            }],
-            takeaway="Research did not yield source excerpts; this attempt is not reusable as correct guidance.",
+            test_plan=[
+                {"test": item["test"], "runner": "chat-learning-loop-v1"}
+                for item in test_results
+            ],
+            test_results=[
+                {**item, "runner": "chat-learning-loop-v1"}
+                for item in test_results
+            ],
+            takeaway=(
+                "Research did not yield approved source excerpts; this attempt is not reusable as correct guidance. "
+                "Static syntax results are recorded separately and do not establish runtime correctness."
+            ),
         )
         return {"experience_id": record["id"], "status": "needs_review", "checks": checks}
 
