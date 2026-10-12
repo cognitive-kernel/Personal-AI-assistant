@@ -83,3 +83,24 @@ def test_quality_filter_exposes_language_aware_word_targets():
     result = evaluate_learning_value(english_lesson, questions, answers)
     assert result["target_word_count"] == 120
     assert result["minimum_word_count"] == 80
+
+
+def test_rejects_malformed_sql_server_terminology_even_when_shape_checks_pass():
+    lesson = (
+        "در SQL Server، دستورات دیکشنری یک نمودار طراحی شده برای اجرای پرس‌وجو هستند. "
+        "برای مثال، ادغامات استراتژیک و توزیع عملیاتی به بهبود اجرای برنامه‌ها کمک می‌کنند. "
+        "این روش باعث می‌شود کارایی پایگاه داده بهتر شود و نتیجه در زمان کمتری برگردد. "
+    ) * 4
+    questions = [
+        "دستورات دیکشنری در SQL Server چه چیزی را نشان می‌دهند؟",
+        "ادغامات استراتژیک چگونه بر اجرا اثر می‌گذارند؟",
+        "چرا باید کارایی پرس‌وجو را اندازه‌گیری کرد؟",
+    ]
+    answers = [
+        "این اصطلاح در این بافت اصطلاح فنی معتبر و روشنی نیست.",
+        "این عبارت نامفهوم است و سازوکار مشخصی را توصیف نمی‌کند.",
+        "برای مقایسه نتیجه پیش و پس از تغییر روی داده نماینده.",
+    ]
+    result = evaluate_learning_value(lesson, questions, answers)
+    assert result["accepted"] is False
+    assert result["malformed_phrases"]
