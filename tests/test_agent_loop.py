@@ -40,14 +40,28 @@ def test_technical_chat_researches_revises_and_persists_verified_provenance(tmp_
 
     def fake_request(_path, payload, **_kwargs):
         prompts.append(json.loads(payload["messages"][-1]["content"]))
+        system_prompt = payload["messages"][0]["content"]
+        if "skeptical evidence reviewer" in system_prompt:
+            return {"message": {"content": json.dumps({
+                "overall": "supported",
+                "claims": [{
+                    "claim": "JSON decoding can fail on invalid input.",
+                    "verdict": "supported",
+                    "evidence_urls": [source_url],
+                    "reason": "The supplied excerpt says invalid JSON may raise a decoding error.",
+                }],
+            })}}
         return {"message": {"content": revised}}
 
     monkeypatch.setattr(agent_loop, "_request", fake_request)
     answer = agent_loop.answer_with_learning_loop("Python JSON decoder throws an error")
     assert source_url in answer
-    assert len(prompts) == 1
+    assert len(prompts) == 2
     records = experience.list_experiences(topic="Python JSON decoder")
     assert records[0]["status"] == "verified"
+    semantic = next(item for item in records[0]["test_results"] if item["test"] == "semantic_claim_review")
+    assert semantic["passed"] is True
+    assert semantic["actual"]["reviewer"] == "local_ollama_model_assisted_not_independent"
     assert records[0]["test_results"][0]["runner"] == "chat-learning-loop-v1"
     evidence = records[0]["source_evidence"][0]
     import hashlib
@@ -165,6 +179,8 @@ def test_chat_verification_uses_cross_language_query_variants(tmp_path, monkeypa
         prior_experience_ids=[],
         research_metadata={"attempts": []},
     )
-    assert result["status"] == "verified"
+    assert result["status"] == "needs_review"
     relevance = next(check for check in result["checks"] if check["test"] == "source_relevance")
     assert relevance["passed"] is True
+    semantic = next(check for check in result["checks"] if check["test"] == "semantic_claim_review")
+    assert semantic["passed"] is False
