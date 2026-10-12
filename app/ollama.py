@@ -68,7 +68,7 @@ def embed(texts: list[str], model: str = "nomic-embed-text") -> list[list[float]
         raise ValueError("Each embedding input must contain 1–20000 non-empty characters.")
     if not isinstance(model, str) or not model.strip() or len(model) > 200:
         raise ValueError("Embedding model name is invalid.")
-    response = _request("/api/embed", {"model": model, "input": texts}, timeout=min(30, int(get_settings()["ollama_timeout_seconds"])))
+    response = _request("/api/embed", {"model": model, "input": texts}, timeout=30)
     vectors = response.get("embeddings")
     if not isinstance(vectors, list) or len(vectors) != len(texts):
         raise OllamaError("Ollama returned an unexpected embedding response.")
