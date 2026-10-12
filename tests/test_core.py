@@ -368,6 +368,10 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
             ],
         }, ensure_ascii=False)}}
     monkeypatch.setattr(learning, "_request", fake_request)
+    from app import knowledge_base
+    monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
+        "query": query, "provider": "test", "allowed_hosts": [], "discovered_urls": [], "indexed": [], "errors": []
+    })
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
