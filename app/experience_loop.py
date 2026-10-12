@@ -111,7 +111,20 @@ def verify_learning_artifact(
     answers = assessment.get("answer_key", [])
 
     cited_urls = [item["url"] for item in evidence if item["url"] in lesson]
+    # A valid URL and intact excerpt are not enough: at least one source must also
+    # match the requested topic before the artifact can be promoted for reuse.
+    from . import knowledge_base
+    relevant_source_ids = [
+        int(source["source_id"]) for source in retrieved_sources
+        if isinstance(source.get("source_id"), int)
+        and knowledge_base.is_relevant(topic, source)
+    ]
     checks = [
+        {
+            "test": "source_relevance",
+            "passed": bool(relevant_source_ids),
+            "actual": {"relevant_source_count": len(set(relevant_source_ids)), "retrieved_source_count": len(retrieved_sources)},
+        },
         {
             "test": "source_attribution",
             "passed": bool(cited_urls) if evidence else False,
