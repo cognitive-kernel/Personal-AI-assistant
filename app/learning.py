@@ -270,9 +270,8 @@ def run_job(job_id: int) -> None:
                 "instruction": (
                     "Repair the invalid response into one valid JSON object only. Do not add Markdown fences or commentary. "
                     "Preserve useful topic-specific content, write in output_language, and provide all required keys with the exact types. "
-                    "Do not invent source citations. Schema: {\\"lesson\\": string, \\"learning_outcomes\\": [string,string,string], "
-                    "\\"questions\\": [string,string,string], \\"answer_key\\": [string,string,string]}."
-                ),
+                                    "Do not invent source citations. Return exactly these JSON keys: lesson (string), learning_outcomes (array of 3 strings), questions (array of 3 strings), answer_key (array of 3 strings)."
+
             }
             repair_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
