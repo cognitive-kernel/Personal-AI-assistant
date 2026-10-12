@@ -187,7 +187,14 @@ def run_job(job_id: int) -> None:
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
-        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        assessment = {
+            "learning_outcomes": result.get("learning_outcomes", [])[:3],
+            "questions": result["questions"][:3],
+            "answer_key": result["answer_key"][:3],
+            "independently_verified": False,
+        }
+        from .experience_loop import static_code_checks
+        syntax_checks = static_code_checks(result["lesson"])
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         quality["user_provided_source_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
@@ -197,6 +204,7 @@ def run_job(job_id: int) -> None:
             or quality["word_count"] < quality["target_word_count"]
             or not _assessment_contract_passes(assessment)
             or not _source_attribution_passes(result["lesson"], retrieved)
+            or any(not item["passed"] for item in syntax_checks)
         ):
             retry_prompt = dict(prompt)
             # Give the repair pass measurable feedback, not just a generic rejection label.
@@ -208,6 +216,9 @@ def run_job(job_id: int) -> None:
                 "has_explanatory_reasoning": quality.get("has_explanatory_reasoning"),
                 "technical_detail_count": quality.get("technical_detail_count"),
                 "reasons": quality.get("reasons", []),
+                "static_code_checks": syntax_checks,
+                "assessment_contract_passes": _assessment_contract_passes(assessment),
+                "source_attribution_passes": _source_attribution_passes(result["lesson"], retrieved),
             }
             retry_prompt["instruction"] = (
                 "The previous lesson failed the quality gate. Rewrite it in output_language while preserving the original language of source excerpts and technical terms. "
@@ -235,11 +246,12 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("answer_key"), list)
             ):
                 retry_assessment = {
-                    "learning_outcomes": retry_result.get("learning_outcomes", retry_result["questions"])[:3],
+                    "learning_outcomes": retry_result.get("learning_outcomes", [])[:3],
                     "questions": retry_result["questions"][:3],
                     "answer_key": retry_result["answer_key"][:3],
                     "independently_verified": False,
                 }
+                retry_syntax_checks = static_code_checks(retry_result["lesson"])
                 retry_quality = evaluate_learning_value(
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
@@ -250,8 +262,10 @@ def run_job(job_id: int) -> None:
                     candidate_quality: dict[str, Any],
                     candidate_assessment: dict[str, Any],
                     candidate_lesson: str,
-                ) -> tuple[int, int, int, int, int, int]:
+                ) -> tuple[int, int, int, int, int, int, int]:
+                    candidate_syntax = static_code_checks(candidate_lesson)
                     return (
+                        int(all(item["passed"] for item in candidate_syntax)),
                         int(_source_attribution_passes(candidate_lesson, retrieved)),
                         int(_assessment_contract_passes(candidate_assessment)),
                         int(candidate_quality["accepted"]),
@@ -261,6 +275,16 @@ def run_job(job_id: int) -> None:
                     )
                 if candidate_rank(retry_quality, retry_assessment, retry_result["lesson"]) > candidate_rank(quality, assessment, result["lesson"]):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        syntax_checks = static_code_checks(result["lesson"])
+        if any(not item["passed"] for item in syntax_checks):
+            quality["accepted"] = False
+            quality.setdefault("reasons", []).append(
+                "Static Python/JSON syntax validation failed after bounded repair: "
+                + "; ".join(
+                    item["test"] + ": " + str(item.get("actual", {}).get("error", "failed"))
+                    for item in syntax_checks if not item["passed"]
+                )
+            )
         if not _assessment_contract_passes(assessment):
             quality["accepted"] = False
             quality.setdefault("reasons", []).append(
