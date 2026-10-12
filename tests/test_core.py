@@ -458,7 +458,7 @@ def test_rejected_learning_job_persists_each_failed_syntax_check(tmp_path, monke
     db.init_databases()
     experience.init_experience_tables()
     fence = chr(96) * 3
-    invalid_lesson = f"Short lesson.\\n{fence}python\\nprint(\\n{fence}"
+    invalid_lesson = f"Short lesson.\n{fence}python\nprint(\n{fence}"
 
     def fake_request(_path, payload, **_kwargs):
         if payload["options"]["num_predict"] == 180:
