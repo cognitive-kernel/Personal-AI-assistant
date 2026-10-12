@@ -2,7 +2,7 @@ from __future__ import annotations
 import email.message
 import urllib.request
 import pytest
-from app import knowledge_base
+from app import db, knowledge_base
 
 @pytest.mark.parametrize("url", [
     "http://learn.microsoft.com/en-us/sql/", "https://example.com/page",
@@ -133,3 +133,56 @@ def test_local_relevance_gate_uses_cross_language_variants():
         source,
         ["SQL Server query execution plan"],
     ) is True
+
+
+def test_hybrid_search_fuses_lexical_and_embedding_rankings(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    with db.learning_connection() as conn:
+        source = conn.execute(
+            "INSERT INTO knowledge_sources(url, title, content_hash) VALUES (?, ?, ?)",
+            ("https://docs.python.org/3/library/json.html", "JSON docs", "hash-1"),
+        )
+        source_id = int(source.lastrowid)
+        first = conn.execute(
+            "INSERT INTO knowledge_chunks(source_id, chunk_index, content, embedding_json, embedding_model) VALUES (?, ?, ?, ?, ?)",
+            (source_id, 0, "alpha query is discussed here", "[0.0, 1.0]", "nomic-embed-text"),
+        )
+        second = conn.execute(
+            "INSERT INTO knowledge_chunks(source_id, chunk_index, content, embedding_json, embedding_model) VALUES (?, ?, ?, ?, ?)",
+            (source_id, 1, "semantically relevant documentation", "[1.0, 0.0]", "nomic-embed-text"),
+        )
+        conn.execute("INSERT INTO knowledge_chunks_fts(rowid, content) VALUES (?, ?)", (first.lastrowid, "alpha query is discussed here"))
+        conn.execute("INSERT INTO knowledge_chunks_fts(rowid, content) VALUES (?, ?)", (second.lastrowid, "semantically relevant documentation"))
+
+    monkeypatch.setattr(knowledge_base, "_embed_texts", lambda texts: [[1.0, 0.0]])
+    results = knowledge_base.search("alpha", limit=5)
+
+    assert len(results) == 2
+    assert {item["retrieval"] for item in results} == {"hybrid_fts5_embeddings"}
+    assert results[0]["chunk_id"] == second.lastrowid or results[0]["chunk_id"] == first.lastrowid
+    assert all("retrieval_score" in item for item in results)
+
+
+def test_search_falls_back_to_fts5_when_embedding_model_is_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    with db.learning_connection() as conn:
+        source = conn.execute(
+            "INSERT INTO knowledge_sources(url, title, content_hash) VALUES (?, ?, ?)",
+            ("https://docs.python.org/3/library/json.html", "Python JSON", "hash-2"),
+        )
+        cur = conn.execute(
+            "INSERT INTO knowledge_chunks(source_id, chunk_index, content) VALUES (?, ?, ?)",
+            (int(source.lastrowid), 0, "Python JSON decoder behavior"),
+        )
+        conn.execute("INSERT INTO knowledge_chunks_fts(rowid, content) VALUES (?, ?)", (cur.lastrowid, "Python JSON decoder behavior"))
+    monkeypatch.setattr(knowledge_base, "_embed_texts", lambda _texts: [])
+
+    results = knowledge_base.search("Python JSON", limit=5)
+
+    assert len(results) == 1
+    assert results[0]["retrieval"] == "sqlite_fts5"
+    assert results[0]["content"] == "Python JSON decoder behavior"
