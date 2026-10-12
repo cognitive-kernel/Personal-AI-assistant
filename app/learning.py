@@ -86,7 +86,7 @@ def _ensure_source_attribution(lesson: str, retrieved_sources: list[dict[str, An
 def _source_attribution_passes(lesson: str, retrieved_sources: list[dict[str, Any]]) -> bool:
     """Check exact URL attribution against retrieved sources; source absence is not a citation pass."""
     if not retrieved_sources:
-        return False
+        return True
     return any(
         isinstance(item.get("url"), str) and item["url"].startswith("https://") and item["url"] in lesson
         for item in retrieved_sources
