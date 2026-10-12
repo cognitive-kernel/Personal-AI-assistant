@@ -429,7 +429,7 @@ def test_learning_job_retries_invalid_code_and_keeps_syntax_failure_auditable(tm
         budget = payload["options"]["num_predict"]
         if budget == 180:
             return {"message": {"content": json.dumps({"variants": []})}}
-        chosen = invalid_lesson if budget == 1200 else valid_lesson
+        chosen = invalid_lesson if budget in {1200, 1800} else valid_lesson
         return {"message": {"content": json.dumps({
             "lesson": chosen,
             "learning_outcomes": ["Explain the wrapper contract", "Compare decorator order", "Test return values"],
