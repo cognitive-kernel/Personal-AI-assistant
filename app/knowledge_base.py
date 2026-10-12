@@ -160,3 +160,95 @@ def list_sources() -> list[dict[str, Any]]:
             s.fetched_at, COUNT(c.id) AS chunk_count FROM knowledge_sources s
             LEFT JOIN knowledge_chunks c ON c.source_id=s.id GROUP BY s.id ORDER BY s.fetched_at DESC, s.id DESC""").fetchall()
     return [dict(row) for row in rows]
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError("Search provider redirects are not followed.")
+
+
+class _SearchLinkExtractor(HTMLParser):
+    """Extract result links from the DuckDuckGo HTML results page."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.links: list[str] = []
+        self._anchor_href: str | None = None
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() == "a":
+            attrs_map = dict(attrs)
+            classes = attrs_map.get("class", "")
+            if "result__a" in classes.split():
+                self._anchor_href = attrs_map.get("href")
+    def handle_endtag(self, tag):
+        if tag.lower() == "a":
+            self._anchor_href = None
+    def handle_data(self, data):
+        if self._anchor_href:
+            self.links.append(self._anchor_href)
+
+
+def _search_web(query: str, limit: int) -> list[str]:
+    """Search the web, but return only URLs on the existing trusted-source allowlist."""
+    if not isinstance(query, str) or not query.strip() or len(query) > 500:
+        return []
+    search_host = "html.duckduckgo.com"
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(search_host, 443, type=socket.SOCK_STREAM)}
+        if not addresses or any(not ipaddress.ip_address(address).is_global for address in addresses):
+            return []
+    except OSError:
+        return []
+    endpoint = "https://html.duckduckgo.com/html/?" + urllib.parse.urlencode({"q": query[:500]})
+    request = urllib.request.Request(endpoint, headers={
+        "User-Agent": "Personal-AI-Assistant/0.1 (source discovery)",
+        "Accept": "text/html",
+    }, method="GET")
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(request, timeout=8) as response:
+            if response.status != 200 or response.headers.get_content_type() != "text/html":
+                return []
+            raw = response.read(1_000_000)
+            charset = response.headers.get_content_charset() or "utf-8"
+        page = raw.decode(charset, errors="replace")
+    except (OSError, ValueError, urllib.error.URLError, LookupError):
+        return []
+    parser = _SearchLinkExtractor()
+    parser.feed(page)
+    accepted: list[str] = []
+    for href in parser.links:
+        candidate = urllib.parse.urljoin(endpoint, href)
+        parsed = urllib.parse.urlsplit(candidate)
+        if parsed.hostname == search_host:
+            wrapped = urllib.parse.parse_qs(parsed.query).get("uddg", [])
+            if not wrapped:
+                continue
+            candidate = urllib.parse.unquote(wrapped[0])
+        try:
+            validated = _validate_url(candidate)
+        except ValueError:
+            continue
+        canonical = urllib.parse.urlunsplit((validated.scheme, validated.netloc, validated.path, validated.query, ""))
+        if canonical not in accepted:
+            accepted.append(canonical)
+        if len(accepted) >= max(1, min(5, limit)):
+            break
+    return accepted
+
+
+def research_and_index(query: str, limit: int = 3) -> dict[str, Any]:
+    """Discover vetted official documentation and ingest it into the local source index."""
+    urls = _search_web(query, limit=max(1, min(5, int(limit))))
+    indexed, errors = [], []
+    for url in urls:
+        try:
+            indexed.append(ingest_url(url))
+        except (OSError, TimeoutError, ValueError) as exc:
+            errors.append({"url": url, "error": str(exc)[:300]})
+    return {
+        "query": query,
+        "provider": "DuckDuckGo HTML",
+        "allowed_hosts": sorted(_ALLOWED_HOSTS),
+        "discovered_urls": urls,
+        "indexed": indexed,
+        "errors": errors,
+    }
