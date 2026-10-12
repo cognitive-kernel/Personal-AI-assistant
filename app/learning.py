@@ -214,15 +214,15 @@ def run_job(job_id: int) -> None:
                 retry_quality["user_provided_source_available"] = bool(source_text)
                 retry_quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
                 # Acceptance and target-length compliance take precedence over raw score.
-                def candidate_rank(candidate_quality: dict[str, Any]) -> tuple[int, int, int, int]:
+                def candidate_rank(candidate_quality: dict[str, Any], candidate_assessment: dict[str, Any]) -> tuple[int, int, int, int, int]:
                     return (
-                        int(_assessment_contract_passes(retry_assessment)),
+                        int(_assessment_contract_passes(candidate_assessment)),
                         int(candidate_quality["accepted"]),
                         int(candidate_quality["word_count"] >= candidate_quality["target_word_count"]),
                         int(candidate_quality["score"]),
                         int(candidate_quality["word_count"]),
                     )
-                if candidate_rank(retry_quality) > candidate_rank(quality):
+                if candidate_rank(retry_quality, retry_assessment) > candidate_rank(quality, assessment):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         if not _assessment_contract_passes(assessment):
             quality["accepted"] = False
