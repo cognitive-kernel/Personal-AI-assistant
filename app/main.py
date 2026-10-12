@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama, experience, agent_loop
+from . import curricula, db, learning, ollama, experience, agent_loop, learning_log
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -44,6 +44,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def startup() -> None:
     db.init_databases()
     experience.init_experience_tables()
+    learning_log.configure_learning_logger()
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
@@ -121,7 +122,20 @@ def chat(request: ChatRequest) -> dict[str, str]:
     try:
         return {"reply": agent_loop.answer_with_learning_loop(request.message, request.history)}
     except ollama.OllamaError as exc:
+        learning_log.log_event("chat.ollama_error", exc_info=True, error_type=type(exc).__name__)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        learning_log.log_event("chat.unhandled_error", exc_info=True, error_type=type(exc).__name__)
+        raise HTTPException(status_code=500, detail="Chat failed. See the local learning diagnostics log.") from exc
+
+@app.get("/api/learning/diagnostics")
+def learning_diagnostics() -> dict[str, Any]:
+    return learning_log.diagnostics()
+
+@app.get("/api/learning/diagnostics/log", include_in_schema=False)
+def download_learning_diagnostics_log() -> FileResponse:
+    info = learning_log.diagnostics()
+    return FileResponse(info["path"], media_type="text/plain", filename="learning.log")
 
 @app.get("/api/settings")
 def get_settings() -> dict[str, Any]:
