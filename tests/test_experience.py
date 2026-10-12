@@ -146,3 +146,21 @@ def test_failed_experiences_are_retrieved_as_warnings_not_verified_guidance(tmp_
     assert experience.search_relevant_experiences(
         "SQL Server query plan index",
     ) == []
+
+
+
+def test_public_api_cannot_mutate_an_already_verified_record(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience("Python", "A verified parser edge case.")
+    experience.update_experience(
+        item["id"],
+        status="verified",
+        source_evidence=[{"url": "https://docs.python.org/3/library/json.html", "claim": "source"}],
+        test_plan=[{"test": "contract"}],
+        test_results=[{"test": "contract", "passed": True}],
+        takeaway="Original verified takeaway.",
+        _controlled_run=True,
+    )
+    with pytest.raises(ValueError, match="controlled experience runner"):
+        experience.update_experience(item["id"], takeaway="tampered")
+    assert experience.get_experience(item["id"])["takeaway"] == "Original verified takeaway."
