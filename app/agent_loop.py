@@ -141,6 +141,10 @@ def _remember_chat_result(
             "original_language": _source_language(excerpt),
         })
     citation_pass = bool(evidence) and any(item["url"] in answer for item in evidence)
+    relevant_source_ids = {
+        int(source["source_id"]) for source in sources
+        if isinstance(source.get("source_id"), int) and knowledge_base.is_relevant(query, source)
+    }
     excerpt_pass = bool(evidence) and all(
         hashlib.sha256(item["excerpt"].encode("utf-8")).hexdigest() == item["excerpt_sha256"]
         and any(
@@ -154,6 +158,7 @@ def _remember_chat_result(
     nonempty_pass = bool(answer.strip())
     checks = [
         {"test": "non_empty_answer", "passed": nonempty_pass, "runner": "chat-learning-loop-v1"},
+        {"test": "source_relevance", "passed": bool(relevant_source_ids), "actual": {"relevant_source_count": len(relevant_source_ids)}, "runner": "chat-learning-loop-v1"},
         {"test": "source_attribution", "passed": citation_pass, "runner": "chat-learning-loop-v1"},
         {"test": "source_excerpt_integrity", "passed": excerpt_pass, "runner": "chat-learning-loop-v1"},
         *[
