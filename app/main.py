@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama, experience
+from . import curricula, db, learning, ollama, experience, agent_loop
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -119,7 +119,7 @@ def models() -> dict[str, Any]:
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> dict[str, str]:
     try:
-        return {"reply": ollama.chat(request.message, request.history)}
+        return {"reply": agent_loop.answer_with_learning_loop(request.message, request.history)}
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
