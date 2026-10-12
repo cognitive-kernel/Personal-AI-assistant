@@ -350,7 +350,7 @@ def run_job(job_id: int) -> None:
                 failed_names = [item["test"] for item in failure_checks if not item["passed"]]
                 failure = experience.create_experience(
                     topic,
-                    f"Learning job #{job_id} failed bounded checks: "
+                    f"Learning job #{job_id} failed the lesson quality gate or other bounded checks: "
                     + ", ".join(failed_names)
                     + ". Details: " + json.dumps(failure_checks, ensure_ascii=False)[:8000],
                     "Use the recorded failed checks as warnings; revise the artifact and rerun the same deterministic checks.",
