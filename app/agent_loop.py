@@ -89,7 +89,11 @@ def _search_sources(query: str, variants: list[str]) -> tuple[list[dict[str, Any
                 seen.add(key)
                 found.append(item)
     research_attempts: list[dict[str, Any]] = []
-    if len(found) < 2:
+    unique_source_count = len({int(item["source_id"]) for item in found})
+    has_relevant_local_source = any(
+        knowledge_base.is_relevant(query, item, variants) for item in found
+    )
+    if unique_source_count < 2 or not has_relevant_local_source:
         for search_query in queries[:2]:
             try:
                 research_attempts.append(knowledge_base.research_and_index(search_query, limit=3))
