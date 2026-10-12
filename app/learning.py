@@ -188,9 +188,9 @@ def run_job(job_id: int) -> None:
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
         assessment = {
-            "learning_outcomes": result.get("learning_outcomes", [])[:3],
-            "questions": result["questions"][:3],
-            "answer_key": result["answer_key"][:3],
+            "learning_outcomes": result.get("learning_outcomes", []),
+            "questions": result["questions"],
+            "answer_key": result["answer_key"],
             "independently_verified": False,
         }
         from .experience_loop import static_code_checks
@@ -246,9 +246,9 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("answer_key"), list)
             ):
                 retry_assessment = {
-                    "learning_outcomes": retry_result.get("learning_outcomes", [])[:3],
-                    "questions": retry_result["questions"][:3],
-                    "answer_key": retry_result["answer_key"][:3],
+                    "learning_outcomes": retry_result.get("learning_outcomes", []),
+                    "questions": retry_result["questions"],
+                    "answer_key": retry_result["answer_key"],
                     "independently_verified": False,
                 }
                 retry_syntax_checks = static_code_checks(retry_result["lesson"])
