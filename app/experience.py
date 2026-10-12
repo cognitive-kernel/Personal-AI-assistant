@@ -186,3 +186,32 @@ def search_relevant_experiences(query: str, query_variants: list[str] | None = N
             ranked.append((score, item))
     ranked.sort(key=lambda pair: (pair[0], pair[1]["updated_at"], pair[1]["id"]), reverse=True)
     return [item for _, item in ranked[:max(1, min(20, int(limit)))]]
+
+
+def search_relevant_failures(query: str, query_variants: list[str] | None = None, limit: int = 3) -> list[dict[str, Any]]:
+    """Retrieve related failed/review-needed attempts as warnings, never as verified advice."""
+    import re
+
+    if not isinstance(query, str) or not query.strip():
+        return []
+    tokens: set[str] = set()
+    for variant in [query, *(query_variants or [])][:8]:
+        if isinstance(variant, str):
+            tokens.update(re.findall(r"[\w-]{2,}", variant.casefold(), flags=re.UNICODE))
+    if not tokens:
+        return []
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for status in ("needs_review", "failed"):
+        for item in list_experiences(status=status, limit=200):
+            searchable = " ".join([
+                item["topic"], item["problem"], item["hypothesis"], item["takeaway"],
+                " ".join(str(result.get("test", "")) for result in item["test_results"]),
+            ]).casefold()
+            item_tokens = set(re.findall(r"[\w-]{2,}", searchable, flags=re.UNICODE))
+            overlap = len(tokens & item_tokens)
+            if overlap:
+                topic_tokens = set(re.findall(r"[\w-]{2,}", item["topic"].casefold(), flags=re.UNICODE))
+                score = overlap / (len(tokens) ** 0.5) + 1.5 * len(tokens & topic_tokens)
+                ranked.append((score, item))
+    ranked.sort(key=lambda pair: (pair[0], pair[1]["updated_at"], pair[1]["id"]), reverse=True)
+    return [item for _, item in ranked[:max(1, min(10, int(limit)))]]
