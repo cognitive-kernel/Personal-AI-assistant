@@ -73,8 +73,6 @@ def update_experience(
 ) -> dict[str, Any]:
     """Update a record. Verification is reserved for the internal controlled runner."""
     init_experience_tables()
-    if status == "verified" and not _controlled_run:
-        raise ValueError("Only the controlled experience runner can mark a record verified.")
     if status is not None and status not in STATUSES:
         raise ValueError("Unsupported experience status.")
     if source_evidence is not None:
@@ -105,6 +103,8 @@ def update_experience(
         results = test_results if test_results is not None else json.loads(row["test_results_json"])
         plan = test_plan if test_plan is not None else json.loads(row["test_plan_json"])
         final_status = status if status is not None else row["status"]
+        if final_status == "verified" and not _controlled_run:
+            raise ValueError("Only the controlled experience runner can modify a verified record.")
         # A record cannot become a reusable verified experience without sources and
         # at least one successful test; failed tests must remain visible in history.
         if final_status == "verified":
