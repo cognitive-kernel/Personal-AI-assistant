@@ -31,7 +31,7 @@ def test_controlled_loop_verifies_only_when_quality_contract_and_source_integrit
     }]
     result = verify_learning_artifact(
         topic="Python JSON decoding",
-        lesson=("JSON decoding converts serialized text into Python values. " * 80),
+        lesson=("JSON decoding converts serialized text into Python values. " * 80) + "\\nSources: https://docs.python.org/3/library/json.html",
         assessment=_assessment(),
         quality={"accepted": True, "word_count": 160, "target_word_count": 120, "score": 90},
         retrieved_sources=sources,
