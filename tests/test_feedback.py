@@ -33,7 +33,7 @@ def test_feedback_is_persisted_and_retrieved_by_relevance(tmp_path, monkeypatch)
     assert "minimal reproducible fix" in context
 
 
-def test_chat_injects_feedback_as_guidance_not_evidence(tmp_path, monkeypatch):
+def test_chat_keeps_stored_feedback_out_of_trusted_system_message(tmp_path, monkeypatch):
     setup_db(tmp_path, monkeypatch)
     feedback.record_feedback(
         "Python JSON parsing",
@@ -48,13 +48,18 @@ def test_chat_injects_feedback_as_guidance_not_evidence(tmp_path, monkeypatch):
         return {"message": {"content": "Try json.loads(text) and handle JSONDecodeError."}}
 
     monkeypatch.setattr(ollama, "_request", fake_request)
-    result = ollama.chat("How do I fix Python JSON parsing?")
+    query = "How do I fix Python JSON parsing?"
+    result = ollama.chat(query)
     assert result.startswith("Try json.loads")
     messages = captured["payload"]["messages"]
     assert messages[0]["role"] == "system"
-    assert "not factual evidence" in messages[0]["content"]
-    assert "minimal runnable example" in messages[0]["content"]
-    assert messages[-1] == {"role": "user", "content": "How do I fix Python JSON parsing?"}
+    assert "never as factual evidence" in messages[0]["content"]
+    assert "minimal runnable example" not in messages[0]["content"]
+    feedback_message = messages[1]
+    assert feedback_message["role"] == "user"
+    feedback_payload = json.loads(feedback_message["content"])
+    assert "minimal runnable example" in feedback_payload["untrusted_feedback"]
+    assert messages[-1] == {"role": "user", "content": query}
 
 
 def test_feedback_validation_rejects_invalid_rating(tmp_path, monkeypatch):
