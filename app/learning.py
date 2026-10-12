@@ -101,18 +101,29 @@ def run_job(job_id: int) -> None:
                 retrieved.append(item)
     research_result = None
     if len(retrieved) < 2:
-        # A thin local index is a knowledge gap: discover pages online, but ingest only
-        # HTTPS pages from the configured documentation allowlist.
-        try:
-            research_result = knowledge_base.research_and_index(topic, limit=3)
-            for query in [topic, *query_variants[:1]]:
-                for item in knowledge_base.search(query, limit=5):
-                    key = (int(item["source_id"]), int(item["chunk_id"]))
-                    if key not in seen_chunks:
-                        seen_chunks.add(key)
-                        retrieved.append(item)
-        except Exception as exc:
-            research_result = {"query": topic, "error": str(exc)[:300], "indexed": [], "discovered_urls": []}
+        # A thin local index is a knowledge gap. Search the original query and one
+        # cross-language variant, bounded to three pages per query and approved hosts.
+        research_attempts = []
+        for research_query in [topic, *query_variants[:1]]:
+            try:
+                attempt = knowledge_base.research_and_index(research_query, limit=3)
+                research_attempts.append(attempt)
+                for query in [research_query, topic, *query_variants[:1]]:
+                    for item in knowledge_base.search(query, limit=5):
+                        key = (int(item["source_id"]), int(item["chunk_id"]))
+                        if key not in seen_chunks:
+                            seen_chunks.add(key)
+                            retrieved.append(item)
+            except Exception as exc:
+                research_attempts.append({
+                    "query": research_query, "error": str(exc)[:300],
+                    "indexed": [], "discovered_urls": [],
+                })
+        research_result = {
+            "attempts": research_attempts,
+            "indexed_count": sum(len(item.get("indexed", [])) for item in research_attempts),
+            "discovered_url_count": sum(len(item.get("discovered_urls", [])) for item in research_attempts),
+        }
     retrieved = retrieved[:8]
     verified_experiences = experience.search_relevant_experiences(topic, query_variants, limit=4)
     prior_failures = experience.search_relevant_failures(topic, query_variants, limit=3)
