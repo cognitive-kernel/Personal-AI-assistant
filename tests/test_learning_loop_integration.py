@@ -35,7 +35,9 @@ def test_failed_learning_attempt_is_retried_persisted_and_retrieved_later(tmp_pa
 
     finished = learning.get_job(job["id"])
     assert finished["status"] == "rejected"
-    assert len([call for call in calls if call["options"].get("num_predict", 0) >= 1000]) == 2
+    repair_calls = [call for call in calls if call["options"].get("num_predict", 0) >= 1000]
+    assert len(repair_calls) == 3
+    assert repair_calls[-1]["options"]["num_predict"] == 1800
 
     failures = experience.search_relevant_failures(
         "SQL Server query plan",
