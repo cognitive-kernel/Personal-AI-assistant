@@ -1,6 +1,7 @@
 """Source-attributed local knowledge index using SQLite FTS5."""
 from __future__ import annotations
 import hashlib
+import json
 import html
 import ipaddress
 import re
@@ -22,6 +23,7 @@ _MAX_BYTES = 2_000_000
 _TIMEOUT_SECONDS = 12
 _CHUNK_CHARS = 1800
 _OVERLAP_CHARS = 250
+_EMBEDDING_MODEL = "nomic-embed-text"
 
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
     """Follow a small number of redirects, validating every target against the URL policy."""
@@ -124,12 +126,20 @@ def ingest_url(url: str, title: str | None = None) -> dict[str, Any]:
     fetched_title, content = _fetch(canonical_url)
     title = (title or fetched_title).strip()[:300]
     digest, chunks = hashlib.sha256(content.encode("utf-8")).hexdigest(), _chunks(content)
+    embeddings = _embed_texts(chunks)
     license_note = "Reuse terms not independently reviewed; retain source attribution."
     with learning_connection() as conn:
         existing = conn.execute("SELECT id, content_hash FROM knowledge_sources WHERE url=?", (canonical_url,)).fetchone()
         if existing and existing["content_hash"] == digest:
-            count = conn.execute("SELECT COUNT(*) AS n FROM knowledge_chunks WHERE source_id=?", (existing["id"],)).fetchone()["n"]
-            return {"source_id": existing["id"], "url": canonical_url, "title": title, "chunks": count, "unchanged": True, "status": "indexed"}
+            source_id = int(existing["id"])
+            if len(embeddings) == len(chunks):
+                for index, vector in enumerate(embeddings):
+                    conn.execute(
+                        "UPDATE knowledge_chunks SET embedding_json=?, embedding_model=? WHERE source_id=? AND chunk_index=?",
+                        (json.dumps(vector), _EMBEDDING_MODEL, source_id, index),
+                    )
+            count = conn.execute("SELECT COUNT(*) AS n FROM knowledge_chunks WHERE source_id=?", (source_id,)).fetchone()["n"]
+            return {"source_id": source_id, "url": canonical_url, "title": title, "chunks": count, "unchanged": True, "status": "indexed"}
         if existing:
             source_id = existing["id"]
             conn.execute("DELETE FROM knowledge_chunks_fts WHERE rowid IN (SELECT id FROM knowledge_chunks WHERE source_id=?)", (source_id,))
@@ -141,23 +151,99 @@ def ingest_url(url: str, title: str | None = None) -> dict[str, Any]:
                                (canonical_url, title, digest, license_note))
             source_id = int(cur.lastrowid)
         for index, chunk in enumerate(chunks):
-            cur = conn.execute("INSERT INTO knowledge_chunks(source_id, chunk_index, content) VALUES (?, ?, ?)", (source_id, index, chunk))
+            vector = embeddings[index] if len(embeddings) == len(chunks) else None
+            cur = conn.execute(
+                "INSERT INTO knowledge_chunks(source_id, chunk_index, content, embedding_json, embedding_model) VALUES (?, ?, ?, ?, ?)",
+                (source_id, index, chunk, json.dumps(vector) if vector is not None else None,
+                 _EMBEDDING_MODEL if vector is not None else None),
+            )
             conn.execute("INSERT INTO knowledge_chunks_fts(rowid, content) VALUES (?, ?)", (cur.lastrowid, chunk))
     return {"source_id": source_id, "url": canonical_url, "title": title, "chunks": len(chunks),
             "unchanged": False, "status": "indexed", "license_note": license_note}
 
+
+def _embed_texts(texts: list[str]) -> list[list[float]]:
+    """Best-effort local embeddings; lexical retrieval remains available without the model."""
+    if not texts:
+        return []
+    from . import ollama
+    vectors: list[list[float]] = []
+    try:
+        for offset in range(0, len(texts), 32):
+            vectors.extend(ollama.embed(texts[offset:offset + 32], model=_EMBEDDING_MODEL))
+    except (ollama.OllamaError, ValueError):
+        return []
+    return vectors if len(vectors) == len(texts) else []
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or len(left) != len(right):
+        return -1.0
+    left_norm = sum(value * value for value in left) ** 0.5
+    right_norm = sum(value * value for value in right) ** 0.5
+    if not left_norm or not right_norm:
+        return -1.0
+    return sum(a * b for a, b in zip(left, right)) / (left_norm * right_norm)
+
+
 def search(query: str, limit: int = 5) -> list[dict[str, Any]]:
-    terms = re.findall(r"[\w-]{2,}", query.casefold(), flags=re.UNICODE)[:12]
-    if not terms: return []
-    fts_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
-    with learning_connection() as conn:
-        rows = conn.execute("""SELECT c.id, c.content, s.id AS source_id, s.title, s.url
-            FROM knowledge_chunks_fts f JOIN knowledge_chunks c ON c.id=f.rowid
-            JOIN knowledge_sources s ON s.id=c.source_id
-            WHERE knowledge_chunks_fts MATCH ? ORDER BY bm25(knowledge_chunks_fts) LIMIT ?""",
-            (fts_query, max(1, min(20, int(limit))))).fetchall()
-    return [{"chunk_id": r["id"], "source_id": r["source_id"], "title": r["title"], "url": r["url"],
-             "content": r["content"], "retrieval": "sqlite_fts5"} for r in rows]
+    """Hybrid FTS5 + local embedding retrieval, falling back to lexical search when unavailable."""
+    limit = max(1, min(20, int(limit)))
+    terms = re.findall(r"[\\w-]{2,}", query.casefold(), flags=re.UNICODE)[:12] if isinstance(query, str) else []
+    lexical: list[dict[str, Any]] = []
+    if terms:
+        fts_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
+        with learning_connection() as conn:
+            rows = conn.execute("""SELECT c.id, c.content, s.id AS source_id, s.title, s.url
+                FROM knowledge_chunks_fts f JOIN knowledge_chunks c ON c.id=f.rowid
+                JOIN knowledge_sources s ON s.id=c.source_id
+                WHERE knowledge_chunks_fts MATCH ? ORDER BY bm25(knowledge_chunks_fts) LIMIT ?""",
+                (fts_query, limit)).fetchall()
+        lexical = [{"chunk_id": row["id"], "source_id": row["source_id"], "title": row["title"],
+                    "url": row["url"], "content": row["content"]} for row in rows]
+
+    query_vectors = _embed_texts([query]) if isinstance(query, str) and query.strip() else []
+    semantic: list[dict[str, Any]] = []
+    if query_vectors:
+        with learning_connection() as conn:
+            rows = conn.execute("""SELECT c.id, c.content, c.embedding_json, c.embedding_model,
+                s.id AS source_id, s.title, s.url
+                FROM knowledge_chunks c JOIN knowledge_sources s ON s.id=c.source_id
+                WHERE c.embedding_json IS NOT NULL AND c.embedding_model=?""",
+                (_EMBEDDING_MODEL,)).fetchall()
+        scored = []
+        for row in rows:
+            try:
+                vector = json.loads(row["embedding_json"])
+                score = _cosine_similarity(query_vectors[0], vector)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if score >= 0:
+                scored.append((score, row))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        semantic = [{"chunk_id": row["id"], "source_id": row["source_id"], "title": row["title"],
+                     "url": row["url"], "content": row["content"], "semantic_score": score}
+                    for score, row in scored[:limit]]
+
+    # Reciprocal-rank fusion avoids mixing incomparable BM25 and cosine score scales.
+    fused: dict[int, dict[str, Any]] = {}
+    for ranked in (lexical, semantic):
+        for rank, item in enumerate(ranked, start=1):
+            chunk_id = int(item["chunk_id"])
+            if chunk_id not in fused:
+                fused[chunk_id] = {**item, "_rrf": 0.0}
+            else:
+                fused[chunk_id].update({key: value for key, value in item.items() if key != "_rrf"})
+            fused[chunk_id]["_rrf"] += 1.0 / (60 + rank)
+    has_lexical, has_semantic = bool(lexical), bool(semantic)
+    mode = "hybrid_fts5_embeddings" if has_lexical and has_semantic else (
+        "ollama_embeddings" if has_semantic else "sqlite_fts5"
+    )
+    results = sorted(fused.values(), key=lambda item: item["_rrf"], reverse=True)[:limit]
+    for item in results:
+        item["retrieval"] = mode
+        item["retrieval_score"] = item.pop("_rrf")
+    return results
 
 
 _STOPWORDS = {
