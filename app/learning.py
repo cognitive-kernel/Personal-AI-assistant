@@ -48,6 +48,18 @@ def _expand_retrieval_query(topic: str) -> list[str]:
     except Exception:
         return []
 
+
+def _assessment_contract_passes(assessment: dict[str, Any]) -> bool:
+    """Require exactly three non-empty outcomes, questions, and matching answer keys."""
+    for key in ("learning_outcomes", "questions", "answer_key"):
+        values = assessment.get(key)
+        if not isinstance(values, list) or len(values) != 3:
+            return False
+        if not all(isinstance(value, str) and value.strip() for value in values):
+            return False
+    return True
+
+
 def create_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
@@ -153,7 +165,7 @@ def run_job(job_id: int) -> None:
         quality["user_provided_source_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
         # Repair rejected lessons and lessons below the language-aware target length.
-        if not quality["accepted"] or quality["word_count"] < quality["target_word_count"]:
+        if not quality["accepted"] or quality["word_count"] < quality["target_word_count"] or not _assessment_contract_passes(assessment):
             retry_prompt = dict(prompt)
             # Give the repair pass measurable feedback, not just a generic rejection label.
             retry_prompt["quality_feedback"] = {
@@ -204,6 +216,7 @@ def run_job(job_id: int) -> None:
                 # Acceptance and target-length compliance take precedence over raw score.
                 def candidate_rank(candidate_quality: dict[str, Any]) -> tuple[int, int, int, int]:
                     return (
+                        int(_assessment_contract_passes(retry_assessment)),
                         int(candidate_quality["accepted"]),
                         int(candidate_quality["word_count"] >= candidate_quality["target_word_count"]),
                         int(candidate_quality["score"]),
@@ -211,6 +224,11 @@ def run_job(job_id: int) -> None:
                     )
                 if candidate_rank(retry_quality) > candidate_rank(quality):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        if not _assessment_contract_passes(assessment):
+            quality["accepted"] = False
+            quality.setdefault("reasons", []).append(
+                "Assessment contract failed after bounded repair: exactly three non-empty learning outcomes, questions, and answer keys are required."
+            )
         experience_verification = None
         if quality["accepted"]:
             # A successful generation is not automatically trusted: run deterministic
