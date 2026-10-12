@@ -69,9 +69,12 @@ def update_experience(
     test_plan: list[dict[str, Any]] | None = None,
     test_results: list[dict[str, Any]] | None = None,
     takeaway: str | None = None,
+    _controlled_run: bool = False,
 ) -> dict[str, Any]:
-    """Update a record while enforcing evidence-backed verification."""
+    """Update a record. Verification is reserved for the internal controlled runner."""
     init_experience_tables()
+    if status == "verified" and not _controlled_run:
+        raise ValueError("Only the controlled experience runner can mark a record verified.")
     if status is not None and status not in STATUSES:
         raise ValueError("Unsupported experience status.")
     if source_evidence is not None:
