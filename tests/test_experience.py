@@ -177,3 +177,21 @@ def test_public_api_cannot_mutate_an_already_verified_record(tmp_path, monkeypat
     assert unchanged["status"] == "verified"
     assert unchanged["takeaway"] == "Original verified takeaway."
     assert unchanged["version"] == 2
+
+
+def test_experience_versions_can_be_inspected_and_controlled_rollback_is_a_new_version(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience("Python", "A parser edge case.")
+    experience.update_experience(item["id"], status="needs_review", takeaway="First recorded takeaway.")
+    experience.update_experience(item["id"], status="failed", takeaway="Second recorded takeaway.")
+
+    versions = experience.list_experience_versions(item["id"])
+    assert {row["version"] for row in versions} == {1, 2, 3}
+    with pytest.raises(ValueError, match="controlled experience runner"):
+        experience.rollback_experience(item["id"], 2)
+
+    restored = experience.rollback_experience(item["id"], 2, _controlled_run=True)
+    assert restored["version"] == 4
+    assert restored["status"] == "needs_review"
+    assert restored["takeaway"] == "First recorded takeaway."
+    assert {row["version"] for row in experience.list_experience_versions(item["id"])} == {1, 2, 3, 4}
