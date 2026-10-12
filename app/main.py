@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama
+from . import curricula, db, learning, ollama, experience
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -43,6 +43,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 def startup() -> None:
     db.init_databases()
+    experience.init_experience_tables()
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
@@ -68,6 +69,20 @@ class KnowledgeSearchRequest(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+
+class ExperienceCreateRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    problem: str = Field(min_length=1, max_length=10000)
+    hypothesis: str = Field(default="", max_length=5000)
+
+
+class ExperienceUpdateRequest(BaseModel):
+    status: str | None = None
+    source_evidence: list[dict[str, Any]] | None = Field(default=None, max_length=50)
+    test_plan: list[dict[str, Any]] | None = Field(default=None, max_length=50)
+    test_results: list[dict[str, Any]] | None = Field(default=None, max_length=50)
+    takeaway: str | None = Field(default=None, max_length=10000)
+
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
@@ -346,3 +361,44 @@ def learning_job(job_id: int) -> dict[str, Any]:
         return learning.get_job(job_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
+
+
+@app.post("/api/learning/experiences", status_code=201)
+def create_learning_experience(request: ExperienceCreateRequest) -> dict[str, Any]:
+    try:
+        return experience.create_experience(request.topic, request.problem, request.hypothesis)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/learning/experiences")
+def list_learning_experiences(topic: str | None = None, status: str | None = None, limit: int = 50) -> dict[str, Any]:
+    try:
+        return {"experiences": experience.list_experiences(topic=topic, status=status, limit=limit)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/learning/experiences/{experience_id}")
+def get_learning_experience(experience_id: int) -> dict[str, Any]:
+    try:
+        return experience.get_experience(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning experience not found.") from exc
+
+
+@app.patch("/api/learning/experiences/{experience_id}")
+def update_learning_experience(experience_id: int, request: ExperienceUpdateRequest) -> dict[str, Any]:
+    try:
+        return experience.update_experience(
+            experience_id,
+            status=request.status,
+            source_evidence=request.source_evidence,
+            test_plan=request.test_plan,
+            test_results=request.test_results,
+            takeaway=request.takeaway,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning experience not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
