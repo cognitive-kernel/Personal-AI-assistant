@@ -103,6 +103,7 @@ def verify_learning_artifact(
     quality: dict[str, Any],
     retrieved_sources: list[dict[str, Any]],
     job_id: int,
+    query_variants: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run deterministic checks and persist a bounded, auditable experience."""
     evidence = _source_evidence(retrieved_sources)
@@ -117,7 +118,7 @@ def verify_learning_artifact(
     relevant_source_ids = [
         int(source["source_id"]) for source in retrieved_sources
         if isinstance(source.get("source_id"), int)
-        and knowledge_base.is_relevant(topic, source)
+        and knowledge_base.is_relevant(topic, source, query_variants)
     ]
     checks = [
         {
