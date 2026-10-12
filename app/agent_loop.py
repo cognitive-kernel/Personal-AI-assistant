@@ -6,7 +6,6 @@ experience memory. "Verified" describes these checks, not independent fact proof
 """
 from __future__ import annotations
 
-import ast
 import json
 import re
 from typing import Any
@@ -38,30 +37,9 @@ _UNCERTAINTY_MARKERS = (
 
 
 def _static_code_checks(answer: str) -> list[dict[str, Any]]:
-    """Validate fenced Python/JSON without executing generated code."""
-    checks: list[dict[str, Any]] = []
-    fence = r"\x60{3}"
-    python_pattern = fence + r"[ \t]*(python|py)[ \t]*\n(.*?)" + fence
-    json_pattern = fence + r"[ \t]*json[ \t]*\n(.*?)" + fence
-    for index, match in enumerate(re.finditer(python_pattern, answer, flags=re.IGNORECASE | re.DOTALL), start=1):
-        try:
-            ast.parse(match.group(2))
-            checks.append({"test": f"python_syntax_block_{index}", "passed": True, "actual": "ast.parse succeeded"})
-        except SyntaxError as exc:
-            checks.append({
-                "test": f"python_syntax_block_{index}", "passed": False,
-                "actual": {"error": exc.msg, "line": exc.lineno, "offset": exc.offset},
-            })
-    for index, match in enumerate(re.finditer(json_pattern, answer, flags=re.IGNORECASE | re.DOTALL), start=1):
-        try:
-            json.loads(match.group(1))
-            checks.append({"test": f"json_syntax_block_{index}", "passed": True, "actual": "json.loads succeeded"})
-        except json.JSONDecodeError as exc:
-            checks.append({
-                "test": f"json_syntax_block_{index}", "passed": False,
-                "actual": {"error": exc.msg, "line": exc.lineno, "column": exc.colno},
-            })
-    return checks
+    """Use the same non-executing syntax checks in chat and learning-job paths."""
+    from .experience_loop import static_code_checks
+    return static_code_checks(answer)
 
 
 def _repair_static_code(message: str, draft: str, checks: list[dict[str, Any]]) -> str | None:
