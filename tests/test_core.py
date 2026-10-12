@@ -405,8 +405,8 @@ def test_learning_job_retries_invalid_code_and_keeps_syntax_failure_auditable(tm
         "The correct implementation depends on the callable contract, error behavior, and whether state is preserved."
     )
     fence = chr(96) * 3
-    invalid_lesson = lesson + f"\\n{fence}python\\nprint(\\n{fence}"
-    valid_lesson = lesson + f'\\n{fence}python\\nprint("ok")\\n{fence}'
+    invalid_lesson = lesson + f"\n{fence}python\nprint(\n{fence}"
+    valid_lesson = lesson + f'\n{fence}python\nprint("ok")\n{fence}'
     payloads = []
 
     def fake_request(_path, payload, **_kwargs):
@@ -432,5 +432,5 @@ def test_learning_job_retries_invalid_code_and_keeps_syntax_failure_auditable(tm
     finished = learning.get_job(job["id"])
     assert finished["status"] == "completed"
     assert any(item["options"]["num_predict"] == 1400 for item in payloads)
-    assert "print(\\\"ok\\\")" in finished["lesson"]
+    assert 'print("ok")' in finished["lesson"]
     assert finished["quality"]["experience_verification"]["status"] == "needs_review"
