@@ -329,6 +329,21 @@ def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
     assert len(result["topics"]) == 21
 
 
+
+
+def test_source_attribution_repair_uses_only_retrieved_urls():
+    source = {"title": "SQL Server overview", "url": "https://learn.microsoft.com/en-us/sql/sql-server/what-is-sql-server", "content": "SQL Server documentation text."}
+    repaired = learning._ensure_source_attribution("A lesson about SQL Server.", [source])
+    assert source["url"] in repaired
+    assert "SQL Server overview" in repaired
+    assert learning._source_attribution_passes(repaired, [source]) is True
+
+
+def test_source_attribution_does_not_invent_urls():
+    lesson = "A lesson without external sources."
+    assert learning._ensure_source_attribution(lesson, []) == lesson
+    assert learning._source_attribution_passes(lesson, []) is True
+
 def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     import json
 
@@ -475,10 +490,20 @@ def test_rejected_learning_job_persists_each_failed_syntax_check(tmp_path, monke
     monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
         "query": query, "provider": "test", "allowed_hosts": [], "discovered_urls": [], "indexed": [], "errors": []
     })
-    job = learning.create_job("Python syntax failure")
+    job = learning.create_job(
+        "Python syntax failure",
+        source_text="User-provided source text retained for diagnosing a rejected learning draft.",
+    )
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
     assert finished["status"] == "rejected"
+    assert finished["lesson"] == invalid_lesson
+    with db.learning_connection() as conn:
+        saved_source = conn.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?", (job["id"],)
+        ).fetchone()
+    assert saved_source is not None
+    assert "retained for diagnosing" in saved_source["content"]
     records = experience.list_experiences(topic="Python syntax failure", status="needs_review")
     assert records
     failed_syntax = [
