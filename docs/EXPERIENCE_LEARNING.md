@@ -11,7 +11,7 @@ The current increment provides persistent experience records and reuses only rec
 
 ## Controlled verification loop
 
-Every accepted learning artifact now runs a bounded deterministic verifier. It checks the language-aware quality gate and target length, requires exactly three non-empty learning outcomes/questions/answer keys, and checks that saved source excerpts match the exact retrieved text using a SHA-256 digest. The run, test names, outcomes, and scope are persisted with the experience. A failed check remains `needs_review`; a record without a real retrieved source excerpt cannot become `verified`. The public API cannot promote records to `verified` directly.
+Every accepted learning artifact now runs a bounded deterministic verifier. It checks the language-aware quality gate and target length, requires exactly three non-empty learning outcomes/questions/answer keys, requires at least one exact source URL in the lesson when retrieved sources were used, and checks that saved source excerpts match the exact retrieved text using a SHA-256 digest. The run, test names, outcomes, and scope are persisted with the experience. A failed check remains `needs_review`; a record without a real retrieved source excerpt cannot become `verified`. The public API cannot promote records to `verified` directly.
 
 The verifier does not execute model-generated code or shell commands. Its `verified` status means only that the registered artifact/provenance checks passed. It does **not** mean every factual claim was independently checked against a source. The learning job has a bounded model repair attempt and rejects malformed assessment contracts if they still fail.
 
