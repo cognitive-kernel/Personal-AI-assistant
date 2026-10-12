@@ -312,6 +312,7 @@ def run_job(job_id: int) -> None:
                     quality=quality,
                     retrieved_sources=retrieved,
                     job_id=job_id,
+                    query_variants=query_variants,
                 )
             except Exception as verification_exc:
                 experience_verification = {
