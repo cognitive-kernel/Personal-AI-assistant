@@ -83,3 +83,34 @@ def test_chat_reuses_verified_experience_on_later_technical_request(tmp_path, mo
     answer = agent_loop.answer_with_learning_loop("How do I fix a Python JSON decoder error?")
     assert "Handle JSON" in answer
     assert "Verified prior experience" in captured["prompt"]["verified_prior_experiences"]
+
+
+
+def test_static_syntax_failure_triggers_one_bounded_repair(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    fence = chr(96) * 3
+    monkeypatch.setattr(ollama, "chat", lambda message, history=None: f"Example:\n{fence}python\nprint(\n{fence}")
+    monkeypatch.setattr(agent_loop, "_expand_retrieval_query", lambda query: [])
+    monkeypatch.setattr(knowledge_base, "search", lambda query, limit=5: [])
+    monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
+        "query": query, "provider": "test", "allowed_hosts": [], "discovered_urls": [], "indexed": [], "errors": [],
+    })
+    repair_calls = []
+
+    def fake_request(_path, payload, **_kwargs):
+        repair_calls.append(payload)
+        return {"message": {"content": f'Example:\n{fence}python\nprint("ok")\n{fence}' }}
+
+    monkeypatch.setattr(agent_loop, "_request", fake_request)
+    answer = agent_loop.answer_with_learning_loop("Python code error: fix this syntax")
+    assert 'print("ok")' in answer
+    assert len(repair_calls) == 1
+    assert all(item["passed"] for item in agent_loop._static_code_checks(answer))
+
+
+def test_static_code_checks_detect_python_and_json_syntax_errors():
+    fence = chr(96) * 3
+    answer = f'{fence}python\nprint(\n{fence}\n{fence}json\n{{"key": }}\n{fence}'
+    checks = agent_loop._static_code_checks(answer)
+    assert len(checks) == 2
+    assert all(item["passed"] is False for item in checks)
