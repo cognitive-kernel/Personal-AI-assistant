@@ -25,6 +25,7 @@ def test_controlled_loop_verifies_only_when_quality_contract_and_source_integrit
         "This excerpt is retained verbatim for provenance and must not be treated as proof of every lesson claim."
     )
     sources = [{
+        "source_id": 1,
         "url": "https://docs.python.org/3/library/json.html",
         "title": "JSON — Python documentation",
         "content": excerpt,
@@ -45,6 +46,31 @@ def test_controlled_loop_verifies_only_when_quality_contract_and_source_integrit
     assert saved["source_evidence"][0]["excerpt"] == excerpt[:400]
     assert saved["source_evidence"][0]["original_language"] == "en"
     assert "not independently establish factual correctness" in saved["takeaway"]
+
+
+def test_controlled_loop_rejects_irrelevant_source_even_when_url_and_excerpt_are_valid(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    excerpt = (
+        "The Python documentation explains JSON decoding and malformed JSON input. "
+        "Applications can catch decoding errors and validate data before processing."
+    )
+    result = verify_learning_artifact(
+        topic="SQL Server query optimizer execution plans",
+        lesson=("SQL Server query plans show how a database executes a query. " * 80)
+        + "\\nSources: https://docs.python.org/3/library/json.html",
+        assessment=_assessment(),
+        quality={"accepted": True, "word_count": 160, "target_word_count": 120, "score": 90},
+        retrieved_sources=[{
+            "source_id": 1,
+            "url": "https://docs.python.org/3/library/json.html",
+            "title": "Python JSON docs",
+            "content": excerpt,
+        }],
+        job_id=20,
+    )
+    assert result["status"] == "needs_review"
+    relevance = next(check for check in result["checks"] if check["test"] == "source_relevance")
+    assert relevance["passed"] is False
 
 
 def test_controlled_loop_keeps_artifact_unverified_without_real_source_excerpt(tmp_path, monkeypatch):
