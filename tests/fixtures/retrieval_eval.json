@@ -1,0 +1,8 @@
+[
+  {"query": "Python JSON decoder malformed input", "relevant_ids": ["https://docs.python.org/3/library/json.html"]},
+  {"query": "FastAPI request body validation", "relevant_ids": ["https://fastapi.tiangolo.com/tutorial/body/"]},
+  {"query": "SQLite FTS5 full text search", "relevant_ids": ["https://www.sqlite.org/fts5.html"]},
+  {"query": "Ollama embedding model semantic search", "relevant_ids": ["https://docs.ollama.com/capabilities/embeddings"]},
+  {"query": "اعتبارسنجی ورودی درخواست FastAPI", "relevant_ids": ["https://fastapi.tiangolo.com/tutorial/body/"]},
+  {"query": "جستجوی متن کامل SQLite FTS5", "relevant_ids": ["https://www.sqlite.org/fts5.html"]}
+]
