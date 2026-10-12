@@ -14,7 +14,14 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
 <button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
 <div class="row">
-<section><h2>گفتگو</h2><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section><h2>گفتگو</h2><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre>
+<div id="chat-feedback" hidden>
+<p class="muted">ارزیابی پاسخ برای بهبود پاسخ‌های بعدی</p>
+<textarea id="feedback-correction" rows="2" maxlength="8000" placeholder="اگر پاسخ ناقص یا اشتباه بود، اصلاح یا ترجیح خود را بنویسید (اختیاری)"></textarea>
+<button id="feedback-helpful" type="button">پاسخ مفید بود</button>
+<button id="feedback-unhelpful" type="button">پاسخ مفید نبود</button>
+<pre id="feedback-output"></pre>
+</div></section>
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
@@ -46,10 +53,30 @@ el("refresh-knowledge").addEventListener("click", async () => {
  try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
  catch(error) { el("knowledge-output").textContent=error.message; }
 });
+let lastChatQuery = "";
+let lastChatAnswer = "";
 el("chat-form").addEventListener("submit", async event => {
  event.preventDefault(); el("chat-output").textContent="در حال پاسخ‌گویی…";
- try { el("chat-output").textContent=(await api("/api/chat",{method:"POST",body:JSON.stringify({message:el("message").value})})).reply; } catch(error) { el("chat-output").textContent=error.message; }
+ el("chat-feedback").hidden=true; el("feedback-output").textContent="";
+ lastChatQuery=el("message").value;
+ try {
+  lastChatAnswer=(await api("/api/chat",{method:"POST",body:JSON.stringify({message:lastChatQuery})})).reply;
+  el("chat-output").textContent=lastChatAnswer;
+  el("chat-feedback").hidden=false;
+ } catch(error) { el("chat-output").textContent=error.message; }
 });
+async function submitChatFeedback(rating) {
+ if(!lastChatQuery || !lastChatAnswer) return;
+ try {
+  const saved=await api("/api/chat/feedback",{method:"POST",body:JSON.stringify({
+   query:lastChatQuery, answer:lastChatAnswer, rating,
+   correction:el("feedback-correction").value
+  })});
+  el("feedback-output").textContent="بازخورد ذخیره شد؛ در پاسخ‌های بعدی مرتبط به‌عنوان راهنمای کیفیت استفاده می‌شود. شناسه: "+saved.id;
+ } catch(error) { el("feedback-output").textContent=error.message; }
+}
+el("feedback-helpful").addEventListener("click",()=>submitChatFeedback("helpful"));
+el("feedback-unhelpful").addEventListener("click",()=>submitChatFeedback("unhelpful"));
 function showLearningJob(result) {
  el("learning-output").textContent=JSON.stringify(result,null,2);
  const container=el("assessment-form-container");
