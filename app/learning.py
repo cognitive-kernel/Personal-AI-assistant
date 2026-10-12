@@ -317,25 +317,56 @@ def run_job(job_id: int) -> None:
                 }
         quality["experience_verification"] = experience_verification
         if not quality["accepted"]:
-            # Persist a detected weakness instead of discarding the failure signal.
-            # This is explicitly a heuristic-quality failure, not a factual verification result.
+            # Persist each failed deterministic check, not just the aggregate quality score.
             try:
+                failure_checks = [
+                    {
+                        "test": "learning_quality.evaluate_learning_value",
+                        "passed": quality.get("accepted") is True
+                            and quality.get("word_count", 0) >= quality.get("target_word_count", 1),
+                        "actual": {
+                            "score": quality.get("score"),
+                            "word_count": quality.get("word_count"),
+                            "target_word_count": quality.get("target_word_count"),
+                            "reasons": quality.get("reasons", []),
+                        },
+                    },
+                    {
+                        "test": "assessment_contract",
+                        "passed": _assessment_contract_passes(assessment),
+                        "actual": {
+                            "outcomes": assessment.get("learning_outcomes"),
+                            "questions_count": len(assessment.get("questions", [])),
+                            "answer_count": len(assessment.get("answer_key", [])),
+                        },
+                    },
+                    {
+                        "test": "source_attribution",
+                        "passed": _source_attribution_passes(result["lesson"], retrieved),
+                        "actual": {"retrieved_source_count": len(retrieved)},
+                    },
+                    *syntax_checks,
+                ]
+                failed_names = [item["test"] for item in failure_checks if not item["passed"]]
                 failure = experience.create_experience(
                     topic,
-                    f"Learning job #{job_id} was rejected by the lesson-quality gate: "
-                    + "; ".join(quality.get("reasons", []))[:9000],
-                    "Inspect the quality feedback and revise the lesson with concrete mechanisms, examples, and technical detail.",
+                    f"Learning job #{job_id} failed bounded checks: "
+                    + ", ".join(failed_names)
+                    + ". Details: " + json.dumps(failure_checks, ensure_ascii=False)[:8000],
+                    "Use the recorded failed checks as warnings; revise the artifact and rerun the same deterministic checks.",
                 )
                 experience.update_experience(
                     failure["id"],
                     status="needs_review",
-                    test_plan=[{"test": "learning_quality.evaluate_learning_value", "scope": "heuristic content-quality gate"}],
-                    test_results=[{
-                        "test": "learning_quality.evaluate_learning_value",
-                        "passed": False,
-                        "actual": {"score": quality.get("score"), "reasons": quality.get("reasons", [])},
-                    }],
-                    takeaway="A heuristic rejection is a quality signal only; it does not establish which factual claim is wrong.",
+                    test_plan=[
+                        {"test": item["test"], "scope": "bounded deterministic learning-artifact check"}
+                        for item in failure_checks
+                    ],
+                    test_results=failure_checks,
+                    takeaway=(
+                        "This attempt did not pass every required deterministic check. "
+                        "It is retained as a failure example, not as verified guidance."
+                    ),
                 )
             except Exception:
                 # Failure persistence must not mask the original job outcome.
