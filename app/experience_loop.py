@@ -56,7 +56,13 @@ def verify_learning_artifact(
     questions = assessment.get("questions", [])
     answers = assessment.get("answer_key", [])
 
+    cited_urls = [item["url"] for item in evidence if item["url"] in lesson]
     checks = [
+        {
+            "test": "source_attribution",
+            "passed": bool(cited_urls) if evidence else False,
+            "actual": {"evidence_source_count": len(evidence), "cited_source_count": len(cited_urls)},
+        },
         {
             "test": "lesson_quality_gate",
             "passed": quality.get("accepted") is True
