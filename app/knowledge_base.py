@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 from typing import Any
 from .db import learning_connection
 
-_ALLOWED_HOSTS = {"learn.microsoft.com", "www.w3schools.com", "microsoft.github.io"}
+_ALLOWED_HOSTS = {\n    "learn.microsoft.com", "www.w3schools.com", "microsoft.github.io",\n    "docs.python.org", "fastapi.tiangolo.com", "docs.github.com",\n    "developer.mozilla.org", "sqlite.org", "www.sqlite.org",\n    "ollama.com", "docs.ollama.com", "pydantic.dev", "docs.pytest.org",\n}
 _MAX_BYTES = 2_000_000
 _TIMEOUT_SECONDS = 12
 _CHUNK_CHARS = 1800
