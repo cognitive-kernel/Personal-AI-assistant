@@ -144,7 +144,7 @@ def _remember_chat_result(
     citation_pass = bool(evidence) and any(item["url"] in answer for item in evidence)
     relevant_source_ids = {
         int(source["source_id"]) for source in sources
-        if isinstance(source.get("source_id"), int) and knowledge_base.is_relevant(query, source)
+        if isinstance(source.get("source_id"), int) and knowledge_base.is_relevant(query, source, query_variants)
     }
     excerpt_pass = bool(evidence) and all(
         hashlib.sha256(item["excerpt"].encode("utf-8")).hexdigest() == item["excerpt_sha256"]
