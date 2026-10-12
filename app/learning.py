@@ -163,6 +163,10 @@ def run_job(job_id: int) -> None:
         topic, source_kind = row["topic"], row["source_kind"]
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
+    learning_log.log_event(
+        "learning.job_started", level=20, job_id=job_id, topic=topic,
+        source_kind=source_kind, has_user_source=bool(source_text),
+    )
     # Expand queries across languages with the local model; keep the original query as fallback.
     from . import knowledge_base, experience
     query_variants = _expand_retrieval_query(topic)
@@ -205,6 +209,13 @@ def run_job(job_id: int) -> None:
             "discovered_url_count": sum(len(item.get("discovered_urls", [])) for item in research_attempts),
         }
     retrieved = retrieved[:8]
+    learning_log.log_event(
+        "learning.retrieval_completed", level=20, job_id=job_id,
+        query_variant_count=len(query_variants), retrieved_chunk_count=len(retrieved),
+        retrieved_source_count=len({int(item["source_id"]) for item in retrieved}),
+        web_research_attempted=research_result is not None,
+        web_research_indexed_count=(research_result or {}).get("indexed_count", 0),
+    )
     verified_experiences = experience.search_relevant_experiences(topic, query_variants, limit=4)
     prior_failures = experience.search_relevant_failures(topic, query_variants, limit=3)
     retrieved_text = "\n\n".join(
@@ -299,6 +310,19 @@ def run_job(job_id: int) -> None:
         quality["user_provided_source_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
         # Repair rejected lessons and lessons below the language-aware target length.
+        initial_gate_passed = (
+            quality["accepted"]
+            and quality["word_count"] >= quality["target_word_count"]
+            and _assessment_contract_passes(assessment)
+            and _source_attribution_passes(result["lesson"], retrieved)
+            and all(item["passed"] for item in syntax_checks)
+        )
+        learning_log.log_event(
+            "learning.quality_gate_evaluated", level=20, job_id=job_id,
+            score=quality.get("score"), accepted=quality.get("accepted"),
+            word_count=quality.get("word_count"), target_word_count=quality.get("target_word_count"),
+            gate_passed=initial_gate_passed, reasons=quality.get("reasons", []),
+        )
         if (
             not quality["accepted"]
             or quality["word_count"] < quality["target_word_count"]
@@ -427,6 +451,20 @@ def run_job(job_id: int) -> None:
                     "verification_scope": "not verified",
                 }
         quality["experience_verification"] = experience_verification
+        final_gate_passed = (
+            quality.get("accepted") is True
+            and quality.get("word_count", 0) >= quality.get("target_word_count", 1)
+            and _assessment_contract_passes(assessment)
+            and _source_attribution_passes(result["lesson"], retrieved)
+            and all(item["passed"] for item in syntax_checks)
+        )
+        learning_log.log_event(
+            "learning.quality_gate_final", level=20, job_id=job_id,
+            score=quality.get("score"), accepted=quality.get("accepted"),
+            word_count=quality.get("word_count"), target_word_count=quality.get("target_word_count"),
+            gate_passed=final_gate_passed, reasons=quality.get("reasons", []),
+            experience_status=(experience_verification or {}).get("status", "not_created"),
+        )
         if not quality["accepted"]:
             # Persist each failed deterministic check, not just the aggregate quality score.
             try:
@@ -523,6 +561,14 @@ def run_job(job_id: int) -> None:
                 # Preserve source text and draft for diagnosis and bounded retry; rejection is not deletion.
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
                     ("متن ورودی حفظ شد؛ پیش‌نویس درس رد شده و نیازمند بررسی/اصلاح است.", job_id))
+        learning_log.log_event(
+            "learning.job_finished", level=20, job_id=job_id,
+            status="completed" if quality["accepted"] else "rejected",
+            quality_score=quality.get("score"), word_count=quality.get("word_count"),
+            target_word_count=quality.get("target_word_count"),
+            failed_reasons=quality.get("reasons", []),
+            experience_status=(experience_verification or {}).get("status", "not_created"),
+        )
     except Exception as exc:
         learning_log.log_event("learning.job_failed", exc_info=True, job_id=job_id, error_type=type(exc).__name__, error=str(exc)[:1000])
         with learning_connection() as conn:
