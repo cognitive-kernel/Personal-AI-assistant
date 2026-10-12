@@ -198,8 +198,8 @@ def legacy_learning_status() -> dict[str, Any]:
             "failed": counts.get("failed", 0),
         },
         "knowledge": {"total": knowledge_count, "unverified": unverified_count},
-        "web_learning": "not_implemented",
-        "independent_verification": "not_implemented",
+        "web_learning": "bounded_official_docs_discovery",
+        "independent_verification": "deterministic_provenance_checks_only",
     }
 
 
