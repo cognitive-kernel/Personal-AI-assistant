@@ -468,6 +468,8 @@ def test_rejected_learning_job_persists_each_failed_syntax_check(tmp_path, monke
     import json
     from app import experience
 
+    log_path = tmp_path / "learning.log"
+    monkeypatch.setenv("LEARNING_LOG_PATH", str(log_path))
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
@@ -511,6 +513,20 @@ def test_rejected_learning_job_persists_each_failed_syntax_check(tmp_path, monke
         if item["test"] == "python_syntax_block_1"
     ]
     assert failed_syntax and failed_syntax[0]["passed"] is False
+
+    log_records = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    events = [record["event"] for record in log_records]
+    assert "learning.job_started" in events
+    assert "learning.quality_gate_evaluated" in events
+    assert "learning.quality_repair_started" in events
+    assert "learning.quality_gate_final" in events
+    assert "learning.job_finished" in events
+    final_record = next(record for record in log_records if record["event"] == "learning.job_finished")
+    assert final_record["context"]["status"] == "rejected"
 
 def test_learning_payload_parser_rejects_missing_required_fields():
     assert learning._parse_learning_payload('{"lesson": "missing questions"}') is None
