@@ -189,7 +189,7 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
 def search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     """Hybrid FTS5 + local embedding retrieval, falling back to lexical search when unavailable."""
     limit = max(1, min(20, int(limit)))
-    terms = re.findall(r"[\\w-]{2,}", query.casefold(), flags=re.UNICODE)[:12] if isinstance(query, str) else []
+    terms = re.findall(r"[\w-]{2,}", query.casefold(), flags=re.UNICODE)[:12] if isinstance(query, str) else []
     lexical: list[dict[str, Any]] = []
     if terms:
         fts_query = " OR ".join('"' + term.replace('"', '""') + '"' for term in terms)
