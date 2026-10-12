@@ -116,3 +116,20 @@ def test_research_and_index_records_indexing_errors(monkeypatch):
     assert result["provider"] == "DuckDuckGo HTML"
     assert result["indexed"] == []
     assert result["errors"][0]["url"] == "https://docs.python.org/3/library/json.html"
+
+
+
+def test_local_relevance_gate_rejects_single_common_token_match():
+    weak = {"title": "General documentation", "content": "This page explains general software behavior and configuration."}
+    strong = {"title": "Python JSON decoder", "content": "The Python JSON decoder raises an error for malformed JSON input."}
+    assert knowledge_base.is_relevant("Python JSON decoder error", weak) is False
+    assert knowledge_base.is_relevant("Python JSON decoder error", strong) is True
+
+
+def test_local_relevance_gate_uses_cross_language_variants():
+    source = {"title": "SQL Server execution plan", "content": "Query optimizer chooses an execution plan and index access path."}
+    assert knowledge_base.is_relevant(
+        "طرح اجرای پرس‌وجو",
+        source,
+        ["SQL Server query execution plan"],
+    ) is True
