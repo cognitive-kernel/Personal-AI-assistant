@@ -150,6 +150,22 @@ def _store_version_snapshot(conn, row) -> None:
     )
 
 
+def list_experience_versions(experience_id: int) -> list[dict[str, Any]]:
+    init_experience_tables()
+    with learning_connection() as conn:
+        current = conn.execute("SELECT version, status, takeaway, updated_at AS created_at FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
+        if current is None:
+            raise KeyError(experience_id)
+        rows = conn.execute(
+            "SELECT version, status, takeaway, created_at FROM learning_experience_versions WHERE experience_id=? ORDER BY version DESC",
+            (experience_id,),
+        ).fetchall()
+    versions = [dict(row) for row in rows]
+    if not any(item["version"] == current["version"] for item in versions):
+        versions.insert(0, dict(current))
+    return versions
+
+
 def get_experience(experience_id: int) -> dict[str, Any]:
     init_experience_tables()
     with learning_connection() as conn:
