@@ -80,3 +80,16 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 3. Review PR #5 and confirm its changes and tests against the current target branch.
 4. Have the coordinator record actual automation run reports and update this dashboard after each verified run.
 5. Re-check the current PR heads and CI before any merge; the snapshot above will become stale as soon as branches change.
+
+
+## Coordination audit — 2026-10-12 15:36 UTC
+
+- Current `main`: `f557a807f256bb2023b90174cf673ee5e27d71fd`.
+- PR #8 head `7871849fa069763a52b4bceaf1401c87805b9e59`: CI run [38264684201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38264684201) passed `python -m pip install -e ".[dev]"` and `pytest` on Ubuntu and Windows. No review submissions were returned by the review endpoint.
+- Commit [ab5fcfc](https://github.com/cognitive-kernel/Personal-AI-assistant/commit/ab5fcfcdb6f0ad499b404e47791d0a4dba1acee4) broadens CI triggers to `feat/**` and `fix/**`; run [38267943140](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38267943140) passed the same install/test steps on Ubuntu and Windows.
+- The branch `fix/isolate-untrusted-feedback-context` is 4 commits ahead of `feat/experience-learning-loop-v1`, but inherits its full feature history (196 commits ahead of main). Do not open it as an isolated fix PR; extract only the unique delta onto a clean main-based branch if needed.
+- Main CI after dashboard PR #10, run [38268305097](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38268305097), passed dependency installation and `pytest`.
+- The three automations show prior last-run timestamps around 15:15–15:18 UTC. This audit found no matching task report in PR comments and no new task-specific commit in the queried date window. Existing work cannot be attributed to those runs without evidence.
+- PR search returned no results through the connected endpoint, so PR states for #5, #6, and #8 remain last-known, not freshly confirmed. Re-check current metadata before merging.
+- No live Ollama smoke test or numeric Recall@5/MRR result was found. Do not mark the AI workstream complete.
+- **Coordinator decision:** no code PR merged. Resolve overlap among #5/#6/#7/#8, perform security/architecture review on #8, run retrieval and live-model evaluation, then re-check CI on the exact head before any merge.
