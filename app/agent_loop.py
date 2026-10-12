@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any
 
-from . import experience, knowledge_base, ollama
+from . import experience, knowledge_base, ollama, learning_log
 from .db import get_settings
 from .hardware import detect_hardware, runtime_limits
 from .learning import _expand_retrieval_query, _language_name
@@ -99,6 +99,7 @@ def _search_sources(query: str, variants: list[str]) -> tuple[list[dict[str, Any
             try:
                 research_attempts.append(knowledge_base.research_and_index(search_query, limit=3))
             except Exception as exc:
+                learning_log.log_event("chat_loop.web_research_failed", level=30, exc_info=True, query=search_query, error_type=type(exc).__name__)
                 research_attempts.append({"query": search_query, "error": str(exc)[:300], "indexed": [], "discovered_urls": []})
             for item in knowledge_base.search(search_query, limit=5):
                 key = (int(item["source_id"]), int(item["chunk_id"]))
@@ -295,7 +296,8 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
             ],
             "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
         })
-    except ollama.OllamaError:
+    except ollama.OllamaError as exc:
+        learning_log.log_event("chat_loop.revision_model_error", level=30, exc_info=True, error_type=type(exc).__name__)
         return initial
     revised = revised_response.get("message", {}).get("content")
     if not isinstance(revised, str) or not revised.strip():
@@ -322,7 +324,8 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
                 "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
             })
             retry_text = retry_response.get("message", {}).get("content")
-        except ollama.OllamaError:
+        except ollama.OllamaError as exc:
+            learning_log.log_event("chat_loop.repair_model_error", level=30, exc_info=True, error_type=type(exc).__name__)
             retry_text = None
         if isinstance(retry_text, str) and retry_text.strip():
             revised = retry_text
