@@ -60,6 +60,17 @@ def static_code_checks(text: str) -> list[dict[str, Any]]:
         })
     return checks
 
+def _source_language(text: str) -> str:
+    """Label the dominant script without translating source material."""
+    persian = sum("\\u0600" <= char <= "\\u06ff" for char in text)
+    latin = sum(char.isascii() and char.isalpha() for char in text)
+    if persian > latin:
+        return "fa"
+    if latin:
+        return "en"
+    return "und"
+
+
 def _source_evidence(retrieved_sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -79,7 +90,7 @@ def _source_evidence(retrieved_sources: list[dict[str, Any]]) -> list[dict[str, 
             "claim": "Source provenance recorded; semantic support for lesson claims has not been independently established.",
             "excerpt": excerpt,
             "excerpt_sha256": hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
-            "original_language": "preserved",
+            "original_language": _source_language(content),
         })
     return evidence[:10]
 
