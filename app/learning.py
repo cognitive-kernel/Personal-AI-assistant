@@ -237,6 +237,9 @@ def run_job(job_id: int) -> None:
             retry_prompt["quality_feedback"] = {
                 "score": quality.get("score"),
                 "word_count": quality.get("word_count"),
+                "minimum_word_count": quality.get("minimum_word_count"),
+                "target_word_count": quality.get("target_word_count"),
+                "accepted": quality.get("accepted"),
                 "unique_word_ratio": quality.get("unique_word_ratio"),
                 "required_unique_word_ratio": 0.48,
                 "has_explanatory_reasoning": quality.get("has_explanatory_reasoning"),
@@ -247,10 +250,13 @@ def run_job(job_id: int) -> None:
                 "source_attribution_passes": _source_attribution_passes(result["lesson"], retrieved),
             }
             retry_prompt["instruction"] = (
-                "The previous lesson failed the quality gate. Rewrite it in output_language while preserving the original language of source excerpts and technical terms. "
-                "Read quality_feedback and fix every listed issue with new mechanisms, conditions, observable consequences, and a concrete example. Avoid repetition and invented terminology. "
-                "Return the same JSON keys and exactly three measurable learning outcomes, questions, and explanatory answer keys. "
-                "Use only claims supported by supplied sources or label them model-generated; preserve original source URLs. Return JSON only."
+                "The previous lesson failed the quality gate. Treat quality_feedback as mandatory acceptance criteria, not suggestions. "
+                "Write the lesson body to at least target_word_count words (for Persian, normally 160–180 words; for English, normally 120–180 words), excluding the assessment and source list. "
+                "Do not return a short summary. Explain at least two explicit cause-and-effect chains: state the condition or action, explain what the component does internally, and describe the observable result or trade-off. "
+                "Include a concrete, technically accurate example tied to the topic. Add specific technical details rather than repeating sentences. "
+                "Resolve every item in quality_feedback.reasons; ensure exactly three non-empty measurable learning outcomes, three clear questions, and three explanatory answer keys. "
+                "Preserve original source excerpts, source language, URLs, and technical terminology; never invent citations or claim sources support unsupported facts. "
+                "Return the same JSON keys only: lesson, learning_outcomes, questions, answer_key."
             )
             retry_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
