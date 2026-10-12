@@ -102,7 +102,14 @@ def init_databases() -> None:
         conn.execute("""CREATE TABLE IF NOT EXISTS knowledge_chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_id INTEGER NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
-            chunk_index INTEGER NOT NULL, content TEXT NOT NULL, UNIQUE(source_id, chunk_index))""")
+            chunk_index INTEGER NOT NULL, content TEXT NOT NULL,
+            embedding_json TEXT, embedding_model TEXT,
+            UNIQUE(source_id, chunk_index))""")
+        chunk_columns = {row["name"] for row in conn.execute("PRAGMA table_info(knowledge_chunks)").fetchall()}
+        if "embedding_json" not in chunk_columns:
+            conn.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding_json TEXT")
+        if "embedding_model" not in chunk_columns:
+            conn.execute("ALTER TABLE knowledge_chunks ADD COLUMN embedding_model TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_id, chunk_index)")
         conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(content)")
 
