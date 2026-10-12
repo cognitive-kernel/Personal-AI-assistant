@@ -184,3 +184,32 @@ def test_chat_verification_uses_cross_language_query_variants(tmp_path, monkeypa
     assert relevance["passed"] is True
     semantic = next(check for check in result["checks"] if check["test"] == "semantic_claim_review")
     assert semantic["passed"] is False
+
+
+def test_legacy_chat_experience_without_claim_review_is_not_reused(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    legacy = experience.create_experience(
+        "Python JSON decoder",
+        "Legacy chat answer with provenance checks only.",
+    )
+    experience.update_experience(
+        legacy["id"],
+        status="verified",
+        source_evidence=[{
+            "url": "https://docs.python.org/3/library/json.html",
+            "claim": "Provenance only.",
+            "excerpt": "The JSON module documentation excerpt.",
+        }],
+        test_plan=[{"test": "source_attribution", "runner": "chat-learning-loop-v1"}],
+        test_results=[{
+            "test": "source_attribution",
+            "passed": True,
+            "runner": "chat-learning-loop-v1",
+        }],
+        takeaway="A legacy answer that has not passed claim-level review.",
+        _controlled_run=True,
+    )
+    assert experience.search_relevant_experiences(
+        "Python JSON decoder",
+        ["Python JSON decoder"],
+    ) == []
