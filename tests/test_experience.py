@@ -163,4 +163,17 @@ def test_public_api_cannot_mutate_an_already_verified_record(tmp_path, monkeypat
     )
     with pytest.raises(ValueError, match="controlled experience runner"):
         experience.update_experience(item["id"], takeaway="tampered")
-    assert experience.get_experience(item["id"])["takeaway"] == "Original verified takeaway."
+    # A public caller must not bypass the guard by downgrading status first.
+    with pytest.raises(ValueError, match="controlled experience runner"):
+        experience.update_experience(
+            item["id"],
+            status="needs_review",
+            takeaway="tampered after downgrade",
+            source_evidence=[],
+            test_plan=[],
+            test_results=[],
+        )
+    unchanged = experience.get_experience(item["id"])
+    assert unchanged["status"] == "verified"
+    assert unchanged["takeaway"] == "Original verified takeaway."
+    assert unchanged["version"] == 2
