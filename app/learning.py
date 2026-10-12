@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import curricula
+from . import curricula, learning_log
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
@@ -45,7 +45,8 @@ def _expand_retrieval_query(topic: str) -> list[str]:
         if not isinstance(variants, list):
             return []
         return [v.strip()[:200] for v in variants[:4] if isinstance(v, str) and v.strip() and v.strip().casefold() != topic.casefold()]
-    except Exception:
+    except Exception as exc:
+        learning_log.log_event("learning.query_expansion_failed", level=30, exc_info=True, error_type=type(exc).__name__)
         return []
 
 
@@ -152,6 +153,7 @@ def run_job(job_id: int) -> None:
                             seen_chunks.add(key)
                             retrieved.append(item)
             except Exception as exc:
+                learning_log.log_event("learning.web_research_failed", level=30, exc_info=True, job_id=job_id, query=research_query, error_type=type(exc).__name__)
                 research_attempts.append({
                     "query": research_query, "error": str(exc)[:300],
                     "indexed": [], "discovered_urls": [],
@@ -346,6 +348,7 @@ def run_job(job_id: int) -> None:
                     query_variants=query_variants,
                 )
             except Exception as verification_exc:
+                learning_log.log_event("learning.artifact_verification_failed", exc_info=True, job_id=job_id, error_type=type(verification_exc).__name__)
                 experience_verification = {
                     "status": "verification_error",
                     "error": str(verification_exc)[:300],
@@ -404,7 +407,8 @@ def run_job(job_id: int) -> None:
                         "It is retained as a failure example, not as verified guidance."
                     ),
                 )
-            except Exception:
+            except Exception as persistence_exc:
+                learning_log.log_event("learning.failure_experience_persist_failed", exc_info=True, job_id=job_id, error_type=type(persistence_exc).__name__)
                 # Failure persistence must not mask the original job outcome.
                 pass
         with learning_connection() as conn:
@@ -448,6 +452,7 @@ def run_job(job_id: int) -> None:
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
                     ("متن ورودی حفظ شد؛ پیش‌نویس درس رد شده و نیازمند بررسی/اصلاح است.", job_id))
     except Exception as exc:
+        learning_log.log_event("learning.job_failed", exc_info=True, job_id=job_id, error_type=type(exc).__name__, error=str(exc)[:1000])
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
