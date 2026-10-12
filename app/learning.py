@@ -209,6 +209,30 @@ def run_job(job_id: int) -> None:
                     )
                 if candidate_rank(retry_quality) > candidate_rank(quality):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        if not quality["accepted"]:
+            # Persist a detected weakness instead of discarding the failure signal.
+            # This is explicitly a heuristic-quality failure, not a factual verification result.
+            try:
+                failure = experience.create_experience(
+                    topic,
+                    f"Learning job #{job_id} was rejected by the lesson-quality gate: "
+                    + "; ".join(quality.get("reasons", []))[:9000],
+                    "Inspect the quality feedback and revise the lesson with concrete mechanisms, examples, and technical detail.",
+                )
+                experience.update_experience(
+                    failure["id"],
+                    status="needs_review",
+                    test_plan=[{"test": "learning_quality.evaluate_learning_value", "scope": "heuristic content-quality gate"}],
+                    test_results=[{
+                        "test": "learning_quality.evaluate_learning_value",
+                        "passed": False,
+                        "actual": {"score": quality.get("score"), "reasons": quality.get("reasons", [])},
+                    }],
+                    takeaway="A heuristic rejection is a quality signal only; it does not establish which factual claim is wrong.",
+                )
+            except Exception:
+                # Failure persistence must not mask the original job outcome.
+                pass
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
             # If the user stopped the path while Ollama was generating, discard this result.
