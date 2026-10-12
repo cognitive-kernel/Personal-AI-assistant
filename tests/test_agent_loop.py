@@ -114,3 +114,27 @@ def test_static_code_checks_detect_python_and_json_syntax_errors():
     checks = agent_loop._static_code_checks(answer)
     assert len(checks) == 2
     assert all(item["passed"] is False for item in checks)
+
+
+
+def test_failed_syntax_repair_is_persisted_when_research_finds_no_sources(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    fence = chr(96) * 3
+    invalid = f"Example:\n{fence}python\nprint(\n{fence}"
+    monkeypatch.setattr(ollama, "chat", lambda message, history=None: invalid)
+    monkeypatch.setattr(agent_loop, "_expand_retrieval_query", lambda query: [])
+    monkeypatch.setattr(knowledge_base, "search", lambda query, limit=5: [])
+    monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
+        "query": query, "provider": "test", "allowed_hosts": [], "discovered_urls": [], "indexed": [], "errors": [],
+    })
+    monkeypatch.setattr(
+        agent_loop, "_request",
+        lambda *_args, **_kwargs: {"message": {"content": invalid}},
+    )
+
+    answer = agent_loop.answer_with_learning_loop("Python code error: fix this syntax")
+    assert answer == invalid
+    records = experience.list_experiences(topic="Python code error")
+    assert records[0]["status"] == "needs_review"
+    syntax = [item for item in records[0]["test_results"] if item["test"] == "python_syntax_block_1"]
+    assert syntax and syntax[0]["passed"] is False
