@@ -112,3 +112,11 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - Each worker must create one timestamped UTC report per attempted run under `docs/automation-reports/`, including blocked/no-change runs; cite exact branches, SHAs, PRs, test commands/results, CI runs, and acceptance criteria. Do not invent a platform run ID when it is not exposed.
 - Worker reports belong on dedicated branches and must be linked from PRs. The coordinator alone owns this dashboard, verifies evidence and exact-head CI, and records a summary here. A report alone does not authorize merge.
 - **Rollout status: protocol committed to this dashboard PR; recurring automation prompts are being updated.** Do not claim end-to-end reporting is operational until a subsequent real scheduled run produces a report and the coordinator verifies it.
+
+
+## Reporting protocol rollout log — 2026-10-12
+
+- Coordinator implementation report: [2026-10-12T164500Z-coordinator.md](automation-reports/2026-10-12T164500Z-coordinator.md).
+- Reporting protocol and template are present in [README](automation-reports/README.md) and [TEMPLATE](automation-reports/TEMPLATE.md).
+- The three recurring automation prompts were updated successfully. This is configuration evidence only; a future run must produce a report file before the recurring reporting loop can be called operational.
+- Current documentation PR: [#12](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/12). Check CI on its exact current head before merging.
