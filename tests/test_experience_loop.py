@@ -57,7 +57,8 @@ def test_controlled_loop_keeps_artifact_unverified_without_real_source_excerpt(t
         job_id=18,
     )
     assert result["status"] == "needs_review"
-    assert result["checks"][-1]["passed"] is False
+    source_integrity = next(check for check in result["checks"] if check["test"] == "source_excerpt_integrity")
+    assert source_integrity["passed"] is False
     assert experience.get_experience(result["experience_id"])["status"] == "needs_review"
 
 
