@@ -32,8 +32,10 @@ def test_experience_persists_problem_sources_tests_and_takeaway(tmp_path, monkey
 def test_experience_cannot_be_verified_without_sources_and_passing_test(tmp_path, monkeypatch):
     setup_learning_db(tmp_path, monkeypatch)
     item = experience.create_experience("SQL", "Query returned an unexpected result.")
-    with pytest.raises(ValueError, match="source evidence"):
+    with pytest.raises(ValueError, match="controlled experience runner"):
         experience.update_experience(item["id"], status="verified")
+    with pytest.raises(ValueError, match="source evidence"):
+        experience.update_experience(item["id"], status="verified", _controlled_run=True)
     with pytest.raises(ValueError, match="passing test"):
         experience.update_experience(
             item["id"],
