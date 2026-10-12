@@ -72,7 +72,8 @@ python scripts/benchmark_ollama.py --models qwen2.5:7b,qwen3:8b,qwen3:14b --num-
 API پایگاه دانش در شاخه فعلی
 
 - POST /api/knowledge/sources با بدنه JSON شامل url و اختیاری title: دریافت و ایندکس یک صفحه از دامنه‌های مجاز.
-- POST /api/knowledge/search با query و اختیاری limit: جست‌وجوی واژه‌ای در قطعات ایندکس‌شده.
+- POST /api/knowledge/search با query و اختیاری limit: بازیابی ترکیبی FTS5/embedding با fallback واژه‌ای.
+- POST /api/learning/sql-sandbox با query و اختیاری timeout_seconds/max_rows: اجرای فقط‌خواندنی روی داده ساختگی و پایگاه موقت درون‌حافظه‌ای.
 - GET /api/knowledge/sources: فهرست منابع و تعداد قطعات.
 
 دامنه‌های مجاز فعلی محدودند و redirect به‌صورت خودکار دنبال نمی‌شود. شرایط استفاده و مجوز بازاستفاده هر منبع باید جداگانه بررسی شود؛ در دسترس بودن عمومی یک صفحه به معنی اجازه بازنشر کامل آن نیست. این API را به شبکه عمومی منتشر نکنید.
