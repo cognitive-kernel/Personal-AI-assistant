@@ -50,10 +50,9 @@ def configure_learning_logger() -> Path:
 
 
 def _sanitize_text(value: str) -> str:
-    value = re.sub(r"(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+", r"\\1[REDACTED]", value)
-    value = re.sub(r"(?i)([?&](?:access_token|refresh_token|api_key|token|key|secret|password|authorization)=)[^&\\s]+", r"\\1[REDACTED]", value)
+    value = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+", r"\1[REDACTED]", value)
+    value = re.sub(r"(?i)([?&](?:access_token|refresh_token|api_key|token|key|secret|password|authorization)=)[^&\s]+", r"\1[REDACTED]", value)
     return value[:_MAX_FIELD_CHARS]
-
 
 def _safe_context(context: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
