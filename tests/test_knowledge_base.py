@@ -161,7 +161,7 @@ def test_hybrid_search_fuses_lexical_and_embedding_rankings(tmp_path, monkeypatc
 
     assert len(results) == 2
     assert {item["retrieval"] for item in results} == {"hybrid_fts5_embeddings"}
-    assert results[0]["chunk_id"] == second.lastrowid or results[0]["chunk_id"] == first.lastrowid
+    assert results[0]["content"] == "alpha query is discussed here"
     assert all("retrieval_score" in item for item in results)
 
 
