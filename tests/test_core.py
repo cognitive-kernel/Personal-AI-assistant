@@ -434,3 +434,15 @@ def test_learning_job_retries_invalid_code_and_keeps_syntax_failure_auditable(tm
     assert any(item["options"]["num_predict"] == 1400 for item in payloads)
     assert 'print("ok")' in finished["lesson"]
     assert finished["quality"]["experience_verification"]["status"] == "needs_review"
+
+
+
+def test_learning_assessment_contract_rejects_extra_items_instead_of_truncating():
+    assessment = {
+        "learning_outcomes": ["one", "two", "three", "four"],
+        "questions": ["q1", "q2", "q3"],
+        "answer_key": ["a1", "a2", "a3"],
+    }
+    assert learning._assessment_contract_passes(assessment) is False
+    assessment["learning_outcomes"] = ["one", "two", "three"]
+    assert learning._assessment_contract_passes(assessment) is True
