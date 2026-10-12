@@ -243,6 +243,18 @@ def search_relevant_experiences(query: str, query_variants: list[str] | None = N
         return []
     ranked: list[tuple[float, dict[str, Any]]] = []
     for item in list_experiences(status="verified", limit=200):
+        # Older chat-loop records predate claim-level review. Keep them out of reusable
+        # verified context rather than silently treating provenance checks as semantic support.
+        results = item.get("test_results", [])
+        is_legacy_chat_record = (
+            any(result.get("runner") == "chat-learning-loop-v1" for result in results)
+            and not any(
+                result.get("test") == "semantic_claim_review" and result.get("passed") is True
+                for result in results
+            )
+        )
+        if is_legacy_chat_record:
+            continue
         searchable = " ".join([
             item["topic"], item["problem"], item["hypothesis"], item["takeaway"],
             " ".join(str(e.get("claim", "")) for e in item["source_evidence"]),
