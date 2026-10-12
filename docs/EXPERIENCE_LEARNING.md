@@ -7,6 +7,7 @@ The adaptive loop is now used by the normal chat endpoint for technical, trouble
 - `POST /api/learning/experiences` — record a weakness or failure.
 - `GET /api/learning/experiences` — list/filter experiences by topic or status.
 - `GET /api/learning/experiences/{id}` — inspect the complete record.
+- `GET /api/learning/experiences/{id}/versions` — inspect the current version and immutable prior snapshots. Rollback remains an internal controlled-runner operation.
 - `PATCH /api/learning/experiences/{id}` — attach source evidence, test plan/results, and update status/takeaway.
 
 ## Controlled verification loop
