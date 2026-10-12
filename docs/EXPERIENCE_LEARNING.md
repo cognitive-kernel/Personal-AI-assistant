@@ -13,7 +13,7 @@ The current increment provides persistent experience records and reuses only rec
 
 An experience cannot be marked `verified` unless it has at least one HTTPS source-evidence item, a test plan, and at least one passing test result. This is a structural guard only: the API does not independently verify that the URL supports the claim or that a caller actually executed the declared test. Treat these records as trusted reusable guidance only when the evidence and test results were produced by the application’s controlled workflow.
 
-Source excerpts and URLs are kept in their original language. The generated lesson language is selected from the topic/request; English source text is not translated before being stored or retrieved.
+Source excerpts and URLs are kept in their original language. The generated lesson language is selected from the topic/request; English source text is not translated before being stored or retrieved. A lesson rejected by the final heuristic quality gate is automatically recorded as a `needs_review` experience with the quality-gate result. This captures a failure signal but does not independently identify a factual error.
 
 ## Remaining work before calling this a complete autonomous loop
 
