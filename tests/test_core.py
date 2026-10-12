@@ -511,3 +511,7 @@ def test_rejected_learning_job_persists_each_failed_syntax_check(tmp_path, monke
         if item["test"] == "python_syntax_block_1"
     ]
     assert failed_syntax and failed_syntax[0]["passed"] is False
+
+def test_learning_payload_parser_rejects_missing_required_fields():
+    assert learning._parse_learning_payload('{"lesson": "missing questions"}') is None
+    assert learning._parse_learning_payload('not JSON') is None
