@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama, experience, agent_loop, learning_log
+from . import curricula, db, learning, ollama, experience, agent_loop, learning_log, sql_sandbox
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -65,6 +65,12 @@ class KnowledgeSourceRequest(BaseModel):
 class KnowledgeSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=5, ge=1, le=20)
+
+
+class SQLSandboxRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=10000)
+    timeout_seconds: float = Field(default=1.0, ge=0.05, le=5.0)
+    max_rows: int = Field(default=100, ge=1, le=200)
 
 
 class LearningRequest(BaseModel):
@@ -254,6 +260,19 @@ def ingest_knowledge_source(request: KnowledgeSourceRequest) -> dict[str, Any]:
 def search_knowledge(request: KnowledgeSearchRequest) -> dict[str, Any]:
     from . import knowledge_base
     return {"query": request.query, "results": knowledge_base.search(request.query, request.limit)}
+
+
+@app.post("/api/learning/sql-sandbox")
+def run_sql_sandbox(request: SQLSandboxRequest) -> dict[str, Any]:
+    """Run a read-only SQL example against a fresh in-memory synthetic database."""
+    try:
+        return sql_sandbox.run_sql(
+            request.query,
+            timeout_seconds=request.timeout_seconds,
+            max_rows=request.max_rows,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/knowledge/sources")
