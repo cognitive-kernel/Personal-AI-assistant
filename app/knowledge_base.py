@@ -159,6 +159,32 @@ def search(query: str, limit: int = 5) -> list[dict[str, Any]]:
     return [{"chunk_id": r["id"], "source_id": r["source_id"], "title": r["title"], "url": r["url"],
              "content": r["content"], "retrieval": "sqlite_fts5"} for r in rows]
 
+
+_STOPWORDS = {
+    "the", "and", "for", "with", "from", "what", "when", "where", "which",
+    "how", "why", "does", "did", "can", "could", "should", "would", "into",
+    "about", "this", "that", "these", "those", "are", "is", "was", "were",
+    "fix", "error", "issue", "problem", "please", "explain", "help",
+    "برای", "از", "به", "در", "با", "چه", "چطور", "چگونه", "چرا", "این",
+    "آن", "را", "یک", "و", "یا", "است", "هست", "کن", "کردن", "رفع",
+}
+
+
+def is_relevant(query: str, item: dict[str, Any], variants: list[str] | None = None) -> bool:
+    """Reject weak OR-token hits before deciding the local index covers a query."""
+    query_terms = {
+        term for value in [query, *(variants or [])[:4]]
+        for term in re.findall(r"[\w-]{2,}", value.casefold(), flags=re.UNICODE)
+        if term not in _STOPWORDS
+    }
+    if not query_terms:
+        return False
+    content = " ".join((str(item.get("title", "")), str(item.get("content", "")))).casefold()
+    content_terms = set(re.findall(r"[\w-]{2,}", content, flags=re.UNICODE))
+    overlap = len(query_terms & content_terms)
+    required = 1 if len(query_terms) <= 2 else 2
+    return overlap >= required
+
 def list_sources() -> list[dict[str, Any]]:
     with learning_connection() as conn:
         rows = conn.execute("""SELECT s.id, s.url, s.title, s.content_hash, s.license_note, s.status,
