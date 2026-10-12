@@ -20,6 +20,7 @@ def test_experience_persists_problem_sources_tests_and_takeaway(tmp_path, monkey
         test_plan=[{"test": "empty input returns an empty result"}],
         test_results=[{"test": "empty input returns an empty result", "passed": True, "actual": "empty result"}],
         takeaway="Handle empty input explicitly.",
+        _controlled_run=True,
     )
     assert updated["status"] == "verified"
     assert updated["version"] == 2
@@ -40,6 +41,7 @@ def test_experience_cannot_be_verified_without_sources_and_passing_test(tmp_path
             source_evidence=[{"url": "https://learn.microsoft.com/en-us/sql/", "claim": "Official docs"}],
             test_plan=[{"test": "regression test"}],
             test_results=[{"test": "regression test", "passed": False}],
+            _controlled_run=True,
         )
 
 
@@ -78,6 +80,7 @@ def test_retrieval_only_returns_verified_experiences_and_accepts_cross_language_
         test_plan=[{"test": "compare logical reads on representative data"}],
         test_results=[{"test": "compare logical reads on representative data", "passed": True}],
         takeaway="Check statistics and actual plan before changing indexes.",
+        _controlled_run=True,
     )
 
     results = experience.search_relevant_experiences(
@@ -98,5 +101,20 @@ def test_retrieval_returns_no_results_for_unrelated_query(tmp_path, monkeypatch)
         test_plan=[{"test": "empty payload is rejected"}],
         test_results=[{"test": "empty payload is rejected", "passed": True}],
         takeaway="Validate payloads before parsing.",
+        _controlled_run=True,
     )
     assert experience.search_relevant_experiences("SQL Server query optimizer") == []
+
+
+
+def test_public_update_cannot_promote_record_to_verified(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience("Python", "Need to verify a parser behavior.")
+    with pytest.raises(ValueError, match="controlled experience runner"):
+        experience.update_experience(
+            item["id"],
+            status="verified",
+            source_evidence=[{"url": "https://docs.python.org/3/library/json.html", "claim": "source"}],
+            test_plan=[{"test": "contract"}],
+            test_results=[{"test": "contract", "passed": True}],
+        )
