@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,12 @@ def configure_learning_logger() -> Path:
     return path
 
 
+def _sanitize_text(value: str) -> str:
+    value = re.sub(r"(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+", r"\\1[REDACTED]", value)
+    value = re.sub(r"(?i)([?&](?:access_token|refresh_token|api_key|token|key|secret|password|authorization)=)[^&\\s]+", r"\\1[REDACTED]", value)
+    return value[:_MAX_FIELD_CHARS]
+
+
 def _safe_context(context: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
     for key, value in context.items():
@@ -62,7 +69,7 @@ def _safe_context(context: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, dict):
             safe[key] = "[object omitted]"
         else:
-            safe[key] = str(value)[:_MAX_FIELD_CHARS]
+            safe[key] = _sanitize_text(str(value))
     return safe
 
 
