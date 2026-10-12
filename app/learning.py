@@ -113,12 +113,14 @@ def run_job(job_id: int) -> None:
     )
     effective_source_text = "\n\n".join(part for part in (source_text, retrieved_text, experience_text) if part)
     # Provenance describes the inputs actually used, not whether claims were verified.
-    if source_text and retrieved:
-        source_kind = "user_provided_text_and_retrieved_source"
+    if source_text and (retrieved or verified_experiences):
+        source_kind = "user_provided_text_and_retrieved_knowledge"
     elif source_text:
         source_kind = "user_provided_text"
     elif retrieved:
         source_kind = "retrieved_knowledge_source"
+    elif verified_experiences:
+        source_kind = "verified_experience_reuse"
     else:
         source_kind = "model_knowledge_no_external_source"
     with learning_connection() as conn:
