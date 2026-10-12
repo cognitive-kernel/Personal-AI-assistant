@@ -49,6 +49,12 @@ def test_technical_chat_researches_revises_and_persists_verified_provenance(tmp_
     records = experience.list_experiences(topic="Python JSON decoder")
     assert records[0]["status"] == "verified"
     assert records[0]["test_results"][0]["runner"] == "chat-learning-loop-v1"
+    evidence = records[0]["source_evidence"][0]
+    import hashlib
+    assert evidence["excerpt_sha256"] == hashlib.sha256(evidence["excerpt"].encode("utf-8")).hexdigest()
+    assert evidence["original_language"] == "en"
+    attribution = next(item for item in records[0]["test_results"] if item["test"] == "source_attribution")
+    assert "research_metadata" in attribution
 
 
 def test_chat_reuses_verified_experience_on_later_technical_request(tmp_path, monkeypatch):
