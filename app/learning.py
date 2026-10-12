@@ -330,6 +330,15 @@ def run_job(job_id: int) -> None:
             or not _source_attribution_passes(result["lesson"], retrieved)
             or any(not item["passed"] for item in syntax_checks)
         ):
+            learning_log.log_event(
+                "learning.quality_repair_started", level=20, job_id=job_id,
+                score=quality.get("score"), word_count=quality.get("word_count"),
+                target_word_count=quality.get("target_word_count"),
+                reasons=quality.get("reasons", []),
+                assessment_contract_passes=_assessment_contract_passes(assessment),
+                source_attribution_passes=_source_attribution_passes(result["lesson"], retrieved),
+                syntax_failures=[item["test"] for item in syntax_checks if not item["passed"]],
+            )
             retry_prompt = dict(prompt)
             # Give the repair pass measurable feedback, not just a generic rejection label.
             retry_prompt["quality_feedback"] = {
