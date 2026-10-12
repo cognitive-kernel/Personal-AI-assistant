@@ -60,6 +60,17 @@ def _assessment_contract_passes(assessment: dict[str, Any]) -> bool:
     return True
 
 
+
+def _source_attribution_passes(lesson: str, retrieved_sources: list[dict[str, Any]]) -> bool:
+    """Require generated lessons to cite at least one exact URL for retrieved sources."""
+    if not retrieved_sources:
+        return True
+    return any(
+        isinstance(item.get("url"), str) and item["url"] in lesson
+        for item in retrieved_sources
+    )
+
+
 def create_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
@@ -181,7 +192,12 @@ def run_job(job_id: int) -> None:
         quality["user_provided_source_available"] = bool(source_text)
         quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
         # Repair rejected lessons and lessons below the language-aware target length.
-        if not quality["accepted"] or quality["word_count"] < quality["target_word_count"] or not _assessment_contract_passes(assessment):
+        if (
+            not quality["accepted"]
+            or quality["word_count"] < quality["target_word_count"]
+            or not _assessment_contract_passes(assessment)
+            or not _source_attribution_passes(result["lesson"], retrieved)
+        ):
             retry_prompt = dict(prompt)
             # Give the repair pass measurable feedback, not just a generic rejection label.
             retry_prompt["quality_feedback"] = {
@@ -230,20 +246,30 @@ def run_job(job_id: int) -> None:
                 retry_quality["user_provided_source_available"] = bool(source_text)
                 retry_quality["verification_status"] = "needs_review" if effective_source_text else "unverified"
                 # Acceptance and target-length compliance take precedence over raw score.
-                def candidate_rank(candidate_quality: dict[str, Any], candidate_assessment: dict[str, Any]) -> tuple[int, int, int, int, int]:
+                def candidate_rank(
+                    candidate_quality: dict[str, Any],
+                    candidate_assessment: dict[str, Any],
+                    candidate_lesson: str,
+                ) -> tuple[int, int, int, int, int, int]:
                     return (
+                        int(_source_attribution_passes(candidate_lesson, retrieved)),
                         int(_assessment_contract_passes(candidate_assessment)),
                         int(candidate_quality["accepted"]),
                         int(candidate_quality["word_count"] >= candidate_quality["target_word_count"]),
                         int(candidate_quality["score"]),
                         int(candidate_quality["word_count"]),
                     )
-                if candidate_rank(retry_quality, retry_assessment) > candidate_rank(quality, assessment):
+                if candidate_rank(retry_quality, retry_assessment, retry_result["lesson"]) > candidate_rank(quality, assessment, result["lesson"]):
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         if not _assessment_contract_passes(assessment):
             quality["accepted"] = False
             quality.setdefault("reasons", []).append(
                 "Assessment contract failed after bounded repair: exactly three non-empty learning outcomes, questions, and answer keys are required."
+            )
+        if not _source_attribution_passes(result["lesson"], retrieved):
+            quality["accepted"] = False
+            quality.setdefault("reasons", []).append(
+                "Source attribution failed after bounded repair: lesson must cite at least one exact URL from retrieved sources."
             )
         experience_verification = None
         if quality["accepted"]:
