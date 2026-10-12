@@ -87,6 +87,20 @@ def run_job(job_id: int) -> None:
             if key not in seen_chunks:
                 seen_chunks.add(key)
                 retrieved.append(item)
+    research_result = None
+    if len(retrieved) < 2:
+        # A thin local index is a knowledge gap: discover pages online, but ingest only
+        # HTTPS pages from the configured documentation allowlist.
+        try:
+            research_result = knowledge_base.research_and_index(topic, limit=3)
+            for query in [topic, *query_variants[:1]]:
+                for item in knowledge_base.search(query, limit=5):
+                    key = (int(item["source_id"]), int(item["chunk_id"]))
+                    if key not in seen_chunks:
+                        seen_chunks.add(key)
+                        retrieved.append(item)
+        except Exception as exc:
+            research_result = {"query": topic, "error": str(exc)[:300], "indexed": [], "discovered_urls": []}
     retrieved = retrieved[:8]
     verified_experiences = experience.search_relevant_experiences(topic, query_variants, limit=4)
     retrieved_text = "\n\n".join(
@@ -97,7 +111,10 @@ def run_job(job_id: int) -> None:
         f"[Verified prior experience #{item['id']} | Topic: {item['topic']} | Evidence: {json.dumps(item['source_evidence'], ensure_ascii=False)} | Test results: {json.dumps(item['test_results'], ensure_ascii=False)}]\nProblem: {item['problem']}\nTakeaway: {item['takeaway']}"
         for item in verified_experiences
     )
-    effective_source_text = "\n\n".join(part for part in (source_text, retrieved_text, experience_text) if part)
+    research_note = ""
+    if research_result:
+        research_note = "[Web research attempt metadata; not itself evidence of correctness]\n" + json.dumps(research_result, ensure_ascii=False)
+    effective_source_text = "\n\n".join(part for part in (source_text, retrieved_text, experience_text, research_note) if part)
     # Provenance describes the inputs actually used, not whether claims were verified.
     if source_text and retrieved:
         source_kind = "user_provided_text_and_retrieved_source"
