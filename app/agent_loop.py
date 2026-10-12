@@ -6,6 +6,7 @@ experience memory. "Verified" describes these checks, not independent fact proof
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -130,17 +131,23 @@ def _remember_chat_result(
             continue
         seen_urls.add(url)
         excerpt = excerpt.strip()[:400]
+        from .experience_loop import _source_language
         evidence.append({
             "url": url,
             "title": str(source.get("title", ""))[:300],
-            "claim": "Source provenance recorded; this is not independent proof that every answer claim is supported.",
+            "claim": "Source provenance recorded; semantic support for every answer claim has not been independently established.",
             "excerpt": excerpt,
-            "original_language": "preserved",
+            "excerpt_sha256": hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+            "original_language": _source_language(excerpt),
         })
     citation_pass = bool(evidence) and any(item["url"] in answer for item in evidence)
     excerpt_pass = bool(evidence) and all(
-        item["excerpt"] in next(
-            source["content"] for source in sources if source.get("url") == item["url"]
+        hashlib.sha256(item["excerpt"].encode("utf-8")).hexdigest() == item["excerpt_sha256"]
+        and any(
+            source.get("url") == item["url"]
+            and isinstance(source.get("content"), str)
+            and item["excerpt"] in source["content"]
+            for source in sources
         )
         for item in evidence
     )
@@ -199,9 +206,14 @@ def _remember_chat_result(
         status="verified" if all_passed else "needs_review",
         source_evidence=evidence,
         test_plan=[{"test": item["test"], "runner": "chat-learning-loop-v1"} for item in checks],
-        test_results=checks,
+        test_results=[
+            {**item, "research_metadata": research_metadata}
+            if item["test"] == "source_attribution" else item
+            for item in checks
+        ],
         takeaway=(
-            answer[:6000] + "\n\nVerification scope: non-empty output, URL attribution, and exact source excerpt provenance. "
+            answer[:6000] + "\n\nVerification scope: non-empty output, URL attribution, source excerpt SHA-256 integrity, "
+            "and static Python/JSON syntax parsing. Research attempts are recorded in the source-attribution test result. "
             "Factual claims were not independently verified."
         ),
         _controlled_run=True,
