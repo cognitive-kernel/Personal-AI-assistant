@@ -56,3 +56,47 @@ def test_experience_rejects_non_https_sources_and_invalid_test_result(tmp_path, 
             item["id"],
             test_results=[{"test": "unit test", "passed": "yes"}],
         )
+
+
+
+def test_retrieval_only_returns_verified_experiences_and_accepts_cross_language_variants(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    unverified = experience.create_experience("SQL index", "An index scan was unexpectedly slow.")
+    verified = experience.create_experience(
+        "SQL Server index seek",
+        "A query plan chose a scan for a selective predicate.",
+        "Compare statistics and logical reads before adding an index.",
+    )
+    experience.update_experience(
+        verified["id"],
+        status="verified",
+        source_evidence=[{
+            "url": "https://learn.microsoft.com/en-us/sql/relational-databases/",
+            "claim": "Microsoft documents query plans and indexes.",
+            "original_language": "en",
+        }],
+        test_plan=[{"test": "compare logical reads on representative data"}],
+        test_results=[{"test": "compare logical reads on representative data", "passed": True}],
+        takeaway="Check statistics and actual plan before changing indexes.",
+    )
+
+    results = experience.search_relevant_experiences(
+        "ایندکس و طرح اجرای پرس‌وجو",
+        query_variants=["SQL Server index seek query plan statistics"],
+    )
+    assert [item["id"] for item in results] == [verified["id"]]
+    assert all(item["id"] != unverified["id"] for item in results)
+
+
+def test_retrieval_returns_no_results_for_unrelated_query(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience("Python JSON parser", "Parser rejected an empty payload.")
+    experience.update_experience(
+        item["id"],
+        status="verified",
+        source_evidence=[{"url": "https://docs.python.org/3/library/json.html", "claim": "JSON parser behavior"}],
+        test_plan=[{"test": "empty payload is rejected"}],
+        test_results=[{"test": "empty payload is rejected", "passed": True}],
+        takeaway="Validate payloads before parsing.",
+    )
+    assert experience.search_relevant_experiences("SQL Server query optimizer") == []
