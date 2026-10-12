@@ -371,6 +371,8 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
-    assert payloads[0]["options"]["num_predict"] >= 1000
+    assert any(payload["options"]["num_predict"] >= 1000 for payload in payloads)
+    lesson_payloads = [payload for payload in payloads if payload["options"]["num_predict"] >= 1000]
+    assert lesson_payloads[0]["messages"][-1]["content"].find('"output_language": "Persian"') >= 0
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
