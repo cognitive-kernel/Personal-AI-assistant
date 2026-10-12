@@ -155,3 +155,31 @@ def list_experiences(topic: str | None = None, status: str | None = None, limit:
             (*params, max(1, min(200, int(limit)))),
         ).fetchall()
     return [get_experience(int(row["id"])) for row in rows]
+
+
+def search_relevant_experiences(query: str, query_variants: list[str] | None = None, limit: int = 5) -> list[dict[str, Any]]:
+    """Return only verified experiences ranked by overlap with supplied language variants."""
+    import re
+
+    if not isinstance(query, str) or not query.strip():
+        return []
+    tokens: set[str] = set()
+    for variant in [query, *(query_variants or [])][:8]:
+        if isinstance(variant, str):
+            tokens.update(re.findall(r"[\w-]{2,}", variant.casefold(), flags=re.UNICODE))
+    if not tokens:
+        return []
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for item in list_experiences(status="verified", limit=200):
+        searchable = " ".join([
+            item["topic"], item["problem"], item["hypothesis"], item["takeaway"],
+            " ".join(str(e.get("claim", "")) for e in item["source_evidence"]),
+        ]).casefold()
+        item_tokens = set(re.findall(r"[\w-]{2,}", searchable, flags=re.UNICODE))
+        overlap = len(tokens & item_tokens)
+        if overlap:
+            topic_tokens = set(re.findall(r"[\w-]{2,}", item["topic"].casefold(), flags=re.UNICODE))
+            score = overlap / (len(tokens) ** 0.5) + 1.5 * len(tokens & topic_tokens)
+            ranked.append((score, item))
+    ranked.sort(key=lambda pair: (pair[0], pair[1]["updated_at"], pair[1]["id"]), reverse=True)
+    return [item for _, item in ranked[:max(1, min(20, int(limit)))]]
