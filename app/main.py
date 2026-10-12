@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama, experience, agent_loop, learning_log, sql_sandbox
+from . import curricula, db, learning, ollama, experience, agent_loop, learning_log, sql_sandbox, feedback
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 
@@ -44,6 +44,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def startup() -> None:
     db.init_databases()
     experience.init_experience_tables()
+    feedback.init_feedback_table()
     learning_log.configure_learning_logger()
 
 @app.get("/", include_in_schema=False)
@@ -56,6 +57,13 @@ class ChatRequest(BaseModel):
 
 class SettingsPatch(BaseModel):
     values: dict[str, Any]
+
+class ChatFeedbackRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=12000)
+    answer: str = Field(min_length=1, max_length=20000)
+    rating: str
+    correction: str = Field(default="", max_length=8000)
+
 
 class KnowledgeSourceRequest(BaseModel):
     url: str = Field(min_length=1, max_length=2000)
@@ -133,6 +141,21 @@ def chat(request: ChatRequest) -> dict[str, str]:
     except Exception as exc:
         learning_log.log_event("chat.unhandled_error", exc_info=True, error_type=type(exc).__name__)
         raise HTTPException(status_code=500, detail="Chat failed. See the local learning diagnostics log.") from exc
+
+@app.post("/api/chat/feedback", status_code=201)
+def submit_chat_feedback(request: ChatFeedbackRequest) -> dict[str, Any]:
+    try:
+        return feedback.record_feedback(
+            request.query, request.answer, request.rating, request.correction
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/chat/feedback")
+def chat_feedback(limit: int = 50) -> dict[str, Any]:
+    return {"feedback": feedback.list_feedback(limit)}
+
 
 @app.get("/api/learning/diagnostics")
 def learning_diagnostics() -> dict[str, Any]:
