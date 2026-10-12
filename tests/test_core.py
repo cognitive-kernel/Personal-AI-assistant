@@ -380,3 +380,57 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     assert lesson_payloads[0]["messages"][-1]["content"].find('"output_language": "Persian"') >= 0
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
+
+
+
+def test_learning_job_retries_invalid_code_and_keeps_syntax_failure_auditable(tmp_path, monkeypatch):
+    import json
+    from app import experience
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    experience.init_experience_tables()
+    lesson = (
+        "Python decorators let a program wrap a function with reusable behavior. "
+        "A decorator receives a callable and returns another callable, often preserving metadata with functools.wraps. "
+        "The at-sign syntax applies the decorator when the function is defined. Decorators are useful for logging, caching, "
+        "authorization, and measuring execution time. A simple decorator defines an inner wrapper, calls the original function, "
+        "and returns its result. Arguments can be forwarded with args and kwargs. Decorator order matters because decorators "
+        "are applied from the nearest function outward. For methods, the wrapper must preserve descriptor behavior expected by "
+        "the class. Use a decorator when behavior should be shared across functions; avoid it when it hides important control flow. "
+        "For example, a timing decorator records the start time, calls the wrapped function, measures elapsed time, and returns "
+        "the original result unchanged. A caching decorator stores results for repeatable inputs, but needs a clear invalidation "
+        "strategy when underlying data changes. Tests should verify both the returned value and intended side effects. "
+        "The correct implementation depends on the callable contract, error behavior, and whether state is preserved."
+    )
+    fence = chr(96) * 3
+    invalid_lesson = lesson + f"\\n{fence}python\\nprint(\\n{fence}"
+    valid_lesson = lesson + f'\\n{fence}python\\nprint("ok")\\n{fence}'
+    payloads = []
+
+    def fake_request(_path, payload, **_kwargs):
+        payloads.append(payload)
+        budget = payload["options"]["num_predict"]
+        if budget == 180:
+            return {"message": {"content": json.dumps({"variants": []})}}
+        chosen = invalid_lesson if budget == 1200 else valid_lesson
+        return {"message": {"content": json.dumps({
+            "lesson": chosen,
+            "learning_outcomes": ["Explain the wrapper contract", "Compare decorator order", "Test return values"],
+            "questions": ["What does a decorator receive?", "Why preserve metadata?", "What should a test assert?"],
+            "answer_key": ["A callable.", "To retain function metadata.", "Return values and intended side effects."],
+        })}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    from app import knowledge_base
+    monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
+        "query": query, "provider": "test", "allowed_hosts": [], "discovered_urls": [], "indexed": [], "errors": []
+    })
+    job = learning.create_job("Python decorators")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+    assert finished["status"] == "completed"
+    assert any(item["options"]["num_predict"] == 1400 for item in payloads)
+    assert "print(\\\"ok\\\")" in finished["lesson"]
+    assert finished["quality"]["experience_verification"]["status"] == "needs_review"
