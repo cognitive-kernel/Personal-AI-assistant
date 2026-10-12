@@ -446,3 +446,43 @@ def test_learning_assessment_contract_rejects_extra_items_instead_of_truncating(
     assert learning._assessment_contract_passes(assessment) is False
     assessment["learning_outcomes"] = ["one", "two", "three"]
     assert learning._assessment_contract_passes(assessment) is True
+
+
+
+def test_rejected_learning_job_persists_each_failed_syntax_check(tmp_path, monkeypatch):
+    import json
+    from app import experience
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    experience.init_experience_tables()
+    fence = chr(96) * 3
+    invalid_lesson = f"Short lesson.\\n{fence}python\\nprint(\\n{fence}"
+
+    def fake_request(_path, payload, **_kwargs):
+        if payload["options"]["num_predict"] == 180:
+            return {"message": {"content": json.dumps({"variants": []})}}
+        return {"message": {"content": json.dumps({
+            "lesson": invalid_lesson,
+            "learning_outcomes": ["Explain a concept", "Compare approaches", "Check an example"],
+            "questions": ["What is it?", "Why use it?", "How test it?"],
+            "answer_key": ["A concept.", "For a reason.", "With a test."],
+        })}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    from app import knowledge_base
+    monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
+        "query": query, "provider": "test", "allowed_hosts": [], "discovered_urls": [], "indexed": [], "errors": []
+    })
+    job = learning.create_job("Python syntax failure")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+    assert finished["status"] == "rejected"
+    records = experience.list_experiences(topic="Python syntax failure", status="needs_review")
+    assert records
+    failed_syntax = [
+        item for item in records[0]["test_results"]
+        if item["test"] == "python_syntax_block_1"
+    ]
+    assert failed_syntax and failed_syntax[0]["passed"] is False
