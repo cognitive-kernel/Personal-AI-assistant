@@ -70,3 +70,49 @@ def test_safe_redirect_caps_redirect_chain(monkeypatch):
         "https://learn.microsoft.com/en-us/sql/overview",
     )
     assert redirected is None
+
+
+
+def test_web_search_filters_results_to_allowlisted_official_docs(monkeypatch):
+    class FakeResponse:
+        status = 200
+        headers = email.message.Message()
+        def __init__(self):
+            self.headers["Content-Type"] = "text/html; charset=utf-8"
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self, _limit):
+            return (
+                '<a class="result__a" href="/l/?uddg=https%3A%2F%2Fdocs.python.org%2F3%2Flibrary%2Fjson.html">Python JSON</a>'
+                '<a class="result__a" href="/l/?uddg=https%3A%2F%2Fevil.example%2Fsteal">Untrusted</a>'
+            ).encode()
+
+    class FakeOpener:
+        def open(self, _request, timeout):
+            assert timeout == 8
+            return FakeResponse()
+
+    monkeypatch.setattr(
+        knowledge_base.socket, "getaddrinfo",
+        lambda *a, **k: [(None, None, None, None, ("8.8.8.8", 443))],
+    )
+    monkeypatch.setattr(knowledge_base.urllib.request, "build_opener", lambda *_args: FakeOpener())
+    urls = knowledge_base._search_web("python json", limit=5)
+    assert urls == ["https://docs.python.org/3/library/json.html"]
+
+
+def test_research_and_index_records_indexing_errors(monkeypatch):
+    monkeypatch.setattr(
+        knowledge_base, "_search_web",
+        lambda query, limit: ["https://docs.python.org/3/library/json.html"],
+    )
+    monkeypatch.setattr(
+        knowledge_base, "ingest_url",
+        lambda url: (_ for _ in ()).throw(ValueError("test fetch failure")),
+    )
+    result = knowledge_base.research_and_index("python json")
+    assert result["provider"] == "DuckDuckGo HTML"
+    assert result["indexed"] == []
+    assert result["errors"][0]["url"] == "https://docs.python.org/3/library/json.html"
