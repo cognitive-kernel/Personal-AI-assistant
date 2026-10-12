@@ -420,6 +420,14 @@ def get_learning_experience(experience_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Learning experience not found.") from exc
 
 
+@app.get("/api/learning/experiences/{experience_id}/versions")
+def list_learning_experience_versions(experience_id: int) -> dict[str, Any]:
+    try:
+        return {"versions": experience.list_experience_versions(experience_id)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning experience not found.") from exc
+
+
 @app.patch("/api/learning/experiences/{experience_id}")
 def update_learning_experience(experience_id: int, request: ExperienceUpdateRequest) -> dict[str, Any]:
     try:
