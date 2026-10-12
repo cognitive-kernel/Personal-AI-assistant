@@ -2,6 +2,10 @@
 
 The adaptive loop is now used by the normal chat endpoint for technical, troubleshooting, and explicit research requests; ordinary small talk keeps the direct chat path. It drafts an initial answer, expands the query across languages, searches/indexes approved official documentation when the local index is thin, reuses verified experiences and failure warnings, asks the local model to revise with source context, retries once for missing URL citations or deterministic Python/JSON syntax errors, and records deterministic verification results. Python and JSON code blocks are parsed but never executed. The learning-job path also uses the same persistent experience memory and its own bounded repair checks. Cross-language retrieval expands the original topic through the configured local Ollama model, searches the existing source index with both the original query and variants, and matches prior verified experiences against the same variants. If the local source index is thin, lacks source diversity, or returns weak lexical matches, the job attempts real web discovery through DuckDuckGo HTML, filters results to an explicit allowlist of official technical-documentation hosts, fetches pages through the existing HTTPS/redirect/DNS/size policy, and indexes accepted pages. If query expansion or discovery fails, the learning job falls back without treating the failed attempt as evidence.
 
+## Single-user feedback memory
+
+The local chat UI can record a `helpful` or `unhelpful` rating and an optional correction through `POST /api/chat/feedback`. Relevant records are retrieved by bounded lexical overlap and supplied to subsequent Ollama prompts as style/quality guidance. The technical revision prompt receives the same guidance. Feedback is not factual evidence, does not override the current user request, and does not automatically mark an experience verified. Review stored feedback with `GET /api/chat/feedback`; it remains local in the learning database.
+
 ## Experience API
 
 - `POST /api/learning/experiences` — record a weakness or failure.
