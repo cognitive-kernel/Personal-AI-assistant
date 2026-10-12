@@ -78,3 +78,31 @@ def test_controlled_loop_records_failed_quality_gate(tmp_path, monkeypatch):
     )
     assert result["status"] == "needs_review"
     assert result["checks"][0]["passed"] is False
+
+
+
+def test_static_code_checks_fail_on_invalid_python_and_json_without_execution():
+    from app.experience_loop import static_code_checks
+
+    fence = chr(96) * 3
+    checks = static_code_checks(
+        f"Bad Python:\n{fence}python\nprint(\n{fence}\nBad JSON:\n{fence}json\n{{\"key\": }}\n{fence}"
+    )
+    assert len(checks) == 2
+    assert all(check["passed"] is False for check in checks)
+    assert {check["test"] for check in checks} == {"python_syntax_block_1", "json_syntax_block_1"}
+
+
+def test_static_code_checks_pass_valid_examples_and_report_no_code_case():
+    from app.experience_loop import static_code_checks
+
+    fence = chr(96) * 3
+    valid = static_code_checks(f'{fence}python\nprint("ok")\n{fence}\n{fence}json\n{{"ok": true}}\n{fence}')
+    assert len(valid) == 2
+    assert all(check["passed"] for check in valid)
+    absent = static_code_checks("An explanation without executable code.")
+    assert absent == [{
+        "test": "code_syntax_contract",
+        "passed": True,
+        "actual": "No fenced Python or JSON blocks were present; no code execution was attempted.",
+    }]
