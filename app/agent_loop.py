@@ -196,14 +196,17 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
     }
     settings = get_settings()
     limits = runtime_limits(settings, detect_hardware())
-    revised_response = _request("/api/chat", {
-        "model": str(settings["ollama_model"]), "stream": False,
-        "messages": [
-            {"role": "system", "content": "You are a careful multilingual assistant. Cite supplied source URLs exactly and distinguish evidence from inference."},
-            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-        ],
-        "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
-    })
+    try:
+        revised_response = _request("/api/chat", {
+            "model": str(settings["ollama_model"]), "stream": False,
+            "messages": [
+                {"role": "system", "content": "You are a careful multilingual assistant. Cite supplied source URLs exactly and distinguish evidence from inference."},
+                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+            ],
+            "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
+        })
+    except ollama.OllamaError:
+        return initial
     revised = revised_response.get("message", {}).get("content")
     if not isinstance(revised, str) or not revised.strip():
         return initial
@@ -211,15 +214,18 @@ def answer_with_learning_loop(message: str, history: list[dict[str, str]] | None
     if sources and not any(item["url"] in revised for item in sources):
         retry = dict(prompt)
         retry["revision_feedback"] = "The draft omitted exact source URLs. Revise once and include at least one relevant supplied URL; if no source supports a claim, label it as inference."
-        retry_response = _request("/api/chat", {
-            "model": str(settings["ollama_model"]), "stream": False,
-            "messages": [
-                {"role": "system", "content": "Revise the answer and satisfy the source-attribution feedback. Never invent sources."},
-                {"role": "user", "content": json.dumps(retry, ensure_ascii=False)},
-            ],
-            "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
-        })
-        retry_text = retry_response.get("message", {}).get("content")
+        try:
+            retry_response = _request("/api/chat", {
+                "model": str(settings["ollama_model"]), "stream": False,
+                "messages": [
+                    {"role": "system", "content": "Revise the answer and satisfy the source-attribution feedback. Never invent sources."},
+                    {"role": "user", "content": json.dumps(retry, ensure_ascii=False)},
+                ],
+                "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 1200},
+            })
+            retry_text = retry_response.get("message", {}).get("content")
+        except ollama.OllamaError:
+            retry_text = None
         if isinstance(retry_text, str) and retry_text.strip():
             revised = retry_text
 
