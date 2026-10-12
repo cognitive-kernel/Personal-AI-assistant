@@ -142,3 +142,30 @@ def test_source_language_metadata_preserves_persian_and_english_labels():
 
     assert _source_language("مستندات فنی برای پایگاه داده") == "fa"
     assert _source_language("Official documentation for databases") == "en"
+
+
+def test_cross_language_topic_uses_query_variants_for_source_relevance(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    excerpt = (
+        "The Python documentation describes JSON decoding behavior. "
+        "Applications should handle malformed input and report decoding errors. "
+        "This excerpt is retained verbatim for provenance and source attribution."
+    )
+    result = verify_learning_artifact(
+        topic="خطای رمزگشایی JSON در پایتون",
+        query_variants=["Python JSON decoding error"],
+        lesson=("JSON decoding can fail on malformed input; handle decoding errors explicitly. " * 40)
+        + "\\nSources: https://docs.python.org/3/library/json.html",
+        assessment=_assessment(),
+        quality={"accepted": True, "word_count": 160, "target_word_count": 120, "score": 90},
+        retrieved_sources=[{
+            "source_id": 1,
+            "url": "https://docs.python.org/3/library/json.html",
+            "title": "Python JSON documentation",
+            "content": excerpt,
+        }],
+        job_id=21,
+    )
+    relevance = next(check for check in result["checks"] if check["test"] == "source_relevance")
+    assert relevance["passed"] is True
+    assert result["status"] == "verified"
