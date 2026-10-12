@@ -103,6 +103,10 @@ def update_experience(
         results = test_results if test_results is not None else json.loads(row["test_results_json"])
         plan = test_plan if test_plan is not None else json.loads(row["test_plan_json"])
         final_status = status if status is not None else row["status"]
+        # Public callers must not mutate a verified record by downgrading its status
+        # in the same request. Only the controlled runner may change verified history.
+        if row["status"] == "verified" and not _controlled_run:
+            raise ValueError("Only the controlled experience runner can modify a verified record.")
         if final_status == "verified" and not _controlled_run:
             raise ValueError("Only the controlled experience runner can modify a verified record.")
         # A record cannot become a reusable verified experience without sources and
