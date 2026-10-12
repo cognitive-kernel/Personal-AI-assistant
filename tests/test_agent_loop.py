@@ -40,23 +40,24 @@ def test_technical_chat_researches_revises_and_persists_verified_provenance(tmp_
 
     def fake_request(_path, payload, **_kwargs):
         prompts.append(json.loads(payload["messages"][-1]["content"]))
-        system_prompt = payload["messages"][0]["content"]
-        if "skeptical evidence reviewer" in system_prompt:
-            return {"message": {"content": json.dumps({
-                "overall": "supported",
-                "claims": [{
-                    "claim": "JSON decoding can fail on invalid input.",
-                    "verdict": "supported",
-                    "evidence_urls": [source_url],
-                    "reason": "The supplied excerpt says invalid JSON may raise a decoding error.",
-                }],
-            })}}
         return {"message": {"content": revised}}
 
     monkeypatch.setattr(agent_loop, "_request", fake_request)
+    monkeypatch.setattr(agent_loop, "review_answer_claims", lambda *_args, **_kwargs: {
+        "passed": True,
+        "overall": "supported",
+        "claims": [{
+            "claim": "JSON decoding can fail on invalid input.",
+            "verdict": "supported",
+            "evidence_urls": [source_url],
+            "reason": "The supplied excerpt says invalid JSON may raise a decoding error.",
+        }],
+        "error": None,
+        "reviewer": "local_ollama_model_assisted_not_independent",
+    })
     answer = agent_loop.answer_with_learning_loop("Python JSON decoder throws an error")
     assert source_url in answer
-    assert len(prompts) == 2
+    assert len(prompts) == 1
     records = experience.list_experiences(topic="Python JSON decoder")
     assert records[0]["status"] == "verified"
     semantic = next(item for item in records[0]["test_results"] if item["test"] == "semantic_claim_review")
