@@ -120,3 +120,29 @@ def test_public_update_cannot_promote_record_to_verified(tmp_path, monkeypatch):
             test_plan=[{"test": "contract"}],
             test_results=[{"test": "contract", "passed": True}],
         )
+
+
+
+def test_failed_experiences_are_retrieved_as_warnings_not_verified_guidance(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience(
+        "SQL Server index",
+        "The lesson quality gate rejected a vague explanation of query plans.",
+        "Add a concrete mechanism and measured trade-off.",
+    )
+    experience.update_experience(
+        item["id"],
+        status="needs_review",
+        test_plan=[{"test": "learning_quality_gate"}],
+        test_results=[{"test": "learning_quality_gate", "passed": False, "actual": "insufficient technical detail"}],
+        takeaway="The earlier draft was rejected; do not reuse it as correct advice.",
+    )
+    results = experience.search_relevant_failures(
+        "طرح اجرای پرس‌وجو و ایندکس",
+        query_variants=["SQL Server query plan index"],
+    )
+    assert [row["id"] for row in results] == [item["id"]]
+    assert results[0]["status"] == "needs_review"
+    assert experience.search_relevant_experiences(
+        "SQL Server query plan index",
+    ) == []
