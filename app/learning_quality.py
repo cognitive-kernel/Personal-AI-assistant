@@ -47,6 +47,11 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
             "سطح کاربری سه بعدی",
             "ساختار و سطوح سطوحی",
             "به کار کاربران اجازه می‌دهد تا",
+            # Known nonsensical or misleading translations seen in generated SQL Server lessons.
+            "دستورات دیکشنری",
+            "ادغامات استراتژیک",
+            "هدف‌گیر برای بهبود اجرای برنامه‌ها",
+            "توزیع عملیاتی",
         ) if phrase in normalized
     ]
     # Flag recurring signs of vague, fabricated architecture descriptions.
@@ -113,7 +118,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = max(0, min(100, score))
     accepted = (
-        score >= 75 and len(words) >= minimum_words and unique_ratio >= 0.48
+        score >= 75 and len(words) >= target_words and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example
         # Explanation markers are a heuristic, not a semantic judge. Keep the
         # penalty in the score, but do not reject an otherwise sound lesson
