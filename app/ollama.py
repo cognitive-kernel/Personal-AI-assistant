@@ -25,6 +25,8 @@ def _base_url() -> str:
         raise OllamaError("Only a loopback Ollama endpoint is allowed in this initial version.")
     if parsed.username or parsed.password:
         raise OllamaError("Credentials in the Ollama URL are not supported.")
+    if parsed.path or parsed.query or parsed.fragment:
+        raise OllamaError("Ollama URL must be a base URL without a path, query, or fragment.")
     return base
 
 def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
