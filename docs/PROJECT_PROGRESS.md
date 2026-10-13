@@ -342,3 +342,13 @@ Report: [2026-10-13T030900Z-coordinator.md](automation-reports/2026-10-13T030900
 - PR #14 has an unresolved redirect-boundary concern: a loopback Ollama endpoint may redirect requests to a remote host. [Security finding](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/14#issuecomment-6137788701); no fix/test verified yet.
 - No submitted review was found for any of the seven PRs. No merge performed.
 - Remaining: redirect regression test, Recall@5/MRR, Persian/English answer-quality benchmark, live Ollama integration, independent review, and overlap/stack validation. CI on this new dashboard head must complete before any merge decision.
+
+
+## Security follow-up — 2026-10-13 04:20 UTC
+
+- Created [PR #15](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/15) from dedicated branch `fix/ollama-redirect-boundary-20261013-run7`, stacked on PR #14's branch to avoid rewriting its files.
+- Head: `a9148bb87b6942cfa2628d757d7ecda5e999f360`.
+- `app/ollama.py` now uses an opener that refuses HTTP redirects; `tests/test_ollama_policy.py` adds a local HTTP-server regression case for HTTP 307 and asserts the redirect target receives no request.
+- No local test command was run. CI lookup for the exact PR #15 head has not returned a workflow run yet; do not treat tests as passed until a run on that SHA completes successfully.
+- PR #15 depends on PR #14 and is not merge-ready until its CI and independent review pass.
+- The dashboard/report head `e1dee0f69b7d786c33265e948524a75e8069ad90` passed exact-head CI [run 38345728944](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38345728944). This validates that documentation head only.
