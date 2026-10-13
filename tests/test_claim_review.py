@@ -117,3 +117,8 @@ def test_claim_review_requires_exact_answer_citation_url(tmp_path, monkeypatch):
         assert result["passed"] is False
         assert result["error"] == "one_or_more_claims_not_supported_or_cited"
 
+def test_extract_citation_urls_handles_markdown_and_quotes():
+    url = "https://docs.python.org/3/library/json.html?mode=full"
+    assert claim_review._extract_citation_urls(
+        f'Markdown: <{url}>; linked: ({url}). quoted: "{url}"'
+    ) == {url}
