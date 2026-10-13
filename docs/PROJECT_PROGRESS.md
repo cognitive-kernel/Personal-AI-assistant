@@ -155,3 +155,17 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - Review submissions were empty for PRs #5, #6, #8, #11, and #12. No numeric Recall@5/MRR, Persian/English answer benchmark, or live Ollama result was found.
 - **Decision: no merge.** CI is green for the cited exact heads, but independent review, overlap resolution, and feature-specific AI evaluation remain incomplete. PR #12's new head must have CI checked before merge.
 - Next: verify dedicated AI/software reports; run retrieval and live-model evaluations; resolve overlapping PRs; re-check final heads and CI before any merge.
+
+
+## Coordination audit — 2026-10-13 02:16 UTC
+
+- Current `main` remains `f557a807f256bb2023b90174cf673ee5e27d71fd`.
+- Current open PRs: #5, #6, #8, #11, #12, #13, and #14.
+- **AI learning:** [PR #13](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/13), stacked on PR #11, adds exact citation URL token matching and regression tests. Current observed head: `ce4854c7832c4f8fd396c68d85992844339a88e8`. [CI run 38335856284](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335856284) passed dependency installation and `pytest` on Ubuntu; Windows was still running at the last check. Report: [2026-10-13T021300Z-ai-learning.md](automation-reports/2026-10-13T021300Z-ai-learning.md) on the PR branch.
+- **Software stability:** [PR #14](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/14) adds parameterized tests for accepted loopback URLs, rejection of remote endpoints, URL credentials, and malformed schemes. Current observed head: `bd80aa89156191dbe672578111c7d0db483b7ee3`. The prior test-only head `59aeef5397bbc7eeee54d0829fa55d58cc4b50f0` passed [CI run 38335898202](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335898202); exact-head CI after the report commit was not yet visible. Report: [2026-10-13T021400Z-software-stability.md](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/test/ollama-policy-regression-20261013-run6/docs/automation-reports/2026-10-13T021400Z-software-stability.md).
+- **Coordinator:** this audit is documented in [2026-10-13T021600Z-coordinator.md](automation-reports/2026-10-13T021600Z-coordinator.md). The current dashboard commit will trigger a new CI run; re-check its exact head before any merge.
+- The AI citation PR's intermediate heads `7086b236` and `7c3ea1a3` failed one punctuation regression test (1 failed, 108 passed). The later code head passed Ubuntu; intermediate failures are recorded transparently.
+- No numeric Recall@5/MRR, Persian/English answer-quality benchmark, or live Ollama integration result has been verified. Current tests do not substitute for those evaluations.
+- PR #5/#6 overlap in `app/learning.py`; PR #6/#8 overlap in `app/main.py`. PR #13 is stacked on #11. Review and integration testing remain required.
+- **Decision: no merge.** PR #13 Windows CI and PR #14 exact-head CI are pending; no independent review was verified. All code PRs remain open.
+- Immediate-run requests for AI learning and coordinator were accepted; software stability was re-enabled after the platform reported it paused and its immediate-run request was accepted. These acknowledgments are not completion evidence.
