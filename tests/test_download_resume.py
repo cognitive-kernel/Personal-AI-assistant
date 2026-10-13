@@ -1,9 +1,14 @@
+import importlib.util
 import json
 from pathlib import Path
 
 import pytest
 
-import run as installer
+_RUN_PATH = Path(__file__).resolve().parents[1] / "run.py"
+_RUN_SPEC = importlib.util.spec_from_file_location("installer_run", _RUN_PATH)
+assert _RUN_SPEC is not None and _RUN_SPEC.loader is not None
+installer = importlib.util.module_from_spec(_RUN_SPEC)
+_RUN_SPEC.loader.exec_module(installer)
 
 
 class PartialResponse:
