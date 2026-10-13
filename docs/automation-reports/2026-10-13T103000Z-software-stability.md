@@ -32,15 +32,15 @@
 - **Working branch:** `docs/software-stability-2026-10-13T103000Z`
 - **Starting SHA:** `f557a807f256bb2023b90174cf673ee5e27d71fd`
 - **Report path:** `docs/automation-reports/2026-10-13T103000Z-software-stability.md`
-- **Report commit SHA:** pending commit creation.
-- **PR:** pending creation.
+- **Report commit SHA:** initial report commit `54689713993292cc7ed9bcf21880e4a52a89e945`; latest report-validation commit is recorded in the branch history.
+- **PR:** [#35 — Record software stability run 2026-10-13T103000Z](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/35).
 - **Relevant code PR:** [#29 — Test hardware-based Ollama runtime limits](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/29)
 - **Relevant CI:** [run 38379223543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38379223543), queried for head SHA `23a779732fc95a36c4d7fca4bc7baa14e002a603`.
 
 ## Tests and validation
 - **Command:** `pytest tests/test_hardware.py`
 - **Result:** NOT RUN locally; this connector environment has no local repository checkout or pytest runtime. No local test pass is claimed.
-- **CI:** run [38379223543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38379223543) completed successfully for queried SHA `23a779732fc95a36c4d7fca4bc7baa14e002a603` as reported by PR #29. This CI result validates that queried PR head only, not this report-only commit.
+- **CI:** run [38379223543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38379223543) completed successfully for queried SHA `23a779732fc95a36c4d7fca4bc7baa14e002a603` as reported by PR #29. This CI result validates that queried PR head only, not this report-only commit. For report PR #35 head `54689713993292cc7ed9bcf21880e4a52a89e945`, workflow lookup returned an empty list and combined status returned no statuses; exact-head CI remains UNVERIFIED.
 - **Live Ollama smoke/integration:** NOT RUN; runtime unavailable through this connector.
 - **Product benchmark checks:** NOT RUN: bilingual answer quality, prepared indexed corpus Recall@5/MRR, curriculum discovery/source-ingestion E2E, cross-language retrieval, web fallback, provenance/conflict validation.
 
@@ -66,7 +66,7 @@
 
 ## Coordinator verification (coordinator fills this section; workers leave it pending)
 - **Report and evidence links checked:** template, main hardware file, PR #29 report, and workflow run fetched.
-- **Exact-head CI verified:** successful workflow run returned for queried PR #29 SHA `23a779732fc95a36c4d7fca4bc7baa14e002a603`; not applicable to this report commit until its own CI is queried.
-- **Attribution verified:** report path and current branch are unique to this run; no shared report file edited.
+- **Exact-head CI verified:** PR #29 queried SHA `23a779732fc95a36c4d7fca4bc7baa14e002a603` has successful run [38379223543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38379223543). This report PR head `54689713993292cc7ed9bcf21880e4a52a89e945` returned an empty workflow-run list and no combined statuses; exact-head CI is UNVERIFIED, not passed.
+- **Attribution verified:** report path and branch are unique to this run; no shared report file edited.
 - **Decision:** NEEDS FOLLOW-UP
-- **Reason:** report records a verified no-duplicate decision and CI evidence, but no new code/test change or local execution occurred and this report's exact-head CI is pending.
+- **Reason:** verified no-duplicate decision and PR #29 CI evidence are recorded, but this PR has no returned CI run and no code/test change or local execution occurred.
