@@ -278,3 +278,11 @@ This snapshot supersedes older in-progress statements for the exact heads listed
 - Automation run requests for all three workstreams were accepted, but completion/worker attribution is not exposed. Software stability was temporarily enabled to submit its request, then restored to disabled.
 - No prepared retrieval corpus was benchmarked; no Recall@5/MRR or Persian/English answer-quality score is claimed. No live Ollama test was performed.
 - **Coordinator decision: PARTIAL / NEEDS FOLLOW-UP; no merge.** Next: verify #8 exact-head CI, update the report/dashboard with final CI evidence, run the versioned retrieval and answer-quality evaluations, test live Ollama, and obtain independent review.
+
+
+### CI follow-up — 2026-10-13 (after 03:06 UTC audit)
+
+- PR #8 code/test head `7526698bc844d859e77b97b95b2674e8c66d293e` passed exact-head [CI run 38339977545](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339977545): Ubuntu and Windows dependency installation and `pytest` both passed.
+- AI run report: [2026-10-13T030900Z-ai-learning.md](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/feat/experience-learning-loop-v1/docs/automation-reports/2026-10-13T030900Z-ai-learning.md). Report-only commit `1d72391b2e57a8dcf3e1305f28dcde3b70419dd0` advances PR #8 and requires its own exact-head CI check.
+- The previous dashboard head `593778abbf6e8ddaf11f4325faa11754e9561f76` passed [CI run 38340041160](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38340041160), including dependency installation and `pytest`. This correction changes the dashboard head; verify CI on the resulting head before any merge.
+- No real retrieval metrics, Persian/English answer-quality score, or live Ollama result is claimed. All seven PRs remain open with no independent review submissions. No merge.
