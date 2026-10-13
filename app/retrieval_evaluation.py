@@ -1,8 +1,40 @@
 """Small, dependency-free metrics for repeatable retrieval evaluation."""
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
+
+
+def load_evaluation_cases(dataset_path: Path) -> list[Any]:
+    """Load a JSON evaluation dataset and require a top-level array."""
+    try:
+        cases = json.loads(dataset_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read evaluation dataset: {exc}") from exc
+    if not isinstance(cases, list):
+        raise ValueError("Evaluation dataset must be a JSON array.")
+    return cases
+
+
+def relevant_source_urls(cases: Sequence[Any]) -> list[str]:
+    """Validate relevance labels and return their unique URLs in stable order."""
+    urls: set[str] = set()
+    for index, case in enumerate(cases):
+        if not isinstance(case, Mapping):
+            raise ValueError(f"Case {index} must be an object.")
+        relevant = case.get("relevant_ids")
+        if (
+            not isinstance(relevant, list)
+            or not relevant
+            or any(not isinstance(value, str) or not value.strip() for value in relevant)
+        ):
+            raise ValueError(f"Case {index} must contain non-empty string IDs in relevant_ids.")
+        urls.update(value.strip() for value in relevant)
+    if not urls:
+        raise ValueError("Evaluation dataset must contain at least one relevant source URL.")
+    return sorted(urls)
 
 
 def indexed_corpus_stats(connection: Any) -> dict[str, int]:
