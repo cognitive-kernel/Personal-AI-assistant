@@ -51,3 +51,21 @@ def test_curriculum_levels_preserve_every_topic_in_order():
             topic for level in levels for topic in level["topics"]
         ]
         assert flattened_topics == catalog_entry["topics"], slug
+
+
+def test_curriculum_expansion_is_idempotent_and_deduplicates_case_insensitively():
+    from app.curricula_expansion import extend_curricula
+
+    catalog = {
+        "python": {
+            "topics": ["Existing topic", "Python fundamentals"],
+        }
+    }
+    extend_curricula(catalog)
+    first_result = list(catalog["python"]["topics"])
+    extend_curricula(catalog)
+
+    assert catalog["python"]["topics"] == first_result
+    normalized = [topic.strip().casefold() for topic in first_result]
+    assert len(normalized) == len(set(normalized))
+    assert "existing topic" in normalized
