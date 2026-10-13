@@ -262,7 +262,7 @@ def _download_once(url: str, destination: Path) -> Path:
         with response:
             status = getattr(response, "status", response.getcode())
             content_range = response.headers.get("Content-Range", "")
-            range_match = re.match(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", content_range)
+            range_match = re.fullmatch(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", content_range.strip())
             if status == 206:
                 # A partial response is only safe to append when it matches the
                 # exact Range request. Never treat an invalid 206 body as a full
