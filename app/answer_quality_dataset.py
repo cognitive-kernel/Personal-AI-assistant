@@ -32,8 +32,9 @@ def load_cases(path: str | Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
             raise ValueError(f"Case at line {line_number} missing fields: {', '.join(sorted(missing))}")
         if not isinstance(case["id"], str) or not case["id"].strip():
             raise ValueError(f"Case at line {line_number} has an empty/non-string id")
-        if case["language"] not in SUPPORTED_LANGUAGES:
-            raise ValueError(f"Case {case['id']} has unsupported language: {case['language']!r}")
+        language = case["language"]
+        if not isinstance(language, str) or language not in SUPPORTED_LANGUAGES:
+            raise ValueError(f"Case {case['id']} has unsupported language: {language!r}")
         if not isinstance(case["prompt"], str) or not case["prompt"].strip():
             raise ValueError(f"Case {case['id']} has an empty/non-string prompt")
         for field in ("expected_concepts", "must_not_claim"):
