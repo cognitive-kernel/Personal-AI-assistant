@@ -265,3 +265,16 @@ This snapshot supersedes older in-progress statements for the exact heads listed
 - The scheduled automation platform does not expose run IDs. This report records GitHub artifacts and CI evidence only, not attribution to an asynchronous worker execution.
 
 **Coordinator decision: PARTIAL / NEEDS FOLLOW-UP.** Do not merge until exact-head CI is complete, independent review is recorded, overlaps are resolved, and required runtime/quality checks are documented.
+
+
+## Coordinator continuation — 2026-10-13 03:06 UTC
+
+- Report: [2026-10-13T030600Z-coordinator.md](automation-reports/2026-10-13T030600Z-coordinator.md).
+- Current repository snapshot: `main` remains `f557a807f256bb2023b90174cf673ee5e27d71fd`; open PRs are #5, #6, #8, #11, #12, #13, and #14. No PR merged.
+- AI learning: PR #8 was hardened to verify every labeled relevant URL has an indexed source and at least one indexed chunk before calculating retrieval metrics. Code/test head `7526698bc844d859e77b97b95b2674e8c66d293e`; exact-head CI [run 38339977545](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339977545) was in progress at the time of this report. Do not claim it passed until completion is verified.
+- Software stability: PR #14 head `1d98cec41e5c609264946bcbc5f84bf6df187be9` passed exact-head CI [run 38339252914](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339252914). Live Ollama integration remains untested.
+- Citation matching: PR #13 head `27d30eadaaa3f4c7405665897f92ab7c93514308` passed exact-head CI [run 38337207451](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337207451). PR #11 head `ab5fcfcdb6f0ad499b404e47791d0a4dba1acee4` passed [run 38273746625](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38273746625).
+- Review submissions were empty for all seven open PRs. Overlap remains: #5/#6 share `app/learning.py`; #6/#8 share `app/main.py`; #11 targets #8 and #13 targets #11. PR #11 currently reports `mergeable=false`; re-check the stack before integration.
+- Automation run requests for all three workstreams were accepted, but completion/worker attribution is not exposed. Software stability was temporarily enabled to submit its request, then restored to disabled.
+- No prepared retrieval corpus was benchmarked; no Recall@5/MRR or Persian/English answer-quality score is claimed. No live Ollama test was performed.
+- **Coordinator decision: PARTIAL / NEEDS FOLLOW-UP; no merge.** Next: verify #8 exact-head CI, update the report/dashboard with final CI evidence, run the versioned retrieval and answer-quality evaluations, test live Ollama, and obtain independent review.
