@@ -71,3 +71,21 @@ def test_curriculum_expansion_is_idempotent_and_deduplicates_case_insensitively(
     assert "existing topic" in normalized
     assert normalized.count("syntax and execution") == 1
     assert "SYNTAX AND EXECUTION" in catalog["python"]["topics"]
+
+
+def test_curriculum_expansion_skips_unknown_catalogs_and_blank_topics(monkeypatch):
+    import app.curricula_expansion as expansion
+
+    monkeypatch.setattr(
+        expansion,
+        "CURRICULUM_EXPANSIONS",
+        {
+            "known": ["", "   ", "existing TOPIC", "New topic", "new TOPIC"],
+            "unknown": ["Must not create a catalog entry"],
+        },
+    )
+    catalog = {"known": {"topics": ["Existing topic"]}}
+
+    expansion.extend_curricula(catalog)
+
+    assert catalog == {"known": {"topics": ["Existing topic", "New topic"]}}
