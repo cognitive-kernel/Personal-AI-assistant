@@ -15,6 +15,14 @@ class _DuplicateJSONKeyError(ValueError):
     """Raised when a JSON object repeats a key instead of defining it once."""
 
 
+class _InvalidJSONConstantError(ValueError):
+    """Raised for NaN/Infinity values accepted by Python but forbidden by JSON."""
+
+
+def _reject_nonstandard_json_constant(value: str) -> None:
+    raise _InvalidJSONConstantError(f"non-standard JSON constant {value!r}")
+
+
 def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -36,10 +44,14 @@ def load_cases(path: str | Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
         if not line.strip():
             continue
         try:
-            case = json.loads(line, object_pairs_hook=_reject_duplicate_json_keys)
+            case = json.loads(
+                line,
+                object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=_reject_nonstandard_json_constant,
+            )
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid JSON at {dataset_path}:{line_number}: {exc.msg}") from exc
-        except _DuplicateJSONKeyError as exc:
+        except (_DuplicateJSONKeyError, _InvalidJSONConstantError) as exc:
             raise ValueError(f"Invalid JSON at {dataset_path}:{line_number}: {exc}") from exc
         if not isinstance(case, dict):
             raise ValueError(f"Case at line {line_number} must be a JSON object")
