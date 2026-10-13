@@ -29,9 +29,10 @@ def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = N
     threads = min(cpu_count, configured_threads) if configured_threads > 0 else cpu_count
     total_ram = hardware.get("total_ram_gb")
     context = int(settings.get("ollama_num_ctx", 2048) or 2048)
-    if total_ram is not None and total_ram < 12:
+    if total_ram is None or total_ram < 12:
+        # Missing RAM telemetry must not select the largest context budget.
         context = min(context, 2048)
-    elif total_ram is not None and total_ram < 24:
+    elif total_ram < 24:
         context = min(context, 4096)
     else:
         context = min(context, 8192)
