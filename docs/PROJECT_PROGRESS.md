@@ -143,3 +143,15 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - PRs #5 and #6 both modify `app/learning.py`; PR #6 and #8 overlap in `app/main.py`. Review integration and test the combined result before merging.
 - No numeric Recall@5/MRR, Persian/English answer benchmark, or live Ollama result was found. The AI and software workstreams remain PARTIAL pending worker reports and additional verification.
 - **Decision:** no merge; exact-head CI is green for #11 and #12, but worker attribution, feature-specific AI evaluation, independent review, and overlap resolution remain open.
+
+## Coordination audit — 2026-10-13 02:08 UTC
+
+- Main remains `f557a807f256bb2023b90174cf673ee5e27d71fd`. Open PRs verified: #5, #6, #8, #11, #12.
+- Coordinator report for this pass: [2026-10-13T020848Z-coordinator.md](automation-reports/2026-10-13T020848Z-coordinator.md), created in commit [`953d62e`](https://github.com/cognitive-kernel/Personal-AI-assistant/commit/953d62edc9c7aef59fde2dc2d88c825975ad0155). Dashboard PR remains [#12](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/12).
+- PR #12 head `55111967be7ff5f8004f6734543c7f0dcb1a44e4` passed exact-head CI [run 38335529466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335529466): `python -m pip install -e ".[dev]"` and `pytest` succeeded. This was the head before adding the report/dashboard updates; re-check CI on the resulting current head before any merge.
+- PR #11 head `ab5fcfcdb6f0ad499b404e47791d0a4dba1acee4` passed [run 38293419503](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38293419503) on Ubuntu and Windows; PR #8 head `7871849fa069763a52b4bceaf1401c87805b9e59` passed [run 38264684201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38264684201) on Ubuntu and Windows. PR #6 head `06c58afd62d12130bc7fe9d4e5eda77ecfa7165f` passed [run 38131926174](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38131926174); PR #5 head `f41173bd166c17987663ad334b02b9441e883def` passed [run 38129271591](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38129271591).
+- No AI-learning or software-stability report was found on the checked refs. Coordinator reports exist on the dashboard branch, including the new report linked above; this does not independently attribute code commits to worker runs.
+- PR #5/#6 overlap in `app/learning.py`; PR #6/#8 overlap in `app/main.py`. PR #11 is based on PR #8's feature branch. PR #8 compares 192 commits ahead and 1 behind current `main`, with 43 changed paths.
+- Review submissions were empty for PRs #5, #6, #8, #11, and #12. No numeric Recall@5/MRR, Persian/English answer benchmark, or live Ollama result was found.
+- **Decision: no merge.** CI is green for the cited exact heads, but independent review, overlap resolution, and feature-specific AI evaluation remain incomplete. PR #12's new head must have CI checked before merge.
+- Next: verify dedicated AI/software reports; run retrieval and live-model evaluations; resolve overlapping PRs; re-check final heads and CI before any merge.
