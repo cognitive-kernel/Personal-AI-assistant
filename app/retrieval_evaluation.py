@@ -5,6 +5,19 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
 
+def indexed_corpus_stats(connection: Any) -> dict[str, int]:
+    """Return counts for sources and chunks actually available to retrieval."""
+    sources = connection.execute(
+        "SELECT COUNT(*) FROM knowledge_sources WHERE status='indexed'"
+    ).fetchone()[0]
+    chunks = connection.execute(
+        """SELECT COUNT(*) FROM knowledge_chunks c
+           JOIN knowledge_sources s ON s.id=c.source_id
+           WHERE s.status='indexed'"""
+    ).fetchone()[0]
+    return {"indexed_sources": int(sources), "indexed_chunks": int(chunks)}
+
+
 def recall_at_k(relevant_ids: Iterable[str], ranked_ids: Sequence[str], k: int = 5) -> float:
     if k < 1:
         raise ValueError("k must be at least 1.")
