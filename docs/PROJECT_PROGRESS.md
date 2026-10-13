@@ -1,8 +1,26 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-12 (UTC)  
+> Last verified: 2026-10-13 13:28 UTC (coordinator audit; see current snapshot below)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
 > This is an evidence-based snapshot, not a live dashboard. Update it only after checking GitHub and the relevant test evidence. Do not infer completion from a scheduled task being enabled or a run request being accepted.
+
+
+## Latest verified snapshot — 2026-10-13 13:28 UTC
+
+This section supersedes conflicting older PR/CI statements below. It is based on live GitHub connector results for the exact heads listed here; local tests and live-model checks were not run.
+
+| Workstream / PR | Exact head | Current evidence | Status / decision |
+|---|---|---|---|
+| AI lesson feedback [#40](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/40) | `aafa34fecce8a5e340f2665f36ae1b9c107ce303` | Code inspection confirms same-path-topic feedback lookup, max 5 reviews, 500-character field caps, and untrusted-feedback instruction. No exact-head Actions run returned. | **OPEN; CI UNVERIFIED; do not merge** |
+| AI regression tests [#43](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/43) | `dbdb68f94dddaeeffe2048b16bb6f3f459c6cb07` | Hard cap, newest-first and truncation tests; no exact-head Actions run returned. | **OPEN; CI UNVERIFIED; stacked on #40** |
+| Stability [#48](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/48) | `47590022e852c4e5c09d6b2c5fbbaedf158ca2d2` | [Actions run #38402458202](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38402458202) succeeded. `app/curricula.py` deep-copies nested `reference_urls` metadata on return. PR description is stale vs branch content; test/report file not independently confirmed. | **CI PASS; review/report reconciliation pending; no merge** |
+| Coordinator [#46](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/46) | `4f1c7bdd81fa6d4cb21dd7760921880cefa791d3` | [Actions run #38392827259](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38392827259) succeeded. | **OPEN; current audit follows** |
+| Stability report [#44](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/44) | `05c3d912b7fab36ba00bf9f56ca704c7d6dae969` | [Actions run #38392603917](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38392603917) succeeded. | **OPEN; report only, no app fix in that PR** |
+| Bilingual dataset validation [#45](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/45) | `9a01e1bbf2b240f20dbb94ac2edc14fcd48f3dd8` | Stacked on #21; no exact-head workflow run returned. | **OPEN; CI UNVERIFIED** |
+
+Automation safety: inventory found three scheduled tasks, only software stability enabled. This run did not alter schedules or launch scheduled tasks; no overlapping automation was triggered.
+
+**Overall project state: IN PROGRESS.** No defensible percentage is published because a weighted acceptance checklist and current benchmark results are not yet complete. Live Ollama, local database, local pytest, answer-quality metrics and retrieval Recall@5/MRR are not verified in this environment.
 
 ## Executive status
 
