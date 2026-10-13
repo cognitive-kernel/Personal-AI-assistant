@@ -3,23 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any
 
 from app import db, knowledge_base
-from app.retrieval_evaluation import evaluate_cases
-
-
-def indexed_corpus_stats(connection: Any) -> dict[str, int]:
-    """Return counts for sources and chunks actually available to retrieval."""
-    sources = connection.execute(
-        "SELECT COUNT(*) FROM knowledge_sources WHERE status='indexed'"
-    ).fetchone()[0]
-    chunks = connection.execute(
-        """SELECT COUNT(*) FROM knowledge_chunks c
-           JOIN knowledge_sources s ON s.id=c.source_id
-           WHERE s.status='indexed'"""
-    ).fetchone()[0]
-    return {"indexed_sources": int(sources), "indexed_chunks": int(chunks)}
+from app.retrieval_evaluation import evaluate_cases, indexed_corpus_stats
 
 
 def main() -> int:
