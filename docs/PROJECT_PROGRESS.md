@@ -1,3 +1,12 @@
+## Coordinator audit — 2026-10-13 04:57 UTC
+
+- Report: [2026-10-13T045700Z-coordinator.md](automation-reports/2026-10-13T045700Z-coordinator.md), commit `68e4105948a0e773c9553e1b538668aa2e14c5ce`.
+- `main` remains `f557a807f256bb2023b90174cf673ee5e27d71fd`. PRs #5, #6, #8, #11, #12, #13, #14 and #15 remain open/unmerged.
+- New PR #16 [Run CI for stacked pull requests](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/16), head `26b8cb62822b5677cc2fe2771f1e4bbb178ddbf5`, removes the `pull_request.branches: [main]` filter so future stacked PRs can receive test CI. Exact-head run [38348918862](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38348918862) was in progress at the time of this audit.
+- Exact-head CI succeeded for #5 [38129271591](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38129271591), #6 [38131926174](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38131926174), #8 [38340125378](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38340125378), #11 [38273746625](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38273746625), #12 [38348409648](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38348409648), #13 [38337207451](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337207451), and #14 [38339252914](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339252914). PR #15 head `a9148bb87b6942cfa2628d757d7ecda5e999f360` still has no returned PR-triggered CI run.
+- Immediate-run requests for all three automations were accepted, but no run IDs/completion states were exposed and no new specialist artifacts were verified. Automations were restored to disabled, their prior state.
+- No merge. Remaining blockers: #16 CI completion, stacked/overlapping PR review, prepared-corpus Recall@5/MRR, Persian/English answer-quality benchmark, curriculum/source-ingestion and cross-language end-to-end checks, web fallback/provenance conflict checks, and live Ollama integration.
+
 ## Latest coordinator follow-up — 2026-10-13 03:23 UTC
 
 - Report: [2026-10-13T032300Z-coordinator.md](automation-reports/2026-10-13T032300Z-coordinator.md).
