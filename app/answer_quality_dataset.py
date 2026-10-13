@@ -11,6 +11,19 @@ REQUIRED_FIELDS = {"id", "language", "prompt", "expected_concepts", "evidence_po
 SUPPORTED_LANGUAGES = {"fa", "en"}
 
 
+class _DuplicateJSONKeyError(ValueError):
+    """Raised when a JSON object repeats a key instead of defining it once."""
+
+
+def _reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJSONKeyError(f"duplicate object key {key!r}")
+        result[key] = value
+    return result
+
+
 def load_cases(path: str | Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
     """Load and validate all cases; fail closed on absent or malformed benchmark data."""
     dataset_path = Path(path)
@@ -22,9 +35,11 @@ def load_cases(path: str | Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
         if not line.strip():
             continue
         try:
-            case = json.loads(line)
+            case = json.loads(line, object_pairs_hook=_reject_duplicate_json_keys)
         except json.JSONDecodeError as exc:
             raise ValueError(f"Invalid JSON at {dataset_path}:{line_number}: {exc.msg}") from exc
+        except _DuplicateJSONKeyError as exc:
+            raise ValueError(f"Invalid JSON at {dataset_path}:{line_number}: {exc}") from exc
         if not isinstance(case, dict):
             raise ValueError(f"Case at line {line_number} must be a JSON object")
         missing = REQUIRED_FIELDS - case.keys()
