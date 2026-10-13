@@ -9,6 +9,7 @@ def _replace_sql_server_references(monkeypatch):
             "title": "Test reference",
             "url": "https://docs.example.test/sql",
             "description": "Isolated test metadata",
+            "metadata": {"license": {"name": "test-license"}},
         }
     ]
     monkeypatch.setitem(CURRICULA["sql-server"], "reference_urls", references)
@@ -20,6 +21,7 @@ def test_get_curriculum_does_not_expose_mutable_reference_metadata(monkeypatch):
 
     result = get_curriculum("sql-server")
     result["reference_urls"][0]["url"] = "https://mutated.example.test/changed"
+    result["reference_urls"][0]["metadata"]["license"]["name"] = "mutated-license"
     result["reference_urls"].append(
         {"title": "Injected", "url": "https://mutated.example.test/"}
     )
@@ -32,6 +34,7 @@ def test_list_curricula_does_not_expose_nested_reference_metadata(monkeypatch):
 
     result = next(item for item in list_curricula() if item["slug"] == "sql-server")
     result["reference_urls"][0]["url"] = "https://mutated.example.test/changed"
+    result["reference_urls"][0]["metadata"]["license"]["name"] = "mutated-license"
 
     fresh = next(item for item in list_curricula() if item["slug"] == "sql-server")
     assert fresh["reference_urls"] == expected
