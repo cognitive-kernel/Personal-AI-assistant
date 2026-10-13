@@ -52,6 +52,25 @@ def test_recent_reviews_are_limited_to_the_same_path_topic(tmp_path, monkeypatch
     assert learning._recent_topic_reviews(None) == []
 
 
+def test_recent_reviews_have_hard_count_and_field_size_caps(tmp_path, monkeypatch):
+    topic_a, _topic_b = _setup(tmp_path, monkeypatch)
+    for index in range(7):
+        _add_review(
+            topic_a,
+            "Python JSON",
+            f"Review {index}",
+            "x" * 700,
+        )
+
+    reviews = learning._recent_topic_reviews(topic_a, limit=999)
+
+    assert len(reviews) == 5
+    assert [review["takeaway"] for review in reviews] == [
+        "Review 6", "Review 5", "Review 4", "Review 3", "Review 2"
+    ]
+    assert all(len(review["issues"]) == 500 for review in reviews)
+
+
 def test_regeneration_prompt_receives_review_as_untrusted_quality_signal(tmp_path, monkeypatch):
     topic_a, topic_b = _setup(tmp_path, monkeypatch)
     _add_review(topic_a, "Python JSON", "Explain decode errors", "Missing malformed-input example")
