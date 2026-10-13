@@ -6,6 +6,7 @@ proof of truth. Malformed, incomplete, or unsupported reviews fail closed.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from . import ollama
@@ -15,6 +16,24 @@ from .ollama import _request
 
 
 _ALLOWED_VERDICTS = {"supported", "contradicted", "insufficient_evidence"}
+_HTTPS_URL_TOKEN = re.compile(r"https://[^\\s<>'\"]+")
+_URL_CLOSING_PAIRS = {")": "(", "]": "[", "}": "{"}
+
+
+def _extract_citation_urls(text: str) -> set[str]:
+    """Extract exact HTTPS URL tokens, removing surrounding prose punctuation."""
+    urls = set()
+    for match in _HTTPS_URL_TOKEN.finditer(text):
+        candidate = match.group(0).rstrip(".,;:!?")
+        while candidate and candidate[-1] in _URL_CLOSING_PAIRS:
+            closing = candidate[-1]
+            if candidate.count(closing) > candidate.count(_URL_CLOSING_PAIRS[closing]):
+                candidate = candidate[:-1]
+            else:
+                break
+        if candidate:
+            urls.add(candidate)
+    return urls
 
 
 def review_answer_claims(
@@ -128,7 +147,8 @@ def review_answer_claims(
         })
 
     all_supported = all(item["verdict"] == "supported" for item in normalized_claims)
-    all_cited = all(any(url in answer for url in item["evidence_urls"]) for item in normalized_claims)
+    answer_urls = _extract_citation_urls(answer)
+    all_cited = all(any(url in answer_urls for url in item["evidence_urls"]) for item in normalized_claims)
     reported_overall = parsed.get("overall")
     passed = all_supported and all_cited and reported_overall == "supported"
     return {
