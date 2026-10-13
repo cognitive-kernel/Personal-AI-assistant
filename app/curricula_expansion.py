@@ -591,7 +591,9 @@ def extend_curricula(curricula):
         existing = curriculum.setdefault("topics", [])
         seen = {str(topic).strip().casefold() for topic in existing}
         for topic in topics:
-            normalized = str(topic).strip().casefold()
-            if normalized and normalized not in seen:
+            if not isinstance(topic, str) or not topic.strip():
+                continue
+            normalized = topic.strip().casefold()
+            if normalized not in seen:
                 existing.append(topic)
                 seen.add(normalized)
