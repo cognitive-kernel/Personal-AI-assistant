@@ -10,7 +10,7 @@
 - **Main branch:** `f557a807f256bb2023b90174cf673ee5e27d71fd` (verified 2026-10-13 UTC).
 - **Automation attribution:** the platform does not expose run IDs. Worker changes and reports are verified as GitHub artifacts, but they are not attributed to an individual async automation run based on timestamps alone.
 - **Latest worker reports:** [AI learning](automation-reports/2026-10-13T023008Z-ai-learning.md), [software stability](automation-reports/2026-10-13T023008Z-software-stability.md), and [coordinator](automation-reports/2026-10-13T023044Z-coordinator.md).
-- **Latest CI caveat:** PR #13 current head and PR #14 post-report head are still being checked; older successful runs are not substitutes for exact-head verification.
+- **Latest CI status:** PR #13 head `27d30eadaaa3f4c7405665897f92ab7c93514308` passed Ubuntu and Windows in [run 38337203228](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337203228). PR #14 head `5bb4f247efb7b8a5ab6f716a399f9a6330a58a1e` passed in [run 38337211043](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337211043). This dashboard content's previous head `8560998` passed [run 38337288931](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337288931); the update now being committed requires its own CI run.
 
 ## Workstream tracker
 
@@ -208,3 +208,10 @@ Coordinator report: [2026-10-13T022326Z-coordinator.md](https://github.com/cogni
 - Automation run IDs are not exposed. GitHub changes and reports are verifiable, but attribution to an individual scheduled execution remains unconfirmed.
 - Remaining blockers: exact-head CI, independent review, retrieval Recall@5/MRR, Persian/English answer-quality evaluation, live Ollama integration, and integration planning for overlapping PRs.
 - **Decision: no merge** pending those checks.
+
+## Exact-head CI follow-up — 2026-10-13 02:32 UTC
+
+- PR #13 latest head `27d30eadaaa3f4c7405665897f92ab7c93514308` passed both Ubuntu and Windows in [run 38337203228](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337203228). The run included `python -m pip install -e ".[dev]"` and `pytest` on both jobs.
+- PR #14 latest head `5bb4f247efb7b8a5ab6f716a399f9a6330a58a1e` passed its configured test job in [run 38337211043](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337211043).
+- The preceding dashboard head `8560998afcfdf87f12a84ffad0111599e06b3301` passed [run 38337288931](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337288931). This update changes the dashboard head and must receive its own CI before any merge.
+- No PR merged. The live Ollama integration, retrieval Recall@5/MRR, Persian/English answer-quality benchmark, independent review, and overlapping-PR integration checks remain outstanding.
