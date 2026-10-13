@@ -8,38 +8,10 @@ from typing import Any
 from app import db, knowledge_base
 from app.retrieval_evaluation import (
     indexed_corpus_stats,
+    load_evaluation_cases,
     missing_indexed_relevant_sources,
+    relevant_source_urls,
 )
-
-
-def load_cases(dataset_path: Path) -> list[dict[str, Any]]:
-    try:
-        cases = json.loads(dataset_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Could not read evaluation dataset: {exc}") from exc
-    if not isinstance(cases, list):
-        raise ValueError("Evaluation dataset must be a JSON array.")
-    return cases
-
-
-def relevant_urls(cases: list[dict[str, Any]]) -> list[str]:
-    urls: set[str] = set()
-    for index, case in enumerate(cases):
-        if not isinstance(case, dict):
-            raise ValueError(f"Case {index} must be an object.")
-        relevant = case.get("relevant_ids")
-        if (
-            not isinstance(relevant, list)
-            or not relevant
-            or any(not isinstance(value, str) or not value.strip() for value in relevant)
-        ):
-            raise ValueError(
-                f"Case {index} must contain non-empty string IDs in relevant_ids."
-            )
-        urls.update(value.strip() for value in relevant)
-    if not urls:
-        raise ValueError("Evaluation dataset must contain at least one relevant source URL.")
-    return sorted(urls)
 
 
 def main() -> int:
@@ -55,8 +27,8 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        cases = load_cases(Path(args.dataset))
-        urls = relevant_urls(cases)
+        cases = load_evaluation_cases(Path(args.dataset))
+        urls = relevant_source_urls(cases)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
 
