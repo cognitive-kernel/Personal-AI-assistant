@@ -169,3 +169,12 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - PR #5/#6 overlap in `app/learning.py`; PR #6/#8 overlap in `app/main.py`. PR #13 is stacked on #11. Review and integration testing remain required.
 - **Decision: no merge.** PR #13 Windows CI and PR #14 exact-head CI are pending; no independent review was verified. All code PRs remain open.
 - Immediate-run requests for AI learning and coordinator were accepted; software stability was re-enabled after the platform reported it paused and its immediate-run request was accepted. These acknowledgments are not completion evidence.
+
+
+## Follow-up verification — 2026-10-13 02:18 UTC
+
+- PR #13 advanced with a report-only commit to `ac156c990ad184836b903aa09dea92e83586f5cd`; the application/test changes are unchanged from code head `636901b9774e0188d6174ebd868ded1913ea1df6`. On current PR head `ac156c9`, [run 38335949190](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335949190) passed Ubuntu dependency installation and `pytest`; Windows remains in progress.
+- PR #14 current head `bd80aa89156191dbe672578111c7d0db483b7ee3` passed exact-head CI [run 38335913282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335913282), including `python -m pip install -e ".[dev]"` and `pytest`.
+- Dashboard PR #12 head before this follow-up is `a714cb2c6744809c0ab7f5441f6c0623f01b84df`; exact-head CI [run 38335961851](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335961851) is still running at this check.
+- No specialist automation run ID is exposed by the platform. The AI/software changes and their reports are verified from GitHub commits, PRs, and CI; this does not establish that the corresponding scheduled automation execution itself completed.
+- No PR was merged. PR #13 Windows CI and the resulting dashboard-head CI remain pending; live Ollama and retrieval/answer-quality benchmarks are still outstanding.
