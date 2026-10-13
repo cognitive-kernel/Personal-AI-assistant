@@ -1,6 +1,6 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-12 (UTC)  
+> Last verified: 2026-10-13 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
 > This is an evidence-based snapshot, not a live dashboard. Update it only after checking GitHub and the relevant test evidence. Do not infer completion from a scheduled task being enabled or a run request being accepted.
 
@@ -8,7 +8,7 @@
 
 - **Overall: IN PROGRESS.** The learning-loop branch has passing CI on its latest checked commit, but its PR is still open and live Ollama/retrieval-quality evaluation is not yet evidenced here.
 - **Automation execution: UNCONFIRMED.** Scheduled tasks and accepted immediate-run requests do not prove a run started, finished, or changed code. Record a run only when an actual execution report or GitHub artifact is available.
-- **Main branch lag:** at this snapshot, `main` points to `85279f692c56feebc78422f73788858cdd202bed`; PR #8 targets `main` and is not merged.
+- **Main branch:** current `main` points to `f557a807f256bb2023b90174cf673ee5e27d71fd` (verified 2026-10-13 UTC). PR #8 targets `main` and is not merged.
 
 ## Workstream tracker
 
@@ -130,3 +130,16 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - No new worker report or new commit could be attributed to the newly requested runs at audit time; automation last-run timestamps did not advance to this request. No application tests were run by the coordinator during this audit, and no PR was merged.
 - Detailed evidence and next steps: [coordinator audit report](automation-reports/2026-10-12T180946Z-coordinator.md).
 - Remaining blockers: verify actual asynchronous worker reports; run retrieval Recall@5/MRR, Persian/English answer-quality benchmark, and live Ollama integration/smoke tests.
+
+
+## Coordination audit — 2026-10-13 02:07 UTC
+
+- Current `main`: `f557a807f256bb2023b90174cf673ee5e27d71fd`.
+- Current open PRs: #5, #6, #8, #11, #12. No merge was performed in this audit.
+- PR #12 head `224eb3e9f113ad04237a5ed4cec4b4482524ef0b` passed exact-head CI [run 38293322508](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38293322508), including dependency installation and `pytest`.
+- PR #11 head `ab5fcfcdb6f0ad499b404e47791d0a4dba1acee4` passed exact-head CI [run 38293419503](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38293419503) on Ubuntu and Windows, including dependency installation and `pytest`.
+- Immediate runs were requested for all three automations and accepted by the platform. Because execution is asynchronous, this is not evidence that those runs completed.
+- No AI-learning or software-stability report was found in the checked automation report directory. Coordinator report: [2026-10-13T020700Z-coordinator.md](automation-reports/2026-10-13T020700Z-coordinator.md).
+- PRs #5 and #6 both modify `app/learning.py`; PR #6 and #8 overlap in `app/main.py`. Review integration and test the combined result before merging.
+- No numeric Recall@5/MRR, Persian/English answer benchmark, or live Ollama result was found. The AI and software workstreams remain PARTIAL pending worker reports and additional verification.
+- **Decision:** no merge; exact-head CI is green for #11 and #12, but worker attribution, feature-specific AI evaluation, independent review, and overlap resolution remain open.
