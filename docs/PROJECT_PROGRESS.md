@@ -178,3 +178,16 @@ Do not use an arbitrary percentage unless it is calculated from a predefined che
 - Dashboard PR #12 head before this follow-up is `a714cb2c6744809c0ab7f5441f6c0623f01b84df`; exact-head CI [run 38335961851](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335961851) is still running at this check.
 - No specialist automation run ID is exposed by the platform. The AI/software changes and their reports are verified from GitHub commits, PRs, and CI; this does not establish that the corresponding scheduled automation execution itself completed.
 - No PR was merged. PR #13 Windows CI and the resulting dashboard-head CI remain pending; live Ollama and retrieval/answer-quality benchmarks are still outstanding.
+
+
+## Follow-up verification — 2026-10-13 02:23 UTC
+
+Coordinator report: [2026-10-13T022326Z-coordinator.md](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/docs/project-progress-coordination-2026-10-12-run3/docs/automation-reports/2026-10-13T022326Z-coordinator.md).
+
+- **Main remains unchanged** at `f557a807f256bb2023b90174cf673ee5e27d71fd`. Seven PRs are open: #5, #6, #8, #11, #12, #13, #14.
+- **AI / citation review:** PR #13 head `ac156c990ad184836b903aa09dea92e83586f5cd`; [exact-head CI run 38335949190](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335949190) passed on Ubuntu and Windows. PR description updated to reflect current evidence. Broader retrieval and Persian/English answer-quality benchmarks are still outstanding.
+- **Software stability:** PR #14 head `bd80aa89156191dbe672578111c7d0db483b7ee3`; [exact-head CI run 38335913282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38335913282) passed. The PR adds URL-policy unit tests only; no live Ollama integration was performed. PR description updated to reflect current evidence.
+- **Coordinator dashboard:** this branch's previous head `14b4d43a54653a0841b34915fe04a54c4cece1b6) passed [CI run 38336010700](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38336010700). A new report and this dashboard update now require CI on the resulting head.
+- **Overlap / merge decision:** PR #5 and #6 both touch `app/learning.py`; PR #6 and #8 both touch `app/main.py`. PR #11 is based on #8; PR #13 is stacked on #11. No PR merged; independent review and integration checks remain required.
+- **Automation attribution:** all three immediate-run requests were accepted and the stability automation was re-enabled, but execution IDs/completion were not exposed. The verified GitHub changes and CI results must not be attributed to those async requests without separate evidence.
+- **Remaining acceptance criteria:** live Ollama smoke/integration test, Recall@5/MRR and Persian/English answer-quality benchmark, independent review, and an integration plan for overlapping PRs.
