@@ -58,7 +58,7 @@ def test_curriculum_expansion_is_idempotent_and_deduplicates_case_insensitively(
 
     catalog = {
         "python": {
-            "topics": ["Existing topic", "Python fundamentals"],
+            "topics": ["Existing topic", "SYNTAX AND EXECUTION"],
         }
     }
     extend_curricula(catalog)
@@ -69,3 +69,5 @@ def test_curriculum_expansion_is_idempotent_and_deduplicates_case_insensitively(
     normalized = [topic.strip().casefold() for topic in first_result]
     assert len(normalized) == len(set(normalized))
     assert "existing topic" in normalized
+    assert normalized.count("syntax and execution") == 1
+    assert "SYNTAX AND EXECUTION" in catalog["python"]["topics"]
