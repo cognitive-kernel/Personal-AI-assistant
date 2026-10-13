@@ -279,6 +279,7 @@ def _download_once(url: str, destination: Path) -> Path:
                 ):
                     raise RuntimeError(f"سرور بازهٔ نامعتبر برای ادامهٔ دانلود برگرداند: {content_range!r}")
                 mode = "ab"
+                expected_range_length = int(range_match.group(2)) - int(range_match.group(1)) + 1
                 total = int(range_match.group(3)) if range_match.group(3) != "*" else 0
             else:
                 # A server that ignores Range may return a complete 200 response;
@@ -286,6 +287,7 @@ def _download_once(url: str, destination: Path) -> Path:
                 if status != 200:
                     raise RuntimeError(f"کد HTTP غیرمنتظره برای دانلود: {status}")
                 mode = "wb"
+                expected_range_length = None
                 offset = 0
                 total_header = response.headers.get("Content-Length")
                 total = int(total_header) if total_header and total_header.isdigit() else 0
@@ -316,6 +318,12 @@ def _download_once(url: str, destination: Path) -> Path:
                             f"\rدریافت‌شده: {done_mb:.1f} MB | سرعت: {speed_mb:.2f} MB/s",
                             end="", flush=True,
                         )
+
+        if expected_range_length is not None and session_downloaded != expected_range_length:
+            raise RuntimeError(
+                f"دانلود ناقص پاسخ بازه‌ای: {session_downloaded} بایت دریافت شد، "
+                f"اما Content-Range انتظار {expected_range_length} بایت داشت. فایل موقت حفظ شد."
+            )
 
         final_size = part_path.stat().st_size if part_path.exists() else 0
         if final_size == 0:
