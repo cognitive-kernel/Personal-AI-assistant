@@ -146,3 +146,25 @@ def test_http_200_range_fallback_restarts_from_zero(tmp_path, monkeypatch):
         "size": 5,
         "url": url,
     }
+
+def test_truncated_partial_response_with_unknown_total_is_not_promoted(tmp_path, monkeypatch):
+    destination = tmp_path / "installer.bin"
+    part_path = destination.with_name(destination.name + ".part")
+    part_manifest_path = destination.with_name(destination.name + ".part.json")
+    url = "https://downloads.example.invalid/installer.bin"
+    part_path.write_bytes(b"abc")
+    part_manifest_path.write_text(json.dumps({"url": url}), encoding="utf-8")
+    response = DownloadResponse(
+        206, b"de", {"Content-Range": "bytes 3-5/*", "Content-Length": "2"}
+    )
+    monkeypatch.setattr(
+        installer.urllib.request, "urlopen", lambda *_args, **_kwargs: response
+    )
+
+    with pytest.raises(RuntimeError, match="دانلود ناقص پاسخ بازه‌ای"):
+        installer._download_once(url, destination)
+
+    assert part_path.read_bytes() == b"abcde"
+    assert not destination.exists()
+    assert part_manifest_path.exists()
+
