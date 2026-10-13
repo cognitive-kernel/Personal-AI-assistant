@@ -29,8 +29,8 @@
 - **Working branch:** `docs/software-stability-2026-10-13T114142Z`
 - **Starting SHA:** `f557a807f256bb2023b90174cf673ee5e27d71fd`
 - **Report path:** `docs/automation-reports/2026-10-13T114142Z-software-stability.md`
-- **Report commit SHA:** pending creation.
-- **Pull request:** pending creation.
+- **Report commit SHA:** initial report commit `1fd01cbb243ad970ad6b7522f9e6de2796f56f97`; report metadata update follows.
+- **Pull request:** [#41](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/41).
 - **Prior stability report PR:** [#38](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/38).
 - **Current AI/learning issue/PR:** [issue #37](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/37), [PR #40](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/40). PR #40 is owned by AI/learning and is not treated as merged or fully validated.
 
