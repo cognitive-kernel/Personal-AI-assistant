@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -38,3 +39,12 @@ def test_malformed_json_fails_with_line_number(tmp_path: Path):
     malformed.write_text("{not-json}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="Invalid JSON.*:1"):
         load_cases(malformed)
+
+
+def test_non_string_language_fails_cleanly(tmp_path: Path):
+    case = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0])
+    case["language"] = ["fa"]
+    malformed_language = tmp_path / "language.jsonl"
+    malformed_language.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="unsupported language"):
+        load_cases(malformed_language)
