@@ -30,7 +30,7 @@ def test_duplicate_case_ids_are_rejected(tmp_path: Path):
     one_case = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
     duplicate = tmp_path / "duplicate.jsonl"
     duplicate.write_text(f"{one_case}\n{one_case}\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="duplicate case IDs"):
+    with pytest.raises(ValueError, match=r"duplicate case ID 'fa-evidence-001' at lines 1 and 2"):
         load_cases(duplicate)
 
 
