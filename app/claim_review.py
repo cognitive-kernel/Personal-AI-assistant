@@ -24,7 +24,7 @@ def _extract_citation_urls(text: str) -> set[str]:
     """Extract exact HTTPS URL tokens, removing surrounding prose punctuation."""
     urls = set()
     for match in _HTTPS_URL_TOKEN.finditer(text):
-        candidate = match.group(0).rstrip(".,;:!?")
+        candidate = match.group(0).rstrip(".,;:!?\"'<>")
         while candidate and candidate[-1] in _URL_CLOSING_PAIRS:
             closing = candidate[-1]
             if candidate.count(closing) > candidate.count(_URL_CLOSING_PAIRS[closing]):
