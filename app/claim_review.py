@@ -16,7 +16,7 @@ from .ollama import _request
 
 
 _ALLOWED_VERDICTS = {"supported", "contradicted", "insufficient_evidence"}
-_HTTPS_URL_TOKEN = re.compile(r"https://[^\\s<>'\"]+")
+_HTTPS_URL_TOKEN = re.compile(r"https://\S+")
 _URL_CLOSING_PAIRS = {")": "(", "]": "[", "}": "{"}
 
 
