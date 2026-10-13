@@ -113,3 +113,10 @@ def test_duplicate_nested_json_object_keys_are_rejected_with_line_number(tmp_pat
     malformed.write_text(duplicate_nested_key + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"Invalid JSON.*:1: duplicate object key 'name'"):
         load_cases(malformed)
+
+def test_duplicate_case_id_line_numbers_include_blank_lines(tmp_path: Path):
+    one_case = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
+    duplicate = tmp_path / "duplicate-with-blank-line.jsonl"
+    duplicate.write_text(f"{one_case}\n\n{one_case}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"duplicate case ID 'fa-evidence-001' at lines 1 and 3"):
+        load_cases(duplicate)
