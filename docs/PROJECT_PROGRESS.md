@@ -410,3 +410,10 @@ Report: [2026-10-13T030900Z-coordinator.md](automation-reports/2026-10-13T030900
 - Main branch path `docs/automation-reports/TEMPLATE.md` returned 404 at the inspected main ref; the template is present on PR #12's branch. Do not claim it has reached main before merge.
 - Overlap/dependencies remain: #5/#6 share `app/learning.py`; #6/#8 overlap in `app/main.py`; #11 targets #8; #13 targets #11; #15 targets #14. Missing acceptance evidence remains: versioned Recall@5/MRR, Persian/English answer-quality set, curriculum/source-ingestion E2E, cross-language retrieval, web fallback, provenance/conflict tests, and live Ollama integration.
 - **Decision: PARTIAL / NEEDS FOLLOW-UP; no merge.** Prioritize valid exact-head CI for #15 after the workflow fix is available, independent review, and dependency-aware integration. Verify CI for both PR #18 and this updated dashboard head before considering either for merge.
+
+
+### Report evidence correction — 2026-10-13 05:32 UTC
+- The coordinator report was extended with an explicit product acceptance mapping. Latest report commit is `e73edc58046c26421a9a2ec937ef5cbc851f4e82` on `docs/coordinator-audit-2026-10-13T052900Z`; report PR [#18](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/18) now needs CI on this updated head. The earlier report commit `c1839eb31af37e364856c8dc0ca1c45e471ca1b1` is superseded.
+- PR #18 CI run [38351805926](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38351805926) was in progress on the prior report head when checked; it does not validate the updated report head.
+- The dashboard commit from the prior audit `0e7f3873d72773a2ecf262d0e81a0108413d6325` has no workflow run returned yet. This further dashboard update also requires exact-head CI.
+- Product contract status mapping is recorded in the report: curriculum discovery and answer-time web fallback remain MISSING on inspected evidence; cross-language retrieval, source-grounding, controlled memory, SQL sandboxing and evaluation tooling are PARTIAL; benchmark runs and live Ollama remain NOT RUN/unverified.
