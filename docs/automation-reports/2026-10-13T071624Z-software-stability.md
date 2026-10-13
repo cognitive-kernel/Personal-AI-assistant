@@ -51,6 +51,16 @@
 - Acceptance criteria not met: local test run, exact-head CI, and independent review.
 - Next smallest actionable step: verify CI on the newest PR head and request independent review. Do not merge until project review and merge policy is satisfied.
 
+
+## Product-contract status (repository evidence; this test-only PR does not claim feature completion)
+- **Persian/English answers — PARTIAL:** the application uses configured Ollama chat in `app/ollama.py`; bilingual quality fixtures exist in PR #21 (`benchmarks/answer_quality/v1/cases.jsonl`), but pinned live-model quality has not been verified.
+- **Cross-language retrieval and Recall@5/MRR — PARTIAL:** hybrid retrieval/evaluation work is in open PR #8 (`app/agent_loop.py`, `app/retrieval_evaluation.py`, `scripts/evaluate_retrieval.py` on that branch); prepared indexed corpus and real metrics remain unverified.
+- **Dynamically discovered curricula — MISSING:** `app/curricula.py` plus `app/curricula_expansion.py` provide a maintained catalog; open PR #25 adds catalog contract tests, not discovery of current authoritative curricula or end-to-end coverage-gap tracking.
+- **Source ingestion, provenance, licensing/freshness, and conflict reconciliation — PARTIAL:** source-grounded ingestion is proposed in PR #6 (`app/source_library.py` on that branch); comprehensive policy and E2E validation are not established here.
+- **Evidence sufficiency and bounded authoritative web fallback — MISSING:** no verified implementation/test evidence for answer-time web fallback was established during this run.
+- **Safe hypothesis testing and evidence-backed experiences — PARTIAL:** PR #8 contains an in-memory SQL sandbox and versioned experience/review logic, but end-to-end promotion rules and live verification remain unverified.
+- **This run's hardware-resource contract — PARTIAL:** five unit tests were added in `tests/test_hardware.py`; they are not locally executed and current-head CI is unverified.
+
 ## Coordinator verification (coordinator fills this section; workers leave it pending)
 - Report and evidence links checked: pending.
 - Exact-head CI verified: pending.
