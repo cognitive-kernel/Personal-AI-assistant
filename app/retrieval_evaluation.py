@@ -18,6 +18,37 @@ def indexed_corpus_stats(connection: Any) -> dict[str, int]:
     return {"indexed_sources": int(sources), "indexed_chunks": int(chunks)}
 
 
+def missing_indexed_relevant_sources(
+    connection: Any, cases: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """Return relevance URLs that do not have indexed source chunks."""
+    relevant_urls: set[str] = set()
+    for index, case in enumerate(cases):
+        if not isinstance(case, Mapping):
+            raise ValueError(f"Case {index} must be an object.")
+        relevant = case.get("relevant_ids")
+        if (
+            not isinstance(relevant, list)
+            or not relevant
+            or any(not isinstance(value, str) or not value.strip() for value in relevant)
+        ):
+            raise ValueError(f"Case {index} must contain non-empty string IDs in relevant_ids.")
+        relevant_urls.update(relevant)
+
+    missing: list[str] = []
+    for url in sorted(relevant_urls):
+        row = connection.execute(
+            """SELECT 1 FROM knowledge_sources s
+               WHERE s.url=? AND s.status='indexed'
+               AND EXISTS (SELECT 1 FROM knowledge_chunks c WHERE c.source_id=s.id)
+               LIMIT 1""",
+            (url,),
+        ).fetchone()
+        if row is None:
+            missing.append(url)
+    return missing
+
+
 def recall_at_k(relevant_ids: Iterable[str], ranked_ids: Sequence[str], k: int = 5) -> float:
     if k < 1:
         raise ValueError("k must be at least 1.")
