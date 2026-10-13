@@ -44,3 +44,21 @@ def test_runtime_limits_enforce_minimum_context():
     )
 
     assert limits == {"cpu_threads": 6, "num_ctx": 512}
+
+
+def test_runtime_limits_use_conservative_context_when_ram_is_unknown():
+    limits = runtime_limits(
+        {"ollama_num_thread": 0, "ollama_num_ctx": 8192},
+        {"logical_cpu_count": 6, "total_ram_gb": None},
+    )
+
+    assert limits == {"cpu_threads": 6, "num_ctx": 2048}
+
+
+def test_runtime_limits_use_conservative_context_when_ram_field_is_missing():
+    limits = runtime_limits(
+        {"ollama_num_thread": 0, "ollama_num_ctx": 8192},
+        {"logical_cpu_count": 6},
+    )
+
+    assert limits == {"cpu_threads": 6, "num_ctx": 2048}
