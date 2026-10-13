@@ -263,12 +263,28 @@ def _download_once(url: str, destination: Path) -> Path:
             status = getattr(response, "status", response.getcode())
             content_range = response.headers.get("Content-Range", "")
             range_match = re.match(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", content_range)
-            if offset and status == 206 and range_match and int(range_match.group(1)) == offset:
+            if status == 206:
+                # A partial response is only safe to append when it matches the
+                # exact Range request. Never treat an invalid 206 body as a full
+                # download, or it could replace a valid partial file with a fragment.
+                if (
+                    not offset
+                    or not range_match
+                    or int(range_match.group(1)) != offset
+                    or int(range_match.group(2)) < int(range_match.group(1))
+                    or (
+                        range_match.group(3) != "*"
+                        and int(range_match.group(2)) >= int(range_match.group(3))
+                    )
+                ):
+                    raise RuntimeError(f"سرور بازهٔ نامعتبر برای ادامهٔ دانلود برگرداند: {content_range!r}")
                 mode = "ab"
                 total = int(range_match.group(3)) if range_match.group(3) != "*" else 0
             else:
-                # Server ignored Range (or returned an invalid range): restart
-                # this response from byte zero rather than corrupting the file.
+                # A server that ignores Range may return a complete 200 response;
+                # restart from byte zero. Other 2xx responses are not valid here.
+                if status != 200:
+                    raise RuntimeError(f"کد HTTP غیرمنتظره برای دانلود: {status}")
                 mode = "wb"
                 offset = 0
                 total_header = response.headers.get("Content-Length")
