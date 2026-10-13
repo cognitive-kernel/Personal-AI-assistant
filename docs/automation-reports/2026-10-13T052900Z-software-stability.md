@@ -28,14 +28,14 @@
 ## Git evidence
 - **Working branch:** `fix/validate-resumed-download-range-20261013-run12`
 - **Starting SHA:** `f557a807f256bb2023b90174cf673ee5e27d71fd`
-- **Code/test commit SHAs:** `14cb144ca2565a4cefe4762ffd9247b4c220667a`, `efd2369250c6b82a2d6614b6462c242909f8bbb2`
+- **Code/test commit SHAs:** `14cb144ca2565a4cefe4762ffd9247b4c220667a`, `efd2369250c6b82a2d6614b6462c242909f8bbb2`, `86bd1283e777cb92b7b978a758f9a809a71f3d25` (test import-path correction after CI failure).
 - **PR:** To be created after this report is committed; link will be added to the PR description and reported in the execution result.
 - **Code/test diff:** https://github.com/cognitive-kernel/Personal-AI-assistant/compare/main...fix/validate-resumed-download-range-20261013-run12
 
 ## Tests and validation
 - **Command:** `pytest tests/test_download_resume.py`
 - **Result:** NOT RUN locally; this connector-only execution environment does not provide a repository checkout/test runtime.
-- **CI:** No CI run is claimed for this branch yet. After PR creation, check GitHub Actions for the exact head SHA and record the real run URL/status in the PR.
+- **CI attempt on exact head** `386e6f4c24ea030b4d5f12586497607d027fcf16`: [run 38351810200](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38351810200) FAILED during pytest collection with `ModuleNotFoundError: No module named 'run'` in `tests/test_download_resume.py`; dependency installation succeeded. The test now loads `run.py` by explicit repository-relative path in commit `86bd1283e777cb92b7b978a758f9a809a71f3d25`. A new exact-head CI run for the corrected branch is required; its outcome is not yet known.
 - **Live installer/network test:** NOT RUN; tests use a deterministic mocked response.
 - **Benchmark:** Not applicable.
 
@@ -46,9 +46,9 @@
 - No secrets are logged or committed. No PR was merged.
 
 ## Blockers and remaining work
-- **Blocker:** Exact-head CI and local test execution have not yet been verified.
-- **Acceptance criteria not met:** Test execution, exact-head CI, independent review.
-- **Next smallest actionable step:** Open a PR, verify its head SHA, inspect exact-head Ubuntu/Windows CI, fix any failures without weakening tests, then request review.
+- **Blocker:** The first exact-head CI failed at test collection. The import path was corrected, but CI for the corrected head is pending; local execution remains unavailable.
+- **Acceptance criteria not met:** Passing exact-head CI, local test execution, independent review.
+- **Next smallest actionable step:** Verify CI for the corrected head, fix any further failures without weakening tests, then request independent review.
 
 ## Coordinator verification (coordinator fills this section; workers leave it pending)
 - Report and evidence links checked: Pending
