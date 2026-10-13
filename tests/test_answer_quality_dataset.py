@@ -91,3 +91,11 @@ def test_concept_fields_reject_empty_or_non_string_values(tmp_path: Path, field:
     invalid.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=f"field {field} must be a non-empty list of strings"):
         load_cases(invalid)
+
+def test_duplicate_json_object_keys_are_rejected_with_line_number(tmp_path: Path):
+    valid = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
+    duplicate_key = valid.replace('"id":"fa-evidence-001"', '"id":"shadow","id":"fa-evidence-001"', 1)
+    malformed = tmp_path / "duplicate-object-key.jsonl"
+    malformed.write_text(duplicate_key + "\\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"Invalid JSON.*:1: duplicate object key 'id'"):
+        load_cases(malformed)
