@@ -29,7 +29,7 @@
 - **Working branch:** `docs/software-stability-2026-10-13T114142Z`
 - **Starting SHA:** `f557a807f256bb2023b90174cf673ee5e27d71fd`
 - **Report path:** `docs/automation-reports/2026-10-13T114142Z-software-stability.md`
-- **Report commit SHA:** initial report commit `1fd01cbb243ad970ad6b7522f9e6de2796f56f97`; report metadata update follows.
+- **Report commit SHA:** initial report commit `1fd01cbb243ad970ad6b7522f9e6de2796f56f97`; PR-link metadata update commit `835b5d7a35c641ab8953cb6ad754760ddded5eea`.
 - **Pull request:** [#41](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/41).
 - **Prior stability report PR:** [#38](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/38).
 - **Current AI/learning issue/PR:** [issue #37](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/37), [PR #40](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/40). PR #40 is owned by AI/learning and is not treated as merged or fully validated.
@@ -63,7 +63,7 @@
 
 ## Coordinator verification (coordinator fills this section; workers leave it pending)
 - **Report and evidence links checked:** template, PR #28/#29/#38/#39/#40, issue #37, changed-file lists, and PR #38 workflow result checked.
-- **Exact-head CI verified:** run [38391047860](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38391047860) succeeded for prior PR #38 head `0c922b2e74eb139a36ab87de47a4a8d00b34230e`; CI for this report PR is pending verification.
+- **Exact-head CI verified:** run [38391047860](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38391047860) succeeded for prior PR #38 head `0c922b2e74eb139a36ab87de47a4a8d00b34230e`; workflow lookup for PR #41 head `835b5d7a35c641ab8953cb6ad754760ddded5eea` returned no runs and combined status returned no statuses; exact-head CI is UNVERIFIED.
 - **Attribution verified:** unique report path on dedicated branch.
 - **Decision:** NEEDS FOLLOW-UP
 - **Reason:** overlap and ownership constraints were respected, but no application-code fix or regression test was delivered in this execution.
