@@ -31,6 +31,7 @@ def load_cases(path: str | Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
         raise ValueError(f"Answer-quality dataset is missing: {dataset_path}")
 
     cases: list[dict[str, Any]] = []
+    case_line_numbers: list[int] = []
     for line_number, line in enumerate(dataset_path.read_text(encoding="utf-8").splitlines(), start=1):
         if not line.strip():
             continue
@@ -59,12 +60,19 @@ def load_cases(path: str | Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
         if not isinstance(case["evidence_policy"], str) or not case["evidence_policy"].strip():
             raise ValueError(f"Case {case['id']} has an empty/non-string evidence_policy")
         cases.append(case)
+        case_line_numbers.append(line_number)
 
     if not cases:
         raise ValueError(f"Answer-quality dataset is empty: {dataset_path}")
-    ids = [case["id"] for case in cases]
-    if len(ids) != len(set(ids)):
-        raise ValueError("Answer-quality dataset contains duplicate case IDs")
+    first_line_by_id: dict[str, int] = {}
+    for case, line_number in zip(cases, case_line_numbers):
+        case_id = case["id"]
+        if case_id in first_line_by_id:
+            raise ValueError(
+                f"Answer-quality dataset contains duplicate case ID {case_id!r} "
+                f"at lines {first_line_by_id[case_id]} and {line_number}: {dataset_path}"
+            )
+        first_line_by_id[case_id] = line_number
     languages = {case["language"] for case in cases}
     if languages != SUPPORTED_LANGUAGES:
         raise ValueError(f"Dataset must include both fa and en cases; found: {sorted(languages)}")
