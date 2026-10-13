@@ -35,7 +35,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
     monkeypatch.setattr(claim_review, "_request", fake_request)
     result = claim_review.review_answer_claims(
         "Why can JSON parsing fail?",
-        f"Invalid JSON may raise a decoding error. Source: {url}",
+        f"Invalid JSON may raise a decoding error. Source: {url}.",
         [source],
     )
     assert result["passed"] is True
@@ -87,3 +87,33 @@ def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monk
     )
     assert result["passed"] is False
     assert result["error"] == "invalid_claim_fields"
+
+def test_claim_review_requires_exact_answer_citation_url(tmp_path, monkeypatch):
+    setup_settings_db(tmp_path, monkeypatch)
+    known_url = "https://docs.python.org/3/library/json.html"
+    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+        "message": {"content": json.dumps({
+            "overall": "supported",
+            "claims": [{
+                "claim": "JSON parsing can reject malformed input.",
+                "verdict": "supported",
+                "evidence_urls": [known_url],
+                "reason": "The excerpt directly supports this claim.",
+            }],
+        })},
+    })
+    source = [{
+        "url": known_url,
+        "title": "Python JSON docs",
+        "content": "Malformed JSON input can raise a decoding error. Applications should handle it safely.",
+    }]
+
+    for misleading_url in (known_url + "/extra", known_url + "?redirect=elsewhere"):
+        result = claim_review.review_answer_claims(
+            "What happens with malformed JSON?",
+            f"JSON parsing can reject malformed input. Source: {misleading_url}.",
+            source,
+        )
+        assert result["passed"] is False
+        assert result["error"] == "one_or_more_claims_not_supported_or_cited"
+
