@@ -100,3 +100,16 @@ def test_duplicate_json_object_keys_are_rejected_with_line_number(tmp_path: Path
     malformed.write_text(duplicate_key + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"Invalid JSON.*:1: duplicate object key 'id'"):
         load_cases(malformed)
+
+
+def test_duplicate_nested_json_object_keys_are_rejected_with_line_number(tmp_path: Path):
+    valid = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
+    duplicate_nested_key = valid.replace(
+        '"expected_concepts":',
+        '"metadata":{"source":{"name":"first","name":"shadow"}}, "expected_concepts":',
+        1,
+    )
+    malformed = tmp_path / "duplicate-nested-object-key.jsonl"
+    malformed.write_text(duplicate_nested_key + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"Invalid JSON.*:1: duplicate object key 'name'"):
+        load_cases(malformed)
