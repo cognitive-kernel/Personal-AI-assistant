@@ -6,10 +6,10 @@
 
 ## Executive status
 
-- **Overall: IN PROGRESS.** No PR was merged in this pass. PR #13 has new citation-token regression changes; PR #14 now validates that Ollama configuration is a base URL without path, query, or fragment.
+- **Overall: IN PROGRESS.** No PR was merged. Latest pass added a fail-fast empty-corpus guard to the retrieval evaluator; exact-head Ubuntu tests passed but Windows CI for PR #8 was still running at the latest check. PR #14's latest report commit has green exact-head CI.
 - **Main branch:** `f557a807f256bb2023b90174cf673ee5e27d71fd` (verified 2026-10-13 UTC).
 - **Automation attribution:** the platform does not expose run IDs. Worker changes and reports are verified as GitHub artifacts, but they are not attributed to an individual async automation run based on timestamps alone.
-- **Latest worker reports:** [AI learning](automation-reports/2026-10-13T023008Z-ai-learning.md), [software stability](automation-reports/2026-10-13T023008Z-software-stability.md), and [coordinator](automation-reports/2026-10-13T023044Z-coordinator.md).
+- **Latest worker reports:** [AI learning](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/feat/experience-learning-loop-v1/docs/automation-reports/2026-10-13T025700Z-ai-learning.md), [software stability](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/test/ollama-policy-regression-20261013-run6/docs/automation-reports/2026-10-13T025700Z-software-stability.md), and [coordinator](automation-reports/2026-10-13T030000Z-coordinator.md).
 - **Latest CI status:** PR #13 head `27d30eadaaa3f4c7405665897f92ab7c93514308` passed Ubuntu and Windows in [run 38337203228](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337203228). PR #14 head `5bb4f247efb7b8a5ab6f716a399f9a6330a58a1e` passed in [run 38337211043](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337211043). Dashboard head `67dc75c7d06f01876854d79d91e45e894929411a` passed [run 38337343915](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337343915). This follow-up dashboard commit must receive its own CI before merge.
 
 ## Workstream tracker
@@ -249,3 +249,19 @@ This section supersedes any older in-progress CI statements above for the three 
 - Review audit: no submitted reviews were found for any of the seven open PRs.
 - Still outstanding: run Recall@5/MRR on a prepared, versioned knowledge index; run a versioned Persian/English answer-quality evaluation; perform live Ollama integration; independently review the overlapping PR #5/#6 changes and the #8 → #11 → #13 stack.
 - **Coordinator decision: PARTIAL / NEEDS FOLLOW-UP.** Current tested changes pass CI, but metrics, live integration, independent review, and stack/overlap resolution are not complete. Do not merge in this pass.
+
+
+## Coordinator continuation — 2026-10-13 03:00 UTC
+
+This snapshot supersedes older in-progress statements for the exact heads listed below.
+
+- `main` remains `f557a807f256bb2023b90174cf673ee5e27d71fd`; PRs #5, #6, #8, #11, #12, #13, and #14 are open. No merge was performed.
+- **AI learning:** PR #8 head `124dd8d0e4844ce7ac66d57c7c64c0a7e4e9fe04` adds a fail-fast empty-index guard and reports indexed source/chunk counts. [CI run 38339304194](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339304194) passed Ubuntu dependency installation and pytest; Windows was still in progress at the latest check. [Run 38339301924](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339301924) also had Ubuntu pass and Windows in progress. Earlier tests at head `7e942e4` failed during collection because of an import from the non-package `scripts`; the helper and test import were corrected and the final head is being revalidated.
+- **Software stability:** PR #14 head `1d98cec41e5c609264946bcbc5f84bf6df187be9` passed exact-head CI in [run 38339252914](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38339252914). Live Ollama integration remains untested.
+- **Citation URL matching:** PR #13 head `27d30eadaaa3f4c7405665897f92ab7c93514308` passed Ubuntu and Windows in [run 38337207451](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38337207451).
+- **Reviews and overlap:** review submissions remain empty for all seven open PRs. PR #5/#6 overlap in `app/learning.py`; #6/#8 overlap in `app/main.py`; #11 targets #8 and #13 targets #11. Review and integration-test the stack before merge.
+- **AI acceptance still open:** no prepared/versioned retrieval corpus has been confirmed indexed, so no Recall@5/MRR values are reported. A Persian/English answer-quality benchmark and live Ollama smoke test also remain outstanding.
+- Reports: [AI learning run](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/feat/experience-learning-loop-v1/docs/automation-reports/2026-10-13T025700Z-ai-learning.md), [stability run](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/test/ollama-policy-regression-20261013-run6/docs/automation-reports/2026-10-13T025700Z-software-stability.md), [coordinator run](automation-reports/2026-10-13T030000Z-coordinator.md).
+- The scheduled automation platform does not expose run IDs. This report records GitHub artifacts and CI evidence only, not attribution to an asynchronous worker execution.
+
+**Coordinator decision: PARTIAL / NEEDS FOLLOW-UP.** Do not merge until exact-head CI is complete, independent review is recorded, overlaps are resolved, and required runtime/quality checks are documented.
