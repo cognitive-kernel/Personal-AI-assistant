@@ -1,6 +1,6 @@
 import sqlite3
 
-from scripts.evaluate_retrieval import indexed_corpus_stats
+from app.retrieval_evaluation import indexed_corpus_stats
 
 
 def test_indexed_corpus_stats_counts_only_indexed_sources_and_their_chunks():
