@@ -34,3 +34,20 @@ def test_declared_curriculum_references_are_safe_https_urls():
             assert parsed.scheme == "https", (slug, reference["url"])
             assert parsed.hostname, (slug, reference["url"])
             assert parsed.username is None and parsed.password is None, (slug, reference["url"])
+
+
+def test_curriculum_levels_preserve_every_topic_in_order():
+    from app.curricula import get_curriculum
+
+    for slug, catalog_entry in CURRICULA.items():
+        curriculum = get_curriculum(slug)
+        assert curriculum is not None, slug
+
+        levels = curriculum.get("levels")
+        assert [level["level"] for level in levels] == [
+            "beginner", "intermediate", "advanced"
+        ], slug
+        flattened_topics = [
+            topic for level in levels for topic in level["topics"]
+        ]
+        assert flattened_topics == catalog_entry["topics"], slug
