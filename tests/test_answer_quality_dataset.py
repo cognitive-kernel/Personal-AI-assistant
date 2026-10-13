@@ -126,6 +126,6 @@ def test_duplicate_case_id_line_numbers_include_blank_lines(tmp_path: Path):
 def test_nonstandard_json_constants_are_rejected_with_line_number(tmp_path: Path, constant: str):
     valid = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
     malformed = tmp_path / "nonstandard-constant.jsonl"
-    malformed.write_text(valid[:-1] + f',"metadata":{{"score":{constant}}}' + "}\\n", encoding="utf-8")
+    malformed.write_text(valid[:-1] + f',"metadata":{{"score":{constant}}}' + "}\n", encoding="utf-8")
     with pytest.raises(ValueError, match=rf"Invalid JSON.*:1: non-standard JSON constant '{constant}'"):
         load_cases(malformed)
