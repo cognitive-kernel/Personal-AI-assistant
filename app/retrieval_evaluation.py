@@ -32,14 +32,20 @@ def evaluate_cases(
     """Evaluate queries with explicit relevant IDs; empty/invalid cases are rejected."""
     if k < 1:
         raise ValueError("k must be at least 1.")
+    if not cases:
+        raise ValueError("Evaluation dataset must contain at least one case.")
     results: list[dict[str, Any]] = []
     for index, case in enumerate(cases):
         query = case.get("query")
         relevant = case.get("relevant_ids")
         if not isinstance(query, str) or not query.strip():
             raise ValueError(f"Case {index} must contain a non-empty query.")
-        if not isinstance(relevant, list) or not relevant:
-            raise ValueError(f"Case {index} must contain a non-empty relevant_ids list.")
+        if (
+            not isinstance(relevant, list)
+            or not relevant
+            or any(not isinstance(value, str) or not value.strip() for value in relevant)
+        ):
+            raise ValueError(f"Case {index} must contain non-empty string IDs in relevant_ids.")
         retrieved = searcher(query, k)
         ranked_ids = [str(item[id_field]) for item in retrieved if item.get(id_field) is not None]
         results.append({
