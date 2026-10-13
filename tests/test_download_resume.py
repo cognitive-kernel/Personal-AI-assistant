@@ -59,6 +59,7 @@ class DownloadResponse:
         (b"", "bytes 0-4/10"),
         (b"abc", "bytes 0-4/10"),
         (b"abc", "not-a-content-range"),
+        (b"abc", "bytes 3-5/6trailing-junk"),
     ],
 )
 def test_invalid_partial_response_is_rejected_without_replacing_partial_file(
