@@ -72,3 +72,22 @@ def test_dataset_with_only_one_language_is_rejected(tmp_path: Path):
     single_language.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="must include both fa and en"):
         load_cases(single_language)
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("expected_concepts", []),
+        ("expected_concepts", [""]),
+        ("expected_concepts", ["valid", 7]),
+        ("must_not_claim", []),
+        ("must_not_claim", ["  "]),
+        ("must_not_claim", [None]),
+    ],
+)
+def test_concept_fields_reject_empty_or_non_string_values(tmp_path: Path, field: str, value):
+    case = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0])
+    case[field] = value
+    invalid = tmp_path / "invalid-concepts.jsonl"
+    invalid.write_text(json.dumps(case, ensure_ascii=False) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=f"field {field} must be a non-empty list of strings"):
+        load_cases(invalid)
