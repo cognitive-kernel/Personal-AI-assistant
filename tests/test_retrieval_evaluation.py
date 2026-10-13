@@ -33,6 +33,20 @@ def test_evaluate_cases_aggregates_per_query_metrics():
     assert result["results"][0]["retrieved_ids"] == ["b", "a"]
 
 
+def test_evaluate_cases_rejects_empty_dataset():
+    with pytest.raises(ValueError, match="at least one case"):
+        evaluate_cases([], lambda _query, _k: [])
+
+
+@pytest.mark.parametrize("relevant_ids", [[], [""], ["   "], [None], [1]])
+def test_evaluate_cases_rejects_empty_or_non_string_relevance_ids(relevant_ids):
+    with pytest.raises(ValueError, match="relevant_ids"):
+        evaluate_cases(
+            [{"query": "query", "relevant_ids": relevant_ids}],
+            lambda _query, _k: [],
+        )
+
+
 def test_evaluate_cases_rejects_missing_relevance_labels():
     with pytest.raises(ValueError, match="relevant_ids"):
         evaluate_cases([{"query": "no labels"}], lambda _query, _k: [])
