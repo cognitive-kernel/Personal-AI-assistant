@@ -955,6 +955,34 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
     return get_learning_path(path_id)
 
 
+def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
+    """Return only the newest review for a completed job on this exact path topic."""
+    with learning_connection() as conn:
+        review_row = conn.execute(
+            """SELECT r.outcomes_json, r.value_rating, r.takeaway, r.issues, r.created_at
+               FROM lesson_reviews AS r
+               JOIN learning_jobs AS reviewed_job ON reviewed_job.id = r.job_id
+               WHERE reviewed_job.path_topic_id = ? AND reviewed_job.status = 'completed'
+               ORDER BY reviewed_job.id DESC, r.id DESC LIMIT 1""",
+            (topic_id,),
+        ).fetchone()
+    if review_row is None:
+        return None
+    try:
+        outcomes = json.loads(review_row["outcomes_json"])
+        if not isinstance(outcomes, list):
+            outcomes = []
+    except (TypeError, json.JSONDecodeError):
+        outcomes = []
+    return {
+        "outcomes": [item for item in outcomes[:5] if isinstance(item, str)],
+        "value_rating": int(review_row["value_rating"]),
+        "takeaway": str(review_row["takeaway"] or "")[:3000],
+        "issues": str(review_row["issues"] or "")[:3000],
+        "created_at": str(review_row["created_at"] or ""),
+    }
+
+
 def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
@@ -971,33 +999,11 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             return get_job(int(latest["id"]))
         if latest and latest["status"] in {"queued", "running"}:
             return get_job(int(latest["id"]))
-        review_row = conn.execute(
-            """SELECT r.outcomes_json, r.value_rating, r.takeaway, r.issues, r.created_at
-               FROM lesson_reviews AS r
-               JOIN learning_jobs AS reviewed_job ON reviewed_job.id = r.job_id
-               WHERE reviewed_job.path_topic_id = ? AND reviewed_job.status = 'completed'
-               ORDER BY reviewed_job.id DESC, r.id DESC LIMIT 1""",
-            (topic_id,),
-        ).fetchone()
-        lesson_review = None
-        if review_row is not None:
-            try:
-                outcomes = json.loads(review_row["outcomes_json"])
-                if not isinstance(outcomes, list):
-                    outcomes = []
-            except (TypeError, json.JSONDecodeError):
-                outcomes = []
-            lesson_review = {
-                "outcomes": outcomes[:5],
-                "value_rating": int(review_row["value_rating"]),
-                "takeaway": str(review_row["takeaway"] or "")[:3000],
-                "issues": str(review_row["issues"] or "")[:3000],
-                "created_at": str(review_row["created_at"] or ""),
-            }
         conn.execute(
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
+    lesson_review = _latest_completed_topic_review(topic_id)
     job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _learning_executor.submit(_run_with_budget, job["id"])
     return job
@@ -1023,7 +1029,8 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
-    job = create_job(topic["topic"], path_topic_id=topic_id)
+    lesson_review = _latest_completed_topic_review(topic_id)
+    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _learning_executor.submit(_run_with_budget, job["id"])
     return job
 
