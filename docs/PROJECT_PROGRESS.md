@@ -1,6 +1,6 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-14 13:48 UTC  
+> Last verified: 2026-10-14 13:49 UTC  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
 > Evidence reflects GitHub-visible state only. Local database, local Ollama, and local test execution are not accessible in this audit.
 
@@ -17,7 +17,7 @@
 |---|---|---|---|
 | AI / experience learning | [PR #54](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/54); code fix commit [`b05afe9`](https://github.com/cognitive-kernel/Personal-AI-assistant/commit/b05afe9b6b769b0bf5bc1bdf7f285c49c685dbe7); [AI report](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/fix/lesson-review-regeneration-feedback/docs/automation-reports/2026-10-14T134800Z-ai-learning.md) | **CODE UPDATED; EXACT-HEAD CI BLOCKED** | Current head `0d716b137518f70710b9b64070f8f6c3b82cca83` (report-only commit) has no Actions run/status; resolve CI filter through PR #11/issue #56, resolve overlap with PRs #40/#43 and companion branch, then review and run benchmarks |
 | Software engineering / stability | [PR #48](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/48); [stability report](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/fix/curriculum-reference-defensive-copy-20261013T120313Z/docs/automation-reports/2026-10-14T134900Z-software-stability.md) | **CI PASS ON REPORT-INCLUSIVE HEAD** | Current PR head `33b7f6d264142db8aa8df3b483ac314bc33f9eff` passed exact-head CI [#38574669119](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38574669119); independent review and broader acceptance remain |
-| Project coordinator | [This coordinator report](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/docs/coordinator-run-2026-10-14T105300Z/docs/automation-reports/2026-10-14T134500Z-coordinator.md) | **PARTIAL; EXACT-HEAD CI PASS, REVIEW PENDING** | Current PR head `f5e3bb1ba41612fbbffbcd345ab3e1f447950fef` passed exact-head CI [#38574356321](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38574356321); independent review and worker blockers remain |
+| Project coordinator | [This coordinator report](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/docs/coordinator-run-2026-10-14T105300Z/docs/automation-reports/2026-10-14T134500Z-coordinator.md) | **PARTIAL; EXACT-HEAD CI PASS, REVIEW PENDING** | Latest verified prior head `d8b881a7bb00745f4b65099d04fc71e068c7d70f` passed exact-head CI [#38574826940](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38574826940); independent review and worker blockers remain |
 
 ## Relevant PR and dependency snapshot
 
@@ -28,7 +28,7 @@
 | [Issue #56](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/56) / [PR #11](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/11) | Workflow filters omit PRs targeting `feat/experience-learning-loop-v1`; PR #11 already owns the workflow change. | Do not make a competing workflow edit. |
 | [PR #48](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/48) | Defensive-copy regression tests exist. CI run [#38574669119](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38574669119) passed on current report-inclusive head `33b7f6d264142db8aa8df3b483ac314bc33f9eff`. | Draft remains open; review and broader acceptance remain. |
 | [PR #15](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/15) / [issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) | Loopback redirect guard and regression test exist, but no CI run/status was returned for current head `a9148bb87b6942cfa2628d757d7ecda5e999f360`; security review not evidenced. | Keep issue open; preserve stack on PR #14 and verify exact-head CI/security review. |
-| [PR #55](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/55) | Current PR head `f5e3bb1ba41612fbbffbcd345ab3e1f447950fef` passed [run #38574356321](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38574356321). | Dashboard/report update advances the head; recheck CI for the new SHA. |
+| [PR #55](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/55) | Latest verified prior PR head `d8b881a7bb00745f4b65099d04fc71e068c7d70f` passed [run #38574826940](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38574826940); any subsequent dashboard commit requires a fresh exact-head check. | Dashboard/report update advances the head; recheck CI for the new SHA. |
 | [PR #8](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/8) | Learning-loop integration PR remains open and not merged into main. | Preserve stacked-branch relationships; no rebase/merge in this run. |
 
 ## Validation evidence and gaps
