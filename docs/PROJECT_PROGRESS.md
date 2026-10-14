@@ -30,7 +30,7 @@ Starting `main` SHA: `f557a807f256bb2023b90174cf673ee5e27d71fd`. No PR was merge
 | Lesson review feedback not yet verified end-to-end | Medium | AI/learning | Issue #37; PRs #40/#43; exact-head CI missing | Resolve stacked-PR workflow trigger, run tests, independent review |
 | Non-standard JSON constants in bilingual benchmark | Medium | Software engineering/test-quality; AI/learning collaborator | Issue #47; PR #45; exact-head CI missing | Run strict JSON regression and full CI on exact head |
 | Mutable curriculum reference metadata | Medium | Software engineering/API stability | PR #48; exact-head CI success | Reconcile PR description, verify report-inclusive head, obtain independent review |
-| Redirect from loopback Ollama request | High | Software engineering/security | PR #15; exact-head CI missing | Require CI and security review; keep merge blocked |
+| Redirect from loopback Ollama request | High | Software engineering/security | Issue #52 and PR #15; exact-head CI missing | Require CI and security review; keep merge blocked |
 
 No duplicate issue was created in this pass: the two tracked issues #37 and #47 cover the known AI/learning and benchmark-validation defects. No newly evidenced distinct bug was confirmed to require another issue.
 
