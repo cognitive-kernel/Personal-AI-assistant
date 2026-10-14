@@ -1,6 +1,6 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-14 10:45 UTC. Evidence snapshot for this coordinator pass; see report [#50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50). Do not infer completion from scheduled-task state or a run request.
+> Last verified: 2026-10-14 10:45 UTC; coordinator report CI rechecked after report commit. Evidence snapshot for this coordinator pass; see report [#50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50). Do not infer completion from scheduled-task state or a run request.
 
 ## Latest verified snapshot — 2026-10-14 10:45 UTC
 
@@ -15,7 +15,7 @@ Starting `main` SHA: `f557a807f256bb2023b90174cf673ee5e27d71fd`. No PR was merge
 | Stacked PR CI workflow [#16](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/16) | `26b8cb62822b5677cc2fe2771f1e4bbb178ddbf5` | [Run 38348918862](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38348918862) completed successfully on this head. | **OPEN; review/dependency check pending** |
 | Ollama redirect boundary [#15](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/15) / [issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) | `a9148bb87b6942cfa2628d757d7ecda5e999f360` | No PR-triggered workflow run returned for this SHA. | **OPEN; HIGH SECURITY GATE; do not merge** |
 | Coordinator/dashboard [#49](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/49) | `c2f3f996de1b4c462a3d0af9b37f9f8486f5b308` | [Run 38551691282](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38551691282) was in progress when checked. | **OPEN; current update needs exact-head CI completion and review** |
-| Current coordinator report [#50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50) | `744f174d6da90a316542a62786197ffcfb2edb71` | No PR-triggered workflow run returned for this updated commit; earlier run 38551546908 was for a prior SHA. | **OPEN; exact-head CI unverified; review required** |
+| Current coordinator report [#50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50) | `744f174d6da90a316542a62786197ffcfb2edb71` | [Run 38551710175](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38551710175) completed successfully on this exact head. | **OPEN; CI PASS; independent review required** |
 
 ## Workstream reports and blockers
 
