@@ -1,13 +1,13 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-14 14:45 UTC  
+> Last verified: 2026-10-14 14:53 UTC  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
 > Evidence reflects GitHub-visible state only. Local database, local Ollama, and local test execution are not accessible in this audit.
 
 ## Current status
 
 - **Overall: IN PROGRESS.** Core learning and retrieval work exists, but open PR dependencies, missing exact-head CI, security review, and product-level benchmarks prevent a completion claim.
-- **Scheduled tasks:** all three ChatGPT task automations are disabled. This was a manual coordinated pass; no schedule was changed and no scheduled run is claimed.
+- **Automation registry:** all three project automations currently show enabled. This is configuration state only and does not prove that any task executed or completed; GitHub artifacts remain the evidence for work completion.
 - **Latest main commit returned by commit search:** `f557a807f256bb2023b90174cf673ee5e27d71fd` (2026-10-12T15:10:34Z). This is the latest search result, not a separately verified live branch ref.
 - **No completion percentage:** there is no agreed weighted acceptance checklist; a numeric percentage would be misleading.
 
