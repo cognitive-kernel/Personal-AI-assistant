@@ -1,5 +1,61 @@
 # Project Progress Dashboard
 
+> Last verified: 2026-10-14 10:43 UTC. Evidence snapshot for this coordinator pass; see report [#50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50). Do not infer completion from scheduled-task state or a run request.
+
+## Latest verified snapshot — 2026-10-14 10:43 UTC
+
+Starting `main` SHA: `f557a807f256bb2023b90174cf673ee5e27d71fd`. No PR was merged. Local tests and product benchmarks were not run by the coordinator.
+
+| Workstream / PR | Current exact head | CI evidence | Status / decision |
+|---|---|---|---|
+| AI lesson feedback [#40](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/40) | `ee6a9b2447cf7da03a9d89f1fddb79c4592056be` | No PR-triggered workflow run returned for this SHA. | **OPEN / DRAFT; CI UNVERIFIED; do not merge** |
+| AI regression tests [#43](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/43) | `dbdb68f94dddaeeffe2048b16bb6f3f459c6cb07` | No PR-triggered workflow run returned for this SHA. | **OPEN / DRAFT; stacked on #40** |
+| Bilingual dataset JSON validation [#45](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/45) | `9a01e1bbf2b240f20dbb94ac2edc14fcd48f3dd8` | No PR-triggered workflow run returned for this SHA. | **OPEN / DRAFT; stacked on #21; CI UNVERIFIED** |
+| Curriculum metadata isolation [#48](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/48) | `42595b6500801971a90807d90c7bc5c825e3b3e9` | [Run 38551434055](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38551434055) completed successfully on this exact head. | **OPEN / DRAFT; CI PASS; description/review reconciliation pending** |
+| Stacked PR CI workflow [#16](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/16) | `26b8cb62822b5677cc2fe2771f1e4bbb178ddbf5` | [Run 38348918862](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38348918862) completed successfully on this head. | **OPEN; review/dependency check pending** |
+| Ollama redirect boundary [#15](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/15) | `a9148bb87b6942cfa2628d757d7ecda5e999f360` | No PR-triggered workflow run returned for this SHA. | **OPEN; SECURITY GATE; do not merge** |
+| Previous coordinator/dashboard [#49](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/49) | `d4ca82867760044154dd034898b0144a1dbb7e06` | [Run 38511225858](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38511225858) completed successfully on this exact head. | **OPEN; this dashboard update advances its head; new CI required** |
+| Current coordinator report [#50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50) | `8cf869c88ea51966775e21000986092a8b5ce0df` | [Run 38551546908](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38551546908) was in progress at audit time. | **OPEN; do not merge until run completes and review is recorded** |
+
+## Workstream reports and blockers
+
+- **AI / learning:** Report found at [2026-10-14T042100Z-ai-learning.md](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/fix/lesson-review-prompt-20261013-run1/docs/automation-reports/2026-10-14T042100Z-ai-learning.md). The current report-inclusive AI head was not freshly produced in this pass. Issue [#37](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/37) remains open. Local focused/full pytest, bilingual quality benchmark, Recall@5/MRR, and live Ollama are **NOT RUN**.
+- **Software engineering / stability:** Report found at [2026-10-14T042100Z-software-stability.md](https://github.com/cognitive-kernel/Personal-AI-assistant/blob/fix/curriculum-reference-defensive-copy-20261013T120313Z/docs/automation-reports/2026-10-14T042100Z-software-stability.md). Current PR #48 head CI is green, but its description is stale and formal review is absent. Issue [#47](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/47) remains open for strict JSON validation.
+- **Coordinator:** New unique report recorded in [PR #50](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/50), commit `8cf869c88ea51966775e21000986092a8b5ce0df`. Its CI was still running when this snapshot was authored. This dashboard change is being committed to the existing dashboard PR branch #49 to avoid creating a competing dashboard PR.
+
+## Bug and risk register
+
+| Bug / risk | Severity | Owner | Tracking / tests | Next step |
+|---|---|---|---|---|
+| Lesson review feedback not yet verified end-to-end | Medium | AI/learning | Issue #37; PRs #40/#43; exact-head CI missing | Resolve stacked-PR workflow trigger, run tests, independent review |
+| Non-standard JSON constants in bilingual benchmark | Medium | Software engineering/test-quality; AI/learning collaborator | Issue #47; PR #45; exact-head CI missing | Run strict JSON regression and full CI on exact head |
+| Mutable curriculum reference metadata | Medium | Software engineering/API stability | PR #48; exact-head CI success | Reconcile PR description, verify report-inclusive head, obtain independent review |
+| Redirect from loopback Ollama request | High | Software engineering/security | PR #15; exact-head CI missing | Require CI and security review; keep merge blocked |
+
+No duplicate issue was created in this pass: the two tracked issues #37 and #47 cover the known AI/learning and benchmark-validation defects. No newly evidenced distinct bug was confirmed to require another issue.
+
+## Product acceptance snapshot
+
+- Persian/English answers: **PARTIAL** — current versioned quality scores unavailable.
+- Cross-language retrieval: **PARTIAL / UNVERIFIED** — Recall@5/MRR not run on a prepared, indexed, versioned corpus.
+- Dynamic curriculum discovery, source ingestion, provenance/licensing/freshness: **PARTIAL** — end-to-end evidence not run in this pass.
+- Insufficient-evidence web fallback and source-conflict handling: **UNVERIFIED** — required end-to-end tests not run.
+- Experience hypothesis sandbox validation and evidence/status promotion: **UNVERIFIED**.
+- Live Ollama smoke/integration: **NOT RUN**.
+- Local pytest: **NOT RUN** because this connector has no repository checkout/test runtime.
+
+## Dependencies, merge decisions, next actions
+
+1. Preserve #40 → #43 and #21 → #45; do not merge stacked PRs out of order.
+2. PR #16 workflow change is green on its recorded head but remains open; verify review and resulting CI on #40/#43/#45 after it lands through the normal policy.
+3. Keep #15 blocked until current-head CI and independent security review pass.
+4. Keep #48 open/draft until its stale description is corrected and independent review is recorded, despite its current-head CI success.
+5. Recheck CI on the new dashboard head and on PR #50's exact head; no merge without the existing review/CI policy.
+6. Run versioned Persian/English answer-quality evaluation, Recall@5/MRR, curriculum/source-ingestion E2E, cross-language retrieval, insufficient-evidence fallback, provenance/conflict checks, and live Ollama when a suitable runtime is available.
+
+Older historical snapshots below are retained for traceability and are superseded by this latest verified snapshot where they conflict.
+
+
 > Last verified: 2026-10-13 13:28 UTC (coordinator audit; see current snapshot below)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
 > This is an evidence-based snapshot, not a live dashboard. Update it only after checking GitHub and the relevant test evidence. Do not infer completion from a scheduled task being enabled or a run request being accepted.
