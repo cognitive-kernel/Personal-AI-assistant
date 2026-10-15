@@ -639,8 +639,10 @@
 - [x] آخرین review فقط از job تکمیل‌شدهٔ همان `path_topic_id` خوانده می‌شود؛ حداکثر پنج outcome و متن‌های takeaway/issues با سقف ۳۰۰۰ نویسه ذخیره می‌شوند.
 - [x] review در prompt جدا از `source_text` و با دستور صریح «سیگنال کیفیت تأییدنشده، نه شواهد علمی» قرار می‌گیرد. شروع یا بازتولید موضوع دیگر نباید آن را دریافت کند.
 - [x] تست‌های جدید انتقال review، جداسازی موضوع، سقف طول و عدم کپی در متن منبع را پوشش می‌دهند.
-- [ ] CI روی head دقیق PR باید موفق شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** پس از CI، PRهای قدیمی و هم‌پوشان #40/#43/#54 بسته و issue #37 فقط پس از تأیید شواهد بسته می‌شود.
+- [x] **PR #114** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/114)، commit ادغام `6ec232cf24f50b241a7634ef7efdb6ed37921a49`.
+- [x] CI روی head دقیق `a94ef9c395fe755f42b4d9663e53d29825fc8162` موفق بود؛ run [#38803719872](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38803719872)، شامل نصب وابستگی‌ها و `pytest`.
+- [x] PRهای قدیمی و هم‌پوشان #40/#43/#54 بسته شدند؛ issue #37 با شواهد PR #114 تعیین تکلیف شد. تست محلی اجرا نشده است.
+- **گام بعدی:** fault-injection در مرزهای commit بین ذخیرهٔ نتیجهٔ learning و تکمیل task، سپس آزمون pause/cancel پس از restart.
 
 
 ### CI follow-up for PR #114
