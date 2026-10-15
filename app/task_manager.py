@@ -162,6 +162,16 @@ def get_task(task_id: int) -> dict[str, Any] | None:
     return _task(row)
 
 
+def get_task_by_dedupe_key(dedupe_key: str) -> dict[str, Any] | None:
+    if not isinstance(dedupe_key, str) or not dedupe_key.strip():
+        raise ValueError("dedupe_key must be a non-empty string.")
+    with db.learning_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM task_queue WHERE dedupe_key = ?", (dedupe_key.strip(),)
+        ).fetchone()
+    return _task(row)
+
+
 def list_tasks(*, statuses: list[str] | None = None, limit: int = 100) -> list[dict[str, Any]]:
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
         raise ValueError("limit must be between 1 and 1000.")
