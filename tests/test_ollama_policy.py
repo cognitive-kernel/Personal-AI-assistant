@@ -83,3 +83,52 @@ def test_ollama_policy_rejects_non_base_urls(tmp_path, monkeypatch, url):
 
     with pytest.raises(ollama.OllamaError, match="base URL"):
         ollama._base_url()
+
+
+def test_ollama_request_does_not_follow_redirects_to_non_loopback(
+    tmp_path, monkeypatch
+):
+    import socket
+    import threading
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    external_attempts = []
+    original_create_connection = socket.create_connection
+
+    def block_external_connection(address, *args, **kwargs):
+        if address[0] == "example.com":
+            external_attempts.append(address)
+            raise AssertionError("redirect attempted a non-loopback connection")
+        return original_create_connection(address, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "create_connection", block_external_connection)
+    # Do not let environment-configured proxies hide the final destination from the guard.
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: {})
+
+    class RedirectHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(307)
+            self.send_header("Location", "http://example.com/redirect-target")
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler) as redirect_server:
+        redirect_thread = threading.Thread(
+            target=redirect_server.serve_forever, daemon=True
+        )
+        redirect_thread.start()
+        try:
+            configure_ollama_url(
+                tmp_path,
+                monkeypatch,
+                f"http://127.0.0.1:{redirect_server.server_port}",
+            )
+            with pytest.raises(ollama.OllamaError, match="request failed"):
+                ollama._request("/api/tags", timeout=2)
+            assert external_attempts == []
+        finally:
+            redirect_server.shutdown()
+            redirect_thread.join(timeout=2)
