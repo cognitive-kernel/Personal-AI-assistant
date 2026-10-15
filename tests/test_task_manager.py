@@ -116,14 +116,10 @@ def test_expired_pause_or_cancel_request_does_not_stick_forever(task_store, monk
     task_manager.request_pause(paused_task["id"])
 
     cancelled_task = task_manager.create_task("cancel-crash", {})
-    # The active worker still owns the first task, so claim the second explicitly
-    # after marking the first as pause-requested.
-    with db.learning_connection() as conn:
-        conn.execute(
-            "UPDATE task_queue SET status='paused', lease_owner=NULL, lease_expires_at=NULL WHERE id=?",
-            (paused_task["id"],),
-        )
-    task_manager.claim_next_task("worker-b", lease_seconds=5)
+    # The paused worker remains leased until its deadline; another worker can claim
+    # the next queued task while the pause request waits for cooperative settlement.
+    claimed_cancel = task_manager.claim_next_task("worker-b", lease_seconds=5)
+    assert claimed_cancel["id"] == cancelled_task["id"]
     task_manager.request_cancel(cancelled_task["id"])
 
     current = current + timedelta(seconds=6)
