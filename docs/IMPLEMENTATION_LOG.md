@@ -464,5 +464,16 @@
 
 - [x] آزمون end-to-end اضافه شد که از API یادگیری وظیفه می‌سازد، runtime واقعی صف آن را اجرا می‌کند، وضعیت task و learning job را بررسی می‌کند و در پایان TestClient چرخهٔ shutdown را طی می‌کند.
 - [x] آزمون بازیابی startup اضافه شد: یک learning job با وضعیت `running` و بدون task متناظر پیش از startup ساخته می‌شود؛ reconciliation باید آن را به صف برگرداند و runtime تکمیلش کند.
-- [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
-- **گام بعدی:** پس از موفقیت CI، ممیزی schema و مسیرهای خواندن/نوشتن برای طراحی migration runner نسخه‌دار و آزمون backup/restore.
+- [x] **PR #89** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/89)، commit ادغام `2050ebea67b766fd0c2d7b21b3fbc496c76c0f7a`.
+- [x] CI روی head دقیق `c2507d7adc0ba8a92aa8afbf3e7554022b71320d` موفق بود؛ run [#38784175717](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38784175717)، شامل نصب وابستگی‌ها و `pytest`.
+- **گام بعدی:** ممیزی schema و مسیرهای خواندن/نوشتن برای طراحی migration runner نسخه‌دار و آزمون backup/restore.
+
+
+
+## 27. 2026-10-15 — ممیزی schema و برنامهٔ migration runner
+
+- [x] جدول‌های فعلی دو پایگاه SQLite، مالکیت منطقی، کلیدها/روابط اصلی، ایندکس‌ها و تغییرات ad-hoc `ALTER TABLE` در `docs/architecture/SCHEMA_MIGRATION_AUDIT.md` ثبت شدند.
+- [x] `docs/architecture/DATA_DOMAIN_INVENTORY.md` با وضعیت واقعی صف پایدار، runtime، لغو و خطرهای migration به‌روز شد.
+- [x] مشخص شد schema version metadata، migration runner عمومی و backup/restore آزموده‌شده هنوز وجود ندارند.
+- [ ] ممیزی از کد و تست‌ها انجام شده؛ فایل‌های DB واقعی کاربر بررسی نشده‌اند و هیچ migration یا انتقال داده‌ای اجرا نشده است.
+- **گام بعدی:** تست‌های schema contract و fixtureهای legacy را تکمیل کن؛ سپس ابزار backup/restore بساز و آن را روی کپی بازیابی کن. پس از آن migration runner نسخه‌دار را در تغییر جداگانه پیاده‌سازی کن.
