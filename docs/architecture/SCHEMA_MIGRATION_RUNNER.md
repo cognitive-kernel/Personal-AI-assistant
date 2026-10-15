@@ -11,9 +11,11 @@
 - explicit legacy baseline adoption through `record_baseline()`, which refuses to proceed unless the actual schema fingerprint exactly matches the reviewed expected fingerprint;
 - fail-safe errors for untracked existing schemas, missing migration definitions, changed migration IDs/checksums, and version gaps.
 
-## Important: not yet wired into application startup
+## Fresh-install registries defined, startup still unchanged
 
-This PR adds and tests the runner as an isolated primitive. It does **not** replace the current schema creation in `app/db.py` or `app/task_manager.py`, does not create migration history in a user's live database, and does not migrate or delete any data.
+`app/schema_registry.py` now defines ordered fresh-install migrations for the settings database and for the learning database plus task queue. Tests apply these registries to empty in-memory SQLite databases and validate the resulting tables, columns, foreign keys, and integrity.
+
+The runner is still **not wired into application startup**. It does not create migration history in a user's live database, and it does not migrate or delete any data.
 
 Do not call `MigrationRunner.apply()` against the current application databases until a migration registry and a verified baseline for the actual schema are defined. Existing databases without history are intentionally rejected rather than automatically marked as current.
 
@@ -40,7 +42,7 @@ Each SQL statement must be a single statement supported by `Connection.execute()
 
 ## Next step
 
-Build reviewed migration definitions for the settings and learning schemas, with fresh-install migrations and explicit legacy adoption fixtures. Only after the schema signatures, backup/restore, and upgrade tests pass should startup use the runner and the ad-hoc `ALTER TABLE` operations be removed.
+Create canonical legacy fixtures and reviewed fingerprints for every supported existing schema shape. The expected fingerprint must be generated from the fixture, never from the live untracked database. Add tests for baseline adoption and forward migration from each supported legacy version. Only after these tests and backup/restore checks pass should startup call the runner and the ad-hoc startup `ALTER TABLE` operations be removed.
 
 
 ## Legacy baseline adoption
