@@ -317,3 +317,13 @@
 - [x] قرارداد چرخه عمر در `docs/architecture/ADR-003-managed-task-runtime.md` ثبت شد.
 - [ ] runtime عمداً به startup برنامه وصل نشده؛ تا زمان ثبت handler واقعی و بازبینی مسیرهای crash/retry، شروع خودکار می‌تواند وظایف را با رفتار ناقص اجرا کند.
 - [ ] CI روی head دقیق این شاخه باید سبز شود؛ تست محلی اجرا نشده است.
+
+
+## 14. 2026-10-15 — ادغام runtime مدیریت‌شده
+
+- **PR:** [#76 — managed task runtime lifecycle](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/76) ادغام شد.
+- **Commit ادغام:** `f148af6b4c4fa2d6e41e4243a1a82c43dfdbf099`.
+- **CI دقیق head:** run [#38773022738](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38773022738) موفق شد؛ نصب وابستگی‌ها و `pytest` موفق بودند.
+- **قابلیت:** چرخه عمر workerها، polling، شروع idempotent و توقف با مهلت محدود اکنون در ماژول مستقل وجود دارد.
+- **محدودیت مهم:** runtime هنوز به FastAPI متصل یا در startup اجرا نمی‌شود و handler یادگیری ثبت نشده است؛ این انتخاب عمدی است تا مهاجرت مسیرهای قدیمی یادگیری به صف جدید بدون آزمون recovery و جلوگیری از اجرای تکراری انجام نشود.
+- **گام بعدی:** بررسی و تعیین تکلیف stack مربوط به feedback یادگیری (#37، PRهای #40/#43/#54)، سپس طراحی یکپارچه‌سازی یک مسیر یادگیری با صف جدید و حذف تدریجی ThreadPoolExecutor قدیمی، همراه با تست‌های idempotency و بازیابی پس از restart.
