@@ -326,17 +326,23 @@ def request_pause(task_id: int) -> dict[str, Any]:
 
 def resume_task(task_id: int, *, scheduled_at: datetime | None = None) -> dict[str, Any]:
     now = _timestamp()
-    due = _timestamp(scheduled_at)
+    due = _timestamp(scheduled_at) if scheduled_at is not None else None
     with db.learning_connection() as conn:
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise TaskNotFoundError(f"Task {task_id} does not exist.")
         if row["status"] != "paused":
             raise TaskManagerError("Only paused tasks can be resumed.")
-        conn.execute(
-            """UPDATE task_queue SET status='queued', scheduled_at=?, updated_at=? WHERE id=?""",
-            (due, now, task_id),
-        )
+        if due is None:
+            conn.execute(
+                "UPDATE task_queue SET status='queued', updated_at=? WHERE id=?",
+                (now, task_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE task_queue SET status='queued', scheduled_at=?, updated_at=? WHERE id=?",
+                (due, now, task_id),
+            )
         updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     return _task(updated)  # type: ignore[return-value]
 
