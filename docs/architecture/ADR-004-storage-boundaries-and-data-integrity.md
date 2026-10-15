@@ -11,7 +11,7 @@ The existing application currently has two SQLite connection targets (settings a
 
 ## Decision
 
-Define five independently owned logical stores behind explicit repository interfaces. Each store owns its schema, migrations, validation, backup/restore policy, and retention policy. Other modules must use its interface rather than directly writing its tables.
+Define five independently owned stores, each backed by a **separate database** from the beginning and exposed through an explicit repository interface. Each database owns its schema, migrations, validation, backup/restore policy, and retention policy. Other modules must use its interface rather than directly writing its tables. The five databases may initially use the same database engine and run on the same machine/server; five separate database servers are not required.
 
 1. **Knowledge store** — canonical source records, immutable content revisions, provenance, version identifiers, verification status, and concept metadata.
 2. **Retrieval index store** — derived lexical and vector indexes. Every indexed item carries a stable source/revision ID and embedding/model/index version. Indexes are rebuildable from canonical records; they are never the sole copy of user-provided or learned content.
@@ -23,15 +23,15 @@ A sixth operational configuration/logging concern may be implemented where appro
 
 ## Physical deployment and hardware policy
 
-Logical isolation is mandatory; five separate database server processes are not. Physical storage is chosen per domain through adapters:
+Five distinct databases are mandatory from the initial target implementation; five separate server processes are not. With the current hardware, use one engine/runtime and five separate database files or database namespaces on the same host. For SQLite, that means five independently configured database files, not five groups of tables inside the existing learning database. If a server database engine is later selected, create five separate databases on the same server instance. A domain can later move to another server without changing its domain service contract.
 
-- SQLite is an acceptable initial transactional engine for structured records and task state, provided each connection is configured safely and migrations/backups are tested.
-- The retrieval index may begin as an embedded, local index and move to a dedicated vector/lexical engine if measured scale or quality warrants it.
-- The graph may initially use typed relational edge tables; a graph-specific database is not a prerequisite. Adopt one only after representative graph queries and operational costs justify it.
-- Store locations and engines are configuration, not hard-coded application assumptions.
-- Adapters must make moving a domain to another engine possible without changing domain services or public API contracts.
+- Each domain has a separately configured connection, schema version, migration history, backup/restore unit, and health check.
+- The retrieval database stores derived lexical/vector indexes and stable references to canonical records; the index can be rebuilt from source databases. Do not treat it as the canonical owner of user-provided knowledge.
+- The graph database may initially use typed relational edge tables in its own database; a graph-specific engine is considered only after representative query benchmarks justify it.
+- Store locations, database names, and engine settings are configuration, not hard-coded application assumptions.
+- Repository adapters must allow moving one database to another engine or server without changing domain services or public API contracts.
 
-This avoids unnecessary RAM overhead now without coupling the architecture to a single engine forever.
+This preserves the required database separation while avoiding five heavyweight server processes on constrained hardware.
 
 ## Cross-store consistency
 
@@ -59,13 +59,14 @@ All stores enforce size limits, input validation, access boundaries, and structu
 
 ## Acceptance gates before migration
 
-1. Inventory existing SQLite tables and every read/write path.
-2. Define versioned repository contracts and migration runner.
-3. Add schema version metadata, backup/restore utilities, and migration tests.
+1. Inventory existing SQLite files/tables and every read/write path.
+2. Define versioned repository contracts and a migration runner for all five separate database files/namespaces.
+3. Add schema version metadata, per-database backup/restore utilities, health checks, and migration tests.
 4. Create populated fixtures and verify migration preserves row counts, IDs, hashes, foreign keys, and representative queries.
-5. Only then migrate existing learning/evidence/knowledge tables into their owning repositories.
-6. Add retrieval indexes as derived data and prove a full rebuild from canonical records.
-7. Add graph storage after concept/edge contracts and use cases are tested.
+5. Create five separate databases and only then migrate existing learning/evidence/knowledge/task data into their owning databases using tested, restartable migrations.
+6. Add retrieval indexes as derived data in the dedicated retrieval database and prove a full rebuild from canonical records.
+7. Add graph data to its dedicated graph database after concept/edge contracts and use cases are tested.
+8. Verify cross-database idempotency, outbox/reconciliation, backup/restore, and failure recovery before enabling production writes.
 
 ## Consequences
 
