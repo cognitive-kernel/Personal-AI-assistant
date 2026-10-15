@@ -12,6 +12,7 @@ def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
 
+    initial_due = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
     with TestClient(app, client=("127.0.0.1", 12345)) as client:
         response = client.post(
             "/api/tasks",
@@ -20,6 +21,7 @@ def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
                 "payload": {"topic": "API design"},
                 "priority": 8,
                 "max_attempts": 3,
+                "scheduled_at": initial_due,
             },
         )
         assert response.status_code == 202
@@ -36,7 +38,7 @@ def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
         assert priority.status_code == 200
         assert priority.json()["priority"] == 12
 
-        due = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        due = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()
         scheduled = client.patch(f"/api/tasks/{task_id}/schedule", json={"scheduled_at": due})
         assert scheduled.status_code == 200
         assert scheduled.json()["scheduled_at"].startswith(due[:19])
