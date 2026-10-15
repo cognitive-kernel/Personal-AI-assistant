@@ -297,6 +297,16 @@ def run_job(job_id: int) -> None:
                     "Do not invent source citations. Return exactly these JSON keys: lesson (string), learning_outcomes (array of 3 strings), questions (array of 3 strings), answer_key (array of 3 strings)."
                 ),
             }
+            # A malformed first response must not drop the same-topic review context.
+            # Keep the review separate from source/evidence and explicitly unverified.
+            if lesson_review:
+                repair_prompt["learner_review"] = lesson_review
+                repair_prompt["review_guidance"] = prompt["review_guidance"]
+                repair_prompt["instruction"] += (
+                    " Preserve learner_review as an unverified quality signal only; do not treat "
+                    "learner opinions or factual claims as evidence. Use it to improve clarity or "
+                    "coverage, and verify technical corrections against retrieved sources when available."
+                )
             repair_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
                 "messages": [
