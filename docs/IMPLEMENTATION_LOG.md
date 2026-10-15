@@ -671,5 +671,7 @@
 - [x] اگر جست‌وجو یا استخراج منبع شکست بخورد، رویداد `web_search` ثبت می‌شود و کار یادگیری با fallback به دانش مدلِ تأییدنشده ادامه می‌یابد.
 - [x] تست‌های parser، SSRF/private-destination blocking، استخراج متن، موفقیت/شکست منبع‌یابی و حفظ provenance اضافه شدند.
 - [x] قرارداد محدودیت‌ها در `docs/architecture/WEB_SOURCE_DISCOVERY.md` ثبت شد.
-- [ ] CI باید روی head دقیق PR جدید موفق شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** پس از CI، PR قدیمی #88 و PR منبع‌یابی قدیمی #6 تعیین تکلیف شوند؛ سپس fault-injection در commitهای learning/task و آزمون pause/cancel پس از restart انجام شود.
+- [x] **PR #116** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/116)، commit ادغام `049735a576067a604b6a4ad603f1bad283f87921`.
+- [x] CI روی head دقیق `dd875dded0f13a74bb79245ad0828dc622ddf9a2` موفق بود؛ run [#38805038559](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38805038559)، شامل نصب وابستگی‌ها و `pytest`.
+- [x] PRهای قدیمی #6 و #88 پس از انتقال قابلیت منبع‌یابی به ساختار فعلی بسته شدند.
+- **گام بعدی:** افزودن regression test برای redirect امنیتی Ollama، سپس fault-injection در commitهای learning/task و آزمون pause/cancel پس از restart.
