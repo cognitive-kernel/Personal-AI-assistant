@@ -27,6 +27,7 @@ def test_runner_applies_migrations_transactionally_and_is_idempotent(tmp_path):
     with connect(path) as connection:
         assert migrations.apply(connection) == 2
         connection.execute("INSERT INTO records(value, note) VALUES ('kept', 'after migration')")
+        connection.commit()
         assert migrations.apply(connection) == 2
         history = connection.execute(
             "SELECT version, migration_id FROM schema_migrations ORDER BY version"
