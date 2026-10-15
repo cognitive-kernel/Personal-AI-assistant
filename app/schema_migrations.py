@@ -206,20 +206,23 @@ class MigrationRunner:
                 if version != previous + 1:
                     raise MigrationError("Migration history contains a version gap.")
             for row in rows:
-                migration = registry.get(int(row["version"]))
+                version = int(row[0])
+                migration = registry.get(version)
                 if migration is None:
-                    raise MigrationError(f"Applied migration version {row['version']} is not registered.")
-                if migration.migration_id != row["migration_id"]:
-                    raise MigrationError(f"Migration ID changed for version {row['version']}.")
-                if migration.checksum != row["checksum"]:
-                    raise MigrationError(f"Migration checksum changed for version {row['version']}.")
+                    raise MigrationError(f"Applied migration version {version} is not registered.")
+                if migration.migration_id != row[1]:
+                    raise MigrationError(f"Migration ID changed for version {version}.")
+                if migration.checksum != row[2]:
+                    raise MigrationError(f"Migration checksum changed for version {version}.")
             current_version = versions[-1]
             if first is not None and first.baseline_fingerprint is not None:
                 # Only the original baseline row is compared to the adopted fingerprint;
                 # later migrations legitimately change the live schema.
                 baseline_row = rows[0]
-                if int(baseline_row["version"]) != first.version:
+                if int(baseline_row[0]) != first.version:
                     raise MigrationError("Baseline history does not match the registered baseline version.")
+                if current_version == first.version and schema_fingerprint(connection) != first.baseline_fingerprint:
+                    raise MigrationError("Legacy schema changed after baseline adoption; refusing migration.")
 
         pending = [migration for migration in self.migrations if migration.version > current_version]
         if not pending:
