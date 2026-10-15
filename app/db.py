@@ -29,71 +29,23 @@ def learning_connection() -> sqlite3.Connection:
     return _connect(defaults.learning_db_path)
 
 def init_databases() -> None:
+    """Initialize versioned settings/learning stores and seed missing default settings."""
+    from .schema_registry import (
+        LEARNING_MIGRATIONS,
+        SETTINGS_MIGRATIONS,
+        initialize_database_file,
+    )
+
+    initialize_database_file(defaults.settings_db_path, SETTINGS_MIGRATIONS)
+    initialize_database_file(defaults.learning_db_path, LEARNING_MIGRATIONS)
+
     with settings_connection() as conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY, value_json TEXT NOT NULL,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
         for key, value in SETTING_DEFAULTS.items():
-            conn.execute("INSERT OR IGNORE INTO settings(key, value_json) VALUES (?, ?)", (key, json.dumps(value)))
-    with learning_connection() as conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS learning_jobs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, status TEXT NOT NULL,
-            source_kind TEXT NOT NULL, lesson TEXT, assessment_json TEXT, quality_json TEXT, error TEXT,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS learning_evidence (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
-            evidence_type TEXT NOT NULL, source_ref TEXT NOT NULL, content_hash TEXT,
-            note TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS learning_source_text (
-            job_id INTEGER PRIMARY KEY REFERENCES learning_jobs(id) ON DELETE CASCADE,
-            content TEXT NOT NULL)""")
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(learning_jobs)").fetchall()}
-        if "quality_json" not in columns:
-            conn.execute("ALTER TABLE learning_jobs ADD COLUMN quality_json TEXT")
-        if "path_topic_id" not in columns:
-            conn.execute("ALTER TABLE learning_jobs ADD COLUMN path_topic_id INTEGER REFERENCES learning_path_topics(id) ON DELETE SET NULL")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_learning_jobs_status ON learning_jobs(status)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_learning_jobs_path_topic ON learning_jobs(path_topic_id, status)")
-        conn.execute("""CREATE TABLE IF NOT EXISTS knowledge_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT NOT NULL, content TEXT NOT NULL,
-            source_kind TEXT NOT NULL, version INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'unverified',
-            job_id INTEGER NOT NULL UNIQUE REFERENCES learning_jobs(id) ON DELETE CASCADE,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(topic, version))""")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_topic ON knowledge_items(topic, version DESC)")
-        conn.execute("""CREATE TABLE IF NOT EXISTS assessment_attempts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
-            answers_json TEXT NOT NULL, score REAL NOT NULL,
-            correct_count INTEGER NOT NULL, question_count INTEGER NOT NULL,
-            scoring_method TEXT NOT NULL DEFAULT 'normalized_exact_match',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_assessment_attempts_job ON assessment_attempts(job_id, id DESC)")
-        conn.execute("""CREATE TABLE IF NOT EXISTS lesson_reviews (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
-            outcomes_json TEXT NOT NULL,
-            value_rating INTEGER NOT NULL CHECK(value_rating BETWEEN 1 AND 5),
-            takeaway TEXT NOT NULL DEFAULT '',
-            issues TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_lesson_reviews_job ON lesson_reviews(job_id, id DESC)")
-        conn.execute("""CREATE TABLE IF NOT EXISTS learning_paths (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            curriculum_slug TEXT NOT NULL UNIQUE,
-            title TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-        conn.execute("""CREATE TABLE IF NOT EXISTS learning_path_topics (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path_id INTEGER NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
-            topic TEXT NOT NULL, position INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'pending',
-            latest_score REAL,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(path_id, topic), UNIQUE(path_id, position))""")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_path_topics_status ON learning_path_topics(path_id, status, position)")
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value_json) VALUES (?, ?)",
+                (key, json.dumps(value)),
+            )
+
 
 def get_settings() -> dict[str, Any]:
     with settings_connection() as conn:

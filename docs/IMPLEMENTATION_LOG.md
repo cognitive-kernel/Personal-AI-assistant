@@ -562,5 +562,19 @@
 ## 35. 2026-10-15 — تطبیق schema فعلی با migrationهای ثبت‌شده
 
 - [x] آزمون جدید، schema ساخته‌شده توسط initializer فعلی را با fingerprint نسخهٔ ۱ settings و نسخهٔ ۳ learning مقایسه می‌کند؛ این آزمون تفاوت‌های واقعی DDL و ترتیب ستون‌ها را پیش از تغییر startup آشکار می‌کند.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** پس از اثبات تطبیق fingerprint، اتصال registry به startup همراه backup قبل از ارتقای legacy و حذف `ALTER TABLE`های پراکنده انجام شود.
+- [x] **PR #105** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/105)، commit ادغام `8396d92196c7412a8ff3eec5f337bd2393b1f9c2`.
+- [x] CI روی head دقیق `336708bc47ffedcaeef127cc2a68ebd202b0cd1f` موفق بود؛ run [#38788075857](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38788075857)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** اتصال registry به startup همراه backup قبل از ارتقای legacy و حذف `ALTER TABLE`های پراکنده انجام شود.
+
+
+## 36. 2026-10-15 — اتصال migration runner به راه‌اندازی برنامه
+
+- [x] `db.init_databases()` اکنون settings و learning را از registry نسخه‌بندی‌شده مقداردهی می‌کند و فقط تنظیمات پیش‌فرض غایب را seed می‌کند.
+- [x] `task_manager.initialize_task_store()` به همان registry متصل شد؛ فراخوانی تکراری از startup حذف شد.
+- [x] قبل از baseline یا ارتقای دیتابیس موجود، فایل backup یکتا ساخته و با `PRAGMA integrity_check` اعتبارسنجی می‌شود؛ دیتابیس به‌روز در هر startup دوباره backup نمی‌شود.
+- [x] schema ناشناخته پس از backup رد می‌شود و تست‌ها عدم ایجاد migration history و حفظ دادهٔ اصلی را بررسی می‌کنند.
+- [x] نخستین CI این PR، run [#38798578645](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38798578645)، دو ناسازگاری در تست‌های موجود آشکار کرد: metadata مهاجرت در شمارش جدول‌ها و تست legacy که تاریخچهٔ نسخهٔ جاری را با schema دستکاری‌شده ترکیب می‌کرد. تست‌ها به قرارداد جدید اصلاح شدند و runner اکنون drift بیرونی را صریحاً رد می‌کند.
+- [x] CI روی head کد `4c680cf973fe40b949e51ee948c80583f2171b75` موفق بود؛ run [#38798919878](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38798919878)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] پس از تغییرات مستندات، CI روی head نهایی PR نیز باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** بررسی recovery صف وظایف پس از restart و افزودن تست‌های یکپارچگی برای خطای migration.

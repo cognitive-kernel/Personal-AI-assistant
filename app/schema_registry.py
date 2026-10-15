@@ -6,6 +6,9 @@ adoption requires comparing a live database against reviewed fingerprints.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Iterable
 
 from .schema_migrations import (
@@ -197,3 +200,73 @@ def initialize_connection(connection: sqlite3.Connection, migrations: Iterable[M
         "Existing database schema does not match any registered migration version; "
         "no history was written and no schema changes were applied."
     )
+
+
+
+def _needs_schema_backup(path: Path, migrations: tuple[Migration, ...]) -> bool:
+    if not path.exists() or path.stat().st_size == 0:
+        return False
+    with closing(sqlite3.connect(str(path))) as connection:
+        history_exists = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+        ).fetchone() is not None
+        has_user_schema = connection.execute(
+            """
+            SELECT 1 FROM sqlite_master
+            WHERE type IN ('table', 'index', 'view', 'trigger')
+              AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'
+            LIMIT 1
+            """
+        ).fetchone() is not None
+        if not has_user_schema:
+            return False
+        if not history_exists:
+            return True
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(schema_migrations)")
+        }
+        if "version" not in columns:
+            return True
+        try:
+            current_version = connection.execute(
+                "SELECT MAX(version) FROM schema_migrations"
+            ).fetchone()[0]
+            return current_version is None or int(current_version) < migrations[-1].version
+        except (sqlite3.DatabaseError, TypeError, ValueError):
+            return True
+
+
+def _create_pre_migration_backup(path: Path) -> Path:
+    """Create and verify a unique SQLite backup before any schema adoption or upgrade."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    candidate = path.with_name(f"{path.name}.pre-migration-{stamp}.bak")
+    suffix = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.name}.pre-migration-{stamp}-{suffix}.bak")
+        suffix += 1
+
+    with closing(sqlite3.connect(str(path))) as source, closing(
+        sqlite3.connect(str(candidate))
+    ) as destination:
+        source.backup(destination)
+        result = destination.execute("PRAGMA integrity_check").fetchone()
+        if result is None or result[0] != "ok":
+            raise RuntimeError(f"Pre-migration backup failed integrity validation: {candidate}")
+    return candidate
+
+
+def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) -> int:
+    """Back up existing schemas before baseline adoption/upgrades, then initialize safely."""
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    migration_list = tuple(migrations)
+    if not migration_list:
+        raise ValueError("At least one migration must be registered.")
+
+    if _needs_schema_backup(target, migration_list):
+        _create_pre_migration_backup(target)
+
+    with closing(sqlite3.connect(str(target), timeout=10)) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 10000")
+        return initialize_connection(connection, migration_list)

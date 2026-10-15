@@ -58,47 +58,10 @@ def _task(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 def initialize_task_store() -> None:
-    """Create the version-1 task schema idempotently in the learning database."""
-    with db.learning_connection() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS task_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_type TEXT NOT NULL CHECK(length(trim(task_type)) > 0),
-                payload_json TEXT NOT NULL,
-                priority INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'queued'
-                    CHECK(status IN ('queued','running','pause_requested','paused',
-                                     'cancel_requested','cancelled','succeeded','failed')),
-                attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
-                max_attempts INTEGER NOT NULL DEFAULT 1 CHECK(max_attempts >= 1),
-                checkpoint_json TEXT,
-                result_json TEXT,
-                error TEXT,
-                scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                lease_owner TEXT,
-                lease_expires_at TEXT,
-                dedupe_key TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_task_queue_ready "
-            "ON task_queue(status, scheduled_at, priority DESC, id)"
-        )
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
-        if "dedupe_key" not in columns:
-            conn.execute("ALTER TABLE task_queue ADD COLUMN dedupe_key TEXT")
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_queue_dedupe_key "
-            "ON task_queue(dedupe_key) WHERE dedupe_key IS NOT NULL"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_task_queue_lease "
-            "ON task_queue(status, lease_expires_at)"
-        )
+    """Ensure the learning database is at the registered schema version."""
+    from .schema_registry import LEARNING_MIGRATIONS, initialize_database_file
+
+    initialize_database_file(db.defaults.learning_db_path, LEARNING_MIGRATIONS)
 
 
 def create_task(

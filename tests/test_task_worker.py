@@ -1,6 +1,9 @@
+import sqlite3
+
 import pytest
 
 from app import db, task_manager
+from app.schema_registry import LEARNING_MIGRATIONS
 from app.task_worker import TaskWorker
 
 
@@ -168,30 +171,12 @@ def test_task_creation_rejects_blank_dedupe_key(worker_store):
         task_manager.create_task("test.deduplicated", {}, dedupe_key="  ")
 
 
-def test_task_store_migrates_preexisting_queue_schema(worker_store):
-    with db.learning_connection() as conn:
-        conn.execute("DROP TABLE task_queue")
-        conn.execute(
-            """
-            CREATE TABLE task_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_type TEXT NOT NULL,
-                payload_json TEXT NOT NULL,
-                priority INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'queued',
-                attempts INTEGER NOT NULL DEFAULT 0,
-                max_attempts INTEGER NOT NULL DEFAULT 1,
-                checkpoint_json TEXT,
-                result_json TEXT,
-                error TEXT,
-                scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                lease_owner TEXT,
-                lease_expires_at TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-        )
+def test_task_store_migrates_preexisting_queue_schema(worker_store, tmp_path, monkeypatch):
+    legacy_path = tmp_path / "legacy-learning.db"
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(legacy_path))
+    with sqlite3.connect(legacy_path) as conn:
+        for statement in LEARNING_MIGRATIONS[0].statements:
+            conn.execute(statement)
         conn.execute(
             "INSERT INTO task_queue(task_type, payload_json) VALUES (?, ?)",
             ("legacy.task", "{}"),
@@ -202,5 +187,11 @@ def test_task_store_migrates_preexisting_queue_schema(worker_store):
     with db.learning_connection() as conn:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
 
+    backups = list(tmp_path.glob("legacy-learning.db.pre-migration-*.bak"))
     assert saved["task_type"] == "legacy.task"
     assert "dedupe_key" in columns
+    assert len(backups) == 1
+    with sqlite3.connect(backups[0]) as backup:
+        assert backup.execute(
+            "SELECT task_type FROM task_queue WHERE id=1"
+        ).fetchone() == ("legacy.task",)
