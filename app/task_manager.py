@@ -64,7 +64,8 @@ def initialize_task_store() -> None:
     initialize_database_file(db.defaults.learning_db_path, LEARNING_MIGRATIONS)
 
 
-def create_task(
+def create_task_in_connection(
+    conn: sqlite3.Connection,
     task_type: str,
     payload: dict[str, Any],
     *,
@@ -73,6 +74,7 @@ def create_task(
     scheduled_at: datetime | None = None,
     dedupe_key: str | None = None,
 ) -> dict[str, Any]:
+    """Create an idempotent task using the caller's transaction/connection."""
     if not isinstance(task_type, str) or not task_type.strip():
         raise ValueError("task_type must be a non-empty string.")
     if not isinstance(payload, dict):
@@ -89,34 +91,52 @@ def create_task(
     normalized_type = task_type.strip()
     normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
-    with db.learning_connection() as conn:
-        try:
-            cursor = conn.execute(
-                """INSERT INTO task_queue(
-                       task_type, payload_json, priority, max_attempts, scheduled_at, dedupe_key
-                   ) VALUES (?, ?, ?, ?, ?, ?)""",
-                (normalized_type, encoded_payload, priority, max_attempts, due, normalized_key),
-            )
-            row = conn.execute(
-                "SELECT * FROM task_queue WHERE id = ?", (cursor.lastrowid,)
-            ).fetchone()
-        except sqlite3.IntegrityError:
-            if normalized_key is None:
-                raise
-            row = conn.execute(
-                "SELECT * FROM task_queue WHERE dedupe_key = ?", (normalized_key,)
-            ).fetchone()
-            if row is None:
-                raise
-            if (
-                row["task_type"] != normalized_type
-                or row["payload_json"] != encoded_payload
-                or row["max_attempts"] != max_attempts
-            ):
-                raise ValueError(
-                    "dedupe_key already exists for a different task definition."
-                )
+    try:
+        cursor = conn.execute(
+            """INSERT INTO task_queue(
+                   task_type, payload_json, priority, max_attempts, scheduled_at, dedupe_key
+               ) VALUES (?, ?, ?, ?, ?, ?)""",
+            (normalized_type, encoded_payload, priority, max_attempts, due, normalized_key),
+        )
+        row = conn.execute(
+            "SELECT * FROM task_queue WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+    except sqlite3.IntegrityError:
+        if normalized_key is None:
+            raise
+        row = conn.execute(
+            "SELECT * FROM task_queue WHERE dedupe_key = ?", (normalized_key,)
+        ).fetchone()
+        if row is None:
+            raise
+        if (
+            row["task_type"] != normalized_type
+            or row["payload_json"] != encoded_payload
+            or row["max_attempts"] != max_attempts
+        ):
+            raise ValueError("dedupe_key already exists for a different task definition.")
     return _task(row)  # type: ignore[return-value]
+
+
+def create_task(
+    task_type: str,
+    payload: dict[str, Any],
+    *,
+    priority: int = 0,
+    max_attempts: int = 1,
+    scheduled_at: datetime | None = None,
+    dedupe_key: str | None = None,
+) -> dict[str, Any]:
+    with db.learning_connection() as conn:
+        return create_task_in_connection(
+            conn,
+            task_type,
+            payload,
+            priority=priority,
+            max_attempts=max_attempts,
+            scheduled_at=scheduled_at,
+            dedupe_key=dedupe_key,
+        )
 
 
 def get_task(task_id: int) -> dict[str, Any] | None:
