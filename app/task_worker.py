@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+import threading
 from typing import Any, Callable
 
 from . import task_manager
 from .task_manager import TaskManagerError
 
 TaskHandler = Callable[[dict[str, Any], dict[str, Any] | None, "TaskContext"], dict[str, Any]]
+logger = logging.getLogger("personal_ai_assistant.task_worker")
 
 
 class TaskInterrupted(RuntimeError):
@@ -65,6 +68,25 @@ class TaskWorker:
         self.handlers = dict(handlers)
         self.lease_seconds = lease_seconds
 
+    def _maintain_lease(self, context: TaskContext, stop_event: threading.Event) -> None:
+        """Renew a running task lease while its handler is doing long-running work."""
+        interval = max(0.05, min(30.0, self.lease_seconds / 3))
+        while not stop_event.wait(interval):
+            try:
+                # Do not extend a lease after pause/cancel has been requested. If the
+                # handler cannot reach a checkpoint, expiry lets the queue settle it.
+                if context.control_status() != "running":
+                    return
+                task_manager.renew_lease(
+                    context.task_id, context.worker_id, lease_seconds=self.lease_seconds
+                )
+            except TaskManagerError:
+                # Ownership loss or a control-state transition ends heartbeat ownership.
+                return
+            except Exception:
+                logger.exception("Task lease heartbeat failed for task %s", context.task_id)
+                return
+
     def run_once(self) -> bool:
         """Claim and process one task. Return False only when no task is ready."""
         task = task_manager.claim_next_task(
@@ -89,6 +111,14 @@ class TaskWorker:
             checkpoint_data=task["checkpoint"],
             lease_seconds=self.lease_seconds,
         )
+        heartbeat_stop = threading.Event()
+        heartbeat_thread = threading.Thread(
+            target=self._maintain_lease,
+            args=(context, heartbeat_stop),
+            name=f"{self.worker_id}-lease-{task['id']}",
+            daemon=True,
+        )
+        heartbeat_thread.start()
         try:
             result = handler(task["payload"], task["checkpoint"], context)
             if not isinstance(result, dict):
@@ -126,4 +156,7 @@ class TaskWorker:
             except (TaskInterrupted, TaskManagerError):
                 # Control requests and lease loss take precedence over failure writes.
                 pass
+        finally:
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=max(0.1, min(1.0, self.lease_seconds / 3)))
         return True
