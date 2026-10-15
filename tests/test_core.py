@@ -396,3 +396,25 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     failed = learning.get_job(job["id"])
     assert failed["status"] == "failed"
     assert "model offline" in failed["error"]
+
+
+def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Failure propagation test")
+
+    def fail_request(*_args, **_kwargs):
+        raise RuntimeError("model offline")
+
+    monkeypatch.setattr(learning, "_request", fail_request)
+    try:
+        learning.run_job(job["id"])
+    except learning.LearningError as exc:
+        assert "model offline" in str(exc)
+    else:
+        raise AssertionError("Learning execution failure must propagate to the task worker")
+
+    failed = learning.get_job(job["id"])
+    assert failed["status"] == "failed"
+    assert "model offline" in failed["error"]
