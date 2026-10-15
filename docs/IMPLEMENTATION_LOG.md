@@ -591,3 +591,11 @@
 - [x] نخستین CI روی head `52ab8628826d0083c7b55d8204672bd2ff9dbe2a`، run [#38799649735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38799649735)، یک خطای تست recovery پیدا کرد: task با `max_attempts=1` پس از اولین lease منقضی‌شده طبق سیاست صف باید terminal شود؛ fixture برای شبیه‌سازی retry به `max_attempts=3` تغییر کرد.
 - [ ] CI روی head نهایی PR باید بررسی شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** اجرای CI، سپس بررسی reconciliation واقعی learning jobs و task queue در startup/restart.
+
+
+## 38. 2026-10-15 — reconciliation در startup و بازیابی وضعیت یادگیری
+
+- [x] تست integration راه‌اندازی، پنجرهٔ crash بین ایجاد learning job و enqueue را بازسازی می‌کند؛ startup باید task گم‌شده را بسازد و در اجرای مجدد همان task را بدون duplicate حفظ کند.
+- [x] تست handler برای هر دو وضعیت stale یعنی `failed` و `running` اضافه شد تا retry پس از وقفهٔ worker پوشش داده شود.
+- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** بررسی idempotency در crash windowهای میان نوشتن نتیجهٔ learning و تکمیل task، سپس تست‌های end-to-end وضعیت‌های pause/cancel پس از restart.

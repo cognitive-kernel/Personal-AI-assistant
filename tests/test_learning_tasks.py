@@ -55,14 +55,15 @@ def test_learning_task_handler_persists_real_learning_outcome(
     }
 
 
-def test_learning_task_handler_recovers_failed_job_for_queue_retry(
-    learning_task_store, monkeypatch
+@pytest.mark.parametrize("stale_status", ["failed", "running"])
+def test_learning_task_handler_recovers_stale_job_for_queue_retry(
+    learning_task_store, monkeypatch, stale_status
 ):
-    job = learning.create_job("Retry failed learning")
+    job = learning.create_job("Retry stale learning")
     with db.learning_connection() as conn:
         conn.execute(
-            "UPDATE learning_jobs SET status='failed', error='temporary model failure' WHERE id=?",
-            (job["id"],),
+            "UPDATE learning_jobs SET status=?, error='temporary worker interruption' WHERE id=?",
+            (stale_status, job["id"]),
         )
 
     def fake_run_job(job_id):
