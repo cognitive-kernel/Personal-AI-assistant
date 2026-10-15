@@ -269,6 +269,18 @@
 - [x] `tests/test_task_routes.py` برای چرخه API، فیلتر، اعتبارسنجی و محدودیت تغییرات هنگام اجرای وظیفه اضافه شد.
 - [x] آزمون هم‌زمانی دو worker برای اثبات اینکه یک وظیفه به دو worker واگذار نمی‌شود اضافه شد.
 - [ ] این تغییر هنوز روی شاخه کاری است؛ اجرای CI دقیق head و بازبینی آن لازم است.
-- CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI روی head نهایی هنوز باید تأیید شود.
+- CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI نهایی در run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) روی head `abf594032517ff664ea4d8e262cb3a4b11f5e675` موفق شد.
 - [ ] API در این مرحله وظیفه را صف می‌کند اما worker عمومی هنوز وجود ندارد؛ وظایف در حالت queued می‌مانند تا dispatcher امن در گام بعدی پیاده‌سازی شود.
 - [ ] UI مدیریتی، احراز هویت شبکه‌ای (در صورت بیرون‌بردن از localhost)، pagination/cursor و ثبت رویدادهای تغییر وضعیت باقی مانده‌اند.
+
+
+## 10. 2026-10-15 — ادغام API مدیریت صف
+
+- **PR:** [#74 — expose durable task manager through API](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/74) با squash در `main` ادغام شد.
+- **Commit ادغام:** `1e3c6e614c3e85586029b0012d78a53b051de9bf`.
+- **CI دقیق head:** run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) موفق شد؛ نصب وابستگی‌ها و `pytest` با موفقیت کامل شدند.
+- **قابلیت‌های API:** ایجاد، فهرست و جزئیات وظیفه؛ توقف/ادامه/لغو تعاونی؛ تغییر اولویت و زمان‌بندی؛ محدودکردن دسترسی مدیریت وظایف به loopback.
+- **آزمون‌های اضافه‌شده:** مسیرهای API، اعتبارسنجی، 404/409/422، منع درخواست غیرمحلی، حفظ زمان‌بندی هنگام resume، و جلوگیری از claim هم‌زمان یک وظیفه توسط دو worker.
+- **شکست‌های CI ثبت‌شده:** run #38771511182 به‌علت نگاشت اشتباه missing-task به 409 شکست خورد؛ run #38771686476 پس از اصلاح موفق شد؛ سپس زمان‌بندی resume اصلاح و در run #38771853848 نیز آزمون‌ها سبز شدند.
+- **محدودیت باقی‌مانده:** API فقط صف می‌سازد؛ worker عمومی هنوز وجود ندارد. وظایف بدون dispatcher امن در حالت queued می‌مانند. تست‌های محلی روی سیستم توسعه‌دهنده انجام نشده‌اند.
+- **گام بعدی:** پیاده‌سازی worker/dispatcher با registry صریح task type، کنترل lease و checkpoint، ثبت نتیجه و خطا، و آزمون restart. اجرای کد ناشناس تا زمان وجود sandbox ایزوله و محدودشده مجاز نخواهد بود.
