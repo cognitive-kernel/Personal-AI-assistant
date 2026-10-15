@@ -78,6 +78,7 @@ def initialize_task_store() -> None:
                 scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 lease_owner TEXT,
                 lease_expires_at TEXT,
+                dedupe_key TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
@@ -86,6 +87,13 @@ def initialize_task_store() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_task_queue_ready "
             "ON task_queue(status, scheduled_at, priority DESC, id)"
+        )
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
+        if "dedupe_key" not in columns:
+            conn.execute("ALTER TABLE task_queue ADD COLUMN dedupe_key TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_queue_dedupe_key "
+            "ON task_queue(dedupe_key) WHERE dedupe_key IS NOT NULL"
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_task_queue_lease "
@@ -100,6 +108,7 @@ def create_task(
     priority: int = 0,
     max_attempts: int = 1,
     scheduled_at: datetime | None = None,
+    dedupe_key: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(task_type, str) or not task_type.strip():
         raise ValueError("task_type must be a non-empty string.")
@@ -109,14 +118,41 @@ def create_task(
         raise ValueError("priority must be an integer.")
     if isinstance(max_attempts, bool) or not isinstance(max_attempts, int) or max_attempts < 1:
         raise ValueError("max_attempts must be an integer greater than zero.")
+    if dedupe_key is not None and (
+        not isinstance(dedupe_key, str) or not dedupe_key.strip()
+    ):
+        raise ValueError("dedupe_key must be a non-empty string when provided.")
+    encoded_payload = _json(payload)
+    normalized_type = task_type.strip()
+    normalized_key = dedupe_key.strip() if dedupe_key is not None else None
     due = _timestamp(scheduled_at)
     with db.learning_connection() as conn:
-        cursor = conn.execute(
-            """INSERT INTO task_queue(task_type, payload_json, priority, max_attempts, scheduled_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (task_type.strip(), _json(payload), priority, max_attempts, due),
-        )
-        row = conn.execute("SELECT * FROM task_queue WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        try:
+            cursor = conn.execute(
+                """INSERT INTO task_queue(
+                       task_type, payload_json, priority, max_attempts, scheduled_at, dedupe_key
+                   ) VALUES (?, ?, ?, ?, ?, ?)""",
+                (normalized_type, encoded_payload, priority, max_attempts, due, normalized_key),
+            )
+            row = conn.execute(
+                "SELECT * FROM task_queue WHERE id = ?", (cursor.lastrowid,)
+            ).fetchone()
+        except sqlite3.IntegrityError:
+            if normalized_key is None:
+                raise
+            row = conn.execute(
+                "SELECT * FROM task_queue WHERE dedupe_key = ?", (normalized_key,)
+            ).fetchone()
+            if row is None:
+                raise
+            if (
+                row["task_type"] != normalized_type
+                or row["payload_json"] != encoded_payload
+                or row["max_attempts"] != max_attempts
+            ):
+                raise ValueError(
+                    "dedupe_key already exists for a different task definition."
+                )
     return _task(row)  # type: ignore[return-value]
 
 
