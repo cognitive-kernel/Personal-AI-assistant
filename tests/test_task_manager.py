@@ -168,3 +168,22 @@ def test_worker_can_renew_lease_and_naive_schedule_is_rejected(task_store, monke
 
     with pytest.raises(ValueError, match="timezone"):
         task_manager.create_task("naive-schedule", {}, scheduled_at=datetime(2026, 1, 2))
+
+
+def test_concurrent_workers_cannot_claim_the_same_task(task_store):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    task = task_manager.create_task("single-claim", {})
+    barrier = Barrier(2)
+
+    def claim(worker_id):
+        barrier.wait(timeout=3)
+        return task_manager.claim_next_task(worker_id, lease_seconds=30)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(claim, ["worker-a", "worker-b"]))
+
+    claimed = [result for result in results if result is not None]
+    assert len(claimed) == 1
+    assert claimed[0]["id"] == task["id"]
