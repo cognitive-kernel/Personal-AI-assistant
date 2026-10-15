@@ -4,7 +4,7 @@ import pytest
 
 from app.task_manager import TaskManagerError
 
-from app import task_manager
+from app import db, task_manager
 
 
 @pytest.fixture
