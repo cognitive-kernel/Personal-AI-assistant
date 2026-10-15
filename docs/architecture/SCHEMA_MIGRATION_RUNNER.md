@@ -11,11 +11,13 @@
 - explicit legacy baseline adoption through `record_baseline()`, which refuses to proceed unless the actual schema fingerprint exactly matches the reviewed expected fingerprint;
 - fail-safe errors for untracked existing schemas, missing migration definitions, changed migration IDs/checksums, and version gaps.
 
-## Important: not yet wired into application startup
+## Current implementation status
 
-This PR adds and tests the runner as an isolated primitive. It does **not** replace the current schema creation in `app/db.py` or `app/task_manager.py`, does not create migration history in a user's live database, and does not migrate or delete any data.
+`app/schema_registry.py` now defines versioned migrations for fresh settings and learning databases, including the learning-job quality field, path-topic relation, task queue, and idempotency index. The registry is tested against fresh in-memory databases and an upgrade fixture from learning schema version 1.
 
-Do not call `MigrationRunner.apply()` against the current application databases until a migration registry and a verified baseline for the actual schema are defined. Existing databases without history are intentionally rejected rather than automatically marked as current.
+The registry is **not yet wired into application startup**. It does not replace the current schema creation in `app/db.py` or `app/task_manager.py`, does not create migration history in a user's live database, and does not migrate or delete any live data.
+
+Do not call `MigrationRunner.apply()` against current application databases until known legacy fingerprints are reviewed and startup adoption is implemented. Existing databases without history are intentionally rejected rather than automatically marked as current.
 
 ## API outline
 
@@ -64,3 +66,10 @@ record_baseline(
 ```
 
 The history stores the registered migration's checksum and the matched baseline fingerprint separately. The same migration registry can therefore initialize a fresh database or continue forward from an explicitly adopted legacy database.
+
+
+## Registered application migrations
+
+- Settings database: version 1 creates the `settings` table.
+- Learning database: version 1 creates learning, assessment, path, and task tables without later-added columns; version 2 adds `learning_jobs.quality_json`; version 3 adds `learning_jobs.path_topic_id`, `task_queue.dedupe_key`, and the related indexes.
+- `fingerprint_for_version()` builds a canonical schema fixture in memory from the registered migrations. These fingerprints are candidates for explicit baseline matching, not permission to accept any live schema.
