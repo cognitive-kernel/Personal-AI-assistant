@@ -153,7 +153,6 @@ def run_job(job_id: int) -> None:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
-        raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
@@ -563,6 +562,7 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 def _cancel_learning_task(job_id: int) -> None:
     """Propagate a learning cancellation to its durable queue task when present."""
+    task_manager.initialize_task_store()
     with learning_connection() as conn:
         row = conn.execute(
             "SELECT id FROM task_queue WHERE dedupe_key=?", (f"learning-job:{job_id}",)
