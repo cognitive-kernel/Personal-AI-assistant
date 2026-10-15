@@ -194,7 +194,7 @@ class MigrationRunner:
         registry = {migration.version: migration for migration in self.migrations}
         current_version = 0
         if rows:
-            versions = [int(row["version"]) for row in rows]
+            versions = [int(row[0]) for row in rows]
             if versions != sorted(set(versions)):
                 raise MigrationError("Migration history contains duplicate or unordered versions.")
             first = registry.get(versions[0])
