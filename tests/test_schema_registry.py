@@ -48,6 +48,27 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         ).fetchall() == [(1,), (2,), (3,), (4,), (5,)]
 
 
+def test_upgrade_from_version_four_preserves_task_and_adds_dedupe_key():
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        assert MigrationRunner(LEARNING_MIGRATIONS[:4]).apply(connection) == 4
+        task_id = connection.execute(
+            "INSERT INTO task_queue(task_type, payload_json) VALUES ('learning.run_job', ?)",
+            ('{"job_id": 7}',),
+        ).lastrowid
+        connection.commit()
+
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 5
+        task = connection.execute(
+            "SELECT task_type, payload_json FROM task_queue WHERE id=?", (task_id,)
+        ).fetchone()
+        assert task == ("learning.run_job", '{"job_id": 7}')
+        assert "dedupe_key" in {
+            row[1] for row in connection.execute("PRAGMA table_info(task_queue)")
+        }
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
 def test_registry_exposes_reviewable_canonical_fingerprints():
     settings_fingerprint = fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     learning_v1 = fingerprint_for_version(LEARNING_MIGRATIONS, 1)
@@ -85,7 +106,7 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         ).fetchall()
         assert [row[0] for row in history] == [1, 2, 3, 4, 5]
         assert len(history[0][1]) == 64
-        assert history[1][1] is None and history[2][1] is None
+        assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
@@ -146,8 +167,10 @@ def test_current_application_schema_matches_registered_baseline(tmp_path, monkey
 
     with db.settings_connection() as connection:
         assert schema_fingerprint(connection) == fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
+        assert initialize_connection(connection, SETTINGS_MIGRATIONS) == 1
     with db.learning_connection() as connection:
         assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 5)
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 5
 
 
 
