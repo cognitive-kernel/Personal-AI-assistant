@@ -1,6 +1,6 @@
 import sqlite3
 
-from app.schema_migrations import MigrationRunner, schema_fingerprint
+from app.schema_migrations import MigrationRunner, UntrackedSchemaError, schema_fingerprint
 from app.schema_registry import (
     LEARNING_LEGACY_BASELINES,
     LEARNING_MIGRATIONS,
@@ -78,7 +78,7 @@ def _legacy_learning(*, quality=True, path_topic=True, queue_mode="none"):
             takeaway TEXT NOT NULL DEFAULT '',
             issues TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
-    connection.execute("CREATE INDEX idx_lesson_reviews_job ON lesson_reviews(job_id, id DESC)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_lesson_reviews_job ON lesson_reviews(job_id, id DESC)")
     connection.execute("""CREATE TABLE IF NOT EXISTS learning_paths (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             curriculum_slug TEXT NOT NULL UNIQUE,
@@ -257,14 +257,12 @@ def test_unknown_legacy_schema_is_rejected_without_creating_history():
     connection = sqlite3.connect(":memory:")
     try:
         connection.execute("CREATE TABLE unfamiliar (id INTEGER PRIMARY KEY)")
-        try:
+        import pytest
+
+        with pytest.raises(UntrackedSchemaError, match="not a reviewed legacy baseline"):
             baseline_known_legacy_schema(
                 connection, LEARNING_MIGRATIONS, LEARNING_LEGACY_BASELINES
             )
-        except Exception as exc:
-            assert "not a reviewed legacy baseline" in str(exc)
-        else:
-            raise AssertionError("Unknown legacy schema must not be adopted")
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
         ).fetchone() is None
