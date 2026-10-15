@@ -540,6 +540,18 @@
 - [x] `app/schema_registry.py` migrationهای versioned برای settings و learning تعریف می‌کند؛ schema یادگیری در سه نسخه از جدول‌های پایه تا quality/provenance و idempotency تکامل می‌یابد.
 - [x] `fingerprint_for_version()` برای ساخت fingerprint مرجع از migrationهای ثبت‌شده روی SQLite حافظه‌ای اضافه شد.
 - [x] تست‌ها نصب تازه، اجرای تکراری، ارتقای fixture از v1 به v3، حفظ job/task، FKها، indexها و integrity را پوشش می‌دهند.
-- [ ] registry هنوز به startup وصل نشده است؛ schemaهای زندهٔ موجود، به‌خصوص تفاوت ترتیب ستون‌های افزوده‌شده با `ALTER TABLE` و ستون‌های تعریف‌شده در `CREATE TABLE`, نیازمند fingerprintهای legacy صریح‌اند.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** ساخت مجموعهٔ fingerprintهای legacy بازبینی‌شده و آزمون baseline برای schemaهای واقعی شناخته‌شده؛ سپس اتصال امن startup و حذف DDL پراکنده در تغییر مستقل.
+- [ ] registry هنوز به startup وصل نشده است؛ پیش از اتصال باید CI و آزمون‌های baseline نسخه‌های شناخته‌شده روی head دقیق PR بررسی شوند.
+- [x] **PR #102** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/102)، commit ادغام `cc3ead5e151c2cce0818d7a8e389159b60741d91`.
+- [x] CI روی head دقیق `ad4d6f3b80996e7295b61c4bbdd46a7366c38993` موفق بود؛ run [#38787011266](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38787011266)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** ساخت مجموعهٔ fingerprintهای legacy بازبینی‌شده و آزمون baseline برای schemaهای شناخته‌شده؛ سپس اتصال امن startup و حذف DDL پراکنده در تغییر مستقل.
+
+
+## 34. 2026-10-15 — تشخیص و پذیرش امن schemaهای legacy شناخته‌شده
+
+- [x] fingerprint schema اکنون تعریف منطقی جدول‌ها، قیدها، FKها و ایندکس‌ها را می‌سنجد و اختلاف ترتیب ستون یا قالب‌بندی بی‌اثر DDL را نادیده می‌گیرد؛ این برای تفاوت میان ستون‌های inline و ستون‌های افزوده‌شده با `ALTER TABLE` لازم است.
+- [x] `initialize_connection()` schema تازه را از migrationها می‌سازد و schema موجود را فقط در صورت تطابق fingerprint با یکی از نسخه‌های ثبت‌شده adopt می‌کند؛ سپس فقط migrationهای بعدی را اجرا می‌کند.
+- [x] پیش از ثبت baseline، `integrity_check` و `foreign_key_check` اجرا می‌شوند؛ schema ناشناخته بدون ایجاد تاریخچه یا تغییر داده رد می‌شود.
+- [x] تست‌های baseline از نسخهٔ قدیمی و نسخهٔ جاری، عدم تغییر schema ناشناخته و اثر قیدها/ترتیب ستون‌ها بر fingerprint اضافه شدند.
+- [ ] این قابلیت هنوز به startup متصل نشده است؛ CI باید روی head دقیق PR بررسی شود و سپس ادغام امن با `db.init_databases()` و `task_manager.initialize_task_store()` در تغییر جداگانه انجام شود.
+- [ ] تست محلی اجرا نشده است.
