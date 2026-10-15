@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from app.schema_migrations import MigrationRunner, UntrackedSchemaError, schema_fingerprint
 from app.schema_registry import (
     LEARNING_MIGRATIONS,
