@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, task_manager
+from app import db, learning, task_manager
 from app.task_worker import TaskWorker
 
 
@@ -128,3 +128,59 @@ def test_worker_renews_lease_during_long_running_handler(worker_store):
     assert saved["status"] == "succeeded"
     assert saved["result"] == {"finished": True}
     assert saved["attempts"] == 1
+
+
+
+def test_learning_submission_creates_durable_deduplicated_task(worker_store):
+    job = learning.submit_job("Durable queue integration")
+    task = task_manager.get_task(job["task_id"])
+
+    assert task["task_type"] == "learning.generate"
+    assert task["payload"] == {"job_id": job["id"]}
+    assert task["dedupe_key"] == f"learning-job:{job['id']}"
+    repeated = learning._enqueue_learning_job(learning.get_job(job["id"]))
+    assert repeated["task_id"] == task["id"]
+    assert len(task_manager.list_tasks()) == 1
+
+
+def test_learning_handler_completes_task_from_persisted_job(worker_store, monkeypatch):
+    job = learning.create_job("Handler integration")
+    task = task_manager.create_task(
+        "learning.generate",
+        {"job_id": job["id"]},
+        max_attempts=2,
+        dedupe_key=f"learning-job:{job['id']}",
+    )
+
+    def complete_learning(job_id):
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE learning_jobs SET status='completed', lesson='Generated lesson', "
+                "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (job_id,),
+            )
+
+    monkeypatch.setattr(learning, "run_job", complete_learning)
+    worker = TaskWorker("learning-test-worker", {"learning.generate": learning.handle_learning_task})
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    saved_job = learning.get_job(job["id"])
+    assert saved_task["status"] == "succeeded"
+    assert saved_task["result"] == {"job_id": job["id"], "learning_status": "completed"}
+    assert saved_job["status"] == "completed"
+
+
+def test_learning_reconciliation_recovers_orphaned_running_job(worker_store):
+    job = learning.create_job("Recover after restart")
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET status='running' WHERE id=?", (job["id"],))
+
+    recovered = learning.reconcile_learning_tasks()
+    saved_job = learning.get_job(job["id"])
+    tasks = task_manager.list_tasks()
+
+    assert recovered == {"enqueued": 1, "reset_running": 1, "marked_failed": 0}
+    assert saved_job["status"] == "queued"
+    assert len(tasks) == 1
+    assert tasks[0]["payload"] == {"job_id": job["id"]}
