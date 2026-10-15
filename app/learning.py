@@ -194,7 +194,7 @@ def run_job(job_id: int) -> None:
                 retry_quality = evaluate_learning_value(
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
-                retry_quality["user_provided_source_available"] = bool(source_text)
+                retry_quality["user_provided_source_available"] = user_provided_source_available
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
