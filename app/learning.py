@@ -112,7 +112,7 @@ def run_job(job_id: int) -> None:
         topic, source_kind = row["topic"], row["source_kind"]
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
-    user_provided_source_available = bool(source_text)
+    user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
     if not source_text and source_kind == "model_knowledge_no_external_source":
         source_text, source_kind = _discover_and_store_sources(job_id, topic)
     prompt = {
