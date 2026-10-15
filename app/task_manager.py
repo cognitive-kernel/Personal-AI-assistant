@@ -25,7 +25,7 @@ def _now() -> datetime:
 
 
 def _timestamp(value: datetime | None = None) -> str:
-    return (value or _now()).isoformat(timespec="seconds")
+    return (value or _now()).isoformat(timespec="microseconds")
 
 
 def _json(value: Any) -> str:
