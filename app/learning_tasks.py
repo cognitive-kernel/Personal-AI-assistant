@@ -52,6 +52,32 @@ def cancel_learning_task(job_id: int) -> dict[str, Any] | None:
     return task
 
 
+def cancel_learning_job(job_id: int) -> dict[str, Any] | None:
+    """Synchronize generic task-API cancellation with the learning-domain record."""
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("job_id must be a positive integer")
+    task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
+    if task is None:
+        return None
+
+    try:
+        job = learning.get_job(job_id)
+    except KeyError:
+        # The task can still be cancelled safely if its domain row was removed.
+        return cancel_learning_task(job_id)
+
+    if job["status"] not in _TERMINAL_LEARNING_STATUSES:
+        with learning_connection() as conn:
+            conn.execute(
+                """UPDATE learning_jobs
+                   SET status='cancelled', error='لغو از API مدیریت وظایف',
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status IN ('queued', 'running', 'failed')""",
+                (job_id,),
+            )
+    return cancel_learning_task(job_id)
+
+
 def handle_learning_job(
     payload: dict[str, Any],
     checkpoint: dict[str, Any] | None,
