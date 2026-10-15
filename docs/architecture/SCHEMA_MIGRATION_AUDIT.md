@@ -32,17 +32,18 @@
 
 ## 3. بدهی‌های schema و خطرهای مهاجرت
 
-1. هیچ جدول عمومی `schema_migrations` یا نسخهٔ قابل اتکای schema در هر فایل DB دیده نشد.
+1. در فایل‌های DB زنده هنوز تاریخچهٔ `schema_migrations` ثبت نشده است. زیرساخت runner و registryهای fresh install اکنون در کد تعریف شده‌اند، اما به startup وصل نیستند.
 2. ساخت schema در دو محل پخش است: `db.init_databases()` و `task_manager.initialize_task_store()`. ترتیب اجرای هر دو در startup مهم است.
 3. تغییرات سازگاری با schema قدیمی به شکل شرطی `ALTER TABLE` انجام می‌شوند: `learning_jobs.quality_json`، `learning_jobs.path_topic_id` و `task_queue.dedupe_key`. این روش وضعیت واقعی را ثبت نمی‌کند و تشخیص drift را دشوار می‌سازد.
-4. `learning_jobs.path_topic_id` به جدولی اشاره می‌کند که در کد فعلی پایین‌تر در همان تابع ساخته می‌شود. پیش از تغییر ترتیب یا constraintها باید این وابستگی با fixtureهای SQLite واقعی آزموده شود.
+4. `learning_jobs.path_topic_id` در initialization قدیمی با `ALTER TABLE` افزوده می‌شد؛ registry جدید جدول‌های وابسته را پیش از افزودن این FK می‌سازد. پیش از اتصال startup باید fingerprintهای legacy و FKها روی fixtureهای واقعی آزموده شوند.
 5. `task_queue` علاوه بر ستون‌های قدیمی، قیدهای status و ایندکس dedupe دارد. تست موجود، مهاجرت یک schema قدیمی صف را پوشش می‌دهد؛ اما مهاجرت همهٔ نسخه‌های تاریخی پایگاه یادگیری هنوز اثبات نشده است.
 6. `settings` و داده‌های یادگیری در دو فایل جدا هستند؛ صف در فایل یادگیری باقی مانده است. هیچ تصمیمی برای جداسازی فیزیکی صف یا ایجاد DBهای فرضی برای تجربه/گفتگو/retrieval/graph از این ممیزی نتیجه نمی‌شود.
 7. از این بررسی، ابزار backup/restore با آزمون بازیابی و ابزار مهاجرت تراکنشی عمومی اثبات نشدند. پیش از مهاجرت دادهٔ موجود، هر دو لازم‌اند.
 
-## 4. قرارداد پیشنهادی برای migration runner
+## 4. وضعیت و قرارداد migration runner
 
-- هر فایل DB یک جدول تاریخچهٔ مستقل داشته باشد که حداقل `version`، `migration_id`، `checksum` و زمان اعمال را نگه دارد.
+- زیرساخت عمومی در `app/schema_migrations.py` و registryهای fresh install در `app/schema_registry.py` پیاده‌سازی شده‌اند، اما هنوز به startup وصل نشده‌اند.
+- هر فایل DB در زمان اتصال runner باید تاریخچهٔ مستقل با `version`، `migration_id`، `checksum` و زمان اعمال داشته باشد.
 - migrationها مرتب، شماره‌دار، قابل‌بررسی و تا حد امکان تراکنشی باشند؛ هر migration پیش‌شرط، تغییر، پس‌شرط و راهبرد forward-recovery/rollback مستند داشته باشد.
 - migration runner پیش از تغییر schema، قفل/ترتیب اجرا را کنترل کند، نسخه و checksum را اعتبارسنجی کند و در صورت شکست با خطای واضح متوقف شود؛ migration ناشناخته یا checksum متفاوت نباید بی‌صدا رد شود.
 - پایگاه‌های قدیمی بدون تاریخچه نباید صرفاً به‌صورت کورکورانه «نسخهٔ جاری» علامت‌گذاری شوند. ابتدا با introspection و fixtureهای شناخته‌شده fingerprint شوند؛ schema ناشناخته به حالت fail-safe برود و نیاز به بررسی دستی را گزارش کند.
@@ -52,9 +53,9 @@
 
 ## 5. ترتیب اجرایی پیشنهادی
 
-1. تست‌های schema contract برای هر دو DB و fixtureهای legacy را تکمیل کن.
-2. ابزار backup/restore برای فایل‌های SQLite بساز و آزمون بازیابی واقعی روی کپی بگذار.
-3. migration runner عمومی را اضافه کن؛ ابتدا فقط metadata/version tracking و baseline تشخیصی، بدون حذف یا انتقال داده.
+1. تست‌های schema contract و registryهای fresh install اکنون وجود دارند؛ fixtureهای canonical برای schemaهای legacy هنوز لازم‌اند.
+2. ابزار backup/restore محلی اضافه شده و تست restore دارد؛ اجرای واقعی روی دادهٔ کاربر انجام نشده است.
+3. پس از اثبات fingerprintهای legacy، runner را به startup وصل کن؛ هیچ schema ناشناخته‌ای نباید خودکار adopt شود.
 4. schemaهای فعلی را به migrationهای شماره‌دار تبدیل کن و مسیر fresh-install و upgrade از fixtureهای قدیمی را در CI تست کن.
 5. پس از اثبات upgrade و restore، حذف `ALTER TABLE`های ad-hoc از startup در PR مستقل انجام شود.
 6. فقط پس از ممیزی کامل مسیرهای خواندن/نوشتن، دربارهٔ مرزهای دیتابیس و مهاجرت داده تصمیم بگیر؛ تعداد DBها ثابت نیست.
