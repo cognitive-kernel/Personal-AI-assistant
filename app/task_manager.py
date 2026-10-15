@@ -58,46 +58,32 @@ def _task(row: sqlite3.Row | None) -> dict[str, Any] | None:
 
 
 def initialize_task_store() -> None:
-    """Create the version-1 task schema idempotently in the learning database."""
+    """Validate the task schema; schema changes are owned by the migration registry."""
+    required_columns = {
+        "id", "task_type", "payload_json", "priority", "status", "attempts",
+        "max_attempts", "checkpoint_json", "result_json", "error", "scheduled_at",
+        "lease_owner", "lease_expires_at", "dedupe_key", "created_at", "updated_at",
+    }
+    required_indexes = {
+        "idx_task_queue_ready", "idx_task_queue_lease", "idx_task_queue_dedupe_key",
+    }
     with db.learning_connection() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS task_queue (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_type TEXT NOT NULL CHECK(length(trim(task_type)) > 0),
-                payload_json TEXT NOT NULL,
-                priority INTEGER NOT NULL DEFAULT 0,
-                status TEXT NOT NULL DEFAULT 'queued'
-                    CHECK(status IN ('queued','running','pause_requested','paused',
-                                     'cancel_requested','cancelled','succeeded','failed')),
-                attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
-                max_attempts INTEGER NOT NULL DEFAULT 1 CHECK(max_attempts >= 1),
-                checkpoint_json TEXT,
-                result_json TEXT,
-                error TEXT,
-                scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                lease_owner TEXT,
-                lease_expires_at TEXT,
-                dedupe_key TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_queue'"
+        ).fetchone()
+        if table is None:
+            raise TaskManagerError(
+                "Task queue schema is missing; initialize the application databases first."
             )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_task_queue_ready "
-            "ON task_queue(status, scheduled_at, priority DESC, id)"
-        )
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
-        if "dedupe_key" not in columns:
-            conn.execute("ALTER TABLE task_queue ADD COLUMN dedupe_key TEXT")
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_task_queue_dedupe_key "
-            "ON task_queue(dedupe_key) WHERE dedupe_key IS NOT NULL"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_task_queue_lease "
-            "ON task_queue(status, lease_expires_at)"
+        indexes = {row["name"] for row in conn.execute("PRAGMA index_list(task_queue)")}
+    missing_columns = sorted(required_columns - columns)
+    missing_indexes = sorted(required_indexes - indexes)
+    if missing_columns or missing_indexes:
+        raise TaskManagerError(
+            "Task queue schema is not at the registered version; "
+            f"missing columns={missing_columns}, indexes={missing_indexes}. "
+            "Run the versioned database initializer before using the task manager."
         )
 
 
