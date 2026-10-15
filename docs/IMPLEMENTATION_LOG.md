@@ -338,3 +338,12 @@
 - [ ] این تغییر مستنداتی است؛ هیچ پایگاه داده‌ای در این PR تفکیک یا مهاجرت نمی‌شود و هیچ داده‌ای تغییر نکرده است.
 - [ ] گام اجرایی بعدی: ممیزی کامل schemaها و تمام مسیرهای خواندن/نوشتن فعلی، سپس طراحی migration runner و repository contracts با fixtureهای واقعی؛ پیش از آن مهاجرت مخرب انجام نشود.
 - [ ] تست نرم‌افزاری اجرا نشده؛ CI دقیق head باید بررسی شود.
+
+
+### نتیجهٔ نهایی ADR-004
+
+- **PR:** [#77 — storage boundaries and data integrity](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/77) با squash ادغام شد.
+- **Commit ادغام:** `6f6abd8f76d85eb81d06671ff06aa157b2ba5f0e`.
+- **CI دقیق head:** run [#38774659013](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38774659013) موفق شد؛ نصب وابستگی‌ها و `pytest` موفق بودند.
+- **دامنه:** فقط الزامات و تصمیم معماری ثبت شدند؛ هیچ schema یا داده‌ای جابه‌جا نشد.
+- **گام اجرایی بعدی:** ممیزی مسیرهای واقعی خواندن/نوشتن و schemaهای موجود؛ تعریف repository contracts و migration runner قبل از هر تفکیک فیزیکی.
