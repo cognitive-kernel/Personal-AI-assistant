@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any
+import time
 
 from .task_worker import TaskHandler, TaskWorker
 
@@ -79,13 +79,12 @@ class TaskRuntime:
         """Request shutdown and wait up to timeout seconds for active handlers."""
         if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout < 0:
             raise ValueError("timeout must be a non-negative number.")
-        self._stop_event.set()
-        deadline = threading.Event()
+        with self._lock:
+            self._stop_event.set()
+            threads = list(self._threads)
         # Join against a shared monotonic deadline so total shutdown time is bounded.
-        import time
-
         end = time.monotonic() + timeout
-        for thread in self._threads:
+        for thread in threads:
             remaining = max(0.0, end - time.monotonic())
             thread.join(remaining)
         stopped = not self.is_running
