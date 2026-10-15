@@ -287,7 +287,7 @@ def request_cancel(task_id: int) -> dict[str, Any]:
     with db.learning_connection() as conn:
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
-            raise TaskManagerError(f"Task {task_id} does not exist.")
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
         status = row["status"]
         if status in TERMINAL_STATUSES:
             return _task(row)  # type: ignore[return-value]
@@ -309,7 +309,7 @@ def request_pause(task_id: int) -> dict[str, Any]:
     with db.learning_connection() as conn:
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
-            raise TaskManagerError(f"Task {task_id} does not exist.")
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
         status = row["status"]
         if status in TERMINAL_STATUSES:
             return _task(row)  # type: ignore[return-value]
@@ -330,7 +330,7 @@ def resume_task(task_id: int, *, scheduled_at: datetime | None = None) -> dict[s
     with db.learning_connection() as conn:
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
-            raise TaskManagerError(f"Task {task_id} does not exist.")
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
         if row["status"] != "paused":
             raise TaskManagerError("Only paused tasks can be resumed.")
         conn.execute(
@@ -355,7 +355,7 @@ def update_task_priority(task_id: int, priority: int) -> dict[str, Any]:
     with db.learning_connection() as conn:
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
-            raise TaskManagerError(f"Task {task_id} does not exist.")
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
         if row["status"] not in {"queued", "paused"}:
             raise TaskManagerError("Priority can only be changed for queued or paused tasks.")
         conn.execute(
@@ -372,7 +372,7 @@ def reschedule_task(task_id: int, scheduled_at: datetime) -> dict[str, Any]:
     with db.learning_connection() as conn:
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
-            raise TaskManagerError(f"Task {task_id} does not exist.")
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
         if row["status"] not in {"queued", "paused"}:
             raise TaskManagerError("Only queued or paused tasks can be rescheduled.")
         conn.execute(
