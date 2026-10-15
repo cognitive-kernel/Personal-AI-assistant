@@ -297,6 +297,11 @@ def run_job(job_id: int) -> None:
                     "Do not invent source citations. Return exactly these JSON keys: lesson (string), learning_outcomes (array of 3 strings), questions (array of 3 strings), answer_key (array of 3 strings)."
                 ),
             }
+            if lesson_review:
+                # Preserve same-topic review context across the format-repair retry.
+                # Learner feedback remains an unverified quality signal, not evidence.
+                repair_prompt["learner_review"] = prompt["learner_review"]
+                repair_prompt["review_guidance"] = prompt["review_guidance"]
             repair_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
                 "messages": [
