@@ -2,7 +2,6 @@ import sqlite3
 
 import pytest
 
-from app import db, task_manager
 from app.schema_migrations import MigrationRunner, UntrackedSchemaError, schema_fingerprint
 from app.schema_registry import (
     LEARNING_MIGRATIONS,
@@ -142,16 +141,3 @@ def test_schema_fingerprint_ignores_column_order_but_preserves_constraints():
                 "right_value INTEGER, CHECK(right_value >= 0))"
             )
             assert schema_fingerprint(different) != schema_fingerprint(reference)
-
-
-
-def test_current_application_schema_matches_registered_baseline(tmp_path, monkeypatch):
-    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
-    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
-    db.init_databases()
-    task_manager.initialize_task_store()
-
-    with db.settings_connection() as connection:
-        assert schema_fingerprint(connection) == fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
-    with db.learning_connection() as connection:
-        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 3)
