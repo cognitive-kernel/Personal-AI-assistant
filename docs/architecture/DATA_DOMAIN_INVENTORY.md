@@ -9,7 +9,7 @@
 
 | حوزه | محل/مسیر فعلی | وضعیت مشاهده‌شده | نتیجه برای طراحی |
 |---|---|---|---|
-| تنظیمات | `app/db.py`; `settings_connection()` | فایل SQLite مستقل؛ جدول `settings` با مقدار JSON و seedهای idempotent | مرز فعلی مستقل بماند؛ schema version و migration runner لازم است. |
+| تنظیمات | `app/db.py`, `app/migrations.py`; `settings_connection()` | فایل SQLite مستقل؛ جدول `settings` و تاریخچهٔ `schema_migrations`; migration نسخهٔ 1 و baseline تشخیصی | migration runner برای تنظیمات فعال است؛ seedهای idempotent مقدارهای موجود را حفظ می‌کنند. |
 | یادگیری و دانش | `app/learning.py`, `app/learning_tasks.py` | `learning_jobs`, متن منبع، شواهد، درس‌ها، ارزیابی‌ها، بازخورد و مسیرهای یادگیری در فایل learning | فعلاً مالکیت مرتبط است؛ تفکیک نیازمند ماتریس دسترسی/حریم خصوصی و migration آزموده‌شده است. |
 | صف وظایف | `app/task_manager.py` | `task_queue` در همان فایل learning؛ lease، checkpoint، retry و dedupe پایدار | از نظر کد ماژول جداست ولی از نظر فایل مستقل نیست؛ جداکردن فیزیکی فقط پس از تحلیل تراکنش‌ها و بازیابی. |
 | اجرای وظایف | `app/task_worker.py`, `app/task_runtime.py`, `app/main.py` | runtime به lifecycle FastAPI متصل؛ فقط handlerهای allow-list شده اجرا می‌شوند | اجرای پایدار و بازیابی startup موجود است؛ آزمون‌های fault-injection و مرزهای commit همچنان لازم‌اند. |
@@ -22,7 +22,7 @@
 ## یافته‌های schema و مسیرهای داده
 
 - `settings.db` فقط تنظیمات را نگه می‌دارد؛ `learning.db` داده‌های یادگیری و صف را نگه می‌دارد.
-- schema در `app/db.py` و `app/task_manager.py` ساخته می‌شود. تغییرات قدیمی با `ALTER TABLE` شرطی انجام می‌شوند و تاریخچهٔ migration نسخه‌دار فعلاً وجود ندارد.
+- schema تنظیمات در `app/migrations.py` با migration نسخه‌دار و baseline تشخیصی مدیریت می‌شود. schema یادگیری و صف هنوز در `app/db.py` و `app/task_manager.py` با `ALTER TABLE` شرطی ساخته/ارتقا داده می‌شوند و باید به runner منتقل شوند.
 - `learning.submit_job()` و شروع/تولید مجدد درس‌ها به task پایدار `learning.run_job` ارسال می‌شوند؛ payload صف فقط `job_id` دارد و متن منبع را کپی نمی‌کند.
 - `learning_tasks.reconcile_queued_learning_tasks()` در startup برای رکوردهای queued/running، task متناظر را به‌صورت idempotent تضمین می‌کند.
 - `task_manager.get_task_by_dedupe_key()` و آداپتر یادگیری، توقف از API عمومی صف را با وضعیت رکورد دامنه هماهنگ می‌کنند.
