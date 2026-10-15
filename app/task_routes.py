@@ -105,6 +105,20 @@ def resume_task(task_id: int) -> dict[str, Any]:
 
 @router.post("/{task_id}/cancel")
 def cancel_task(task_id: int) -> dict[str, Any]:
+    task = task_manager.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    if task["task_type"] == "learning.run_job":
+        job_id = task["payload"].get("job_id")
+        if isinstance(job_id, int) and not isinstance(job_id, bool) and job_id > 0:
+            from .learning_tasks import cancel_learning_job
+
+            try:
+                cancelled = cancel_learning_job(job_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if cancelled is not None:
+                return cancelled
     try:
         return task_manager.request_cancel(task_id)
     except TaskManagerError as exc:
