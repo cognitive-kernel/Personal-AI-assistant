@@ -589,13 +589,26 @@
 - [x] `restore_database_backup()` اضافه شد: اعتبارسنجی integrity و FK، نوشتن در فایل موقت، بررسی نسخهٔ بازیابی‌شده و جایگزینی اتمیک؛ overwrite باید صریح باشد.
 - [x] تست backup، upgrade، restore و حفظ رکوردهای legacy اضافه شد.
 - [x] نخستین CI روی head `52ab8628826d0083c7b55d8204672bd2ff9dbe2a`، run [#38799649735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38799649735)، یک خطای تست recovery پیدا کرد: task با `max_attempts=1` پس از اولین lease منقضی‌شده طبق سیاست صف باید terminal شود؛ fixture برای شبیه‌سازی retry به `max_attempts=3` تغییر کرد.
-- [ ] CI روی head نهایی PR باید بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** اجرای CI، سپس بررسی reconciliation واقعی learning jobs و task queue در startup/restart.
+- [x] **PR #109** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/109)، commit ادغام `50d2f500ffb24637c1f349b0495326a9966f4d21`.
+- [x] CI روی head دقیق `33012244fcc71e41a560ff480d6b8adf25352a42` موفق بود؛ run [#38799880832](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38799880832)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** آزمون reconciliation واقعی learning jobs و task queue در startup/restart.
 
 
 ## 38. 2026-10-15 — reconciliation در startup و بازیابی وضعیت یادگیری
 
 - [x] تست integration راه‌اندازی، پنجرهٔ crash بین ایجاد learning job و enqueue را بازسازی می‌کند؛ startup باید task گم‌شده را بسازد و در اجرای مجدد همان task را بدون duplicate حفظ کند.
 - [x] تست handler برای هر دو وضعیت stale یعنی `failed` و `running` اضافه شد تا retry پس از وقفهٔ worker پوشش داده شود.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] **PR #110** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/110)، commit ادغام `e989328cbb88d39326e64bc2b686dbd72c14f4d9`.
+- [x] CI روی head دقیق `eef14c653ad4a6c8d17ee4322a71bd5aa1670ea3` موفق بود؛ run [#38800219613](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38800219613)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** بررسی idempotency در crash windowهای میان نوشتن نتیجهٔ learning و تکمیل task، سپس تست‌های end-to-end وضعیت‌های pause/cancel پس از restart.
+
+
+## 39. 2026-10-15 — اثبات حفظ provenance و داده‌های مرتبط در migration
+
+- [x] تست ارتقای schema یادگیری از v1 به v3 اکنون شناسه‌ها و مقادیر مرتبط را بررسی می‌کند: learning job، source_ref/content_hash، متن منبع، knowledge item، ارزیابی، review، مسیر/موضوع یادگیری و task صف.
+- [x] ممیزی حوزه‌های داده به‌روز شد: migration/backup/restore و اتصال startup ثبت شده‌اند؛ صف فعلاً در learning باقی می‌ماند چون reconciliation و مالکیت عملیاتی به آن وابسته‌اند.
+- [x] هیچ DB تازه‌ای برای conversation/archive, audit, retrieval یا graph ساخته نشد، چون مسیر canonical و نیاز مستقل هنوز اثبات نشده‌اند.
+- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** fault-injection برای مرزهای commit بین learning job و task، تکمیل ماتریس مالکیت/retention و آزمون pause/cancel پس از restart.
