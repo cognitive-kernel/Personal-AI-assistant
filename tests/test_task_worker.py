@@ -109,3 +109,22 @@ def test_worker_requires_an_explicit_handler_registry():
 def test_worker_rejects_non_mapping_handler_registry():
     with pytest.raises(ValueError):
         TaskWorker("worker-1", ["not", "a", "mapping"])
+
+
+def test_worker_renews_lease_during_long_running_handler(worker_store):
+    import time
+
+    task = task_manager.create_task("test.long-running", {}, max_attempts=1)
+
+    def slow_handler(_payload, _checkpoint, _context):
+        # Longer than the initial lease. Automatic heartbeat must preserve ownership.
+        time.sleep(1.4)
+        return {"finished": True}
+
+    worker = TaskWorker("worker-long", {"test.long-running": slow_handler}, lease_seconds=1)
+    assert worker.run_once() is True
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "succeeded"
+    assert saved["result"] == {"finished": True}
+    assert saved["attempts"] == 1
