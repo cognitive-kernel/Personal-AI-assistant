@@ -151,7 +151,18 @@ def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, An
     expires = _timestamp(now + timedelta(seconds=lease_seconds))
     with db.learning_connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        # A worker that disappeared must not leave its task permanently stuck.
+        # Recover workers that disappeared during a cooperative pause/cancel request.
+        conn.execute(
+            """UPDATE task_queue SET status='cancelled', lease_owner=NULL, lease_expires_at=NULL,
+               updated_at=? WHERE status='cancel_requested' AND lease_expires_at <= ?""",
+            (now_text, now_text),
+        )
+        conn.execute(
+            """UPDATE task_queue SET status='paused', lease_owner=NULL, lease_expires_at=NULL,
+               updated_at=? WHERE status='pause_requested' AND lease_expires_at <= ?""",
+            (now_text, now_text),
+        )
+        # Exhausted tasks become terminal instead of being reclaimed forever.
         conn.execute(
             """UPDATE task_queue SET status='failed', error=COALESCE(error, 'Worker lease expired; retry limit reached.'),
                lease_owner=NULL, lease_expires_at=NULL, updated_at=?
@@ -184,6 +195,24 @@ def _owned_running_task(conn: sqlite3.Connection, task_id: int, worker_id: str) 
     if row["lease_owner"] != worker_id or row["status"] not in ACTIVE_STATUSES:
         raise TaskManagerError("Task is not owned by this worker or is no longer active.")
     return row
+
+
+def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> dict[str, Any]:
+    """Extend a worker lease while the task remains cooperatively active."""
+    if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or lease_seconds < 1:
+        raise ValueError("lease_seconds must be a positive integer.")
+    expires = _timestamp(_now() + timedelta(seconds=lease_seconds))
+    now = _timestamp()
+    with db.learning_connection() as conn:
+        row = _owned_running_task(conn, task_id, worker_id)
+        if row["status"] != "running":
+            raise TaskManagerError(f"Cannot renew a task with status {row['status']}.")
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at=?, updated_at=? WHERE id=?",
+            (expires, now, task_id),
+        )
+        updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+    return _task(updated)  # type: ignore[return-value]
 
 
 def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) -> dict[str, Any]:
