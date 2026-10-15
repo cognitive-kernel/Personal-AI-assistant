@@ -507,7 +507,8 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
-    job = create_job(topic["topic"], path_topic_id=topic_id)
+    lesson_review = _latest_completed_topic_review(topic_id)
+    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _enqueue_learning_job(int(job["id"]))
     return job
 
