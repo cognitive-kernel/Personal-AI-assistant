@@ -70,6 +70,11 @@ The history stores the registered migration's checksum and the matched baseline 
 
 ## Registered application migrations
 
-- Settings database: version 1 creates the `settings` table.
-- Learning database: version 1 creates learning, assessment, path, and task tables without later-added columns; version 2 adds `learning_jobs.quality_json`; version 3 adds `learning_jobs.path_topic_id`, `task_queue.dedupe_key`, and the related indexes.
-- `fingerprint_for_version()` builds a canonical schema fixture in memory from the registered migrations. These fingerprints are candidates for explicit baseline matching, not permission to accept any live schema.
+`app/schema_registry.py` defines:
+
+- Settings database: version 1 creates `settings`.
+- Learning database: version 1 creates core learning/provenance/assessment/path tables; version 2 adds `quality_json`; version 3 adds `path_topic_id`; version 4 creates the task queue without `dedupe_key`; version 5 adds `dedupe_key` and its unique partial index.
+
+Reviewed legacy fingerprint variants are mapped to the matching migration version in `SETTINGS_LEGACY_BASELINES` and `LEARNING_LEGACY_BASELINES`. `baseline_known_legacy_schema()` records a baseline only after an exact fingerprint match and refuses unknown schemas without changing them.
+
+These definitions and fixtures are **not yet wired into application startup**. The live DB initialization path still runs the old DDL and conditional `ALTER TABLE` statements. Startup integration is a separate step after CI verifies the legacy fixtures.
