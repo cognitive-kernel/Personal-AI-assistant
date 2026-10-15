@@ -1,16 +1,33 @@
 """HTTP routes for observing and controlling durable background tasks."""
 from __future__ import annotations
 
+import ipaddress
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from . import task_manager
 from .task_manager import TaskManagerError, TaskNotFoundError
 
-router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+def require_loopback_client(request: Request) -> None:
+    """Keep task-control endpoints local until an authenticated remote API exists."""
+    if request.client is None:
+        raise HTTPException(status_code=403, detail="Task management is available from localhost only.")
+    try:
+        is_loopback = ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback:
+        raise HTTPException(status_code=403, detail="Task management is available from localhost only.")
+
+
+router = APIRouter(
+    prefix="/api/tasks",
+    tags=["tasks"],
+    dependencies=[Depends(require_loopback_client)],
+)
 
 
 class TaskCreateRequest(BaseModel):
