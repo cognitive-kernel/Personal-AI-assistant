@@ -103,6 +103,8 @@ def test_ollama_request_does_not_follow_redirects_to_non_loopback(
         return original_create_connection(address, *args, **kwargs)
 
     monkeypatch.setattr(socket, "create_connection", block_external_connection)
+    # Prevent environment-configured proxies from bypassing the destination guard.
+    monkeypatch.setattr("urllib.request.getproxies", lambda: {})
 
     class RedirectHandler(BaseHTTPRequestHandler):
         def do_GET(self):
