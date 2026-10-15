@@ -56,8 +56,10 @@ class TaskWorker:
             raise ValueError("worker_id must be a non-empty string.")
         if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or lease_seconds < 1:
             raise ValueError("lease_seconds must be a positive integer.")
-        if not handlers or any(not isinstance(key, str) or not key.strip() or not callable(value)
-                               for key, value in handlers.items()):
+        if not isinstance(handlers, dict) or not handlers or any(
+            not isinstance(key, str) or not key.strip() or not callable(value)
+            for key, value in handlers.items()
+        ):
             raise ValueError("handlers must map non-empty task types to callable handlers.")
         self.worker_id = worker_id.strip()
         self.handlers = dict(handlers)
@@ -100,8 +102,14 @@ class TaskWorker:
             # Checkpoint settled a pause/cancel request; do not overwrite that state.
             return True
         except TaskManagerError:
-            # A lease may have expired or another worker may have reclaimed the task.
-            # A stale worker must never mutate state after losing ownership.
+            # A pause/cancel request can race with completion. Settle it if this
+            # worker still owns a valid lease; otherwise leave state to lease recovery.
+            try:
+                control = context.control_status()
+                if control != "running":
+                    context.checkpoint(context.checkpoint_data or {})
+            except (TaskInterrupted, TaskManagerError):
+                pass
             return True
         except Exception as exc:
             try:
