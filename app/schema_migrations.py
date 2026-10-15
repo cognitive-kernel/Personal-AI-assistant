@@ -250,6 +250,15 @@ def _create_history_table(connection: sqlite3.Connection) -> None:
     )
 
 
+def _validate_integrity(connection: sqlite3.Connection) -> None:
+    integrity = [row[0] for row in connection.execute("PRAGMA integrity_check").fetchall()]
+    if integrity != ["ok"]:
+        raise MigrationError(f"SQLite integrity check failed: {integrity[:5]}")
+    violations = connection.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        raise MigrationError(f"SQLite foreign-key check failed: {len(violations)} violation(s)")
+
+
 def record_baseline(
     connection: sqlite3.Connection,
     *,
@@ -265,6 +274,7 @@ def record_baseline(
         raise MigrationError("Migration history already exists; baseline adoption is not allowed.")
     if not _HEX_SHA256.fullmatch(expected_fingerprint):
         raise ValueError("Expected fingerprint must be a lowercase SHA-256 hex digest.")
+    _validate_integrity(connection)
     if schema_fingerprint(connection) != expected_fingerprint:
         raise UntrackedSchemaError(
             "Legacy schema fingerprint does not match the reviewed baseline; refusing adoption."
@@ -380,6 +390,7 @@ class MigrationRunner:
                        ) VALUES (?, ?, ?, NULL)""",
                     (migration.version, migration.migration_id, migration.checksum),
                 )
+            _validate_integrity(connection)
             connection.commit()
         except Exception:
             connection.rollback()
