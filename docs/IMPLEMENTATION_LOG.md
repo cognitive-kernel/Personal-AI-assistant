@@ -498,5 +498,18 @@
 - [x] مقصد موجود هرگز بی‌صدا بازنویسی نمی‌شود؛ داده به سرویس ابری ارسال نمی‌شود.
 - [x] آزمون‌های حفظ داده‌ها، تشخیص دستکاری bundle و منع overwrite در `tests/test_db_backup.py` اضافه شدند؛ قراردادهای schema در بخش قبلی و تست‌های موجود پوشش داده شده‌اند.
 - [x] راهنمای عملیاتی در `docs/operations/SQLITE_BACKUP_RESTORE.md` اضافه شد؛ محدودیت snapshot مستقل دو فایل و نیاز به بررسی بازیابی مستند شده است.
-- [ ] تست محلی در این نشست اجرا نشده است. قابلیت فقط پس از CI موفق روی head دقیق PR و بررسی آزمون‌های restore تأیید می‌شود.
-- **گام بعدی:** پس از عبور CI، migration runner نسخه‌بندی‌شده را با metadata و baseline تشخیصی اضافه کنیم؛ migration مخرب یا انتقال داده در آن مرحله انجام نشود.
+- [x] **PR #94** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/94)، commit ادغام `4e772e97eaf2872dca70eab1b9be30a69a99ed98`.
+- [x] CI روی head دقیق `0b4c6d9cbdea176c79c3bc73b6bfba4c127c6dd3` موفق بود؛ run [#38785251844](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38785251844)، شامل نصب وابستگی‌ها و `pytest`.
+- **گام بعدی:** migration runner نسخه‌بندی‌شده را با metadata و baseline تشخیصی اضافه کنیم؛ migration مخرب یا انتقال داده در آن مرحله انجام نشود.
+
+
+
+## 30. 2026-10-15 — migration runner تراکنشی برای پایگاه تنظیمات
+
+- [x] `app/migrations.py` افزوده شد: migrationهای مرتب با checksum، جدول `schema_migrations`، تراکنش مستقل برای هر migration و خطای fail-closed در برابر history gap، schema ناشناخته یا checksum drift.
+- [x] `settings.db` به migration نسخهٔ 1 منتقل شد؛ fresh install schema را از migration می‌سازد و پایگاه قدیمی فقط با تشخیص دقیق schema قبلی به‌عنوان baseline ثبت می‌شود.
+- [x] اگر schema legacy ناشناخته باشد، runner پیش از ساخت جدول metadata یا تغییر داده‌ها متوقف می‌شود؛ مقدارهای موجود تنظیمات با seedهای idempotent حفظ می‌شوند.
+- [x] تست‌های baseline legacy، checksum drift و rollback تراکنشی افزوده شدند.
+- [ ] این PR فقط پایگاه تنظیمات را نسخه‌بندی می‌کند؛ schema یادگیری و صف هنوز از مسیر initialization قدیمی استفاده می‌کنند و باید در گام جداگانه منتقل شوند.
+- [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- **گام بعدی:** CI را بررسی کن؛ پس از merge، schema یادگیری و task queue را با baseline تشخیصی و migrationهای افزایشی نسخه‌بندی کن.
