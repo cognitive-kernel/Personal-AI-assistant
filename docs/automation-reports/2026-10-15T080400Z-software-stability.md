@@ -28,8 +28,9 @@ BLOCKED — fresh GitHub inspection completed; no code/test execution was possib
 ## Files and Git evidence
 - New file: `docs/automation-reports/2026-10-15T080400Z-software-stability.md`
 - Starting SHA: `9958ec448cd8c70e84e0433c74931aeacb56daed`
-- End SHA / report commit: to be filled from the GitHub create-file result and checked after commit.
-- PR: to be linked after creation.
+- Initial report commit: [`1201962cd303cc77d2da5edecdd36d287829b169`](https://github.com/cognitive-kernel/Personal-AI-assistant/commit/1201962cd303cc77d2da5edecdd36d287829b169).
+- PR: [#63 — blocked software stability audit](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/63), stacked on PR #61's branch.
+- PR #63 head at creation: `1201962cd303cc77d2da5edecdd36d287829b169`; a follow-up report-link commit will advance the head.
 - Changed files: this unique report only.
 
 ## Tests and CI
