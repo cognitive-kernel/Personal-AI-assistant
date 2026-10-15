@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app import main
+from app import db, main
 from app.schema_migrations import UntrackedSchemaError
 
 
