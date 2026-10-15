@@ -143,6 +143,16 @@ def test_learning_submission_creates_durable_deduplicated_task(worker_store):
     assert len(task_manager.list_tasks()) == 1
 
 
+def test_task_dedupe_key_rejects_different_task_definition(worker_store):
+    task_manager.create_task(
+        "learning.generate", {"job_id": 1}, dedupe_key="learning-job:1"
+    )
+    with pytest.raises(ValueError, match="different task definition"):
+        task_manager.create_task(
+            "learning.generate", {"job_id": 2}, dedupe_key="learning-job:1"
+        )
+
+
 def test_learning_handler_completes_task_from_persisted_job(worker_store, monkeypatch):
     job = learning.create_job("Handler integration")
     task = task_manager.create_task(
