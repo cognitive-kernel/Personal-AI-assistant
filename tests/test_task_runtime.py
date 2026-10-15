@@ -57,3 +57,44 @@ def test_runtime_validates_worker_and_poll_configuration():
         TaskRuntime({"valid": lambda *_: {}}, poll_interval=0)
     with pytest.raises(ValueError):
         TaskRuntime({}, worker_count=1)
+
+
+
+def test_new_runtime_reclaims_expired_lease_and_resumes_from_checkpoint(runtime_store):
+    task = task_manager.create_task("runtime.recover", {"value": "persisted"})
+    claimed = task_manager.claim_next_task("previous-process", lease_seconds=30)
+    assert claimed["id"] == task["id"]
+    task_manager.save_checkpoint(
+        task["id"], "previous-process", {"phase": "before_restart", "cursor": 17}
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+
+    observed = {}
+
+    def resume_handler(payload, checkpoint, context):
+        observed["payload"] = payload
+        observed["checkpoint"] = checkpoint
+        context.checkpoint({"phase": "resumed", "cursor": checkpoint["cursor"]})
+        return {"resumed": True, "cursor": checkpoint["cursor"]}
+
+    runtime = TaskRuntime(
+        {"runtime.recover": resume_handler}, poll_interval=0.05, lease_seconds=10
+    )
+    runtime.start()
+    deadline = time.monotonic() + 3
+    saved = task_manager.get_task(task["id"])
+    while time.monotonic() < deadline and saved["status"] != "succeeded":
+        time.sleep(0.01)
+        saved = task_manager.get_task(task["id"])
+    assert runtime.stop(timeout=3) is True
+
+    assert observed["payload"] == {"value": "persisted"}
+    assert observed["checkpoint"] == {"phase": "before_restart", "cursor": 17}
+    assert saved["status"] == "succeeded"
+    assert saved["attempts"] == 2
+    assert saved["checkpoint"] == {"phase": "resumed", "cursor": 17}
+    assert saved["result"] == {"resumed": True, "cursor": 17}
