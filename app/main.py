@@ -6,11 +6,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import curricula, db, learning, ollama
+from . import curricula, db, learning, ollama, task_manager
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
+from .task_routes import router as task_router
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
+
+app.include_router(task_router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
 
@@ -43,6 +46,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.on_event("startup")
 def startup() -> None:
     db.init_databases()
+    task_manager.initialize_task_store()
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
