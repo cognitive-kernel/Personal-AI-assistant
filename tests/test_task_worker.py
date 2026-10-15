@@ -128,3 +128,41 @@ def test_worker_renews_lease_during_long_running_handler(worker_store):
     assert saved["status"] == "succeeded"
     assert saved["result"] == {"finished": True}
     assert saved["attempts"] == 1
+
+
+def test_task_creation_is_idempotent_for_matching_dedupe_key(worker_store):
+    first = task_manager.create_task(
+        "test.deduplicated", {"job_id": 41}, max_attempts=3, dedupe_key="learning-job:41"
+    )
+    repeated = task_manager.create_task(
+        "test.deduplicated", {"job_id": 41}, max_attempts=3, dedupe_key="learning-job:41"
+    )
+
+    assert repeated["id"] == first["id"]
+    assert len(task_manager.list_tasks()) == 1
+
+
+def test_task_dedupe_key_rejects_different_payload(worker_store):
+    task_manager.create_task(
+        "test.deduplicated", {"job_id": 41}, dedupe_key="learning-job:41"
+    )
+    with pytest.raises(ValueError, match="different task definition"):
+        task_manager.create_task(
+            "test.deduplicated", {"job_id": 42}, dedupe_key="learning-job:41"
+        )
+
+
+def test_task_store_adds_dedupe_key_to_existing_schema(worker_store):
+    with db.learning_connection() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
+        indexes = {
+            row["name"] for row in conn.execute("PRAGMA index_list(task_queue)")
+        }
+
+    assert "dedupe_key" in columns
+    assert "idx_task_queue_dedupe_key" in indexes
+
+
+def test_task_creation_rejects_blank_dedupe_key(worker_store):
+    with pytest.raises(ValueError, match="dedupe_key"):
+        task_manager.create_task("test.deduplicated", {}, dedupe_key="  ")
