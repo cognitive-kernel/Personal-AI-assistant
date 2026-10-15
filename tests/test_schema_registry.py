@@ -155,3 +155,55 @@ def test_current_application_schema_matches_registered_baseline(tmp_path, monkey
         assert schema_fingerprint(connection) == fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     with db.learning_connection() as connection:
         assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 3)
+
+
+
+def test_startup_backs_up_legacy_databases_before_upgrade(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.db"
+    learning_path = tmp_path / "learning.db"
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(settings_path))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(learning_path))
+
+    with sqlite3.connect(settings_path) as connection:
+        for statement in SETTINGS_MIGRATIONS[0].statements:
+            connection.execute(statement)
+        connection.execute(
+            "INSERT INTO settings(key, value_json) VALUES ('preserve-me', 'true')"
+        )
+    with sqlite3.connect(learning_path) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        for statement in LEARNING_MIGRATIONS[0].statements:
+            connection.execute(statement)
+        job_id = connection.execute(
+            "INSERT INTO learning_jobs(topic, status, source_kind) VALUES ('legacy', 'queued', 'test')"
+        ).lastrowid
+        task_id = connection.execute(
+            "INSERT INTO task_queue(task_type, payload_json) VALUES ('legacy.task', '{}')"
+        ).lastrowid
+
+    db.init_databases()
+
+    backups = list((tmp_path / "backups").glob("pre-migration-*"))
+    assert len(backups) == 1
+    backup_learning = backups[0] / "learning.sqlite3"
+    with sqlite3.connect(backup_learning) as connection:
+        old_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
+        old_task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}
+        assert "quality_json" not in old_columns
+        assert "path_topic_id" not in old_columns
+        assert "dedupe_key" not in old_task_columns
+        assert connection.execute(
+            "SELECT id FROM learning_jobs WHERE id=?", (job_id,)
+        ).fetchone() == (job_id,)
+        assert connection.execute(
+            "SELECT id FROM task_queue WHERE id=?", (task_id,)
+        ).fetchone() == (task_id,)
+
+    with db.learning_connection() as connection:
+        new_job_columns = {row["name"] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
+        new_task_columns = {row["name"] for row in connection.execute("PRAGMA table_info(task_queue)")}
+        assert {"quality_json", "path_topic_id"} <= new_job_columns
+        assert "dedupe_key" in new_task_columns
+        assert connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        ).fetchall() == [(1,), (2,), (3,)]
