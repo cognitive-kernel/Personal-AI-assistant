@@ -1,8 +1,6 @@
 from __future__ import annotations
 import hashlib
 import json
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from .db import learning_connection, get_settings
 from .ollama import _request
@@ -14,10 +12,6 @@ class LearningError(RuntimeError):
     pass
 
 
-# The executor caps worker threads. A dynamic gate applies the user-configured limit.
-_learning_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="learning")
-_learning_gate = threading.Condition()
-_active_learning_jobs = 0
 
 def create_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     topic = topic.strip()
@@ -263,27 +257,17 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
         ids = [row["id"] for row in conn.execute("SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ?", (max(1, min(200, limit)),)).fetchall()]
     return [get_job(job_id) for job_id in ids]
 
-def _run_with_budget(job_id: int) -> None:
-    global _active_learning_jobs
-    with _learning_gate:
-        while True:
-            configured = int(get_settings().get("learning_max_concurrent_jobs", 1))
-            allowed = max(1, min(2, configured))
-            if _active_learning_jobs < allowed:
-                _active_learning_jobs += 1
-                break
-            _learning_gate.wait(timeout=0.5)
-    try:
-        run_job(job_id)
-    finally:
-        with _learning_gate:
-            _active_learning_jobs -= 1
-            _learning_gate.notify_all()
+def _enqueue_learning_job(job_id: int) -> dict[str, Any]:
+    # Import lazily to keep the task adapter's dependency on this module acyclic.
+    from .learning_tasks import enqueue_learning_task
+
+    return enqueue_learning_task(job_id)
 
 
 def submit_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     job = create_job(topic, source_text, path_topic_id)
-    _learning_executor.submit(_run_with_budget, job["id"])
+    task = _enqueue_learning_job(int(job["id"]))
+    job["task_id"] = task["id"]
     return job
 
 
@@ -463,7 +447,7 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             (topic_id, path_id),
         )
     job = create_job(topic["topic"], path_topic_id=topic_id)
-    _learning_executor.submit(_run_with_budget, job["id"])
+    _enqueue_learning_job(int(job["id"]))
     return job
 
 
@@ -488,7 +472,7 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             (topic_id, path_id),
         )
     job = create_job(topic["topic"], path_topic_id=topic_id)
-    _learning_executor.submit(_run_with_budget, job["id"])
+    _enqueue_learning_job(int(job["id"]))
     return job
 
 
@@ -544,7 +528,7 @@ def start_path_learning(path_id: int) -> dict[str, Any]:
                 "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
                 (topic["id"], path_id),
             )
-        _learning_executor.submit(_run_with_budget, job["id"])
+        _enqueue_learning_job(int(job["id"]))
         queued_ids.append(job["id"])
     return {
         "path_id": path_id,
