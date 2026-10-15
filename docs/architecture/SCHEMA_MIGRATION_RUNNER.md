@@ -94,3 +94,8 @@ Column order is normalized because application queries use named columns and his
 ## Schema drift detection
 
 When migration history exists, the runner reconstructs the expected schema for the recorded version and compares it with the live database before applying any later migration. Missing or externally modified tables/indexes are rejected rather than silently repaired or treated as current. Recovery must be an explicit, backed-up migration or restore operation.
+
+
+## Restore behavior
+
+`restore_database_backup(backup_path, target_path)` validates both SQLite integrity and foreign-key consistency, writes to a temporary file in the target directory, validates the restored copy, and atomically replaces the target only after successful validation. An existing target is never replaced unless the caller explicitly passes `overwrite=True`. Keep a copy of the backup itself until the restored application has been verified.
