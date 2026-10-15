@@ -531,8 +531,8 @@
 - [x] CI در PR قبلی نشان داد وظیفهٔ آزمایشی با نوع غیرمجاز برای runtime در لحظهٔ ایجاد آمادهٔ اجرا بود و worker می‌توانست آن را پیش از درخواست pause claim کند.
 - [x] fixture تست اکنون زمان اجرای آینده را از لحظهٔ ایجاد تنظیم می‌کند؛ بنابراین تست تغییر اولویت/زمان‌بندی/توقف، رقابت تصادفی با worker پس‌زمینه ندارد و معنای واقعی زمان‌بندی را هم می‌آزماید.
 - [x] CI روی head دقیق `e1add004fa5fa32ef304ced088e0c50482cc53b0` موفق بود؛ run [#38786413404](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786413404). این head به‌علت تغییر هم‌زمان main ادغام نشد؛ همین تغییر روی latest main دوباره ارائه شده است.
-- [ ] CI باید روی head دقیق PR فعلی بررسی شود؛ تست محلی در این نشست اجرا نشده است.
-- **گام بعدی:** پس از merge، تعریف migrationهای واقعی برای settings/learning را روی runner عمومی اضافه کن؛ schema ناشناخته نباید خودکار adopt شود.
+- [x] **PR #100** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/100)، commit ادغام `cd88513dacfabbfe726243c12b5a18fe219b1f1e`; CI روی head دقیق موفق بود: [run #38786595152](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786595152).
+- **گام بعدی:** تعریف registryهای واقعی برای schemaهای fresh install و تست‌های قرارداد، سپس fingerprintهای legacy بازبینی‌شده؛ runner هنوز به startup متصل نشود.
 
 
 ## 33. 2026-10-15 — registry واقعی schema برای نصب تازه و ارتقای نسخه‌ای
@@ -540,6 +540,18 @@
 - [x] `app/schema_registry.py` migrationهای versioned برای settings و learning تعریف می‌کند؛ schema یادگیری در سه نسخه از جدول‌های پایه تا quality/provenance و idempotency تکامل می‌یابد.
 - [x] `fingerprint_for_version()` برای ساخت fingerprint مرجع از migrationهای ثبت‌شده روی SQLite حافظه‌ای اضافه شد.
 - [x] تست‌ها نصب تازه، اجرای تکراری، ارتقای fixture از v1 به v3، حفظ job/task، FKها، indexها و integrity را پوشش می‌دهند.
-- [ ] registry هنوز به startup وصل نشده است؛ schemaهای زندهٔ موجود، به‌خصوص تفاوت ترتیب ستون‌های افزوده‌شده با `ALTER TABLE` و ستون‌های تعریف‌شده در `CREATE TABLE`, نیازمند fingerprintهای legacy صریح‌اند.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #102** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/102)، commit ادغام `cc3ead5e151c2cce0818d7a8e389159b60741d91`.
+- [x] CI روی head دقیق `ad4d6f3b80996e7295b61c4bbdd46a7366c38993` موفق بود؛ run [#38787011266](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38787011266).
+- [ ] registry هنوز به startup وصل نشده است؛ schemaهای زندهٔ موجود نیازمند fingerprintهای legacy صریح‌اند.
 - **گام بعدی:** ساخت مجموعهٔ fingerprintهای legacy بازبینی‌شده و آزمون baseline برای schemaهای واقعی شناخته‌شده؛ سپس اتصال امن startup و حذف DDL پراکنده در تغییر مستقل.
+
+
+
+## 34. 2026-10-15 — fingerprintهای بازبینی‌شده برای schemaهای legacy
+
+- [x] migrationهای learning به پنج مرحلهٔ مستقل تقسیم شدند: schema پایه، `quality_json`، `path_topic_id`، صف پایه و `dedupe_key`.
+- [x] fingerprintهای شناخته‌شده برای تنظیمات و شش شکل تاریخی learning ثبت شدند؛ هر fingerprint به migration متناظر وصل است و fingerprint ناشناخته رد می‌شود.
+- [x] `baseline_known_legacy_schema()` فقط پس از تطبیق دقیق با فهرست fingerprintهای بازبینی‌شده `record_baseline()` را صدا می‌زند؛ از fingerprint زنده به‌عنوان معیار اعتماد استفاده نمی‌کند.
+- [x] آزمون‌ها شکل‌های legacy بدون quality/path/queue، صف بدون dedupe، dedupe در CREATE و dedupe افزوده‌شده با ALTER را بازسازی و fingerprintها را اعتبارسنجی می‌کنند؛ همچنین حفظ داده و upgrade به نسخهٔ جاری بررسی می‌شود.
+- [ ] هنوز اتصال startup تغییر نکرده و دیتابیس‌های واقعی دست‌نخورده‌اند؛ نتیجهٔ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** پس از موفقیت CI، اتصال runner به startup با backup preflight، baseline فقط برای fingerprintهای شناخته‌شده و توقف fail-safe برای schemaهای ناشناخته.
