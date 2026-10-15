@@ -15,7 +15,7 @@
 
 `app/schema_registry.py` now defines versioned migrations for fresh settings and learning databases, including the learning-job quality field, path-topic relation, task queue, and idempotency index. The registry is tested against fresh in-memory databases and an upgrade fixture from learning schema version 1.
 
-The registry is **not yet wired into application startup**. `initialize_connection()` can now match an untracked database to one of the registered schema versions, record a baseline only after integrity checks and a fingerprint match, and apply later migrations. It does not replace the current schema creation in `app/db.py` or `app/task_manager.py` until a separate startup integration change is reviewed. No live data has been migrated by this PR.
+The registry is wired into `db.init_databases()` and `task_manager.initialize_task_store()`. Startup uses the registered settings and learning migrations, seeds missing default settings, and avoids the former scattered `CREATE TABLE`/`ALTER TABLE` schema logic. Before baseline adoption or a forward migration, an existing database receives a verified SQLite backup named `*.pre-migration-<UTC timestamp>.bak`. If its schema is unknown, startup fails without adopting it; the backup remains available for diagnosis. No existing live user database was modified as part of this change.
 
 Do not call `MigrationRunner.apply()` against current application databases until known legacy fingerprints are reviewed and startup adoption is implemented. Existing databases without history are intentionally rejected rather than automatically marked as current.
 
@@ -80,3 +80,12 @@ The history stores the registered migration's checksum and the matched baseline 
 `initialize_connection(connection, migrations)` accepts a fresh empty database, a database with valid migration history, or an untracked database whose logical schema fingerprint matches a registered migration version. It records the matched migration's checksum and the exact baseline fingerprint, then applies only later migrations. Unknown schemas, failed integrity checks, and foreign-key violations are rejected without adding history or changing schema.
 
 Column order is normalized because application queries use named columns and historical `ALTER TABLE ADD COLUMN` operations can append a field that later appears inline in a fresh `CREATE TABLE`. This normalization does not ignore column definitions, constraints, foreign keys, or index definitions.
+
+
+## Startup and backup behavior
+
+- `db.init_databases()` initializes both stores through `initialize_database_file()` and inserts only missing defaults.
+- `task_manager.initialize_task_store()` delegates to the same learning migration registry, so standalone callers remain supported and repeated calls are idempotent.
+- Existing schema without migration history and existing schema with pending versions are backed up before adoption or upgrade. The backup must pass SQLite `integrity_check` before migration proceeds.
+- Already-current databases are not backed up on every restart.
+- Unknown schemas are backed up, then rejected without adding migration history or changing their schema/data.
