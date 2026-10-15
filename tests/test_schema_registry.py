@@ -127,7 +127,7 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     settings_fingerprint = fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     learning_v1 = fingerprint_for_version(LEARNING_MIGRATIONS, 1)
     learning_v2 = fingerprint_for_version(LEARNING_MIGRATIONS, 2)
-    learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
+    learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 3)
     learning_v4 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
 
     assert len(settings_fingerprint) == 64
@@ -165,7 +165,7 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
 
 def test_known_current_schema_is_baselined_without_replaying_migrations():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 4) as connection:
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 4
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -235,7 +235,7 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
             ("preserve me", "queued", "test"),
         )
 
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 3
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 4
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
 
@@ -254,7 +254,7 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
         ).fetchone() == ("preserve me", "queued")
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 3
+        ).fetchone()[0] == 4
 
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
@@ -286,7 +286,7 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
 def test_migration_runner_rejects_out_of_band_schema_drift():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(LEARNING_MIGRATIONS)
-        assert runner.apply(connection) == 3
+        assert runner.apply(connection) == 4
         connection.execute("DROP INDEX idx_task_queue_ready")
         with pytest.raises(MigrationError, match="does not match the registered migration history"):
             runner.apply(connection)
