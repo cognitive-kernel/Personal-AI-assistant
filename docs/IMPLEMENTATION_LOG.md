@@ -564,3 +564,15 @@
 - [x] آزمون جدید، schema ساخته‌شده توسط initializer فعلی را با fingerprint نسخهٔ ۱ settings و نسخهٔ ۳ learning مقایسه می‌کند؛ این آزمون تفاوت‌های واقعی DDL و ترتیب ستون‌ها را پیش از تغییر startup آشکار می‌کند.
 - [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** پس از اثبات تطبیق fingerprint، اتصال registry به startup همراه backup قبل از ارتقای legacy و حذف `ALTER TABLE`های پراکنده انجام شود.
+
+
+## 34. 2026-10-15 — تشخیص و پذیرش امن schemaهای legacy شناخته‌شده
+
+- [x] fingerprint schema تعریف منطقی جدول‌ها، قیدها، FKها و ایندکس‌ها را می‌سنجد و اختلاف ترتیب ستون یا قالب‌بندی بی‌اثر DDL را نادیده می‌گیرد.
+- [x] `initialize_connection()` schema تازه را از migrationها می‌سازد و schema موجود را فقط در صورت تطابق fingerprint با یکی از نسخه‌های ثبت‌شده adopt می‌کند؛ سپس فقط migrationهای بعدی را اجرا می‌کند.
+- [x] پیش از ثبت baseline، `integrity_check` و `foreign_key_check` اجرا می‌شوند؛ schema ناشناخته بدون ایجاد تاریخچه یا تغییر schema رد می‌شود.
+- [x] تست‌های baseline از نسخهٔ قدیمی و نسخهٔ جاری، عدم تغییر schema ناشناخته و اثر قیدها/ترتیب ستون‌ها بر fingerprint اضافه شدند.
+- [x] CI روی head PR قبلی `b92fca9c6c7dca956a40f5baa7e108bc48d00aca` موفق بود؛ run [#38787834647](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38787834647). آن PR به دلیل تداخل با تغییرات هم‌زمان main بسته شد و این تغییر روی main فعلی بازپایه‌گذاری شده است.
+- [ ] این قابلیت هنوز به startup متصل نشده است؛ CI روی head این PR باید موفق شود.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** اتصال امن runner به startup با تشخیص صریح مسیر دیتابیس، ثبت خطای واضح برای schema ناشناخته و تست عدم تغییر داده؛ سپس حذف DDL تکراری در تغییر جداگانه.
