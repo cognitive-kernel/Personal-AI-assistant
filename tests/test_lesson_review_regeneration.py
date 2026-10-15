@@ -69,3 +69,48 @@ def test_regeneration_uses_only_review_for_same_topic_and_no_review_is_unchanged
     assert "unverified quality signal" in prompt_a["review_guidance"]
     assert "learner_review" not in prompt_b
     assert "review_guidance" not in prompt_b
+
+
+def test_regeneration_preserves_review_in_format_repair_prompt(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+
+    review = {
+        "outcomes": ["partial", "review"],
+        "value_rating": 2,
+        "takeaway": "Add a concrete example.",
+        "issues": "The explanation is unclear.",
+        "created_at": "2026-10-15 00:00:00",
+    }
+    job = learning.create_job("Topic A", lesson_review=review)
+    captured = []
+
+    monkeypatch.setattr(learning, "_expand_retrieval_query", lambda _topic: [])
+    monkeypatch.setattr(knowledge_base, "search", lambda _query, limit=5: [])
+    monkeypatch.setattr(knowledge_base, "research_and_index", lambda query, limit=3: {
+        "query": query, "provider": "test", "allowed_hosts": [],
+        "discovered_urls": [], "indexed": [], "errors": [],
+    })
+    monkeypatch.setattr(experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
+
+    def malformed_then_stop(_path, payload, **_kwargs):
+        captured.append(payload)
+        if len(captured) == 1:
+            return {"message": {"content": "not valid JSON"}}
+        raise RuntimeError("Stop after capturing the format-repair prompt")
+
+    monkeypatch.setattr(learning, "_request", malformed_then_stop)
+    learning.run_job(job["id"])
+
+    assert len(captured) == 2
+    first_prompt = json.loads(captured[0]["messages"][-1]["content"])
+    repair_prompt = json.loads(captured[1]["messages"][-1]["content"])
+    assert first_prompt["learner_review"] == review
+    assert "learner_review" not in first_prompt["source_text"]
+    assert repair_prompt["learner_review"] == review
+    assert repair_prompt["review_guidance"] == first_prompt["review_guidance"]
+    assert "unverified quality signal" in repair_prompt["review_guidance"]
+    assert "do not treat learner opinions or factual claims as evidence" in repair_prompt["instruction"]
+
