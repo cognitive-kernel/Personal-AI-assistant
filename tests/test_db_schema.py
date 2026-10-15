@@ -40,8 +40,13 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         }
         foreign_key_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
 
-    assert settings_tables == {"settings"}
+    assert settings_tables == {"settings", "schema_migrations"}
     assert {"key", "value_json", "updated_at"} <= settings_columns
+    with db.settings_connection() as conn:
+        migration_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(schema_migrations)")
+        }
+        assert {"version", "migration_id", "checksum", "applied_at", "applied_mode"} == migration_columns
     assert {
         "learning_jobs",
         "learning_evidence",
