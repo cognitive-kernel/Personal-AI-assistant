@@ -1,10 +1,11 @@
 import sqlite3
 
-from app.schema_migrations import MigrationRunner
+from app.schema_migrations import MigrationRunner, UntrackedSchemaError, schema_fingerprint
 from app.schema_registry import (
     LEARNING_MIGRATIONS,
     SETTINGS_MIGRATIONS,
     fingerprint_for_version,
+    initialize_connection,
 )
 
 
@@ -62,3 +63,79 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     assert len(settings_fingerprint) == 64
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == 64
     assert len({learning_v1, learning_v2, learning_v3}) == 3
+
+
+
+def _create_untracked_schema(migrations, version):
+    connection = sqlite3.connect(":memory:")
+    connection.execute("PRAGMA foreign_keys = ON")
+    for migration in migrations:
+        if migration.version > version:
+            break
+        for statement in migration.statements:
+            connection.execute(statement)
+    connection.commit()
+    return connection
+
+
+def test_known_legacy_v1_schema_is_baselined_then_upgraded():
+    with _create_untracked_schema(LEARNING_MIGRATIONS, 1) as connection:
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
+        ).fetchone() is None
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
+        history = connection.execute(
+            "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert [row[0] for row in history] == [1, 2, 3]
+        assert len(history[0][1]) == 64
+        assert history[1][1] is None and history[2][1] is None
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_known_current_schema_is_baselined_without_replaying_migrations():
+    with _create_untracked_schema(LEARNING_MIGRATIONS, 3) as connection:
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
+        history = connection.execute(
+            "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert history == [(3, schema_fingerprint(connection))]
+
+
+def test_unknown_schema_is_not_mutated_or_auto_adopted():
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute("CREATE TABLE unknown_table (id INTEGER PRIMARY KEY)")
+        connection.commit()
+        with pytest.raises(UntrackedSchemaError, match="does not match"):
+            initialize_connection(connection, LEARNING_MIGRATIONS)
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
+        ).fetchone() is None
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='unknown_table'"
+        ).fetchone() == ("unknown_table",)
+
+
+def test_schema_fingerprint_ignores_column_order_but_preserves_constraints():
+    with sqlite3.connect(":memory:") as first, sqlite3.connect(":memory:") as second:
+        first.execute(
+            "CREATE TABLE sample (id INTEGER PRIMARY KEY, left_value TEXT, "
+            "right_value INTEGER, CHECK(right_value >= 0))"
+        )
+        second.execute(
+            "CREATE TABLE IF NOT EXISTS sample (right_value INTEGER, left_value TEXT, "
+            "id INTEGER PRIMARY KEY, CHECK (right_value >= 0))"
+        )
+        assert schema_fingerprint(first) == schema_fingerprint(second)
+
+    with sqlite3.connect(":memory:") as different:
+        different.execute(
+            "CREATE TABLE sample (id INTEGER PRIMARY KEY, left_value TEXT, "
+            "right_value INTEGER, CHECK(right_value > 0))"
+        )
+        with sqlite3.connect(":memory:") as reference:
+            reference.execute(
+                "CREATE TABLE sample (id INTEGER PRIMARY KEY, left_value TEXT, "
+                "right_value INTEGER, CHECK(right_value >= 0))"
+            )
+            assert schema_fingerprint(different) != schema_fingerprint(reference)
