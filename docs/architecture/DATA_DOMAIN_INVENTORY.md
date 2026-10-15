@@ -22,7 +22,7 @@
 ## یافته‌های schema و مسیرهای داده
 
 - `settings.db` فقط تنظیمات را نگه می‌دارد؛ `learning.db` داده‌های یادگیری و صف را نگه می‌دارد.
-- schema در `app/db.py` و `app/task_manager.py` ساخته می‌شود. تغییرات قدیمی با `ALTER TABLE` شرطی انجام می‌شوند و تاریخچهٔ migration نسخه‌دار فعلاً وجود ندارد.
+- `app/schema_migrations.py` runner عمومی و `app/schema_registry.py` registryهای fresh install را تعریف می‌کنند، اما هنوز به startup متصل نیستند. `app/db.py` و `app/task_manager.py` همچنان schema live را با initialization قدیمی می‌سازند/ارتقا می‌دهند.
 - `learning.submit_job()` و شروع/تولید مجدد درس‌ها به task پایدار `learning.run_job` ارسال می‌شوند؛ payload صف فقط `job_id` دارد و متن منبع را کپی نمی‌کند.
 - `learning_tasks.reconcile_queued_learning_tasks()` در startup برای رکوردهای queued/running، task متناظر را به‌صورت idempotent تضمین می‌کند.
 - `task_manager.get_task_by_dedupe_key()` و آداپتر یادگیری، توقف از API عمومی صف را با وضعیت رکورد دامنه هماهنگ می‌کنند.
