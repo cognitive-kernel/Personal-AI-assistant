@@ -40,3 +40,43 @@ def test_startup_rejects_unknown_settings_schema_before_starting_workers(tmp_pat
             "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
         ).fetchone() is None
     assert not learning_path.exists()
+
+
+
+def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeypatch):
+    from app import learning, task_manager
+
+    monkeypatch.setattr(main.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(main.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(main, "_task_runtime", None)
+    db.init_databases()
+    job = learning.create_job("startup recovery fixture")
+    assert task_manager.get_task_by_dedupe_key(f"learning-job:{job['id']}") is None
+
+    constructed = []
+
+    class RuntimeStub:
+        def __init__(self, handlers, **kwargs):
+            self.handlers = handlers
+            self.is_running = False
+            self.start_count = 0
+            constructed.append(self)
+
+        def start(self):
+            self.start_count += 1
+            self.is_running = True
+
+    monkeypatch.setattr(main, "TaskRuntime", RuntimeStub)
+    main.startup()
+    first_task = task_manager.get_task_by_dedupe_key(f"learning-job:{job['id']}")
+    main.startup()
+    second_task = task_manager.get_task_by_dedupe_key(f"learning-job:{job['id']}")
+
+    assert first_task is not None
+    assert first_task["task_type"] == "learning.run_job"
+    assert first_task["payload"] == {"job_id": job["id"]}
+    assert first_task["status"] == "queued"
+    assert second_task["id"] == first_task["id"]
+    assert len(task_manager.list_tasks(statuses=["queued"])) == 1
+    assert len(constructed) == 1
+    assert constructed[0].start_count == 1
