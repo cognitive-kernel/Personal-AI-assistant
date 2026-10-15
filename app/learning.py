@@ -264,6 +264,12 @@ def _enqueue_learning_job(job_id: int) -> dict[str, Any]:
     return enqueue_learning_task(job_id)
 
 
+def _cancel_learning_job_task(job_id: int) -> dict[str, Any] | None:
+    from .learning_tasks import cancel_learning_task
+
+    return cancel_learning_task(job_id)
+
+
 def submit_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     job = create_job(topic, source_text, path_topic_id)
     task = _enqueue_learning_job(int(job["id"]))
@@ -493,6 +499,8 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             "WHERE path_topic_id=? AND status IN ('queued', 'running')",
             (topic_id,),
         )
+    for row in rows:
+        _cancel_learning_job_task(int(row["id"]))
     return {
         "topic_id": topic_id,
         "cancelled_count": len(rows),
@@ -559,6 +567,8 @@ def stop_path_learning(path_id: int) -> dict[str, Any]:
             "WHERE path_topic_id IN (SELECT id FROM learning_path_topics WHERE path_id=?) AND status IN ('queued', 'running')",
             (path_id,),
         )
+    for row in rows:
+        _cancel_learning_job_task(int(row["id"]))
     return {
         "path_id": path_id,
         "cancelled_count": len(rows),
