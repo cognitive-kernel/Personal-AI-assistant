@@ -474,11 +474,10 @@
 
 - [x] جدول‌های فعلی دو پایگاه SQLite، مالکیت منطقی، کلیدها/روابط اصلی، ایندکس‌ها و تغییرات ad-hoc `ALTER TABLE` در `docs/architecture/SCHEMA_MIGRATION_AUDIT.md` ثبت شدند.
 - [x] `docs/architecture/DATA_DOMAIN_INVENTORY.md` با وضعیت واقعی صف پایدار، runtime، لغو و خطرهای migration به‌روز شد.
-- [x] مشخص شد schema version metadata، migration runner عمومی و backup/restore آزموده‌شده هنوز وجود ندارند.
-- [x] **PR #90** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/90)، commit ادغام `65c87d8a40f6ca9c0545f95d067f2518a8c654a9`.
-- [x] CI روی head دقیق `bbfa1f9981bd61d4e473ac2e5379673fb5ec1706` موفق بود؛ run [#38784673601](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38784673601)، شامل نصب وابستگی‌ها و `pytest`.
+- [x] **PR #90** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/90)، commit ادغام `65c87d8a40f6ca9c0545f95d067f2518a8c654a9`; CI روی head دقیق موفق بود: [run #38784673601](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38784673601).
+- [x] تست‌های schema contract و integrity در **PR #92** ادغام شدند؛ commit `e89850d4003f949c4305c6abda3d7697c60d581d`; CI روی head دقیق `37b8b3de387c5b6901a4296e456c84aa7847e883` موفق بود: [run #38784887503](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38784887503).
 - [ ] ممیزی از کد و تست‌ها انجام شده؛ فایل‌های DB واقعی کاربر بررسی نشده‌اند و هیچ migration یا انتقال داده‌ای اجرا نشده است.
-- **گام بعدی:** تست‌های schema contract و fixtureهای legacy را تکمیل کن؛ سپس ابزار backup/restore بساز و آن را روی کپی بازیابی کن. پس از آن migration runner نسخه‌دار را در تغییر جداگانه پیاده‌سازی کن.
+- **گام بعدی:** ابزار backup/restore محلی را اضافه و روی fixture بازیابی کن؛ سپس migration runner نسخه‌دار را در تغییر جداگانه پیاده‌سازی کن.
 
 
 
@@ -489,3 +488,15 @@
 - [x] تست تکرارپذیری initialization بررسی می‌کند که مقدار تنظیم‌شده توسط کاربر با startup دوباره بازنویسی نشود و `PRAGMA integrity_check` موفق باشد.
 - [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** fixture مهاجرت schema قدیمی و سپس ابزار backup/restore SQLite با آزمون بازیابی.
+
+
+
+## 28. 2026-10-15 — ابزار پشتیبان‌گیری و بازیابی SQLite
+
+- [x] `app/db_backup.py` snapshotهای محلی هر دو فایل SQLite را با SQLite online backup API می‌سازد و `integrity_check`، `foreign_key_check`، SHA-256 و metadata جدول‌ها را ثبت می‌کند.
+- [x] bundle دارای manifest نسخه‌دار است؛ backup و restore در پوشهٔ staging آماده می‌شوند و فقط پس از اعتبارسنجی منتشر می‌شوند.
+- [x] مقصد موجود یا bundle دستکاری‌شده رد می‌شود؛ ابزار داده‌ای را به cloud ارسال نمی‌کند و فایل‌های زنده را مستقیماً overwrite نمی‌کند.
+- [x] آزمون‌ها حفظ داده‌های تنظیمات، learning job و صف را پس از restore بررسی می‌کنند؛ تست‌های schema contract عمومی در `tests/test_db_schema.py` باقی مانده‌اند تا پوشش تکراری نشود.
+- [x] راهنمای عملیاتی در `docs/operations/SQLITE_BACKUP_RESTORE.md` اضافه شد؛ محدودیت snapshot مستقل دو فایل و توصیه به توقف برنامه برای سازگاری بین‌فایلی مستند شده است.
+- [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- **گام بعدی:** migration runner نسخه‌بندی‌شده را با schema metadata و baseline تشخیصی اضافه کن؛ در آن PR هیچ migration مخرب یا انتقال داده اجرا نشود.
