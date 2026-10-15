@@ -83,7 +83,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         chunk = chunk[:remaining]
         chunks.append(chunk)
         total += len(chunk)
-        stored_documents.append((document, body))
+        stored_documents.append((document, chunk))
     combined = "\n\n".join(chunks)[:max_chars]
     if not combined:
         with learning_connection() as conn:
@@ -95,8 +95,8 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         conn.execute("""INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)
             ON CONFLICT(job_id) DO UPDATE SET content=excluded.content""", (job_id, combined))
         conn.execute("UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
-        for document, body in stored_documents:
-            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        for document, stored_chunk in stored_documents:
+            digest = hashlib.sha256(stored_chunk.encode("utf-8")).hexdigest()
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 VALUES (?, 'web_page', ?, ?, ?)""", (job_id, document.url, digest,
                 f"Retrieved public page; title: {document.title}. Content has not been independently verified."))
