@@ -40,6 +40,18 @@ def reconcile_queued_learning_tasks() -> int:
     return len(rows)
 
 
+def cancel_learning_task(job_id: int) -> dict[str, Any] | None:
+    """Propagate a learning-domain stop request to its durable queue task."""
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("job_id must be a positive integer")
+    task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
+    if task is None:
+        return None
+    if task["status"] not in task_manager.TERMINAL_STATUSES:
+        return task_manager.request_cancel(int(task["id"]))
+    return task
+
+
 def handle_learning_job(
     payload: dict[str, Any],
     checkpoint: dict[str, Any] | None,
