@@ -37,7 +37,7 @@ This module is a scheduler, not a sandbox. Any future code-execution task must r
 
 ## Compatibility and migration
 
-The first version creates its own task_queue table idempotently in the existing learning database through initialize_task_store(). Application startup integration is intentionally a separate change so queue behavior can be tested before it is connected to API routes or background workers. A versioned migration framework remains a follow-up; the initial table creation is not represented as a general migration system.
+The task queue schema is owned by the versioned registry in `app/schema_registry.py`. `db.init_databases()` initializes or upgrades both SQLite databases through the migration runner; `initialize_task_store()` only validates the task table and required indexes. Before applying pending migrations to an existing database, startup creates a verified local backup bundle. Unknown schemas or backup failures stop initialization rather than attempting an ad-hoc `ALTER TABLE`.
 
 ## Acceptance gates
 
