@@ -72,7 +72,7 @@ def test_explicit_baseline_requires_exact_schema_fingerprint_and_allows_forward_
         assert runner.apply(connection) == 2
         assert connection.execute(
             "SELECT migration_id FROM schema_migrations ORDER BY version"
-        ).fetchall() == [("baseline-legacy-v1",), ("add-index",)]
+        ).fetchall() == [("create-legacy-records",), ("add-index",)]
 
 
 def test_baseline_rejects_schema_fingerprint_mismatch_without_mutation(tmp_path):
