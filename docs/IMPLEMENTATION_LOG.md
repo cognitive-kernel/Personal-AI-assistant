@@ -475,5 +475,17 @@
 - [x] جدول‌های فعلی دو پایگاه SQLite، مالکیت منطقی، کلیدها/روابط اصلی، ایندکس‌ها و تغییرات ad-hoc `ALTER TABLE` در `docs/architecture/SCHEMA_MIGRATION_AUDIT.md` ثبت شدند.
 - [x] `docs/architecture/DATA_DOMAIN_INVENTORY.md` با وضعیت واقعی صف پایدار، runtime، لغو و خطرهای migration به‌روز شد.
 - [x] مشخص شد schema version metadata، migration runner عمومی و backup/restore آزموده‌شده هنوز وجود ندارند.
+- [x] **PR #90** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/90)، commit ادغام `65c87d8a40f6ca9c0545f95d067f2518a8c654a9`.
+- [x] CI روی head دقیق `bbfa1f9981bd61d4e473ac2e5379673fb5ec1706` موفق بود؛ run [#38784673601](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38784673601)، شامل نصب وابستگی‌ها و `pytest`.
 - [ ] ممیزی از کد و تست‌ها انجام شده؛ فایل‌های DB واقعی کاربر بررسی نشده‌اند و هیچ migration یا انتقال داده‌ای اجرا نشده است.
 - **گام بعدی:** تست‌های schema contract و fixtureهای legacy را تکمیل کن؛ سپس ابزار backup/restore بساز و آن را روی کپی بازیابی کن. پس از آن migration runner نسخه‌دار را در تغییر جداگانه پیاده‌سازی کن.
+
+
+
+## 28. 2026-10-15 — قراردادهای schema فعلی SQLite
+
+- [x] تست قرارداد schema برای جدول‌ها، ستون‌های مهم، ایندکس‌های صف و `PRAGMA foreign_key_check` افزوده شد.
+- [x] تست cascade برای داده‌های وابسته به learning job اضافه شد تا حذف job ناخواسته ردیف یتیم باقی نگذارد.
+- [x] تست تکرارپذیری initialization بررسی می‌کند که مقدار تنظیم‌شده توسط کاربر با startup دوباره بازنویسی نشود و `PRAGMA integrity_check` موفق باشد.
+- [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- **گام بعدی:** fixture مهاجرت schema قدیمی و سپس ابزار backup/restore SQLite با آزمون بازیابی.
