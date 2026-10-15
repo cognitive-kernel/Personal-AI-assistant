@@ -298,6 +298,20 @@ def record_baseline(
     return migration
 
 
+def _registered_schema_fingerprint(migrations: tuple[Migration, ...], version: int) -> str:
+    """Reconstruct the registered schema for a version without migration metadata."""
+    connection = sqlite3.connect(":memory:")
+    try:
+        for migration in migrations:
+            if migration.version > version:
+                break
+            for statement in migration.statements:
+                connection.execute(statement)
+        return schema_fingerprint(connection)
+    finally:
+        connection.close()
+
+
 class MigrationRunner:
     """Apply application-owned SQL migrations in order and verify immutable history."""
 
@@ -370,6 +384,12 @@ class MigrationRunner:
             if first_baseline is not None and current_version == versions[0]:
                 if schema_fingerprint(connection) != first_baseline:
                     raise MigrationError("Legacy schema changed after baseline adoption; refusing migration.")
+            expected_fingerprint = _registered_schema_fingerprint(self.migrations, current_version)
+            if schema_fingerprint(connection) != expected_fingerprint:
+                raise MigrationError(
+                    "Live schema does not match the registered migration history; "
+                    "refusing automatic repair."
+                )
 
         pending = [migration for migration in self.migrations if migration.version > current_version]
         if not pending:
