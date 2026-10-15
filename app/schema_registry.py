@@ -156,6 +156,11 @@ LEARNING_MIGRATIONS = (
             "CREATE UNIQUE INDEX idx_task_queue_dedupe_key ON task_queue(dedupe_key) WHERE dedupe_key IS NOT NULL",
         ),
     ),
+    Migration(
+        4,
+        "learning-job-lesson-review-context",
+        ("ALTER TABLE learning_jobs ADD COLUMN lesson_review_json TEXT",),
+    ),
 )
 
 
