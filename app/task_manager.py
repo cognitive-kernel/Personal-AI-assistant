@@ -194,6 +194,8 @@ def _owned_running_task(conn: sqlite3.Connection, task_id: int, worker_id: str) 
         raise TaskManagerError(f"Task {task_id} does not exist.")
     if row["lease_owner"] != worker_id or row["status"] not in ACTIVE_STATUSES:
         raise TaskManagerError("Task is not owned by this worker or is no longer active.")
+    if row["lease_expires_at"] is None or row["lease_expires_at"] <= _timestamp():
+        raise TaskManagerError("Worker lease has expired; the task must be reclaimed before mutation.")
     return row
 
 
@@ -222,8 +224,8 @@ def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) ->
         row = _owned_running_task(conn, task_id, worker_id)
         if row["status"] == "cancel_requested":
             conn.execute(
-                """UPDATE task_queue SET status='cancelled', lease_owner=NULL, lease_expires_at=NULL,
-                   updated_at=? WHERE id=?""", (now, task_id)
+                """UPDATE task_queue SET status='cancelled', checkpoint_json=?, lease_owner=NULL,
+                   lease_expires_at=NULL, updated_at=? WHERE id=?""", (encoded, now, task_id)
             )
         elif row["status"] == "pause_requested":
             conn.execute(
