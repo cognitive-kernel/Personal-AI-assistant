@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from app import db, task_manager
