@@ -152,7 +152,7 @@ def test_task_dedupe_key_rejects_different_payload(worker_store):
         )
 
 
-def test_task_store_adds_dedupe_key_to_existing_schema(worker_store):
+def test_task_store_creates_dedupe_key_column_and_index(worker_store):
     with db.learning_connection() as conn:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
         indexes = {
@@ -166,3 +166,41 @@ def test_task_store_adds_dedupe_key_to_existing_schema(worker_store):
 def test_task_creation_rejects_blank_dedupe_key(worker_store):
     with pytest.raises(ValueError, match="dedupe_key"):
         task_manager.create_task("test.deduplicated", {}, dedupe_key="  ")
+
+
+def test_task_store_migrates_preexisting_queue_schema(worker_store):
+    with db.learning_connection() as conn:
+        conn.execute("DROP TABLE task_queue")
+        conn.execute(
+            """
+            CREATE TABLE task_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_type TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'queued',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 1,
+                checkpoint_json TEXT,
+                result_json TEXT,
+                error TEXT,
+                scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                lease_owner TEXT,
+                lease_expires_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO task_queue(task_type, payload_json) VALUES (?, ?)",
+            ("legacy.task", "{}"),
+        )
+
+    task_manager.initialize_task_store()
+    saved = task_manager.get_task(1)
+    with db.learning_connection() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
+
+    assert saved["task_type"] == "legacy.task"
+    assert "dedupe_key" in columns
