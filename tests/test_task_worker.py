@@ -128,3 +128,79 @@ def test_worker_renews_lease_during_long_running_handler(worker_store):
     assert saved["status"] == "succeeded"
     assert saved["result"] == {"finished": True}
     assert saved["attempts"] == 1
+
+
+def test_task_creation_is_idempotent_for_matching_dedupe_key(worker_store):
+    first = task_manager.create_task(
+        "test.deduplicated", {"job_id": 41}, max_attempts=3, dedupe_key="learning-job:41"
+    )
+    repeated = task_manager.create_task(
+        "test.deduplicated", {"job_id": 41}, max_attempts=3, dedupe_key="learning-job:41"
+    )
+
+    assert repeated["id"] == first["id"]
+    assert len(task_manager.list_tasks()) == 1
+
+
+def test_task_dedupe_key_rejects_different_payload(worker_store):
+    task_manager.create_task(
+        "test.deduplicated", {"job_id": 41}, dedupe_key="learning-job:41"
+    )
+    with pytest.raises(ValueError, match="different task definition"):
+        task_manager.create_task(
+            "test.deduplicated", {"job_id": 42}, dedupe_key="learning-job:41"
+        )
+
+
+def test_task_store_creates_dedupe_key_column_and_index(worker_store):
+    with db.learning_connection() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
+        indexes = {
+            row["name"] for row in conn.execute("PRAGMA index_list(task_queue)")
+        }
+
+    assert "dedupe_key" in columns
+    assert "idx_task_queue_dedupe_key" in indexes
+
+
+def test_task_creation_rejects_blank_dedupe_key(worker_store):
+    with pytest.raises(ValueError, match="dedupe_key"):
+        task_manager.create_task("test.deduplicated", {}, dedupe_key="  ")
+
+
+def test_task_store_migrates_preexisting_queue_schema(worker_store):
+    with db.learning_connection() as conn:
+        conn.execute("DROP TABLE task_queue")
+        conn.execute(
+            """
+            CREATE TABLE task_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_type TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                priority INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'queued',
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 1,
+                checkpoint_json TEXT,
+                result_json TEXT,
+                error TEXT,
+                scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                lease_owner TEXT,
+                lease_expires_at TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO task_queue(task_type, payload_json) VALUES (?, ?)",
+            ("legacy.task", "{}"),
+        )
+
+    task_manager.initialize_task_store()
+    saved = task_manager.get_task(1)
+    with db.learning_connection() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
+
+    assert saved["task_type"] == "legacy.task"
+    assert "dedupe_key" in columns
