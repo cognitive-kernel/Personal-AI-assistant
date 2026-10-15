@@ -1,23 +1,15 @@
 from __future__ import annotations
 import hashlib
 import json
-import threading
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import curricula
+from . import curricula, task_manager
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
 class LearningError(RuntimeError):
     pass
-
-
-# The executor caps worker threads. A dynamic gate applies the user-configured limit.
-_learning_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="learning")
-_learning_gate = threading.Condition()
-_active_learning_jobs = 0
 
 def create_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     topic = topic.strip()
@@ -41,9 +33,17 @@ def create_job(topic: str, source_text: str | None = None, path_topic_id: int | 
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
-        if row is None or row["status"] != "queued":
+        if row is None or row["status"] in {"completed", "rejected", "cancelled"}:
             return
-        conn.execute("UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
+        # A task is only re-entered after the durable queue has reclaimed its expired
+        # lease. In that case a prior process may have died while the learning row was
+        # still "running", or a transient attempt may have marked it "failed".
+        if row["status"] not in {"queued", "running", "failed"}:
+            return
+        conn.execute(
+            "UPDATE learning_jobs SET status='running', error=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (job_id,),
+        )
         topic, source_kind = row["topic"], row["source_kind"]
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
@@ -263,28 +263,99 @@ def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
         ids = [row["id"] for row in conn.execute("SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ?", (max(1, min(200, limit)),)).fetchall()]
     return [get_job(job_id) for job_id in ids]
 
-def _run_with_budget(job_id: int) -> None:
-    global _active_learning_jobs
-    with _learning_gate:
-        while True:
-            configured = int(get_settings().get("learning_max_concurrent_jobs", 1))
-            allowed = max(1, min(2, configured))
-            if _active_learning_jobs < allowed:
-                _active_learning_jobs += 1
-                break
-            _learning_gate.wait(timeout=0.5)
-    try:
-        run_job(job_id)
-    finally:
-        with _learning_gate:
-            _active_learning_jobs -= 1
-            _learning_gate.notify_all()
+def _enqueue_learning_job(job: dict[str, Any]) -> dict[str, Any]:
+    """Persist a learning job in the durable queue; safe to call repeatedly."""
+    task_manager.initialize_task_store()
+    task = task_manager.create_task(
+        "learning.generate",
+        {"job_id": int(job["id"])},
+        max_attempts=3,
+        dedupe_key=f"learning-job:{int(job['id'])}",
+    )
+    job["task_id"] = task["id"]
+    return job
+
+
+def handle_learning_task(
+    payload: dict[str, Any],
+    checkpoint: dict[str, Any] | None,
+    context: Any,
+) -> dict[str, Any]:
+    """Allow-listed durable task handler for a single learning job."""
+    job_id = payload.get("job_id")
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("learning.generate requires a positive integer job_id.")
+    job = get_job(job_id)
+    if job["status"] in {"completed", "rejected", "cancelled"}:
+        if context.control_status() != "running":
+            context.checkpoint(checkpoint or {})
+        return {"job_id": job_id, "learning_status": job["status"]}
+
+    if checkpoint is None:
+        context.checkpoint({"job_id": job_id, "phase": "learning"})
+    run_job(job_id)
+    job = get_job(job_id)
+    if job["status"] == "failed":
+        raise LearningError(job.get("error") or f"Learning job {job_id} failed.")
+    if job["status"] == "cancelled" and context.control_status() != "running":
+        context.checkpoint(checkpoint or {"job_id": job_id, "phase": "learning"})
+    return {"job_id": job_id, "learning_status": job["status"]}
+
+
+def reconcile_learning_tasks() -> dict[str, int]:
+    """Repair orphaned queued/running learning rows after restart or partial enqueue."""
+    task_manager.initialize_task_store()
+    with learning_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, status FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
+        ).fetchall()
+
+    enqueued = 0
+    reset_running = 0
+    marked_failed = 0
+    for row in rows:
+        job_id = int(row["id"])
+        dedupe_key = f"learning-job:{job_id}"
+        with learning_connection() as conn:
+            task = conn.execute(
+                "SELECT id, status FROM task_queue WHERE dedupe_key=?", (dedupe_key,)
+            ).fetchone()
+        if task is None:
+            if row["status"] == "running":
+                with learning_connection() as conn:
+                    conn.execute(
+                        "UPDATE learning_jobs SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP "
+                        "WHERE id=? AND status='running'",
+                        (job_id,),
+                    )
+                reset_running += 1
+            task_manager.create_task(
+                "learning.generate", {"job_id": job_id}, max_attempts=3, dedupe_key=dedupe_key
+            )
+            enqueued += 1
+        elif task["status"] == "failed":
+            with learning_connection() as conn:
+                conn.execute(
+                    "UPDATE learning_jobs SET status='failed', "
+                    "error=COALESCE(error, 'Durable learning task exhausted its retries.'), "
+                    "updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('queued', 'running')",
+                    (job_id,),
+                )
+            marked_failed += 1
+        elif task["status"] == "cancelled":
+            with learning_connection() as conn:
+                conn.execute(
+                    "UPDATE learning_jobs SET status='cancelled', "
+                    "error=COALESCE(error, 'Learning task was cancelled.'), "
+                    "updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('queued', 'running')",
+                    (job_id,),
+                )
+    return {"enqueued": enqueued, "reset_running": reset_running, "marked_failed": marked_failed}
 
 
 def submit_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
     job = create_job(topic, source_text, path_topic_id)
-    _learning_executor.submit(_run_with_budget, job["id"])
-    return job
+    return _enqueue_learning_job(job)
 
 
 def get_learning_path(path_id: int) -> dict[str, Any]:
@@ -463,8 +534,7 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             (topic_id, path_id),
         )
     job = create_job(topic["topic"], path_topic_id=topic_id)
-    _learning_executor.submit(_run_with_budget, job["id"])
-    return job
+    return _enqueue_learning_job(job)
 
 
 
@@ -488,8 +558,17 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             (topic_id, path_id),
         )
     job = create_job(topic["topic"], path_topic_id=topic_id)
-    _learning_executor.submit(_run_with_budget, job["id"])
-    return job
+    return _enqueue_learning_job(job)
+
+
+def _cancel_learning_task(job_id: int) -> None:
+    """Propagate a learning cancellation to its durable queue task when present."""
+    with learning_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM task_queue WHERE dedupe_key=?", (f"learning-job:{job_id}",)
+        ).fetchone()
+    if row is not None:
+        task_manager.request_cancel(int(row["id"]))
 
 
 def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
@@ -509,6 +588,8 @@ def stop_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             "WHERE path_topic_id=? AND status IN ('queued', 'running')",
             (topic_id,),
         )
+    for row in rows:
+        _cancel_learning_task(int(row["id"]))
     return {
         "topic_id": topic_id,
         "cancelled_count": len(rows),
@@ -544,7 +625,7 @@ def start_path_learning(path_id: int) -> dict[str, Any]:
                 "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
                 (topic["id"], path_id),
             )
-        _learning_executor.submit(_run_with_budget, job["id"])
+        _enqueue_learning_job(job)
         queued_ids.append(job["id"])
     return {
         "path_id": path_id,
@@ -575,6 +656,8 @@ def stop_path_learning(path_id: int) -> dict[str, Any]:
             "WHERE path_topic_id IN (SELECT id FROM learning_path_topics WHERE path_id=?) AND status IN ('queued', 'running')",
             (path_id,),
         )
+    for row in rows:
+        _cancel_learning_task(int(row["id"]))
     return {
         "path_id": path_id,
         "cancelled_count": len(rows),
