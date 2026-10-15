@@ -489,3 +489,14 @@
 - [x] تست تکرارپذیری initialization بررسی می‌کند که مقدار تنظیم‌شده توسط کاربر با startup دوباره بازنویسی نشود و `PRAGMA integrity_check` موفق باشد.
 - [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** fixture مهاجرت schema قدیمی و سپس ابزار backup/restore SQLite با آزمون بازیابی.
+
+
+## 29. 2026-10-15 — ابزار پشتیبان‌گیری و بازیابی SQLite
+
+- [x] `app/db_backup.py` افزوده شد: snapshot با SQLite online backup API، بررسی `integrity_check` و `foreign_key_check`، SHA-256، manifest نسخه‌دار و انتشار bundle از مسیر staging.
+- [x] بازیابی ابتدا manifest، hash و metadata schema را بررسی می‌کند، سپس هر دو فایل را در یک پوشه staging بازیابی و فقط پس از اعتبارسنجی منتشر می‌کند.
+- [x] مقصد موجود هرگز بی‌صدا بازنویسی نمی‌شود؛ داده به سرویس ابری ارسال نمی‌شود.
+- [x] آزمون‌های حفظ داده‌ها، تشخیص دستکاری bundle و منع overwrite در `tests/test_db_backup.py` اضافه شدند؛ قراردادهای schema در بخش قبلی و تست‌های موجود پوشش داده شده‌اند.
+- [x] راهنمای عملیاتی در `docs/operations/SQLITE_BACKUP_RESTORE.md` اضافه شد؛ محدودیت snapshot مستقل دو فایل و نیاز به بررسی بازیابی مستند شده است.
+- [ ] تست محلی در این نشست اجرا نشده است. قابلیت فقط پس از CI موفق روی head دقیق PR و بررسی آزمون‌های restore تأیید می‌شود.
+- **گام بعدی:** پس از عبور CI، migration runner نسخه‌بندی‌شده را با metadata و baseline تشخیصی اضافه کنیم؛ migration مخرب یا انتقال داده در آن مرحله انجام نشود.
