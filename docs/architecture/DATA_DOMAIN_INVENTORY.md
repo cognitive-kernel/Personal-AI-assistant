@@ -22,7 +22,7 @@
 ## یافته‌های schema و مسیرهای داده
 
 - `settings.db` فقط تنظیمات را نگه می‌دارد؛ `learning.db` داده‌های یادگیری و صف را نگه می‌دارد.
-- schema در `app/db.py` و `app/task_manager.py` ساخته می‌شود. تغییرات قدیمی با `ALTER TABLE` شرطی انجام می‌شوند و تاریخچهٔ migration نسخه‌دار فعلاً وجود ندارد.
+- schemaها در `app/schema_registry.py` به‌صورت migrationهای نسخه‌بندی‌شده تعریف شده‌اند و `db.init_databases()` و `task_manager.initialize_task_store()` از همان registry استفاده می‌کنند. قبل از baseline/ارتقا backup اعتبارسنجی‌شده تهیه می‌شود؛ schema ناشناخته و drift بیرونی خودکار پذیرفته یا تعمیر نمی‌شود.
 - `learning.submit_job()` و شروع/تولید مجدد درس‌ها به task پایدار `learning.run_job` ارسال می‌شوند؛ payload صف فقط `job_id` دارد و متن منبع را کپی نمی‌کند.
 - `learning_tasks.reconcile_queued_learning_tasks()` در startup برای رکوردهای queued/running، task متناظر را به‌صورت idempotent تضمین می‌کند.
 - `task_manager.get_task_by_dedupe_key()` و آداپتر یادگیری، توقف از API عمومی صف را با وضعیت رکورد دامنه هماهنگ می‌کنند.
@@ -31,10 +31,18 @@
 ## ریسک‌های باقی‌مانده
 
 1. ایجاد learning job و task دو عملیات جداست؛ startup reconciliation پنجرهٔ قطع فرایند را پوشش می‌دهد، اما fault-injection در همهٔ مرزهای commit هنوز لازم است.
-2. migration runner عمومی، schema version metadata و ابزار backup/restore با آزمون بازیابی هنوز اثبات نشده‌اند.
+2. migration runner، schema version metadata و ابزار backup/restore با آزمون بازیابی پیاده‌سازی و در CI پوشش داده شده‌اند؛ هنوز روی فایل‌های واقعی دیتابیس کاربر اجرا/اعتبارسنجی نشده‌اند.
 3. وضعیت واقعی schema در فایل‌های DB کاربر بررسی نشده است؛ پیش از مهاجرت باید fingerprint و integrity check انجام شود.
 4. توقف یک task در حال اجرای مدل الزاماً پردازش مدل را فوراً قطع نمی‌کند؛ نتیجهٔ لغوشده نباید در دانش canonical ذخیره شود.
 
+## وضعیت پس از migration runner و startup
+
+- `settings.db` و `learning.db` همچنان دو فایل مستقل‌اند؛ migrationهای نسخه‌بندی‌شده، backup قبل از adoption/upgrade، restore اتمیک با opt-in برای overwrite و رد schema ناشناخته پیاده‌سازی شده‌اند.
+- `task_queue` فعلاً در `learning.db` باقی می‌ماند؛ صف و learning job به reconciliation/idempotency مشترک وابسته‌اند و جداکردن آن بدون قرارداد outbox یا همگام‌سازی و آزمون fault-injection ریسک تازه ایجاد می‌کند.
+- migration fixtureها شناسه‌ها، source_ref، content_hash، متن منبع، knowledge item، assessment، review، مسیر یادگیری و task را بررسی می‌کنند. این آزمون‌ها مهاجرت schema را پوشش می‌دهند، نه انتقال فیزیکی میان دو فایل DB.
+- برای archive مکالمه، audit مستقل، vector/lexical index و graph هیچ مخزن canonical اثبات نشده؛ تا زمانی که نیاز و مسیر داده مشخص نشود، دیتابیس جدید ساخته نمی‌شود.
+- فایل‌های دیتابیس واقعی کاربر در این کار دست‌کاری نشده‌اند؛ پیش از هر انتقال واقعی باید backup، dry-run، شمارش/hash و restore روی کپی انجام شود.
+
 ## گام بعدی
 
-از [ممیزی schema و طرح مهاجرت](SCHEMA_MIGRATION_AUDIT.md) پیروی کن: تست قرارداد schema و fixtureهای قدیمی، سپس backup/restore قابل‌آزمون، بعد migration runner نسخه‌دار. تا پیش از موفقیت این مراحل، مهاجرت مخرب یا تفکیک فیزیکی DB انجام نشود.
+تکمیل ماتریس مرز داده با تصمیم مستند برای هر حوزه و افزودن fault-injection در پنجره‌های crash میان ثبت learning job، enqueue، ذخیرهٔ نتیجه و تکمیل task. تفکیک فیزیکی جدید تنها زمانی انجام شود که مزیت تراکنشی/امنیتی/عملیاتی آن اثبات شود.
