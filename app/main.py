@@ -52,7 +52,6 @@ _task_runtime: TaskRuntime | None = None
 def startup() -> None:
     global _task_runtime
     db.init_databases()
-    task_manager.initialize_task_store()
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
     if _task_runtime is not None and _task_runtime.is_running:
