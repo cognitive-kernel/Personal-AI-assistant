@@ -342,3 +342,38 @@ def get_worker_control(task_id: int, worker_id: str) -> str:
     with db.learning_connection() as conn:
         row = _owned_running_task(conn, task_id, worker_id)
     return str(row["status"])
+
+
+def update_task_priority(task_id: int, priority: int) -> dict[str, Any]:
+    if isinstance(priority, bool) or not isinstance(priority, int):
+        raise ValueError("priority must be an integer.")
+    now = _timestamp()
+    with db.learning_connection() as conn:
+        row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            raise TaskManagerError(f"Task {task_id} does not exist.")
+        if row["status"] not in {"queued", "paused"}:
+            raise TaskManagerError("Priority can only be changed for queued or paused tasks.")
+        conn.execute(
+            "UPDATE task_queue SET priority=?, updated_at=? WHERE id=?",
+            (priority, now, task_id),
+        )
+        updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+    return _task(updated)  # type: ignore[return-value]
+
+
+def reschedule_task(task_id: int, scheduled_at: datetime) -> dict[str, Any]:
+    due = _timestamp(scheduled_at)
+    now = _timestamp()
+    with db.learning_connection() as conn:
+        row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            raise TaskManagerError(f"Task {task_id} does not exist.")
+        if row["status"] not in {"queued", "paused"}:
+            raise TaskManagerError("Only queued or paused tasks can be rescheduled.")
+        conn.execute(
+            "UPDATE task_queue SET scheduled_at=?, updated_at=? WHERE id=?",
+            (due, now, task_id),
+        )
+        updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+    return _task(updated)  # type: ignore[return-value]
