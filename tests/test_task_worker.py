@@ -104,3 +104,8 @@ def test_worker_requires_an_explicit_handler_registry():
         TaskWorker("worker-1", {})
     with pytest.raises(ValueError):
         TaskWorker("worker-1", {"": lambda *_: {}})
+
+
+def test_worker_rejects_non_mapping_handler_registry():
+    with pytest.raises(ValueError):
+        TaskWorker("worker-1", ["not", "a", "mapping"])
