@@ -11,21 +11,26 @@ The existing application currently has two SQLite connection targets (settings a
 
 ## Decision
 
-Define five independently owned stores, each backed by a **separate database** from the beginning and exposed through an explicit repository interface. Each database owns its schema, migrations, validation, backup/restore policy, and retention policy. Other modules must use its interface rather than directly writing its tables. The five databases may initially use the same database engine and run on the same machine/server; five separate database servers are not required.
+Define as many independently owned databases as the system's actual data-domain and operational requirements justify; the count is deliberately not fixed. Each database has an explicit repository interface and owns its schema, migrations, validation, backup/restore policy, and retention policy. Other modules must use its interface rather than directly writing its tables. Multiple databases may initially use the same database engine and run on the same machine/server; separate database servers are not required.
 
-1. **Knowledge store** — canonical source records, immutable content revisions, provenance, version identifiers, verification status, and concept metadata.
-2. **Retrieval index store** — derived lexical and vector indexes. Every indexed item carries a stable source/revision ID and embedding/model/index version. Indexes are rebuildable from canonical records; they are never the sole copy of user-provided or learned content.
-3. **Experience store** — append-oriented observations of attempted methods, context, input/output references, outcome, errors, evidence class, software/environment versions, confidence, and time-dependent evaluation. Experiences reference knowledge revisions and task IDs rather than copying full code/content.
-4. **Task store** — durable task queue, idempotency key, status transitions, attempts, leases, checkpoints, cancellation/pause requests, result references, and audit events.
-5. **Knowledge graph store** — typed edges between concepts, source revisions, versions, dependencies, experiences, and tasks. Edges carry provenance and validity/version context.
+Candidate data domains to assess independently include:
 
-A sixth operational configuration/logging concern may be implemented where appropriate; it must not be forced into one of these five domains merely to keep the count at five.
+- **Settings/configuration** — application preferences, secrets references, and versioned operational configuration.
+- **Knowledge and source archive** — canonical source records, immutable content revisions, provenance, version identifiers, verification status, and concept metadata.
+- **Experience memory** — append-oriented observations of attempted methods, context, input/output references, outcome, errors, evidence class, software/environment versions, confidence, and time-dependent evaluation. Experiences reference knowledge revisions and task IDs rather than copying full code/content.
+- **Operational reports and audit events** — searchable logs, metrics, and administrative history with retention controls.
+- **Conversation archive** — conversation/message history, with privacy, retention, and deletion rules appropriate to user data.
+- **Task orchestration** — durable queue, idempotency key, status transitions, attempts, leases, checkpoints, cancellation/pause requests, result references, and audit events.
+- **Retrieval indexes** — derived lexical/vector indexes; each item carries stable source/revision IDs and embedding/model/index versions. Indexes are rebuildable and never the sole copy of canonical content.
+- **Knowledge graph** — typed edges between concepts, source revisions, versions, dependencies, experiences, and tasks, with provenance and validity/version context.
+
+This is a discovery checklist, not a requirement to create exactly eight databases. The implementation plan must decide which domains warrant separate databases, which subdomains need further separation, and which small/closely coupled domains can share a database without weakening ownership, security, retention, or recovery requirements.
 
 ## Physical deployment and hardware policy
 
-Five distinct databases are mandatory from the initial target implementation; five separate server processes are not. With the current hardware, use one engine/runtime and five separate database files or database namespaces on the same host. For SQLite, that means five independently configured database files, not five groups of tables inside the existing learning database. If a server database engine is later selected, create five separate databases on the same server instance. A domain can later move to another server without changing its domain service contract.
+Separate databases are created according to the data-domain inventory and documented decision; the number is not fixed. On current hardware, multiple databases can use one engine/runtime and reside on the same host. With SQLite, independently separated domains use separate database files rather than merely table prefixes in one file. With a server-based engine, they can be separate databases on one server instance. Any database can later move to another server without changing its domain service contract.
 
-- Each domain has a separately configured connection, schema version, migration history, backup/restore unit, and health check.
+- Each independently deployed database has a separately configured connection, schema version, migration history, backup/restore unit, and health check. A documented exception is required when domains share a database.
 - The retrieval database stores derived lexical/vector indexes and stable references to canonical records; the index can be rebuilt from source databases. Do not treat it as the canonical owner of user-provided knowledge.
 - The graph database may initially use typed relational edge tables in its own database; a graph-specific engine is considered only after representative query benchmarks justify it.
 - Store locations, database names, and engine settings are configuration, not hard-coded application assumptions.
@@ -59,13 +64,13 @@ All stores enforce size limits, input validation, access boundaries, and structu
 
 ## Acceptance gates before migration
 
-1. Inventory existing SQLite files/tables and every read/write path.
-2. Define versioned repository contracts and a migration runner for all five separate database files/namespaces.
-3. Add schema version metadata, per-database backup/restore utilities, health checks, and migration tests.
-4. Create populated fixtures and verify migration preserves row counts, IDs, hashes, foreign keys, and representative queries.
-5. Create five separate databases and only then migrate existing learning/evidence/knowledge/task data into their owning databases using tested, restartable migrations.
-6. Add retrieval indexes as derived data in the dedicated retrieval database and prove a full rebuild from canonical records.
-7. Add graph data to its dedicated graph database after concept/edge contracts and use cases are tested.
+1. Inventory existing database files/tables and every read/write path, including settings, knowledge, experience, reports/logs, conversation archive, task queue, indexes, and graph-like relationships.
+2. Define repository contracts and a data-domain matrix documenting ownership, privacy, volume, access patterns, retention, recovery objectives, and whether each domain needs a separate database.
+3. Add schema version metadata, a migration runner, backup/restore utilities, health checks, and migration tests for each database selected by that matrix.
+4. Create populated fixtures and verify migration preserves row counts, IDs, hashes, foreign keys, provenance, and representative queries.
+5. Create the selected database files/namespaces and migrate existing data using tested, restartable migrations; do not split data solely to reach a predetermined count.
+6. Add retrieval indexes as derived data in their chosen isolated database and prove a full rebuild from canonical records.
+7. Implement separate graph storage if the domain assessment and tested use cases justify it.
 8. Verify cross-database idempotency, outbox/reconciliation, backup/restore, and failure recovery before enabling production writes.
 
 ## Consequences
