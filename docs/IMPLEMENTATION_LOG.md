@@ -612,3 +612,11 @@
 - [x] هیچ DB تازه‌ای برای conversation/archive, audit, retrieval یا graph ساخته نشد، چون مسیر canonical و نیاز مستقل هنوز اثبات نشده‌اند.
 - [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** fault-injection برای مرزهای commit بین learning job و task، تکمیل ماتریس مالکیت/retention و آزمون pause/cancel پس از restart.
+
+
+## 40. 2026-10-15 — فعال‌کردن CI برای تمام مقصدهای Pull Request
+
+- [x] فیلتر `pull_request.branches: [main]` حذف شد تا PRهایی که به شاخه‌های feature/stacked هدف می‌گیرند نیز همان workflow تست را اجرا کنند؛ فیلتر push همچنان فقط `main` است.
+- [x] این تغییر issue #56 را هدف می‌گیرد و از نیاز به تغییر دستی workflow برای هر شاخه جلوگیری می‌کند.
+- [ ] CI باید روی SHA دقیق PR جدید موفق شود؛ تست محلی اجرا نشده است.
+- [ ] پس از موفقیت CI، issue #56 و PR قدیمیِ صرفاً workflow (#16) تعیین تکلیف می‌شوند.
