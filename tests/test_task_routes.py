@@ -10,7 +10,7 @@ def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
 
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
         response = client.post(
             "/api/tasks",
             json={
@@ -60,7 +60,7 @@ def test_task_api_validation_and_missing_task(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
 
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
         invalid = client.post("/api/tasks", json={"task_type": "", "payload": {}, "max_attempts": 0})
         assert invalid.status_code == 422
 
@@ -80,7 +80,7 @@ def test_task_api_rejects_control_changes_for_running_task(tmp_path, monkeypatch
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
 
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
         created = client.post("/api/tasks", json={"task_type": "running-task", "payload": {}}).json()
         claimed = task_manager.claim_next_task("api-test-worker")
         assert claimed["id"] == created["id"]
@@ -99,3 +99,12 @@ def test_task_api_rejects_control_changes_for_running_task(tmp_path, monkeypatch
         cancelled = client.post(f"/api/tasks/{created['id']}/cancel")
         assert cancelled.status_code == 200
         assert cancelled.json()["status"] == "cancel_requested"
+
+
+def test_task_api_rejects_non_loopback_clients(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+
+    with TestClient(app, client=("192.0.2.10", 12345)) as client:
+        response = client.get("/api/tasks")
+        assert response.status_code == 403
