@@ -9,7 +9,7 @@
 
 | فایل/پایگاه | جدول | مالک منطقی فعلی | وابستگی‌ها و نکتهٔ اصلی |
 |---|---|---|---|
-| تنظیمات SQLite | `settings` | `app/db.py` | کلید اصلی `key`؛ `value_json` و `updated_at`؛ پیش‌فرض‌ها با `INSERT OR IGNORE` seed می‌شوند. |
+| تنظیمات SQLite | `settings`, `schema_migrations` | `app/db.py`, `app/migrations.py` | تنظیمات با کلید اصلی `key`؛ تاریخچهٔ migration مستقل؛ پیش‌فرض‌ها با `INSERT OR IGNORE` seed می‌شوند. |
 | یادگیری SQLite | `learning_jobs` | `app/learning.py` | رکورد اصلی درس/کار؛ `path_topic_id` به `learning_path_topics.id` ارجاع می‌دهد؛ ستون‌های `quality_json` و `path_topic_id` در نسخه‌های قدیمی با ALTER افزوده می‌شوند. |
 | یادگیری SQLite | `learning_evidence` | `app/learning.py` | `job_id` به `learning_jobs.id` با `ON DELETE CASCADE`؛ منشأ و hash شواهد. |
 | یادگیری SQLite | `learning_source_text` | `app/learning.py` | `job_id` کلید اصلی و FK با cascade؛ متن منبع کاربر دادهٔ حساس/حجیم است و نباید در payload وظیفه کپی شود. |
@@ -32,7 +32,7 @@
 
 ## 3. بدهی‌های schema و خطرهای مهاجرت
 
-1. هیچ جدول عمومی `schema_migrations` یا نسخهٔ قابل اتکای schema در هر فایل DB دیده نشد.
+1. `settings.db` اکنون جدول `schema_migrations` و migration runner تراکنشی نسخهٔ 1 دارد؛ `learning.db` هنوز فاقد تاریخچهٔ migration عمومی است.
 2. ساخت schema در دو محل پخش است: `db.init_databases()` و `task_manager.initialize_task_store()`. ترتیب اجرای هر دو در startup مهم است.
 3. تغییرات سازگاری با schema قدیمی به شکل شرطی `ALTER TABLE` انجام می‌شوند: `learning_jobs.quality_json`، `learning_jobs.path_topic_id` و `task_queue.dedupe_key`. این روش وضعیت واقعی را ثبت نمی‌کند و تشخیص drift را دشوار می‌سازد.
 4. `learning_jobs.path_topic_id` به جدولی اشاره می‌کند که در کد فعلی پایین‌تر در همان تابع ساخته می‌شود. پیش از تغییر ترتیب یا constraintها باید این وابستگی با fixtureهای SQLite واقعی آزموده شود.
@@ -40,9 +40,10 @@
 6. `settings` و داده‌های یادگیری در دو فایل جدا هستند؛ صف در فایل یادگیری باقی مانده است. هیچ تصمیمی برای جداسازی فیزیکی صف یا ایجاد DBهای فرضی برای تجربه/گفتگو/retrieval/graph از این ممیزی نتیجه نمی‌شود.
 7. از این بررسی، ابزار backup/restore با آزمون بازیابی و ابزار مهاجرت تراکنشی عمومی اثبات نشدند. پیش از مهاجرت دادهٔ موجود، هر دو لازم‌اند.
 
-## 4. قرارداد پیشنهادی برای migration runner
+## 4. وضعیت و قرارداد migration runner
 
-- هر فایل DB یک جدول تاریخچهٔ مستقل داشته باشد که حداقل `version`، `migration_id`، `checksum` و زمان اعمال را نگه دارد.
+- این قرارداد اکنون برای `settings.db` در `app/migrations.py` پیاده‌سازی شده است: تاریخچهٔ مستقل با `version`، `migration_id`، `checksum`، زمان اعمال و حالت `migration/baseline`.
+- `learning.db` هنوز از مسیر initialization فعلی استفاده می‌کند و باید در مرحله‌ای جداگانه به همان runner منتقل شود.
 - migrationها مرتب، شماره‌دار، قابل‌بررسی و تا حد امکان تراکنشی باشند؛ هر migration پیش‌شرط، تغییر، پس‌شرط و راهبرد forward-recovery/rollback مستند داشته باشد.
 - migration runner پیش از تغییر schema، قفل/ترتیب اجرا را کنترل کند، نسخه و checksum را اعتبارسنجی کند و در صورت شکست با خطای واضح متوقف شود؛ migration ناشناخته یا checksum متفاوت نباید بی‌صدا رد شود.
 - پایگاه‌های قدیمی بدون تاریخچه نباید صرفاً به‌صورت کورکورانه «نسخهٔ جاری» علامت‌گذاری شوند. ابتدا با introspection و fixtureهای شناخته‌شده fingerprint شوند؛ schema ناشناخته به حالت fail-safe برود و نیاز به بررسی دستی را گزارش کند.
@@ -52,9 +53,9 @@
 
 ## 5. ترتیب اجرایی پیشنهادی
 
-1. تست‌های schema contract برای هر دو DB و fixtureهای legacy را تکمیل کن.
-2. ابزار backup/restore برای فایل‌های SQLite بساز و آزمون بازیابی واقعی روی کپی بگذار.
-3. migration runner عمومی را اضافه کن؛ ابتدا فقط metadata/version tracking و baseline تشخیصی، بدون حذف یا انتقال داده.
+1. تست‌های schema contract برای هر دو DB و fixtureهای legacy را تکمیل کن؛ قراردادهای schema و baseline تنظیمات اکنون پوشش دارند.
+2. ابزار backup/restore محلی اضافه شده و تست restore دارد؛ اجرای واقعی روی دادهٔ کاربر انجام نشده است.
+3. migration runner و baseline تشخیصی برای تنظیمات پیاده‌سازی شده؛ مرحلهٔ بعد انتقال امن schema یادگیری و صف به migrationهای نسخه‌دار.
 4. schemaهای فعلی را به migrationهای شماره‌دار تبدیل کن و مسیر fresh-install و upgrade از fixtureهای قدیمی را در CI تست کن.
 5. پس از اثبات upgrade و restore، حذف `ALTER TABLE`های ad-hoc از startup در PR مستقل انجام شود.
 6. فقط پس از ممیزی کامل مسیرهای خواندن/نوشتن، دربارهٔ مرزهای دیتابیس و مهاجرت داده تصمیم بگیر؛ تعداد DBها ثابت نیست.
