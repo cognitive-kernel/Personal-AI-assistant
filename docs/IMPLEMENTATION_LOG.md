@@ -507,9 +507,18 @@
 ## 30. 2026-10-15 — زیرساخت عمومی migration نسخه‌بندی‌شده
 
 - [x] `app/schema_migrations.py` افزوده شد: migrationهای شماره‌دار، checksum تغییرناپذیر، جدول تاریخچهٔ هر پایگاه، اجرای ترتیبی در تراکنش و rollback در صورت شکست.
-- [x] افزودن `schema_fingerprint()` و `record_baseline()` برای پذیرش صریح schema قدیمی فقط در صورت تطابق دقیق fingerprint؛ schema بدون تاریخچه خودکار «نسخه جاری» فرض نمی‌شود.
+- [x] `schema_fingerprint()` و `record_baseline()` اجازهٔ پذیرش schema قدیمی را فقط پس از تطابق fingerprint دقیق با یک migration ثبت‌شده می‌دهند؛ checksum مهاجرت و fingerprint مبنا جداگانه ذخیره می‌شوند.
 - [x] تست‌های اجرای مجدد، ترتیب نسخه، checksum تغییرکرده، schema قدیمی بدون تاریخچه، baseline نامعتبر، ارتقای پس از baseline و rollback شکست اضافه شدند.
 - [x] راهنمای دامنه و محدودیت‌ها در `docs/architecture/SCHEMA_MIGRATION_RUNNER.md` ثبت شد.
-- [ ] این runner هنوز به startup متصل نشده و registry واقعی migration برای schemaهای settings/learning هنوز تعریف نشده است؛ هیچ دیتابیس کاربر تغییر نکرده است.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #96** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/96)، commit ادغام `188a65a5e268f66c506fa71446cba88b05d0eccd`.
+- [x] CI روی head دقیق `34fecfc6540518be2a197199be4fc8baa3156267` موفق بود؛ run [#38785883899](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38785883899)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] runner هنوز به startup متصل نشده و registry واقعی migration برای schemaهای settings/learning تعریف نشده است؛ هیچ دیتابیس کاربر تغییر نکرده است.
 - **گام بعدی:** تعریف migrationهای واقعی برای نصب تازه و fixtureهای legacy، تطبیق دقیق schema/constraint/index، سپس اتصال runner به startup در تغییر مستقل.
+
+
+## 31. 2026-10-15 — اصلاح قرارداد baseline در migration runner
+
+- [x] baseline اکنون به یک `Migration` واقعی متصل می‌شود و checksum کد migration را جدا از fingerprint schema ذخیره می‌کند؛ بنابراین یک registry واحد می‌تواند برای نصب تازه و ارتقای دیتابیس legacy استفاده شود.
+- [x] تنها نخستین رکورد تاریخچه می‌تواند baseline باشد؛ در صورت وجود فقط baseline، تغییر بیرونی schema قبل از اجرای migration بعدی شناسایی و رد می‌شود.
+- [x] مستندات روشن می‌کنند که fingerprint مورد انتظار باید از fixture مرجع بازبینی‌شده بیاید، نه از خود دیتابیس ناشناخته.
+- [ ] نتیجهٔ CI روی head این PR هنوز باید بررسی شود؛ تست محلی اجرا نشده است.

@@ -41,3 +41,26 @@ Each SQL statement must be a single statement supported by `Connection.execute()
 ## Next step
 
 Build reviewed migration definitions for the settings and learning schemas, with fresh-install migrations and explicit legacy adoption fixtures. Only after the schema signatures, backup/restore, and upgrade tests pass should startup use the runner and the ad-hoc `ALTER TABLE` operations be removed.
+
+
+## Legacy baseline adoption
+
+A legacy schema must be compared against a fingerprint generated from a reviewed, canonical fixture for the registered migration. Do not calculate the expected fingerprint from the same untrusted live database: that would merely approve its current state.
+
+```python
+from app.schema_migrations import Migration, record_baseline, schema_fingerprint
+
+registered_migration = Migration(
+    1,
+    "create-example",
+    ("CREATE TABLE example (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",),
+)
+# expected_fingerprint must come from the reviewed canonical schema fixture.
+record_baseline(
+    connection,
+    migration=registered_migration,
+    expected_fingerprint=expected_fingerprint,
+)
+```
+
+The history stores the registered migration's checksum and the matched baseline fingerprint separately. The same migration registry can therefore initialize a fresh database or continue forward from an explicitly adopted legacy database.
