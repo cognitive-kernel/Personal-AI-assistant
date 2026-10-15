@@ -3,6 +3,7 @@ import pytest
 from app import db, learning, task_manager
 from app.learning_tasks import (
     LEARNING_TASK_TYPE,
+    cancel_learning_task,
     enqueue_learning_task,
     handle_learning_job,
     reconcile_queued_learning_tasks,
@@ -153,3 +154,32 @@ def test_reconciliation_does_not_duplicate_existing_task(learning_task_store):
 
     assert len(matching) == 1
     assert matching[0]["id"] == existing["id"]
+
+
+
+def test_stopping_queued_learning_cancels_its_queue_task(learning_task_store):
+    job = learning.create_job("Cancel queued learning")
+    task = enqueue_learning_task(job["id"])
+
+    cancelled = cancel_learning_task(job["id"])
+
+    assert cancelled["id"] == task["id"]
+    assert cancelled["status"] == "cancelled"
+
+
+def test_stopping_running_learning_requests_cooperative_task_cancel(learning_task_store):
+    job = learning.create_job("Cancel running learning")
+    task = enqueue_learning_task(job["id"])
+    claimed = task_manager.claim_next_task("worker-cancel")
+    assert claimed["id"] == task["id"]
+
+    cancelled = cancel_learning_task(job["id"])
+
+    assert cancelled["id"] == task["id"]
+    assert cancelled["status"] == "cancel_requested"
+
+
+def test_cancel_learning_task_is_safe_when_no_queue_task_exists(learning_task_store):
+    job = learning.create_job("No queue task yet")
+
+    assert cancel_learning_task(job["id"]) is None
