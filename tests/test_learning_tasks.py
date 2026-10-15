@@ -1,7 +1,12 @@
 import pytest
 
 from app import db, learning, task_manager
-from app.learning_tasks import LEARNING_TASK_TYPE, handle_learning_job
+from app.learning_tasks import (
+    LEARNING_TASK_TYPE,
+    enqueue_learning_task,
+    handle_learning_job,
+    reconcile_queued_learning_tasks,
+)
 from app.task_worker import TaskContext
 
 
@@ -111,3 +116,40 @@ def test_learning_task_handler_rejects_invalid_job_ids(
     context, _task = _claimed_context(job["id"])
     with pytest.raises(ValueError, match="positive integer job_id"):
         handle_learning_job(payload, None, context)
+
+
+
+def test_learning_enqueue_is_idempotent_and_payload_contains_only_job_id(learning_task_store):
+    job = learning.create_job("Durable enqueue")
+    first = enqueue_learning_task(job["id"])
+    second = enqueue_learning_task(job["id"])
+
+    assert first["id"] == second["id"]
+    assert first["task_type"] == LEARNING_TASK_TYPE
+    assert first["payload"] == {"job_id": job["id"]}
+    assert first["dedupe_key"] == f"learning-job:{job['id']}"
+
+
+def test_reconciliation_creates_missing_task_for_queued_job(learning_task_store):
+    job = learning.create_job("Recover orphan queued job")
+
+    assert reconcile_queued_learning_tasks() == 1
+    tasks = task_manager.list_tasks()
+    matching = [item for item in tasks if item["payload"] == {"job_id": job["id"]}]
+
+    assert len(matching) == 1
+    assert matching[0]["task_type"] == LEARNING_TASK_TYPE
+
+
+def test_reconciliation_does_not_duplicate_existing_task(learning_task_store):
+    job = learning.create_job("Already enqueued job")
+    existing = enqueue_learning_task(job["id"])
+
+    reconcile_queued_learning_tasks()
+    matching = [
+        item for item in task_manager.list_tasks()
+        if item["payload"] == {"job_id": job["id"]}
+    ]
+
+    assert len(matching) == 1
+    assert matching[0]["id"] == existing["id"]

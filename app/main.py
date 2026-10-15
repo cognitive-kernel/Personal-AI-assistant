@@ -7,6 +7,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from . import curricula, db, learning, ollama, task_manager
+from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
+from .task_runtime import TaskRuntime
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 from .task_routes import router as task_router
@@ -43,10 +45,34 @@ async def log_http_error_explanation(request, call_next):
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+_task_runtime: TaskRuntime | None = None
+
+
 @app.on_event("startup")
 def startup() -> None:
+    global _task_runtime
     db.init_databases()
     task_manager.initialize_task_store()
+    # Repair the crash window between creating a learning record and enqueueing it.
+    reconcile_queued_learning_tasks()
+    if _task_runtime is not None and _task_runtime.is_running:
+        return
+    settings = db.get_settings()
+    configured_workers = int(settings.get("learning_max_concurrent_jobs", 1))
+    worker_count = max(1, min(8, configured_workers))
+    _task_runtime = TaskRuntime(
+        {LEARNING_TASK_TYPE: handle_learning_job},
+        worker_count=worker_count,
+        poll_interval=0.5,
+        lease_seconds=300,
+    )
+    _task_runtime.start()
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    if _task_runtime is not None and not _task_runtime.stop(timeout=10.0):
+        logger.warning("Task runtime did not stop before the shutdown deadline.")
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:

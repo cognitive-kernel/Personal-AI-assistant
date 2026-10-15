@@ -9,10 +9,35 @@ from typing import Any
 
 from . import learning
 from .db import learning_connection
+from . import task_manager
 from .task_worker import TaskContext
 
 LEARNING_TASK_TYPE = "learning.run_job"
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
+
+
+def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
+    """Enqueue one learning job idempotently; the durable queue stores no source text."""
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("job_id must be a positive integer")
+    return task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": job_id},
+        priority=priority,
+        max_attempts=3,
+        dedupe_key=f"learning-job:{job_id}",
+    )
+
+
+def reconcile_queued_learning_tasks() -> int:
+    """Ensure queued/running learning records have a durable task after a restart."""
+    with learning_connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
+        ).fetchall()
+    for row in rows:
+        enqueue_learning_task(int(row["id"]))
+    return len(rows)
 
 
 def handle_learning_job(
