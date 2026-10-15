@@ -1,0 +1,42 @@
+import sqlite3
+
+import pytest
+
+from app import main
+from app.schema_migrations import UntrackedSchemaError
+
+
+def test_startup_rejects_unknown_settings_schema_before_starting_workers(tmp_path, monkeypatch):
+    settings_path = tmp_path / "settings.db"
+    learning_path = tmp_path / "learning.db"
+    monkeypatch.setattr(main.defaults, "settings_db_path", str(settings_path))
+    monkeypatch.setattr(main.defaults, "learning_db_path", str(learning_path))
+    monkeypatch.setattr(main, "_task_runtime", None)
+    constructed = []
+
+    class RuntimeStub:
+        def __init__(self, *args, **kwargs):
+            constructed.append("constructed")
+
+        def start(self):
+            constructed.append("started")
+
+    monkeypatch.setattr(main, "TaskRuntime", RuntimeStub)
+    with sqlite3.connect(settings_path) as connection:
+        connection.execute("CREATE TABLE unrecognized_settings (value TEXT)")
+        connection.execute("INSERT INTO unrecognized_settings(value) VALUES ('preserve')")
+
+    with pytest.raises(UntrackedSchemaError, match="does not match"):
+        main.startup()
+
+    assert constructed == []
+    backups = list(tmp_path.glob("settings.db.pre-migration-*.bak"))
+    assert len(backups) == 1
+    with sqlite3.connect(settings_path) as connection:
+        assert connection.execute(
+            "SELECT value FROM unrecognized_settings"
+        ).fetchone() == ("preserve",)
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
+        ).fetchone() is None
+    assert not learning_path.exists()
