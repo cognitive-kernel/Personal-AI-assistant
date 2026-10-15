@@ -168,8 +168,8 @@ def _normalize_sql(sql: str) -> str:
             output.append(char)
         index += 1
     normalized = "".join(output).strip()
-    normalized = re.sub(r"(?i)\\bIF NOT EXISTS\\b", "", normalized)
-    normalized = re.sub(r"\\s+", " ", normalized).strip()
+    normalized = re.sub(r"(?i)\bIF NOT EXISTS\b", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
 
 
@@ -177,13 +177,13 @@ def _canonical_table_definition(name: str, sql: str) -> str:
     definitions = _split_table_definitions(_table_body(sql))
     column_definitions: list[tuple[str, str]] = []
     table_constraints: list[str] = []
-    constraint_prefix = re.compile(r"(?i)^(?:CONSTRAINT\\b|PRIMARY\\s+KEY\\b|UNIQUE\\b|CHECK\\s*\\(|FOREIGN\\s+KEY\\b)")
+    constraint_prefix = re.compile(r"(?i)^(?:CONSTRAINT\b|PRIMARY\s+KEY\b|UNIQUE\b|CHECK\s*\(|FOREIGN\s+KEY\b)")
     for definition in definitions:
         normalized = _normalize_sql(definition)
         if constraint_prefix.match(normalized):
             table_constraints.append(normalized)
             continue
-        match = re.match(r'^(?:"([^"]+)"|\\x60([^\\x60]+)\\x60|\\[([^]]+)\\]|([A-Za-z_][A-Za-z0-9_]*))', normalized)
+        match = re.match(r'^(?:"([^"]+)"|\[([^]]+)\]|([A-Za-z_][A-Za-z0-9_]*))', normalized)
         if match is None:
             raise MigrationError(f"Could not identify a column in table {name}.")
         column_name = next(group for group in match.groups() if group is not None)
