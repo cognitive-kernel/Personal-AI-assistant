@@ -168,7 +168,7 @@ def test_task_creation_rejects_blank_dedupe_key(worker_store):
         task_manager.create_task("test.deduplicated", {}, dedupe_key="  ")
 
 
-def test_task_store_migrates_preexisting_queue_schema(worker_store):
+def test_task_store_refuses_unmigrated_queue_schema(worker_store):
     with db.learning_connection() as conn:
         conn.execute("DROP TABLE task_queue")
         conn.execute(
@@ -192,15 +192,5 @@ def test_task_store_migrates_preexisting_queue_schema(worker_store):
             )
             """
         )
-        conn.execute(
-            "INSERT INTO task_queue(task_type, payload_json) VALUES (?, ?)",
-            ("legacy.task", "{}"),
-        )
-
-    task_manager.initialize_task_store()
-    saved = task_manager.get_task(1)
-    with db.learning_connection() as conn:
-        columns = {row["name"] for row in conn.execute("PRAGMA table_info(task_queue)")}
-
-    assert saved["task_type"] == "legacy.task"
-    assert "dedupe_key" in columns
+    with pytest.raises(task_manager.TaskManagerError, match="not at the registered version"):
+        task_manager.initialize_task_store()
