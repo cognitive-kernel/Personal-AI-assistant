@@ -73,6 +73,7 @@ def test_dataset_with_only_one_language_is_rejected(tmp_path: Path):
     with pytest.raises(ValueError, match="must include both fa and en"):
         load_cases(single_language)
 
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -126,6 +127,15 @@ def test_duplicate_case_id_line_numbers_include_blank_lines(tmp_path: Path):
 def test_nonstandard_json_constants_are_rejected_with_line_number(tmp_path: Path, constant: str):
     valid = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
     malformed = tmp_path / "nonstandard-constant.jsonl"
-    malformed.write_text(valid[:-1] + f',"metadata":{{"score":{constant}}}' + "}\n", encoding="utf-8")
+    malformed.write_text(valid[:-1] + f', "metadata":{{"score":{constant}}}' + "}\n", encoding="utf-8")
     with pytest.raises(ValueError, match=rf"Invalid JSON.*:1: non-standard JSON constant '{constant}'"):
+        load_cases(malformed)
+
+
+def test_nonstandard_json_constant_reports_actual_line_number(tmp_path: Path):
+    valid = DEFAULT_DATASET.read_text(encoding="utf-8").splitlines()[0]
+    malformed_line = valid[:-1] + ', "metadata":{"score":Infinity}' + "}\n"
+    malformed = tmp_path / "nonstandard-constant-line-two.jsonl"
+    malformed.write_text(f"{valid}\n{malformed_line}", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"Invalid JSON.*:2: non-standard JSON constant 'Infinity'"):
         load_cases(malformed)
