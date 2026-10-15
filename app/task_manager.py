@@ -25,7 +25,10 @@ def _now() -> datetime:
 
 
 def _timestamp(value: datetime | None = None) -> str:
-    return (value or _now()).isoformat(timespec="microseconds")
+    current = value or _now()
+    if current.tzinfo is None or current.utcoffset() is None:
+        raise ValueError("Timestamps must include a timezone.")
+    return current.astimezone(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _json(value: Any) -> str:
