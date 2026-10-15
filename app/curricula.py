@@ -5,6 +5,7 @@ Topics are taught on demand and should be backed by current, version-aware sourc
 """
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 
@@ -315,7 +316,7 @@ def list_curricula() -> list[dict[str, Any]]:
                 for level in _learning_levels(item["topics"])
             ],
             "notes": item.get("notes"),
-            "reference_urls": list(item.get("reference_urls", [])),
+            "reference_urls": deepcopy(item.get("reference_urls", [])),
         })
     return result
 
@@ -327,6 +328,8 @@ def get_curriculum(slug: str) -> dict[str, Any] | None:
     if item is None:
         return None
     topics = list(item["topics"])
-    return {"slug": key, **item.copy(), "topics": topics,
+    return {"slug": key, **item.copy(),
+            "reference_urls": deepcopy(item.get("reference_urls", [])),
+            "topics": topics,
             "levels": _learning_levels(topics),
             "prerequisites": list(item.get("prerequisites", []))}
