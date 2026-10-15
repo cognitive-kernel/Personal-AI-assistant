@@ -74,12 +74,12 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         ).lastrowid
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 3
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 3
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 4
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 4
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}
-        assert {"quality_json", "path_topic_id"} <= job_columns
+        assert {"quality_json", "path_topic_id", "lesson_review_json"} <= job_columns
         assert "dedupe_key" in task_columns
         assert connection.execute(
             "SELECT topic, status, source_kind FROM learning_jobs WHERE id=?", (job_id,)
@@ -120,18 +120,19 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,)]
 
 
 def test_registry_exposes_reviewable_canonical_fingerprints():
     settings_fingerprint = fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     learning_v1 = fingerprint_for_version(LEARNING_MIGRATIONS, 1)
     learning_v2 = fingerprint_for_version(LEARNING_MIGRATIONS, 2)
-    learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 3)
+    learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
+    learning_v4 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
 
     assert len(settings_fingerprint) == 64
-    assert len(learning_v1) == len(learning_v2) == len(learning_v3) == 64
-    assert len({learning_v1, learning_v2, learning_v3}) == 3
+    assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == 64
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4}) == 4
 
 
 
@@ -152,23 +153,23 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
         ).fetchone() is None
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 4
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == [1, 2, 3]
+        assert [row[0] for row in history] == [1, 2, 3, 4]
         assert len(history[0][1]) == 64
-        assert history[1][1] is None and history[2][1] is None
+        assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_known_current_schema_is_baselined_without_replaying_migrations():
-    with _create_untracked_schema(LEARNING_MIGRATIONS, 3) as connection:
+    with _create_untracked_schema(LEARNING_MIGRATIONS, 4) as connection:
         assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(3, schema_fingerprint(connection))]
+        assert history == [(4, schema_fingerprint(connection))]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
