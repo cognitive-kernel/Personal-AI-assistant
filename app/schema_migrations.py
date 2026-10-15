@@ -55,20 +55,165 @@ class Migration:
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _split_table_definitions(body: str) -> list[str]:
+    definitions: list[str] = []
+    start = 0
+    depth = 0
+    quote: str | None = None
+    bracket_quote = False
+    index = 0
+    while index < len(body):
+        char = body[index]
+        if bracket_quote:
+            if char == "]":
+                bracket_quote = False
+        elif quote is not None:
+            if char == quote:
+                if index + 1 < len(body) and body[index + 1] == quote:
+                    index += 1
+                else:
+                    quote = None
+        elif char == "[":
+            bracket_quote = True
+        elif char in {"'", '"', "`"}:
+            quote = char
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            definitions.append(body[start:index].strip())
+            start = index + 1
+        index += 1
+    tail = body[start:].strip()
+    if tail:
+        definitions.append(tail)
+    return definitions
+
+
+def _table_body(sql: str) -> str:
+    quote: str | None = None
+    bracket_quote = False
+    start = -1
+    depth = 0
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if bracket_quote:
+            if char == "]":
+                bracket_quote = False
+        elif quote is not None:
+            if char == quote:
+                if index + 1 < len(sql) and sql[index + 1] == quote:
+                    index += 1
+                else:
+                    quote = None
+        elif char == "[":
+            bracket_quote = True
+        elif char in {"'", '"', "`"}:
+            quote = char
+        elif char == "(":
+            if start < 0:
+                start = index + 1
+                depth = 1
+            else:
+                depth += 1
+        elif char == ")" and start >= 0:
+            depth -= 1
+            if depth == 0:
+                return sql[start:index]
+        index += 1
+    raise MigrationError("Could not parse CREATE TABLE SQL while fingerprinting schema.")
+
+
+def _normalize_sql(sql: str) -> str:
+    """Collapse formatting whitespace outside quoted values and normalize IF NOT EXISTS."""
+    output: list[str] = []
+    quote: str | None = None
+    bracket_quote = False
+    pending_space = False
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if bracket_quote:
+            output.append(char)
+            if char == "]":
+                bracket_quote = False
+        elif quote is not None:
+            output.append(char)
+            if char == quote:
+                if index + 1 < len(sql) and sql[index + 1] == quote:
+                    output.append(sql[index + 1])
+                    index += 1
+                else:
+                    quote = None
+        elif char == "[":
+            if pending_space and output and output[-1] not in {" ", "("}:
+                output.append(" ")
+            pending_space = False
+            output.append(char)
+            bracket_quote = True
+        elif char in {"'", '"', "`"}:
+            if pending_space and output and output[-1] not in {" ", "("}:
+                output.append(" ")
+            pending_space = False
+            output.append(char)
+            quote = char
+        elif char.isspace():
+            pending_space = True
+        else:
+            if pending_space and output and output[-1] not in {" ", "(", "."} and char not in {")", ",", "."}:
+                output.append(" ")
+            pending_space = False
+            output.append(char)
+        index += 1
+    normalized = "".join(output).strip()
+    normalized = re.sub(r"(?i)\\bIF NOT EXISTS\\b", "", normalized)
+    normalized = re.sub(r"\\s+", " ", normalized).strip()
+    return normalized
+
+
+def _canonical_table_definition(name: str, sql: str) -> str:
+    definitions = _split_table_definitions(_table_body(sql))
+    column_definitions: list[tuple[str, str]] = []
+    table_constraints: list[str] = []
+    constraint_prefix = re.compile(r"(?i)^(?:CONSTRAINT\\b|PRIMARY\\s+KEY\\b|UNIQUE\\b|CHECK\\s*\\(|FOREIGN\\s+KEY\\b)")
+    for definition in definitions:
+        normalized = _normalize_sql(definition)
+        if constraint_prefix.match(normalized):
+            table_constraints.append(normalized)
+            continue
+        match = re.match(r'^(?:"([^"]+)"|\\x60([^\\x60]+)\\x60|\\[([^]]+)\\]|([A-Za-z_][A-Za-z0-9_]*))', normalized)
+        if match is None:
+            raise MigrationError(f"Could not identify a column in table {name}.")
+        column_name = next(group for group in match.groups() if group is not None)
+        column_definitions.append((column_name.casefold(), normalized))
+    columns = [definition for _, definition in sorted(column_definitions)]
+    constraints = sorted(table_constraints, key=str.casefold)
+    return f"TABLE {name} ({', '.join(columns + constraints)})"
+
+
 def schema_fingerprint(connection: sqlite3.Connection) -> str:
-    """Hash canonical SQLite DDL, excluding internal tables and migration metadata."""
+    """Hash logical SQLite schema, ignoring column order and harmless DDL formatting."""
     rows = connection.execute(
         """
         SELECT type, name, tbl_name, COALESCE(sql, '')
         FROM sqlite_master
         WHERE name NOT LIKE 'sqlite_%' AND name != ?
           AND type IN ('table', 'index', 'view', 'trigger')
-        ORDER BY type, name, tbl_name, sql
+        ORDER BY type, name, tbl_name
         """,
         (_HISTORY_TABLE,),
     ).fetchall()
-    canonical = json.dumps([tuple(row) for row in rows], ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    canonical: list[tuple[str, str, str, str]] = []
+    for item_type, name, table_name, sql in rows:
+        if item_type == "table":
+            definition = _canonical_table_definition(name, sql)
+        else:
+            definition = _normalize_sql(sql)
+        canonical.append((item_type, name, table_name, definition))
+    encoded = json.dumps(canonical, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _has_user_schema(connection: sqlite3.Connection) -> bool:
