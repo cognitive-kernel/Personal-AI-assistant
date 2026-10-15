@@ -61,7 +61,9 @@ def test_runtime_validates_worker_and_poll_configuration():
 
 
 def test_new_runtime_reclaims_expired_lease_and_resumes_from_checkpoint(runtime_store):
-    task = task_manager.create_task("runtime.recover", {"value": "persisted"})
+    task = task_manager.create_task(
+        "runtime.recover", {"value": "persisted"}, max_attempts=3
+    )
     claimed = task_manager.claim_next_task("previous-process", lease_seconds=30)
     assert claimed["id"] == task["id"]
     task_manager.save_checkpoint(
