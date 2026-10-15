@@ -376,6 +376,33 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     assert finished["quality"]["accepted"] is True
 
 
+def test_failed_learning_job_can_be_retried_after_worker_reclaims_task(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Retry after worker recovery")
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_jobs SET status='failed', error='previous attempt failed' WHERE id=?",
+            (job["id"],),
+        )
+
+    def retry_request(*_args, **_kwargs):
+        raise RuntimeError("retry reached model")
+
+    monkeypatch.setattr(learning, "_request", retry_request)
+    try:
+        learning.run_job(job["id"])
+    except learning.LearningError as exc:
+        assert "retry reached model" in str(exc)
+    else:
+        raise AssertionError("A failed job must be eligible for a durable queue retry")
+
+    failed = learning.get_job(job["id"])
+    assert failed["status"] == "failed"
+    assert "retry reached model" in failed["error"]
+
+
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
