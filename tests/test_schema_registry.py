@@ -29,11 +29,47 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         connection.execute("PRAGMA foreign_keys = ON")
         assert MigrationRunner(LEARNING_MIGRATIONS[:1]).apply(connection) == 1
         job_id = connection.execute(
-            "INSERT INTO learning_jobs(topic, status, source_kind) VALUES ('retained', 'queued', 'test')"
+            "INSERT INTO learning_jobs(topic, status, source_kind) VALUES ('retained', 'queued', 'user_text')"
+        ).lastrowid
+        evidence_id = connection.execute(
+            """INSERT INTO learning_evidence(
+                   job_id, evidence_type, source_ref, content_hash, note
+               ) VALUES (?, 'user_text', 'file://lesson.md', 'sha256:abc123', 'source retained')""",
+            (job_id,),
+        ).lastrowid
+        connection.execute(
+            "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
+            (job_id, "original source text"),
+        )
+        knowledge_id = connection.execute(
+            """INSERT INTO knowledge_items(
+                   topic, content, source_kind, version, status, job_id
+               ) VALUES ('retained', 'canonical lesson', 'user_text', 1, 'unverified', ?)""",
+            (job_id,),
+        ).lastrowid
+        assessment_id = connection.execute(
+            """INSERT INTO assessment_attempts(
+                   job_id, answers_json, score, correct_count, question_count
+               ) VALUES (?, '["a"]', 100, 1, 1)""",
+            (job_id,),
+        ).lastrowid
+        review_id = connection.execute(
+            """INSERT INTO lesson_reviews(
+                   job_id, outcomes_json, value_rating, takeaway, issues
+               ) VALUES (?, '["useful"]', 5, 'keep this insight', '')""",
+            (job_id,),
+        ).lastrowid
+        path_id = connection.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('retained-path', 'Retained path')"
+        ).lastrowid
+        path_topic_id = connection.execute(
+            """INSERT INTO learning_path_topics(path_id, topic, position, status)
+               VALUES (?, 'retained', 0, 'completed')""",
+            (path_id,),
         ).lastrowid
         task_id = connection.execute(
             "INSERT INTO task_queue(task_type, payload_json) VALUES ('learning.run_job', ?)",
-            ('{"job_id": 1}',),
+            (json.dumps({"job_id": job_id}),),
         ).lastrowid
         connection.commit()
 
@@ -45,11 +81,38 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert {"quality_json", "path_topic_id"} <= job_columns
         assert "dedupe_key" in task_columns
         assert connection.execute(
-            "SELECT topic, status FROM learning_jobs WHERE id=?", (job_id,)
-        ).fetchone() == ("retained", "queued")
+            "SELECT topic, status, source_kind FROM learning_jobs WHERE id=?", (job_id,)
+        ).fetchone() == ("retained", "queued", "user_text")
+        assert connection.execute(
+            """SELECT evidence_type, source_ref, content_hash, note
+               FROM learning_evidence WHERE id=?""",
+            (evidence_id,),
+        ).fetchone() == ("user_text", "file://lesson.md", "sha256:abc123", "source retained")
+        assert connection.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)
+        ).fetchone() == ("original source text",)
+        assert connection.execute(
+            "SELECT id, content, source_kind, version, status, job_id FROM knowledge_items WHERE id=?",
+            (knowledge_id,),
+        ).fetchone() == (knowledge_id, "canonical lesson", "user_text", 1, "unverified", job_id)
+        assert connection.execute(
+            "SELECT id, answers_json, score, correct_count, question_count FROM assessment_attempts WHERE id=?",
+            (assessment_id,),
+        ).fetchone() == (assessment_id, '["a"]', 100.0, 1, 1)
+        assert connection.execute(
+            "SELECT id, outcomes_json, value_rating, takeaway, issues FROM lesson_reviews WHERE id=?",
+            (review_id,),
+        ).fetchone() == (review_id, '["useful"]', 5, "keep this insight", "")
+        assert connection.execute(
+            "SELECT id, curriculum_slug, title FROM learning_paths WHERE id=?", (path_id,)
+        ).fetchone() == (path_id, "retained-path", "Retained path")
+        assert connection.execute(
+            "SELECT id, path_id, topic, position, status FROM learning_path_topics WHERE id=?",
+            (path_topic_id,),
+        ).fetchone() == (path_topic_id, path_id, "retained", 0, "completed")
         assert connection.execute(
             "SELECT task_type, payload_json FROM task_queue WHERE id=?", (task_id,)
-        ).fetchone() == ("learning.run_job", '{"job_id": 1}')
+        ).fetchone() == ("learning.run_job", json.dumps({"job_id": job_id}))
         indexes = {row[1] for row in connection.execute("PRAGMA index_list(task_queue)")}
         assert "idx_task_queue_dedupe_key" in indexes
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
