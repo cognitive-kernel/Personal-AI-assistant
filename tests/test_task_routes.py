@@ -46,6 +46,7 @@ def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
         resumed = client.post(f"/api/tasks/{task_id}/resume")
         assert resumed.status_code == 200
         assert resumed.json()["status"] == "queued"
+        assert resumed.json()["scheduled_at"] == scheduled.json()["scheduled_at"]
 
         cancelled = client.post(f"/api/tasks/{task_id}/cancel")
         assert cancelled.status_code == 200
