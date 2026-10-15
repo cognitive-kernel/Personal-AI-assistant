@@ -108,6 +108,25 @@ LEARNING_MIGRATIONS = (
                 issues TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""",
+        ),
+    ),
+    Migration(
+        2,
+        "learning-job-quality-json",
+        ("ALTER TABLE learning_jobs ADD COLUMN quality_json TEXT",),
+    ),
+    Migration(
+        3,
+        "learning-path-topic-reference",
+        (
+            "ALTER TABLE learning_jobs ADD COLUMN path_topic_id INTEGER REFERENCES learning_path_topics(id) ON DELETE SET NULL",
+            "CREATE INDEX idx_learning_jobs_path_topic ON learning_jobs(path_topic_id, status)",
+        ),
+    ),
+    Migration(
+        4,
+        "task-queue-create",
+        (
             """CREATE TABLE task_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_type TEXT NOT NULL CHECK(length(trim(task_type)) > 0),
@@ -127,27 +146,15 @@ LEARNING_MIGRATIONS = (
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )""",
-            "CREATE INDEX idx_learning_jobs_status ON learning_jobs(status)",
-            "CREATE INDEX idx_knowledge_topic ON knowledge_items(topic, version DESC)",
-            "CREATE INDEX idx_assessment_attempts_job ON assessment_attempts(job_id, id DESC)",
-            "CREATE INDEX idx_lesson_reviews_job ON lesson_reviews(job_id, id DESC)",
-            "CREATE INDEX idx_path_topics_status ON learning_path_topics(path_id, status, position)",
             "CREATE INDEX idx_task_queue_ready ON task_queue(status, scheduled_at, priority DESC, id)",
             "CREATE INDEX idx_task_queue_lease ON task_queue(status, lease_expires_at)",
         ),
     ),
     Migration(
-        2,
-        "learning-job-quality-json",
-        ("ALTER TABLE learning_jobs ADD COLUMN quality_json TEXT",),
-    ),
-    Migration(
-        3,
-        "learning-path-topic-and-task-idempotency",
+        5,
+        "task-queue-dedupe-key",
         (
-            "ALTER TABLE learning_jobs ADD COLUMN path_topic_id INTEGER REFERENCES learning_path_topics(id) ON DELETE SET NULL",
             "ALTER TABLE task_queue ADD COLUMN dedupe_key TEXT",
-            "CREATE INDEX idx_learning_jobs_path_topic ON learning_jobs(path_topic_id, status)",
             "CREATE UNIQUE INDEX idx_task_queue_dedupe_key ON task_queue(dedupe_key) WHERE dedupe_key IS NOT NULL",
         ),
     ),
