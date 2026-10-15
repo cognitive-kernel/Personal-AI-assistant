@@ -8,7 +8,13 @@ from __future__ import annotations
 import sqlite3
 from typing import Iterable
 
-from .schema_migrations import Migration, MigrationRunner, schema_fingerprint
+from .schema_migrations import (
+    Migration,
+    MigrationRunner,
+    UntrackedSchemaError,
+    record_baseline,
+    schema_fingerprint,
+)
 
 
 SETTINGS_MIGRATIONS = (
@@ -156,3 +162,38 @@ def fingerprint_for_version(migrations: Iterable[Migration], version: int) -> st
     with sqlite3.connect(":memory:") as connection:
         MigrationRunner(selected).apply(connection)
         return schema_fingerprint(connection)
+
+
+
+def initialize_connection(connection: sqlite3.Connection, migrations: Iterable[Migration]) -> int:
+    """Initialize a fresh DB or adopt an exact known migration schema before upgrading it."""
+    migration_list = tuple(migrations)
+    runner = MigrationRunner(migration_list)
+    history_exists = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+    ).fetchone() is not None
+    has_user_schema = connection.execute(
+        """
+        SELECT 1 FROM sqlite_master
+        WHERE type IN ('table', 'index', 'view', 'trigger')
+          AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'
+        LIMIT 1
+        """
+    ).fetchone() is not None
+    if history_exists or not has_user_schema:
+        return runner.apply(connection)
+
+    actual = schema_fingerprint(connection)
+    for migration in migration_list:
+        expected = fingerprint_for_version(migration_list, migration.version)
+        if actual == expected:
+            record_baseline(
+                connection,
+                migration=migration,
+                expected_fingerprint=expected,
+            )
+            return runner.apply(connection)
+    raise UntrackedSchemaError(
+        "Existing database schema does not match any registered migration version; "
+        "no history was written and no schema changes were applied."
+    )
