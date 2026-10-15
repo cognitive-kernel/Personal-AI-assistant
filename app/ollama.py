@@ -29,6 +29,13 @@ def _base_url() -> str:
         raise OllamaError("Ollama URL must be a base URL without a path, query, or fragment.")
     return base
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Prevent a loopback Ollama endpoint from redirecting requests elsewhere."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
     settings = get_settings()
     request = urllib.request.Request(
@@ -38,7 +45,9 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         method="GET" if payload is None else "POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout or int(settings["ollama_timeout_seconds"])) as response:
+        with urllib.request.build_opener(_NoRedirectHandler()).open(
+            request, timeout=timeout or int(settings["ollama_timeout_seconds"])
+        ) as response:
             body = response.read(8 * 1024 * 1024)
         result = json.loads(body.decode("utf-8"))
         if not isinstance(result, dict):
