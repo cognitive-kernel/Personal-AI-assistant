@@ -6,6 +6,7 @@ adoption requires comparing a live database against reviewed fingerprints.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -205,7 +206,7 @@ def initialize_connection(connection: sqlite3.Connection, migrations: Iterable[M
 def _needs_schema_backup(path: Path, migrations: tuple[Migration, ...]) -> bool:
     if not path.exists() or path.stat().st_size == 0:
         return False
-    with sqlite3.connect(str(path)) as connection:
+    with closing(sqlite3.connect(str(path))) as connection:
         history_exists = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
         ).fetchone() is not None
@@ -244,7 +245,9 @@ def _create_pre_migration_backup(path: Path) -> Path:
         candidate = path.with_name(f"{path.name}.pre-migration-{stamp}-{suffix}.bak")
         suffix += 1
 
-    with sqlite3.connect(str(path)) as source, sqlite3.connect(str(candidate)) as destination:
+    with closing(sqlite3.connect(str(path))) as source, closing(
+        sqlite3.connect(str(candidate))
+    ) as destination:
         source.backup(destination)
         result = destination.execute("PRAGMA integrity_check").fetchone()
         if result is None or result[0] != "ok":
@@ -263,7 +266,7 @@ def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) 
     if _needs_schema_backup(target, migration_list):
         _create_pre_migration_backup(target)
 
-    with sqlite3.connect(str(target), timeout=10) as connection:
+    with closing(sqlite3.connect(str(target), timeout=10)) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 10000")
         return initialize_connection(connection, migration_list)
