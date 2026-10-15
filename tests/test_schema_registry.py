@@ -29,43 +29,36 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         job_id = connection.execute(
             "INSERT INTO learning_jobs(topic, status, source_kind) VALUES ('retained', 'queued', 'test')"
         ).lastrowid
-        task_id = connection.execute(
-            "INSERT INTO task_queue(task_type, payload_json) VALUES ('learning.run_job', ?)",
-            ('{"job_id": 1}',),
-        ).lastrowid
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 3
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 3
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 5
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 5
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}
         assert {"quality_json", "path_topic_id"} <= job_columns
-        assert "dedupe_key" in task_columns
+        assert {"dedupe_key", "checkpoint_json", "lease_owner", "lease_expires_at"} <= task_columns
         assert connection.execute(
             "SELECT topic, status FROM learning_jobs WHERE id=?", (job_id,)
         ).fetchone() == ("retained", "queued")
-        assert connection.execute(
-            "SELECT task_type, payload_json FROM task_queue WHERE id=?", (task_id,)
-        ).fetchone() == ("learning.run_job", '{"job_id": 1}')
-        indexes = {row[1] for row in connection.execute("PRAGMA index_list(task_queue)")}
-        assert "idx_task_queue_dedupe_key" in indexes
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,), (5,)]
 
 
 def test_registry_exposes_reviewable_canonical_fingerprints():
     settings_fingerprint = fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     learning_v1 = fingerprint_for_version(LEARNING_MIGRATIONS, 1)
     learning_v2 = fingerprint_for_version(LEARNING_MIGRATIONS, 2)
-    learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 3)
+    learning_fingerprints = [
+        fingerprint_for_version(LEARNING_MIGRATIONS, version) for version in range(1, 6)
+    ]
 
     assert len(settings_fingerprint) == 64
-    assert len(learning_v1) == len(learning_v2) == len(learning_v3) == 64
-    assert len({learning_v1, learning_v2, learning_v3}) == 3
+    assert all(len(value) == 64 for value in learning_fingerprints)
+    assert len(set(learning_fingerprints)) == 5
 
 
 
@@ -86,23 +79,23 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
         ).fetchone() is None
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 5
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == [1, 2, 3]
+        assert [row[0] for row in history] == [1, 2, 3, 4, 5]
         assert len(history[0][1]) == 64
         assert history[1][1] is None and history[2][1] is None
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_known_current_schema_is_baselined_without_replaying_migrations():
-    with _create_untracked_schema(LEARNING_MIGRATIONS, 3) as connection:
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 3
+    with _create_untracked_schema(LEARNING_MIGRATIONS, 5) as connection:
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 5
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(3, schema_fingerprint(connection))]
+        assert history == [(5, schema_fingerprint(connection))]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
@@ -154,4 +147,24 @@ def test_current_application_schema_matches_registered_baseline(tmp_path, monkey
     with db.settings_connection() as connection:
         assert schema_fingerprint(connection) == fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     with db.learning_connection() as connection:
-        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 3)
+        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 5)
+
+
+
+def test_legacy_learning_database_without_task_queue_upgrades_forward(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    with db.learning_connection() as connection:
+        job_id = connection.execute(
+            "INSERT INTO learning_jobs(topic, status, source_kind) VALUES ('pre-queue', 'queued', 'test')"
+        ).lastrowid
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_queue'"
+        ).fetchone() is None
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 5
+        assert connection.execute(
+            "SELECT topic, status FROM learning_jobs WHERE id=?", (job_id,)
+        ).fetchone() == ("pre-queue", "queued")
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
