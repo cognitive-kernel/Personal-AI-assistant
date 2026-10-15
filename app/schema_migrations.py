@@ -128,7 +128,12 @@ def _table_body(sql: str) -> str:
 
 def _normalize_sql(sql: str) -> str:
     """Collapse formatting whitespace outside quoted values and normalize IF NOT EXISTS."""
-    sql = re.sub(r"(?i)\bIF NOT EXISTS\b", "", sql)
+    sql = re.sub(
+        r"(?i)^(CREATE\s+(?:UNIQUE\s+)?(?:INDEX|TABLE|VIEW|TRIGGER)\s+)IF NOT EXISTS\b",
+        r"\1",
+        sql.strip(),
+        count=1,
+    )
     output: list[str] = []
     quote: str | None = None
     bracket_quote = False
