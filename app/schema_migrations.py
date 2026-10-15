@@ -168,7 +168,7 @@ def _normalize_sql(sql: str) -> str:
         elif char.isspace():
             pending_space = True
         else:
-            if pending_space and output and output[-1] not in {" ", "(", "."} and char not in {")", ",", "."}:
+            if pending_space and output and output[-1] not in {" ", "(", "."} and char not in {")", ",", ".", "("}:
                 output.append(" ")
             pending_space = False
             output.append(char)
