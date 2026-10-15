@@ -152,6 +152,8 @@ def run_job(job_id: int) -> None:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
+        raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
+        raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 def get_job(job_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
