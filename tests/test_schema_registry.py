@@ -221,7 +221,7 @@ def test_current_application_schema_matches_registered_baseline(tmp_path, monkey
     with db.settings_connection() as connection:
         assert schema_fingerprint(connection) == fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     with db.learning_connection() as connection:
-        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 3)
+        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 4)
 
 
 
