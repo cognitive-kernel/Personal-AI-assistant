@@ -116,6 +116,9 @@ def run_job(job_id: int) -> None:
             lesson_review = None
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
+    user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
+    if not source_text and source_kind == "model_knowledge_no_external_source":
+        source_text, source_kind = _discover_and_store_sources(job_id, topic)
     prompt = {
         "topic": topic,
         "source_text": source_text,
@@ -146,7 +149,7 @@ def run_job(job_id: int) -> None:
             raise LearningError("Model response did not match the expected learning format.")
         assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
-        quality["user_provided_source_available"] = bool(source_text)
+        quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         if not quality["accepted"]:
