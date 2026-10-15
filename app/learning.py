@@ -2,6 +2,7 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any
+from urllib.parse import urlencode
 from .db import learning_connection, get_settings
 from .ollama import _request
 from . import curricula
@@ -32,6 +33,76 @@ def create_job(topic: str, source_text: str | None = None, path_topic_id: int | 
                 VALUES (?, 'user_text', 'user-provided', ?, 'متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است.')""", (job_id, digest))
     return get_job(job_id)
 
+def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
+    """Fetch public web evidence before generation; gracefully fall back when unavailable."""
+    from .web_sources import discover_sources
+
+    settings = get_settings()
+    max_chars = max(1000, min(100000, int(settings.get("learning_source_max_chars", 12000))))
+    search_ref = "https://html.duckduckgo.com/html/?" + urlencode({"q": topic})
+    try:
+        documents = discover_sources(topic, limit=3)
+    except Exception as exc:
+        documents = []
+        failure_note = f"Web discovery unavailable ({type(exc).__name__}); lesson will fall back to model knowledge."
+    else:
+        failure_note = "No accessible public pages were found; lesson will fall back to model knowledge."
+
+    if not documents:
+        with learning_connection() as conn:
+            conn.execute(
+                """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                   VALUES (?, 'web_search', ?, NULL, ?)""",
+                (job_id, search_ref, failure_note),
+            )
+        return "", "model_knowledge_no_external_source"
+
+    chunks: list[str] = []
+    total = 0
+    stored_documents = []
+    per_page_limit = max(500, min(6000, max_chars // max(1, len(documents))))
+    for document in documents:
+        body = document.text.strip()[:per_page_limit]
+        if not body:
+            continue
+        chunk = f"Source title: {document.title}\nSource URL: {document.url}\nContent:\n{body}"
+        remaining = max_chars - total
+        if remaining <= 0:
+            break
+        chunk = chunk[:remaining]
+        chunks.append(chunk)
+        total += len(chunk)
+        stored_documents.append((document, body))
+    combined = "\n\n".join(chunks)[:max_chars]
+    if not combined:
+        with learning_connection() as conn:
+            conn.execute(
+                """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                   VALUES (?, 'web_search', ?, NULL, ?)""",
+                (job_id, search_ref, "Retrieved pages contained no usable text; lesson will fall back to model knowledge."),
+            )
+        return "", "model_knowledge_no_external_source"
+
+    with learning_connection() as conn:
+        conn.execute(
+            """INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)
+               ON CONFLICT(job_id) DO UPDATE SET content=excluded.content""",
+            (job_id, combined),
+        )
+        conn.execute(
+            "UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (job_id,),
+        )
+        for document, body in stored_documents:
+            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            conn.execute(
+                """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                   VALUES (?, 'web_page', ?, ?, ?)""",
+                (job_id, document.url, digest, f"Retrieved public page; title: {document.title}. Content has not been independently verified."),
+            )
+    return combined, "web_retrieved"
+
+
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
@@ -41,6 +112,9 @@ def run_job(job_id: int) -> None:
         topic, source_kind = row["topic"], row["source_kind"]
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
+    user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
+    if not source_text and source_kind == "model_knowledge_no_external_source":
+        source_text, source_kind = _discover_and_store_sources(job_id, topic)
     prompt = {
         "topic": topic,
         "source_text": source_text,
@@ -63,7 +137,7 @@ def run_job(job_id: int) -> None:
             raise LearningError("Model response did not match the expected learning format.")
         assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
-        quality["user_provided_source_available"] = bool(source_text)
+        quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         if not quality["accepted"]:
@@ -108,7 +182,7 @@ def run_job(job_id: int) -> None:
                 retry_quality = evaluate_learning_value(
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
-                retry_quality["user_provided_source_available"] = bool(source_text)
+                retry_quality["user_provided_source_available"] = user_provided_source_available
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
