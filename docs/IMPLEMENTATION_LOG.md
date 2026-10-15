@@ -641,3 +641,9 @@
 - [x] تست‌های جدید انتقال review، جداسازی موضوع، سقف طول و عدم کپی در متن منبع را پوشش می‌دهند.
 - [ ] CI روی head دقیق PR باید موفق شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** پس از CI، PRهای قدیمی و هم‌پوشان #40/#43/#54 بسته و issue #37 فقط پس از تأیید شواهد بسته می‌شود.
+
+
+### CI follow-up for PR #114
+
+- [x] Initial exact-head CI run [#38803593823](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38803593823) ran 146 tests: 145 passed, 1 failed. The failure was a stale assertion comparing the current application schema against migration v3 instead of v4.
+- [x] Updated the schema contract assertion to v4. The exact new head must be rechecked; this initial failure is recorded rather than hidden.
