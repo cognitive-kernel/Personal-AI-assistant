@@ -262,14 +262,24 @@ def _download_once(url: str, destination: Path) -> Path:
         with response:
             status = getattr(response, "status", response.getcode())
             content_range = response.headers.get("Content-Range", "")
-            range_match = re.match(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", content_range)
-            if offset and status == 206 and range_match and int(range_match.group(1)) == offset:
+            range_match = re.fullmatch(r"bytes\s+(\d+)-(\d+)/(\d+|\*)", content_range.strip())
+            if status == 206:
+                if (
+                    not offset
+                    or not range_match
+                    or int(range_match.group(1)) != offset
+                    or int(range_match.group(2)) < int(range_match.group(1))
+                    or (range_match.group(3) != "*" and int(range_match.group(2)) >= int(range_match.group(3)))
+                ):
+                    raise RuntimeError(f"سرور بازهٔ نامعتبر برای ادامهٔ دانلود برگرداند: {content_range!r}")
                 mode = "ab"
+                expected_range_length = int(range_match.group(2)) - int(range_match.group(1)) + 1
                 total = int(range_match.group(3)) if range_match.group(3) != "*" else 0
             else:
-                # Server ignored Range (or returned an invalid range): restart
-                # this response from byte zero rather than corrupting the file.
+                if status != 200:
+                    raise RuntimeError(f"کد HTTP غیرمنتظره برای دانلود: {status}")
                 mode = "wb"
+                expected_range_length = None
                 offset = 0
                 total_header = response.headers.get("Content-Length")
                 total = int(total_header) if total_header and total_header.isdigit() else 0
@@ -300,6 +310,12 @@ def _download_once(url: str, destination: Path) -> Path:
                             f"\rدریافت‌شده: {done_mb:.1f} MB | سرعت: {speed_mb:.2f} MB/s",
                             end="", flush=True,
                         )
+
+        if expected_range_length is not None and session_downloaded != expected_range_length:
+            raise RuntimeError(
+                f"دانلود ناقص پاسخ بازه‌ای: {session_downloaded} بایت دریافت شد، "
+                f"اما Content-Range انتظار {expected_range_length} بایت داشت. فایل موقت حفظ شد."
+            )
 
         final_size = part_path.stat().st_size if part_path.exists() else 0
         if final_size == 0:
