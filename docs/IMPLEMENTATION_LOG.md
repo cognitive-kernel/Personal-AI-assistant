@@ -521,6 +521,7 @@
 - [x] baseline اکنون به یک `Migration` واقعی متصل می‌شود و checksum کد migration را جدا از fingerprint schema ذخیره می‌کند؛ بنابراین یک registry واحد می‌تواند برای نصب تازه و ارتقای دیتابیس legacy استفاده شود.
 - [x] تنها نخستین رکورد تاریخچه می‌تواند baseline باشد؛ در صورت وجود فقط baseline، تغییر بیرونی schema قبل از اجرای migration بعدی شناسایی و رد می‌شود.
 - [x] مستندات روشن می‌کنند که fingerprint مورد انتظار باید از fixture مرجع بازبینی‌شده بیاید، نه از خود دیتابیس ناشناخته.
+- [x] **PR #98** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/98)، commit ادغام `055d516983683253d097a3ca6136f9c8a9dab580`; CI روی head دقیق موفق بود: [run #38786394755](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786394755).
 - [ ] نتیجهٔ CI روی head این PR هنوز باید بررسی شود؛ تست محلی اجرا نشده است.
 
 
@@ -530,5 +531,17 @@
 - [x] CI در PR قبلی نشان داد وظیفهٔ آزمایشی با نوع غیرمجاز برای runtime در لحظهٔ ایجاد آمادهٔ اجرا بود و worker می‌توانست آن را پیش از درخواست pause claim کند.
 - [x] fixture تست اکنون زمان اجرای آینده را از لحظهٔ ایجاد تنظیم می‌کند؛ بنابراین تست تغییر اولویت/زمان‌بندی/توقف، رقابت تصادفی با worker پس‌زمینه ندارد و معنای واقعی زمان‌بندی را هم می‌آزماید.
 - [x] CI روی head دقیق `e1add004fa5fa32ef304ced088e0c50482cc53b0` موفق بود؛ run [#38786413404](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786413404). این head به‌علت تغییر هم‌زمان main ادغام نشد؛ همین تغییر روی latest main دوباره ارائه شده است.
-- [ ] CI باید روی head دقیق PR فعلی بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- [x] **PR #100** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/100)، commit ادغام `cd88513dacfabbfe726243c12b5a18fe219b1f1e`; CI روی head دقیق موفق بود: [run #38786595152](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786595152).
+- **گام بعدی:** تعریف registryهای واقعی برای schemaهای fresh install و تست‌های قرارداد، سپس fingerprintهای legacy بازبینی‌شده؛ runner هنوز به startup متصل نشود.
 - **گام بعدی:** پس از merge، تعریف migrationهای واقعی برای settings/learning را روی runner عمومی اضافه کن؛ schema ناشناخته نباید خودکار adopt شود.
+
+
+
+## 33. 2026-10-15 — تعریف registryهای schema برای نصب تازه
+
+- [x] `app/schema_registry.py` افزوده شد؛ migrationهای نسخه‌دار برای تنظیمات و برای schema یادگیری/صف تعریف شدند.
+- [x] مسیر fresh install شامل جدول‌های یادگیری، provenance، دانش، ارزیابی، مسیرهای یادگیری و صف پایدار است؛ تغییرات ستون `path_topic_id` و `dedupe_key` به migrationهای صریح تبدیل شدند.
+- [x] تست‌ها اجرای تکرارپذیر registryها، ترتیب migration، ستون‌ها/جدول‌های مورد انتظار، FKها و `integrity_check` را بررسی می‌کنند.
+- [ ] registry هنوز به startup وصل نشده و fingerprintهای canonical برای تمام نسخه‌های legacy هنوز ثبت نشده‌اند؛ دیتابیس‌های واقعی دست‌نخورده‌اند.
+- [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- **گام بعدی:** CI را بررسی کن؛ سپس fixtureهای canonical و fingerprintهای legacy را برای settings و learning بساز و بعد در PR مستقل startup را به migration runner وصل کن.
