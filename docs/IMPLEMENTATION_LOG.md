@@ -649,3 +649,13 @@
 
 - [x] Initial exact-head CI run [#38803593823](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38803593823) ran 146 tests: 145 passed, 1 failed. The failure was a stale assertion comparing the current application schema against migration v3 instead of v4.
 - [x] Updated the schema contract assertion to v4. The exact new head must be rechecked; this initial failure is recorded rather than hidden.
+
+
+## 43. 2026-10-15 — تجمیع اصلاحات پیکربندی، منابع سخت‌افزاری و مرزهای curriculum
+
+- [x] تغییرات کاربردی PRهای #28، #29، #30، #48 و تست‌های قراردادی #25 در یک شاخهٔ مبتنی بر main جمع شدند؛ گزارش‌های تکراری قدیمی کپی نشدند.
+- [x] تنظیم integerهای محیطی خطای نام‌محور و بدون بازتاب مقدار خام می‌دهد؛ نبود telemetry حافظه به سقف محافظه‌کارانهٔ context منجر می‌شود.
+- [x] گسترش curriculum ورودی غیررشته‌ای/خالی را رد می‌کند و metadata مرجع با deep copy از تغییر ناخواستهٔ catalog سراسری محافظت می‌شود.
+- [x] تست‌های قرارداد curriculum، ایزولاسیون metadata، ورودی نامعتبر، config و hardware اضافه شدند.
+- [ ] CI روی head دقیق PR باید موفق شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** پس از CI، PRهای قدیمی #25/#28/#29/#30/#48 بسته می‌شوند و این PR به‌عنوان تغییر تجمیعی باقی می‌ماند.
