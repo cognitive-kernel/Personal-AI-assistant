@@ -2,8 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 
-from app import db
+from app import db, learning, task_manager
+from app.learning_tasks import enqueue_learning_task
 from app.main import app
+from app.task_routes import cancel_task as cancel_task_route
 
 
 def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
@@ -109,3 +111,34 @@ def test_task_api_rejects_non_loopback_clients(tmp_path, monkeypatch):
     with TestClient(app, client=("192.0.2.10", 12345)) as client:
         response = client.get("/api/tasks")
         assert response.status_code == 403
+
+
+
+def test_generic_task_cancel_updates_queued_learning_job(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    task_manager.initialize_task_store()
+    job = learning.create_job("Cancel through generic task API")
+    task = enqueue_learning_task(job["id"])
+
+    cancelled = cancel_task_route(task["id"])
+
+    assert cancelled["status"] == "cancelled"
+    assert learning.get_job(job["id"])["status"] == "cancelled"
+
+
+def test_generic_task_cancel_updates_running_learning_job(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    task_manager.initialize_task_store()
+    job = learning.create_job("Cancel running learning through generic task API")
+    task = enqueue_learning_task(job["id"])
+    claimed = task_manager.claim_next_task("route-cancel-test")
+    assert claimed["id"] == task["id"]
+
+    cancelled = cancel_task_route(task["id"])
+
+    assert cancelled["status"] == "cancel_requested"
+    assert learning.get_job(job["id"])["status"] == "cancelled"
