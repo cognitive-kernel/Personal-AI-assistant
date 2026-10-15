@@ -54,10 +54,12 @@ def test_explicit_baseline_requires_exact_schema_fingerprint_and_allows_forward_
     with connect(path) as connection:
         connection.execute("CREATE TABLE legacy_records (id INTEGER PRIMARY KEY, value TEXT)")
         fingerprint = schema_fingerprint(connection)
-        baseline = record_baseline(
+        baseline = Migration(1, "create-legacy-records", (
+            "CREATE TABLE legacy_records (id INTEGER PRIMARY KEY, value TEXT)",
+        ))
+        record_baseline(
             connection,
-            version=1,
-            migration_id="baseline-legacy-v1",
+            migration=baseline,
             expected_fingerprint=fingerprint,
         )
         runner = MigrationRunner(
@@ -81,8 +83,9 @@ def test_baseline_rejects_schema_fingerprint_mismatch_without_mutation(tmp_path)
         with pytest.raises(UntrackedSchemaError, match="does not match"):
             record_baseline(
                 connection,
-                version=1,
-                migration_id="baseline-legacy-v1",
+                migration=Migration(1, "create-legacy-records", (
+                    "CREATE TABLE legacy_records (id INTEGER PRIMARY KEY)",
+                )),
                 expected_fingerprint=wrong_fingerprint,
             )
         assert connection.execute(
