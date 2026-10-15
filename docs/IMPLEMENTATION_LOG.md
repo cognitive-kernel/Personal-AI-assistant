@@ -297,3 +297,13 @@
 - [ ] worker هنوز در startup به‌صورت خودکار اجرا نمی‌شود؛ polling loop، shutdown، محدودیت هم‌زمانی و handler واقعی یادگیری باقی است.
 - [ ] CI روی head دقیق این شاخه هنوز باید اجرا شود؛ هیچ تست محلی اجرا نشده است.
 - [ ] اجرای کد دلخواه/ناشناس ممنوع می‌ماند تا backend آزمایشگاه ایزوله با محدودیت‌های منابع و شبکه ساخته و تست شود.
+
+
+## 12. 2026-10-15 — ادغام dispatcher allow-list
+
+- **PR:** [#75 — allow-listed task worker dispatcher](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/75) در `main` ادغام شد.
+- **Commit ادغام:** `008a65c2df68192456e166de06e4c2fc5e7655a2`.
+- **CI دقیق head:** run [#38772339576](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38772339576) روی head `a236dd9dacd96bc6f3650869c31767299ddefa58` موفق شد؛ نصب وابستگی‌ها و `pytest` موفق بودند.
+- **قابلیت:** dispatcher یک وظیفه را claim می‌کند و فقط handler ثبت‌شده برای `task_type` را اجرا می‌کند؛ checkpoint، بررسی کنترل تعاونی، تمدید lease، retry محدود و رد نوع ناشناخته پوشش داده شدند.
+- **مرز فعلی:** dispatcher هنوز polling loop یا startup integration ندارد و هیچ handler یادگیری به آن متصل نشده است. بنابراین ادغام این ماژول به‌معنای اجرای خودکار وظایف در برنامه نیست.
+- **گام بعدی:** ساخت runtime مدیریت‌شده با توقف تمیز و یکپارچه‌سازی مرحله‌ای وظایف یادگیری؛ باید مسیر قدیمی ThreadPoolExecutor، وضعیت‌های `learning_jobs` و بازیابی پس از crash بررسی شوند تا دو scheduler موازی یا وظایف تکراری ایجاد نشوند.
