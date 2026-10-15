@@ -466,3 +466,14 @@
 - [x] آزمون بازیابی startup اضافه شد: یک learning job با وضعیت `running` و بدون task متناظر پیش از startup ساخته می‌شود؛ reconciliation باید آن را به صف برگرداند و runtime تکمیلش کند.
 - [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** پس از موفقیت CI، ممیزی schema و مسیرهای خواندن/نوشتن برای طراحی migration runner نسخه‌دار و آزمون backup/restore.
+
+
+## 28. 2026-10-15 — ابزار پشتیبان‌گیری و بازیابی SQLite
+
+- [x] `app/db_backup.py` افزوده شد: snapshot با SQLite online backup API، بررسی `integrity_check` و `foreign_key_check`، SHA-256، manifest نسخه‌دار و انتشار bundle از مسیر staging.
+- [x] بازیابی ابتدا manifest، hash و metadata schema را بررسی می‌کند، سپس هر دو فایل را در یک پوشه staging بازیابی و فقط پس از اعتبارسنجی منتشر می‌کند.
+- [x] مقصد موجود هرگز بی‌صدا بازنویسی نمی‌شود؛ داده به سرویس ابری ارسال نمی‌شود.
+- [x] آزمون‌های قرارداد schema برای پایگاه تنظیمات/یادگیری/صف و آزمون‌های backup/restore، حفظ داده‌ها، تشخیص دستکاری bundle و منع overwrite در `tests/test_db_backup.py` اضافه شدند.
+- [x] راهنمای عملیاتی در `docs/operations/SQLITE_BACKUP_RESTORE.md` اضافه شد؛ محدودیت snapshot مستقل دو فایل و نیاز به بررسی بازیابی مستند شده است.
+- [ ] تست محلی در این نشست اجرا نشده است. قابلیت فقط پس از CI موفق روی head دقیق PR و بررسی آزمون‌های restore تأیید می‌شود.
+- **گام بعدی:** پس از عبور CI، migration runner نسخه‌بندی‌شده را با metadata و baseline تشخیصی اضافه کنیم؛ migration مخرب یا انتقال داده در آن مرحله انجام نشود.
