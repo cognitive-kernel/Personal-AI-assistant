@@ -61,6 +61,9 @@ def test_learning_task_handler_recovers_failed_job_for_queue_retry(
 
     def fake_run_job(job_id):
         with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE learning_jobs SET status='running' WHERE id=?", (job_id,)
+            )
             row = conn.execute(
                 "SELECT status FROM learning_jobs WHERE id=?", (job_id,)
             ).fetchone()
