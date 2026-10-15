@@ -553,5 +553,14 @@
 - [x] `initialize_connection()` schema تازه را از migrationها می‌سازد و schema موجود را فقط در صورت تطابق fingerprint با یکی از نسخه‌های ثبت‌شده adopt می‌کند؛ سپس فقط migrationهای بعدی را اجرا می‌کند.
 - [x] پیش از ثبت baseline، `integrity_check` و `foreign_key_check` اجرا می‌شوند؛ schema ناشناخته بدون ایجاد تاریخچه یا تغییر داده رد می‌شود.
 - [x] تست‌های baseline از نسخهٔ قدیمی و نسخهٔ جاری، عدم تغییر schema ناشناخته و اثر قیدها/ترتیب ستون‌ها بر fingerprint اضافه شدند.
-- [ ] این قابلیت هنوز به startup متصل نشده است؛ CI باید روی head دقیق PR بررسی شود و سپس ادغام امن با `db.init_databases()` و `task_manager.initialize_task_store()` در تغییر جداگانه انجام شود.
+- [x] **PR #104** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/104)، commit ادغام `26a510518e94d494863b69a0add7924fffd98b13`.
+- [x] CI روی head دقیق `b92fca9c6c7dca956a40f5baa7e108bc48d00aca` موفق بود؛ run [#38787834647](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38787834647)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] این قابلیت هنوز به startup متصل نشده است؛ آزمون تطبیق schema فعلی با fingerprintهای ثبت‌شده باید پیش از اتصال startup موفق شود.
 - [ ] تست محلی اجرا نشده است.
+
+
+## 35. 2026-10-15 — تطبیق schema فعلی با migrationهای ثبت‌شده
+
+- [x] آزمون جدید، schema ساخته‌شده توسط initializer فعلی را با fingerprint نسخهٔ ۱ settings و نسخهٔ ۳ learning مقایسه می‌کند؛ این آزمون تفاوت‌های واقعی DDL و ترتیب ستون‌ها را پیش از تغییر startup آشکار می‌کند.
+- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** پس از اثبات تطبیق fingerprint، اتصال registry به startup همراه backup قبل از ارتقای legacy و حذف `ALTER TABLE`های پراکنده انجام شود.
