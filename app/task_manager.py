@@ -20,6 +20,10 @@ class TaskManagerError(RuntimeError):
     """Raised when a task operation violates the task state/ownership contract."""
 
 
+class TaskNotFoundError(TaskManagerError):
+    """Raised when an operation targets a missing task."""
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -194,7 +198,7 @@ def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, An
 def _owned_running_task(conn: sqlite3.Connection, task_id: int, worker_id: str) -> sqlite3.Row:
     row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     if row is None:
-        raise TaskManagerError(f"Task {task_id} does not exist.")
+        raise TaskNotFoundError(f"Task {task_id} does not exist.")
     if row["lease_owner"] != worker_id or row["status"] not in ACTIVE_STATUSES:
         raise TaskManagerError("Task is not owned by this worker or is no longer active.")
     if row["lease_expires_at"] is None or row["lease_expires_at"] <= _timestamp():
