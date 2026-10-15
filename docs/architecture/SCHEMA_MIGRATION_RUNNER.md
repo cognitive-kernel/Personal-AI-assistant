@@ -7,7 +7,7 @@
 - ordered, application-owned SQL migrations with immutable SHA-256 checksums;
 - transactional application with `BEGIN IMMEDIATE`, rollback on any statement failure, and an idempotent no-op when the database is already current;
 - per-database `schema_migrations` history containing version, migration ID, checksum, and applied time;
-- a canonical fingerprint of tables, indexes, views, and triggers;
+- a logical fingerprint of tables, indexes, views, and triggers; column order and harmless DDL formatting differences are normalized, while column definitions, constraints, foreign keys, and indexes remain part of the fingerprint;
 - explicit legacy baseline adoption through `record_baseline()`, which refuses to proceed unless the actual schema fingerprint exactly matches the reviewed expected fingerprint;
 - fail-safe errors for untracked existing schemas, missing migration definitions, changed migration IDs/checksums, and version gaps.
 
@@ -15,7 +15,7 @@
 
 `app/schema_registry.py` now defines versioned migrations for fresh settings and learning databases, including the learning-job quality field, path-topic relation, task queue, and idempotency index. The registry is tested against fresh in-memory databases and an upgrade fixture from learning schema version 1.
 
-The registry is **not yet wired into application startup**. It does not replace the current schema creation in `app/db.py` or `app/task_manager.py`, does not create migration history in a user's live database, and does not migrate or delete any live data.
+The registry is **not yet wired into application startup**. `initialize_connection()` can now match an untracked database to one of the registered schema versions, record a baseline only after integrity checks and a fingerprint match, and apply later migrations. It does not replace the current schema creation in `app/db.py` or `app/task_manager.py` until a separate startup integration change is reviewed. No live data has been migrated by this PR.
 
 Do not call `MigrationRunner.apply()` against current application databases until known legacy fingerprints are reviewed and startup adoption is implemented. Existing databases without history are intentionally rejected rather than automatically marked as current.
 
@@ -73,3 +73,10 @@ The history stores the registered migration's checksum and the matched baseline 
 - Settings database: version 1 creates the `settings` table.
 - Learning database: version 1 creates learning, assessment, path, and task tables without later-added columns; version 2 adds `learning_jobs.quality_json`; version 3 adds `learning_jobs.path_topic_id`, `task_queue.dedupe_key`, and the related indexes.
 - `fingerprint_for_version()` builds a canonical schema fixture in memory from the registered migrations. These fingerprints are candidates for explicit baseline matching, not permission to accept any live schema.
+
+
+## Safe legacy adoption
+
+`initialize_connection(connection, migrations)` accepts a fresh empty database, a database with valid migration history, or an untracked database whose logical schema fingerprint matches a registered migration version. It records the matched migration's checksum and the exact baseline fingerprint, then applies only later migrations. Unknown schemas, failed integrity checks, and foreign-key violations are rejected without adding history or changing schema.
+
+Column order is normalized because application queries use named columns and historical `ALTER TABLE ADD COLUMN` operations can append a field that later appears inline in a fresh `CREATE TABLE`. This normalization does not ignore column definitions, constraints, foreign keys, or index definitions.
