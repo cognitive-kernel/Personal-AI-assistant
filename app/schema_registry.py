@@ -6,7 +6,7 @@ adoption requires comparing a live database against reviewed fingerprints.
 from __future__ import annotations
 
 import sqlite3
-from typing import Iterable
+from typing import Callable, Iterable
 
 from .schema_migrations import (
     Migration,
@@ -165,7 +165,12 @@ def fingerprint_for_version(migrations: Iterable[Migration], version: int) -> st
 
 
 
-def initialize_connection(connection: sqlite3.Connection, migrations: Iterable[Migration]) -> int:
+def initialize_connection(
+    connection: sqlite3.Connection,
+    migrations: Iterable[Migration],
+    *,
+    before_upgrade: Callable[[], None] | None = None,
+) -> int:
     """Initialize a fresh DB or adopt an exact known migration schema before upgrading it."""
     migration_list = tuple(migrations)
     runner = MigrationRunner(migration_list)
@@ -180,13 +185,21 @@ def initialize_connection(connection: sqlite3.Connection, migrations: Iterable[M
         LIMIT 1
         """
     ).fetchone() is not None
-    if history_exists or not has_user_schema:
+    if history_exists:
+        row = connection.execute("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").fetchone()
+        current_version = int(row[0])
+        if current_version < migration_list[-1].version and before_upgrade is not None:
+            before_upgrade()
+        return runner.apply(connection)
+    if not has_user_schema:
         return runner.apply(connection)
 
     actual = schema_fingerprint(connection)
     for migration in migration_list:
         expected = fingerprint_for_version(migration_list, migration.version)
         if actual == expected:
+            if migration.version < migration_list[-1].version and before_upgrade is not None:
+                before_upgrade()
             record_baseline(
                 connection,
                 migration=migration,
