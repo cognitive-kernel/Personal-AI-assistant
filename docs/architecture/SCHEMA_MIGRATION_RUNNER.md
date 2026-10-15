@@ -13,9 +13,9 @@
 
 ## Current implementation status
 
-`app/schema_registry.py` now defines versioned migrations for fresh settings and learning databases, including the learning-job quality field, path-topic relation, task queue, and idempotency index. The registry is tested against fresh in-memory databases and an upgrade fixture from learning schema version 1.
+`app/schema_registry.py` defines versioned migrations for fresh settings and learning databases, including the learning-job quality field, path-topic relation, task queue, and idempotency index. `db.init_databases()` now uses this registry for both databases, while `task_manager.initialize_task_store()` validates the resulting schema instead of issuing ad-hoc DDL.
 
-The registry is **not yet wired into application startup**. `initialize_connection()` can now match an untracked database to one of the registered schema versions, record a baseline only after integrity checks and a fingerprint match, and apply later migrations. It does not replace the current schema creation in `app/db.py` or `app/task_manager.py` until a separate startup integration change is reviewed. No live data has been migrated by this PR.
+At startup, an untracked database is adopted only if its logical fingerprint matches a registered migration version and integrity/foreign-key checks pass. Before applying any pending migration to an existing schema, the initializer creates a verified local backup bundle. Unknown schemas or backup failures stop startup without applying the migration. Fresh databases do not need a pre-migration backup.
 
 Do not call `MigrationRunner.apply()` against current application databases until known legacy fingerprints are reviewed and startup adoption is implemented. Existing databases without history are intentionally rejected rather than automatically marked as current.
 
