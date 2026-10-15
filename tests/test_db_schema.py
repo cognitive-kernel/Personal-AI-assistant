@@ -17,7 +17,7 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         settings_tables = {
             row["name"]
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name != 'schema_migrations'"
             )
         }
         settings_columns = {
