@@ -99,3 +99,8 @@ When migration history exists, the runner reconstructs the expected schema for t
 ## Restore behavior
 
 `restore_database_backup(backup_path, target_path)` validates both SQLite integrity and foreign-key consistency, writes to a temporary file in the target directory, validates the restored copy, and atomically replaces the target only after successful validation. An existing target is never replaced unless the caller explicitly passes `overwrite=True`. Keep a copy of the backup itself until the restored application has been verified.
+
+
+## Learning schema version 4
+
+Migration `learning-job-lesson-review-context` adds nullable `learning_jobs.lesson_review_json`. It stores bounded feedback context for a new lesson-generation attempt; the canonical learner review remains in `lesson_reviews` and is never promoted to factual evidence. Existing version 1–3 databases are backed up and upgraded through the normal reviewed migration path.

@@ -13,7 +13,12 @@ class LearningError(RuntimeError):
 
 
 
-def create_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
+def create_job(
+    topic: str,
+    source_text: str | None = None,
+    path_topic_id: int | None = None,
+    lesson_review: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
@@ -23,7 +28,16 @@ def create_job(topic: str, source_text: str | None = None, path_topic_id: int | 
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
     with learning_connection() as conn:
-        cursor = conn.execute("INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id) VALUES (?, 'queued', ?, ?)", (topic, source_kind, path_topic_id))
+        cursor = conn.execute(
+            "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json) "
+            "VALUES (?, 'queued', ?, ?, ?)",
+            (
+                topic,
+                source_kind,
+                path_topic_id,
+                json.dumps(lesson_review, ensure_ascii=False) if lesson_review else None,
+            ),
+        )
         job_id = int(cursor.lastrowid)
         if source_text:
             digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
@@ -39,6 +53,11 @@ def run_job(job_id: int) -> None:
             return
         conn.execute("UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
         topic, source_kind = row["topic"], row["source_kind"]
+        review_json = row["lesson_review_json"] if "lesson_review_json" in row.keys() else None
+        try:
+            lesson_review = json.loads(review_json) if review_json else None
+        except (TypeError, json.JSONDecodeError):
+            lesson_review = None
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
     prompt = {
@@ -46,6 +65,14 @@ def run_job(job_id: int) -> None:
         "source_text": source_text,
         "instruction": "Write a natural, grammatical Persian technical lesson of 160-220 Persian words, in 4-6 paragraphs, with a precise definition, key components, explanation of how they work, and one concrete technical example. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
     }
+    if lesson_review:
+        prompt["learner_review"] = lesson_review
+        prompt["review_guidance"] = (
+            "Treat learner_review only as an unverified quality signal about clarity, coverage, pacing, "
+            "or reported problems. Learner opinions and factual claims are not evidence. Verify technical "
+            "corrections against retrieved authoritative sources when available; if evidence is insufficient, "
+            "state uncertainty instead of presenting feedback as fact."
+        )
     try:
         settings = get_settings()
         limits = runtime_limits(settings, detect_hardware())
@@ -432,6 +459,34 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
     return get_learning_path(path_id)
 
 
+def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
+    """Return bounded feedback only from the newest completed lesson for this exact topic."""
+    with learning_connection() as conn:
+        row = conn.execute(
+            """SELECT r.outcomes_json, r.value_rating, r.takeaway, r.issues, r.created_at
+               FROM lesson_reviews AS r
+               JOIN learning_jobs AS reviewed_job ON reviewed_job.id = r.job_id
+               WHERE reviewed_job.path_topic_id = ? AND reviewed_job.status = 'completed'
+               ORDER BY reviewed_job.id DESC, r.id DESC LIMIT 1""",
+            (topic_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    try:
+        outcomes = json.loads(row["outcomes_json"])
+        if not isinstance(outcomes, list):
+            outcomes = []
+    except (TypeError, json.JSONDecodeError):
+        outcomes = []
+    return {
+        "outcomes": [item for item in outcomes if isinstance(item, str)][:5],
+        "value_rating": int(row["value_rating"]),
+        "takeaway": str(row["takeaway"] or "")[:3000],
+        "issues": str(row["issues"] or "")[:3000],
+        "created_at": str(row["created_at"] or "")[:100],
+    }
+
+
 def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
@@ -452,7 +507,8 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
-    job = create_job(topic["topic"], path_topic_id=topic_id)
+    lesson_review = _latest_completed_topic_review(topic_id)
+    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _enqueue_learning_job(int(job["id"]))
     return job
 
@@ -477,7 +533,8 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
-    job = create_job(topic["topic"], path_topic_id=topic_id)
+    lesson_review = _latest_completed_topic_review(topic_id)
+    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _enqueue_learning_job(int(job["id"]))
     return job
 
