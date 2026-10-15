@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 from .config import SETTING_DEFAULTS, defaults
+from .migrations import SchemaMigrationError, run_migrations, sql_migration
 
 class ClosingConnection(sqlite3.Connection):
     def __exit__(self, exc_type, exc_value, traceback):
@@ -28,11 +29,62 @@ def settings_connection() -> sqlite3.Connection:
 def learning_connection() -> sqlite3.Connection:
     return _connect(defaults.learning_db_path)
 
+_SETTINGS_MIGRATIONS = (
+    sql_migration(
+        1,
+        "settings.initial",
+        """CREATE TABLE settings (
+            key TEXT PRIMARY KEY,
+            value_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+    ),
+)
+
+
+def _is_current_settings_schema(conn: sqlite3.Connection) -> bool:
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        ).fetchall()
+    } - {"schema_migrations"}
+    if tables != {"settings"}:
+        return False
+    columns = {
+        row[1]: {
+            "type": str(row[2]).upper(),
+            "not_null": int(row[3]),
+            "default": row[4],
+            "primary_key": int(row[5]),
+        }
+        for row in conn.execute("PRAGMA table_info(settings)").fetchall()
+    }
+    return (
+        set(columns) == {"key", "value_json", "updated_at"}
+        and columns["key"]["type"] == "TEXT"
+        and columns["key"]["primary_key"] == 1
+        and columns["value_json"]["type"] == "TEXT"
+        and columns["value_json"]["not_null"] == 1
+        and columns["updated_at"]["type"] == "TEXT"
+        and columns["updated_at"]["not_null"] == 1
+        and str(columns["updated_at"]["default"]).upper() == "CURRENT_TIMESTAMP"
+    )
+
+
+def _detect_legacy_settings_schema(conn: sqlite3.Connection) -> int | None:
+    """Recognize only the exact unversioned settings schema shipped previously."""
+    return 1 if _is_current_settings_schema(conn) else None
+
+
 def init_databases() -> None:
     with settings_connection() as conn:
-        conn.execute("""CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY, value_json TEXT NOT NULL,
-            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)""")
+        run_migrations(
+            conn,
+            _SETTINGS_MIGRATIONS,
+            legacy_version_detector=_detect_legacy_settings_schema,
+            schema_validator=_is_current_settings_schema,
+        )
         for key, value in SETTING_DEFAULTS.items():
             conn.execute("INSERT OR IGNORE INTO settings(key, value_json) VALUES (?, ?)", (key, json.dumps(value)))
     with learning_connection() as conn:
