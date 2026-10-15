@@ -89,3 +89,8 @@ Column order is normalized because application queries use named columns and his
 - Existing schema without migration history and existing schema with pending versions are backed up before adoption or upgrade. The backup must pass SQLite `integrity_check` before migration proceeds.
 - Already-current databases are not backed up on every restart.
 - Unknown schemas are backed up, then rejected without adding migration history or changing their schema/data.
+
+
+## Schema drift detection
+
+When migration history exists, the runner reconstructs the expected schema for the recorded version and compares it with the live database before applying any later migration. Missing or externally modified tables/indexes are rejected rather than silently repaired or treated as current. Recovery must be an explicit, backed-up migration or restore operation.
