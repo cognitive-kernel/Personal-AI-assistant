@@ -1,0 +1,91 @@
+from urllib.parse import urlsplit
+
+from app.curricula import CURRICULA
+
+
+def test_curriculum_catalog_has_valid_topic_and_prerequisite_shapes():
+    assert CURRICULA
+
+    for slug, curriculum in CURRICULA.items():
+        assert isinstance(slug, str) and slug.strip()
+        assert isinstance(curriculum.get("title"), str) and curriculum["title"].strip()
+        assert isinstance(curriculum.get("category"), str) and curriculum["category"].strip()
+
+        prerequisites = curriculum.get("prerequisites")
+        assert isinstance(prerequisites, list), slug
+        assert all(isinstance(item, str) and item.strip() for item in prerequisites), slug
+
+        topics = curriculum.get("topics")
+        assert isinstance(topics, list) and topics, slug
+        assert all(isinstance(topic, str) and topic.strip() for topic in topics), slug
+
+
+def test_declared_curriculum_references_are_safe_https_urls():
+    for slug, curriculum in CURRICULA.items():
+        references = curriculum.get("reference_urls", [])
+        assert isinstance(references, list), slug
+
+        for reference in references:
+            assert isinstance(reference, dict), slug
+            assert isinstance(reference.get("title"), str) and reference["title"].strip(), slug
+            assert isinstance(reference.get("url"), str) and reference["url"].strip(), slug
+
+            parsed = urlsplit(reference["url"])
+            assert parsed.scheme == "https", (slug, reference["url"])
+            assert parsed.hostname, (slug, reference["url"])
+            assert parsed.username is None and parsed.password is None, (slug, reference["url"])
+
+
+def test_curriculum_levels_preserve_every_topic_in_order():
+    from app.curricula import get_curriculum
+
+    for slug, catalog_entry in CURRICULA.items():
+        curriculum = get_curriculum(slug)
+        assert curriculum is not None, slug
+
+        levels = curriculum.get("levels")
+        assert [level["level"] for level in levels] == [
+            "beginner", "intermediate", "advanced"
+        ], slug
+        flattened_topics = [
+            topic for level in levels for topic in level["topics"]
+        ]
+        assert flattened_topics == catalog_entry["topics"], slug
+
+
+def test_curriculum_expansion_is_idempotent_and_deduplicates_case_insensitively():
+    from app.curricula_expansion import extend_curricula
+
+    catalog = {
+        "python": {
+            "topics": ["Existing topic", "SYNTAX AND EXECUTION"],
+        }
+    }
+    extend_curricula(catalog)
+    first_result = list(catalog["python"]["topics"])
+    extend_curricula(catalog)
+
+    assert catalog["python"]["topics"] == first_result
+    normalized = [topic.strip().casefold() for topic in first_result]
+    assert len(normalized) == len(set(normalized))
+    assert "existing topic" in normalized
+    assert normalized.count("syntax and execution") == 1
+    assert "SYNTAX AND EXECUTION" in catalog["python"]["topics"]
+
+
+def test_curriculum_expansion_skips_unknown_catalogs_and_blank_topics(monkeypatch):
+    import app.curricula_expansion as expansion
+
+    monkeypatch.setattr(
+        expansion,
+        "CURRICULUM_EXPANSIONS",
+        {
+            "known": ["", "   ", "existing TOPIC", "New topic", "new TOPIC"],
+            "unknown": ["Must not create a catalog entry"],
+        },
+    )
+    catalog = {"known": {"topics": ["Existing topic"]}}
+
+    expansion.extend_curricula(catalog)
+
+    assert catalog == {"known": {"topics": ["Existing topic", "New topic"]}}
