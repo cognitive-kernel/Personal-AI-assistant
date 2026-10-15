@@ -574,5 +574,7 @@
 - [x] `task_manager.initialize_task_store()` به همان registry متصل شد؛ فراخوانی تکراری از startup حذف شد.
 - [x] قبل از baseline یا ارتقای دیتابیس موجود، فایل backup یکتا ساخته و با `PRAGMA integrity_check` اعتبارسنجی می‌شود؛ دیتابیس به‌روز در هر startup دوباره backup نمی‌شود.
 - [x] schema ناشناخته پس از backup رد می‌شود و تست‌ها عدم ایجاد migration history و حفظ دادهٔ اصلی را بررسی می‌کنند.
-- [ ] CI باید روی head دقیق این PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** اجرای CI و رفع هرگونه اختلاف واقعی schema؛ سپس بررسی startup/recovery وظایف پس از restart و افزودن تست‌های یکپارچگی برای خطای migration.
+- [x] نخستین CI این PR، run [#38798578645](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38798578645)، دو ناسازگاری در تست‌های موجود آشکار کرد: metadata مهاجرت در شمارش جدول‌ها و تست legacy که تاریخچهٔ نسخهٔ جاری را با schema دستکاری‌شده ترکیب می‌کرد. تست‌ها به قرارداد جدید اصلاح شدند و runner اکنون drift بیرونی را صریحاً رد می‌کند.
+- [x] CI روی head کد `4c680cf973fe40b949e51ee948c80583f2171b75` موفق بود؛ run [#38798919878](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38798919878)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] پس از تغییرات مستندات، CI روی head نهایی PR نیز باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** بررسی recovery صف وظایف پس از restart و افزودن تست‌های یکپارچگی برای خطای migration.
