@@ -5,7 +5,9 @@ adoption requires comparing a live database against reviewed fingerprints.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
+import tempfile
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -270,3 +272,46 @@ def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) 
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 10000")
         return initialize_connection(connection, migration_list)
+
+
+
+def restore_database_backup(
+    backup_path: str | Path,
+    target_path: str | Path,
+    *,
+    overwrite: bool = False,
+) -> Path:
+    """Restore a verified SQLite backup atomically; replacing a target requires opt-in."""
+    source_path = Path(backup_path)
+    target = Path(target_path)
+    if not source_path.is_file():
+        raise FileNotFoundError(f"SQLite backup does not exist: {source_path}")
+    if target.exists() and not overwrite:
+        raise FileExistsError(
+            f"Restore target already exists; pass overwrite=True to replace it: {target}"
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.restore-", suffix=".tmp", dir=target.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        with closing(sqlite3.connect(str(source_path))) as source:
+            integrity = source.execute("PRAGMA integrity_check").fetchone()
+            violations = source.execute("PRAGMA foreign_key_check").fetchall()
+            if integrity is None or integrity[0] != "ok" or violations:
+                raise RuntimeError(f"Backup failed validation and cannot be restored: {source_path}")
+            with closing(sqlite3.connect(str(temporary))) as destination:
+                source.backup(destination)
+                integrity = destination.execute("PRAGMA integrity_check").fetchone()
+                violations = destination.execute("PRAGMA foreign_key_check").fetchall()
+                if integrity is None or integrity[0] != "ok" or violations:
+                    raise RuntimeError(f"Restored database failed validation: {temporary}")
+        if target.exists() and not overwrite:
+            raise FileExistsError(f"Restore target appeared during restore: {target}")
+        os.replace(temporary, target)
+        return target
+    finally:
+        if temporary.exists():
+            temporary.unlink()

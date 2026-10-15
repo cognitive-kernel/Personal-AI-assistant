@@ -10,6 +10,7 @@ from app.schema_registry import (
     fingerprint_for_version,
     initialize_connection,
     initialize_database_file,
+    restore_database_backup,
 )
 
 
@@ -224,3 +225,31 @@ def test_migration_runner_rejects_out_of_band_schema_drift():
         connection.execute("DROP INDEX idx_task_queue_ready")
         with pytest.raises(MigrationError, match="does not match the registered migration history"):
             runner.apply(connection)
+
+
+
+def test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file(tmp_path):
+    path = tmp_path / "learning.db"
+    with sqlite3.connect(path) as connection:
+        for statement in LEARNING_MIGRATIONS[0].statements:
+            connection.execute(statement)
+        connection.execute(
+            "INSERT INTO learning_jobs(topic, status, source_kind) VALUES (?, ?, ?)",
+            ("restore me", "queued", "test"),
+        )
+
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 3
+    backup = next(tmp_path.glob("learning.db.pre-migration-*.bak"))
+    with pytest.raises(FileExistsError, match="overwrite=True"):
+        restore_database_backup(backup, path)
+
+    restored = restore_database_backup(backup, path, overwrite=True)
+    assert restored == path
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT topic, status FROM learning_jobs"
+        ).fetchone() == ("restore me", "queued")
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
+        ).fetchone() is None
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

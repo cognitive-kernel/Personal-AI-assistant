@@ -576,5 +576,18 @@
 - [x] schema ناشناخته پس از backup رد می‌شود و تست‌ها عدم ایجاد migration history و حفظ دادهٔ اصلی را بررسی می‌کنند.
 - [x] نخستین CI این PR، run [#38798578645](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38798578645)، دو ناسازگاری در تست‌های موجود آشکار کرد: metadata مهاجرت در شمارش جدول‌ها و تست legacy که تاریخچهٔ نسخهٔ جاری را با schema دستکاری‌شده ترکیب می‌کرد. تست‌ها به قرارداد جدید اصلاح شدند و runner اکنون drift بیرونی را صریحاً رد می‌کند.
 - [x] CI روی head کد `4c680cf973fe40b949e51ee948c80583f2171b75` موفق بود؛ run [#38798919878](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38798919878)، شامل نصب وابستگی‌ها و `pytest`.
-- [ ] پس از تغییرات مستندات، CI روی head نهایی PR نیز باید بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** بررسی recovery صف وظایف پس از restart و افزودن تست‌های یکپارچگی برای خطای migration.
+- [x] **PR #108** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/108)، commit ادغام `081bc5a79a3689b0765dba1da0453e215ed9b9b8`.
+- [x] CI روی head دقیق `a30d61c99a18b2b3f733fbe18f7fa01e86daa8cf` موفق بود؛ run [#38799071137](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38799071137)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** آزمون بازیابی صف پس از restart، restore واقعی از backup و جلوگیری از شروع worker هنگام شکست migration.
+
+
+## 37. 2026-10-15 — آزمون بازیابی پس از restart و ابزار restore
+
+- [x] تست runtime سناریوی process قبلی با lease منقضی‌شده را بازسازی می‌کند؛ worker جدید باید checkpoint پایدار را دریافت کند، attempt دوم را اجرا و نتیجه را ثبت کند.
+- [x] تست startup دیتابیس settings ناشناخته را رد می‌کند و ثابت می‌کند runtime ساخته/شروع نمی‌شود و دادهٔ ناشناخته بدون migration history باقی می‌ماند.
+- [x] `restore_database_backup()` اضافه شد: اعتبارسنجی integrity و FK، نوشتن در فایل موقت، بررسی نسخهٔ بازیابی‌شده و جایگزینی اتمیک؛ overwrite باید صریح باشد.
+- [x] تست backup، upgrade، restore و حفظ رکوردهای legacy اضافه شد.
+- [x] نخستین CI روی head `52ab8628826d0083c7b55d8204672bd2ff9dbe2a`، run [#38799649735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38799649735)، یک خطای تست recovery پیدا کرد: task با `max_attempts=1` پس از اولین lease منقضی‌شده طبق سیاست صف باید terminal شود؛ fixture برای شبیه‌سازی retry به `max_attempts=3` تغییر کرد.
+- [ ] CI روی head نهایی PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** اجرای CI، سپس بررسی reconciliation واقعی learning jobs و task queue در startup/restart.
