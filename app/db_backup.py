@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from contextlib import closing
 import shutil
 import sqlite3
 import tempfile
@@ -38,7 +39,7 @@ def _inspect_database(path: Path) -> dict[str, Any]:
     if not path.is_file() or path.stat().st_size == 0:
         raise BackupRestoreError(f"SQLite database does not exist or is empty: {path.name}")
     try:
-        with sqlite3.connect(str(path), timeout=10) as connection:
+        with closing(sqlite3.connect(str(path), timeout=10)) as connection:
             integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
             if integrity != ["ok"]:
                 raise BackupRestoreError(f"SQLite integrity check failed for {path.name}: {integrity[:5]}")
@@ -63,8 +64,8 @@ def _snapshot(source_path: Path, destination_path: Path) -> dict[str, Any]:
     if not source_path.is_file():
         raise BackupRestoreError(f"Source database is missing: {source_path}")
     try:
-        with sqlite3.connect(str(source_path), timeout=10) as source:
-            with sqlite3.connect(str(destination_path), timeout=10) as destination:
+        with closing(sqlite3.connect(str(source_path), timeout=10)) as source:
+            with closing(sqlite3.connect(str(destination_path), timeout=10)) as destination:
                 source.backup(destination, pages=256, sleep=0.05)
     except sqlite3.DatabaseError as exc:
         raise BackupRestoreError(f"Could not snapshot {source_path.name}: {exc}") from exc
