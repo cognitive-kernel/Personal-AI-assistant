@@ -498,5 +498,18 @@
 - [x] مقصد موجود هرگز بی‌صدا بازنویسی نمی‌شود؛ داده به سرویس ابری ارسال نمی‌شود.
 - [x] آزمون‌های حفظ داده‌ها، تشخیص دستکاری bundle و منع overwrite در `tests/test_db_backup.py` اضافه شدند؛ قراردادهای schema در بخش قبلی و تست‌های موجود پوشش داده شده‌اند.
 - [x] راهنمای عملیاتی در `docs/operations/SQLITE_BACKUP_RESTORE.md` اضافه شد؛ محدودیت snapshot مستقل دو فایل و نیاز به بررسی بازیابی مستند شده است.
-- [ ] تست محلی در این نشست اجرا نشده است. قابلیت فقط پس از CI موفق روی head دقیق PR و بررسی آزمون‌های restore تأیید می‌شود.
+- [x] **PR #94** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/94)، commit ادغام `4e772e97eaf2872dca70eab1b9be30a69a99ed98`.
+- [x] CI روی head دقیق `0b4c6d9cbdea176c79c3bc73b6bfba4c127c6dd3` موفق بود؛ run [#38785251844](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38785251844)، شامل نصب وابستگی‌ها و `pytest`.
+- [ ] تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** پس از عبور CI، migration runner نسخه‌بندی‌شده را با metadata و baseline تشخیصی اضافه کنیم؛ migration مخرب یا انتقال داده در آن مرحله انجام نشود.
+
+
+## 30. 2026-10-15 — زیرساخت عمومی migration نسخه‌بندی‌شده
+
+- [x] `app/schema_migrations.py` افزوده شد: migrationهای شماره‌دار، checksum تغییرناپذیر، جدول تاریخچهٔ هر پایگاه، اجرای ترتیبی در تراکنش و rollback در صورت شکست.
+- [x] افزودن `schema_fingerprint()` و `record_baseline()` برای پذیرش صریح schema قدیمی فقط در صورت تطابق دقیق fingerprint؛ schema بدون تاریخچه خودکار «نسخه جاری» فرض نمی‌شود.
+- [x] تست‌های اجرای مجدد، ترتیب نسخه، checksum تغییرکرده، schema قدیمی بدون تاریخچه، baseline نامعتبر، ارتقای پس از baseline و rollback شکست اضافه شدند.
+- [x] راهنمای دامنه و محدودیت‌ها در `docs/architecture/SCHEMA_MIGRATION_RUNNER.md` ثبت شد.
+- [ ] این runner هنوز به startup متصل نشده و registry واقعی migration برای schemaهای settings/learning هنوز تعریف نشده است؛ هیچ دیتابیس کاربر تغییر نکرده است.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** تعریف migrationهای واقعی برای نصب تازه و fixtureهای legacy، تطبیق دقیق schema/constraint/index، سپس اتصال runner به startup در تغییر مستقل.
