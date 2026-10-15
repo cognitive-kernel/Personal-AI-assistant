@@ -10,6 +10,7 @@ from . import curricula, db, learning, ollama, task_manager
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 from .task_routes import router as task_router
+from .task_runtime import TaskRuntime
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
@@ -43,10 +44,41 @@ async def log_http_error_explanation(request, call_next):
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+_task_runtime: TaskRuntime | None = None
+
+
 @app.on_event("startup")
 def startup() -> None:
+    global _task_runtime
     db.init_databases()
     task_manager.initialize_task_store()
+    recovery = learning.reconcile_learning_tasks()
+    if any(recovery.values()):
+        logger.info("Learning task recovery completed: %s", recovery)
+    settings = db.get_settings()
+    try:
+        worker_count = max(1, min(2, int(settings.get("learning_max_concurrent_jobs", 1))))
+    except (TypeError, ValueError):
+        worker_count = 1
+        logger.warning("Invalid learning concurrency setting; using one worker.")
+    _task_runtime = TaskRuntime(
+        {"learning.generate": learning.handle_learning_task},
+        worker_count=worker_count,
+        worker_prefix="learning-worker",
+        poll_interval=0.5,
+        lease_seconds=300,
+    )
+    _task_runtime.start()
+
+
+@app.on_event("shutdown")
+def shutdown() -> None:
+    global _task_runtime
+    runtime, _task_runtime = _task_runtime, None
+    if runtime is not None and not runtime.stop(timeout=10.0):
+        logger.warning(
+            "Task runtime did not stop before timeout; active task leases will expire for recovery."
+        )
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
