@@ -142,3 +142,74 @@ def test_generic_task_cancel_updates_running_learning_job(tmp_path, monkeypatch)
 
     assert cancelled["status"] == "cancel_requested"
     assert learning.get_job(job["id"])["status"] == "cancelled"
+
+
+
+def test_fastapi_runtime_executes_durable_learning_task_and_shuts_down(tmp_path, monkeypatch):
+    import time
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+
+    def fake_run_job(job_id):
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE learning_jobs SET status='completed', error=NULL, "
+                "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (job_id,),
+            )
+
+    monkeypatch.setattr(learning, "run_job", fake_run_job)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/learning/jobs", json={"topic": "Runtime lifecycle integration"}
+        )
+        assert created.status_code == 202
+        job = created.json()
+        deadline = time.monotonic() + 5.0
+        task = None
+        while time.monotonic() < deadline:
+            response = client.get(f"/api/tasks/{job['task_id']}")
+            assert response.status_code == 200
+            task = response.json()
+            if task["status"] in {"succeeded", "failed"}:
+                break
+            time.sleep(0.05)
+
+        assert task is not None
+        assert task["status"] == "succeeded"
+        assert learning.get_job(job["id"])["status"] == "completed"
+
+
+def test_startup_recovers_running_learning_record_without_task(tmp_path, monkeypatch):
+    import time
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    task_manager.initialize_task_store()
+    job = learning.create_job("Recover running record on startup")
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET status='running' WHERE id=?", (job["id"],))
+
+    def fake_run_job(job_id):
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE learning_jobs SET status='completed', error=NULL, "
+                "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (job_id,),
+            )
+
+    monkeypatch.setattr(learning, "run_job", fake_run_job)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        deadline = time.monotonic() + 5.0
+        task = None
+        while time.monotonic() < deadline:
+            task = task_manager.get_task_by_dedupe_key(f"learning-job:{job['id']}")
+            if task and task["status"] in {"succeeded", "failed"}:
+                break
+            time.sleep(0.05)
+
+        assert task is not None
+        assert task["status"] == "succeeded"
+        assert learning.get_job(job["id"])["status"] == "completed"
