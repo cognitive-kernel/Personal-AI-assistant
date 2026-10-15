@@ -510,8 +510,9 @@
 - [x] افزودن `schema_fingerprint()` و `record_baseline()` برای پذیرش صریح schema قدیمی فقط در صورت تطابق دقیق fingerprint؛ schema بدون تاریخچه خودکار «نسخه جاری» فرض نمی‌شود.
 - [x] تست‌های اجرای مجدد، ترتیب نسخه، checksum تغییرکرده، schema قدیمی بدون تاریخچه، baseline نامعتبر، ارتقای پس از baseline و rollback شکست اضافه شدند.
 - [x] راهنمای دامنه و محدودیت‌ها در `docs/architecture/SCHEMA_MIGRATION_RUNNER.md` ثبت شد.
-- [ ] این runner هنوز به startup متصل نشده و registry واقعی migration برای schemaهای settings/learning هنوز تعریف نشده است؛ هیچ دیتابیس کاربر تغییر نکرده است.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #96** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/96)، commit ادغام `188a65a5e268f66c506fa71446cba88b05d0eccd`.
+- [x] CI روی head دقیق `34fecfc6540518be2a197199be4fc8baa3156267` موفق بود؛ run [#38785883899](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38785883899)، شامل نصب وابستگی‌ها و `pytest`.
+- [x] runner هنوز به startup متصل نشده و registry واقعی migration برای schemaهای settings/learning هنوز تعریف نشده است؛ هیچ دیتابیس کاربر تغییر نکرده است.
 - **گام بعدی:** تعریف migrationهای واقعی برای نصب تازه و fixtureهای legacy، تطبیق دقیق schema/constraint/index، سپس اتصال runner به startup در تغییر مستقل.
 
 
