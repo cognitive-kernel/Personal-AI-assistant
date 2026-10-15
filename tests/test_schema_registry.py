@@ -259,8 +259,8 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
     path = tmp_path / "learning.db"
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 3
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 3
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 4
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 4
     assert list(tmp_path.glob("learning.db.pre-migration-*.bak")) == []
 
 
@@ -303,7 +303,7 @@ def test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file(tm
             ("restore me", "queued", "test"),
         )
 
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 3
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 4
     backup = next(tmp_path.glob("learning.db.pre-migration-*.bak"))
     with pytest.raises(FileExistsError, match="overwrite=True"):
         restore_database_backup(backup, path)
