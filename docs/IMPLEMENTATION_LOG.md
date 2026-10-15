@@ -588,5 +588,6 @@
 - [x] تست startup دیتابیس settings ناشناخته را رد می‌کند و ثابت می‌کند runtime ساخته/شروع نمی‌شود و دادهٔ ناشناخته بدون migration history باقی می‌ماند.
 - [x] `restore_database_backup()` اضافه شد: اعتبارسنجی integrity و FK، نوشتن در فایل موقت، بررسی نسخهٔ بازیابی‌شده و جایگزینی اتمیک؛ overwrite باید صریح باشد.
 - [x] تست backup، upgrade، restore و حفظ رکوردهای legacy اضافه شد.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** اجرای CI، رفع خطاهای احتمالی، سپس بررسی reconciliation واقعی learning jobs و task queue در startup/restart.
+- [x] نخستین CI روی head `52ab8628826d0083c7b55d8204672bd2ff9dbe2a`، run [#38799649735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38799649735)، یک خطای تست recovery پیدا کرد: task با `max_attempts=1` پس از اولین lease منقضی‌شده طبق سیاست صف باید terminal شود؛ fixture برای شبیه‌سازی retry به `max_attempts=3` تغییر کرد.
+- [ ] CI روی head نهایی PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** اجرای CI، سپس بررسی reconciliation واقعی learning jobs و task queue در startup/restart.
