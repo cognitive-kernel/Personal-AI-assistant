@@ -521,7 +521,8 @@
 - [x] baseline اکنون به یک `Migration` واقعی متصل می‌شود و checksum کد migration را جدا از fingerprint schema ذخیره می‌کند؛ بنابراین یک registry واحد می‌تواند برای نصب تازه و ارتقای دیتابیس legacy استفاده شود.
 - [x] تنها نخستین رکورد تاریخچه می‌تواند baseline باشد؛ در صورت وجود فقط baseline، تغییر بیرونی schema قبل از اجرای migration بعدی شناسایی و رد می‌شود.
 - [x] مستندات روشن می‌کنند که fingerprint مورد انتظار باید از fixture مرجع بازبینی‌شده بیاید، نه از خود دیتابیس ناشناخته.
-- [ ] نتیجهٔ CI روی head این PR هنوز باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] **PR #98** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/98)، commit ادغام `055d516983683253d097a3ca6136f9c8a9dab580`.
+- [x] CI روی head دقیق `cb47860ff7705ee8e5e28a0a8977136db6b4edff` موفق بود؛ run [#38786394755](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786394755)، شامل نصب وابستگی‌ها و `pytest`.
 
 
 
@@ -532,3 +533,13 @@
 - [x] CI روی head دقیق `e1add004fa5fa32ef304ced088e0c50482cc53b0` موفق بود؛ run [#38786413404](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786413404). این head به‌علت تغییر هم‌زمان main ادغام نشد؛ همین تغییر روی latest main دوباره ارائه شده است.
 - [ ] CI باید روی head دقیق PR فعلی بررسی شود؛ تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** پس از merge، تعریف migrationهای واقعی برای settings/learning را روی runner عمومی اضافه کن؛ schema ناشناخته نباید خودکار adopt شود.
+
+
+## 33. 2026-10-15 — registry واقعی schema برای نصب تازه و ارتقای نسخه‌ای
+
+- [x] `app/schema_registry.py` migrationهای versioned برای settings و learning تعریف می‌کند؛ schema یادگیری در سه نسخه از جدول‌های پایه تا quality/provenance و idempotency تکامل می‌یابد.
+- [x] `fingerprint_for_version()` برای ساخت fingerprint مرجع از migrationهای ثبت‌شده روی SQLite حافظه‌ای اضافه شد.
+- [x] تست‌ها نصب تازه، اجرای تکراری، ارتقای fixture از v1 به v3، حفظ job/task، FKها، indexها و integrity را پوشش می‌دهند.
+- [ ] registry هنوز به startup وصل نشده است؛ schemaهای زندهٔ موجود، به‌خصوص تفاوت ترتیب ستون‌های افزوده‌شده با `ALTER TABLE` و ستون‌های تعریف‌شده در `CREATE TABLE`, نیازمند fingerprintهای legacy صریح‌اند.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** ساخت مجموعهٔ fingerprintهای legacy بازبینی‌شده و آزمون baseline برای schemaهای واقعی شناخته‌شده؛ سپس اتصال امن startup و حذف DDL پراکنده در تغییر مستقل.
