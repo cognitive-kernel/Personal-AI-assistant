@@ -2,7 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import db, task_manager
+from app.task_manager import TaskManagerError
+
+from app import task_manager
 
 
 @pytest.fixture
@@ -136,3 +138,33 @@ def test_invalid_task_data_is_rejected(task_store):
         task_manager.create_task("bad-json", {"score": float("nan")})
     with pytest.raises(ValueError):
         task_manager.create_task("bad-retries", {}, max_attempts=0)
+
+
+def test_expired_worker_cannot_mutate_after_lease_lapses(task_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    task = task_manager.create_task("lease-fencing", {}, max_attempts=2)
+    task_manager.claim_next_task("worker-a", lease_seconds=5)
+
+    current = current + timedelta(seconds=6)
+    with pytest.raises(TaskManagerError, match="lease has expired"):
+        task_manager.save_checkpoint(task["id"], "worker-a", {"stale": True})
+
+    reclaimed = task_manager.claim_next_task("worker-b", lease_seconds=30)
+    assert reclaimed["id"] == task["id"]
+    assert task_manager.save_checkpoint(task["id"], "worker-b", {"fresh": True})["checkpoint"] == {
+        "fresh": True
+    }
+
+
+def test_worker_can_renew_lease_and_naive_schedule_is_rejected(task_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    task = task_manager.create_task("heartbeat", {})
+    claimed = task_manager.claim_next_task("worker", lease_seconds=5)
+
+    renewed = task_manager.renew_lease(task["id"], "worker", lease_seconds=50)
+    assert renewed["lease_expires_at"] > claimed["lease_expires_at"]
+
+    with pytest.raises(ValueError, match="timezone"):
+        task_manager.create_task("naive-schedule", {}, scheduled_at=datetime(2026, 1, 2))
