@@ -8,9 +8,9 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
-from . import experience
+from . import experience, experience_capture_consent
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -48,6 +48,41 @@ class ExperienceUpdateRequest(BaseModel):
         # In particular, callers cannot smuggle test_results or the internal
         # _controlled_run switch through the public HTTP boundary.
         extra = "forbid"
+
+
+class ExperienceAutoCaptureConsentRequest(BaseModel):
+    confirm: StrictBool
+
+    class Config:
+        extra = "forbid"
+
+
+@router.get("/auto-capture/consent")
+def get_auto_capture_consent() -> dict[str, Any]:
+    try:
+        return {"consent": experience_capture_consent.get_consent()}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience capture consent storage is unavailable.") from exc
+
+
+@router.post("/auto-capture/consent")
+def grant_auto_capture_consent(
+    request: ExperienceAutoCaptureConsentRequest,
+) -> dict[str, Any]:
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit consent confirmation is required.")
+    try:
+        return {"consent": experience_capture_consent.grant_consent()}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience capture consent could not be stored.") from exc
+
+
+@router.delete("/auto-capture/consent")
+def revoke_auto_capture_consent() -> dict[str, Any]:
+    try:
+        return {"consent": experience_capture_consent.revoke_consent()}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience capture consent could not be revoked.") from exc
 
 
 @router.get("")
