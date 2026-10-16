@@ -45,16 +45,23 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         }
         assert all(item["status"] == "ok" for item in storage_result["databases"])
 
+        recommendations_response = page.request.get(
+            base_url.rstrip("/") + "/api/learning/recommendations?limit=20"
+        )
+        assert recommendations_response.status == 200
+        recommendations = recommendations_response.json()
+        assert isinstance(recommendations.get("recommendations"), list)
+        assert recommendations.get("autonomous_action_taken") is False
+
+        recommendations_output = page.locator("#learning-recommendations-output")
         page.locator("#refresh-learning-recommendations").click()
         page.wait_for_function(
             """() => {
                 const node = document.querySelector('#learning-recommendations-output');
-                return node && node.textContent.trim().length > 0;
+                return node && node.textContent.trim().length > 0 &&
+                    !node.textContent.includes('در حال محاسبه');
             }""",
             timeout=15000,
         )
-        recommendations = json.loads(page.locator("#learning-recommendations-output").inner_text())
-        assert isinstance(recommendations.get("recommendations"), list)
-        assert recommendations.get("autonomous_action_taken") is False
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
