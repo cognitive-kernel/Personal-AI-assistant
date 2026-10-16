@@ -478,6 +478,21 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_selection_decisions_candidate ON cloud_resource_selection_decisions(candidate_id, evaluated_at DESC)",
         ),
     ),
+    Migration(
+        8,
+        "cloud-resource-plan-reevaluation-metadata",
+        (
+            """ALTER TABLE cloud_resource_selection_plans ADD COLUMN plan_origin TEXT NOT NULL
+               DEFAULT 'manual' CHECK(plan_origin IN ('manual','scheduled_reevaluation'))""",
+            "ALTER TABLE cloud_resource_selection_plans ADD COLUMN parent_plan_id INTEGER",
+            "ALTER TABLE cloud_resource_selection_plans ADD COLUMN reevaluation_key TEXT",
+            "CREATE INDEX idx_cloud_selection_plans_origin_created ON cloud_resource_selection_plans(plan_origin, created_at DESC, id DESC)",
+            """CREATE UNIQUE INDEX idx_cloud_selection_plans_reevaluation_once
+               ON cloud_resource_selection_plans(parent_plan_id, reevaluation_key)
+               WHERE plan_origin='scheduled_reevaluation'
+                 AND parent_plan_id IS NOT NULL AND reevaluation_key IS NOT NULL""",
+        ),
+    ),
 )
 
 
