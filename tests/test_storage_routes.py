@@ -65,3 +65,80 @@ def test_dashboard_requires_visible_confirmation_for_full_backup():
     assert 'id="refresh-storage-backups"' in page
     assert 'api("/api/storage/backups",{method:"POST",body:JSON.stringify({confirm:true})})' in page
     assert "window.confirm(" in page
+
+
+
+def test_restore_api_stages_verified_backup_without_changing_live_databases(tmp_path, monkeypatch):
+    import hashlib
+    import sqlite3
+
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post("/api/storage/backups", json={"confirm": True})
+        assert created.status_code == 201
+        backup_id = created.json()["id"]
+
+        live_paths = [
+            tmp_path / "settings.db",
+            tmp_path / "learning.db",
+            tmp_path / "cloud_resources.db",
+        ]
+
+        def digests():
+            return {
+                path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for path in live_paths
+            }
+
+        before = digests()
+        rejected = client.post(
+            f"/api/storage/backups/{backup_id}/restore", json={"confirm": False}
+        )
+        assert rejected.status_code == 422
+
+        restored = client.post(
+            f"/api/storage/backups/{backup_id}/restore", json={"confirm": True}
+        )
+        assert restored.status_code == 201
+        body = restored.json()
+        assert body["status"] == "staged"
+        assert body["source_backup_id"] == backup_id
+        assert body["database_roles"] == ["cloud_resources", "learning", "settings"]
+        assert body["verified"] is True
+        assert body["live_databases_changed"] is False
+        assert str(tmp_path) not in restored.text
+        staging_dir = tmp_path / "backups" / "restore-staging" / body["restore_id"]
+        assert (staging_dir / "settings.sqlite3").is_file()
+        assert (staging_dir / "learning.sqlite3").is_file()
+        assert (staging_dir / "cloud_resources.sqlite3").is_file()
+        for name in ("settings.sqlite3", "learning.sqlite3", "cloud_resources.sqlite3"):
+            with sqlite3.connect(staging_dir / name) as connection:
+                assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert digests() == before
+
+
+def test_restore_api_rejects_unknown_or_malformed_backup_ids(tmp_path, monkeypatch):
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        for backup_id in ("../settings.db", "snapshot-20260101T000000000000Z", "missing"):
+            response = client.post(
+                f"/api/storage/backups/{backup_id}/restore", json={"confirm": True}
+            )
+            assert response.status_code == 404
+        assert not (tmp_path / "backups" / "restore-staging").exists()
+
+
+def test_restore_api_rejects_tampered_backup(tmp_path, monkeypatch):
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post("/api/storage/backups", json={"confirm": True})
+        assert created.status_code == 201
+        backup_id = created.json()["id"]
+        backup_db = tmp_path / "backups" / backup_id / "settings.sqlite3"
+        with backup_db.open("ab") as stream:
+            stream.write(b"tampered")
+        response = client.post(
+            f"/api/storage/backups/{backup_id}/restore", json={"confirm": True}
+        )
+        assert response.status_code == 422
+        assert not (tmp_path / "backups" / "restore-staging").exists()
