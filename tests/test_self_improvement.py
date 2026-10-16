@@ -231,8 +231,8 @@ def test_test_integrity_guard_rejects_removed_assertions(tmp_path):
     candidate = tmp_path / "candidate"
     (baseline / "tests").mkdir(parents=True)
     (candidate / "tests").mkdir(parents=True)
-    original = "def test_contract():\\n    assert value == 1\\n    assert other == 2\\n"
-    weakened = "def test_contract():\\n    assert value == 1\\n"
+    original = "def test_contract():\n    assert value == 1\n    assert other == 2\n"
+    weakened = "def test_contract():\n    assert value == 1\n"
     (baseline / "tests" / "test_contract.py").write_text(original, encoding="utf-8")
     (candidate / "tests" / "test_contract.py").write_text(weakened, encoding="utf-8")
 
@@ -248,8 +248,8 @@ def test_test_integrity_guard_rejects_added_skip_marker(tmp_path):
     candidate = tmp_path / "candidate"
     (baseline / "tests").mkdir(parents=True)
     (candidate / "tests").mkdir(parents=True)
-    original = "import pytest\\ndef test_contract():\\n    assert value == 1\\n"
-    weakened = "import pytest\\n@pytest.mark.skip\\ndef test_contract():\\n    assert value == 1\\n"
+    original = "import pytest\ndef test_contract():\n    assert value == 1\n"
+    weakened = "import pytest\n@pytest.mark.skip\ndef test_contract():\n    assert value == 1\n"
     (baseline / "tests" / "test_contract.py").write_text(original, encoding="utf-8")
     (candidate / "tests" / "test_contract.py").write_text(weakened, encoding="utf-8")
 
@@ -264,8 +264,8 @@ def test_test_integrity_guard_accepts_additive_test_coverage(tmp_path):
     candidate = tmp_path / "candidate"
     (baseline / "tests").mkdir(parents=True)
     (candidate / "tests").mkdir(parents=True)
-    original = "def test_contract():\\n    assert value == 1\\n"
-    additive = original + "\\ndef test_additional_contract():\\n    assert value == 2\\n"
+    original = "def test_contract():\n    assert value == 1\n"
+    additive = original + "\ndef test_additional_contract():\n    assert value == 2\n"
     (baseline / "tests" / "test_contract.py").write_text(original, encoding="utf-8")
     (candidate / "tests" / "test_contract.py").write_text(additive, encoding="utf-8")
 
