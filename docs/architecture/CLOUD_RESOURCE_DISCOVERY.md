@@ -133,3 +133,20 @@ This adapter does not read credentials, create accounts, provision resources, la
 or authorize execution. The policy continues to return `execution_authorized=false`;
 provider-specific terms, actual tenancy limits, budget enforcement, and remote-execution
 consent remain mandatory before an execution adapter can be enabled.
+
+
+## OCI account service-limit snapshots (read-only client)
+
+`app/oci_quota.py` parses bounded JSON from the OCI Compute service-limit endpoint
+into a short-lived, typed snapshot. It rejects duplicate limit/scope records,
+non-finite or inconsistent numbers, malformed payloads, and oversized output.
+`app/oci_quota_client.py` can invoke only the fixed read-only command
+`oci limits value list --service-name compute`, using an explicit absolute CLI path,
+config-file path, profile, region, and compartment/tenancy OCID. Both feature enablement
+and explicit user consent are required; shell execution is disabled, the child receives
+a minimal environment, and CLI stderr is not propagated.
+
+This snapshot reports **service limits**, not Always Free eligibility, current physical
+capacity, zero cost, or permission to provision an instance. It is not called by startup,
+the scheduler, or the UI and does not persist results yet. No OCI credentials are read by
+the application unless a caller explicitly invokes the opt-in client with consent.

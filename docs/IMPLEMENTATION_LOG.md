@@ -1135,5 +1135,18 @@
 - [x] تست‌ها URL allowlist و مقادیر استخراج‌شده/شواهد متنی را بررسی می‌کنند؛ claimها خودکار تأیید نمی‌شوند.
 - [x] مستندات توضیح می‌دهند این offer پردازنده‌ای است نه GPU، و API واقعی به credentials/OCID و امضای درخواست نیاز دارد.
 - [ ] provisioning، credential access و اجرای remote عمداً اضافه نشده‌اند؛ `execution_authorized=false` باقی می‌ماند.
+- [x] **PR #157** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/157)، commit ادغام `3bbd96b987c57ac58c2b9e66e72bc02183291839`.
+- [x] CI روی head دقیق `216507ad7a087d73b850fd06732e2f2fe7e2e812` موفق بود؛ run [#38858756203](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38858756203).
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** افزودن client خواندنی برای سهمیه/محدودیت حساب OCI، بدون provisioning یا اجرای remote، با consent صریح.
+
+
+## 82. 2026-10-16 — کلاینت اختیاری و فقط‌خواندنی برای limitهای حساب OCI
+
+- [x] `app/oci_quota.py` پاسخ JSON مربوط به Compute service limits را با سقف اندازه، تعداد رکورد، یکتایی scope، اعتبار عددی و freshness پنج‌دقیقه‌ای parse می‌کند.
+- [x] `app/oci_quota_client.py` فقط فرمان ثابت `limits value list` را اجرا می‌کند؛ مسیر مطلق CLI و config، profile، region و OCID باید صریح باشند و هم enablement و هم consent لازم‌اند.
+- [x] `shell=False`، timeout محدود، environment allowlist، عدم افشای stderr و آزمون ورودی‌های شبیه argument injection اضافه شدند.
+- [x] مستندات روشن می‌کنند service limits به‌تنهایی اثبات free-tier entitlement یا ظرفیت فعلی نیستند.
+- [ ] client هنوز به UI، consent store یا ذخیره‌سازی snapshot متصل نشده و هیچ‌گاه از startup فراخوانی نمی‌شود.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** CI و ادغام؛ سپس بررسی providerهای بیشتر با API رسمی و محدودیت هزینه/شرایط روشن، بدون افزودن issueهای تکراری.
+- **گام بعدی:** CI/ادغام؛ سپس یکپارچه‌سازی رضایت و نگهداری snapshot در UI/API به‌صورت عمومی و provider-aware، بدون ذخیرهٔ credential یا خروجی خام.
