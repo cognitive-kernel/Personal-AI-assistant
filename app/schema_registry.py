@@ -372,6 +372,38 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_review_events_topic ON learning_review_events(topic_id, id DESC)",
         ),
     ),
+    Migration(
+        12,
+        "governed-self-improvement-proposals",
+        (
+            """CREATE TABLE self_improvement_proposals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL CHECK(length(trim(title)) BETWEEN 1 AND 160),
+                rationale TEXT NOT NULL CHECK(length(trim(rationale)) BETWEEN 1 AND 4000),
+                patch_text TEXT NOT NULL,
+                patch_sha256 TEXT NOT NULL CHECK(length(patch_sha256) = 64),
+                status TEXT NOT NULL DEFAULT 'proposed'
+                    CHECK(status IN ('proposed','validated','approved_for_pr','rejected')),
+                base_commit_sha TEXT NOT NULL CHECK(length(base_commit_sha) BETWEEN 40 AND 64),
+                validation_report_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                validated_at TEXT,
+                approved_at TEXT,
+                rejected_at TEXT
+            )""",
+            "CREATE INDEX idx_self_improvement_proposals_status ON self_improvement_proposals(status, updated_at DESC)",
+            """CREATE TABLE self_improvement_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                proposal_id INTEGER NOT NULL REFERENCES self_improvement_proposals(id) ON DELETE CASCADE,
+                event_type TEXT NOT NULL CHECK(event_type IN ('proposed','validated','approved_for_pr','rejected')),
+                actor TEXT NOT NULL CHECK(actor = 'local_user'),
+                details_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_self_improvement_events_proposal ON self_improvement_events(proposal_id, id)",
+        ),
+    ),
 )
 
 
