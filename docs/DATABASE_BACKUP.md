@@ -57,3 +57,9 @@ The policy preserves at least the three newest recognized snapshots and never co
 Periodic backups are disabled by default. Set `DATABASE_BACKUP_INTERVAL_HOURS` to an integer from 1 to 168 to enable a background scheduler; leave it at `0` to disable it. The first snapshot is created only after one full interval, not during application startup. Each run uses the SQLite online backup API and verifies all three configured stores before publishing the bundle. Failures are logged and do not stop chat or learning. The scheduler is stopped during application shutdown.
 
 The scheduler does not restore, overwrite live databases, or delete old backups. Because scheduled snapshots accumulate, enable it only when disk capacity is sufficient and use the manual preview-first retention control periodically. Automatic deletion and off-device replication are deliberately not enabled.
+
+## Restore-staging retention
+
+The dashboard also provides preview-first cleanup through `POST /api/storage/restore-staging/prune`. The default policy keeps the newest staging restore and only considers verified staging snapshots at least seven days old. The preview does not delete anything; deletion requires a separate explicit confirmation. The API rechecks the selected directory and SQLite integrity immediately before removal.
+
+Only generated restore IDs directly inside `restore-staging/` with the expected database files and valid SQLite integrity checks are eligible. Symlinks, malformed folders, unknown files, recent restores, and the newest restore are preserved. This cleanup does not touch original backup bundles or live databases. It is manual and local-only; staging data can contain sensitive application information.

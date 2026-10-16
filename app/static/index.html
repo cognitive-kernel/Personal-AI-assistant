@@ -26,7 +26,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <h3>پشتیبان‌گیری کامل</h3>
 <p class="muted">با تأیید شما، از هر سه دیتابیس یک پشتیبان بررسی‌شده ساخته می‌شود. فایل‌ها در پوشهٔ پشتیبان محلی ذخیره می‌شوند؛ این عملیات دیتابیس زنده را تغییر نمی‌دهد.</p>
 <button id="create-storage-backup" type="button">ایجاد پشتیبان کامل</button>
-<button id="refresh-storage-backups" type="button">فهرست پشتیبان‌ها</button><button id="prune-storage-backups" type="button">پاک‌سازی پشتیبان‌های قدیمی</button>
+<button id="refresh-storage-backups" type="button">فهرست پشتیبان‌ها</button><button id="prune-storage-backups" type="button">پاک‌سازی پشتیبان‌های قدیمی</button><button id="prune-restore-staging" type="button">پاک‌سازی بازیابی‌های آزمایشی قدیمی</button>
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
@@ -223,7 +223,34 @@ async function pruneStorageBackups() {
   button.disabled=false;
  }
 }
+
 el("prune-storage-backups").addEventListener("click",pruneStorageBackups);
+async function pruneRestoreStaging() {
+ const output=el("storage-backup-output");
+ const button=el("prune-restore-staging");
+ button.disabled=true;
+ output.textContent="در حال بررسی بازیابی‌های آزمایشی قدیمی و اعتبارسنجی دیتابیس‌ها…";
+ try {
+  const policy={confirm:false,keep_last:1,min_age_days:7};
+  const preview=await api("/api/storage/restore-staging/prune",{method:"POST",body:JSON.stringify(policy)});
+  if(!preview.would_delete_count) {
+   output.textContent="بازیابی آزمایشی واجد شرایط حذف وجود ندارد. حداقل یک نسخهٔ اخیر و نسخه‌های کمتر از ۷ روز حفظ می‌شوند.";
+   return;
+  }
+  const ids=(preview.candidates||[]).map(item=>item.id).join("\\n");
+  if(!window.confirm("فقط بازیابی‌های آزمایشی معتبر که بیش از ۷ روز عمر دارند و جزو آخرین نسخه نیستند حذف می‌شوند. پشتیبان‌های اصلی و دیتابیس‌های زنده تغییر نمی‌کنند. ادامه؟\\n\\n"+ids+"\\n\\nاین حذف قابل بازگشت نیست.")) {
+   output.textContent="پاک‌سازی بازیابی‌های آزمایشی لغو شد؛ چیزی حذف نشد.";
+   return;
+  }
+  const result=await api("/api/storage/restore-staging/prune",{method:"POST",body:JSON.stringify({confirm:true,keep_last:1,min_age_days:7})});
+  output.textContent=JSON.stringify(result,null,2);
+ } catch(error) {
+  output.textContent="پاک‌سازی بازیابی‌های آزمایشی ناموفق بود: "+error.message;
+ } finally {
+  button.disabled=false;
+ }
+}
+el("prune-restore-staging").addEventListener("click",pruneRestoreStaging);
 async function createStorageBackup() {
  const output=el("storage-backup-output");
  if(!window.confirm("یک پشتیبان کامل از دیتابیس‌های تنظیمات، یادگیری و منابع ابری ساخته شود؟ این کار فایل جدیدی روی دیسک ایجاد می‌کند.")) return;
