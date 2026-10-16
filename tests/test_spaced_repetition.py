@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 
-from app import db, spaced_repetition
+from app import cloud_resources, db, spaced_repetition
+from app.main import app
 from app.db import learning_connection
 
 
@@ -96,3 +98,32 @@ def test_learning_ui_exposes_spaced_repetition_controls():
     assert "ثبت مرور و زمان‌بندی بعدی" in page
     assert '"/api/learning/reviews/due?limit=100"' in page
     assert '"/api/learning/paths/" + path.id + "/topics/" + topic.id + "/reviews"' in page
+
+
+
+def test_spaced_repetition_api_is_loopback_only_and_persists_reviews(tmp_path, monkeypatch):
+    path_id, topic_id = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        cloud_resources, "ensure_daily_discovery_scheduled", lambda: {"status": "disabled"}
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        saved = client.post(
+            f"/api/learning/paths/{path_id}/topics/{topic_id}/reviews",
+            json={"rating": 5},
+        )
+        assert saved.status_code == 200
+        assert saved.json()["interval_days"] == 1
+
+        history = client.get(
+            f"/api/learning/paths/{path_id}/topics/{topic_id}/reviews"
+        )
+        assert history.status_code == 200
+        assert history.json()["count"] == 1
+
+        due = client.get("/api/learning/reviews/due")
+        assert due.status_code == 200
+        assert due.json()["count"] == 0
+
+    remote = TestClient(app, client=("192.0.2.5", 12345))
+    denied = remote.get("/api/learning/reviews/due")
+    assert denied.status_code == 403
