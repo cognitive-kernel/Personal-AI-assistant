@@ -157,7 +157,7 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3}) == 3
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8}) == 9
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9}) == 9
 
 
 
@@ -280,7 +280,7 @@ def test_current_application_schema_matches_registered_baseline(tmp_path, monkey
             SETTINGS_MIGRATIONS, SETTINGS_MIGRATIONS[-1].version
         )
     with db.learning_connection() as connection:
-        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 8)
+        assert schema_fingerprint(connection) == fingerprint_for_version(LEARNING_MIGRATIONS, 9)
 
 
 
