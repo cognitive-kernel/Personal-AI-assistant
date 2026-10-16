@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -73,6 +73,7 @@ def startup() -> None:
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
     if _task_runtime is not None and _task_runtime.is_running:
+        backup_scheduler.start_backup_scheduler()
         return
     settings = db.get_settings()
     configured_workers = int(settings.get("learning_max_concurrent_jobs", 1))
@@ -99,10 +100,12 @@ def startup() -> None:
         maintenance_interval=30.0,
     )
     _task_runtime.start()
+    backup_scheduler.start_backup_scheduler()
 
 
 @app.on_event("shutdown")
 def shutdown() -> None:
+    backup_scheduler.stop_backup_scheduler(timeout=5.0)
     if _task_runtime is not None and not _task_runtime.stop(timeout=10.0):
         logger.warning("Task runtime did not stop before the shutdown deadline.")
 

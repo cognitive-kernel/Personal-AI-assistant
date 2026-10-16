@@ -29,8 +29,16 @@ class Defaults:
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
     cloud_resources_db_path: str = os.getenv("CLOUD_RESOURCES_DB_PATH", "data/cloud_resources.db")
     database_backup_dir: str = os.getenv("DATABASE_BACKUP_DIR", "data/backups")
+    database_backup_interval_hours: int = _int_env("DATABASE_BACKUP_INTERVAL_HOURS", 0)
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = _int_env("PORT", 8000)
+
+    def __post_init__(self) -> None:
+        interval = self.database_backup_interval_hours
+        if isinstance(interval, bool) or not isinstance(interval, int) or not 0 <= interval <= 168:
+            raise ValueError(
+                "DATABASE_BACKUP_INTERVAL_HOURS must be 0 (disabled) or between 1 and 168."
+            )
 
 defaults = Defaults()
 SETTING_DEFAULTS: dict[str, object] = {
