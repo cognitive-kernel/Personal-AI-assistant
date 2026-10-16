@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app import db, main
+from app import cloud_resources, db, main
 from app.schema_migrations import UntrackedSchemaError
 
 
@@ -11,6 +11,9 @@ def test_startup_rejects_unknown_settings_schema_before_starting_workers(tmp_pat
     learning_path = tmp_path / "learning.db"
     monkeypatch.setattr(main.defaults, "settings_db_path", str(settings_path))
     monkeypatch.setattr(main.defaults, "learning_db_path", str(learning_path))
+    monkeypatch.setattr(
+        main.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
+    )
     monkeypatch.setattr(main, "_task_runtime", None)
     constructed = []
 
@@ -48,6 +51,13 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
 
     monkeypatch.setattr(main.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(main.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(
+        main.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
+    )
+    monkeypatch.setattr(
+        cloud_resources, "ensure_daily_discovery_scheduled",
+        lambda: {"status": "disabled_for_test"},
+    )
     monkeypatch.setattr(main, "_task_runtime", None)
     db.init_databases()
     job = learning.create_job("startup recovery fixture")
