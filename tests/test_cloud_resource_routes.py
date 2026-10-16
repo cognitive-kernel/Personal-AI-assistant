@@ -89,8 +89,9 @@ def test_cloud_resource_review_api_requires_current_hash_and_terms_url(
         assert approved.status_code == 200
         assert approved.json()["candidate"]["review_status"] == "approved"
         assert approved.json()["candidate"]["reviewed_content_sha256"] == candidate["content_sha256"]
+        refreshed = client.get("/api/cloud-resources").json()["candidates"]
         cpu_claim = next(
-            claim for claim in approved.json()["candidate"]["observed_claims"]
+            claim for claim in refreshed[0]["observed_claims"]
             if claim["claim_type"] == "cpu_count"
         )
         claim_review = client.patch(
