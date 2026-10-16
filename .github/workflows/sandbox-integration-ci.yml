@@ -5,7 +5,11 @@ on:
     paths:
       - "app/sandbox.py"
       - "app/sandbox_tasks.py"
+      - "app/self_improvement.py"
+      - "tests/test_sandbox.py"
+      - "tests/test_self_improvement.py"
       - "tests/test_sandbox_integration.py"
+      - "docker/self-improvement-test-runner.Dockerfile"
       - ".github/workflows/sandbox-integration-ci.yml"
       - "pyproject.toml"
   push:
@@ -13,7 +17,11 @@ on:
     paths:
       - "app/sandbox.py"
       - "app/sandbox_tasks.py"
+      - "app/self_improvement.py"
+      - "tests/test_sandbox.py"
+      - "tests/test_self_improvement.py"
       - "tests/test_sandbox_integration.py"
+      - "docker/self-improvement-test-runner.Dockerfile"
       - ".github/workflows/sandbox-integration-ci.yml"
       - "pyproject.toml"
 
@@ -55,6 +63,39 @@ jobs:
 
       - name: Install test dependencies
         run: python -m pip install -e ".[dev]"
+
+      - name: Build isolated behavior-test image
+        run: |
+          docker build \
+            --build-arg PYTHON_BASE="$SANDBOX_PYTHON_IMAGE" \
+            -f docker/self-improvement-test-runner.Dockerfile \
+            -t personal-ai-assistant-test-runner:ci .
+
+      - name: Run full test suite inside isolated Docker
+        run: |
+          python - <<'PY'
+          import shutil
+          import subprocess
+          import sys
+          from pathlib import Path
+          from app import sandbox
+
+          image = subprocess.run(
+              ["docker", "image", "inspect", "--format={{.Id}}", "personal-ai-assistant-test-runner:ci"],
+              check=True, capture_output=True, text=True, timeout=10,
+          ).stdout.strip()
+          docker = shutil.which("docker")
+          if not docker:
+              raise SystemExit("Docker executable was not found.")
+          result = sandbox.run_workspace_tests(
+              Path.cwd(), docker_executable=docker, image=image,
+              timeout_seconds=240, max_output_bytes=65536,
+          )
+          print(result.stdout)
+          if result.stderr:
+              print(result.stderr, file=sys.stderr)
+          if result.status != "succeeded":
+              raise SystemExit(f"Isolated behavior tests failed: {result.status}: {result.reason or result.exit_code}")
 
       - name: Run real Docker sandbox integration tests
         env:
