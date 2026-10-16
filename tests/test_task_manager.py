@@ -338,3 +338,58 @@ def test_independent_processes_cannot_claim_the_same_task(task_store, tmp_path):
     assert stored["status"] == "running"
     assert stored["attempts"] == 1
     assert stored["lease_owner"].startswith("process-worker-")
+
+def _crash_after_checkpoint(paths, task_id, worker_id):
+    """Claim and checkpoint a task, then terminate without normal interpreter cleanup."""
+    import os
+
+    from app import db as child_db, task_manager as child_task_manager
+
+    child_db.defaults.settings_db_path = paths[0]
+    child_db.defaults.learning_db_path = paths[1]
+    claimed = child_task_manager.claim_next_task(worker_id, lease_seconds=1)
+    if claimed is None or claimed["id"] != task_id:
+        os._exit(71)
+    child_task_manager.save_checkpoint(
+        task_id, worker_id, {"phase": "after_source_fetch", "cursor": 3}
+    )
+    os._exit(23)
+
+
+def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_store, tmp_path, monkeypatch):
+    import multiprocessing
+
+    task = task_manager.create_task("research.answer", {"question": "SQLite durability"}, max_attempts=2)
+    paths = (str(tmp_path / "settings.db"), str(tmp_path / "learning.db"))
+    context = multiprocessing.get_context("spawn")
+    process = context.Process(
+        target=_crash_after_checkpoint,
+        args=(paths, task["id"], "worker-crashed"),
+    )
+    process.start()
+    process.join(timeout=15)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5)
+        pytest.fail("Crash simulation process did not exit in time.")
+    assert process.exitcode == 23
+
+    crashed = task_manager.get_task(task["id"])
+    assert crashed is not None
+    assert crashed["status"] == "running"
+    assert crashed["lease_owner"] == "worker-crashed"
+    assert crashed["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
+
+    # Advance the queue's clock beyond the lease without sleeping for the real lease.
+    expired_at = datetime.fromisoformat(crashed["lease_expires_at"].replace("Z", "+00:00"))
+    monkeypatch.setattr(task_manager, "_now", lambda: expired_at + timedelta(seconds=1))
+    recovered = task_manager.claim_next_task("worker-restarted", lease_seconds=30)
+
+    assert recovered is not None
+    assert recovered["id"] == task["id"]
+    assert recovered["status"] == "running"
+    assert recovered["attempts"] == 2
+    assert recovered["lease_owner"] == "worker-restarted"
+    assert recovered["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
+    with pytest.raises(TaskManagerError, match="not owned by this worker"):
+        task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"})
