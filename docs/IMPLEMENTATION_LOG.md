@@ -980,8 +980,6 @@
 - [x] **PR #141** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/141)، commit ادغام `9153a45bceccf576b06bb655bb5c7de392f8f7ac`.
 - [x] CI روی head دقیق `111fce12fe238cc8654093070ea922a3a0d473d5` موفق بود؛ run [#38852247649](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852247649).
 - [ ] تست محلی اجرا نشده است.
-- [x] **PR #141** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/141)، commit ادغام `9153a45bceccf576b06bb655bb5c7de392f8f7ac`.
-- [x] CI روی head دقیق `111fce12fe238cc8654093070ea922a3a0d473d5` موفق بود؛ run [#38852247649](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852247649).
 - **گام بعدی:** انتخاب و تأیید digest رسمی image برای معماری هدف؛ سپس handler با schema ورودی محدود، ثبت شواهد اجرا و checkpoint ایجاد شود. هیچ کد ناشناخته‌ای مستقیم روی میزبان اجرا نشود.
 
 
