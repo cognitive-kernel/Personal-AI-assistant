@@ -212,3 +212,31 @@ def test_opted_in_capture_skips_answers_without_usable_sources(monkeypatch):
     )
     reply = chat_research.answer("How do SQL Server query plans work?")
     assert "No usable external source" in reply
+
+
+def test_research_answer_reports_cooperative_checkpoint_phases(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    monkeypatch.setattr(chat_research.ollama, "chat", lambda *_args, **_kwargs: "Reviewed answer")
+    monkeypatch.setattr(
+        chat_research.claim_review,
+        "review_answer_claims",
+        lambda *_args: {"passed": True, "overall": "supported", "claims": [], "error": None},
+    )
+    monkeypatch.setattr(chat_research.experience_capture_consent, "is_enabled", lambda: False)
+    phases = []
+
+    reply = chat_research.answer(
+        "How do SQL execution plans work?",
+        checkpoint=lambda state: phases.append(state),
+    )
+
+    assert reply == "Reviewed answer"
+    phase_names = [state["phase"] for state in phases]
+    assert "source_discovery_started" in phase_names
+    assert "source_discovery_completed" in phase_names
+    assert "draft_generation_started" in phase_names
+    assert "draft_generation_completed" in phase_names
+    assert "claim_review_completed" in phase_names
+    assert "research_answer_completed" in phase_names

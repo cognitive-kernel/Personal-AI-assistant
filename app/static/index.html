@@ -19,10 +19,15 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
 <button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
 <div class="row">
-<section><h2>گفتگو</h2><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section><h2>گفتگو</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<section id="task-manager-section"><h2>مدیریت وظایف</h2>
+<p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
+<button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
+<pre id="tasks-output">فهرست وظایف هنوز بارگذاری نشده است.</pre>
+<div id="tasks-container"></div></section>
 <section><h2>مسیرهای آموزشی</h2>
 <p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
 <label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
@@ -115,14 +120,94 @@ async function refresh() {
  try { el("health").textContent = JSON.stringify(await api("/api/health"), null, 2); } catch(error) { el("health").textContent = error.message; }
  try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
 }
+let taskPollScheduled=false;
+function renderTasks(tasks) {
+ const container=el("tasks-container");
+ container.replaceChildren();
+ if(!tasks.length) { appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted"); return; }
+ tasks.forEach(task=>{
+  const card=document.createElement("article"); card.className="cloud-candidate";
+  appendText(card,"h3","#"+task.id+" — "+task.task_type);
+  appendText(card,"p","وضعیت: "+task.status+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status");
+  if(task.created_at) appendText(card,"p","ایجاد: "+task.created_at,"muted");
+  if(task.error) appendText(card,"p","خطا: "+task.error);
+  if(task.result) {
+   const result=document.createElement("pre");
+   result.textContent=JSON.stringify(task.result,null,2).slice(0,3000);
+   card.append(result);
+  }
+  const actions=document.createElement("div"); actions.className="cloud-actions";
+  const addAction=(label,path)=>{
+   const button=document.createElement("button"); button.type="button"; button.textContent=label;
+   button.addEventListener("click",async()=>{
+    button.disabled=true;
+    try { await api(path,{method:"POST"}); await refreshTasks(); }
+    catch(error) { el("tasks-output").textContent="عملیات وظیفه ناموفق بود: "+error.message; button.disabled=false; }
+   });
+   actions.append(button);
+  };
+  if(["queued","running"].includes(task.status)) addAction("توقف","/api/tasks/"+task.id+"/pause");
+  if(task.status==="paused") addAction("ادامه","/api/tasks/"+task.id+"/resume");
+  if(["queued","running","pause_requested","paused"].includes(task.status)) addAction("لغو","/api/tasks/"+task.id+"/cancel");
+  if(actions.childElementCount) card.append(actions);
+  container.append(card);
+ });
+}
+async function refreshTasks() {
+ try {
+  const result=await api("/api/tasks?limit=100");
+  const tasks=result.tasks||[];
+  el("tasks-output").textContent="تعداد وظایف: "+tasks.length;
+  renderTasks(tasks);
+  const active=tasks.some(task=>["queued","running","pause_requested","cancel_requested"].includes(task.status));
+  if(active&&!taskPollScheduled) {
+   taskPollScheduled=true;
+   setTimeout(()=>{taskPollScheduled=false;refreshTasks();},2000);
+  }
+ } catch(error) {
+  el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
+ }
+}
+el("refresh-tasks").addEventListener("click",refreshTasks);
 el("refresh").addEventListener("click", refresh);
 el("refresh-knowledge").addEventListener("click", async () => {
  try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
  catch(error) { el("knowledge-output").textContent=error.message; }
 });
 el("chat-form").addEventListener("submit", async event => {
- event.preventDefault(); el("chat-output").textContent="در حال پاسخ‌گویی…";
- try { el("chat-output").textContent=(await api("/api/chat",{method:"POST",body:JSON.stringify({message:el("message").value})})).reply; } catch(error) { el("chat-output").textContent=error.message; }
+ event.preventDefault();
+ const button=el("chat-form").querySelector('button[type="submit"]');
+ const message=el("message").value;
+ if(button) button.disabled=true;
+ el("chat-output").textContent="در حال صف‌بندی پژوهش…";
+ try {
+  const queued=await api("/api/research/tasks",{method:"POST",body:JSON.stringify({message})});
+  const taskId=queued.task.id;
+  el("chat-output").textContent="پژوهش در صف قرار گرفت: #"+taskId+" ("+queued.task.status+").";
+  const poll=async()=>{
+   try {
+    const current=await api("/api/tasks/"+taskId);
+    if(["queued","running","pause_requested","paused","cancel_requested"].includes(current.status)) {
+     el("chat-output").textContent="وضعیت پژوهش #"+taskId+": "+current.status;
+     setTimeout(poll,1000);
+     return;
+    }
+    if(current.status==="succeeded") {
+     el("chat-output").textContent=(current.result&&current.result.reply)||"پژوهش کامل شد، اما پاسخی در نتیجه ثبت نشده است.";
+    } else {
+     el("chat-output").textContent="پژوهش تکمیل نشد: "+(current.error||current.status);
+    }
+    if(button) button.disabled=false;
+   } catch(error) {
+    el("chat-output").textContent="وضعیت پژوهش قابل دریافت نیست: "+error.message;
+    if(button) button.disabled=false;
+   }
+  };
+  setTimeout(poll,500);
+ } catch(error) {
+  el("chat-output").textContent=error.message;
+  if(button) button.disabled=false;
+ }
 });
 function showLearningJob(result) {
  el("learning-output").textContent=JSON.stringify(result,null,2);
@@ -872,4 +957,5 @@ el("experience-search-form").addEventListener("submit",async event=>{
  }
 });
 
+refreshTasks();
 </script><script src="/static/learning.js"></script></body></html>

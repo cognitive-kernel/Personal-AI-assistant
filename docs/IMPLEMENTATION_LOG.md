@@ -1269,8 +1269,17 @@
 
 ## 94. Real-Docker sandbox integration workflow
 
-- Status: implemented on branch `test/sandbox-real-docker-integration-20261016`; CI validation pending.
+- Status: merged in PR #175; exact-head GitHub Actions run #38863950982 succeeded.
 - Added an opt-in `sandbox_integration` test suite that uses a real preloaded, digest-pinned official Python image.
 - The suite inspects the actual container configuration (network mode, read-only root, dropped capabilities, no-new-privileges, non-root user, memory/PID limits, and read-only workspace mount) and exercises network isolation, timeout, output limits, and no host fallback.
 - Added manual `.github/workflows/sandbox-integration.yml`; the operator must supply an official image digest. The real-container tests skip in regular CI unless explicitly enabled; the no-host-fallback test runs in the default suite.
 - Added documentation describing the workflow and its scope. Local Docker tests were not run in this environment; exact-head CI validates default-suite compatibility, while the manual workflow must be run with an approved image digest to validate actual container behavior.
+
+## 95. Persistent research task queue
+
+- Status: implemented on branch `feat/persistent-research-tasks-20261016`; CI validation pending.
+- Added loopback-only `POST /api/research/tasks` to queue source-aware research as a durable `research.answer` task; the synchronous `POST /api/chat` remains for compatibility.
+- Registered the research handler in the central task runtime and changed the local chat UI to poll the persisted task result.
+- Added cooperative checkpoints around memory lookup, source discovery, draft generation, claim review, repair, and experience capture. Checkpoints store a message digest rather than raw user text.
+- Pause/cancel takes effect at the next checkpoint; an in-flight HTTP or Ollama call is not forcibly interrupted. Research tasks use one attempt to avoid automatic duplicate work after uncertain failures.
+- Added task/route/UI tests and `docs/architecture/RESEARCH_TASKS.md`. Local tests were not run; exact-head CI is the merge gate.
