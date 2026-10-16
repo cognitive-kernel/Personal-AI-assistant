@@ -444,6 +444,39 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_oci_limit_snapshots_latest ON oci_limit_snapshots(provider_id, resource_name, observed_at DESC, id DESC)",
         ),
     ),
+    Migration(
+        7,
+        "cloud-resource-selection-plan-history",
+        (
+            """CREATE TABLE cloud_resource_selection_plans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan_version TEXT NOT NULL,
+                requirements_json TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('candidate_found','no_eligible_candidate')),
+                selected_candidate_id INTEGER,
+                execution_authorized INTEGER NOT NULL DEFAULT 0 CHECK(execution_authorized = 0),
+                remote_execution_enabled INTEGER NOT NULL DEFAULT 0 CHECK(remote_execution_enabled = 0),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_cloud_selection_plans_created ON cloud_resource_selection_plans(created_at DESC, id DESC)",
+            """CREATE TABLE cloud_resource_selection_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                plan_id INTEGER NOT NULL REFERENCES cloud_resource_selection_plans(id) ON DELETE CASCADE,
+                candidate_id INTEGER,
+                provider_domain TEXT,
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256) = 64),
+                eligible_for_adapter_review INTEGER NOT NULL CHECK(eligible_for_adapter_review IN (0,1)),
+                preflight_status TEXT NOT NULL CHECK(preflight_status IN ('blocked','needs_review','ready_for_provider_adapter')),
+                capabilities_json TEXT NOT NULL DEFAULT '{}',
+                reasons_json TEXT NOT NULL DEFAULT '[]',
+                policy_blockers_json TEXT NOT NULL DEFAULT '[]',
+                policy_review_needed_json TEXT NOT NULL DEFAULT '[]',
+                evaluated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_cloud_selection_decisions_plan ON cloud_resource_selection_decisions(plan_id, eligible_for_adapter_review, id)",
+            "CREATE INDEX idx_cloud_selection_decisions_candidate ON cloud_resource_selection_decisions(candidate_id, evaluated_at DESC)",
+        ),
+    ),
 )
 
 
