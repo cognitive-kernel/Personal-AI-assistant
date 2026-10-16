@@ -390,7 +390,7 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
 
 
 def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
-    """Apply a proposal only in a temporary Git worktree, then AST-parse in Docker."""
+    """Apply a proposal only in a temporary worktree; check syntax and run tests in Docker."""
     if confirm is not True:
         raise ProposalError("Explicit confirmation is required for isolated syntax checking.")
     proposal = get_proposal(proposal_id)
