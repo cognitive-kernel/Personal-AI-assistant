@@ -291,7 +291,7 @@ def test_rollback_pr_refuses_to_overwrite_later_changes(proposal_repo, monkeypat
 
     def fake_github_api(method, path, payload=None):
         if method == "GET" and path == "/pulls/42":
-            return {"merged": True, "merge_commit_sha": merge_sha}
+            return {"merged": True, "merge_commit_sha": merge_sha, "base": {"ref": "main"}}
         if method == "GET" and path == "/git/ref/heads/main":
             return {"object": {"sha": current_sha}}
         if method == "GET" and path == "/git/commits/" + base_sha:
