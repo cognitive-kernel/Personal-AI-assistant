@@ -1,0 +1,106 @@
+"""Allow-listed task adapter for isolated Python sandbox execution.
+
+The handler is disabled by default. Its Docker executable and image are
+administrator-configured environment values; task payloads cannot override them.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import re
+from pathlib import Path
+from typing import Any, Callable
+
+from . import sandbox
+from .task_worker import TaskContext
+
+SANDBOX_TASK_TYPE = "sandbox.run_python"
+_IMAGE_REF = re.compile(
+    r"^(?:python|docker\\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$"
+)
+_ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes"}
+
+
+def handler_from_environment() -> Callable[
+    [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
+] | None:
+    """Return a handler only after explicit opt-in and valid local configuration."""
+    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
+    if enabled in {"", "0", "false", "no", "off"}:
+        return None
+    if enabled not in {"1", "true", "yes", "on"}:
+        raise ValueError("SANDBOX_ENABLED must be a boolean value.")
+
+    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
+    if not executable_value:
+        raise ValueError("SANDBOX_DOCKER_EXECUTABLE is required when sandbox is enabled.")
+    executable = Path(executable_value).expanduser()
+    if not executable.is_absolute() or not executable.is_file():
+        raise ValueError("SANDBOX_DOCKER_EXECUTABLE must be an existing absolute file path.")
+    if not _IMAGE_REF.fullmatch(image):
+        raise ValueError("SANDBOX_PYTHON_IMAGE must be an official Python image pinned by SHA-256 digest.")
+
+    def handle(
+        payload: dict[str, Any],
+        checkpoint: dict[str, Any] | None,
+        context: TaskContext,
+    ) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise ValueError("Sandbox task payload must be a JSON object.")
+        if set(payload) - _ALLOWED_PAYLOAD_KEYS:
+            raise ValueError("Sandbox task payload contains unsupported fields.")
+        source_code = payload.get("source_code")
+        if not isinstance(source_code, str) or not source_code.strip():
+            raise ValueError("source_code must be non-empty text.")
+        if len(source_code.encode("utf-8")) > 64 * 1024 or "\\x00" in source_code:
+            raise ValueError("source_code exceeds the allowed size or contains NUL characters.")
+
+        timeout_seconds = payload.get("timeout_seconds", 10)
+        max_output_bytes = payload.get("max_output_bytes", 32 * 1024)
+        if (
+            isinstance(timeout_seconds, bool)
+            or not isinstance(timeout_seconds, int)
+            or not 1 <= timeout_seconds <= 120
+        ):
+            raise ValueError("timeout_seconds must be an integer from 1 to 120.")
+        if (
+            isinstance(max_output_bytes, bool)
+            or not isinstance(max_output_bytes, int)
+            or not 1 <= max_output_bytes <= 65536
+        ):
+            raise ValueError("max_output_bytes must be an integer from 1 to 65536.")
+
+        source_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
+        context.checkpoint(
+            {
+                "phase": "sandbox_started",
+                "source_sha256": source_hash,
+                "image": image,
+            }
+        )
+        result = sandbox.run_python(
+            source_code,
+            docker_executable=executable,
+            image=image,
+            timeout_seconds=timeout_seconds,
+            max_output_bytes=max_output_bytes,
+            control_check=context.control_status,
+        )
+        evidence = {
+            "phase": "sandbox_finished",
+            "source_sha256": source_hash,
+            "image": image,
+            "execution_status": result.status,
+            "exit_code": result.exit_code,
+            "duration_ms": result.duration_ms,
+        }
+        context.checkpoint(evidence)
+        return {
+            **evidence,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "reason": result.reason,
+        }
+
+    return handle
