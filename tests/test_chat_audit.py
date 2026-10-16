@@ -118,3 +118,25 @@ def test_research_chat_persists_audit_without_raw_question_or_answer(tmp_path, m
     assert row["query_sha256"] == hashlib.sha256(question.encode()).hexdigest()
     assert row["answer_sha256"] == hashlib.sha256(answer.encode()).hexdigest()
     assert row["review_status"] == "no_sources"
+
+
+def test_review_summary_preserves_conflict_url_pairs_without_raw_conflict_text():
+    summary = chat_audit._review_summary({
+        "passed": False,
+        "overall": "insufficient_evidence",
+        "claims": [],
+        "source_conflicts": [{
+            "topic": "private topic text",
+            "source_a_url": "https://docs.example.org/a",
+            "source_b_url": "https://docs.example.org/b",
+            "description": "private explanatory text must not be persisted",
+        }],
+        "error": "source_conflicts_require_human_review",
+    })
+    assert summary["source_conflict_count"] == 1
+    assert summary["source_conflict_pairs"] == [{
+        "source_a_url": "https://docs.example.org/a",
+        "source_b_url": "https://docs.example.org/b",
+    }]
+    assert "private topic text" not in json.dumps(summary)
+    assert "private explanatory text" not in json.dumps(summary)

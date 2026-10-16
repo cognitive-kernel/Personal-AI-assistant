@@ -55,12 +55,28 @@ def _review_summary(review: dict[str, Any] | None) -> dict[str, Any] | None:
             verdict = claim.get("verdict")
             if verdict in {"supported", "contradicted", "insufficient_evidence"}:
                 verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
+    conflicts = review.get("source_conflicts", [])
+    conflicts = conflicts if isinstance(conflicts, list) else []
+    safe_conflicts = []
+    for conflict in conflicts[:10]:
+        if not isinstance(conflict, dict):
+            continue
+        source_a = conflict.get("source_a_url")
+        source_b = conflict.get("source_b_url")
+        if (
+            isinstance(source_a, str) and source_a.startswith("https://") and len(source_a) <= 1000
+            and isinstance(source_b, str) and source_b.startswith("https://") and len(source_b) <= 1000
+            and source_a != source_b
+        ):
+            safe_conflicts.append({"source_a_url": source_a, "source_b_url": source_b})
     error = review.get("error")
     return {
         "passed": review.get("passed") is True,
         "overall": str(review.get("overall", "insufficient_evidence"))[:50],
         "claim_count": len(claims),
         "verdict_counts": verdict_counts,
+        "source_conflict_count": len(safe_conflicts),
+        "source_conflict_pairs": safe_conflicts,
         "error": str(error)[:120] if error else None,
         "reviewer": str(review.get("reviewer", "local_ollama_model_assisted_not_independent"))[:100],
     }
