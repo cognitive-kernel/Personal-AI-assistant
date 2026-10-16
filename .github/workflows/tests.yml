@@ -15,4 +15,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: python -m pip install -e ".[dev]"
-      - run: pytest
+      - name: Run test suite
+        run: pytest
+      - name: Run deterministic lexical retrieval benchmark
+        run: python scripts/evaluate_experience_retrieval.py --lexical-only
