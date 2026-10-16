@@ -149,6 +149,17 @@ function renderCloudCandidates(candidates) {
   appendText(card,"p","سیگنال‌های متنی: "+((candidate.resource_signals||[]).join("، ")||"موردی شناسایی نشد"));
   appendText(card,"p","آخرین مشاهده: "+candidate.last_seen_at);
   appendText(card,"p",candidate.evidence_excerpt||"خلاصه شواهد موجود نیست.","cloud-evidence");
+  appendText(card,"h4","ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)");
+  const claims=candidate.observed_claims||[];
+  if(!claims.length) appendText(card,"p","ادعای ساختاریافته‌ای با الگوهای فعلی پیدا نشد.","muted");
+  else {
+   const claimList=document.createElement("ul");
+   claims.forEach(claim=>{
+    const value=JSON.stringify(claim.value);
+    appendText(claimList,"li",claim.claim_type+": "+value+(claim.unit?" "+claim.unit:"")+" — «"+claim.evidence_quote+"» ["+claim.review_status+"]");
+   });
+   card.append(claimList);
+  }
   if(candidate.freshness_status==="stale") {
    appendText(card,"p","شواهد قدیمی است؛ پیش از بازبینی باید منبع دوباره کشف شود.","muted");
   }
