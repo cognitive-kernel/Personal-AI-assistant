@@ -45,6 +45,39 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         }
         assert all(item["status"] == "ok" for item in storage_result["databases"])
 
+        # Exercise the real confirmation dialogs and the non-destructive
+        # backup -> staging-restore workflow against disposable CI databases.
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.locator("#create-storage-backup").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#storage-backup-output');
+                return node && node.textContent.includes('"status": "created"');
+            }""",
+            timeout=20000,
+        )
+        backup_result = json.loads(page.locator("#storage-backup-output").inner_text())
+        assert backup_result["complete"] is True
+        assert backup_result["verified"] is True
+        page.wait_for_function(
+            "() => document.querySelectorAll('#storage-backups-list button').length > 0",
+            timeout=10000,
+        )
+        page.get_by_role("button", name="بازیابی آزمایشی در پوشهٔ جدا").first.click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#storage-backup-output');
+                return node && node.textContent.includes('"status": "staged"');
+            }""",
+            timeout=20000,
+        )
+        restore_result = json.loads(page.locator("#storage-backup-output").inner_text())
+        assert restore_result["status"] == "staged"
+        assert restore_result["restore_id"].startswith("restore-")
+        assert set(restore_result["database_roles"]) == {
+            "settings", "learning", "cloud_resources"
+        }
+
         recommendations_response = page.request.get(
             base_url.rstrip("/") + "/api/learning/recommendations?limit=20"
         )
