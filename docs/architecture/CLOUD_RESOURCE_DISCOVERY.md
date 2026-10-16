@@ -4,11 +4,13 @@
 
 The application schedules a durable discovery task on startup and chains the next run for approximately 24 hours later. The worker searches a bounded set of general queries for public cloud compute options and stores source-backed candidates in a dedicated local SQLite database at `CLOUD_RESOURCES_DB_PATH` (default: `data/cloud_resources.db`).
 
-The local API is loopback-only:
+The local API is loopback-only and the main local web page now includes a cloud-resource discovery/review panel:
 
 - `GET /api/cloud-resources?limit=100` lists recent candidates and the latest discovery run.
 - `POST /api/cloud-resources/discover` queues a manual discovery task and returns HTTP 202.
 - `PATCH /api/cloud-resources/{id}/review` records an explicit local review only if the submitted content hash still matches; approving a candidate requires an HTTPS terms URL.
+
+The UI renders all page titles and excerpts with `textContent`, validates source links as HTTPS before opening them, and uses `noopener noreferrer` for new tabs. It never inserts source text as HTML.
 
 Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the page title plus fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. These signals describe what the page mentions; they do not establish that a service is free, available, suitable, or authorized for use.
 
