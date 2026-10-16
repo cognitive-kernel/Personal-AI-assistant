@@ -890,5 +890,18 @@
 - [x] سیاست فعلی فقط هزینهٔ مجاز صفر را می‌پذیرد؛ budget غیرصفر یا claim نرخ قیمت مثبت وضعیت را مسدود می‌کند.
 - [x] نتیجه‌ها `blocked`, `needs_review` یا `ready_for_provider_adapter` هستند؛ هیچ نتیجه‌ای مجوز اجرای راه دور صادر نمی‌کند و `execution_authorized` همیشه false است.
 - [x] API و UI ارزیابی و موانع را نشان می‌دهند؛ تست‌های ماتریسی برای hash قدیمی، claim تأییدنشده، قیمت مثبت و بودجهٔ غیرصفر اضافه شدند.
-- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] **PR #134** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/134)؛ CI باید در صورت نیاز با run دقیق همان PR ارجاع داده شود.
+- [ ] تست محلی اجرا نشده است.
 - **محدودیت:** هنوز provider adapter واقعی برای کنترل مجوز، منطقه، سهمیه، نشست و هزینه وجود ندارد؛ اجرای remote عمداً غیرفعال است.
+
+
+## 62. 2026-10-16 — قرارداد eligibility برای احراز هویت، منطقه و سقف اجرا
+
+- [x] policy اکنون روش احراز هویت را به فهرست محدود و صریح می‌بندد: anonymous، credential ارائه‌شده توسط کاربر یا OAuth با رضایت کاربر؛ account rotation و روش‌های ناشناخته block می‌شوند.
+- [x] region انتخاب‌شده باید در allowlist بازبینی‌شده باشد و با claim فعلی پذیرفته‌شده از همان hash منبع تطابق داشته باشد.
+- [x] سقف محلی مدت نشست و ساعت ماهانه باید مثبت و متناهی باشند؛ بودجهٔ هزینه فقط صفر را می‌پذیرد. مقادیر malformed، bool، NaN، Infinity و اعداد خارج از محدوده fail-closed می‌شوند.
+- [x] نسخهٔ policy به `cloud-resource-preflight-v2` ارتقا یافت؛ `execution_authorized` همچنان همیشه false است.
+- [x] تست‌های جدید برای فیلدهای مفقود، احراز هویت نامجاز، region خارج از allowlist، مقدارهای غیرمتناهی و ورودی‌های malformed اضافه شدند.
+- [x] CI روی head عملکردی `de3ecf8e531ff44cf2f117fb479edddedf2f09e2` موفق بود؛ run [#38847087564](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38847087564)، شامل کل `pytest` و benchmark واژگانی.
+- [ ] تست محلی اجرا نشده است؛ پس از ثبت نتیجه در log، CI دوباره روی head نهایی PR بررسی می‌شود.
+- **گام بعدی:** provider-specific adapter فقط پس از مستندشدن رسمی API/terms هر سرویس، قرارداد authentication و quota و تست mock/contract ایجاد شود؛ remote execution همچنان غیرفعال بماند.
