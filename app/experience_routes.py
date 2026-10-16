@@ -108,7 +108,7 @@ def update_experience(
     experience_id: int,
     request: ExperienceUpdateRequest,
 ) -> dict[str, Any]:
-    changes = request.model_dump(exclude_unset=True)
+    changes = request.dict(exclude_unset=True)
     if not changes or all(value is None for value in changes.values()):
         raise HTTPException(status_code=422, detail="At least one editable field is required.")
     try:
