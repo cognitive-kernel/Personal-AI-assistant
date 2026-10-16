@@ -116,7 +116,7 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
     cloud_resources.discover_resources()
     candidate = cloud_resources.list_candidates()[0]
     assert candidate["content_sha256"] == hashlib.sha256(
-        " ".join(changed.text.split()).encode()
+        f"{changed.title}\n{' '.join(changed.text.split())}".encode()
     ).hexdigest()
     assert candidate["review_status"] == "unreviewed"
     assert candidate["availability_status"] == "unknown"
