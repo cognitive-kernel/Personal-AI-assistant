@@ -89,7 +89,7 @@ def test_sandbox_returns_unavailable_without_docker_and_never_falls_back(tmp_pat
 
     assert result.status == "unavailable"
     assert result.exit_code is None
-    assert "no local execution fallback" not in (result.reason or "").lower()
+    assert "no local execution fallback is permitted" in (result.reason or "").lower()
 
 
 def test_sandbox_bounds_source_image_timeout_and_output():
