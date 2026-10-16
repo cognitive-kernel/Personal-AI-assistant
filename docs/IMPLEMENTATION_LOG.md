@@ -878,5 +878,17 @@
 - [x] قبول claim فقط وقتی مجاز است که منبع والد قبلاً تأیید شده باشد؛ تأیید claim به معنی مجازبودن اجرای remote نیست.
 - [x] UI دکمه‌های قبول/رد مستقل برای هر claim دارد و وضعیت بازبینی را پس از ذخیره تازه‌سازی می‌کند.
 - [x] تست‌های domain، route و UI برای source approval prerequisite، hash mismatch و وضعیت claim اضافه شدند.
-- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی head دقیق `fb38a5508b61825010f68350af5a9290a8b419c6` موفق بود: [run #38844803589](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38844803589)، 270 تست موفق و benchmark موفق.
+- [x] **PR #133** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/133)، commit ادغام `a4b0fd0aef13d741e30385281824f99a77b4740c`.
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** provider-specific adapters و policy engine برای eligibility؛ باید هزینه، quota، منطقه، محدودیت نشست، شرایط استفاده، احراز هویت و تازگی شواهد را به قرارداد صریح تبدیل کند. هیچ job remote تا تکمیل این مرحله فعال نشود.
+
+
+## 61. 2026-10-16 — policy preflight برای آمادگی منابع ابری
+
+- [x] `app/cloud_resource_policy.py` به‌عنوان policy خالص اضافه شد؛ ارزیابی بر اساس منبع تأییدشده با hash فعلی، freshness، availability، HTTPS terms، claimهای پذیرفته‌شده و محدودیت هزینه انجام می‌شود.
+- [x] سیاست فعلی فقط هزینهٔ مجاز صفر را می‌پذیرد؛ budget غیرصفر یا claim نرخ قیمت مثبت وضعیت را مسدود می‌کند.
+- [x] نتیجه‌ها `blocked`, `needs_review` یا `ready_for_provider_adapter` هستند؛ هیچ نتیجه‌ای مجوز اجرای راه دور صادر نمی‌کند و `execution_authorized` همیشه false است.
+- [x] API و UI ارزیابی و موانع را نشان می‌دهند؛ تست‌های ماتریسی برای hash قدیمی، claim تأییدنشده، قیمت مثبت و بودجهٔ غیرصفر اضافه شدند.
+- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- **محدودیت:** هنوز provider adapter واقعی برای کنترل مجوز، منطقه، سهمیه، نشست و هزینه وجود ندارد؛ اجرای remote عمداً غیرفعال است.
