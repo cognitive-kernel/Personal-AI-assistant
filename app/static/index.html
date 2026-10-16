@@ -18,6 +18,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <body>
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
 <button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
+<section id="storage-health-section"><h2>سلامت ذخیره‌سازی</h2>
+<p class="muted">این بررسی فقط‌خواندنی است؛ دیتابیس را ایجاد، مهاجرت یا تعمیر نمی‌کند. برای رفع خرابی ابتدا از پشتیبان معتبر استفاده کنید.</p>
+<button id="refresh-storage-health" type="button">بررسی سلامت دیتابیس‌ها</button>
+<pre id="storage-health-output">وضعیت ذخیره‌سازی هنوز بررسی نشده است.</pre></section>
 <div class="row">
 <section><h2>گفتگو</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
@@ -136,6 +140,17 @@ async function refresh() {
  try { el("health").textContent = JSON.stringify(await api("/api/health"), null, 2); } catch(error) { el("health").textContent = error.message; }
  try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
 }
+async function refreshStorageHealth() {
+ const output=el("storage-health-output");
+ output.textContent="در حال بررسی فقط‌خواندنی سلامت ذخیره‌سازی…";
+ try {
+  const result=await api("/api/health/storage");
+  output.textContent=JSON.stringify(result,null,2);
+ } catch(error) {
+  output.textContent="بررسی سلامت ذخیره‌سازی ناموفق بود: "+error.message;
+ }
+}
+el("refresh-storage-health").addEventListener("click",refreshStorageHealth);
 let taskPollScheduled=false;
 function renderTasks(tasks) {
  const container=el("tasks-container");
@@ -185,6 +200,7 @@ async function refreshTasks() {
  }
 }
 el("refresh-tasks").addEventListener("click",refreshTasks);
+refreshStorageHealth();
 el("refresh").addEventListener("click", refresh);
 el("refresh-knowledge").addEventListener("click", async () => {
  try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
