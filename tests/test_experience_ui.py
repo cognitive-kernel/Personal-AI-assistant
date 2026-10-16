@@ -32,3 +32,17 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     # Database content and external source text must never be injected as HTML.
     assert 'node.textContent=text' in page
     assert 'innerHTML' not in page
+
+
+
+def test_experience_feedback_ui_exposes_explicit_ranking_controls():
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'بازخورد برای بهبود رتبه‌بندی بازیابی' in page
+    assert 'مفید بود' in page
+    assert 'مفید نبود' in page
+    assert 'پاک‌کردن رأی' in page
+    assert '"/api/experiences/"+item.id+"/feedback"' in page
+    assert 'changes_verification' not in page  # UI never treats a vote as verification evidence.
