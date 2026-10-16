@@ -1,9 +1,9 @@
 """Verified, local-only backup and restore for the application's SQLite databases.
 
-Backups are created as a new directory containing both database snapshots and a
-manifest. Restores are staged in a new directory and published only after both
-files pass hash and SQLite integrity checks. Existing destinations are never
-silently overwritten.
+Backups are created as a new directory containing verified snapshots and a
+manifest. New complete bundles include settings, learning, and cloud-resource
+stores. Restores are staged and published only after every included file passes
+hash and SQLite integrity checks. Existing destinations are never overwritten.
 """
 from __future__ import annotations
 
@@ -19,8 +19,13 @@ from pathlib import Path
 from typing import Any
 
 MANIFEST_NAME = "manifest.json"
-FORMAT_VERSION = 1
-DATABASE_FILES = {"settings": "settings.sqlite3", "learning": "learning.sqlite3"}
+LEGACY_FORMAT_VERSION = 1
+FORMAT_VERSION = 2
+LEGACY_DATABASE_FILES = {"settings": "settings.sqlite3", "learning": "learning.sqlite3"}
+DATABASE_FILES = {
+    **LEGACY_DATABASE_FILES,
+    "cloud_resources": "cloud_resources.sqlite3",
+}
 
 
 class BackupRestoreError(RuntimeError):
@@ -78,30 +83,39 @@ def backup_databases(
     settings_path: str | os.PathLike[str],
     learning_path: str | os.PathLike[str],
     destination_dir: str | os.PathLike[str],
+    *,
+    cloud_resources_path: str | os.PathLike[str] | None = None,
 ) -> dict[str, Any]:
-    """Create a consistent SQLite snapshot bundle in a new directory.
+    """Create a verified backup bundle.
 
-    The bundle is published by an atomic directory rename only after both
-    snapshots and the manifest have been written and verified.
+    Supplying cloud_resources_path creates a complete format-v2 bundle with all
+    three application stores. Omitting it preserves the legacy two-store
+    format-v1 writer for existing callers; restore supports both formats.
+    Publication uses an atomic directory rename after all snapshots are verified.
     """
-    settings_source = Path(settings_path).expanduser().resolve()
-    learning_source = Path(learning_path).expanduser().resolve()
+    sources = {
+        "settings": Path(settings_path).expanduser().resolve(),
+        "learning": Path(learning_path).expanduser().resolve(),
+    }
+    if cloud_resources_path is not None:
+        sources["cloud_resources"] = Path(cloud_resources_path).expanduser().resolve()
     destination = Path(destination_dir).expanduser().resolve()
-    if settings_source == learning_source:
-        raise ValueError("Settings and learning databases must be distinct files.")
+    if len(set(sources.values())) != len(sources):
+        raise ValueError("All database paths must be distinct files.")
     if destination.exists():
         raise FileExistsError(f"Backup destination already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.tmp-", dir=destination.parent))
     try:
         databases: dict[str, Any] = {}
-        for role, source in (("settings", settings_source), ("learning", learning_source)):
-            filename = DATABASE_FILES[role]
+        files = DATABASE_FILES if cloud_resources_path is not None else LEGACY_DATABASE_FILES
+        for role, source in sources.items():
+            filename = files[role]
             metadata = _snapshot(source, temp_dir / filename)
             metadata["filename"] = filename
             databases[role] = metadata
         manifest = {
-            "format_version": FORMAT_VERSION,
+            "format_version": FORMAT_VERSION if cloud_resources_path is not None else LEGACY_FORMAT_VERSION,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "databases": databases,
         }
@@ -118,6 +132,17 @@ def backup_databases(
         raise
 
 
+def backup_configured_databases(destination_dir: str | os.PathLike[str]) -> dict[str, Any]:
+    """Back up all currently configured application stores as one verified bundle."""
+    from .config import defaults
+
+    return backup_databases(
+        defaults.settings_db_path,
+        defaults.learning_db_path,
+        destination_dir,
+        cloud_resources_path=defaults.cloud_resources_db_path,
+    )
+
 def restore_databases(
     backup_dir: str | os.PathLike[str],
     destination_dir: str | os.PathLike[str],
@@ -132,13 +157,20 @@ def restore_databases(
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise BackupRestoreError("Backup manifest is missing or invalid.") from exc
-    if not isinstance(manifest, dict) or manifest.get("format_version") != FORMAT_VERSION:
+    if not isinstance(manifest, dict):
+        raise BackupRestoreError("Unsupported backup manifest format.")
+    format_version = manifest.get("format_version")
+    if format_version == LEGACY_FORMAT_VERSION:
+        database_files = LEGACY_DATABASE_FILES
+    elif format_version == FORMAT_VERSION:
+        database_files = DATABASE_FILES
+    else:
         raise BackupRestoreError("Unsupported backup manifest format.")
     database_manifest = manifest.get("databases")
-    if not isinstance(database_manifest, dict) or set(database_manifest) != set(DATABASE_FILES):
-        raise BackupRestoreError("Backup manifest must contain settings and learning databases.")
+    if not isinstance(database_manifest, dict) or set(database_manifest) != set(database_files):
+        raise BackupRestoreError("Backup manifest database roles do not match its format version.")
 
-    for role, filename in DATABASE_FILES.items():
+    for role, filename in database_files.items():
         metadata = database_manifest.get(role)
         if not isinstance(metadata, dict) or metadata.get("filename") != filename:
             raise BackupRestoreError(f"Invalid manifest entry for {role}.")
@@ -152,10 +184,10 @@ def restore_databases(
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.restore-", dir=destination.parent))
     try:
-        for role, filename in DATABASE_FILES.items():
+        for role, filename in database_files.items():
             _snapshot(source / filename, temp_dir / filename)
         os.replace(temp_dir, destination)
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
         raise
-    return {role: str(destination / filename) for role, filename in DATABASE_FILES.items()}
+    return {role: str(destination / filename) for role, filename in database_files.items()}
