@@ -244,6 +244,51 @@ LEARNING_MIGRATIONS = (
 )
 
 
+CLOUD_RESOURCE_MIGRATIONS = (
+    Migration(
+        1,
+        "cloud-resource-discovery-initial",
+        (
+            """CREATE TABLE cloud_resource_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_url TEXT NOT NULL UNIQUE,
+                provider_domain TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                resource_signals_json TEXT NOT NULL DEFAULT '[]',
+                evidence_excerpt TEXT NOT NULL DEFAULT '',
+                discovery_query TEXT NOT NULL,
+                review_status TEXT NOT NULL DEFAULT 'unreviewed'
+                    CHECK(review_status IN ('unreviewed','approved','rejected')),
+                availability_status TEXT NOT NULL DEFAULT 'unknown'
+                    CHECK(availability_status IN ('unknown','available','unavailable','requires_auth')),
+                quota_json TEXT NOT NULL DEFAULT '{}',
+                terms_url TEXT,
+                first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_cloud_candidates_domain ON cloud_resource_candidates(provider_domain, last_seen_at DESC)",
+            "CREATE INDEX idx_cloud_candidates_review ON cloud_resource_candidates(review_status, last_seen_at DESC)",
+            """CREATE TABLE cloud_resource_discovery_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT,
+                status TEXT NOT NULL DEFAULT 'running'
+                    CHECK(status IN ('running','completed','partial','failed')),
+                queries_attempted INTEGER NOT NULL DEFAULT 0 CHECK(queries_attempted >= 0),
+                sources_seen INTEGER NOT NULL DEFAULT 0 CHECK(sources_seen >= 0),
+                candidates_upserted INTEGER NOT NULL DEFAULT 0 CHECK(candidates_upserted >= 0),
+                query_results_json TEXT NOT NULL DEFAULT '[]',
+                error_summary TEXT
+            )""",
+            "CREATE INDEX idx_cloud_discovery_runs_started ON cloud_resource_discovery_runs(started_at DESC, id DESC)",
+            "CREATE INDEX idx_cloud_discovery_runs_status ON cloud_resource_discovery_runs(status, started_at DESC)",
+        ),
+    ),
+)
+
+
 def fingerprint_for_version(migrations: Iterable[Migration], version: int) -> str:
     """Build a canonical schema fixture in memory and return its exact fingerprint."""
     selected = tuple(migration for migration in migrations if migration.version <= version)

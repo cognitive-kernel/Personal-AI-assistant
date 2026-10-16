@@ -1,11 +1,24 @@
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, task_manager
+from app import cloud_resources, db, learning, task_manager
 from app.learning_tasks import enqueue_learning_task
 from app.main import app
 from app.task_routes import cancel_task as cancel_task_route
+
+
+@pytest.fixture(autouse=True)
+def isolate_cloud_discovery_for_task_route_tests(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
+    )
+    monkeypatch.setattr(
+        cloud_resources,
+        "ensure_daily_discovery_scheduled",
+        lambda: {"status": "disabled_for_test"},
+    )
 
 
 def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):

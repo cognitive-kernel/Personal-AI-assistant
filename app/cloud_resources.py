@@ -1,0 +1,380 @@
+"""Autonomous discovery of public cloud-compute options.
+
+Discovery records evidence only. Public pages are untrusted input; no account
+creation, credential submission, quota bypass, code execution, or provisioning
+is performed by this module.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import urlparse, urlunparse
+
+from .config import defaults
+from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
+from . import task_manager, web_sources
+
+CLOUD_DISCOVERY_TASK_TYPE = "cloud.discover_resources"
+MAX_RESULTS_PER_QUERY = 3
+MAX_CANDIDATES_PER_RUN = 12
+MAX_EVIDENCE_EXCERPT = 600
+
+DISCOVERY_QUERIES = (
+    "official free cloud GPU compute notebook free tier terms",
+    "official free cloud CPU virtual machine compute credits free tier",
+    "official free developer sandbox container compute limits",
+)
+
+
+class CloudResourceError(RuntimeError):
+    """Raised when cloud-resource discovery storage or input is invalid."""
+
+
+def _connect() -> sqlite3.Connection:
+    target = Path(defaults.cloud_resources_db_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(target), timeout=10)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA busy_timeout = 10000")
+    return connection
+
+
+def initialize_store() -> int:
+    """Initialize the dedicated cloud-resource database using versioned migrations."""
+    return initialize_database_file(
+        defaults.cloud_resources_db_path,
+        CLOUD_RESOURCE_MIGRATIONS,
+    )
+
+
+def _normalize_source_url(url: str) -> tuple[str, str]:
+    if not isinstance(url, str) or len(url) > 2048:
+        raise CloudResourceError("Discovered source URL is invalid.")
+    parsed = urlparse(url)
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.port not in {None, 443}
+    ):
+        raise CloudResourceError("Cloud resource sources must use public HTTPS URLs.")
+    hostname = parsed.hostname.rstrip(".").lower()
+    normalized = urlunparse(parsed._replace(fragment=""))
+    return normalized, hostname
+
+
+def _resource_signals(title: str, text: str) -> list[str]:
+    searchable = f"{title} {text}".casefold()
+    rules = {
+        "gpu_or_accelerator_mentioned": ("gpu", "cuda", "tpu", "accelerator"),
+        "cpu_compute_mentioned": ("cpu", "vcpu", "compute"),
+        "free_tier_or_credits_mentioned": ("free tier", "free", "credits", "trial"),
+        "quota_or_limit_mentioned": ("quota", "limit", "usage cap", "rate limit"),
+        "terms_or_policy_mentioned": ("terms", "acceptable use", "policy", "conditions"),
+        "notebook_environment_mentioned": ("notebook", "jupyter", "colab"),
+        "vm_or_container_mentioned": ("virtual machine", " vm ", "container", "sandbox"),
+        "storage_mentioned": ("storage", "disk", "persistent volume"),
+    }
+    padded = f" {searchable} "
+    return sorted(
+        signal for signal, phrases in rules.items()
+        if any(phrase in padded for phrase in phrases)
+    )
+
+
+def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[str, Any] | None:
+    try:
+        url, domain = _normalize_source_url(document.url)
+    except (CloudResourceError, ValueError):
+        return None
+    title = " ".join(str(document.title).split())[:300]
+    text = " ".join(str(document.text).split())[:12000]
+    if not title or len(text) < 80:
+        return None
+    excerpt = text[:MAX_EVIDENCE_EXCERPT]
+    return {
+        "source_url": url,
+        "provider_domain": domain,
+        "title": title,
+        "content_sha256": hashlib.sha256(f"{title}\n{text}".encode("utf-8")).hexdigest(),
+        "resource_signals_json": json.dumps(
+            _resource_signals(title, text), ensure_ascii=False, separators=(",", ":")
+        ),
+        "evidence_excerpt": excerpt,
+        "discovery_query": query[:300],
+    }
+
+
+def _update_run(
+    run_id: int,
+    *,
+    status: str,
+    queries_attempted: int,
+    sources_seen: int,
+    candidates_upserted: int,
+    query_results: list[dict[str, Any]],
+    error_summary: str | None,
+) -> None:
+    with closing(_connect()) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_discovery_runs
+               SET finished_at=CURRENT_TIMESTAMP, status=?, queries_attempted=?,
+                   sources_seen=?, candidates_upserted=?, query_results_json=?,
+                   error_summary=?
+               WHERE id=?""",
+            (
+                status,
+                queries_attempted,
+                sources_seen,
+                candidates_upserted,
+                json.dumps(query_results, ensure_ascii=False, separators=(",", ":")),
+                error_summary[:1000] if error_summary else None,
+                run_id,
+            ),
+        )
+        connection.commit()
+
+
+def discover_resources(
+    *,
+    discover_fn: Callable[..., list[web_sources.SourceDocument]] | None = None,
+    checkpoint: Callable[[dict[str, Any]], Any] | None = None,
+) -> dict[str, Any]:
+    """Search a bounded set of topics and persist source-backed candidates as unreviewed."""
+    initialize_store()
+    search = discover_fn or web_sources.discover_sources
+    with closing(_connect()) as connection:
+        cursor = connection.execute(
+            "INSERT INTO cloud_resource_discovery_runs(status) VALUES ('running')"
+        )
+        run_id = int(cursor.lastrowid)
+        connection.commit()
+
+    query_results: list[dict[str, Any]] = []
+    unique: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    queries_attempted = 0
+    sources_seen = 0
+
+    try:
+        for index, query in enumerate(DISCOVERY_QUERIES):
+            if checkpoint is not None:
+                checkpoint({"phase": "cloud_discovery_query", "query_index": index})
+            queries_attempted += 1
+            try:
+                documents = search(query, limit=MAX_RESULTS_PER_QUERY)
+                if not isinstance(documents, list):
+                    raise CloudResourceError("Source discovery returned an invalid result list.")
+            except Exception as exc:
+                errors.append(f"query_{index + 1}:{type(exc).__name__}")
+                query_results.append({"query": query, "result_count": 0, "error": type(exc).__name__})
+                continue
+
+            query_results.append({"query": query, "result_count": len(documents), "error": None})
+            sources_seen += len(documents)
+            for document in documents:
+                if len(unique) >= MAX_CANDIDATES_PER_RUN:
+                    break
+                if not isinstance(document, web_sources.SourceDocument):
+                    continue
+                candidate = _candidate_record(document, query)
+                if candidate is not None:
+                    unique.setdefault(candidate["source_url"], candidate)
+
+        with closing(_connect()) as connection:
+            for candidate in unique.values():
+                connection.execute(
+                    """INSERT INTO cloud_resource_candidates(
+                           source_url, provider_domain, title, content_sha256,
+                           resource_signals_json, evidence_excerpt, discovery_query
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(source_url) DO UPDATE SET
+                           provider_domain=excluded.provider_domain,
+                           title=excluded.title,
+                           content_sha256=excluded.content_sha256,
+                           resource_signals_json=excluded.resource_signals_json,
+                           evidence_excerpt=excluded.evidence_excerpt,
+                           discovery_query=excluded.discovery_query,
+                           review_status=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.review_status ELSE 'unreviewed' END,
+                           availability_status=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.availability_status ELSE 'unknown' END,
+                           quota_json=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.quota_json ELSE '{}' END,
+                           terms_url=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.terms_url ELSE NULL END,
+                           last_seen_at=CURRENT_TIMESTAMP,
+                           updated_at=CURRENT_TIMESTAMP""",
+                    (
+                        candidate["source_url"],
+                        candidate["provider_domain"],
+                        candidate["title"],
+                        candidate["content_sha256"],
+                        candidate["resource_signals_json"],
+                        candidate["evidence_excerpt"],
+                        candidate["discovery_query"],
+                    ),
+                )
+            connection.commit()
+
+        if errors and unique:
+            status = "partial"
+        elif unique:
+            status = "completed"
+        else:
+            status = "failed"
+            if not errors:
+                errors.append("No valid public HTTPS source documents were returned.")
+    except Exception as exc:
+        errors.append(f"discovery_aborted:{type(exc).__name__}")
+        _update_run(
+            run_id,
+            status="partial" if unique else "failed",
+            queries_attempted=queries_attempted,
+            sources_seen=sources_seen,
+            candidates_upserted=0,
+            query_results=query_results,
+            error_summary="; ".join(errors),
+        )
+        raise
+
+    _update_run(
+        run_id,
+        status=status,
+        queries_attempted=queries_attempted,
+        sources_seen=sources_seen,
+        candidates_upserted=len(unique),
+        query_results=query_results,
+        error_summary="; ".join(errors) if errors else None,
+    )
+    return {
+        "run_id": run_id,
+        "status": status,
+        "queries_attempted": queries_attempted,
+        "sources_seen": sources_seen,
+        "candidates_upserted": len(unique),
+        "error_summary": "; ".join(errors) if errors else None,
+    }
+
+
+def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        raise ValueError("limit must be between 1 and 500.")
+    initialize_store()
+    with closing(_connect()) as connection:
+        rows = connection.execute(
+            """SELECT * FROM cloud_resource_candidates
+               ORDER BY last_seen_at DESC, id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    results = []
+    for row in rows:
+        item = dict(row)
+        item["resource_signals"] = json.loads(item.pop("resource_signals_json"))
+        item["quota"] = json.loads(item.pop("quota_json"))
+        results.append(item)
+    return results
+
+
+def latest_discovery_run() -> dict[str, Any] | None:
+    initialize_store()
+    with closing(_connect()) as connection:
+        row = connection.execute(
+            """SELECT * FROM cloud_resource_discovery_runs
+               ORDER BY id DESC LIMIT 1"""
+        ).fetchone()
+    if row is None:
+        return None
+    item = dict(row)
+    item["query_results"] = json.loads(item.pop("query_results_json"))
+    return item
+
+
+def _enqueue_with_key(
+    key: str,
+    *,
+    trigger: str,
+    scheduled_at: datetime,
+) -> dict[str, Any]:
+    return task_manager.create_task(
+        CLOUD_DISCOVERY_TASK_TYPE,
+        {"trigger": trigger},
+        priority=-10,
+        max_attempts=1,
+        scheduled_at=scheduled_at,
+        dedupe_key=key,
+    )
+
+
+def enqueue_discovery_task(*, manual: bool = False) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    if manual:
+        key = "cloud-discovery-manual:" + now.strftime("%Y%m%dT%H%M%S%fZ")
+        return _enqueue_with_key(key, trigger="manual", scheduled_at=now)
+    key = f"cloud-discovery:{now.date().isoformat()}"
+    return _enqueue_with_key(key, trigger="scheduled", scheduled_at=now)
+
+
+def ensure_daily_discovery_scheduled() -> dict[str, Any]:
+    """Idempotently ensure one discovery task exists for the current UTC day."""
+    initialize_store()
+    now = datetime.now(timezone.utc)
+    day_key = f"cloud-discovery:{now.date().isoformat()}"
+    existing = task_manager.get_task_by_dedupe_key(day_key)
+    if existing is not None and existing["status"] not in {"failed", "cancelled"}:
+        return existing
+    if existing is None:
+        return _enqueue_with_key(day_key, trigger="scheduled", scheduled_at=now)
+
+    # If a queued run was explicitly cancelled before it could chain tomorrow's
+    # task, allow one recovery run after the next application startup.
+    recovery_key = f"{day_key}:recovery"
+    recovery = task_manager.get_task_by_dedupe_key(recovery_key)
+    if recovery is not None:
+        return recovery
+    return _enqueue_with_key(recovery_key, trigger="scheduled", scheduled_at=now)
+
+
+def _schedule_next_daily_run() -> tuple[dict[str, Any], datetime]:
+    next_run = datetime.now(timezone.utc) + timedelta(days=1)
+    next_key = f"cloud-discovery:{next_run.date().isoformat()}"
+    next_task = task_manager.create_task(
+        CLOUD_DISCOVERY_TASK_TYPE,
+        {"trigger": "scheduled"},
+        priority=-10,
+        max_attempts=1,
+        scheduled_at=next_run,
+        dedupe_key=next_key,
+    )
+    return next_task, next_run
+
+
+def handle_discovery_task(
+    payload: dict[str, Any],
+    checkpoint_data: dict[str, Any] | None,
+    context: Any,
+) -> dict[str, Any]:
+    """Run discovery under durable task controls and schedule the next daily pass."""
+    try:
+        report = discover_resources(checkpoint=context.checkpoint)
+    except Exception:
+        # Keep the daily chain alive even when a task is paused/cancelled or discovery fails.
+        _schedule_next_daily_run()
+        raise
+    next_task, next_run = _schedule_next_daily_run()
+    return {
+        **report,
+        "next_scheduled_task_id": next_task["id"],
+        "next_scheduled_at": next_run.isoformat(),
+    }

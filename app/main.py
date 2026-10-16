@@ -6,16 +6,18 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import chat_research, curricula, db, learning, ollama, task_manager
+from . import chat_research, cloud_resources, curricula, db, learning, ollama, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
 from .task_routes import router as task_router
+from .cloud_resource_routes import router as cloud_resource_router
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
 app.include_router(task_router)
+app.include_router(cloud_resource_router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
 
@@ -52,6 +54,13 @@ _task_runtime: TaskRuntime | None = None
 def startup() -> None:
     global _task_runtime
     db.init_databases()
+    try:
+        cloud_resources.initialize_store()
+        cloud_resources.ensure_daily_discovery_scheduled()
+    except Exception:
+        # Cloud discovery is an optional subsystem; storage/network failures must not
+        # prevent the local chat and learning runtime from starting.
+        logger.exception("Cloud resource discovery could not be initialized or scheduled.")
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
     if _task_runtime is not None and _task_runtime.is_running:
@@ -60,7 +69,10 @@ def startup() -> None:
     configured_workers = int(settings.get("learning_max_concurrent_jobs", 1))
     worker_count = max(1, min(8, configured_workers))
     _task_runtime = TaskRuntime(
-        {LEARNING_TASK_TYPE: handle_learning_job},
+        {
+            LEARNING_TASK_TYPE: handle_learning_job,
+            cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
+        },
         worker_count=worker_count,
         poll_interval=0.5,
         lease_seconds=300,
@@ -111,7 +123,9 @@ def api_health() -> dict[str, Any]:
     return {"status": "ok", "ollama": ollama.health(), "hardware": hardware,
             "runtime_limits": runtime_limits(settings, hardware),
             "storage": {"settings_database": defaults.settings_db_path, "learning_database": defaults.learning_db_path,
-                        "separate": defaults.settings_db_path != defaults.learning_db_path}}
+                        "cloud_resources_database": defaults.cloud_resources_db_path,
+                        "separate": len({defaults.settings_db_path, defaults.learning_db_path,
+                                         defaults.cloud_resources_db_path}) == 3}}
 
 @app.get("/api/models")
 def models() -> dict[str, Any]:
