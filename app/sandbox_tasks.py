@@ -53,7 +53,7 @@ def handler_from_environment() -> Callable[
         source_code = payload.get("source_code")
         if not isinstance(source_code, str) or not source_code.strip():
             raise ValueError("source_code must be non-empty text.")
-        if len(source_code.encode("utf-8")) > 64 * 1024 or "\\x00" in source_code:
+        if len(source_code.encode("utf-8")) > 64 * 1024 or "\x00" in source_code:
             raise ValueError("source_code exceeds the allowed size or contains NUL characters.")
 
         timeout_seconds = payload.get("timeout_seconds", 10)
