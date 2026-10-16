@@ -73,7 +73,7 @@ def revoke_sandbox_consent() -> dict[str, Any]:
 
 @router.post("/run", status_code=202)
 def queue_sandbox_execution(request: SandboxRunRequest) -> dict[str, Any]:
-    if "\\x00" in request.source_code:
+    if "\x00" in request.source_code:
         raise HTTPException(status_code=422, detail="source_code must not contain NUL characters.")
     if len(request.source_code.encode("utf-8")) > 64 * 1024:
         raise HTTPException(status_code=422, detail="source_code exceeds the 64 KiB limit.")
