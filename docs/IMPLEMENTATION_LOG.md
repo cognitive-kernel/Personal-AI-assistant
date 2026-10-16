@@ -1277,9 +1277,27 @@
 
 ## 95. Persistent research task queue
 
-- Status: implemented on branch `feat/persistent-research-tasks-20261016`; CI validation pending.
+- Status: merged in PR #176; exact-head GitHub Actions run #38864906484 succeeded.
 - Added loopback-only `POST /api/research/tasks` to queue source-aware research as a durable `research.answer` task; the synchronous `POST /api/chat` remains for compatibility.
 - Registered the research handler in the central task runtime and changed the local chat UI to poll the persisted task result.
 - Added cooperative checkpoints around memory lookup, source discovery, draft generation, claim review, repair, and experience capture. Checkpoints store a message digest rather than raw user text.
 - Pause/cancel takes effect at the next checkpoint; an in-flight HTTP or Ollama call is not forcibly interrupted. Research tasks use one attempt to avoid automatic duplicate work after uncertain failures.
-- Added task/route/UI tests and `docs/architecture/RESEARCH_TASKS.md`. Local tests were not run; exact-head CI is the merge gate.
+- Added a task-manager panel for persisted task listing and pause/resume/cancel controls, with raw payloads hidden from the UI.
+- Added task/route/UI tests and `docs/architecture/RESEARCH_TASKS.md`. The full test suite and deterministic lexical retrieval benchmark passed in CI; local tests were not run.
+
+## 96. Roadmap status and remaining acceptance gates (2026-10-16)
+
+This is a status snapshot, not a declaration that the full roadmap is complete.
+
+- **Stage 0 — full repository audit:** still incomplete. GitHub file inspection and CI runs are not a substitute for a full checkout, local dependency audit, migration review, and recorded baseline execution on a target machine.
+- **Stage 1 — module boundaries and contracts:** partially addressed; further refactoring and dependency-cycle review remain.
+- **Stage 2 — persistent task manager:** durable queue, worker leases, checkpointing, and pause/resume/cancel are present; policy consistency and fault-injection coverage across every task type remain.
+- **Stage 3 — learning system:** source-aware research, provenance, versioned experience storage, and opt-in capture exist; autonomous curriculum planning, semantic retrieval, source freshness/reconciliation, and independent knowledge evaluation remain incomplete.
+- **Stage 4 — isolated test lab:** Docker sandbox and controlled experience test runner are integrated; the new real-Docker workflow has not yet been manually run with an approved digest-pinned image.
+- **Stage 5 — experience memory:** versioned records and controlled test evidence exist; adaptive scoring, stronger retrieval evaluation, and richer context-aware experience reuse remain.
+- **Stage 6 — local management UI:** chat queue, task controls, experience review, capture consent, and test queue are available; a full operational dashboard and end-to-end browser validation remain.
+- **Stage 7 — resource discovery:** hardware detection and read-only cloud resource discovery are present; cloud provisioning and remote execution remain disabled pending provider-specific authorization, cost controls, and security acceptance.
+- **Stage 8 — safe self-improvement:** automated code-change proposals with isolated tests, explicit promotion, and rollback are not implemented.
+- **Stage 9 — hardening and optimization:** the Ollama loopback boundary has additional tests, but Issue #52 still requires independent security review; real Docker validation, restart/fault-injection tests, and performance/resource benchmarks remain.
+
+Do not mark any remaining stage complete without its acceptance tests and evidence recorded here.
