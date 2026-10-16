@@ -303,6 +303,29 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_candidates_reviewed ON cloud_resource_candidates(reviewed_at DESC)",
         ),
     ),
+    Migration(
+        3,
+        "cloud-resource-evidence-claims",
+        (
+            """CREATE TABLE cloud_resource_claims (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES cloud_resource_candidates(id) ON DELETE CASCADE,
+                source_content_sha256 TEXT NOT NULL CHECK(length(source_content_sha256) = 64),
+                claim_type TEXT NOT NULL,
+                value_json TEXT NOT NULL,
+                unit TEXT,
+                evidence_quote TEXT NOT NULL,
+                adapter_id TEXT NOT NULL,
+                review_status TEXT NOT NULL DEFAULT 'unreviewed'
+                    CHECK(review_status IN ('unreviewed','accepted','rejected')),
+                is_current INTEGER NOT NULL DEFAULT 1 CHECK(is_current IN (0,1)),
+                extracted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, source_content_sha256, claim_type, value_json, evidence_quote)
+            )""",
+            "CREATE INDEX idx_cloud_claims_current ON cloud_resource_claims(candidate_id, is_current, claim_type)",
+            "CREATE INDEX idx_cloud_claims_review ON cloud_resource_claims(review_status, is_current, extracted_at DESC)",
+        ),
+    ),
 )
 
 
