@@ -50,3 +50,21 @@ This adapter does not install dependencies, enable network access, expose an HTT
 The loopback-only `/api/sandbox` routes expose consent status/history, explicit consent grant, revocation, and bounded task submission. Consent defaults to off and is stored in the settings database with a policy version and append-only grant/revoke events. The generic `/api/tasks` endpoint rejects `sandbox.run_python` so callers must use the consent-aware route.
 
 The handler checks current consent before execution and periodically while the container runs. Revocation causes the sandbox client to stop at its next control poll; queued tasks also fail closed if consent is absent when they begin. This is an explicit local consent mechanism, not a claim of strong user authentication: the API remains loopback-only and the host account/Docker daemon must be protected.
+
+
+## Orphan-container cleanup (explicit, conservative)
+
+Each task-backed container receives the application ownership label
+`com.cognitivekernel.personal-ai-assistant.sandbox=true` and its durable task ID.
+The helper `sandbox.cleanup_orphaned_containers()` is intentionally **not** called
+automatically at startup. A caller must provide task IDs already confirmed terminal
+(`succeeded`, `failed`, or `cancelled`) by the durable task store. The helper
+inspects Docker labels/state/creation time and removes only matching application
+containers older than a grace period (60 seconds by default).
+
+Active or unknown task IDs, recent containers, malformed inspect output, invalid
+container IDs, and Docker command failures are skipped or reported without deletion.
+It uses argument arrays, a restricted Docker CLI environment, bounded command
+timeouts, and no shell. The explicit caller must not infer terminal state from lease
+expiry alone; first reconcile the durable task state. Automatic startup integration
+is deferred until multi-process reconciliation and recovery ordering are tested.
