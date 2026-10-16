@@ -11,7 +11,7 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'id="cloud-discover"' in page
     assert 'id="cloud-candidates"' in page
     assert '/api/cloud-resources/discover' in page
-    assert '/api/cloud-resources/"+candidate.id+"/review' in page
+    assert '"/api/cloud-resources/"+candidate.id+"/review"' in page
     assert 'expected_content_sha256:candidate.content_sha256' in page
     assert 'link.rel="noopener noreferrer"' in page
     assert 'source.protocol!=="https:"' in page
