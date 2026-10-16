@@ -28,7 +28,7 @@ def test_evaluate_ranked_queries_reports_recall_and_mrr():
     ]
 
     def fake_search(query, variants, limit):
-        assert limit == 5
+        assert limit == 10
         if query == "first":
             return [{"slug": "b"}, {"slug": "a"}]
         return [{"slug": "c"}]
