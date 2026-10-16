@@ -1213,10 +1213,17 @@
 
 ## 59. Loopback experience-memory API
 
-- Status: implementation added on branch `feat/experience-memory-api-v2-20261016`; CI validation pending.
+- Status: merged in PR #165; exact-head GitHub Actions run succeeded.
 - Added loopback-only routes for listing, creating, searching, inspecting and updating experience records, plus version history.
 - Public API updates cannot set a record to `verified`, submit `test_results`, or pass the internal `_controlled_run` flag. These remain reserved for a future controlled runner with actual execution evidence.
 - Added route tests for record lifecycle, version history, validation boundaries, and rejection of non-loopback clients.
 - Added `docs/architecture/EXPERIENCE_MEMORY_API.md` to document the API contract and trust boundary.
-- Local tests were not run in this environment; the pull-request CI result is the validation gate.
-- This change exposes existing experience storage to the local interface; it does not claim to complete autonomous experience capture or execution-based verification.
+- The change exposes existing experience storage to the local interface; it does not complete autonomous experience capture or execution-based verification.
+
+## 60. Local experience-memory management UI
+
+- Status: implemented on branch `feat/experience-memory-ui-20261016`; CI validation pending.
+- Added a local UI for creating and listing experience records, searching verified guidance separately from failure/review warnings, reviewing editable metadata, and viewing version history.
+- External source links are accepted for display only when HTTPS; all stored/user-provided text is rendered through DOM text nodes rather than HTML injection.
+- The UI does not provide a way to submit test results or promote an experience to verified; that remains reserved for controlled execution.
+- Added a static UI contract test. Local tests were not run in this environment; the exact-head CI result remains the validation gate.
