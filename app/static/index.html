@@ -6,13 +6,34 @@
 <style>
 :root{color-scheme:light dark;font-family:system-ui,sans-serif}body{max-width:980px;margin:0 auto;padding:24px;line-height:1.65}
 header,section{border:1px solid #8886;border-radius:12px;padding:16px;margin:14px 0}
-textarea,input,button{font:inherit;padding:9px;border-radius:7px}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}button{cursor:pointer;margin:4px 0}
+textarea,input,button,select{font:inherit;padding:9px;border-radius:7px}
+.task-card{border:1px solid #8885;border-radius:9px;padding:12px;margin:12px 0}
+.task-heading{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
+.task-meta{font-size:.9rem;opacity:.8}
+.task-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:end}
+.task-field{min-width:140px;flex:1}
+.task-field input{width:100%;box-sizing:border-box}
+.task-error{color:#b42318;font-weight:600}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}button{cursor:pointer;margin:4px 0}
 pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-template-columns:minmax(160px,2fr) minmax(130px,1fr) minmax(100px,.7fr) auto;gap:8px;align-items:center;border-bottom:1px solid #8884;padding:8px 0}.path-topic label{margin:0}.path-topic select,.path-topic input{width:100%;min-width:0;box-sizing:border-box}.muted{opacity:.75;font-size:.92rem}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media(max-width:700px){.row{grid-template-columns:1fr}}
 </style></head>
 <body>
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
 <button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
+<section id="task-dashboard">
+<h2>صف و مدیریت وظایف</h2>
+<p class="muted">وضعیت وظایف پایدار، تلاش‌ها، lease و checkpoint را ببینید. بستن مرورگر اجرای worker را متوقف نمی‌کند.</p>
+<div class="row">
+<label>فیلتر وضعیت<select id="task-status-filter">
+<option value="all">همه وضعیت‌ها</option><option value="queued">در صف</option><option value="running">در حال اجرا</option>
+<option value="paused">متوقف موقت</option><option value="failed">ناموفق</option><option value="succeeded">موفق</option><option value="cancelled">لغوشده</option>
+</select></label>
+<label><input id="task-auto-refresh" type="checkbox" checked style="width:auto"> نوسازی خودکار هر ۳ ثانیه</label>
+</div>
+<button id="refresh-tasks" type="button">به‌روزرسانی صف</button>
+<pre id="task-summary">صف هنوز بارگذاری نشده است.</pre>
+<div id="task-list" aria-live="polite"></div>
+</section>
 <div class="row">
 <section><h2>گفتگو</h2><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
@@ -89,5 +110,178 @@ el("settings-form").addEventListener("submit", async event => {
  try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
 });
+
+const taskTerminalStatuses = new Set(["succeeded", "failed", "cancelled"]);
+const taskStatusLabels = {
+ queued: "در صف", running: "در حال اجرا", pause_requested: "درخواست توقف موقت",
+ paused: "متوقف موقت", cancel_requested: "درخواست لغو", cancelled: "لغوشده",
+ succeeded: "موفق", failed: "ناموفق"
+};
+let taskRefreshTimer = null;
+let taskRefreshInFlight = false;
+
+function localDateTimeValue(value) {
+ if (!value) return "";
+ const date = new Date(value);
+ if (Number.isNaN(date.getTime())) return "";
+ return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
+
+function taskButton(label, handler) {
+ const button = document.createElement("button");
+ button.type = "button";
+ button.textContent = label;
+ button.addEventListener("click", handler);
+ return button;
+}
+
+async function runTaskAction(taskId, action, method = "POST", body = null) {
+ const options = {method};
+ if (body !== null) options.body = JSON.stringify(body);
+ await api("/api/tasks/" + taskId + "/" + action, options);
+ await refreshTasks();
+}
+
+function renderTasks(tasks) {
+ const container = el("task-list");
+ container.replaceChildren();
+ if (!tasks.length) {
+  container.textContent = "وظیفه‌ای با این فیلتر پیدا نشد.";
+  return;
+ }
+ tasks.forEach(task => {
+  const card = document.createElement("article");
+  card.className = "task-card";
+  const heading = document.createElement("div");
+  heading.className = "task-heading";
+  const title = document.createElement("strong");
+  title.textContent = "#" + task.id + " — " + task.task_type;
+  const status = document.createElement("span");
+  status.textContent = taskStatusLabels[task.status] || task.status;
+  heading.append(title, status);
+  card.append(heading);
+
+  const meta = document.createElement("p");
+  meta.className = "task-meta";
+  const scheduled = task.scheduled_at ? new Date(task.scheduled_at).toLocaleString() : "نامشخص";
+  const lease = task.lease_expires_at ? new Date(task.lease_expires_at).toLocaleString() : "بدون lease فعال";
+  meta.textContent = "اولویت: " + task.priority + " | تلاش: " + task.attempts + "/" + task.max_attempts +
+   " | زمان‌بندی: " + scheduled + " | پایان lease: " + lease;
+  card.append(meta);
+
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = "جزئیات، payload، checkpoint، نتیجه و خطا";
+  const detailBody = document.createElement("pre");
+  detailBody.textContent = JSON.stringify({
+   status: task.status,
+   payload: task.payload,
+   checkpoint: task.checkpoint,
+   result: task.result,
+   error: task.error,
+   lease_owner: task.lease_owner,
+   created_at: task.created_at,
+   updated_at: task.updated_at
+  }, null, 2);
+  details.append(summary, detailBody);
+  card.append(details);
+
+  const actions = document.createElement("div");
+  actions.className = "task-actions";
+  const showActionError = error => {
+   let note = card.querySelector(".task-error");
+   if (!note) {
+    note = document.createElement("p");
+    note.className = "task-error";
+    card.append(note);
+   }
+   note.textContent = "خطا در تغییر وظیفه: " + error.message;
+  };
+  const action = (label, path, method = "POST", body = null) => taskButton(label, async () => {
+   try { await runTaskAction(task.id, path, method, body); }
+   catch (error) { showActionError(error); }
+  });
+
+  if (task.status === "running") actions.append(action("توقف موقت", "pause"));
+  if (task.status === "paused") actions.append(action("ادامه", "resume"));
+  if (!taskTerminalStatuses.has(task.status) && task.status !== "cancel_requested") {
+   actions.append(action("لغو", "cancel"));
+  }
+
+  if (["queued", "paused"].includes(task.status)) {
+   const priorityField = document.createElement("label");
+   priorityField.className = "task-field";
+   priorityField.textContent = "اولویت";
+   const priorityInput = document.createElement("input");
+   priorityInput.type = "number";
+   priorityInput.min = "-100000";
+   priorityInput.max = "100000";
+   priorityInput.step = "1";
+   priorityInput.value = String(task.priority);
+   priorityField.append(priorityInput);
+   actions.append(priorityField);
+   actions.append(taskButton("ذخیره اولویت", async () => {
+    const value = Number(priorityInput.value);
+    if (!Number.isInteger(value) || value < -100000 || value > 100000) {
+     showActionError(new Error("اولویت باید عدد صحیح بین 100000- و 100000 باشد."));
+     return;
+    }
+    try { await runTaskAction(task.id, "priority", "PATCH", {priority: value}); }
+    catch (error) { showActionError(error); }
+   }));
+
+   const scheduleField = document.createElement("label");
+   scheduleField.className = "task-field";
+   scheduleField.textContent = "زمان‌بندی مجدد";
+   const scheduleInput = document.createElement("input");
+   scheduleInput.type = "datetime-local";
+   scheduleInput.value = localDateTimeValue(task.scheduled_at);
+   scheduleField.append(scheduleInput);
+   actions.append(scheduleField);
+   actions.append(taskButton("ذخیره زمان", async () => {
+    if (!scheduleInput.value) {
+     showActionError(new Error("زمان جدید را انتخاب کنید."));
+     return;
+    }
+    const date = new Date(scheduleInput.value);
+    if (Number.isNaN(date.getTime())) {
+     showActionError(new Error("زمان انتخاب‌شده معتبر نیست."));
+     return;
+    }
+    try { await runTaskAction(task.id, "schedule", "PATCH", {scheduled_at: date.toISOString()}); }
+    catch (error) { showActionError(error); }
+   }));
+  }
+  card.append(actions);
+  container.append(card);
+ });
+}
+
+async function refreshTasks() {
+ if (taskRefreshInFlight) return;
+ taskRefreshInFlight = true;
+ if (taskRefreshTimer) clearTimeout(taskRefreshTimer);
+ const summary = el("task-summary");
+ try {
+  const params = new URLSearchParams({limit: "100"});
+  const status = el("task-status-filter").value;
+  if (status !== "all") params.append("statuses", status);
+  const result = await api("/api/tasks?" + params.toString());
+  const tasks = result.tasks || [];
+  const active = tasks.filter(task => ["queued", "running", "pause_requested", "paused", "cancel_requested"].includes(task.status)).length;
+  summary.textContent = "تعداد نمایش‌داده‌شده: " + tasks.length + " | فعال/در صف: " + active;
+  renderTasks(tasks);
+ } catch (error) {
+  summary.textContent = "خطا در بارگذاری صف: " + error.message;
+ } finally {
+  taskRefreshInFlight = false;
+  if (el("task-auto-refresh").checked) taskRefreshTimer = setTimeout(refreshTasks, 3000);
+ }
+}
+el("refresh-tasks").addEventListener("click", refreshTasks);
+el("task-status-filter").addEventListener("change", refreshTasks);
+el("task-auto-refresh").addEventListener("change", refreshTasks);
+
 refresh();
+refreshTasks();
 </script><script src="/static/learning.js"></script></body></html>
