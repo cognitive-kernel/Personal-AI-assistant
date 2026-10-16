@@ -22,7 +22,8 @@ def configure_ollama_url(tmp_path, monkeypatch, url):
 def test_ollama_policy_allows_loopback_http_endpoints(tmp_path, monkeypatch, url):
     configure_ollama_url(tmp_path, monkeypatch, url)
 
-    assert ollama._base_url() == url
+    expected = url.replace('localhost', '127.0.0.1') if 'localhost' in url else url
+    assert ollama._base_url() == expected
 
 
 @pytest.mark.parametrize(
@@ -32,6 +33,13 @@ def test_ollama_policy_allows_loopback_http_endpoints(tmp_path, monkeypatch, url
         "http://192.168.1.10:11434",
         "http://10.0.0.2:11434",
         "http://0.0.0.0:11434",
+        "http://localhost.evil:11434",
+        "http://localhost.:11434",
+        "http://localhost.localdomain:11434",
+        "http://127.0.0.1.nip.io:11434",
+        "http://2130706433:11434",
+        "http://0177.0.0.1:11434",
+        "http://[::ffff:127.0.0.1]:11434",
     ],
 )
 def test_ollama_policy_rejects_non_loopback_hosts(tmp_path, monkeypatch, url):
@@ -228,6 +236,48 @@ def test_ollama_request_rejects_oversized_response(tmp_path, monkeypatch):
                 f"http://127.0.0.1:{server.server_port}",
             )
             with pytest.raises(ollama.OllamaError, match="exceeded the 8 MiB limit"):
+                ollama._request("/api/tags", timeout=2)
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:abc",
+        "http://localhost:0",
+        "http://localhost:65536",
+    ],
+)
+def test_ollama_policy_rejects_invalid_ports(tmp_path, monkeypatch, url):
+    configure_ollama_url(tmp_path, monkeypatch, url)
+    with pytest.raises(ollama.OllamaError, match="port"):
+        ollama._base_url()
+
+
+def test_ollama_request_wraps_invalid_utf8_response(tmp_path, monkeypatch):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class InvalidUtf8Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "1")
+            self.end_headers()
+            self.wfile.write(b"\\xff")
+
+        def log_message(self, format, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), InvalidUtf8Handler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            configure_ollama_url(
+                tmp_path, monkeypatch, f"http://127.0.0.1:{server.server_port}"
+            )
+            with pytest.raises(ollama.OllamaError, match="request failed"):
                 ollama._request("/api/tags", timeout=2)
         finally:
             server.shutdown()
