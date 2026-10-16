@@ -57,6 +57,28 @@ def _repo_root() -> Path:
     return root
 
 
+def _validate_repo_paths(root: Path, paths: list[str]) -> None:
+    resolved_root = root.resolve(strict=True)
+    for relative in paths:
+        candidate = resolved_root / relative
+        parent = candidate.parent
+        chain = []
+        while parent != resolved_root and parent != parent.parent:
+            chain.append(parent)
+            parent = parent.parent
+        for directory in reversed(chain):
+            if directory.exists() and directory.is_symlink():
+                raise ProposalError("Patch paths cannot traverse symbolic-link directories.")
+        if candidate.is_symlink():
+            raise ProposalError("Patch targets cannot be symbolic links.")
+        try:
+            candidate.resolve(strict=False).relative_to(resolved_root)
+        except ValueError as exc:
+            raise ProposalError("Patch target resolves outside the configured repository.") from exc
+        if candidate.exists() and not candidate.is_file():
+            raise ProposalError("Patch targets must be regular files.")
+
+
 def _git(root: Path, args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
     environment = {
         "PATH": os.environ.get("PATH", ""),
@@ -93,7 +115,10 @@ def validate_patch_format(patch: str) -> dict[str, Any]:
         raise ProposalError("patch exceeds the 256 KiB limit or contains NUL characters.")
     if "GIT binary patch" in patch or "Binary files " in patch:
         raise ProposalError("Binary patches are not allowed.")
-    forbidden = ("rename from ", "rename to ", "deleted file mode ", "new file mode 120000", "new file mode 160000")
+    forbidden = (
+        "rename from ", "rename to ", "deleted file mode ", "old mode ",
+        "new mode ", "new file mode 120000", "new file mode 160000",
+    )
     if any(token in patch for token in forbidden):
         raise ProposalError("Renames, deletions, symlinks, and submodules are not allowed.")
     if re.search(r"^index [0-9a-f]+\.\.0{6,}(?:\s|$)", patch, re.MULTILINE):
@@ -176,6 +201,7 @@ def create_proposal(title: str, rationale: str, patch: str) -> dict[str, Any]:
         raise ProposalError("rationale must contain 1–4000 characters.")
     patch_meta = validate_patch_format(patch)
     root = _repo_root()
+    _validate_repo_paths(root, patch_meta["files"])
     head = _git(root, ["rev-parse", "--verify", "HEAD"])
     if head.returncode != 0:
         raise ProposalError("Configured repository has no verifiable HEAD commit.")
@@ -234,6 +260,7 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
     if meta["sha256"] != proposal["patch_sha256"]:
         raise ProposalError("Stored patch hash does not match the proposal record.")
     root = _repo_root()
+    _validate_repo_paths(root, meta["files"])
     head = _git(root, ["rev-parse", "--verify", "HEAD"])
     if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
         raise ProposalError("Repository HEAD changed since proposal creation; create a new proposal against the current base.")
