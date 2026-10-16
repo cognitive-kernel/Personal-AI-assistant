@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import datetime, timezone
 from collections import Counter
 from typing import Any, Sequence
 
@@ -182,10 +183,54 @@ def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> lis
     return ranked[:_MAX_VECTOR_RESULTS]
 
 
+def _source_freshness(item: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
+    """Estimate evidence observation freshness without claiming that a URL was re-fetched."""
+    evidence = item.get("source_evidence", [])
+    if not isinstance(evidence, list) or not evidence:
+        return {"status": "unknown", "multiplier": 0.80}
+    now = now or datetime.now(timezone.utc)
+    multipliers: list[float] = []
+    ages: list[float] = []
+    for entry in evidence:
+        observed_at = entry.get("observed_at") if isinstance(entry, dict) else None
+        if not isinstance(observed_at, str) or not observed_at.strip():
+            multipliers.append(0.80)
+            continue
+        try:
+            parsed = datetime.fromisoformat(observed_at.strip().replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            age_days = max(0.0, (now - parsed.astimezone(timezone.utc)).total_seconds() / 86400)
+        except (TypeError, ValueError, OverflowError):
+            multipliers.append(0.80)
+            continue
+        ages.append(age_days)
+        if age_days <= 30:
+            multipliers.append(1.0)
+        elif age_days <= 90:
+            multipliers.append(0.75)
+        else:
+            multipliers.append(0.45)
+    multiplier = min(multipliers, default=0.80)
+    if multiplier >= 1.0:
+        status = "recently_observed"
+    elif multiplier >= 0.75:
+        status = "aging"
+    elif multiplier >= 0.5:
+        status = "stale"
+    else:
+        status = "stale_or_unknown"
+    return {
+        "status": status,
+        "multiplier": multiplier,
+        "oldest_observation_days": round(max(ages), 1) if ages else None,
+    }
+
+
 def search_relevant_experiences(
     query: str, query_variants: list[str] | None = None, limit: int = 5
 ) -> list[dict[str, Any]]:
-    """Rank verified experiences using BM25-style lexical scoring plus vector RRF."""
+    """Rank verified experiences by lexical/vector relevance adjusted for evidence age."""
     if not isinstance(query, str) or not query.strip():
         return []
     try:
@@ -208,20 +253,20 @@ def search_relevant_experiences(
     except ollama.OllamaError:
         vector = []
     vector_ranks = {item_id: rank for rank, (item_id, _) in enumerate(vector, 1)}
-    if not vector_ranks:
-        ids = [item_id for item_id, _ in lexical[:result_limit]]
-    else:
-        fused = []
-        for item in items:
-            item_id = int(item["id"])
-            score = 0.0
-            if item_id in lexical_ranks:
-                score += 1.0 / (_RRF_K + lexical_ranks[item_id])
-            if item_id in vector_ranks:
-                score += 1.0 / (_RRF_K + vector_ranks[item_id])
-            if score:
-                fused.append((item_id, score))
-        fused.sort(key=lambda pair: (pair[1], _item_sort_key(items, pair[0])), reverse=True)
-        ids = [item_id for item_id, _ in fused[:result_limit]]
-    by_id = {int(item["id"]): item for item in items}
-    return [by_id[item_id] for item_id in ids if item_id in by_id]
+    ranked: list[tuple[float, tuple[str, int], int, dict[str, Any]]] = []
+    for item in items:
+        item_id = int(item["id"])
+        relevance = 0.0
+        if item_id in lexical_ranks:
+            relevance += 1.0 / (_RRF_K + lexical_ranks[item_id])
+        if item_id in vector_ranks:
+            relevance += 1.0 / (_RRF_K + vector_ranks[item_id])
+        if relevance <= 0:
+            continue
+        freshness = _source_freshness(item)
+        score = relevance * float(freshness["multiplier"])
+        enriched = dict(item)
+        enriched["source_freshness"] = freshness
+        ranked.append((score, _item_sort_key(items, item_id), item_id, enriched))
+    ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    return [row[3] for row in ranked[:result_limit]]
