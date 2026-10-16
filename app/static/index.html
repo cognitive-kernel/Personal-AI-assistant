@@ -210,7 +210,7 @@ el("cloud-refresh").addEventListener("click",refreshCloudResources);
 el("cloud-discover").addEventListener("click",async()=>{
  const output=el("cloud-output"); output.textContent="در حال صف‌بندی جست‌وجوی جدید…";
  try {
-  const response=await api("/api/cloud-resources/discover",{method:"POST",body:"{}"});
+  const response=await api("/api/cloud-resources/discover",{method:"POST"});
   const task=response.task;
   output.textContent="وظیفهٔ جست‌وجو در صف قرار گرفت: #"+task.id+" ("+task.status+").";
   const poll=async()=>{
