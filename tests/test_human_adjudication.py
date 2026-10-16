@@ -1,4 +1,5 @@
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -7,8 +8,8 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "create_human_adjudication.py"
-SPEC = __import__("importlib.util").util.spec_from_file_location("human_adjudication", SCRIPT)
-worksheet_module = __import__("importlib.util").util.module_from_spec(SPEC)
+SPEC = importlib.util.spec_from_file_location("human_adjudication", SCRIPT)
+worksheet_module = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
 SPEC.loader.exec_module(worksheet_module)
 
