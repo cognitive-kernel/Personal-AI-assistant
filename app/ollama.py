@@ -97,8 +97,15 @@ def list_models() -> list[dict[str, Any]]:
     models = _request("/api/tags", timeout=5).get("models", [])
     if not isinstance(models, list):
         return []
-    return [{"name": item.get("name"), "size": item.get("size"), "modified_at": item.get("modified_at")}
-            for item in models if isinstance(item, dict)]
+    return [
+        {
+            "name": item.get("name"),
+            "size": item.get("size"),
+            "modified_at": item.get("modified_at"),
+            "digest": item.get("digest") if isinstance(item.get("digest"), str) else None,
+        }
+        for item in models if isinstance(item, dict)
+    ]
 
 def chat(
     message: str,
