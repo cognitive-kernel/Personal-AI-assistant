@@ -32,7 +32,7 @@ def test_generic_adapter_extracts_only_explicit_claims_with_verbatim_evidence():
 def test_generic_adapter_does_not_infer_missing_capacity_or_availability():
     text = "Compute may be available in some regions. Free plan terms vary and quotas can change."
 
-    claims = GenericPublicPageAdapter().extract_claims("provider.example.org", "Compute", text)
+    claims = GenericPublicPageAdapter().extract_claims("Compute", text)
 
     assert {claim.claim_type for claim in claims} == {"free_tier_mention"}
 
@@ -40,6 +40,6 @@ def test_generic_adapter_does_not_infer_missing_capacity_or_availability():
 def test_generic_adapter_deduplicates_repeated_claims():
     text = "2 vCPU and 4 vCPU; 2 vCPU is the stated limit."
 
-    claims = GenericPublicPageAdapter().extract_claims("provider.example.org", "CPU", text)
+    claims = GenericPublicPageAdapter().extract_claims("CPU", text)
 
     assert sum(claim.claim_type == "cpu_count" for claim in claims) == 2
