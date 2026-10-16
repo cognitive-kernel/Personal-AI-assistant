@@ -235,8 +235,8 @@ def test_list_terminal_task_ids_excludes_queued_and_running_tasks(task_store):
     task_manager.claim_next_task("worker-failure")
     task_manager.fail_task(failed["id"], "worker-failure", "expected", retry=False)
 
-    queued = task_manager.create_task("not.terminal.queued", {})
     running = task_manager.create_task("not.terminal.running", {})
+    queued = task_manager.create_task("not.terminal.queued", {})
     claimed_running = task_manager.claim_next_task("worker-running")
     assert claimed_running["id"] == running["id"]
 
