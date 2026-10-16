@@ -1010,6 +1010,20 @@
 - [x] `app/main.py` handler را تنها پس از opt-in و اعتبارسنجی پیکربندی به registry اضافه می‌کند؛ در حالت پیش‌فرض sandbox فعال نیست.
 - [x] تست‌های opt-in، پیکربندی نامعتبر، schema ورودی، عدم امکان override کردن image، hash و شواهد checkpoint اضافه شدند.
 - [ ] API اختصاصی loopback برای صف‌کردن اجرای sandbox و ثبت رضایت/رویداد audit هنوز وجود ندارد؛ فعلاً handler از طریق task registry محدودشده است.
-- [x] **PR #146** با CI موفق روی head `bfc8f095d3669d3565cf6e8aa6db56badf720b9e`؛ run [#38855170849](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855170849) شامل نصب وابستگی‌ها، کل مجموعه تست و benchmark بازیابی واژگانی.
+- [x] **PR #146** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/146)، commit ادغام `ac36ec7babe34d340ca9b3f1d58cd83ad46774f2`.
+- [x] CI روی head دقیق `58172f50eb45f6d4e6f2cb13c354f2e448e420c5` موفق بود؛ run [#38855242680](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855242680) شامل نصب وابستگی‌ها، کل مجموعه تست و benchmark بازیابی واژگانی.
 - [ ] تست محلی اجرا نشده است؛ CI اجرا شده است.
 - **گام بعدی:** API اختصاصی با schema محدود، consent صریح و audit، سپس آزمون‌های یکپارچگی pause/cancel و crash recovery؛ image digest باید توسط مدیر برای معماری واقعی تأیید و محلی provision شود.
+
+
+## 72. 2026-10-16 — رضایت قابل‌ابطال و API محلی اجرای sandbox
+
+- [x] migration نسخهٔ ۲ settings، وضعیت رضایت sandbox و تاریخچهٔ رویدادهای grant/revoke را با default-off اضافه می‌کند.
+- [x] `app/sandbox_consent.py` رضایت را پایدار ذخیره می‌کند؛ خطای ذخیره‌سازی هنگام بررسی رضایت به حالت عدم رضایت تعبیر می‌شود.
+- [x] `/api/sandbox/consent` وضعیت و audit را می‌خواند؛ POST رضایت به تأیید صریح و پیکربندی معتبر sandbox نیاز دارد؛ DELETE رضایت را لغو می‌کند.
+- [x] `POST /api/sandbox/run` فقط با رضایت جاری، پیکربندی معتبر، source محدود و timeout/output سقف‌دار وظیفه ایجاد می‌کند.
+- [x] مسیر عمومی `POST /api/tasks` از ساخت مستقیم `sandbox.run_python` جلوگیری می‌کند تا مسیر رضایت دور زده نشود.
+- [x] handler پیش از اجرا رضایت را بررسی و در طول اجرا به‌طور دوره‌ای لغو آن را پایش می‌کند؛ لغو باعث توقف fail-closed می‌شود.
+- [x] تست‌های migration، default-off، ثبت/revoke audit، نیاز به رضایت، enqueue، loopback-only و جلوگیری از bypass اضافه شدند.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** اجرای CI و ادغام پس از موفقیت؛ سپس آزمون یکپارچگی crash recovery و اثبات توقف sandbox پس از revoke با process mock.
