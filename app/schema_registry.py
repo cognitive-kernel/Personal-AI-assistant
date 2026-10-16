@@ -395,6 +395,55 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_provider_quota_latest ON provider_quota_snapshots(provider_id, resource, observed_at DESC, id DESC)",
         ),
     ),
+    Migration(
+        6,
+        "oci-readonly-limit-consent-and-snapshots",
+        (
+            """CREATE TABLE oci_limit_access_consents (
+                provider_id TEXT PRIMARY KEY CHECK(provider_id = 'oracle_cloud'),
+                enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+                user_consent INTEGER NOT NULL DEFAULT 0 CHECK(user_consent IN (0,1)),
+                executable_path TEXT NOT NULL DEFAULT '',
+                config_file TEXT NOT NULL DEFAULT '',
+                profile TEXT NOT NULL DEFAULT '',
+                region TEXT NOT NULL DEFAULT '',
+                compartment_id TEXT NOT NULL DEFAULT '',
+                consent_version TEXT NOT NULL DEFAULT 'oci-readonly-limits-v1',
+                consented_at TEXT,
+                revoked_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(enabled = 0 OR (
+                    user_consent = 1 AND length(trim(executable_path)) > 0
+                    AND length(trim(config_file)) > 0 AND length(trim(profile)) > 0
+                    AND length(trim(region)) > 0 AND length(trim(compartment_id)) > 0
+                    AND consented_at IS NOT NULL
+                ))
+            )""",
+            """CREATE TABLE oci_limit_consent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL CHECK(provider_id = 'oracle_cloud'),
+                event_type TEXT NOT NULL CHECK(event_type IN ('consent_granted','consent_revoked')),
+                consent_version TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE oci_limit_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL CHECK(provider_id = 'oracle_cloud'),
+                resource_name TEXT NOT NULL,
+                limit_value REAL NOT NULL CHECK(limit_value >= 0),
+                used_value REAL CHECK(used_value IS NULL OR used_value >= 0),
+                available_value REAL CHECK(available_value IS NULL OR available_value >= 0),
+                scope_type TEXT NOT NULL DEFAULT '',
+                scope_value TEXT NOT NULL DEFAULT '',
+                region TEXT NOT NULL,
+                observed_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(provider_id, resource_name, scope_type, scope_value, observed_at)
+            )""",
+            "CREATE INDEX idx_oci_limit_consent_events_created ON oci_limit_consent_events(created_at DESC, id DESC)",
+            "CREATE INDEX idx_oci_limit_snapshots_latest ON oci_limit_snapshots(provider_id, resource_name, observed_at DESC, id DESC)",
+        ),
+    ),
 )
 
 
