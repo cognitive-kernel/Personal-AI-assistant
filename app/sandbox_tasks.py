@@ -17,7 +17,7 @@ from .task_worker import TaskContext
 
 SANDBOX_TASK_TYPE = "sandbox.run_python"
 _IMAGE_REF = re.compile(
-    r"^(?:python|docker\\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$"
+    r"^(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$"
 )
 _ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes"}
 
