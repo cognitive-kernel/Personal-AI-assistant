@@ -18,13 +18,17 @@ _ALLOWED_AUTH_METHODS = {
 }
 
 
+def _finite_number(value: Any) -> bool:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError, ValueError):
+        return False
+
+
 def _positive_finite_number(value: Any) -> bool:
-    return (
-        not isinstance(value, bool)
-        and isinstance(value, (int, float))
-        and math.isfinite(value)
-        and value > 0
-    )
+    return _finite_number(value) and value > 0
 
 
 def assess_candidate(
@@ -86,7 +90,7 @@ def assess_candidate(
         quota = {}
 
     max_cost = quota.get("max_cost_usd")
-    if isinstance(max_cost, bool) or not isinstance(max_cost, (int, float)) or not math.isfinite(max_cost):
+    if not _finite_number(max_cost):
         review_needed.append("A finite numeric max_cost_usd limit is required.")
     elif max_cost != 0:
         blockers.append("The current policy allows zero spend only; max_cost_usd must be 0.")
@@ -96,7 +100,7 @@ def assess_candidate(
         if claim.get("claim_type") == "price_rate"
         and isinstance(claim.get("value"), (int, float))
         and not isinstance(claim.get("value"), bool)
-        and math.isfinite(claim["value"])
+        and _finite_number(claim["value"])
         and claim["value"] > 0
     ]
     if positive_price_claims:
@@ -105,7 +109,7 @@ def assess_candidate(
     auth_method = quota.get("auth_method")
     if auth_method is None:
         review_needed.append("An explicit supported authentication method must be reviewed.")
-    elif auth_method not in _ALLOWED_AUTH_METHODS:
+    elif not isinstance(auth_method, str) or auth_method not in _ALLOWED_AUTH_METHODS:
         blockers.append(
             "Authentication method is unsupported; automated account creation, account rotation, "
             "and quota circumvention are not permitted."
