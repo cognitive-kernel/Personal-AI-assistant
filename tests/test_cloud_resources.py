@@ -82,12 +82,12 @@ def test_discovery_persists_provenance_and_keeps_candidates_unreviewed(
     assert len(latest["query_results"]) == len(cloud_resources.DISCOVERY_QUERIES)
 
 
-def test_refresh_updates_evidence_without_overwriting_review_decisions(
+def test_refresh_preserves_review_only_when_source_content_is_unchanged(
     tmp_path, monkeypatch
 ):
     _configure_paths(tmp_path, monkeypatch)
     first = _document(text="Free tier GPU compute quota. Official usage terms. " * 4)
-    second = _document(text="CPU compute credits and storage quota. Official usage terms. " * 4)
+    changed = _document(text="CPU compute credits and storage quota. Official usage terms. " * 4)
     monkeypatch.setattr(
         web_sources, "discover_sources", lambda query, limit=3: [first]
     )
@@ -96,22 +96,32 @@ def test_refresh_updates_evidence_without_overwriting_review_decisions(
         connection.execute(
             """UPDATE cloud_resource_candidates
                SET review_status='approved', availability_status='available',
-                   quota_json=? WHERE source_url=?""",
-            (json.dumps({"cpu": "2 vCPU"}), first.url),
+                   quota_json=?, terms_url=? WHERE source_url=?""",
+            (json.dumps({"cpu": "2 vCPU"}), "https://compute.example.org/terms", first.url),
         )
         connection.commit()
 
+    # Re-observing identical evidence must not erase an explicit review decision.
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+    assert candidate["review_status"] == "approved"
+    assert candidate["availability_status"] == "available"
+    assert candidate["quota"] == {"cpu": "2 vCPU"}
+    assert candidate["terms_url"] == "https://compute.example.org/terms"
+
+    # A changed page invalidates review and quota claims tied to the old content hash.
     monkeypatch.setattr(
-        web_sources, "discover_sources", lambda query, limit=3: [second]
+        web_sources, "discover_sources", lambda query, limit=3: [changed]
     )
     cloud_resources.discover_resources()
     candidate = cloud_resources.list_candidates()[0]
     assert candidate["content_sha256"] == hashlib.sha256(
-        second.text.encode()
+        " ".join(changed.text.split()).encode()
     ).hexdigest()
-    assert candidate["review_status"] == "approved"
-    assert candidate["availability_status"] == "available"
-    assert candidate["quota"] == {"cpu": "2 vCPU"}
+    assert candidate["review_status"] == "unreviewed"
+    assert candidate["availability_status"] == "unknown"
+    assert candidate["quota"] == {}
+    assert candidate["terms_url"] is None
 
 
 def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeypatch):
