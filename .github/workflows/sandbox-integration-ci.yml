@@ -1,0 +1,62 @@
+name: Sandbox integration CI
+
+on:
+  pull_request:
+    paths:
+      - "app/sandbox.py"
+      - "app/sandbox_tasks.py"
+      - "tests/test_sandbox_integration.py"
+      - ".github/workflows/sandbox-integration-ci.yml"
+      - "pyproject.toml"
+  push:
+    branches: [main]
+    paths:
+      - "app/sandbox.py"
+      - "app/sandbox_tasks.py"
+      - "tests/test_sandbox_integration.py"
+      - ".github/workflows/sandbox-integration-ci.yml"
+      - "pyproject.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  real-docker-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Official Docker Hub Python image, pinned to the linux/amd64 manifest digest.
+      SANDBOX_PYTHON_IMAGE: python:3.11-slim@sha256:922f47525757de33aff59f24cdfc85f412ac4a06aa8af7c7e9028d584b7bcdeb
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate pinned image reference
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          image = os.environ["SANDBOX_PYTHON_IMAGE"]
+          pattern = r"python:3\.11-slim@sha256:[0-9a-f]{64}"
+          if not re.fullmatch(pattern, image):
+              raise SystemExit("Sandbox CI image must remain an official, digest-pinned Python 3.11 image.")
+          PY
+
+      - name: Pull the exact image digest
+        run: |
+          docker pull "$SANDBOX_PYTHON_IMAGE"
+          echo "SANDBOX_DOCKER_EXECUTABLE=$(command -v docker)" >> "$GITHUB_ENV"
+
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run real Docker sandbox integration tests
+        env:
+          RUN_SANDBOX_INTEGRATION: "1"
+        run: python -m pytest -m sandbox_integration -q
