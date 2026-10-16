@@ -133,7 +133,7 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
 
     assert len(settings_fingerprint) == 64
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5}) == 4
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5}) == 5
 
 
 
@@ -158,19 +158,31 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == [1, 2, 3, 4]
+        assert [row[0] for row in history] == [1, 2, 3, 4, 5]
         assert len(history[0][1]) == 64
         assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
-def test_known_current_schema_is_baselined_without_replaying_migrations():
+def test_known_v4_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 4) as connection:
+        expected_v4 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
+        assert schema_fingerprint(connection) == expected_v4
         assert initialize_connection(connection, LEARNING_MIGRATIONS) == 5
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(4, schema_fingerprint(connection))]
+        assert history == [(4, expected_v4), (5, None)]
+
+
+def test_known_current_v5_schema_is_baselined_without_replaying_migrations():
+    with _create_untracked_schema(LEARNING_MIGRATIONS, 5) as connection:
+        expected_v5 = fingerprint_for_version(LEARNING_MIGRATIONS, 5)
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 5
+        history = connection.execute(
+            "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert history == [(5, expected_v5)]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
