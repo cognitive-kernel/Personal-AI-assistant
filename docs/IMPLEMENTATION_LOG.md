@@ -1272,5 +1272,5 @@
 - Status: implemented on branch `test/sandbox-real-docker-integration-20261016`; CI validation pending.
 - Added an opt-in `sandbox_integration` test suite that uses a real preloaded, digest-pinned official Python image.
 - The suite inspects the actual container configuration (network mode, read-only root, dropped capabilities, no-new-privileges, non-root user, memory/PID limits, and read-only workspace mount) and exercises network isolation, timeout, output limits, and no host fallback.
-- Added manual `.github/workflows/sandbox-integration.yml`; the operator must supply an official image digest. The regular CI run skips these tests unless explicitly enabled.
+- Added manual `.github/workflows/sandbox-integration.yml`; the operator must supply an official image digest. The real-container tests skip in regular CI unless explicitly enabled; the no-host-fallback test runs in the default suite.
 - Added documentation describing the workflow and its scope. Local Docker tests were not run in this environment; exact-head CI validates default-suite compatibility, while the manual workflow must be run with an approved image digest to validate actual container behavior.
