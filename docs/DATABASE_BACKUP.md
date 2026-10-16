@@ -50,3 +50,10 @@ This endpoint **does not modify the live databases**, overwrite a destination, o
 The local dashboard offers preview-first cleanup through `POST /api/storage/backups/prune`. The preview request uses `{"confirm": false, "keep_last": 3, "min_age_days": 30}` and does not delete anything. After displaying the eligible server-generated snapshot IDs, the UI asks for a second explicit confirmation before sending `confirm: true`.
 
 The policy preserves at least the three newest recognized snapshots and never considers snapshots younger than 30 days for deletion. The API permits a keep count of 3–50 and an age threshold of 30–3650 days. Only direct child directories with recognized snapshot IDs and a compatible manifest/file inventory are eligible; symbolic links, staging restores, and unrecognized folders are skipped. This is a manually initiated cleanup, not an automatic scheduler. Keep external/off-device copies for disaster recovery.
+
+
+## Optional periodic backups
+
+Periodic backups are disabled by default. Set `DATABASE_BACKUP_INTERVAL_HOURS` to an integer from 1 to 168 to enable a background scheduler; leave it at `0` to disable it. The first snapshot is created only after one full interval, not during application startup. Each run uses the SQLite online backup API and verifies all three configured stores before publishing the bundle. Failures are logged and do not stop chat or learning. The scheduler is stopped during application shutdown.
+
+The scheduler does not restore, overwrite live databases, or delete old backups. Because scheduled snapshots accumulate, enable it only when disk capacity is sufficient and use the manual preview-first retention control periodically. Automatic deletion and off-device replication are deliberately not enabled.
