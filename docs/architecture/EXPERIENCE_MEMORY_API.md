@@ -2,7 +2,7 @@
 
 ## Scope
 
-The local experience-memory API exposes the existing versioned experience store for manual curation and inspection, and supports explicit opt-in capture of source-backed technical research. It does not execute tests or mark records verified; those responsibilities remain with a future controlled runner.
+The local experience-memory API exposes the versioned experience store for manual curation and inspection, supports explicit opt-in capture of source-backed technical research, and queues controlled tests through the Docker sandbox. The public API itself cannot mark records verified; only the controlled runner can promote a record after a real sandbox result and matching evidence.
 
 All endpoints are protected by the same loopback-client dependency as task management. Remote access must not be enabled without a separate authenticated API design.
 
@@ -19,20 +19,22 @@ All endpoints are protected by the same loopback-client dependency as task manag
 | GET | `/api/experiences/{id}` | Read a record |
 | GET | `/api/experiences/{id}/versions` | Inspect version history |
 | PATCH | `/api/experiences/{id}` | Update editable status, source evidence, test plan, or takeaway |
+| POST | `/api/experiences/{id}/run-test` | Queue a bounded Python harness that matches the saved test plan; requires sandbox consent and explicit confirmation |
 
 ## Trust boundary
 
 - Creation always starts in the domain's default `identified` state.
 - Public updates cannot set `status=verified`.
 - Public updates reject extra fields, including `test_results` and `_controlled_run`.
-- Test results and verified promotion remain reserved for a controlled runner that can provide execution evidence.
+- Test results and verified promotion remain reserved for the controlled runner, which records the source hash, pinned image, exit code, duration, and bounded output from an actual sandbox run.
+- Test execution is unavailable unless Docker sandbox configuration is valid and the separate sandbox-consent record is enabled.
 - The API does not expose rollback or deletion operations.
 - HTTPS source evidence and test-plan validation remain enforced by the domain layer.
 - Search returns verified records as guidance and failed/review-needed records as warnings; neither is proof that a new environment behaves identically.
 
 ## Validation
 
-The route tests cover creation, editing, filtering, version history, rejection of verification/test-result injection, missing records, and rejection of non-loopback clients. CI is the validation gate; a local test run was not performed by this change.
+The route tests cover creation, editing, filtering, version history, rejection of verification/test-result injection, controlled test queuing, missing records, and rejection of non-loopback clients. CI is the validation gate; a local test run was not performed by this change.
 
 
 ## Opt-in research capture
