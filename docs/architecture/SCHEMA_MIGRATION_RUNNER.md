@@ -109,3 +109,8 @@ Migration `learning-job-lesson-review-context` adds nullable `learning_jobs.less
 ## Learning schema version 5
 
 Migration `learning-experience-memory` adds `learning_experiences` and immutable `learning_experience_versions`, with indexes for topic/status lookup and version history. A new installation creates these tables through the registry; a version 4 database is backed up before upgrade. An untracked database is adopted only if its complete logical schema matches a registered version, including version 5 when the matching experience tables already exist. Unknown schema variants remain rejected without mutation.
+
+
+## Learning schema version 6
+
+Migration `learning-experience-embedding-cache` adds a rebuildable local embedding cache keyed by experience ID, immutable experience version, and embedding-model name. It is a derived index: canonical experience records remain authoritative, stale vectors are not used for newer versions, and the cache can be deleted/rebuilt without losing experience data. Version 5 databases are backed up and upgraded through the normal migration path.

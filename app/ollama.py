@@ -1,6 +1,7 @@
 from __future__ import annotations
 import ipaddress
 import json
+import math
 import socket
 import urllib.error
 import urllib.parse
@@ -87,3 +88,47 @@ def chat(message: str, history: list[dict[str, str]] | None = None) -> str:
     if not isinstance(result, str) or not result.strip():
         raise OllamaError("Ollama returned an empty or unexpected chat response.")
     return result
+
+
+
+def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
+    """Generate bounded local embeddings; reject malformed vectors rather than caching them."""
+    if not isinstance(texts, list) or not texts or len(texts) > 32:
+        raise OllamaError("Embedding input must contain between 1 and 32 texts.")
+    normalized: list[str] = []
+    for text in texts:
+        if not isinstance(text, str) or not text.strip() or len(text) > 6000:
+            raise OllamaError("Each embedding input must contain 1–6000 characters.")
+        normalized.append(text.strip())
+
+    settings = get_settings()
+    selected_model = str(model or settings.get("ollama_embedding_model", "nomic-embed-text")).strip()
+    if not selected_model or len(selected_model) > 200:
+        raise OllamaError("Embedding model name is invalid.")
+
+    configured_timeout = int(settings["ollama_timeout_seconds"])
+    response = _request(
+        "/api/embed",
+        {"model": selected_model, "input": normalized},
+        timeout=max(1, min(configured_timeout, 8)),
+    )
+    embeddings = response.get("embeddings")
+    if not isinstance(embeddings, list) or len(embeddings) != len(normalized):
+        raise OllamaError("Ollama returned an unexpected embedding count.")
+
+    validated: list[list[float]] = []
+    dimension: int | None = None
+    for vector in embeddings:
+        if not isinstance(vector, list) or not vector or len(vector) > 8192:
+            raise OllamaError("Ollama returned an invalid embedding vector.")
+        values: list[float] = []
+        for value in vector:
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise OllamaError("Ollama returned a non-finite or non-numeric embedding value.")
+            values.append(float(value))
+        if dimension is None:
+            dimension = len(values)
+        elif len(values) != dimension:
+            raise OllamaError("Ollama returned embeddings with inconsistent dimensions.")
+        validated.append(values)
+    return validated

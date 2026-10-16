@@ -21,6 +21,7 @@ def _int_env(name: str, default: int) -> int:
 class Defaults:
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
     ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     ollama_timeout_seconds: int = _int_env("OLLAMA_TIMEOUT_SECONDS", 300)
     ollama_num_ctx: int = _int_env("OLLAMA_NUM_CTX", 2048)
     ollama_num_thread: int = _int_env("OLLAMA_NUM_THREAD", 0)
@@ -33,6 +34,7 @@ defaults = Defaults()
 SETTING_DEFAULTS: dict[str, object] = {
     "ollama_base_url": defaults.ollama_base_url,
     "ollama_model": defaults.ollama_model,
+    "ollama_embedding_model": defaults.ollama_embedding_model,
     "ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "ollama_num_ctx": defaults.ollama_num_ctx,
     "ollama_num_thread": defaults.ollama_num_thread,

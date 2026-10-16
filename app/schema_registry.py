@@ -201,6 +201,22 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_experience_versions_lookup ON learning_experience_versions(experience_id, version DESC)",
         ),
     ),
+    Migration(
+        6,
+        "learning-experience-embedding-cache",
+        (
+            """CREATE TABLE IF NOT EXISTS learning_experience_embeddings (
+                experience_id INTEGER NOT NULL REFERENCES learning_experiences(id) ON DELETE CASCADE,
+                experience_version INTEGER NOT NULL CHECK(experience_version >= 1),
+                model TEXT NOT NULL,
+                dimensions INTEGER NOT NULL CHECK(dimensions > 0),
+                embedding_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(experience_id, experience_version, model)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_experience_embeddings_model ON learning_experience_embeddings(model, experience_version)",
+        ),
+    ),
 )
 
 
