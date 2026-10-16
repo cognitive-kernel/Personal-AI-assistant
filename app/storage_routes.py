@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, StrictBool, ConfigDict
+from pydantic import BaseModel, StrictBool, ConfigDict, Field
 
 from .config import defaults
 from .db_backup import BackupRestoreError, backup_configured_databases, restore_databases
@@ -27,6 +29,13 @@ _BACKUP_ID = re.compile(r"^snapshot-\d{8}T\d{12}Z$")
 class BackupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: StrictBool
+
+
+class BackupPruneRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: StrictBool
+    keep_last: int = Field(default=3, ge=3, le=50)
+    min_age_days: int = Field(default=30, ge=30, le=3650)
 
 
 def _backup_root() -> Path:
@@ -145,3 +154,116 @@ def post_restore(backup_id: str, request: BackupRequest) -> dict[str, Any]:
         "live_databases_changed": False,
         "next_step": "Validate the restored application and plan any cutover separately.",
     }
+
+def _retention_candidates(keep_last: int, min_age_days: int) -> dict[str, Any]:
+    root = _backup_root()
+    if not root.exists():
+        return {"eligible": [], "preserved": 0}
+    if not root.is_dir():
+        raise HTTPException(status_code=503, detail="The configured backup location is unavailable.")
+    recognized: list[tuple[float, str, Path]] = []
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        raise HTTPException(status_code=503, detail="The configured backup location is unavailable.") from None
+    for child in children:
+        if child.is_symlink() or not child.is_dir() or not _BACKUP_ID.fullmatch(child.name):
+            continue
+        if child.resolve().parent != root:
+            continue
+        manifest_path = child / "manifest.json"
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if not isinstance(manifest, dict):
+                continue
+            version = manifest.get("format_version")
+            expected_roles = {"settings", "learning"} if version == 1 else (
+                {"settings", "learning", "cloud_resources"} if version == 2 else set()
+            )
+            databases = manifest.get("databases")
+            if not expected_roles or not isinstance(databases, dict) or set(databases) != expected_roles:
+                continue
+            expected_files = {
+                "settings": "settings.sqlite3",
+                "learning": "learning.sqlite3",
+                "cloud_resources": "cloud_resources.sqlite3",
+            }
+            valid = True
+            for role in expected_roles:
+                metadata = databases.get(role)
+                filename = expected_files[role]
+                file_path = child / filename
+                if (
+                    not isinstance(metadata, dict)
+                    or metadata.get("filename") != filename
+                    or file_path.is_symlink()
+                    or not file_path.is_file()
+                ):
+                    valid = False
+                    break
+            if not valid:
+                continue
+            modified = child.stat(follow_symlinks=False).st_mtime
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        recognized.append((modified, child.name, child))
+
+    recognized.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    protected = {name for _, name, _ in recognized[:keep_last]}
+    cutoff = time.time() - min_age_days * 86400
+    eligible = [
+        {"id": name, "modified_at": datetime.fromtimestamp(modified, timezone.utc).isoformat().replace("+00:00", "Z")}
+        for modified, name, _ in recognized
+        if name not in protected and modified <= cutoff
+    ]
+    return {"eligible": eligible, "preserved": len(recognized) - len(eligible)}
+
+
+def prune_backups(request: BackupPruneRequest) -> dict[str, Any]:
+    plan = _retention_candidates(request.keep_last, request.min_age_days)
+    eligible = plan["eligible"]
+    if request.confirm is not True:
+        return {
+            "status": "preview",
+            "confirm_required": bool(eligible),
+            "keep_last": request.keep_last,
+            "min_age_days": request.min_age_days,
+            "would_delete_count": len(eligible),
+            "candidates": eligible,
+            "preserved_count": plan["preserved"],
+            "deleted": [],
+        }
+
+    root = _backup_root()
+    deleted: list[str] = []
+    failed: list[str] = []
+    for item in eligible:
+        backup_id = item["id"]
+        if not _BACKUP_ID.fullmatch(backup_id):
+            continue
+        path = root / backup_id
+        try:
+            if path.is_symlink() or not path.is_dir() or path.resolve().parent != root:
+                failed.append(backup_id)
+                continue
+            shutil.rmtree(path)
+            deleted.append(backup_id)
+        except OSError:
+            logger.warning("Could not prune backup %s.", backup_id)
+            failed.append(backup_id)
+    return {
+        "status": "completed" if not failed else "partial",
+        "keep_last": request.keep_last,
+        "min_age_days": request.min_age_days,
+        "deleted": deleted,
+        "failed": failed,
+        "deleted_count": len(deleted),
+        "preserved_count": plan["preserved"],
+    }
+
+
+@router.post("/backups/prune")
+def post_prune_backups(request: BackupPruneRequest) -> dict[str, Any]:
+    return prune_backups(request)
