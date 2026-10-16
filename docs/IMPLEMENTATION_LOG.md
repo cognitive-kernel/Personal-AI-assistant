@@ -726,6 +726,18 @@
 - [x] تطبیق URL به token کامل تغییر کرد؛ تطبیق substring، suffix، query string یا میزبان مشابه دیگر به‌عنوان citation معتبر پذیرفته نمی‌شود. نقطه‌گذاری پایانی و براکت/نقل‌قول پیرامون URL مجاز است.
 - [x] تست‌های verdict، malformed JSON، URL ناشناخته، URL گمراه‌کننده، punctuation، angle bracket و quote اضافه شدند.
 - [x] مستندات `docs/architecture/CLAIM_REVIEW.md` مرز اعتماد و محدودیت‌های reviewer را مشخص می‌کند.
-- [ ] این PR هنوز review primitive را به chat endpoint یا learning-job pipeline وصل نمی‌کند؛ این اتصال باید جداگانه با fallback و ثبت `needs_review` آزمون شود.
-- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** ادغام این primitive پس از CI، سپس اتصال محدود به مسیر learning-job و ارزیابی ادعای factual بدون مسدودکردن پاسخ‌های معمول.
+- [x] **PR #120** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/120)، commit `42b9c41812e7de14cedab975b95cec3c4b18e545`.
+- [x] CI روی head دقیق `44da6710cc47efd75b3e9646497d684a9fe700a6` موفق بود؛ run [#38839665531](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38839665531)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 225 passed.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** اتصال claim review به learning-job pipeline با fallback و ثبت `needs_review`، سپس ارزیابی ادعای factual بدون مسدودکردن پاسخ‌های معمول.
+
+
+## 49. 2026-10-16 — اتصال claim review به تولید درس مبتنی بر منبع
+
+- [x] `learning.run_job()` پس از عبور از فیلتر deterministic کیفیت، اگر منبع وب ساختاریافته موجود باشد، حداکثر سه excerpt و URL دقیق را به claim reviewer می‌دهد.
+- [x] prompt تولید درس و prompt ترمیم از مدل می‌خواهند بخش منابع را با URL دقیق و بدون ساختن/تغییر آدرس اضافه کنند.
+- [x] نتیجهٔ review در `quality_json` ذخیره می‌شود؛ وضعیت جداگانهٔ `passed_model_assisted`, `needs_review` یا `no_usable_sources` دارد و رویداد audit در `learning_evidence` ثبت می‌شود.
+- [x] شکست/عدم دسترسی reviewer مانع ذخیرهٔ درس با کیفیت قابل قبول نمی‌شود، اما وضعیت claim review به `needs_review` می‌رود و `knowledge_items.status` همچنان `unverified` می‌ماند.
+- [x] تست‌های parser منبع، نتیجهٔ review موفق/ناموفق، ثبت evidence و عدم promotion به verified اضافه شدند.
+- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** اتصال محدود به chat endpoint با سیاست پاسخ معمول در صورت عدم دسترسی به منبع، سپس آزمون کیفیت بازیابی Recall@5/MRR روی پرس‌وجوهای فارسی و انگلیسی.
