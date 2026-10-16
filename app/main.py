@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, sandbox_tasks, task_manager
+from . import chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -15,6 +15,7 @@ from .task_routes import router as task_router
 from .cloud_resource_routes import router as cloud_resource_router
 from .sandbox_routes import router as sandbox_router
 from .experience_routes import router as experience_router
+from .research_routes import router as research_router
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
@@ -22,6 +23,7 @@ app.include_router(task_router)
 app.include_router(cloud_resource_router)
 app.include_router(sandbox_router)
 app.include_router(experience_router)
+app.include_router(research_router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
 
@@ -74,6 +76,7 @@ def startup() -> None:
     worker_count = max(1, min(8, configured_workers))
     handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
+        research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
     }
     sandbox_handler = sandbox_tasks.handler_from_environment()
