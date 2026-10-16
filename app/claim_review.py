@@ -16,13 +16,13 @@ from .ollama import _request
 
 
 _ALLOWED_VERDICTS = {"supported", "contradicted", "insufficient_evidence"}
-_URL_TOKEN_RE = re.compile(r"https?://[^\\s<>\\"'\x60]+")
+_URL_TOKEN_RE = re.compile(r"https?://\S+")
 
 
 def _normalize_url_token(token: str) -> str:
     """Remove citation punctuation without allowing substring URL matches."""
     normalized = token.strip()
-    while normalized and normalized[-1] in ".,;:!?)]}":
+    while normalized and normalized[-1] in ".,;:!?)]}>\"'":
         normalized = normalized[:-1]
     return normalized
 
