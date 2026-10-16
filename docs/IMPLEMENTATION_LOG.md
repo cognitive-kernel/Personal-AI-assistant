@@ -977,5 +977,14 @@
 - [x] environment ورودی Docker CLI به allowlist محدود است؛ credentialهای Kaggle و سایر اسرار برنامه به subprocess داده نمی‌شوند.
 - [x] تست‌های قراردادی برای آرگومان‌های امنیتی، نبود Docker، digest نامعتبر، ورودی بزرگ، سقف خروجی، exit code و timeout اضافه شدند؛ تست‌ها Docker واقعی اجرا نمی‌کنند.
 - [x] راهنمای `docs/architecture/SANDBOX_EXECUTION.md` محدودیت‌ها را ثبت می‌کند؛ sandbox هنوز به task registry یا API متصل نیست.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #141** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/141)، commit ادغام `9153a45bceccf576b06bb655bb5c7de392f8f7ac`.
+- [x] CI روی head دقیق `111fce12fe238cc8654093070ea922a3a0d473d5` موفق بود؛ run [#38852247649](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852247649).
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** تثبیت رفتار timeout/cleanup و انتخاب digest رسمی برای معماری هدف؛ سپس handler با schema ورودی محدود، ثبت شواهد اجرا و checkpoint ایجاد شود. هیچ کد ناشناخته‌ای مستقیم روی میزبان اجرا نشود.
+
+
+## 69. 2026-10-16 — تثبیت cleanup آزمایشگاه و ثبت merge
+
+- [x] تست اضافه شد که مسیر workspace و فایل منبع پس از پایان container client دیگر وجود ندارند؛ تست با process mock اجرا می‌شود و به Docker واقعی وابسته نیست.
+- [x] وضعیت PR #141 و CI موفق روی head دقیق در گزارش پیاده‌سازی ثبت شد.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
