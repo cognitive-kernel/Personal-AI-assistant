@@ -9,7 +9,7 @@
 - وضعیت مرحله: **در حال انجام؛ discovery، ثبت provenance، review hash-bound و freshness پیاده‌سازی شده‌اند**
 - وضعیت اجرای تست‌ها روی سیستم توسعه‌دهنده: **در این نشست اجرا نشده؛ نتایج CI دقیق هر PR در بخش‌های تاریخچه ثبت می‌شوند**
 - وضعیت اجرای تست‌ها در این نشست: **تست محلی اجرا نشده؛ اعتبارسنجی اجرایی فقط از CI مخزن گزارش می‌شود**
-- آخرین تغییر ثبت‌شده: تشخیص فقط‌خواندنی سلامت ذخیره‌سازی و حذف مسیرهای مطلق دیتابیس از پاسخ health؛ بخش 114.
+- آخرین تغییر ثبت‌شده: نمایش وضعیت سلامت ذخیره‌سازی در داشبورد محلی؛ بخش 115.
 - مرجع الزامات: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)
 
 ## راهنمای وضعیت
@@ -1468,3 +1468,12 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون‌ها:** وضعیت سالم هر سه مخزن، فایل‌های مفقود بدون ایجاد فایل، تشخیص schema drift بدون تعمیر و جلوگیری از افشای مسیرها.
 - **اعتبارسنجی:** PR [#204](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/204) ادغام شد. روی head دقیق `d9629644e903e3f9157a5caf23c8c3ae7ec017ee`، CI در run [#38902975429](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38902975429) موفق شد؛ گزارش ثبت‌شده: 496 passed، 4 skipped و benchmark بازیابی موفق. پس از ادغام روی commit `aaf230db5783e019a1d8bbcbcb647bbe09e79eca`، CI در run [#38903156017](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38903156017) نیز موفق شد. تست محلی اجرا نشده است.
 - **محدودیت باقی‌مانده:** این endpoint تشخیص می‌دهد اما بازیابی خودکار نمی‌کند؛ قبل از هر تعمیر یا مهاجرت، backup معتبر و آزمون restore لازم است.
+
+
+
+## 115. 2026-10-16 — نمایش سلامت ذخیره‌سازی در داشبورد محلی
+
+- **هدف:** دسترسی مستقیم کاربر به وضعیت سلامت سه مخزن داده بدون نیاز به ابزار خط فرمان.
+- **پیاده‌سازی:** بخش «سلامت ذخیره‌سازی» در داشبورد، بررسی خودکار هنگام بارگذاری صفحه و دکمهٔ به‌روزرسانی دستی. پاسخ endpoint به‌صورت متن نمایش داده می‌شود؛ هیچ کنترل تعمیر یا مهاجرتی در رابط اضافه نشده است.
+- **آزمون‌ها:** قرارداد رابط برای شناسه‌های بخش، دکمه و خروجی و استفاده از endpoint تشخیصی.
+- **اعتبارسنجی:** PR [#206](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/206) ادغام شد. روی head دقیق `9dc1bfbe916c3d62bd50554d718bedc66a6fb147`، CI در run [#38903734518](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38903734518) موفق بود. پس از ادغام روی commit `9289ad0de317989124cac609faec28da54ed820f`، CI در run [#38903877367](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38903877367) موفق شد؛ 497 passed، 4 skipped و benchmark بازیابی موفق بود. تست محلی اجرا نشده است.
