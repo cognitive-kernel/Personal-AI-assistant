@@ -91,25 +91,41 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
         raise KeyError(attempt_id)
     if row["status"] != "completed" or not row["assessment_json"]:
         raise ValueError("The learning job has no completed assessment.")
-    assessment = json.loads(row["assessment_json"])
-    answers = json.loads(row["answers_json"])
-    questions = assessment.get("questions", [])
-    answer_key = assessment.get("answer_key", [])
+    try:
+        assessment = json.loads(row["assessment_json"])
+        answers = json.loads(row["answers_json"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("The saved assessment data is not valid JSON.") from exc
+    if not isinstance(assessment, dict) or not isinstance(answers, list):
+        raise ValueError("The saved assessment data has an invalid structure.")
+    questions = assessment.get("questions")
+    answer_key = assessment.get("answer_key")
     if not (
         isinstance(questions, list) and isinstance(answer_key, list)
-        and isinstance(answers, list) and len(questions) == len(answer_key) == len(answers)
+        and len(questions) == len(answer_key) == len(answers)
         and 1 <= len(questions) <= 3
     ):
         raise ValueError("The saved assessment data is incomplete or invalid.")
 
-    payload = {
-        "questions": [
-            {"index": index, "question": str(question)[:1200],
-             "reference_answer": str(answer_key[index - 1])[:1600],
-             "learner_answer": str(answers[index - 1])[:2000]}
-            for index, question in enumerate(questions, start=1)
-        ]
-    }
+    payload_questions = []
+    limits = (1200, 1600, 2000)
+    for index, (question, reference_answer, learner_answer) in enumerate(
+        zip(questions, answer_key, answers, strict=True), start=1
+    ):
+        fields = (question, reference_answer, learner_answer)
+        if any(not isinstance(field, str) for field in fields):
+            raise ValueError("Saved questions and answers must all be text.")
+        if any(len(field) > limit for field, limit in zip(fields, limits, strict=True)):
+            raise ValueError("Saved assessment text exceeds the semantic review limits.")
+        if not question.strip() or not reference_answer.strip():
+            raise ValueError("Saved questions and reference answers cannot be empty.")
+        payload_questions.append({
+            "index": index,
+            "question": question,
+            "reference_answer": reference_answer,
+            "learner_answer": learner_answer,
+        })
+    payload = {"questions": payload_questions}
     message = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     if len(message) > _MAX_REVIEW_INPUT:
         raise ValueError("Assessment content is too large for semantic review.")
