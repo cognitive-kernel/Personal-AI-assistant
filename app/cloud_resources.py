@@ -596,6 +596,155 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
     return results
 
 
+def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
+    """Persist a minimal local snapshot of a dry-run plan and per-candidate decisions."""
+    if not isinstance(plan, dict):
+        raise CloudResourceError("Resource selection plan must be an object.")
+    plan_version = plan.get("plan_version")
+    status = plan.get("status")
+    requirements = plan.get("requirements")
+    decisions = plan.get("candidates")
+    selected_id = plan.get("selected_candidate_id")
+    if plan_version != "provider-neutral-selection-v1":
+        raise CloudResourceError("Resource selection plan version is unsupported.")
+    if status not in {"candidate_found", "no_eligible_candidate"}:
+        raise CloudResourceError("Resource selection plan status is invalid.")
+    if not isinstance(requirements, dict) or not isinstance(decisions, list):
+        raise CloudResourceError("Resource selection plan requirements or decisions are invalid.")
+    if plan.get("execution_authorized") is not False or plan.get("remote_execution_enabled") is not False:
+        raise CloudResourceError("A dry-run plan cannot authorize remote execution.")
+    if selected_id is not None and (
+        isinstance(selected_id, bool) or not isinstance(selected_id, int) or selected_id < 1
+    ):
+        raise CloudResourceError("Selected candidate ID is invalid.")
+
+    try:
+        requirements_json = json.dumps(
+            requirements, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        )
+    except (TypeError, ValueError) as exc:
+        raise CloudResourceError("Plan requirements are not safe JSON data.") from exc
+
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        cursor = connection.execute(
+            """INSERT INTO cloud_resource_selection_plans(
+                   plan_version, requirements_json, status, selected_candidate_id,
+                   execution_authorized, remote_execution_enabled
+               ) VALUES (?, ?, ?, ?, 0, 0)""",
+            (plan_version, requirements_json, status, selected_id),
+        )
+        plan_id = int(cursor.lastrowid)
+        for decision in decisions:
+            if not isinstance(decision, dict):
+                raise CloudResourceError("Plan contains an invalid candidate decision.")
+            candidate_id = decision.get("candidate_id")
+            if candidate_id is not None and (
+                isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1
+            ):
+                raise CloudResourceError("Plan candidate ID is invalid.")
+            domain = decision.get("provider_domain")
+            content_hash = decision.get("content_sha256")
+            if domain is not None and (not isinstance(domain, str) or len(domain) > 255):
+                raise CloudResourceError("Plan provider domain is invalid.")
+            if content_hash is not None and (
+                not isinstance(content_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", content_hash)
+            ):
+                raise CloudResourceError("Plan candidate content hash is invalid.")
+            eligible = decision.get("eligible_for_adapter_review")
+            if type(eligible) is not bool:
+                raise CloudResourceError("Plan eligibility decision must be a boolean.")
+            preflight = decision.get("preflight_status")
+            if preflight not in {"blocked", "needs_review", "ready_for_provider_adapter"}:
+                raise CloudResourceError("Plan preflight status is invalid.")
+            json_fields = {}
+            for field in (
+                "capabilities", "reasons", "policy_blockers", "policy_review_needed"
+            ):
+                value = decision.get(field)
+                expected_type = dict if field == "capabilities" else list
+                if not isinstance(value, expected_type):
+                    raise CloudResourceError(f"Plan field {field} has an invalid shape.")
+                try:
+                    json_fields[field] = json.dumps(
+                        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise CloudResourceError(f"Plan field {field} is not safe JSON data.") from exc
+            connection.execute(
+                """INSERT INTO cloud_resource_selection_decisions(
+                       plan_id, candidate_id, provider_domain, content_sha256,
+                       eligible_for_adapter_review, preflight_status, capabilities_json,
+                       reasons_json, policy_blockers_json, policy_review_needed_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    plan_id, candidate_id, domain, content_hash, int(eligible), preflight,
+                    json_fields["capabilities"], json_fields["reasons"],
+                    json_fields["policy_blockers"], json_fields["policy_review_needed"],
+                ),
+            )
+        connection.commit()
+    return get_resource_selection_plan(plan_id)
+
+
+def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
+    if isinstance(plan_id, bool) or not isinstance(plan_id, int) or plan_id < 1:
+        raise ValueError("plan_id must be a positive integer.")
+    with closing(_connect()) as connection:
+        row = connection.execute(
+            """SELECT id, plan_version, requirements_json, status, selected_candidate_id,
+                      execution_authorized, remote_execution_enabled, created_at
+               FROM cloud_resource_selection_plans WHERE id=?""",
+            (plan_id,),
+        ).fetchone()
+        if row is None:
+            raise CloudResourceNotFoundError("Resource selection plan was not found.")
+        decision_rows = connection.execute(
+            """SELECT candidate_id, provider_domain, content_sha256, eligible_for_adapter_review,
+                      preflight_status, capabilities_json, reasons_json, policy_blockers_json,
+                      policy_review_needed_json, evaluated_at
+               FROM cloud_resource_selection_decisions WHERE plan_id=? ORDER BY id""",
+            (plan_id,),
+        ).fetchall()
+    return {
+        "plan_id": int(row["id"]),
+        "plan_version": row["plan_version"],
+        "requirements": json.loads(row["requirements_json"]),
+        "status": row["status"],
+        "selected_candidate_id": row["selected_candidate_id"],
+        "execution_authorized": False,
+        "remote_execution_enabled": False,
+        "created_at": row["created_at"],
+        "candidates": [
+            {
+                "candidate_id": item["candidate_id"],
+                "provider_domain": item["provider_domain"],
+                "content_sha256": item["content_sha256"],
+                "eligible_for_adapter_review": bool(item["eligible_for_adapter_review"]),
+                "preflight_status": item["preflight_status"],
+                "capabilities": json.loads(item["capabilities_json"]),
+                "reasons": json.loads(item["reasons_json"]),
+                "policy_blockers": json.loads(item["policy_blockers_json"]),
+                "policy_review_needed": json.loads(item["policy_review_needed_json"]),
+                "evaluated_at": item["evaluated_at"],
+                "execution_authorized": False,
+            }
+            for item in decision_rows
+        ],
+    }
+
+
+def list_resource_selection_plans(*, limit: int = 20) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ValueError("limit must be between 1 and 100.")
+    with closing(_connect()) as connection:
+        rows = connection.execute(
+            "SELECT id FROM cloud_resource_selection_plans ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [get_resource_selection_plan(int(row["id"])) for row in rows]
+
+
 def review_candidate(
     candidate_id: int,
     *,
