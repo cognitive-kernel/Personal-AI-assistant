@@ -152,3 +152,24 @@ def test_sandbox_terminates_container_client_after_timeout(tmp_path, monkeypatch
 
     assert result.status == "timed_out"
     assert process.terminated
+
+
+
+def test_sandbox_removes_temporary_source_workspace_after_exit(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["mount"] = args[args.index("--mount") + 1]
+        return FakeProcess(args, stdout=b"done", returncode=0)
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    result = sandbox.run_python(
+        "print('done')",
+        docker_executable=executable,
+        image=IMAGE,
+    )
+
+    source = captured["mount"].split(",")[1].removeprefix("source=")
+    assert result.status == "succeeded"
+    assert not __import__("pathlib").Path(source).exists()
