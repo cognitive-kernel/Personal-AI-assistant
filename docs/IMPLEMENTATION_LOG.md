@@ -9,7 +9,7 @@
 - وضعیت مرحله: **در حال انجام؛ discovery، ثبت provenance، review hash-bound و freshness پیاده‌سازی شده‌اند**
 - وضعیت اجرای تست‌ها روی سیستم توسعه‌دهنده: **در این نشست اجرا نشده؛ نتایج CI دقیق هر PR در بخش‌های تاریخچه ثبت می‌شوند**
 - وضعیت اجرای تست‌ها در این نشست: **تست محلی اجرا نشده؛ اعتبارسنجی اجرایی فقط از CI مخزن گزارش می‌شود**
-- آخرین تغییر ثبت‌شده: رابط محلی برای کشف، مشاهده و بازبینی نامزدهای منابع ابری؛ see section 58.
+- آخرین تغییر ثبت‌شده: تشخیص فقط‌خواندنی سلامت ذخیره‌سازی و حذف مسیرهای مطلق دیتابیس از پاسخ health؛ بخش 114.
 - مرجع الزامات: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)
 
 ## راهنمای وضعیت
@@ -1457,3 +1457,14 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **سیاست:** deterministic و read-only؛ نتیجه شامل policy_version، generated_at، دلیل و action پیشنهادی و autonomous_action_taken=false است. برنامه‌ریز درس ایجاد نمی‌کند، نمره را تغییر نمی‌دهد، مرور جدید زمان‌بندی نمی‌کند و وظیفه‌ای به صف نمی‌فرستد.
 - **آزمون‌ها:** ترتیب موضوعات، اولویت مرور سررسیدشده، تقویت نمره پایین، جلوگیری از تکرار مرور آینده، اعتبارسنجی ورودی، endpoint و قرارداد UI پوشش داده شده‌اند.
 - **اعتبارسنجی:** PR [#202](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/202) ادغام شد؛ ۴۹۲ آزمون موفق و ۴ آزمون skipped و benchmark بازیابی در run [#38898442178](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38898442178) موفق بودند. CI پس از ادغام روی commit `d8e322446e09e1a521b7d68098f903b9e0c84c96` در run [#38898590643](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38898590643) نیز موفق شد. تست محلی اجرا نشده است. راهنما در docs/LEARNING_RECOMMENDATIONS.md است.
+
+
+
+## 114. 2026-10-16 — تشخیص فقط‌خواندنی سلامت ذخیره‌سازی
+
+- **هدف:** آشکارکردن خرابی SQLite، ناسازگاری تاریخچهٔ migration، تغییر ناخواستهٔ schema و نقض کلید خارجی، بدون ایجاد یا اصلاح خودکار داده.
+- **پیاده‌سازی:** ماژول `app/storage_health.py` و endpoint محلی `GET /api/health/storage` برای سه مخزن settings، learning و cloud resources. بررسی‌ها شامل `PRAGMA integrity_check`، `foreign_key_check`، اعتبار تاریخچهٔ migration، تطبیق checksumها، fingerprint ساختار و شماره نسخهٔ جاری است.
+- **مرز ایمنی:** endpoint فقط loopback است؛ فایل‌ها در حالت read-only باز می‌شوند؛ هیچ migration، repair یا ایجاد دیتابیسی انجام نمی‌شود. مسیر مطلق فایل و خطای خام SQLite در خروجی برگردانده نمی‌شود. پاسخ health عمومی نیز دیگر مسیرهای مطلق دیتابیس را افشا نمی‌کند.
+- **آزمون‌ها:** وضعیت سالم هر سه مخزن، فایل‌های مفقود بدون ایجاد فایل، تشخیص schema drift بدون تعمیر و جلوگیری از افشای مسیرها.
+- **اعتبارسنجی:** PR [#204](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/204) ادغام شد. روی head دقیق `d9629644e903e3f9157a5caf23c8c3ae7ec017ee`، CI در run [#38902975429](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38902975429) موفق شد؛ گزارش ثبت‌شده: 496 passed، 4 skipped و benchmark بازیابی موفق. پس از ادغام روی commit `aaf230db5783e019a1d8bbcbcb647bbe09e79eca`، CI در run [#38903156017](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38903156017) نیز موفق شد. تست محلی اجرا نشده است.
+- **محدودیت باقی‌مانده:** این endpoint تشخیص می‌دهد اما بازیابی خودکار نمی‌کند؛ قبل از هر تعمیر یا مهاجرت، backup معتبر و آزمون restore لازم است.
