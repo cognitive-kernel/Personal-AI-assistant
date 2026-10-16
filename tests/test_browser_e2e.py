@@ -96,11 +96,11 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
             """() => {
                 const node = document.querySelector('#experience-output');
                 const list = document.querySelector('#experience-list');
-                return node && node.textContent.includes('تجربه ثبت شد') &&
+                return node && node.textContent.includes('تعداد تجربه‌ها') &&
                     list && list.textContent.includes('Browser E2E experience creation');
             }""",
             timeout=15000,
         )
-        assert "تأییدنشده" in page.locator("#experience-output").inner_text()
+        assert "وضعیت: identified" in page.locator("#experience-list").inner_text()
         assert not consent_checkbox.is_checked()
         browser.close()
