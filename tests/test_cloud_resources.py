@@ -155,6 +155,20 @@ def test_daily_discovery_enqueue_is_idempotent(tmp_path, monkeypatch):
     assert first["payload"] == {"trigger": "scheduled"}
 
 
+def test_daily_discovery_recovers_a_pre_run_cancelled_task(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+
+    first = cloud_resources.ensure_daily_discovery_scheduled()
+    cancelled = task_manager.request_cancel(first["id"])
+    assert cancelled["status"] == "cancelled"
+
+    recovery = cloud_resources.ensure_daily_discovery_scheduled()
+
+    assert recovery["id"] != first["id"]
+    assert recovery["task_type"] == cloud_resources.CLOUD_DISCOVERY_TASK_TYPE
+    assert recovery["status"] == "queued"
+
+
 def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(
