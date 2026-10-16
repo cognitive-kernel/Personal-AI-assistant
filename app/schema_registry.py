@@ -34,6 +34,31 @@ SETTINGS_MIGRATIONS = (
             )""",
         ),
     ),
+    Migration(
+        2,
+        "sandbox-execution-consent",
+        (
+            """CREATE TABLE sandbox_execution_consent (
+                id INTEGER PRIMARY KEY CHECK(id = 1),
+                enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0, 1)),
+                policy_version TEXT NOT NULL DEFAULT 'sandbox-execution-v1',
+                consented_at TEXT,
+                revoked_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(enabled = 0 OR (consented_at IS NOT NULL AND revoked_at IS NULL))
+            )""",
+            """CREATE TABLE sandbox_execution_consent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL
+                    CHECK(event_type IN ('consent_granted', 'consent_revoked')),
+                policy_version TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """INSERT INTO sandbox_execution_consent(
+                   id, enabled, policy_version, updated_at
+               ) VALUES (1, 0, 'sandbox-execution-v1', CURRENT_TIMESTAMP)""",
+        ),
+    ),
 )
 
 LEARNING_MIGRATIONS = (
