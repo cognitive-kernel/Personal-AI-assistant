@@ -1210,3 +1210,13 @@
 - [x] تست‌های API پوشش loopback، ورودی نامعتبر، فهرست خالی، candidate واجدشرایط و شواهد stale را دارند.
 - [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** CI/ادغام؛ سپس افزودن ارزیابی مجدد زمان‌دار برای freshness/سهمیه و ثبت دلیل انتخاب به‌صورت پایدار، بدون فعال‌کردن اجرای remote.
+
+## 59. Loopback experience-memory API
+
+- Status: implementation added on branch `feat/experience-memory-api-v2-20261016`; CI validation pending.
+- Added loopback-only routes for listing, creating, searching, inspecting and updating experience records, plus version history.
+- Public API updates cannot set a record to `verified`, submit `test_results`, or pass the internal `_controlled_run` flag. These remain reserved for a future controlled runner with actual execution evidence.
+- Added route tests for record lifecycle, version history, validation boundaries, and rejection of non-loopback clients.
+- Added `docs/architecture/EXPERIENCE_MEMORY_API.md` to document the API contract and trust boundary.
+- Local tests were not run in this environment; the pull-request CI result is the validation gate.
+- This change exposes existing experience storage to the local interface; it does not claim to complete autonomous experience capture or execution-based verification.
