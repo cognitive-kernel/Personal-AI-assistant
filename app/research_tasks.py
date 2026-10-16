@@ -1,0 +1,62 @@
+"""Persistent task handler for bounded local research chat."""
+from __future__ import annotations
+
+import hashlib
+from typing import Any
+
+from . import chat_research
+from .task_worker import TaskContext
+
+RESEARCH_TASK_TYPE = "research.answer"
+_ALLOWED_KEYS = {"message", "history"}
+
+
+def _validate_payload(payload: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
+    if not isinstance(payload, dict) or set(payload) - _ALLOWED_KEYS:
+        raise ValueError("Research task payload contains unsupported fields.")
+    message = payload.get("message")
+    if not isinstance(message, str) or not message.strip() or len(message) > 12000:
+        raise ValueError("message must contain 1–12000 characters.")
+    history = payload.get("history", [])
+    if not isinstance(history, list) or len(history) > 30:
+        raise ValueError("history must be a list containing at most 30 messages.")
+    normalized: list[dict[str, str]] = []
+    for item in history:
+        if not isinstance(item, dict) or set(item) != {"role", "content"}:
+            raise ValueError("Each history item must contain only role and content.")
+        role = item.get("role")
+        content = item.get("content")
+        if role not in {"user", "assistant"}:
+            raise ValueError("History role must be user or assistant.")
+        if not isinstance(content, str) or len(content) > 5000:
+            raise ValueError("History content must be text up to 5000 characters.")
+        normalized.append({"role": role, "content": content})
+    return message, normalized
+
+
+def handle_research_task(
+    payload: dict[str, Any],
+    checkpoint: dict[str, Any] | None,
+    context: TaskContext,
+) -> dict[str, Any]:
+    message, history = _validate_payload(payload)
+    message_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
+
+    def save_phase(state: dict[str, Any]) -> None:
+        # Store only phase metadata and a digest, never raw user text, in checkpoints.
+        context.checkpoint(
+            {
+                "phase": str(state.get("phase", "research")),
+                "message_sha256": message_hash,
+                **{
+                    key: value
+                    for key, value in state.items()
+                    if key == "source_count" or key == "review_passed"
+                },
+            }
+        )
+
+    context.checkpoint({"phase": "research_task_started", "message_sha256": message_hash})
+    reply = chat_research.answer(message, history, checkpoint=save_phase)
+    context.checkpoint({"phase": "research_task_completed", "message_sha256": message_hash})
+    return {"reply": reply, "message_sha256": message_hash}
