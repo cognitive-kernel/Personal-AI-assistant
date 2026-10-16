@@ -241,3 +241,29 @@ def test_expired_sandbox_lease_is_reconciled_before_cleanup_callback(runtime_sto
         assert saved["attempts"] == 1
     finally:
         assert runtime.stop(timeout=3) is True
+
+
+
+def test_blocked_maintenance_does_not_block_task_workers(runtime_store):
+    maintenance_started = threading.Event()
+    release_maintenance = threading.Event()
+    task_finished = threading.Event()
+
+    def maintenance():
+        maintenance_started.set()
+        release_maintenance.wait(timeout=3)
+
+    runtime = TaskRuntime(
+        {"runtime.echo": lambda *_: task_finished.set() or {"ok": True}},
+        poll_interval=0.05,
+        maintenance_callback=maintenance,
+        maintenance_interval=30,
+    )
+    runtime.start()
+    try:
+        assert maintenance_started.wait(timeout=3)
+        task_manager.create_task("runtime.echo", {})
+        assert task_finished.wait(timeout=3)
+    finally:
+        release_maintenance.set()
+        assert runtime.stop(timeout=3) is True

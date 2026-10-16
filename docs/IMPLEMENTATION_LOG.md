@@ -1110,5 +1110,17 @@
 - [x] تست چند worker ثابت می‌کند task دارای lease معتبر در فهرست terminal قرار نمی‌گیرد و برای cleanup قابل‌انتخاب نیست.
 - [x] تست crash recovery ثابت می‌کند `claim_next_task()` ابتدا lease منقضی‌شدهٔ sandbox با یک تلاش را به `failed` تبدیل می‌کند؛ callback پس از آن اجرا می‌شود و checkpoint حفظ می‌شود.
 - [x] راهنمای sandbox تضمین ترتیب اجرای maintenance را مستند کرد.
+- [x] **PR #155** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/155)، commit ادغام `1127054ae796d4f03b2cb8384760af82d82b98af`.
+- [x] CI روی head دقیق `fc9e562e6b2cbe793a1e1312b0f47a182d69c35f` موفق بود؛ run [#38858196226](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38858196226).
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** جداسازی maintenance از workerهای صف و بررسی نهایی PR/Issueهای باز و پیشرفت مرحلهٔ ۹.
+
+
+## 80. 2026-10-16 — جداسازی maintenance از workerهای وظیفه
+
+- [x] callback نگهداری اکنون روی یک thread اختصاصی اجرا می‌شود؛ عملیات Docker کند دیگر worker وظیفه را مسدود نمی‌کند.
+- [x] thread نگهداری تا پایان اولین poll کارگر منتظر می‌ماند تا lease reconciliation پیش از cleanup اجرا شود.
+- [x] خطای callback ثبت می‌شود و اجرای بعدی پس از فاصلهٔ تعیین‌شده ادامه می‌یابد؛ shutdown همچنان مهلت مشترک و محدود دارد.
+- [x] تستی اضافه شد که maintenance را عمداً مسدود می‌کند و ثابت می‌کند workerها همچنان وظیفهٔ جدید را اجرا می‌کنند.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** اجرای CI، ادغام در صورت موفقیت و ممیزی نهایی تعداد PR/Issueهای باز و پیشرفت مرحلهٔ ۹.
+- **گام بعدی:** CI/ادغام و ممیزی نهایی وضعیت GitHub و باقیمانده‌های مرحلهٔ ۹.
