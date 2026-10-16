@@ -2,7 +2,7 @@
 
 > Last verified: 2026-10-16 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Latest confirmed post-merge code CI: [run #38927136189](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927136189) — success; 537 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `f8fff671c20af86dc8b711e5b16f006d6708e396`.
+> Latest confirmed post-merge code CI: [run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) — success; 539 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `12fe5e5dd62c47edf5b06dbdfcbc7a6cb4ba48b1`.
 
 ## Executive status
 
@@ -76,3 +76,10 @@ The implementation log is the detailed record of merged changes and acceptance l
 - **Merged:** [PR #231](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/231) stops the repair loop when a material conflict is reported, shows a localized warning with source URLs, marks the experience `needs_review`, and stores bounded conflict URL pairs in audit metadata without storing the raw conflict explanation.
 - **CI evidence:** [PR-head run #38927015468](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927015468) and [post-merge run #38927136189](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927136189) succeeded; 537 passed, 4 skipped, and the deterministic retrieval benchmark passed.
 - **Boundary:** this is a fail-closed action when the local model reports a conflict. It does not prove that the model will detect every real source disagreement; human review and live bilingual evaluation remain outstanding.
+
+
+## 2026-10-16 update — model fingerprint in evaluation reports
+
+- **Merged:** [PR #233](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/233) preserves the Ollama `/api/tags` model manifest digest in the local model inventory and records it in answer-quality reports when available.
+- **CI evidence:** [PR-head run #38927880019](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927880019) and [post-merge run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) succeeded; 539 passed, 4 skipped, and the deterministic retrieval benchmark passed.
+- **Limit:** a model digest improves model identity but does not freeze the live web retrieval corpus. A real Ollama evaluation and human adjudication are still required before reporting model-quality results.
