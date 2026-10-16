@@ -187,3 +187,39 @@ def test_concurrent_workers_cannot_claim_the_same_task(task_store):
     claimed = [result for result in results if result is not None]
     assert len(claimed) == 1
     assert claimed[0]["id"] == task["id"]
+
+
+
+def test_sandbox_task_crash_is_terminal_after_single_attempt(task_store, monkeypatch):
+    from app.sandbox_tasks import SANDBOX_TASK_TYPE
+
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    source = "print('must not be retried after worker crash')"
+    task = task_manager.create_task(
+        SANDBOX_TASK_TYPE,
+        {"source_code": source, "timeout_seconds": 10, "max_output_bytes": 1000},
+        max_attempts=1,
+    )
+    claimed = task_manager.claim_next_task("sandbox-worker", lease_seconds=5)
+    assert claimed["id"] == task["id"]
+    assert claimed["attempts"] == 1
+
+    checkpoint = {
+        "phase": "sandbox_started",
+        "source_sha256": "a" * 64,
+        "execution_status": "running",
+    }
+    task_manager.save_checkpoint(task["id"], "sandbox-worker", checkpoint)
+
+    # Model a process crash: the worker never settles the task and its lease expires.
+    current = current + timedelta(seconds=6)
+    assert task_manager.claim_next_task("replacement-worker", lease_seconds=5) is None
+
+    recovered = task_manager.get_task(task["id"])
+    assert recovered["status"] == "failed"
+    assert recovered["attempts"] == 1
+    assert recovered["checkpoint"] == checkpoint
+    assert recovered["lease_owner"] is None
+    assert "retry limit reached" in recovered["error"]
+    assert task_manager.claim_next_task("another-worker") is None
