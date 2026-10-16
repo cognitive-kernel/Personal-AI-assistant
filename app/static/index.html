@@ -160,6 +160,7 @@ function renderCloudCandidates(candidates) {
    const option=document.createElement("option"); option.value=value; option.textContent=label; review.append(option);
   });
   if(["approved","rejected"].includes(candidate.review_status)) review.value=candidate.review_status;
+  review.addEventListener("change",()=>{if(review.value==="rejected"&&availability.value==="available")availability.value="unknown";});
   reviewLabel.append(review); grid.append(reviewLabel);
   const availabilityLabel=document.createElement("label"); availabilityLabel.textContent="وضعیت ظرفیت";
   const availability=document.createElement("select");
