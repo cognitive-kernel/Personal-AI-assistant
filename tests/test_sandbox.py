@@ -363,3 +363,63 @@ def test_workspace_syntax_check_fails_closed_without_project_workspace(tmp_path)
             docker_executable=executable,
             image=IMAGE,
         )
+
+
+
+def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    (workspace / "app" / "sample.py").write_text("value = 1\\n", encoding="utf-8")
+    (workspace / "tests" / "test_sample.py").write_text("def test_value():\\n    assert True\\n", encoding="utf-8")
+    calls = []
+
+    def fake_popen(args, **kwargs):
+        process = FakeProcess(args, stdout=b"5 passed in 0.2s\\n")
+        calls.append((args, kwargs, process))
+        return process
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    image = "sha256:" + "c" * 64
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=executable,
+        image=image,
+    )
+
+    assert result.status == "succeeded"
+    args, kwargs, _ = calls[0]
+    assert "--pull=never" in args
+    assert "--network=none" in args
+    assert "--read-only" in args
+    assert "--cap-drop=ALL" in args
+    assert "--security-opt=no-new-privileges" in args
+    assert "--memory=1g" in args
+    assert "--cpus=2" in args
+    assert "--pids-limit=128" in args
+    assert "--user=65534:65534" in args
+    assert "type=bind,source=" + str(workspace.resolve()) + ",target=/workspace,readonly" in args
+    assert args[-3] == image
+    assert args[-2:] == ["python", "-I"] or args[-3:] == [image, "python", "-I", "-c", args[-1]]
+    assert "pytest.main" in args[-1]
+    assert kwargs["shell"] is False
+    assert kwargs["stdin"] == subprocess.DEVNULL
+
+
+def test_workspace_tests_reject_mutable_or_unavailable_test_images(tmp_path, monkeypatch):
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    with pytest.raises(ValueError, match="pinned by sha256"):
+        sandbox.run_workspace_tests(
+            workspace,
+            docker_executable="/not-used",
+            image="python:3.11-slim",
+        )
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=tmp_path / "missing-docker",
+        image="sha256:" + "d" * 64,
+    )
+    assert result.status == "unavailable"
