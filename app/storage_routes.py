@@ -25,6 +25,7 @@ router = APIRouter(
     dependencies=[Depends(require_loopback_client)],
 )
 _BACKUP_ID = re.compile(r"^snapshot-\d{8}T\d{12}Z$")
+_RESTORE_ID = re.compile(r"^restore-\d{8}T\d{12}Z$")
 
 
 class BackupRequest(BaseModel):
