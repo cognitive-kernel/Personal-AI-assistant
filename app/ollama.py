@@ -21,16 +21,31 @@ def _base_url() -> str:
     parsed = urllib.parse.urlparse(base)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise OllamaError("Ollama URL must be a valid HTTP(S) URL.")
-    try:
-        loopback = ipaddress.ip_address(parsed.hostname).is_loopback
-    except ValueError:
-        loopback = parsed.hostname.lower() == "localhost"
-    if not loopback:
-        raise OllamaError("Only a loopback Ollama endpoint is allowed in this initial version.")
     if parsed.username or parsed.password:
         raise OllamaError("Credentials in the Ollama URL are not supported.")
     if parsed.path or parsed.query or parsed.fragment:
         raise OllamaError("Ollama URL must be a base URL without a path, query, or fragment.")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise OllamaError("Ollama URL contains an invalid port.") from exc
+    if port is not None and not 1 <= port <= 65535:
+        raise OllamaError("Ollama URL contains an invalid port.")
+
+    hostname = parsed.hostname
+    # Never rely on name resolution for "localhost": normalize it to a loopback
+    # literal so a modified hosts file cannot redirect local prompts off-machine.
+    if hostname.lower() == "localhost":
+        netloc = "127.0.0.1" if port is None else f"127.0.0.1:{port}"
+        parsed = parsed._replace(netloc=netloc)
+        base = urllib.parse.urlunparse(parsed)
+        hostname = "127.0.0.1"
+    try:
+        loopback = ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        loopback = False
+    if not loopback:
+        raise OllamaError("Only a loopback IP literal or exact localhost endpoint is allowed.")
     return base
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -64,7 +79,7 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         if not isinstance(result, dict):
             raise OllamaError("Unexpected Ollama response shape.")
         return result
-    except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError) as exc:
+    except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise OllamaError(f"Ollama request failed: {exc}") from exc
 
 def health() -> dict[str, Any]:
