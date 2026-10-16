@@ -67,13 +67,10 @@ def _memory_gib(claim: Mapping[str, Any]) -> float | None:
 
 def _capabilities(claims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     cpu_values = [
-        float(claim["value"])
-        for claim in claims
+        parsed for claim in claims
         if claim.get("claim_type") == "cpu_count"
-        and isinstance(claim.get("value"), (int, float))
-        and not isinstance(claim.get("value"), bool)
-        and math.isfinite(float(claim["value"]))
-        and float(claim["value"]) >= 0
+        for parsed in [_finite_nonnegative_number(claim.get("value"))]
+        if parsed is not None
     ]
     memory_values = [
         parsed for claim in claims
