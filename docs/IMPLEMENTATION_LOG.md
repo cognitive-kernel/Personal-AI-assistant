@@ -1402,7 +1402,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **مرز اعتماد:** این مرحله فقط syntax را بررسی می‌کند، نه رفتار یا امنیت patch را. کد پیشنهادی import/execute نمی‌شود؛ گزارش tests_executed=false و candidate_code_executed=false است. تأیید PR تا موفقیت این مرحله مسدود می‌ماند.
 - **تست‌ها:** قرارداد پرچم‌های Docker، شبکهٔ غیرفعال، mount فقط‌خواندنی، پاک‌سازی worktree، مسیر تأیید و رد، و migration نسخهٔ ۱۳.
 - **مراحل بعدی:** آزمون رفتاری واقعی در image تست از پیش آماده، ساخت PR کنترل‌شده، rollback واقعی و بازبینی مستقل Issue #52 همچنان باقی‌اند.
-- **اعتبارسنجی:** PR [#192](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/192) ادغام شد؛ CI روی head دقیق a329dd55ad58b23f21e7ecf1cfb2c7d02379ca27 در run [#38890486514](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890486514) و پس از ادغام روی 6975da2466cdeed634ec59956674aca7a4fc9dd1 در run [#38890596909](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890596909) موفق بود. تست محلی اجرا نشده است.
+- **اعتبارسنجی:** PR [#192](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/192) ادغام شد؛ CI روی head دقیق 37ba66dc0627b748a64c291c6a7afc30b95fad5b در run [#38886534780](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38886534780) و پس از ادغام روی aac4f3f1e866647d59e141b5fb3e527c3f4b0d4f در run [#38886685605](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38886685605) موفق بود. تست محلی اجرا نشده است.
 
 
 ## 108. 2026-10-16 — جلوگیری ایستا از تضعیف آزمون‌ها در خودبهبود
