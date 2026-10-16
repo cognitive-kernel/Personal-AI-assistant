@@ -209,8 +209,8 @@ async function pruneStorageBackups() {
    output.textContent="پشتیبان واجد شرایط حذف وجود ندارد. حداقل سه نسخهٔ آخر و پشتیبان‌های کمتر از ۳۰ روز حفظ می‌شوند.";
    return;
   }
-  const ids=(preview.candidates||[]).map(item=>item.id).join("\\n");
-  if(!window.confirm("این پشتیبان‌ها بیش از ۳۰ روز عمر دارند و جزو سه نسخهٔ آخر نیستند. حذف دائمی انجام شود؟\\n\\n"+ids+"\\n\\nاین کار قابل بازگشت نیست.")) {
+  const ids=(preview.candidates||[]).map(item=>item.id).join("\n");
+  if(!window.confirm("این پشتیبان‌ها بیش از ۳۰ روز عمر دارند و جزو سه نسخهٔ آخر نیستند. حذف دائمی انجام شود؟\n\n"+ids+"\n\nاین کار قابل بازگشت نیست.")) {
    output.textContent="پاک‌سازی لغو شد؛ هیچ پشتیبانی حذف نشد.";
    return;
   }
