@@ -8,10 +8,11 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import sandbox
+from . import sandbox, sandbox_consent
 from .task_worker import TaskContext
 
 SANDBOX_TASK_TYPE = "sandbox.run_python"
@@ -71,6 +72,9 @@ def handler_from_environment() -> Callable[
         ):
             raise ValueError("max_output_bytes must be an integer from 1 to 65536.")
 
+        if not sandbox_consent.is_enabled():
+            raise ValueError("Sandbox execution requires explicit, current user consent.")
+
         source_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
         context.checkpoint(
             {
@@ -79,13 +83,29 @@ def handler_from_environment() -> Callable[
                 "image": image,
             }
         )
+        last_consent_check = 0.0
+        consent_revoked = False
+
+        def control_check() -> str:
+            nonlocal last_consent_check, consent_revoked
+            status = context.control_status()
+            if status != "running":
+                return status
+            now = time.monotonic()
+            if now - last_consent_check >= 0.5:
+                last_consent_check = now
+                if not sandbox_consent.is_enabled():
+                    consent_revoked = True
+                    return "control_unavailable"
+            return "running"
+
         result = sandbox.run_python(
             source_code,
             docker_executable=executable,
             image=image,
             timeout_seconds=timeout_seconds,
             max_output_bytes=max_output_bytes,
-            control_check=context.control_status,
+            control_check=control_check,
         )
         evidence = {
             "phase": "sandbox_finished",
@@ -96,6 +116,8 @@ def handler_from_environment() -> Callable[
             "duration_ms": result.duration_ms,
         }
         context.checkpoint(evidence)
+        if consent_revoked:
+            raise RuntimeError("Sandbox execution stopped because user consent was revoked.")
         return {
             **evidence,
             "stdout": result.stdout,
