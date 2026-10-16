@@ -12,6 +12,8 @@ Malformed JSON, missing claims, unknown evidence URLs, invalid verdicts, or unsu
 
 ## Integration status
 
-The learning-job path now calls the review primitive after deterministic lesson-quality checks when retrieved web source excerpts are available. It asks the generator to include exact source URLs, extracts at most three HTTPS source excerpts, stores the review result in the quality record and operational evidence log, and uses `passed_model_assisted` or `needs_review` as a separate review status. A review failure does not discard an otherwise usable lesson; the canonical knowledge item remains `unverified` either way.
+The learning-job path calls the review primitive after deterministic lesson-quality checks when retrieved web source excerpts are available. It asks the generator to include exact source URLs, extracts at most three HTTPS source excerpts, stores the review result in the quality record and operational evidence log, and uses `passed_model_assisted` or `needs_review` as a separate review status. A review failure does not discard an otherwise usable lesson; the canonical knowledge item remains `unverified` either way.
 
-This integration does not yet apply claim review to the normal chat endpoint. A passing review is still model-assisted and is not independent proof; factual verification and any later promotion policy must remain explicit.
+The normal chat path now uses the same reviewer for technical/research requests: it discovers up to three public sources, includes verified experience guidance and failure warnings, requests exact URL citations, and performs at most one bounded repair attempt. Small talk remains on the direct local-chat path. If source discovery or claim review is unavailable, the response remains available with an explicit uncertainty note.
+
+A passing review is still model-assisted and is not independent proof. Chat source excerpts are currently transient rather than a durable per-answer audit record; persistence and retrieval-quality evaluation remain follow-up work.
