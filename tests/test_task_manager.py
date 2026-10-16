@@ -15,6 +15,17 @@ def task_store(tmp_path, monkeypatch):
     task_manager.initialize_task_store()
 
 
+
+def _claim_task_in_fresh_process(paths, worker_id):
+    """Spawn-safe worker: opens the same file-backed SQLite store independently."""
+    from app import db as child_db, task_manager as child_task_manager
+
+    child_db.defaults.settings_db_path = paths[0]
+    child_db.defaults.learning_db_path = paths[1]
+    claimed = child_task_manager.claim_next_task(worker_id, lease_seconds=30)
+    return claimed["id"] if claimed is not None else None
+
+
 def test_task_lifecycle_persists_payload_checkpoint_and_result(task_store):
     created = task_manager.create_task("learn.topic", {"topic": "SQLite", "depth": 2}, priority=4)
     assert created["status"] == "queued"
@@ -299,3 +310,31 @@ def test_checkpoint_and_expired_lease_survive_store_reinitialization(task_store,
 
     with pytest.raises(TaskManagerError, match="not owned by this worker"):
         task_manager.save_checkpoint(task["id"], "worker-before-restart", {"phase": "stale"})
+
+
+
+def test_independent_processes_cannot_claim_the_same_task(task_store, tmp_path):
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    task = task_manager.create_task("multiprocess-claim", {"only_once": True})
+    paths = (
+        str(tmp_path / "settings.db"),
+        str(tmp_path / "learning.db"),
+    )
+    # spawn gives each worker a fresh interpreter and independent SQLite connection;
+    # this is stronger than threads sharing the parent process/module state.
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=6, mp_context=context) as pool:
+        claims = list(pool.map(
+            _claim_task_in_fresh_process,
+            [paths] * 6,
+            [f"process-worker-{index}" for index in range(6)],
+        ))
+
+    successful = [task_id for task_id in claims if task_id is not None]
+    assert successful == [task["id"]]
+    stored = task_manager.get_task(task["id"])
+    assert stored["status"] == "running"
+    assert stored["attempts"] == 1
+    assert stored["lease_owner"].startswith("process-worker-")
