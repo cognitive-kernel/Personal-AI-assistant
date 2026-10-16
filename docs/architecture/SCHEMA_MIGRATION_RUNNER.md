@@ -104,3 +104,8 @@ When migration history exists, the runner reconstructs the expected schema for t
 ## Learning schema version 4
 
 Migration `learning-job-lesson-review-context` adds nullable `learning_jobs.lesson_review_json`. It stores bounded feedback context for a new lesson-generation attempt; the canonical learner review remains in `lesson_reviews` and is never promoted to factual evidence. Existing version 1–3 databases are backed up and upgraded through the normal reviewed migration path.
+
+
+## Learning schema version 5
+
+Migration `learning-experience-memory` adds `learning_experiences` and immutable `learning_experience_versions`, with indexes for topic/status lookup and version history. A new installation creates these tables through the registry; a version 4 database is backed up before upgrade. An untracked database is adopted only if its complete logical schema matches a registered version, including version 5 when the matching experience tables already exist. Unknown schema variants remain rejected without mutation.
