@@ -1252,9 +1252,17 @@
 
 ## 92. Controlled experience test runner
 
-- Status: implemented on branch `feat/controlled-experience-test-runner-20261016`; CI validation pending.
+- Status: merged in PR #172; exact-head GitHub Actions run #38862785807 succeeded.
 - Added `experience.run_test`, registered only when the administrator-configured Docker sandbox is available.
 - The local API requires loopback access, explicit request confirmation, current sandbox consent, HTTPS source evidence, a saved test-plan entry matching the requested test, and a syntactically valid Python harness containing at least one `assert`.
 - The handler rechecks the experience state and test-plan match at execution time, delegates execution to the existing isolated sandbox, and checks cancellation/consent again before recording evidence.
 - Passing execution with exit code 0 can promote the experience to `verified` only through the controlled internal path; failure records a failed result. The result includes source SHA-256, pinned image, execution status, exit code, duration, and bounded stdout/stderr.
-- Added UI queue/polling, runner unit tests, API queue tests, and `docs/architecture/EXPERIENCE_TEST_RUNNER.md`. Local tests were not run; exact-head CI remains the merge gate.
+- Added UI queue/polling, runner unit tests, API queue tests, and `docs/architecture/EXPERIENCE_TEST_RUNNER.md`. The full test suite and deterministic lexical retrieval benchmark passed in CI; local tests were not run.
+
+## 93. Ollama loopback hostname hardening
+
+- Status: implemented on branch `security/normalize-localhost-ollama-20261016`; CI validation pending.
+- Exact `localhost` is normalized to the literal loopback address `127.0.0.1`, preventing hosts-file/DNS resolution from changing the destination. Only loopback IP literals or exact `localhost` are accepted.
+- Added validation for invalid ports and malformed UTF-8 response bodies; redirect blocking, proxy isolation, response byte caps, and timeout behavior remain in place.
+- Added regression cases for deceptive localhost suffixes, DNS aliases, integer/leading-zero IPv4 forms, IPv4-mapped IPv6, invalid ports, and invalid UTF-8.
+- Added `docs/security/OLLAMA_LOOPBACK_HARDENING.md`. Issue #52 remains open because this is not an independent security review.
