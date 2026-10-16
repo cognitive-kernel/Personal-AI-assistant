@@ -84,10 +84,12 @@ def stop_backup_scheduler(timeout: float = 5.0) -> bool:
     global _scheduler
     with _scheduler_lock:
         current = _scheduler
-        _scheduler = None
     if current is None:
         return True
     stopped = current.stop(timeout=timeout)
+    with _scheduler_lock:
+        if stopped and _scheduler is current:
+            _scheduler = None
     if not stopped:
         logger.warning("Database backup scheduler did not stop before the shutdown deadline.")
     return stopped
