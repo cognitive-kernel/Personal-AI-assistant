@@ -121,8 +121,11 @@ def post_restore(backup_id: str, request: BackupRequest) -> dict[str, Any]:
         if source.is_symlink() or not source.is_dir() or source.resolve().parent != root:
             raise HTTPException(status_code=404, detail="Backup not found.")
         restore_root = root / "restore-staging"
-        restore_root.mkdir(parents=True, exist_ok=True)
-        if restore_root.is_symlink() or restore_root.resolve().parent != root:
+        if restore_root.exists() and (
+            restore_root.is_symlink()
+            or not restore_root.is_dir()
+            or restore_root.resolve().parent != root
+        ):
             raise HTTPException(status_code=503, detail="Restore staging location is unavailable.")
         restore_id = datetime.now(timezone.utc).strftime("restore-%Y%m%dT%H%M%S%fZ")
         destination = restore_root / restore_id
