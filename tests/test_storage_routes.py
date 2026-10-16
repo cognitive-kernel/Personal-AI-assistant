@@ -315,3 +315,16 @@ def test_restore_staging_cleanup_enforces_minimum_age_and_loopback_access(tmp_pa
             json={"confirm": True, "keep_last": 1, "min_age_days": 7},
         )
         assert response.status_code == 403
+
+
+
+def test_dashboard_exposes_preview_first_restore_staging_cleanup():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="prune-restore-staging"' in page
+    assert '"/api/storage/restore-staging/prune"' in page
+    assert "بیش از ۷ روز" in page
+    assert "دیتابیس‌های زنده تغییر نمی‌کنند" in page
