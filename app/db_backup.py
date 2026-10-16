@@ -1,9 +1,9 @@
 """Verified, local-only backup and restore for the application's SQLite databases.
 
-Backups are created as a new directory containing both database snapshots and a
-manifest. Restores are staged in a new directory and published only after both
-files pass hash and SQLite integrity checks. Existing destinations are never
-silently overwritten.
+Backups are created as a new directory containing verified snapshots and a
+manifest. New complete bundles include settings, learning, and cloud-resource
+stores. Restores are staged and published only after every included file passes
+hash and SQLite integrity checks. Existing destinations are never overwritten.
 """
 from __future__ import annotations
 
