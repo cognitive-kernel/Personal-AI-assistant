@@ -17,7 +17,11 @@ on:
     paths:
       - "app/sandbox.py"
       - "app/sandbox_tasks.py"
+      - "app/self_improvement.py"
+      - "tests/test_sandbox.py"
+      - "tests/test_self_improvement.py"
       - "tests/test_sandbox_integration.py"
+      - "docker/self-improvement-test-runner.Dockerfile"
       - ".github/workflows/sandbox-integration-ci.yml"
       - "pyproject.toml"
 
