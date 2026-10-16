@@ -145,6 +145,31 @@ def test_proposal_validation_and_approval_never_apply_code(proposal_repo, monkey
     ]
 
 
+
+def test_failed_behavior_tests_block_proposal_approval(proposal_repo, monkeypatch):
+    proposal = self_improvement.create_proposal(
+        "Failing candidate", "Behavioral tests must pass before approval.", _patch()
+    )
+    self_improvement.validate_proposal(proposal["id"])
+    _enable_static_check(monkeypatch)
+    monkeypatch.setattr(
+        self_improvement.sandbox,
+        "run_workspace_tests",
+        lambda *args, **kwargs: self_improvement.sandbox.SandboxResult(
+            status="failed", exit_code=1, stdout="1 failed", stderr="", duration_ms=80
+        ),
+    )
+
+    checked = self_improvement.static_check_proposal(proposal["id"], confirm=True)
+
+    assert checked["static_check"]["status"] == "failed"
+    assert checked["static_check"]["behavioral_tests"]["status"] == "failed"
+    assert checked["static_check"]["tests_executed"] is True
+    with pytest.raises(self_improvement.ProposalError, match="behavior test run"):
+        self_improvement.approve_for_pr(proposal["id"], confirm=True)
+
+
+
 def test_validation_fails_closed_when_repository_head_changes(proposal_repo):
     proposal = self_improvement.create_proposal(
         "Stale proposal", "Must not validate against a changed base.", _patch()
