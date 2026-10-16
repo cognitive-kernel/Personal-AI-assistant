@@ -2,6 +2,7 @@
 
 The regular unit suite skips these unless E2E_BASE_URL is explicitly configured.
 """
+import json
 import os
 
 import pytest
@@ -36,7 +37,13 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
             }""",
             timeout=15000,
         )
-        assert storage_output.inner_text().strip()
+        storage_result = json.loads(storage_output.inner_text())
+        assert storage_result["read_only"] is True
+        assert storage_result["repair_performed"] is False
+        assert {item["name"] for item in storage_result["databases"]} == {
+            "settings", "learning", "cloud_resources"
+        }
+        assert all(item["status"] == "ok" for item in storage_result["databases"])
 
         page.locator("#refresh-learning-recommendations").click()
         page.wait_for_function(
@@ -46,5 +53,8 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
             }""",
             timeout=15000,
         )
+        recommendations = json.loads(page.locator("#learning-recommendations-output").inner_text())
+        assert isinstance(recommendations.get("recommendations"), list)
+        assert recommendations.get("autonomous_action_taken") is False
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
