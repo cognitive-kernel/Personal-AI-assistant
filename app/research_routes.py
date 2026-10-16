@@ -27,7 +27,7 @@ class ResearchTaskRequest(BaseModel):
 @router.post("/tasks", status_code=202)
 def queue_research_task(request: ResearchTaskRequest) -> dict[str, Any]:
     try:
-        message, history = research_tasks._validate_payload(
+        message, history = research_tasks.validate_payload(
             {"message": request.message, "history": request.history}
         )
     except ValueError as exc:
