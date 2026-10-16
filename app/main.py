@@ -1,9 +1,10 @@
 from __future__ import annotations
+import ipaddress
 import logging
 from pathlib import Path
 from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
@@ -53,6 +54,36 @@ async def log_http_error_explanation(request, call_next):
         else:
             logger.warning("توضیح فارسی 404 | مسیر: %s | دلیل: %s", path, explanation)
     return response
+
+
+@app.middleware("http")
+async def enforce_loopback_only(request, call_next):
+    """Block unauthenticated dashboard and API access from non-loopback peers."""
+    client = request.client
+    if client is None:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "This application is available from localhost only."},
+        )
+    try:
+        peer = ipaddress.ip_address(client.host)
+    except ValueError:
+        # Starlette's in-process TestClient uses this synthetic peer name; real
+        # TCP peers are IP literals. Do not accept arbitrary non-IP peer values.
+        if client.host != "testclient":
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "This application is available from localhost only."},
+            )
+    else:
+        if not peer.is_loopback:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "This application is available from localhost only."},
+            )
+    return await call_next(request)
+
+
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
