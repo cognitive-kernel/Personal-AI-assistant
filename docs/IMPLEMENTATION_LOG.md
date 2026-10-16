@@ -698,6 +698,21 @@
 - [x] Issue #52 عمداً باز می‌ماند؛ بررسی امنیتی مستقل redirectهای Ollama هنوز انجام نشده و پیاده‌ساز نباید آن را به‌جای بازبین مستقل تأیید کند.
 - [x] migration نسخهٔ 5 برای `learning_experiences` و `learning_experience_versions` افزوده شد؛ تغییرات تجربه از مسیر migration نسخه‌بندی‌شده انجام می‌شوند، نه DDL پراکنده.
 - [x] `app/experience.py` و تست‌ها برای ثبت تجربه، evidence، طرح و نتیجهٔ تست، retrieval تفکیک‌شدهٔ موفق/ناموفق، تاریخچهٔ immutable و rollback کنترل‌شده منتقل شدند.
-- [x] CI نخستین head `802f1c3b475d3d18a31053c1864848f67c243f84` دو assertion قدیمیِ نسخهٔ جاری (هنوز 4 را انتظار داشتند) را شکست داد؛ 195 تست موفق و 2 تست شکست خوردند. هر دو انتظار به نسخهٔ 5 به‌روزرسانی شدند. run [#38838984888](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38838984888).
-- [ ] CI مجدد روی head اصلاح‌شده باید بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** پس از CI موفق، ادغام هستهٔ تجربه؛ سپس بازسازی retrieval hybrid و claim review در PRهای مستقل مبتنی بر main.
+- [x] پس از اصلاح دو assertion قدیمی نسخهٔ schema، **PR #118** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/118)، commit `461fc4f58bfd7852d831510c648babe990bd623c`.
+- [x] CI روی head دقیق `50cdbb14845144fd336b8b7a6fac7450e8042d2a` موفق بود؛ run [#38839076248](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38839076248)، شامل نصب وابستگی‌ها و `pytest`.
+- [x] migration نسخهٔ 6 برای cache بردارهای embedding، API محلی Ollama برای `/api/embed` و بازیابی ترکیبی BM25-style + vector/RRF در شاخهٔ بعدی افزوده شده‌اند.
+- [ ] CI روی head این PR بازیابی ترکیبی باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** ادغام retrieval پس از CI موفق؛ سپس انتقال دقیق citation/claim review و مرزبندی feedback غیرقابل‌اعتماد در PRهای مستقل.
+
+
+## 47. 2026-10-16 — بازیابی ترکیبی برای حافظهٔ تجربه
+
+- [x] `app/ollama.py` اکنون `/api/embed` را فقط از طریق سیاست loopback موجود صدا می‌زند؛ ورودی محدود و خروجی از نظر تعداد، ابعاد، نوع عددی و مقادیر finite اعتبارسنجی می‌شوند.
+- [x] تنظیم `ollama_embedding_model` اضافه شد؛ نام مدل بخشی از کلید cache است.
+- [x] migration نسخهٔ 6 جدول مشتق‌شدهٔ `learning_experience_embeddings` را با کلید تجربه/نسخه/مدل اضافه می‌کند؛ دادهٔ canonical تجربه‌ها تغییر نمی‌کند.
+- [x] `app/experience_retrieval.py` امتیازدهی lexical از نوع BM25، cosine similarity و Reciprocal Rank Fusion را ترکیب می‌کند؛ اگر embedding در دسترس نباشد، بازیابی به lexical محدود می‌شود.
+- [x] بردار نسخهٔ قدیمی برای نسخهٔ جدید تجربه استفاده نمی‌شود؛ cache قابل بازسازی است و فقط تجربه‌های verified وارد مسیر توصیه می‌شوند. تجربه‌های failed/needs_review در مسیر هشدار جدا می‌مانند.
+- [x] تست‌های ورودی/خروجی embedding، retrieval معنایی بدون هم‌پوشانی واژگانی، fallback، و cache نسخه‌بندی‌شده اضافه شدند.
+- [x] راهنمای معماری در `docs/architecture/EXPERIENCE_RETRIEVAL.md` ثبت شد.
+- [ ] CI روی head دقیق PR بررسی شود؛ اجرای محلی در این محیط انجام نشده است.
+- **گام بعدی:** پس از ادغام، ارزیابی Recall@5/MRR روی مجموعهٔ فارسی/انگلیسی و سپس انتقال claim-review با تطبیق دقیق URL به ساختار فعلی.
