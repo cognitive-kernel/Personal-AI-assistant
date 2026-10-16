@@ -68,7 +68,15 @@ def _memory_context(message: str) -> dict[str, list[dict[str, Any]]]:
                 "status": str(item.get("status", ""))[:50],
                 "problem": str(item.get("problem", ""))[:800],
                 "takeaway": str(item.get("takeaway", ""))[:800],
-                "test_results": item.get("test_results", [])[:3],
+                "test_results": [
+                    {
+                        "test": str(result.get("test", ""))[:200],
+                        "passed": result.get("passed") is True,
+                        "actual": str(result.get("actual", ""))[:400],
+                    }
+                    for result in item.get("test_results", [])[:3]
+                    if isinstance(result, dict)
+                ],
             }
             for item in warnings
         ],
@@ -93,6 +101,19 @@ def _warning(message: str, reason: str) -> str:
     if re.search(r"[\u0600-\u06FF]", message):
         return "\n\nیادداشت راستی‌آزمایی: " + reason
     return "\n\nVerification note: " + reason
+
+
+def _review(question: str, answer_text: str, sources: list[dict[str, str]]) -> dict[str, Any]:
+    try:
+        return claim_review.review_answer_claims(question, answer_text, sources)
+    except Exception as exc:
+        return {
+            "passed": False,
+            "overall": "insufficient_evidence",
+            "claims": [],
+            "error": f"review_unavailable:{type(exc).__name__}",
+            "reviewer": "local_ollama_model_assisted_not_independent",
+        }
 
 
 def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
@@ -127,11 +148,11 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             else "No usable external source was found; this answer is based on model knowledge and was not independently reviewed.",
         )
 
-    review = claim_review.review_answer_claims(message, draft, sources)
+    review = _review(message, draft, sources)
     if review.get("passed") is True:
         return draft
     error = str(review.get("error") or "")
-    if error.startswith("review_unavailable_or_malformed:"):
+    if error.startswith("review_unavailable"):
         return draft + _warning(
             message,
             "بازبینی ادعاها در دسترس نبود؛ همه ادعاها تأییدشده محسوب نمی‌شوند."
@@ -156,7 +177,7 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
         history,
         system_prompt=_SYSTEM_PROMPT,
     )
-    second_review = claim_review.review_answer_claims(message, repaired, sources)
+    second_review = _review(message, repaired, sources)
     if second_review.get("passed") is True:
         return repaired
     return repaired + _warning(
