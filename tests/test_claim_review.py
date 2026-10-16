@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from app import claim_review, db
 
 
@@ -87,3 +89,47 @@ def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monk
     )
     assert result["passed"] is False
     assert result["error"] == "invalid_claim_fields"
+
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("Source: https://docs.python.org/3/library/json.html.", True),
+        ("Source: <https://docs.python.org/3/library/json.html>", True),
+        ('Source: "https://docs.python.org/3/library/json.html"', True),
+        ("Source: https://docs.python.org/3/library/json.html.evil.example", False),
+        ("Source: https://docs.python.org/3/library/json.html?next=evil", False),
+        ("Source: https://docs.python.org/3/library/json.html-extra", False),
+    ],
+)
+def test_citation_must_be_an_exact_url_token(answer, expected):
+    url = "https://docs.python.org/3/library/json.html"
+    assert claim_review._answer_contains_exact_url(answer, url) is expected
+
+
+def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monkeypatch):
+    setup_settings_db(tmp_path, monkeypatch)
+    url = "https://docs.python.org/3/library/json.html"
+    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+        "message": {"content": json.dumps({
+            "overall": "supported",
+            "claims": [{
+                "claim": "Invalid JSON may raise a decoding error.",
+                "verdict": "supported",
+                "evidence_urls": [url],
+                "reason": "Directly stated in the excerpt.",
+            }],
+        })},
+    })
+    result = claim_review.review_answer_claims(
+        "Why can JSON parsing fail?",
+        "Invalid JSON may raise a decoding error. Source: https://docs.python.org/3/library/json.html.evil.example",
+        [{
+            "title": "Python JSON docs",
+            "url": url,
+            "content": "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully.",
+        }],
+    )
+    assert result["passed"] is False
+    assert result["error"] == "one_or_more_claims_not_supported_or_cited"
