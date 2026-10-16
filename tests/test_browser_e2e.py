@@ -136,4 +136,28 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
         )
         assert "وضعیت: identified" in page.locator("#experience-list").inner_text()
         assert not consent_checkbox.is_checked()
+
+        # Opt-in must be an explicit user action; revocation must return the UI
+        # and persisted state to disabled without deleting prior experience rows.
+        consent_checkbox.check()
+        page.locator("#experience-auto-capture-enable").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#experience-auto-capture-status');
+                return node && node.textContent.includes('ذخیرهٔ خودکار فعال است');
+            }""",
+            timeout=10000,
+        )
+        assert consent_checkbox.is_checked()
+
+        page.locator("#experience-auto-capture-revoke").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#experience-auto-capture-status');
+                return node && node.textContent.includes('ذخیرهٔ خودکار غیرفعال است');
+            }""",
+            timeout=10000,
+        )
+        assert not consent_checkbox.is_checked()
+        assert "Browser E2E experience creation" in page.locator("#experience-list").inner_text()
         browser.close()
