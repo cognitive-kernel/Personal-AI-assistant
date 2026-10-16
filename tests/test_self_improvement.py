@@ -57,7 +57,7 @@ def _enable_static_check(monkeypatch):
         lambda *args, **kwargs: self_improvement.sandbox.SandboxResult(
             status="succeeded",
             exit_code=0,
-            stdout='{"status":"passed","files_checked":3}\\n',
+            stdout='{"status":"passed","files_checked":3}\n',
             stderr="",
             duration_ms=12,
         ),
