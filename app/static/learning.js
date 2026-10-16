@@ -35,6 +35,31 @@ async function waitForLearningJob(jobId, output) {
  throw new Error("پس از ۱۵ دقیقه انتظار، هنوز نتیجه نهایی دریافت نشد؛ کار ممکن است در پس‌زمینه ادامه داشته باشد. شناسه کار: " + jobId);
 }
 
+async function refreshLearningRecommendations() {
+ const output = learningEl("learning-recommendations-output");
+ if (!output) return;
+ output.textContent = "در حال محاسبهٔ گام بعدی یادگیری…";
+ try {
+  const result = await learningApi("/api/learning/recommendations?limit=20");
+  const items = result.recommendations || [];
+  const labels = {
+   spaced_repetition: "مرور سررسیدشده",
+   continue_learning: "ادامهٔ درس فعال",
+   reinforcement: "تقویت موضوع ضعیف",
+   next_topic: "موضوع بعدی"
+  };
+  output.textContent = items.length
+   ? items.map((item, index) => (index + 1) + ". " + (labels[item.recommendation_type] || item.recommendation_type) +
+      "\nمسیر: " + item.path_title + "\nموضوع: " + item.topic +
+      "\nدلیل: " + item.reason + (item.due_at ? "\nسررسید: " + item.due_at : "")).join("\n\n") +
+      "\n\nاین فهرست فقط توصیه است؛ هیچ درس یا وظیفه‌ای به‌صورت خودکار شروع نشده است."
+   : "در حال حاضر گام بعدی مشخصی وجود ندارد.";
+ } catch (error) {
+  output.textContent = "توصیه‌های یادگیری در دسترس نیست: " + error.message;
+ }
+}
+
+
 async function regenerateLesson(path, topic, button, output) {
  button.disabled = true;
  output.textContent = "در حال تولید نسخه تازه درس…";
@@ -565,7 +590,9 @@ document.addEventListener("DOMContentLoaded", () => {
  });
  learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
  learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
+ learningEl("refresh-learning-recommendations").addEventListener("click", refreshLearningRecommendations);
  loadLearningCurricula();
  loadLearningPaths();
  refreshDueLearningReviews();
+ refreshLearningRecommendations();
 });
