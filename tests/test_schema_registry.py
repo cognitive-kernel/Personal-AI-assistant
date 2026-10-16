@@ -160,7 +160,7 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == [1, 2, 3, 4, 5, 6]
+        assert [row[0] for row in history] == [1, 2, 3, 4, 5, 6, 7]
         assert len(history[0][1]) == 64
         assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -174,7 +174,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(4, expected_v4), (5, None), (6, None)]
+        assert history == [(4, expected_v4), (5, None), (6, None), (7, None)]
 
 
 def test_known_v5_schema_is_baselined_then_upgraded():
@@ -184,7 +184,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(5, expected_v5), (6, None)]
+        assert history == [(5, expected_v5), (6, None), (7, None)]
 
 
 def test_known_v6_schema_is_baselined_then_upgraded():
