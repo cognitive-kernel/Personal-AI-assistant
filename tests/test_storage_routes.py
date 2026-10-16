@@ -230,3 +230,88 @@ def test_dashboard_exposes_preview_first_backup_retention_controls():
     assert '"/api/storage/backups/prune"' in page
     assert "keep_last:3,min_age_days:30" in page
     assert "این کار قابل بازگشت نیست." in page
+
+
+
+def test_restore_staging_cleanup_previews_and_deletes_only_old_verified_snapshots(tmp_path, monkeypatch):
+    import os
+    import time
+
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post("/api/storage/backups", json={"confirm": True})
+        assert created.status_code == 201
+        backup_id = created.json()["id"]
+        restore_ids = []
+        for _ in range(2):
+            response = client.post(
+                f"/api/storage/backups/{backup_id}/restore", json={"confirm": True}
+            )
+            assert response.status_code == 201
+            restore_ids.append(response.json()["restore_id"])
+
+        staging_root = tmp_path / "backups" / "restore-staging"
+        old_path = staging_root / restore_ids[0]
+        recent_path = staging_root / restore_ids[1]
+        old_time = time.time() - 20 * 86400
+        os.utime(old_path, (old_time, old_time))
+
+        preview = client.post(
+            "/api/storage/restore-staging/prune",
+            json={"confirm": False, "keep_last": 1, "min_age_days": 7},
+        )
+        assert preview.status_code == 200
+        preview_body = preview.json()
+        assert preview_body["status"] == "preview"
+        assert preview_body["would_delete_count"] == 1
+        assert [item["id"] for item in preview_body["candidates"]] == [restore_ids[0]]
+        assert old_path.is_dir() and recent_path.is_dir()
+
+        pruned = client.post(
+            "/api/storage/restore-staging/prune",
+            json={"confirm": True, "keep_last": 1, "min_age_days": 7},
+        )
+        assert pruned.status_code == 200
+        assert pruned.json()["deleted"] == [restore_ids[0]]
+        assert not old_path.exists()
+        assert recent_path.is_dir()
+
+
+def test_restore_staging_cleanup_preserves_unknown_or_invalid_directories(tmp_path, monkeypatch):
+    import os
+    import time
+
+    _isolate_app(tmp_path, monkeypatch)
+    staging_root = tmp_path / "backups" / "restore-staging"
+    staging_root.mkdir(parents=True)
+    invalid = staging_root / "restore-20260101T000000000000Z"
+    invalid.mkdir()
+    (invalid / "notes.txt").write_text("not a verified restore", encoding="utf-8")
+    old_time = time.time() - 20 * 86400
+    os.utime(invalid, (old_time, old_time))
+    unknown = staging_root / "manual-folder"
+    unknown.mkdir()
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        preview = client.post(
+            "/api/storage/restore-staging/prune",
+            json={"confirm": False, "keep_last": 1, "min_age_days": 7},
+        )
+        assert preview.status_code == 200
+        assert preview.json()["would_delete_count"] == 0
+        assert invalid.is_dir() and unknown.is_dir()
+
+
+def test_restore_staging_cleanup_enforces_minimum_age_and_loopback_access(tmp_path, monkeypatch):
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        assert client.post(
+            "/api/storage/restore-staging/prune",
+            json={"confirm": True, "keep_last": 1, "min_age_days": 1},
+        ).status_code == 422
+    with TestClient(app, client=("192.0.2.10", 12345)) as client:
+        response = client.post(
+            "/api/storage/restore-staging/prune",
+            json={"confirm": True, "keep_last": 1, "min_age_days": 7},
+        )
+        assert response.status_code == 403
