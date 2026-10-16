@@ -1622,4 +1622,18 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تغییر:** middleware سراسری درخواست‌های HTTP از peerهای غیر-loopback را پیش از رسیدن به UI یا API با 403 رد می‌کند. مسیرهای دارای کنترل loopback اختصاصی همچنان همان کنترل‌های خود را حفظ می‌کنند. نام مصنوعی `testclient` فقط برای سازگاری با ASGI TestClient پذیرفته می‌شود؛ peerهای TCP واقعی IP هستند.
 - **آزمون‌ها:** درخواست از IP مستندِ غیر-loopback به صفحهٔ اصلی، سلامت، تنظیمات و کارهای یادگیری رد می‌شود؛ دسترسی loopback و تست درون‌فرایندی حفظ می‌شود.
 - **مرز اعتماد:** این کنترل جایگزین بازبینی مستقل Issue #52 نیست و دسترسی راه‌دور را پشتیبانی نمی‌کند. هر نیاز به دسترسی LAN باید با احراز هویت و بازبینی مستقل طراحی شود.
-- **اعتبارسنجی:** در انتظار CI روی PR.
+- **اعتبارسنجی:** PR [#241](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/241) ادغام شد؛ CI روی head دقیق `5b63ed5bd8de826a6a4b20b798cb511ea6f5b14d` در run [#38932501273](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38932501273) و آزمون مرورگر در run [#38932501321](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38932501321) موفق شدند. پس از ادغام، آزمون‌های عادی در run [#38932663765](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38932663765) و آزمون مرورگر در run [#38932663723](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38932663723) نیز موفق شدند.
+
+
+
+## 133. 2026-10-16 — آزمون مرورگری ایجاد پشتیبان و بازیابی staging
+
+- **جریان آزموده‌شده:** در Chromium واقعی، کاربر ایجاد پشتیبان کامل را از طریق تأیید UI آغاز می‌کند؛ پاسخ باید پشتیبان کامل و بررسی‌شدهٔ هر سه دیتابیس را گزارش کند. سپس از کارت پشتیبان، بازیابی در staging اجرا می‌شود و وجود هر سه نقش دیتابیس و شناسهٔ `restore-...` بررسی می‌شود.
+- **ایمنی:** workflow فقط از مسیرهای موقت runner استفاده می‌کند؛ هیچ دیتابیس زنده‌ای جایگزین نمی‌شود. این آزمون با mock یا صرفاً API contract اجرا نمی‌شود.
+- **اعتبارسنجی:** PR [#242](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/242) ادغام شد؛ CI روی head دقیق `499f105f9aecf09f58f764b1196182744f8da59d` در run [#38932902475](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38932902475) و مرورگر در run [#38932902514](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38932902514) موفق شدند. پس از ادغام، آزمون‌های عادی در run [#38933056484](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933056484) و مرورگر در run [#38933056273](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933056273) موفق شدند.
+
+
+## 134. 2026-10-16 — آزمون مرورگری رضایت و لغو رضایت حافظهٔ تجربه
+
+- **جریان آزموده‌شده:** آزمون مرورگر تأیید می‌کند رضایت ذخیره‌سازی خودکار به‌صورت پیش‌فرض خاموش است؛ ایجاد تجربهٔ دستی آن را فعال نمی‌کند؛ فعال‌سازی نیازمند علامت‌زدن صریح و اقدام کاربر است؛ لغو رضایت وضعیت را خاموش می‌کند و تجربه‌های قبلی را حذف نمی‌کند.
+- **اعتبارسنجی:** PR [#243](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/243) ادغام شد؛ CI روی head دقیق `28bfcb69b6f9d1b0d5f023c3bcd9197c6b347459` در run [#38933172139](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933172139) و مرورگر در run [#38933171996](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933171996) موفق شدند. پس از ادغام، آزمون‌های عادی در run [#38933345459](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933345459) و مرورگر در run [#38933345552](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933345552) نیز موفق شدند.
