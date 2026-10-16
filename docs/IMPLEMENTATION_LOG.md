@@ -905,3 +905,12 @@
 - [x] CI روی head عملکردی `de3ecf8e531ff44cf2f117fb479edddedf2f09e2` موفق بود؛ run [#38847087564](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38847087564)، شامل کل `pytest` و benchmark واژگانی.
 - [ ] تست محلی اجرا نشده است؛ پس از ثبت نتیجه در log، CI دوباره روی head نهایی PR بررسی می‌شود.
 - **گام بعدی:** provider-specific adapter فقط پس از مستندشدن رسمی API/terms هر سرویس، قرارداد authentication و quota و تست mock/contract ایجاد شود؛ remote execution همچنان غیرفعال بماند.
+
+
+## 63. 2026-10-16 — همگام‌سازی راهنمای migration با پیاده‌سازی main
+
+- [x] وضعیت راهنما اصلاح شد: startup از قبل از `initialize_database_file()` برای دیتابیس‌های settings و learning استفاده می‌کند؛ متن‌های قدیمی که می‌گفتند اتصال startup هنوز انجام نشده حذف شدند.
+- [x] شماره نسخه‌های ثبت‌شدهٔ schema در راهنما به migrationهای فعلی تا نسخهٔ ۷ به‌روز شد.
+- [x] گام بعدی با وضعیت واقعی هماهنگ شد: fault-injection در reconciliation صف/یادگیری و سپس adapterهای ابری فقط پس از مستندسازی API/شرایط رسمی، احراز هویت، quota و هزینه. اجرای راه‌دور همچنان غیرفعال است.
+- [ ] تست محلی اجرا نشده است؛ این تغییر مستنداتی است و باید CI روی head دقیق PR بررسی شود.
+- [ ] وضعیت GitHub در بررسی این مرحله: صفر PR باز؛ issue #52 تنها issue باز است و برای بازبینی مستقل مرز شبکهٔ Ollama عمداً باز می‌ماند.
