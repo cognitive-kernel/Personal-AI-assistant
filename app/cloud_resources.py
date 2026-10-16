@@ -1047,6 +1047,119 @@ def handle_discovery_task(
 
 
 
+CLOUD_PLAN_REEVALUATION_TASK_TYPE = "cloud.reevaluate_resource_plans"
+
+
+def _enqueue_plan_reevaluation(
+    task_key: str,
+    *,
+    reevaluation_key: str,
+    scheduled_at: datetime,
+) -> dict[str, Any]:
+    return task_manager.create_task(
+        CLOUD_PLAN_REEVALUATION_TASK_TYPE,
+        {"trigger": "scheduled", "reevaluation_key": reevaluation_key},
+        priority=-20,
+        max_attempts=2,
+        scheduled_at=scheduled_at,
+        dedupe_key=task_key,
+    )
+
+
+def ensure_daily_plan_reevaluation_scheduled() -> dict[str, Any]:
+    """Idempotently schedule a daily local-only recheck of recent manual selection plans."""
+    initialize_store()
+    now = datetime.now(timezone.utc)
+    day_key = f"cloud-plan-reevaluation:{now.date().isoformat()}"
+    existing = task_manager.get_task_by_dedupe_key(day_key)
+    if existing is None:
+        return _enqueue_plan_reevaluation(
+            day_key, reevaluation_key=day_key, scheduled_at=now
+        )
+    if existing["status"] not in {"failed", "cancelled"}:
+        return existing
+    recovery_key = f"{day_key}:recovery"
+    recovery = task_manager.get_task_by_dedupe_key(recovery_key)
+    if recovery is not None:
+        return recovery
+    return _enqueue_plan_reevaluation(
+        recovery_key, reevaluation_key=day_key, scheduled_at=now
+    )
+
+
+def _schedule_next_plan_reevaluation() -> tuple[dict[str, Any], datetime]:
+    next_run = datetime.now(timezone.utc) + timedelta(days=1)
+    day_key = f"cloud-plan-reevaluation:{next_run.date().isoformat()}"
+    task = _enqueue_plan_reevaluation(
+        day_key, reevaluation_key=day_key, scheduled_at=next_run
+    )
+    return task, next_run
+
+
+def handle_plan_reevaluation_task(
+    payload: dict[str, Any],
+    checkpoint_data: dict[str, Any] | None,
+    context: Any,
+) -> dict[str, Any]:
+    """Re-evaluate recent manual plans against current local evidence; never contact providers."""
+    try:
+        reevaluation_key = payload.get("reevaluation_key")
+        if (
+            not isinstance(reevaluation_key, str)
+            or not reevaluation_key.startswith("cloud-plan-reevaluation:")
+            or len(reevaluation_key) > 128
+        ):
+            raise CloudResourceError("Plan reevaluation task key is invalid.")
+        candidates = list_candidates(limit=500)
+        source_plans = list_resource_selection_plans(limit=20, origin="manual")
+        checkpoint = checkpoint_data if isinstance(checkpoint_data, dict) else {}
+        processed = {
+            item for item in checkpoint.get("processed_parent_plan_ids", [])
+            if isinstance(item, int) and not isinstance(item, bool) and item > 0
+        }
+        created_ids = [
+            item for item in checkpoint.get("created_plan_ids", [])
+            if isinstance(item, int) and not isinstance(item, bool) and item > 0
+        ]
+        for source_plan in source_plans:
+            parent_id = source_plan["plan_id"]
+            if parent_id in processed:
+                continue
+            context.checkpoint({
+                "processed_parent_plan_ids": sorted(processed),
+                "created_plan_ids": created_ids,
+            })
+            fresh_plan = build_selection_plan(candidates, source_plan["requirements"])
+            saved = save_resource_selection_plan(
+                fresh_plan,
+                origin="scheduled_reevaluation",
+                parent_plan_id=parent_id,
+                reevaluation_key=reevaluation_key,
+            )
+            created_ids.append(saved["plan_id"])
+            processed.add(parent_id)
+            context.checkpoint({
+                "processed_parent_plan_ids": sorted(processed),
+                "created_plan_ids": created_ids,
+            })
+        next_task, next_run = _schedule_next_plan_reevaluation()
+        return {
+            "status": "completed",
+            "source_plans_considered": len(source_plans),
+            "plans_reevaluated": len(created_ids),
+            "created_plan_ids": created_ids,
+            "next_scheduled_task_id": next_task["id"],
+            "next_scheduled_at": next_run.isoformat(),
+            "execution_authorized": False,
+            "remote_execution_enabled": False,
+            "note": "Uses only current local evidence and stored quota metadata; no provider CLI/API is called.",
+        }
+    except Exception:
+        # Keep the daily chain alive after errors or cooperative pause/cancel.
+        _schedule_next_plan_reevaluation()
+        raise
+
+
 OCI_PROVIDER_ID = "oracle_cloud"
 OCI_LIMIT_CONSENT_VERSION = "oci-readonly-limits-v1"
 
