@@ -387,8 +387,8 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
         updated = conn.execute(
             """UPDATE self_improvement_proposals
                SET static_check_json=?, static_checked_at=?, updated_at=?
-               WHERE id=? AND status='validated' AND base_commit_sha=?""",
-            (_json(report), report["completed_at"], report["completed_at"], proposal_id, proposal["base_commit_sha"]),
+               WHERE id=? AND status='validated' AND base_commit_sha=? AND patch_sha256=?""",
+            (_json(report), report["completed_at"], report["completed_at"], proposal_id, proposal["base_commit_sha"], meta["sha256"]),
         )
         if updated.rowcount != 1:
             raise ProposalError("Proposal state changed during syntax checking; reload it before continuing.")
@@ -414,6 +414,11 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     meta = validate_patch_format(proposal["patch"])
     if meta["sha256"] != proposal["patch_sha256"]:
         raise ProposalError("Stored patch hash changed; approval is blocked.")
+    if (
+        proposal["static_check"].get("patch_sha256") != meta["sha256"]
+        or proposal["static_check"].get("base_commit_sha") != proposal["base_commit_sha"]
+    ):
+        raise ProposalError("Isolated syntax-check evidence does not match this patch and base commit.")
     now = _now()
     db.init_databases()
     with learning_connection() as conn:
