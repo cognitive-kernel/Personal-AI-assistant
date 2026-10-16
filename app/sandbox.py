@@ -6,6 +6,7 @@ or enables network access during a run.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -13,11 +14,16 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Literal
 
 
 SandboxStatus = Literal["succeeded", "failed", "timed_out", "paused", "cancelled", "output_limit_exceeded", "unavailable"]
+
+_SANDBOX_LABEL = "com.cognitivekernel.personal-ai-assistant.sandbox"
+_TASK_ID_LABEL = "com.cognitivekernel.personal-ai-assistant.task-id"
+_CONTAINER_ID = re.compile(r"^[0-9a-f]{12,64}$")
 
 
 @dataclass(frozen=True)
@@ -28,6 +34,109 @@ class SandboxResult:
     stderr: str
     duration_ms: int
     reason: str | None = None
+
+
+@dataclass(frozen=True)
+class SandboxCleanupResult:
+    removed: tuple[str, ...]
+    skipped: int
+    errors: tuple[str, ...]
+
+
+def cleanup_orphaned_containers(
+    *,
+    docker_executable: str | Path,
+    terminal_task_ids: set[int] | frozenset[int],
+    min_age_seconds: int = 60,
+) -> SandboxCleanupResult:
+    """Remove only old, app-labelled containers for tasks already confirmed terminal.
+
+    The caller must obtain terminal_task_ids from the durable task store. Unknown
+    state, active task IDs, malformed Docker output, and recent containers fail closed.
+    This function is explicit and is not run automatically during application startup.
+    """
+    if not isinstance(terminal_task_ids, (set, frozenset)) or any(
+        isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1
+        for task_id in terminal_task_ids
+    ):
+        raise ValueError("terminal_task_ids must contain positive integer task IDs.")
+    if isinstance(min_age_seconds, bool) or not isinstance(min_age_seconds, int) or min_age_seconds < 0:
+        raise ValueError("min_age_seconds must be a non-negative integer.")
+    executable = Path(docker_executable).expanduser()
+    if not executable.is_absolute() or not executable.is_file():
+        return SandboxCleanupResult((), 0, ("Docker executable is not available at the configured absolute path.",))
+
+    env = _docker_environment()
+    try:
+        listing = subprocess.run(
+            [str(executable), "ps", "-aq", "--filter", f"label={_SANDBOX_LABEL}=true"],
+            stdin=subprocess.DEVNULL, capture_output=True, text=True, shell=False,
+            close_fds=True, env=env, timeout=5, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return SandboxCleanupResult((), 0, (f"Could not list sandbox containers: {type(exc).__name__}.",))
+    if listing.returncode != 0:
+        return SandboxCleanupResult((), 0, ("Docker could not list sandbox containers.",))
+
+    container_ids = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+    if any(not _CONTAINER_ID.fullmatch(container_id) for container_id in container_ids):
+        return SandboxCleanupResult((), 0, ("Docker returned an invalid container ID; cleanup aborted.",))
+
+    removed: list[str] = []
+    skipped = 0
+    errors: list[str] = []
+    now = datetime.now(timezone.utc)
+    for container_id in container_ids:
+        try:
+            inspected = subprocess.run(
+                [
+                    str(executable), "inspect",
+                    "--format={{json .Config.Labels}}|{{.State.Status}}|{{.Created}}",
+                    container_id,
+                ],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, shell=False,
+                close_fds=True, env=env, timeout=5, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            errors.append(f"Inspect failed for {container_id[:12]}: {type(exc).__name__}.")
+            continue
+        if inspected.returncode != 0:
+            errors.append(f"Inspect failed for {container_id[:12]}.")
+            continue
+        try:
+            labels_json, state, created_text = inspected.stdout.strip().split("|", 2)
+            labels = json.loads(labels_json)
+            task_id = int(labels.get(_TASK_ID_LABEL, ""))
+            created = datetime.fromisoformat(created_text.replace("Z", "+00:00"))
+            if created.tzinfo is None:
+                raise ValueError("created timestamp lacks timezone")
+        except (ValueError, TypeError, json.JSONDecodeError):
+            skipped += 1
+            continue
+        if labels.get(_SANDBOX_LABEL) != "true" or task_id not in terminal_task_ids:
+            skipped += 1
+            continue
+        if state not in {"running", "paused", "exited", "dead", "created"}:
+            skipped += 1
+            continue
+        age_seconds = (now - created.astimezone(timezone.utc)).total_seconds()
+        if age_seconds < min_age_seconds:
+            skipped += 1
+            continue
+        try:
+            result = subprocess.run(
+                [str(executable), "rm", "--force", container_id],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, shell=False,
+                close_fds=True, env=env, timeout=5, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            errors.append(f"Removal failed for {container_id[:12]}: {type(exc).__name__}.")
+            continue
+        if result.returncode == 0:
+            removed.append(container_id)
+        else:
+            errors.append(f"Removal failed for {container_id[:12]}.")
+    return SandboxCleanupResult(tuple(removed), skipped, tuple(errors))
 
 
 _OFFICIAL_PYTHON_IMAGE = re.compile(
@@ -102,6 +211,7 @@ def run_python(
     timeout_seconds: int = 10,
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
     control_check: Callable[[], str] | None = None,
+    task_id: int | None = None,
 ) -> SandboxResult:
     """Run one Python file in a bounded, no-network Docker container."""
     if not isinstance(source_code, str) or not source_code.strip():
@@ -110,6 +220,10 @@ def run_python(
         raise ValueError("source_code must not contain NUL characters.")
     if len(source_code.encode("utf-8")) > _MAX_SOURCE_BYTES:
         raise ValueError("source_code exceeds the 64 KiB limit.")
+    if task_id is not None and (
+        isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1
+    ):
+        raise ValueError("task_id must be a positive integer when provided.")
     if not isinstance(image, str) or not _OFFICIAL_PYTHON_IMAGE.fullmatch(image):
         raise ValueError("image must be a digest-pinned official Python image.")
     if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 120:
@@ -148,6 +262,9 @@ def run_python(
             "run",
             "--rm",
             "--pull=never",
+            "--label",
+            f"{_SANDBOX_LABEL}=true",
+            *(["--label", f"{_TASK_ID_LABEL}={task_id}"] if task_id is not None else []),
             "--network=none",
             "--read-only",
             "--cap-drop=ALL",
