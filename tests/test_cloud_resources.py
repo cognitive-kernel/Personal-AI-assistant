@@ -83,6 +83,8 @@ def test_discovery_persists_provenance_and_keeps_candidates_unreviewed(
     assert candidate["evidence_excerpt"]
     assert any(claim["claim_type"] == "free_tier_mention" for claim in candidate["observed_claims"])
     assert all(claim["review_status"] == "unreviewed" for claim in candidate["observed_claims"])
+    assert candidate["eligibility_assessment"]["status"] == "blocked"
+    assert candidate["eligibility_assessment"]["execution_authorized"] is False
     latest = cloud_resources.latest_discovery_run()
     assert latest["id"] == report["run_id"]
     assert latest["status"] == "completed"
