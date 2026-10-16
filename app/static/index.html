@@ -748,7 +748,37 @@ function renderExperienceItems(items) {
    evidenceList.append(li);
   });
   if(!(item.source_evidence||[]).length) appendText(card,"p","هنوز شواهد منبع ثبت نشده است.","muted");
-  else card.append(evidenceList);
+  else {
+   card.append(evidenceList);
+   const refreshSourcesButton=document.createElement("button");
+   refreshSourcesButton.type="button"; refreshSourcesButton.textContent="بازبینی مجدد منابع ذخیره‌شده";
+   const sourceHistoryButton=document.createElement("button");
+   sourceHistoryButton.type="button"; sourceHistoryButton.textContent="نمایش تاریخچهٔ بازبینی منابع";
+   const sourceCheckOutput=document.createElement("pre");
+   refreshSourcesButton.addEventListener("click",async()=>{
+    if(!window.confirm("فقط نشانی‌های HTTPS ذخیره‌شده بررسی می‌شوند. متن کامل صفحه ذخیره نمی‌شود و تجربه خودکار تأیید یا ویرایش نخواهد شد. ادامه می‌دهید؟")) return;
+    refreshSourcesButton.disabled=true; sourceCheckOutput.textContent="در حال بررسی حداکثر سه منبع…";
+    try {
+     const result=await api("/api/experiences/"+item.id+"/refresh-sources",{
+      method:"POST",body:JSON.stringify({confirm:true})
+     });
+     sourceCheckOutput.textContent=(result.checks||[]).map(check=>
+      check.outcome+" — "+check.source_url+(check.previous_content_sha256?" — hash قبلی: "+check.previous_content_sha256:"")
+     ).join("\n")+"\n\nتجربه تغییر نکرده و تأیید نشده است. تغییر منبع نیازمند بازبینی دستی است.";
+    } catch(error) { sourceCheckOutput.textContent="بازبینی منابع ناموفق بود: "+error.message; }
+    finally { refreshSourcesButton.disabled=false; }
+   });
+   sourceHistoryButton.addEventListener("click",async()=>{
+    sourceCheckOutput.textContent="در حال دریافت تاریخچه…";
+    try {
+     const result=await api("/api/experiences/"+item.id+"/source-checks");
+     sourceCheckOutput.textContent=(result.checks||[]).map(check=>
+      check.checked_at+" — "+check.outcome+" — "+check.source_url
+     ).join("\n")||"هنوز بازبینی منبعی ثبت نشده است.";
+    } catch(error) { sourceCheckOutput.textContent="تاریخچه دریافت نشد: "+error.message; }
+   });
+   card.append(refreshSourcesButton,sourceHistoryButton,sourceCheckOutput);
+  }
   const tests=item.test_results||[];
   appendText(card,"h4","نتایج آزمون ثبت‌شده");
   if(!tests.length) appendText(card,"p","نتیجهٔ آزمون ثبت نشده است.","muted");
