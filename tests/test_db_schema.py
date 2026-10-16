@@ -40,7 +40,11 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         }
         foreign_key_violations = conn.execute("PRAGMA foreign_key_check").fetchall()
 
-    assert settings_tables == {"settings"}
+    assert settings_tables == {
+        "settings",
+        "sandbox_execution_consent",
+        "sandbox_execution_consent_events",
+    }
     assert {"key", "value_json", "updated_at"} <= settings_columns
     assert {
         "learning_jobs",
