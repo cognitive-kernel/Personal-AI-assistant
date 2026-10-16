@@ -89,6 +89,20 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
         _proposal_error(exc)
 
 
+@router.post("/proposals/{proposal_id}/static-check")
+def static_check_proposal(
+    proposal_id: int, request: ExplicitConfirmation
+) -> dict[str, Any]:
+    try:
+        return {
+            "proposal": self_improvement.static_check_proposal(
+                proposal_id, confirm=request.confirm
+            )
+        }
+    except (ProposalError, KeyError) as exc:
+        _proposal_error(exc)
+
+
 @router.post("/proposals/{proposal_id}/approve")
 def approve_proposal(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
     try:

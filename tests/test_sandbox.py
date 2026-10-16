@@ -312,3 +312,54 @@ def test_cleanup_rejects_invalid_task_ids_before_running_docker(tmp_path, monkey
             terminal_task_ids={True},
         )
     assert called == []
+
+
+
+def test_workspace_syntax_check_uses_readonly_no_network_docker(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    workspace = tmp_path / "project"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    (workspace / "app" / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    (workspace / "tests" / "test_sample.py").write_text("assert True\n", encoding="utf-8")
+    calls = []
+
+    def fake_popen(args, **kwargs):
+        process = FakeProcess(
+            args,
+            stdout=b'{"status":"passed","files_checked":2}\n',
+            stderr=b"",
+            returncode=0,
+        )
+        calls.append((args, kwargs))
+        return process
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    result = sandbox.run_workspace_syntax_check(
+        workspace,
+        docker_executable=executable,
+        image=IMAGE,
+        timeout_seconds=30,
+    )
+
+    assert result.status == "succeeded"
+    args, kwargs = calls[0]
+    assert "--network=none" in args
+    assert "--read-only" in args
+    assert "--cap-drop=ALL" in args
+    assert "--security-opt=no-new-privileges" in args
+    assert "--pull=never" in args
+    assert args[-3:-1] == ["-S", "-c"]
+    assert "ast.parse" in args[-1]
+    assert kwargs["shell"] is False
+    assert any("target=/workspace,readonly" in value for value in args)
+
+
+def test_workspace_syntax_check_fails_closed_without_project_workspace(tmp_path):
+    executable = _configured_docker(tmp_path)
+    with pytest.raises(ValueError, match="app/ and tests/"):
+        sandbox.run_workspace_syntax_check(
+            tmp_path,
+            docker_executable=executable,
+            image=IMAGE,
+        )

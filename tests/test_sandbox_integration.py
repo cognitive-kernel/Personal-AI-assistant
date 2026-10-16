@@ -177,3 +177,39 @@ def test_missing_docker_never_falls_back_to_host_execution(tmp_path):
     )
     assert result.status == "unavailable"
     assert result.exit_code is None
+
+
+
+def test_real_container_syntax_checks_workspace_without_executing_candidate(sandbox_config, tmp_path):
+    docker, image = sandbox_config
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    marker = tmp_path / "candidate-was-executed"
+    (workspace / "app" / "safe.py").write_text(
+        "from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('executed')\n",
+        encoding="utf-8",
+    )
+    (workspace / "tests" / "test_safe.py").write_text("def test_safe():\n    assert True\n", encoding="utf-8")
+
+    result = sandbox.run_workspace_syntax_check(
+        workspace,
+        docker_executable=docker,
+        image=image,
+        timeout_seconds=30,
+    )
+    assert result.status == "succeeded", result.stdout + result.stderr
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert report == {"status": "passed", "files_checked": 2}
+    assert not marker.exists()
+
+    (workspace / "app" / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+    invalid = sandbox.run_workspace_syntax_check(
+        workspace,
+        docker_executable=docker,
+        image=image,
+        timeout_seconds=30,
+    )
+    assert invalid.status == "failed"
+    assert "SyntaxError" in invalid.stdout
+    assert not marker.exists()

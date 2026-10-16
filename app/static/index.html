@@ -1085,7 +1085,24 @@ async function refreshSelfImprovement() {
     });
     card.append(validate);
    }
-   if(item.status==="validated") {
+   if(item.status==="validated" && (!item.static_check || item.static_check.status!=="passed")) {
+    const syntaxCheck=document.createElement("button");
+    syntaxCheck.type="button";
+    syntaxCheck.textContent="بررسی نحوی ایزوله";
+    syntaxCheck.addEventListener("click",async()=>{
+     if(!window.confirm("این بررسی، patch را فقط در worktree موقت اعمال و فایل‌های Python را داخل Docker با شبکهٔ خاموش تجزیهٔ نحوی می‌کند؛ آزمون پروژه یا اجرای کد پیشنهادی انجام نمی‌شود. رضایت Sandbox باید فعال باشد. ادامه؟")) return;
+     syntaxCheck.disabled=true;
+     try {
+      const result=await api("/api/self-improvement/proposals/"+item.id+"/static-check",{method:"POST",body:JSON.stringify({confirm:true})});
+      const check=result.proposal.static_check||{};
+      output.textContent="نتیجهٔ بررسی نحوی: "+check.status+"؛ فایل‌ها: "+(check.files_checked||0)+"؛ آزمون‌ها اجرا شدند: خیر";
+      await refreshSelfImprovement();
+     } catch(error){output.textContent=error.message;}
+     finally{syntaxCheck.disabled=false;}
+    });
+    card.append(syntaxCheck);
+   }
+   if(item.status==="validated" && item.static_check && item.static_check.status==="passed") {
     const approve=document.createElement("button");
     approve.type="button";
     approve.textContent="تأیید برای بررسی PR";

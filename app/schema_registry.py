@@ -404,6 +404,29 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_self_improvement_events_proposal ON self_improvement_events(proposal_id, id)",
         ),
     ),
+    Migration(
+        13,
+        "self-improvement-isolated-syntax-check",
+        (
+            "ALTER TABLE self_improvement_proposals ADD COLUMN static_check_json TEXT",
+            "ALTER TABLE self_improvement_proposals ADD COLUMN static_checked_at TEXT",
+            "ALTER TABLE self_improvement_events RENAME TO self_improvement_events_v12",
+            "DROP INDEX idx_self_improvement_events_proposal",
+            """CREATE TABLE self_improvement_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                proposal_id INTEGER NOT NULL REFERENCES self_improvement_proposals(id) ON DELETE CASCADE,
+                event_type TEXT NOT NULL CHECK(event_type IN ('proposed','validated','static_checked','approved_for_pr','rejected')),
+                actor TEXT NOT NULL CHECK(actor = 'local_user'),
+                details_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            """INSERT INTO self_improvement_events(id, proposal_id, event_type, actor, details_json, created_at)
+               SELECT id, proposal_id, event_type, actor, details_json, created_at
+               FROM self_improvement_events_v12 ORDER BY id""",
+            "DROP TABLE self_improvement_events_v12",
+            "CREATE INDEX idx_self_improvement_events_proposal ON self_improvement_events(proposal_id, id)",
+        ),
+    ),
 )
 
 

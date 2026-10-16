@@ -1390,5 +1390,16 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **کنترل‌های diff:** فقط Python در app/ و tests/ و Markdown در docs/، حداکثر ۲۰ فایل و ۲۵۶ KiB؛ رد traversal، symlink، rename، delete، binary patch و تغییر mode. hash patch و commit پایه در هر مرحله کنترل می‌شوند.
 - **مرز اجرای امن:** اعتبارسنجی فقط git apply --check است و هیچ فایل پروژه‌ای را نمی‌نویسد. گزارش به‌صراحت اعلام می‌کند آزمون اجرا نشده و اجرای ایزوله انجام نشده است. تأیید فقط برای ادامهٔ بررسی انسانی/PR است؛ هیچ endpoint برای اعمال یا استقرار کد وجود ندارد.
 - **آزمون‌ها:** قالب و allowlist diff، تأیید صریح، عدم تغییر working tree، توقف روی HEAD کهنه، تاریخچهٔ رخدادها و قرارداد API.
-- **مراحل تکمیل‌نشده:** اجرای آزمون patch در worktree موقت/کانتینر، ثبت گزارش آزمون واقعی، ساخت PR کنترل‌شده و rollback واقعی هنوز پیاده‌سازی نشده‌اند. Issue #52 همچنان به بازبینی مستقل امنیت نیاز دارد.
+- **مراحل تکمیل‌نشده در این مرحله:** آزمون رفتاری patch در کانتینر، ساخت PR کنترل‌شده و rollback واقعی هنوز پیاده‌سازی نشده‌اند. Issue #52 همچنان به بازبینی مستقل امنیت نیاز دارد.
 - **اعتبارسنجی:** PR [#190](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/190) ادغام شد؛ CI روی head دقیق `f37cc4cc6a1279d2158d08fc96690cccb92095e5` در run [#38885165201](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38885165201) موفق بود: ۴۶۸ تست موفق و ۳ تست skipped؛ benchmark بازیابی نیز موفق شد. CI پس از ادغام روی commit `8a0e171adce655f27801f1a3a05df37ae59e0734` در run [#38885317778](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38885317778) نیز موفق شد. تست محلی اجرا نشده است.
+
+
+## 107. 2026-10-16 — بررسی نحوی ایزوله برای پیشنهادهای کد
+
+- **هدف:** اضافه‌کردن یک دروازهٔ ایزوله قبل از تأیید پیشنهاد، بدون اجرای کد پیشنهادی و بدون تغییر checkout اصلی.
+- **پیاده‌سازی:** هر patch در Git worktree موقت با commit پایهٔ ثبت‌شده اعمال می‌شود؛ سپس یک parser ثابت Python داخل کانتینر digest-pinned، read-only و با network=none فایل‌های Python زیر app/ و tests/ را با AST می‌خواند. کانتینر هیچ فایل قابل نوشتنی از checkout ندارد.
+- **تأیید:** اجرای این مرحله به تأیید صریح درخواست و رضایت فعال Sandbox نیاز دارد. image باید از قبل در Docker موجود باشد؛ pull یا fallback به اجرای میزبان وجود ندارد.
+- **مرز اعتماد:** این مرحله فقط syntax را بررسی می‌کند، نه رفتار یا امنیت patch را. کد پیشنهادی import/execute نمی‌شود؛ گزارش tests_executed=false و candidate_code_executed=false است. تأیید PR تا موفقیت این مرحله مسدود می‌ماند.
+- **تست‌ها:** قرارداد پرچم‌های Docker، شبکهٔ غیرفعال، mount فقط‌خواندنی، پاک‌سازی worktree، مسیر تأیید و رد، و migration نسخهٔ ۱۳.
+- **مراحل بعدی:** آزمون رفتاری واقعی در image تست از پیش آماده، حفاظت در برابر تضعیف آزمون‌ها، ساخت PR کنترل‌شده، rollback واقعی و بازبینی مستقل Issue #52 همچنان باقی‌اند.
+- **اعتبارسنجی:** PR در انتظار CI روی head دقیق است؛ تست محلی اجرا نشده است.

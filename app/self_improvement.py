@@ -10,11 +10,13 @@ import json
 import os
 import re
 import subprocess
+import shutil
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import db
+from . import db, sandbox, sandbox_consent, sandbox_tasks
 from .schema_registry import initialize_database_file
 from .db import learning_connection
 
@@ -181,6 +183,8 @@ def _proposal(row: Any, *, include_patch: bool = False) -> dict[str, Any]:
         "status": row["status"],
         "base_commit_sha": row["base_commit_sha"],
         "validation_report": json.loads(row["validation_report_json"]) if row["validation_report_json"] else None,
+        "static_check": json.loads(row["static_check_json"]) if row["static_check_json"] else None,
+        "static_checked_at": row["static_checked_at"],
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
         "validated_at": row["validated_at"],
@@ -295,6 +299,104 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
     return _proposal(row, include_patch=True)
 
 
+def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
+    """Apply a proposal only in a temporary Git worktree, then AST-parse in Docker."""
+    if confirm is not True:
+        raise ProposalError("Explicit confirmation is required for isolated syntax checking.")
+    proposal = get_proposal(proposal_id)
+    if proposal is None:
+        raise KeyError(proposal_id)
+    if proposal["status"] != "validated" or not proposal["validation_report"]:
+        raise ProposalError("Only a patch that passed the Git applicability check can be syntax-checked.")
+    if proposal["validation_report"].get("apply_check") != "passed":
+        raise ProposalError("The patch applicability check has not passed.")
+    if not sandbox_consent.is_enabled():
+        raise ProposalError("Sandbox consent is disabled; grant local sandbox consent first.")
+    try:
+        configured_handler = sandbox_tasks.handler_from_environment()
+    except ValueError as exc:
+        raise ProposalError("Sandbox configuration is invalid.") from exc
+    if configured_handler is None:
+        raise ProposalError("Sandbox is disabled or not configured.")
+    docker_executable = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
+
+    meta = validate_patch_format(proposal["patch"])
+    if meta["sha256"] != proposal["patch_sha256"]:
+        raise ProposalError("Stored patch hash changed; syntax checking is blocked.")
+    root = _repo_root()
+    _validate_repo_paths(root, meta["files"])
+    head = _git(root, ["rev-parse", "--verify", "HEAD"])
+    if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
+        raise ProposalError("Repository HEAD changed after proposal creation; create a new proposal.")
+
+    report: dict[str, Any] = {
+        "status": "failed",
+        "patch_sha256": meta["sha256"],
+        "base_commit_sha": proposal["base_commit_sha"],
+        "files": meta["files"],
+        "syntax_check": "not_run",
+        "files_checked": 0,
+        "tests_executed": False,
+        "candidate_code_executed": False,
+        "sandbox": "docker",
+        "created_at": _now(),
+    }
+    with tempfile.TemporaryDirectory(prefix="personal-ai-self-improvement-") as temp_root:
+        workspace = Path(temp_root) / "checkout"
+        added = _git(root, ["worktree", "add", "--detach", str(workspace), proposal["base_commit_sha"]])
+        if added.returncode != 0:
+            raise ProposalError("Could not create a temporary candidate worktree.")
+        try:
+            applied = _git(workspace, ["apply", "--whitespace=error-all", "-"], input_text=proposal["patch"])
+            if applied.returncode != 0:
+                report["diagnostic"] = (applied.stderr or applied.stdout).strip()[:1000]
+                report["syntax_check"] = "patch_apply_failed"
+            else:
+                result = sandbox.run_workspace_syntax_check(
+                    workspace,
+                    docker_executable=docker_executable,
+                    image=image,
+                    timeout_seconds=60,
+                    max_output_bytes=16384,
+                )
+                report["sandbox_status"] = result.status
+                report["duration_ms"] = result.duration_ms
+                report["diagnostic"] = (result.reason or result.stderr or "").strip()[:1000]
+                if result.status == "succeeded":
+                    try:
+                        parsed = json.loads(result.stdout.strip().splitlines()[-1])
+                    except (ValueError, IndexError):
+                        parsed = {}
+                    if parsed.get("status") == "passed" and isinstance(parsed.get("files_checked"), int) and parsed["files_checked"] > 0:
+                        report["status"] = "passed"
+                        report["syntax_check"] = "passed"
+                        report["files_checked"] = parsed["files_checked"]
+                    else:
+                        report["syntax_check"] = "invalid_checker_output"
+                else:
+                    report["syntax_check"] = result.status
+        finally:
+            _git(root, ["worktree", "remove", "--force", str(workspace)])
+            _git(root, ["worktree", "prune"])
+            shutil.rmtree(workspace, ignore_errors=True)
+
+    report["completed_at"] = _now()
+    db.init_databases()
+    with learning_connection() as conn:
+        updated = conn.execute(
+            """UPDATE self_improvement_proposals
+               SET static_check_json=?, static_checked_at=?, updated_at=?
+               WHERE id=? AND status='validated' AND base_commit_sha=? AND patch_sha256=?""",
+            (_json(report), report["completed_at"], report["completed_at"], proposal_id, proposal["base_commit_sha"], meta["sha256"]),
+        )
+        if updated.rowcount != 1:
+            raise ProposalError("Proposal state changed during syntax checking; reload it before continuing.")
+        _append_event(conn, proposal_id, "static_checked", report)
+        row = conn.execute("SELECT * FROM self_improvement_proposals WHERE id=?", (proposal_id,)).fetchone()
+    return _proposal(row, include_patch=True)
+
+
 def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     if confirm is not True:
         raise ProposalError("Explicit confirmation is required.")
@@ -303,6 +405,8 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
         raise KeyError(proposal_id)
     if proposal["status"] != "validated" or not proposal["validation_report"]:
         raise ProposalError("Only a validated proposal can be approved for a human-reviewed PR.")
+    if not proposal["static_check"] or proposal["static_check"].get("status") != "passed":
+        raise ProposalError("An isolated syntax check must pass before approval for a PR.")
     root = _repo_root()
     head = _git(root, ["rev-parse", "--verify", "HEAD"])
     if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
@@ -310,6 +414,11 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     meta = validate_patch_format(proposal["patch"])
     if meta["sha256"] != proposal["patch_sha256"]:
         raise ProposalError("Stored patch hash changed; approval is blocked.")
+    if (
+        proposal["static_check"].get("patch_sha256") != meta["sha256"]
+        or proposal["static_check"].get("base_commit_sha") != proposal["base_commit_sha"]
+    ):
+        raise ProposalError("Isolated syntax-check evidence does not match this patch and base commit.")
     now = _now()
     db.init_databases()
     with learning_connection() as conn:

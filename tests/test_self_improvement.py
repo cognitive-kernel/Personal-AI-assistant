@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,24 @@ def proposal_repo(tmp_path, monkeypatch):
     return root
 
 
+def _enable_static_check(monkeypatch):
+    monkeypatch.setenv("SANDBOX_ENABLED", "1")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", sys.executable)
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "b" * 64)
+    monkeypatch.setattr(self_improvement.sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        self_improvement.sandbox,
+        "run_workspace_syntax_check",
+        lambda *args, **kwargs: self_improvement.sandbox.SandboxResult(
+            status="succeeded",
+            exit_code=0,
+            stdout='{"status":"passed","files_checked":3}\n',
+            stderr="",
+            duration_ms=12,
+        ),
+    )
+
+
 def _patch() -> str:
     return (
         "diff --git a/app/sample.py b/app/sample.py\n"
@@ -79,7 +98,7 @@ def test_patch_format_rejects_unsafe_or_ambiguous_patches(patch):
         self_improvement.validate_patch_format(patch)
 
 
-def test_proposal_validation_and_approval_never_apply_code(proposal_repo):
+def test_proposal_validation_and_approval_never_apply_code(proposal_repo, monkeypatch):
     source = proposal_repo / "app" / "sample.py"
     before = source.read_text(encoding="utf-8")
     head_before = _git(proposal_repo, "rev-parse", "HEAD")
@@ -95,14 +114,20 @@ def test_proposal_validation_and_approval_never_apply_code(proposal_repo):
     assert validated["validation_report"]["tests_executed"] is False
     assert validated["validation_report"]["isolated_execution"] is False
 
+    with pytest.raises(self_improvement.ProposalError, match="isolated syntax check"):
+        self_improvement.approve_for_pr(proposal["id"], confirm=True)
+    _enable_static_check(monkeypatch)
     with pytest.raises(self_improvement.ProposalError, match="Explicit confirmation"):
-        self_improvement.approve_for_pr(proposal["id"], confirm=False)
+        self_improvement.static_check_proposal(proposal["id"], confirm=False)
+    checked = self_improvement.static_check_proposal(proposal["id"], confirm=True)
+    assert checked["static_check"]["status"] == "passed"
+    assert checked["static_check"]["tests_executed"] is False
     approved = self_improvement.approve_for_pr(proposal["id"], confirm=True)
     assert approved["status"] == "approved_for_pr"
     assert source.read_text(encoding="utf-8") == before
     assert _git(proposal_repo, "rev-parse", "HEAD") == head_before
     assert [event["event_type"] for event in self_improvement.proposal_events(proposal["id"])] == [
-        "proposed", "validated", "approved_for_pr"
+        "proposed", "validated", "static_checked", "approved_for_pr"
     ]
 
 
@@ -164,6 +189,13 @@ def test_self_improvement_api_is_loopback_guarded_and_uses_explicit_approval(
             assert client.post(
                 f"/api/self-improvement/proposals/{proposal_id}/validate"
             ).status_code == 200
+            _enable_static_check(monkeypatch)
+            checked = client.post(
+                f"/api/self-improvement/proposals/{proposal_id}/static-check",
+                json={"confirm": True},
+            )
+            assert checked.status_code == 200, checked.text
+            assert checked.json()["proposal"]["static_check"]["status"] == "passed"
             denied = client.post(
                 f"/api/self-improvement/proposals/{proposal_id}/approve",
                 json={"confirm": False},
@@ -189,4 +221,5 @@ def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
     assert "هیچ کدی اجرا یا اعمال نمی‌شود" in page
     assert "تأیید برای بررسی PR" in page
     assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in page
+    assert '"/api/self-improvement/proposals/"+item.id+"/static-check"' in page
     assert '"/api/self-improvement/proposals/"+item.id+"/approve"' in page
