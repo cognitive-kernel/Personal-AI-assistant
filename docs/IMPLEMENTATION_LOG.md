@@ -1010,5 +1010,6 @@
 - [x] `app/main.py` handler را تنها پس از opt-in و اعتبارسنجی پیکربندی به registry اضافه می‌کند؛ در حالت پیش‌فرض sandbox فعال نیست.
 - [x] تست‌های opt-in، پیکربندی نامعتبر، schema ورودی، عدم امکان override کردن image، hash و شواهد checkpoint اضافه شدند.
 - [ ] API اختصاصی loopback برای صف‌کردن اجرای sandbox و ثبت رضایت/رویداد audit هنوز وجود ندارد؛ فعلاً handler از طریق task registry محدودشده است.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #146** با CI موفق روی head `bfc8f095d3669d3565cf6e8aa6db56badf720b9e`؛ run [#38855170849](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855170849) شامل نصب وابستگی‌ها، کل مجموعه تست و benchmark بازیابی واژگانی.
+- [ ] تست محلی اجرا نشده است؛ CI اجرا شده است.
 - **گام بعدی:** API اختصاصی با schema محدود، consent صریح و audit، سپس آزمون‌های یکپارچگی pause/cancel و crash recovery؛ image digest باید توسط مدیر برای معماری واقعی تأیید و محلی provision شود.
