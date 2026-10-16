@@ -106,9 +106,9 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
 def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
     """Extract bounded source excerpts from the structured text stored by web discovery."""
     pattern = re.compile(
-        r"Source title:\\s*(?P<title>[^\\n]{1,300})\\n"
-        r"Source URL:\\s*(?P<url>https://[^\\s]+)\\n"
-        r"Content:\\n(?P<content>.*?)(?=\\n\\nSource title:|\\Z)",
+        r"Source title:\s*(?P<title>[^\n]{1,300})\n"
+        r"Source URL:\s*(?P<url>https://[^\s]+)\n"
+        r"Content:\n(?P<content>.*?)(?=\n\nSource title:|\Z)",
         re.DOTALL,
     )
     sources = []
