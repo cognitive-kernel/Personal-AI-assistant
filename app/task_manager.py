@@ -156,6 +156,20 @@ def list_tasks(*, statuses: list[str] | None = None, limit: int = 100) -> list[d
     return [_task(row) for row in rows]  # type: ignore[misc]
 
 
+def list_terminal_task_ids(*, limit: int = 1000) -> list[int]:
+    """Return recently settled task IDs for bounded cleanup/reconciliation work."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be between 1 and 1000.")
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            """SELECT id FROM task_queue
+               WHERE status IN ('succeeded', 'failed', 'cancelled')
+               ORDER BY updated_at DESC, id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    return [int(row["id"]) for row in rows]
+
+
 def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, Any] | None:
     """Atomically claim one due task; expired running leases may be reclaimed."""
     if not isinstance(worker_id, str) or not worker_id.strip():
