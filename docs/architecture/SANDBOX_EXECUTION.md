@@ -56,11 +56,13 @@ The handler checks current consent before execution and periodically while the c
 
 Each task-backed container receives the application ownership label
 `com.cognitivekernel.personal-ai-assistant.sandbox=true` and its durable task ID.
-The helper `sandbox.cleanup_orphaned_containers()` is intentionally **not** called
-automatically at startup. A caller must provide task IDs already confirmed terminal
-(`succeeded`, `failed`, or `cancelled`) by the durable task store. The helper
-inspects Docker labels/state/creation time and removes only matching application
-containers older than a grace period (60 seconds by default).
+The helper `sandbox.cleanup_orphaned_containers()` is invoked by the task runtime's
+serialized maintenance callback only when sandbox execution is explicitly enabled.
+Each pass occurs after a worker poll, which runs queue lease reconciliation first.
+The callback obtains task IDs in terminal states (`succeeded`, `failed`, or
+`cancelled`) from the durable task store and passes them to the cleanup helper. The
+helper inspects Docker labels/state/creation time and removes only matching
+application containers older than a grace period (60 seconds by default).
 
 Active or unknown task IDs, recent containers, malformed inspect output, invalid
 container IDs, and Docker command failures are skipped or reported without deletion.
