@@ -125,7 +125,9 @@ def review_answer_claims(
         return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "invalid_claim_list"}
 
     allowed_urls = {item["url"] for item in evidence}
-    conflicts = parsed.get("source_conflicts", [])
+    if "source_conflicts" not in parsed:
+        return {"passed": False, "overall": "insufficient_evidence", "claims": [], "source_conflicts": [], "error": "missing_source_conflicts"}
+    conflicts = parsed.get("source_conflicts")
     if not isinstance(conflicts, list) or len(conflicts) > 10:
         return {"passed": False, "overall": "insufficient_evidence", "claims": [], "source_conflicts": [], "error": "invalid_source_conflicts"}
     normalized_conflicts = []
