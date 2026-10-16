@@ -37,7 +37,7 @@ def test_hybrid_search_finds_semantic_match_without_lexical_overlap(tmp_path, mo
     unrelated = _verified(
         "Video codec",
         "Frame rendering latency.",
-        "Measure encoding throughput.",
+        "Measure frame quality.",
     )
     calls = []
 
