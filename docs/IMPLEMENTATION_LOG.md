@@ -1567,3 +1567,16 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون:** وظیفه با checkpoint پایدار ثبت می‌شود؛ دیتابیس‌ها و schema دوباره initialize می‌شوند؛ پس از انقضای lease، worker جدید وظیفه را claim می‌کند و checkpoint/attempt count حفظ می‌شوند. worker قبلی اجازهٔ نوشتن ندارد.
 - **مرز:** این آزمون restart را با reinitialization روی همان فایل SQLite شبیه‌سازی می‌کند؛ crash واقعی فرایند، قطع برق و فشار چندفرایندی را اثبات نمی‌کند.
 - **اعتبارسنجی:** PR [#228](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/228) ادغام شد. CI روی head دقیق `72cd2caeb8d327b41f21c36c3f38d85053b2d9ae` در [run #38925431123](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925431123) و پس از ادغام در [run #38925585907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925585907) موفق بود؛ 530 آزمون موفق، 4 مورد skip و benchmark بازیابی موفق بود.
+
+
+## 126. 2026-10-16 — الزام به ارزیابی صریح تعارض منابع
+
+- **پیاده‌سازی:** خروجی بازبین محلی باید فیلد `source_conflicts` داشته باشد؛ حذف فیلد، URL خارج از منابع بازیابی‌شده، URL تکراری یا فرادادهٔ نامعتبر باعث شکست بسته می‌شود. هر تعارض گزارش‌شده، وضعیت کلی را از `supported` به `insufficient_evidence` تغییر می‌دهد.
+- **اعتبارسنجی:** PR [#230](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/230) ادغام شد؛ CI روی head دقیق `5e72fd777fe8acca0ee6a321cc14a1c7aaec8a3a` در [run #38926317064](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38926317064) موفق بود.
+
+## 127. 2026-10-16 — نمایش تعارض منابع به کاربر و ثبت ممیزی محدود
+
+- **پیاده‌سازی:** اگر بازبینی مدل تعارض مهمی را گزارش کند، مسیر اصلاح مجدد متوقف می‌شود؛ پاسخ با هشدار محلی‌سازی‌شده و URL منابع متعارض برمی‌گردد، اجرای پژوهش و تجربه با وضعیت `needs_review` ثبت می‌شوند و پاسخ تأییدشده تلقی نمی‌شود.
+- **حریم خصوصی:** گزارش ممیزی فقط تعداد تعارض‌ها و زوج URLها را نگه می‌دارد، نه عنوان موضوع یا شرح خام تعارض.
+- **اعتبارسنجی:** PR [#231](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/231) ادغام شد؛ CI روی head دقیق `e3b240ab7d95b2dc37fa1a4f40cfceb00fe96f39` در [run #38927015468](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927015468) و پس از ادغام در [run #38927136189](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927136189) موفق بود؛ 537 آزمون موفق، 4 مورد skip و benchmark بازیابی موفق بود.
+- **محدودیت:** تشخیص تعارض هنوز مدل‌محور است و ممکن است اختلاف واقعی را از دست بدهد؛ این تغییر فقط هنگام گزارش تعارض رفتار fail-closed را تضمین می‌کند.

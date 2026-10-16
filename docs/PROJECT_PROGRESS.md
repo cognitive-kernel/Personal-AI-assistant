@@ -2,7 +2,7 @@
 
 > Last verified: 2026-10-16 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Latest confirmed post-merge code CI: [run #38925585907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925585907) — success; 530 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `a1b4d1235344306b6a019e9607dc801e6e86ec69`.
+> Latest confirmed post-merge code CI: [run #38927136189](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927136189) — success; 537 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `f8fff671c20af86dc8b711e5b16f006d6708e396`.
 
 ## Executive status
 
@@ -68,3 +68,11 @@ The implementation log is the detailed record of merged changes and acceptance l
 - **CI evidence:** [PR-head run #38925431123](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925431123) and [post-merge run #38925585907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925585907) succeeded; 530 passed, 4 skipped, and the deterministic retrieval benchmark passed.
 - **Tested behavior:** a persisted checkpoint survives database/schema reinitialization; after lease expiry, a new worker reclaims the task with the checkpoint intact, while the previous worker is fenced from writes.
 - **Limit:** this is deterministic SQLite restart simulation, not a real operating-system process kill or multi-process stress test.
+
+
+## 2026-10-16 update — source-conflict handling
+
+- **Merged:** [PR #230](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/230) requires explicit conflict assessment in model-review output and validates both conflict URLs against the retrieved source set.
+- **Merged:** [PR #231](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/231) stops the repair loop when a material conflict is reported, shows a localized warning with source URLs, marks the experience `needs_review`, and stores bounded conflict URL pairs in audit metadata without storing the raw conflict explanation.
+- **CI evidence:** [PR-head run #38927015468](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927015468) and [post-merge run #38927136189](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927136189) succeeded; 537 passed, 4 skipped, and the deterministic retrieval benchmark passed.
+- **Boundary:** this is a fail-closed action when the local model reports a conflict. It does not prove that the model will detect every real source disagreement; human review and live bilingual evaluation remain outstanding.
