@@ -163,3 +163,52 @@ def test_ollama_chat_places_trusted_system_prompt_before_history(monkeypatch):
     assert [item["role"] for item in messages] == ["system", "user", "user"]
     assert messages[0]["content"] == "trusted policy"
     assert messages[-1]["content"] == "current question"
+
+
+def test_opted_in_source_backed_research_is_captured_as_unverified(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    monkeypatch.setattr(chat_research.ollama, "chat", lambda *_args, **_kwargs: "Reviewed answer")
+    monkeypatch.setattr(
+        chat_research.claim_review,
+        "review_answer_claims",
+        lambda *_args: {"passed": True, "overall": "supported", "claims": [], "error": None},
+    )
+    monkeypatch.setattr(chat_research.experience_capture_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(chat_research.experience, "list_experiences", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        chat_research.experience,
+        "create_experience",
+        lambda topic, problem, hypothesis: {"id": 42, "topic": topic, "problem": problem},
+    )
+    captured = {}
+
+    def fake_update(experience_id, **changes):
+        captured.update(id=experience_id, **changes)
+        return {"id": experience_id, **changes}
+
+    monkeypatch.setattr(chat_research.experience, "update_experience", fake_update)
+    reply = chat_research.answer("How do SQL execution plans work?")
+
+    assert reply == "Reviewed answer"
+    assert captured["id"] == 42
+    assert captured["status"] == "identified"
+    assert captured["source_evidence"][0]["url"] == source.url
+    assert "Official Guide" in captured["source_evidence"][0]["claim"]
+    assert captured["takeaway"] == "Reviewed answer"
+    assert "test_results" not in captured
+
+
+def test_opted_in_capture_skips_answers_without_usable_sources(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_research.ollama, "chat", lambda *_args, **_kwargs: "Model answer")
+    monkeypatch.setattr(chat_research.experience_capture_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        chat_research.experience,
+        "create_experience",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not capture")),
+    )
+    reply = chat_research.answer("How do SQL Server query plans work?")
+    assert "No usable external source" in reply
