@@ -97,6 +97,10 @@ def handler_from_environment() -> Callable[
             checkpoint,
             context,
         )
+        if context.control_status() != "running":
+            raise RuntimeError("Experience test was stopped before its evidence could be recorded.")
+        if not sandbox_consent.is_enabled():
+            raise RuntimeError("Experience test was stopped because sandbox consent was revoked.")
         passed = result.get("execution_status") == "succeeded" and result.get("exit_code") == 0
         actual = (
             "stdout:\n" + str(result.get("stdout", ""))[:2000]
