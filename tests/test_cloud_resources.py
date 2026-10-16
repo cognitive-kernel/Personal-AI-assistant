@@ -8,6 +8,7 @@ from datetime import datetime
 import pytest
 
 from app import cloud_resources, db, task_manager, web_sources
+from app.cloud_resources import CloudResourceError
 from app.schema_migrations import MigrationRunner
 from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 
@@ -47,7 +48,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs", "cloud_resource_claims"} <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 6
+        ).fetchone()[0] == 7
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -383,3 +384,85 @@ def test_claim_acceptance_requires_approved_source_and_exact_current_hash(
             expected_source_content_sha256="0" * 64,
             review_status="rejected",
         )
+
+
+
+def test_selection_plan_history_persists_only_minimal_decision_snapshot(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    plan = {
+        "plan_version": "provider-neutral-selection-v1",
+        "status": "candidate_found",
+        "selected_candidate_id": 12,
+        "execution_authorized": False,
+        "remote_execution_enabled": False,
+        "requirements": {
+            "min_cpu_count": 2,
+            "min_memory_gib": 8.0,
+            "require_gpu": False,
+            "gpu_models": [],
+            "allowed_provider_domains": [],
+        },
+        "limitations": ["No remote execution."],
+        "candidates": [
+            {
+                "candidate_id": 12,
+                "provider_domain": "compute.example.org",
+                "content_sha256": "a" * 64,
+                "eligible_for_adapter_review": True,
+                "execution_authorized": False,
+                "preflight_status": "ready_for_provider_adapter",
+                "capabilities": {"cpu_count": 4, "memory_gib": 16.0, "gpu_models": []},
+                "reasons": [],
+                "policy_blockers": [],
+                "policy_review_needed": ["Provider adapter still required."],
+            }
+        ],
+    }
+
+    saved = cloud_resources.save_resource_selection_plan(plan)
+    fetched = cloud_resources.get_resource_selection_plan(saved["plan_id"])
+    listed = cloud_resources.list_resource_selection_plans(limit=10)
+
+    assert fetched["status"] == "candidate_found"
+    assert fetched["selected_candidate_id"] == 12
+    assert fetched["requirements"] == plan["requirements"]
+    assert fetched["candidates"][0]["content_sha256"] == "a" * 64
+    assert fetched["candidates"][0]["capabilities"]["memory_gib"] == 16.0
+    assert fetched["execution_authorized"] is False
+    assert fetched["remote_execution_enabled"] is False
+    assert listed[0]["plan_id"] == saved["plan_id"]
+
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        stored = connection.execute(
+            "SELECT requirements_json FROM cloud_resource_selection_plans WHERE id=?",
+            (saved["plan_id"],),
+        ).fetchone()[0]
+        columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA table_info(cloud_resource_selection_decisions)"
+            )
+        }
+    assert "evidence_excerpt" not in columns
+    assert "private_key" not in stored
+
+
+def test_selection_plan_storage_rejects_any_execution_authorization(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    plan = {
+        "plan_version": "provider-neutral-selection-v1",
+        "status": "no_eligible_candidate",
+        "selected_candidate_id": None,
+        "execution_authorized": True,
+        "remote_execution_enabled": False,
+        "requirements": {},
+        "candidates": [],
+    }
+
+    with pytest.raises(CloudResourceError, match="cannot authorize"):
+        cloud_resources.save_resource_selection_plan(plan)
+
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM cloud_resource_selection_plans"
+        ).fetchone()[0]
+    assert count == 0
