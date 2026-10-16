@@ -902,5 +902,6 @@
 - [x] سقف محلی مدت نشست و ساعت ماهانه باید مثبت و متناهی باشند؛ بودجهٔ هزینه فقط صفر را می‌پذیرد. مقادیر malformed، bool، NaN، Infinity و اعداد خارج از محدوده fail-closed می‌شوند.
 - [x] نسخهٔ policy به `cloud-resource-preflight-v2` ارتقا یافت؛ `execution_authorized` همچنان همیشه false است.
 - [x] تست‌های جدید برای فیلدهای مفقود، احراز هویت نامجاز، region خارج از allowlist، مقدارهای غیرمتناهی و ورودی‌های malformed اضافه شدند.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی head عملکردی `de3ecf8e531ff44cf2f117fb479edddedf2f09e2` موفق بود؛ run [#38847087564](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38847087564)، شامل کل `pytest` و benchmark واژگانی.
+- [ ] تست محلی اجرا نشده است؛ پس از ثبت نتیجه در log، CI دوباره روی head نهایی PR بررسی می‌شود.
 - **گام بعدی:** provider-specific adapter فقط پس از مستندشدن رسمی API/terms هر سرویس، قرارداد authentication و quota و تست mock/contract ایجاد شود؛ remote execution همچنان غیرفعال بماند.
