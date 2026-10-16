@@ -265,7 +265,7 @@ def test_ollama_request_wraps_invalid_utf8_response(tmp_path, monkeypatch):
             self.send_response(200)
             self.send_header("Content-Length", "1")
             self.end_headers()
-            self.wfile.write(b"\\xff")
+            self.wfile.write(b"\xff")
 
         def log_message(self, format, *args):
             pass
