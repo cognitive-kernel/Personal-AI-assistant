@@ -1673,3 +1673,15 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **اصلاح:** حداقل نسخهٔ `pytest` به `9.0.3` و بازهٔ build tooling به `setuptools>=83.0.0,<84` تغییر کرد؛ workflow ابزار build را صریحاً ارتقا می‌دهد و با `--skip-editable` بستهٔ محلی را از ارزیابی PyPI کنار می‌گذارد.
 - **اعتبارسنجی روی head دقیق** `f5dda3b85fb0de92df6db7e1937af701ffc89805`: ممیزی وابستگی‌ها در run [#38936521990](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936521990)، آزمون‌های مخزن در [#38936521690](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936521690)، آزمون مرورگر Chromium در [#38936521907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936521907) و آزمون واقعی Docker در [#38936522023](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936522023) موفق شدند.
 - **مرز شواهد:** ممیزی فعلی نسخه‌های رفع‌شدهٔ شناخته‌شده را در محیط CI بررسی می‌کند؛ تضمین نمی‌کند که تمام زنجیرهٔ تأمین یا محیط ماشین هدف بدون آسیب‌پذیری است. ممیزی کامل زنجیرهٔ تأمین و اجرای baseline روی ماشین هدف همچنان باز است.
+
+
+## 139. 2026-10-16 — شبیه‌سازی توقف ناگهانی worker و بازیابی checkpoint
+
+- **تغییر:** آزمون test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry یک فرایند مستقل را با spawn اجرا می‌کند؛ worker یک task را claim می‌کند، checkpoint را روی SQLite مشترک ثبت می‌کند و با os._exit بدون cleanup عادی متوقف می‌شود. پس از انقضای lease، worker جدید باید همان task و checkpoint را بازیابی کند و worker قدیمی از نوشتن منع شود.
+- **اعتبارسنجی روی head دقیق** ff8617c9d47878f8df5611fced3aec54da687627: آزمون‌های مخزن در [#38937298926](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38937298926)، آزمون مرورگر در [#38937298928](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38937298928) و ممیزی وابستگی‌ها در [#38937298934](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38937298934) موفق شدند؛ PR [#256](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/256) ادغام شد.
+- **محدودیت شواهد:** این تست توقف فرایند worker را روی SQLite فایل‌محور شبیه‌سازی می‌کند؛ crash کل برنامه روی ماشین هدف، قطع برق، خرابی فایل‌سیستم، fault injection، بار طولانی و بازیابی همهٔ انواع task همچنان دروازه‌های جداگانه‌اند.
+
+## 140. 2026-10-16 — به‌روزرسانی خودکار وابستگی‌ها
+
+- **تغییر:** .github/dependabot.yml به‌روزرسانی هفتگی وابستگی‌های Python و GitHub Actions را فعال می‌کند؛ برای هر اکوسیستم حداکثر پنج PR باز می‌ماند و وابستگی‌های Python در یک گروه جمع می‌شوند تا سیل PR ایجاد نشود.
+- **محدودیت:** Dependabot پیشنهاد تغییر می‌دهد؛ ادغام همچنان باید از CI، ممیزی وابستگی‌ها و بازبینی تغییرات عبور کند. این تنظیم جایگزین lockfile یا ممیزی مستقل امنیتی نیست.
