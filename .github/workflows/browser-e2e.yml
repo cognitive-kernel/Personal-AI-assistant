@@ -1,0 +1,56 @@
+name: browser-e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dashboard-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      E2E_BASE_URL: http://127.0.0.1:8000
+      DATABASE_BACKUP_INTERVAL_HOURS: "0"
+      OLLAMA_BASE_URL: http://127.0.0.1:11434
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install application and browser test dependency
+        run: python -m pip install -e ".[dev]" playwright
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Start isolated local application
+        env:
+          SETTINGS_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/settings.db
+          LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/learning.db
+          CLOUD_RESOURCES_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/cloud.db
+          DATABASE_BACKUP_DIR: ${{ runner.temp }}/personal-ai-e2e/backups
+        run: |
+          mkdir -p "${{ runner.temp }}/personal-ai-e2e"
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > "${{ runner.temp }}/personal-ai-e2e/app.log" 2>&1 &
+          echo $! > "${{ runner.temp }}/personal-ai-e2e/app.pid"
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "${{ runner.temp }}/personal-ai-e2e/app.log"
+          exit 1
+      - name: Run real-browser dashboard smoke test
+        run: pytest -q tests/test_browser_e2e.py
+      - name: Show app log if browser smoke fails
+        if: failure()
+        run: cat "${{ runner.temp }}/personal-ai-e2e/app.log"
+      - name: Stop application
+        if: always()
+        run: |
+          if [ -f "${{ runner.temp }}/personal-ai-e2e/app.pid" ]; then
+            kill "$(cat "${{ runner.temp }}/personal-ai-e2e/app.pid")" || true
+          fi
