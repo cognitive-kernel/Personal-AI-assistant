@@ -150,7 +150,7 @@ def test_open_pr_creates_draft_branch_without_mutating_local_checkout(proposal_r
     assert result["patch_sha256"] == hashlib.sha256(_patch().encode()).hexdigest()
     assert source.read_text(encoding="utf-8") == before
     assert _git(proposal_repo, "rev-parse", "HEAD") == base_sha
-    assert any(event["event_type"] == "pr_opened" for event in self_improvement.proposal_events(proposal["id"]))
+    assert any(event["event_type"] == "approved_for_pr" and event["details"].get("publication") == "pr_opened" for event in self_improvement.proposal_events(proposal["id"]))
 
     repeated = self_improvement.open_review_pull_request(proposal["id"], confirm=True)
     assert repeated["already_opened"] is True
