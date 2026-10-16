@@ -161,6 +161,122 @@ def run_workspace_syntax_check(
     return SandboxResult("failed", exit_code, stdout, stderr, duration_ms)
 
 
+
+_TEST_IMAGE_REF = re.compile(
+    r"^(?:[A-Za-z0-9][A-Za-z0-9._:/-]*@)?sha256:[0-9a-f]{64}$"
+)
+
+
+def run_workspace_tests(
+    workspace_path: str | Path,
+    *,
+    docker_executable: str | Path,
+    image: str,
+    timeout_seconds: int = 120,
+    max_output_bytes: int = 65536,
+) -> SandboxResult:
+    """Execute the project's tests only inside a preloaded, digest-pinned test image.
+
+    Candidate tests and application code are executed inside the isolated container.
+    The checkout is read-only, networking is disabled, and no host execution fallback
+    or image pull is permitted. The configured image must already contain project
+    test dependencies.
+    """
+    workspace_value = Path(workspace_path).expanduser()
+    if not workspace_value.is_absolute():
+        raise ValueError("workspace_path must be an absolute path.")
+    try:
+        workspace = workspace_value.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("workspace_path must exist.") from exc
+    if not workspace.is_dir() or not (workspace / "app").is_dir() or not (workspace / "tests").is_dir():
+        raise ValueError("workspace_path must contain app/ and tests/ directories.")
+    if "," in str(workspace):
+        raise ValueError("Workspace path cannot contain commas.")
+    if not isinstance(image, str) or not _TEST_IMAGE_REF.fullmatch(image):
+        raise ValueError("test image must be a local image ID or repository reference pinned by sha256 digest.")
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 300:
+        raise ValueError("timeout_seconds must be an integer from 1 to 300.")
+    if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 131072:
+        raise ValueError("max_output_bytes must be an integer from 1 to 131072.")
+
+    executable = Path(docker_executable).expanduser()
+    if not executable.is_absolute() or not executable.is_file():
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="", duration_ms=0,
+            reason="Docker executable is not available at the configured absolute path.",
+        )
+
+    runner = (
+        "import sys; "
+        "sys.path.insert(0, '/workspace'); "
+        "import pytest; "
+        "raise SystemExit(pytest.main(['-q', '-p', 'no:cacheprovider', '/workspace/tests']))"
+    )
+    command = [
+        str(executable), "run", "--rm", "--pull=never",
+        "--label", f"{_SANDBOX_LABEL}=true",
+        "--network=none", "--read-only", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges", "--pids-limit=128",
+        "--memory=1g", "--memory-swap=1g", "--cpus=2",
+        "--stop-timeout=1", "--user=65534:65534",
+        "--workdir=/workspace",
+        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m,uid=65534,gid=65534",
+        "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
+        "--env=PYTHONDONTWRITEBYTECODE=1",
+        "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+        "--env=PYTEST_ADDOPTS=",
+        "--mount", f"type=bind,source={str(workspace)},target=/workspace,readonly",
+        image, "python", "-I", "-c", runner,
+    ]
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, shell=False, close_fds=True, env=_docker_environment(),
+        )
+    except (FileNotFoundError, PermissionError, OSError):
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            reason="Docker could not be started; no host execution fallback is permitted.",
+        )
+
+    stdout_buffer = bytearray()
+    stderr_buffer = bytearray()
+    overflow = threading.Event()
+    readers = [
+        threading.Thread(target=_read_bounded, args=(process.stdout, stdout_buffer, max_output_bytes, overflow), daemon=True),
+        threading.Thread(target=_read_bounded, args=(process.stderr, stderr_buffer, max_output_bytes, overflow), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+    timed_out = False
+    while process.poll() is None:
+        if overflow.is_set():
+            _stop_process(process)
+            break
+        if time.monotonic() - started >= timeout_seconds:
+            timed_out = True
+            _stop_process(process)
+            break
+        time.sleep(0.02)
+    exit_code = process.wait()
+    for reader in readers:
+        reader.join(timeout=2)
+    duration_ms = int((time.monotonic() - started) * 1000)
+    stdout = stdout_buffer.decode("utf-8", errors="replace")
+    stderr = stderr_buffer.decode("utf-8", errors="replace")
+    if timed_out:
+        return SandboxResult("timed_out", exit_code, stdout, stderr, duration_ms, "Isolated project tests exceeded their execution time limit.")
+    if overflow.is_set():
+        return SandboxResult("output_limit_exceeded", exit_code, stdout, stderr, duration_ms, "Isolated project test output exceeded its configured limit.")
+    if exit_code == 0:
+        return SandboxResult("succeeded", exit_code, stdout, stderr, duration_ms)
+    return SandboxResult("failed", exit_code, stdout, stderr, duration_ms)
+
+
+
 def cleanup_orphaned_containers(
     *,
     docker_executable: str | Path,
