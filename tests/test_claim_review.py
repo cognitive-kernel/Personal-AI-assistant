@@ -212,3 +212,26 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
     )
     assert result["passed"] is False
     assert result["error"] == "invalid_source_conflict_fields"
+
+
+def test_claim_review_fails_closed_when_source_conflict_field_is_missing(tmp_path, monkeypatch):
+    setup_settings_db(tmp_path, monkeypatch)
+    url = "https://docs.example.org/guide"
+    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+        "message": {"content": json.dumps({
+            "overall": "supported",
+            "claims": [{
+                "claim": "The excerpt supports this statement.",
+                "verdict": "supported",
+                "evidence_urls": [url],
+                "reason": "Direct support.",
+            }],
+        })},
+    })
+    result = claim_review.review_answer_claims(
+        "Question?",
+        f"The excerpt supports this statement. Source: {url}",
+        [{"url": url, "title": "Guide", "content": "The excerpt supports this statement with enough text to be usable."}],
+    )
+    assert result["passed"] is False
+    assert result["error"] == "missing_source_conflicts"
