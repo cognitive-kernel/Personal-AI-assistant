@@ -100,3 +100,53 @@ def test_new_runtime_reclaims_expired_lease_and_resumes_from_checkpoint(runtime_
     assert saved["attempts"] == 2
     assert saved["checkpoint"] == {"phase": "resumed", "cursor": 17}
     assert saved["result"] == {"resumed": True, "cursor": 17}
+
+
+
+def test_runtime_runs_maintenance_callback_after_queue_reconciliation(runtime_store):
+    called = threading.Event()
+
+    def maintenance():
+        called.set()
+
+    runtime = TaskRuntime(
+        {"runtime.noop": lambda *_: {"ok": True}},
+        poll_interval=0.05,
+        maintenance_callback=maintenance,
+        maintenance_interval=30,
+    )
+    runtime.start()
+    assert called.wait(timeout=3)
+    assert runtime.stop(timeout=3) is True
+
+
+def test_runtime_serializes_maintenance_callback_across_workers(runtime_store):
+    entered = threading.Event()
+    release = threading.Event()
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+
+    def maintenance():
+        nonlocal active, max_active
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+            entered.set()
+        release.wait(timeout=1)
+        with lock:
+            active -= 1
+
+    runtime = TaskRuntime(
+        {"runtime.noop": lambda *_: {"ok": True}},
+        worker_count=3,
+        poll_interval=0.05,
+        maintenance_callback=maintenance,
+        maintenance_interval=1,
+    )
+    runtime.start()
+    assert entered.wait(timeout=3)
+    time.sleep(0.1)
+    release.set()
+    assert runtime.stop(timeout=3) is True
+    assert max_active == 1

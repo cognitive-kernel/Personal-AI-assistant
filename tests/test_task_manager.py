@@ -223,3 +223,25 @@ def test_sandbox_task_crash_is_terminal_after_single_attempt(task_store, monkeyp
     assert recovered["lease_owner"] is None
     assert "retry limit reached" in recovered["error"]
     assert task_manager.claim_next_task("another-worker") is None
+
+
+
+def test_list_terminal_task_ids_excludes_queued_and_running_tasks(task_store):
+    succeeded = task_manager.create_task("terminal.success", {})
+    task_manager.claim_next_task("worker-success")
+    task_manager.complete_task(succeeded["id"], "worker-success", {"ok": True})
+
+    failed = task_manager.create_task("terminal.failure", {}, max_attempts=1)
+    task_manager.claim_next_task("worker-failure")
+    task_manager.fail_task(failed["id"], "worker-failure", "expected", retry=False)
+
+    running = task_manager.create_task("not.terminal.running", {})
+    queued = task_manager.create_task("not.terminal.queued", {})
+    claimed_running = task_manager.claim_next_task("worker-running")
+    assert claimed_running["id"] == running["id"]
+
+    terminal_ids = task_manager.list_terminal_task_ids(limit=1000)
+    assert succeeded["id"] in terminal_ids
+    assert failed["id"] in terminal_ids
+    assert queued["id"] not in terminal_ids
+    assert running["id"] not in terminal_ids

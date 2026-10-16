@@ -78,12 +78,14 @@ def cleanup_orphaned_containers(
     if listing.returncode != 0:
         return SandboxCleanupResult((), 0, ("Docker could not list sandbox containers.",))
 
-    container_ids = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
-    if any(not _CONTAINER_ID.fullmatch(container_id) for container_id in container_ids):
+    all_container_ids = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+    if any(not _CONTAINER_ID.fullmatch(container_id) for container_id in all_container_ids):
         return SandboxCleanupResult((), 0, ("Docker returned an invalid container ID; cleanup aborted.",))
+    # Bound each pass so an unexpectedly large Docker inventory cannot stall a worker.
+    container_ids = all_container_ids[:100]
 
     removed: list[str] = []
-    skipped = 0
+    skipped = max(0, len(all_container_ids) - len(container_ids))
     errors: list[str] = []
     now = datetime.now(timezone.utc)
     for container_id in container_ids:

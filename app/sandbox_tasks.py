@@ -6,14 +6,17 @@ administrator-configured environment values; task payloads cannot override them.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import time
 from pathlib import Path
 from typing import Any, Callable
 
-from . import sandbox, sandbox_consent
+from . import sandbox, sandbox_consent, task_manager
 from .task_worker import TaskContext
+
+logger = logging.getLogger("personal_ai_assistant.sandbox_tasks")
 
 SANDBOX_TASK_TYPE = "sandbox.run_python"
 _IMAGE_REF = re.compile(
@@ -127,3 +130,29 @@ def handler_from_environment() -> Callable[
         }
 
     return handle
+
+
+
+def cleanup_terminal_containers() -> None:
+    """Periodically clean stale containers only after the task store reports terminal IDs."""
+    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return
+    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+    executable = Path(executable_value).expanduser()
+    if not executable_value or not executable.is_absolute() or not executable.is_file():
+        logger.warning("Sandbox cleanup skipped: configured Docker executable is unavailable.")
+        return
+
+    # TaskWorker.run_once() calls claim_next_task() before runtime maintenance, so
+    # expired leases are reconciled by the queue before terminal IDs are collected.
+    terminal_task_ids = set(task_manager.list_terminal_task_ids(limit=1000))
+    result = sandbox.cleanup_orphaned_containers(
+        docker_executable=executable,
+        terminal_task_ids=terminal_task_ids,
+        min_age_seconds=60,
+    )
+    if result.removed:
+        logger.info("Removed %d stale sandbox container(s).", len(result.removed))
+    if result.errors:
+        logger.warning("Sandbox cleanup reported %d error(s): %s", len(result.errors), "; ".join(result.errors))

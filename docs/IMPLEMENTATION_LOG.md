@@ -1074,6 +1074,18 @@
 - [x] `cleanup_orphaned_containers()` فقط containerهای دارای برچسب صحیح و task ID موجود در فهرست terminal تأییدشده را بررسی و حذف می‌کند؛ containerهای تازه‌تر از ۶۰ ثانیه، taskهای فعال/نامعلوم و خروجی‌های نامعتبر Docker حذف نمی‌شوند.
 - [x] فرمان‌های Docker با آرایهٔ آرگومان، `shell=False`، محیط محدود، timeout محدود و اعتبارسنجی شناسهٔ container اجرا می‌شوند.
 - [x] تست‌های برچسب task، حذف فقط task terminal قدیمی، حفظ task فعال/نامعلوم، grace period، شکست daemon و رد ورودی نامعتبر اضافه شدند.
-- [ ] cleanup عمداً به startup وصل نشده است؛ caller باید وضعیت terminal را از صف پایدار پس از reconciliation بگیرد. اجرای خودکار قبل از تکمیل recovery می‌تواند به رقابت چند worker منجر شود.
+- [x] **PR #152** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/152)، commit ادغام `4312a73617a6958da02a5521016d055304fde055`.
+- [x] CI روی head دقیق `e963d74be1b56cff75d4b0769b8b93fcfc1d0e58` موفق بود؛ run [#38857474658](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38857474658). اجرای اولیهٔ CI به‌علت نداشتن `task_id` در fixture تست شکست خورد؛ fixture اصلاح و اجرای بعدی موفق شد.
+- [x] helper در ابتدا مستقل نگه داشته شد تا ترتیب reconciliation و حذف ایمن containerها جداگانه آزموده شود.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** اتصال cleanup به maintenance سریال‌شدهٔ runtime، فقط پس از reconciliation صف؛ ممیزی Issue/PRها در پایان هر مرحله ادامه می‌یابد و Issue #52 برای بررسی امنیتی مستقل باز می‌ماند.
+
+
+## 77. 2026-10-16 — اجرای دوره‌ای cleanup پس از reconciliation صف
+
+- [x] `TaskRuntime` callback نگهداری اختیاری با فاصلهٔ قابل تنظیم دارد؛ callback بین workerها سریال می‌شود و خطای آن worker loop را متوقف نمی‌کند.
+- [x] پس از هر poll، ابتدا `claim_next_task()` فرصت reconciliation leaseهای منقضی‌شده را دارد؛ سپس cleanup فهرست شناسه‌های terminal را از صف پایدار می‌گیرد.
+- [x] پاک‌سازی فقط در صورت فعال بودن sandbox ثبت می‌شود، حداکثر هر ۳۰ ثانیه اجرا می‌شود و هر pass حداکثر ۱۰۰ container را بررسی می‌کند.
+- [x] تست‌های callback، جلوگیری از اجرای موازی cleanup، انتخاب taskهای terminal و خاموش‌بودن قابلیت هنگام غیرفعال‌بودن sandbox اضافه شدند.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** بررسی نتیجهٔ CI و سپس طراحی integration با reconciliation صف؛ هم‌زمان فهرست Issue/PR را در هر milestone ممیزی کنیم و فقط Issue #52 را برای بررسی امنیتی مستقل باز نگه داریم.
+- **گام بعدی:** بررسی crash/restart چندپردازه‌ای و اثبات اینکه task فعال یا task دارای lease معتبر هیچ‌وقت cleanup نمی‌شود؛ سپس ممیزی نهایی نقشه راه و Issueهای باز.
