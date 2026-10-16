@@ -20,6 +20,15 @@ def recall_at_k(ranked_ids: Sequence[Hashable], relevant_ids: Iterable[Hashable]
     return len(set(ranked_ids[:k]) & relevant) / len(relevant)
 
 
+def precision_at_k(ranked_ids: Sequence[Hashable], relevant_ids: Iterable[Hashable], k: int = 5) -> float:
+    """Return unique relevant results in the first k positions divided by k."""
+    k = _validate_k(k)
+    relevant = set(relevant_ids)
+    if not relevant:
+        return 0.0
+    return len(set(ranked_ids[:k]) & relevant) / k
+
+
 def reciprocal_rank(ranked_ids: Sequence[Hashable], relevant_ids: Iterable[Hashable]) -> float:
     """Return the reciprocal rank of the first relevant result, or zero if absent."""
     relevant = set(relevant_ids)
@@ -59,11 +68,13 @@ def evaluate_ranked_queries(
         results = list(search_fn(query, variants, max(k, 10)))
         ranked_ids = [get_id(item) for item in results]
         recall = recall_at_k(ranked_ids, relevant, k)
+        precision = precision_at_k(ranked_ids, relevant, k)
         reciprocal = reciprocal_rank(ranked_ids, relevant)
         per_query.append({
             "id": str(case.get("id", index)),
             "language": str(case.get("language", "und")),
             "recall_at_k": recall,
+            "precision_at_k": precision,
             "reciprocal_rank": reciprocal,
             "relevant_count": len(set(relevant)),
             "top_results": ranked_ids[:k],
@@ -72,6 +83,7 @@ def evaluate_ranked_queries(
     return {
         "query_count": count,
         f"recall_at_{k}": sum(item["recall_at_k"] for item in per_query) / count,
+        f"precision_at_{k}": sum(item["precision_at_k"] for item in per_query) / count,
         "mrr": sum(item["reciprocal_rank"] for item in per_query) / count,
         "per_query": per_query,
     }

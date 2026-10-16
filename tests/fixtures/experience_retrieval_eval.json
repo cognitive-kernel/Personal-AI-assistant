@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "description": "Synthetic, license-safe benchmark for bilingual experience retrieval. Source URLs are reserved example.org URLs and are not fetched.",
+  "version": 2,
+  "description": "Synthetic, license-safe bilingual retrieval benchmark with hard negatives and ambiguous neighboring concepts. Source URLs are reserved example.org URLs and are not fetched.",
   "experiences": [
     {
       "slug": "sql_execution_plan",
@@ -109,6 +109,15 @@
       "takeaway": "Use explicit timeouts and a bounded retry budget for network calls.",
       "claim": "Unbounded network waits can hold a worker indefinitely.",
       "source_url": "https://docs.example.org/http-timeout-retries"
+    },
+    {
+      "slug": "ollama_proxy_isolation",
+      "topic": "Local Ollama proxy isolation and response size limits",
+      "problem": "Keep prompts addressed to a loopback model endpoint away from environment-configured proxies and reject oversized HTTP responses.",
+      "hypothesis": "Disabling proxy discovery and enforcing a strict response byte limit protects the local inference boundary.",
+      "takeaway": "Use an explicit empty proxy configuration for loopback requests and reject response bodies over the configured byte limit.",
+      "claim": "Environment-configured HTTP proxies can reroute local model requests unless the client explicitly disables proxies.",
+      "source_url": "https://docs.example.org/ollama-proxy-isolation"
     }
   ],
   "queries": [
@@ -220,6 +229,80 @@
       ],
       "relevant_slugs": [
         "sqlite_backup_restore"
+      ]
+    },
+    {
+      "id": "en_lease_duplicate",
+      "language": "en",
+      "query": "A long-running background job can be claimed twice after ownership expires. How do I prevent duplicate work?",
+      "query_variants": [
+        "تمدید lease و heartbeat برای جلوگیری از اجرای دوباره job طولانی",
+        "worker heartbeat lease ownership duplicate task"
+      ],
+      "relevant_slugs": [
+        "task_lease_recovery"
+      ]
+    },
+    {
+      "id": "fa_lease_recovery",
+      "language": "fa",
+      "query": "کار صف بعد از پایان مهلت مالکیت دوباره اجرا می‌شود؛ چه چیزی باید کنترل شود؟",
+      "query_variants": [
+        "lease expiry task worker ownership heartbeat checkpoint",
+        "prevent duplicate execution after lease expiration"
+      ],
+      "relevant_slugs": [
+        "task_lease_recovery"
+      ]
+    },
+    {
+      "id": "en_backup_replacement",
+      "language": "en",
+      "query": "Before replacing a live database file with a backup, which validation steps prevent a broken restore?",
+      "query_variants": [
+        "اعتبارسنجی backup SQLite قبل از جایگزینی اتمی فایل اصلی",
+        "SQLite restore integrity check foreign key atomic replace"
+      ],
+      "relevant_slugs": [
+        "sqlite_backup_restore"
+      ]
+    },
+    {
+      "id": "fa_proxy_isolation",
+      "language": "fa",
+      "query": "هنگام استفاده از مدل محلی، چطور مانع ارسال prompt به پراکسی تنظیم‌شده در محیط شوم؟",
+      "query_variants": [
+        "disable environment HTTP proxy for loopback Ollama requests",
+        "local model proxy isolation prompt privacy"
+      ],
+      "relevant_slugs": [
+        "ollama_proxy_isolation"
+      ]
+    },
+    {
+      "id": "en_model_response_limit",
+      "language": "en",
+      "query": "How should a client fail safely when a local inference server sends an unexpectedly large response?",
+      "query_variants": [
+        "رد پاسخ HTTP بزرگ‌تر از حد مجاز در سرویس محلی",
+        "bounded response body bytes local model client"
+      ],
+      "relevant_slugs": [
+        "ollama_proxy_isolation",
+        "web_source_ssrf"
+      ]
+    },
+    {
+      "id": "fa_timeout_budget",
+      "language": "fa",
+      "query": "برای درخواست شبکه‌ای که معطل می‌ماند، چطور زمان کل و تعداد retry را محدود کنم؟",
+      "query_variants": [
+        "bounded HTTP timeout retry budget transient errors",
+        "حداکثر زمان درخواست و تعداد تلاش مجدد"
+      ],
+      "relevant_slugs": [
+        "http_timeout_retries",
+        "python_async_retry"
       ]
     }
   ]

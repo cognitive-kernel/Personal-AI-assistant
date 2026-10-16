@@ -26,7 +26,7 @@ The first implementation scans a bounded corpus and computes cosine similarity i
 
 ## Reproducible quality evaluation
 
-A synthetic bilingual fixture lives at `tests/fixtures/experience_retrieval_eval.json`. It includes English and Persian queries, cross-language variants, synthetic experience records, and explicit relevant slugs. The benchmark runner seeds an isolated temporary SQLite database, never the user's live database, and uses the configured local embedding model when available:
+A synthetic bilingual fixture lives at `tests/fixtures/experience_retrieval_eval.json`. Version 2 contains 13 synthetic experience records and 16 English/Persian queries, including cross-language variants, lease-recovery near-neighbors, backup-versus-migration distinctions, proxy-isolation cases, response-size limits, and queries with multiple relevant records. Relevance labels are fixture authoring judgments, not human-evaluated production data. The benchmark runner seeds an isolated temporary SQLite database, never the user's live database, and uses the configured local embedding model when available:
 
 ```bash
 # Real local model, if the configured embedding model is installed:
@@ -36,4 +36,7 @@ python scripts/evaluate_experience_retrieval.py
 python scripts/evaluate_experience_retrieval.py --lexical-only
 ```
 
-CI runs the lexical-only baseline and prints its report. The local-model command includes Recall@5, MRR, per-query ranking, embedding cache row count, and whether vector retrieval was available or lexical fallback was used. Recall@5 measures the fraction of relevant records found in the top five; MRR is the mean reciprocal rank of the first relevant result. The fixture is synthetic and is only a regression benchmark, not evidence of general real-world retrieval quality. No measured benchmark result should be claimed until the runner has actually been executed against a configured local model.
+CI runs the lexical-only baseline and prints its report, including Recall@5, Precision@5, MRR, and per-query top results. The local-model command includes Recall@5, MRR, per-query ranking, embedding cache row count, and whether vector retrieval was available or lexical fallback was used. Recall@5 measures the fraction of relevant records found in the top five; Precision@5 is the number of unique relevant records in the top five divided by five; MRR is the mean reciprocal rank of the first relevant result. The fixture is synthetic and is only a regression benchmark, not evidence of general real-world retrieval quality. No measured benchmark result should be claimed until the runner has actually been executed against a configured local model.
+
+
+The hard-case fixture is intended to expose ranking regressions and ambiguity rather than maximize a headline score. Always inspect per-query rankings and false positives alongside Recall@5/MRR. A perfect score on synthetic data still does not validate retrieval quality on real user experiences; real-data evaluation requires a privacy-reviewed, manually adjudicated dataset.
