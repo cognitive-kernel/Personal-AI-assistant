@@ -52,3 +52,16 @@ def test_backup_api_is_loopback_only(tmp_path, monkeypatch):
         response = client.get("/api/storage/backups")
         assert response.status_code == 403
         assert not (tmp_path / "backups").exists()
+
+
+
+def test_dashboard_requires_visible_confirmation_for_full_backup():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="create-storage-backup"' in page
+    assert 'id="refresh-storage-backups"' in page
+    assert 'api("/api/storage/backups",{method:"POST",body:JSON.stringify({confirm:true})})' in page
+    assert "window.confirm(" in page
