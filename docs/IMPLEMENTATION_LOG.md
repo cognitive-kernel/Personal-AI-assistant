@@ -1027,6 +1027,15 @@
 - [x] تست‌های migration، default-off، ثبت/revoke audit، نیاز به رضایت، enqueue، loopback-only و جلوگیری از bypass اضافه شدند.
 - [x] CI اول در collection به‌دلیل import جاافتاده متوقف شد؛ import اصلاح شد.
 - [x] CI دوم ۳ assertion قدیمی را آشکار کرد: قرارداد جدول‌های settings، callback کنترل sandbox و fingerprint نسخهٔ جاری؛ هر سه تست اصلاح شدند.
-- [x] CI روی head دقیق `5c1bcc0de8ee8b8369b46c40b681e3ef72821d8a` موفق شد؛ run [#38855817081](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855817081)، شامل کل تست‌ها و benchmark واژگانی.
+- [x] **PR #147** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/147)، commit ادغام `b711c794c19c4fb5bf7a933842340afab1888532`.
+- [x] CI روی head دقیق `4f828149caa31ed84e90863d22c99087ffed19c3` موفق شد؛ run [#38855903686](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855903686)، شامل کل تست‌ها و benchmark واژگانی.
 - [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** اجرای CI و ادغام پس از موفقیت؛ سپس آزمون یکپارچگی crash recovery و اثبات توقف sandbox پس از revoke با process mock.
+
+
+## 73. 2026-10-16 — آزمون توقف sandbox پس از لغو رضایت
+
+- [x] تست process-mock کنترل را دو بار بررسی می‌کند؛ با لغو رضایت در بررسی دوم، callback وضعیت fail-closed برمی‌گرداند، اجرای sandbox متوقف‌شده ثبت می‌شود و handler موفقیت کاذب گزارش نمی‌کند.
+- [x] تست پذیرش نام کامل رسمی `docker.io/library/python` با digest ثابت اضافه شد؛ الگوی اعتبارسنجی نام image اصلاح شد.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** اجرای CI و ادغام؛ سپس بررسی یکپارچگی بازیابی پس از restart و افزودن وضعیت sandbox به پنل محلی.
