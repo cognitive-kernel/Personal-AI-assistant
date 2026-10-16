@@ -107,7 +107,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
 <pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
-<p class="muted">این بخش فقط diff را ثبت می‌کند و سازگاری آن را با Git بررسی می‌کند. هیچ کدی اجرا یا اعمال نمی‌شود. «تأیید برای PR» به معنی استقرار نیست و آزمون‌های ایزوله هنوز در این مرحله اجرا نمی‌شوند. برای فعال‌سازی باید SELF_IMPROVEMENT_REPO_ROOT به مسیر مطلق checkout محلی تنظیم شود.</p>
+<p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
 <form id="self-improvement-form">
 <input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر">
 <textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر"></textarea>
@@ -1088,14 +1088,14 @@ async function refreshSelfImprovement() {
    if(item.status==="validated" && (!item.static_check || item.static_check.status!=="passed")) {
     const syntaxCheck=document.createElement("button");
     syntaxCheck.type="button";
-    syntaxCheck.textContent="بررسی نحوی ایزوله";
+    syntaxCheck.textContent="بررسی ایزولهٔ نحوی و رفتاری";
     syntaxCheck.addEventListener("click",async()=>{
      if(!window.confirm("این بررسی، patch را فقط در worktree موقت اعمال و فایل‌های Python را داخل Docker با شبکهٔ خاموش تجزیهٔ نحوی می‌کند؛ آزمون پروژه یا اجرای کد پیشنهادی انجام نمی‌شود. رضایت Sandbox باید فعال باشد. ادامه؟")) return;
      syntaxCheck.disabled=true;
      try {
       const result=await api("/api/self-improvement/proposals/"+item.id+"/static-check",{method:"POST",body:JSON.stringify({confirm:true})});
       const check=result.proposal.static_check||{};
-      output.textContent="نتیجهٔ بررسی نحوی: "+check.status+"؛ فایل‌ها: "+(check.files_checked||0)+"؛ آزمون‌ها اجرا شدند: خیر";
+      output.textContent="نتیجهٔ بررسی ایزوله: "+check.status+"؛ بررسی نحوی: "+(check.syntax_check||"نامشخص")+"؛ یکپارچگی آزمون‌ها: "+((check.test_integrity||{}).status||"نامشخص")+"؛ آزمون رفتاری: "+((check.behavioral_tests||{}).status||"اجرا نشد")+"؛ اجرای کد پیشنهادی داخل Docker: "+(check.candidate_code_executed?"بله":"خیر")+"؛ فایل‌های نحوی: "+(check.files_checked||0);
       await refreshSelfImprovement();
      } catch(error){output.textContent=error.message;}
      finally{syntaxCheck.disabled=false;}
