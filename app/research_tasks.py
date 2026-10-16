@@ -11,7 +11,7 @@ RESEARCH_TASK_TYPE = "research.answer"
 _ALLOWED_KEYS = {"message", "history"}
 
 
-def _validate_payload(payload: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
+def validate_payload(payload: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
     if not isinstance(payload, dict) or set(payload) - _ALLOWED_KEYS:
         raise ValueError("Research task payload contains unsupported fields.")
     message = payload.get("message")
@@ -26,7 +26,7 @@ def _validate_payload(payload: dict[str, Any]) -> tuple[str, list[dict[str, str]
             raise ValueError("Each history item must contain only role and content.")
         role = item.get("role")
         content = item.get("content")
-        if role not in {"user", "assistant"}:
+        if not isinstance(role, str) or role not in {"user", "assistant"}:
             raise ValueError("History role must be user or assistant.")
         if not isinstance(content, str) or len(content) > 5000:
             raise ValueError("History content must be text up to 5000 characters.")
