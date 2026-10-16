@@ -2,7 +2,7 @@
 
 ## Scope
 
-The local experience-memory API exposes the existing versioned experience store for manual curation and inspection. It does not implement automatic experience capture, execute tests, or mark records verified. Those responsibilities remain with a future controlled runner.
+The local experience-memory API exposes the existing versioned experience store for manual curation and inspection, and supports explicit opt-in capture of source-backed technical research. It does not execute tests or mark records verified; those responsibilities remain with a future controlled runner.
 
 All endpoints are protected by the same loopback-client dependency as task management. Remote access must not be enabled without a separate authenticated API design.
 
@@ -37,4 +37,4 @@ The route tests cover creation, editing, filtering, version history, rejection o
 
 ## Opt-in research capture
 
-Automatic capture is disabled by default. After explicit local consent, technical research answers with usable HTTPS sources may be saved as `identified` or `needs_review` experiences. The question, answer takeaway, and up to three source references are stored locally. Small-talk and research answers without usable sources are not captured. Captured experiences are never marked verified by this path; no test code is executed. Consent grant/revocation events are stored in the settings database, and revocation stops future captures without deleting existing records.
+Automatic capture is disabled by default. After explicit local consent, technical research answers with usable HTTPS sources may be saved as `identified` or `needs_review` experiences. The question, answer takeaway, and up to three source URLs with short excerpts are stored locally. Small-talk and research answers without usable sources are not captured. Captured experiences are never marked verified by this path; no test code is executed. Consent grant/revocation events are stored in the settings database, and revocation stops future captures without deleting existing records.
