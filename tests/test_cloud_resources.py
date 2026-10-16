@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -55,7 +55,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         } <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 7
+        ).fetchone()[0] == 8
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -232,7 +232,7 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
-        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 7
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 8
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -331,7 +331,7 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
         )
         connection.commit()
 
-    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 7
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 8
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             """SELECT review_status, availability_status, quota_json, terms_url,
@@ -473,3 +473,99 @@ def test_selection_plan_storage_rejects_any_execution_authorization(tmp_path, mo
             "SELECT COUNT(*) FROM cloud_resource_selection_plans"
         ).fetchone()[0]
     assert count == 0
+
+
+
+def _empty_resource_plan():
+    return {
+        "plan_version": "provider-neutral-selection-v1",
+        "status": "no_eligible_candidate",
+        "selected_candidate_id": None,
+        "execution_authorized": False,
+        "remote_execution_enabled": False,
+        "requirements": {
+            "min_cpu_count": 1,
+            "min_memory_gib": 0.0,
+            "require_gpu": False,
+            "gpu_models": [],
+            "allowed_provider_domains": [],
+        },
+        "limitations": ["Local evidence only."],
+        "candidates": [],
+    }
+
+
+def test_scheduled_reevaluation_metadata_is_idempotent_per_parent_and_day(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    original = cloud_resources.save_resource_selection_plan(_empty_resource_plan())
+    key = "cloud-plan-reevaluation:2026-10-16"
+
+    first = cloud_resources.save_resource_selection_plan(
+        _empty_resource_plan(),
+        origin="scheduled_reevaluation",
+        parent_plan_id=original["plan_id"],
+        reevaluation_key=key,
+    )
+    second = cloud_resources.save_resource_selection_plan(
+        _empty_resource_plan(),
+        origin="scheduled_reevaluation",
+        parent_plan_id=original["plan_id"],
+        reevaluation_key=key,
+    )
+
+    assert first["plan_id"] == second["plan_id"]
+    assert first["origin"] == "scheduled_reevaluation"
+    assert first["parent_plan_id"] == original["plan_id"]
+    assert first["reevaluation_key"] == key
+    assert [item["origin"] for item in cloud_resources.list_resource_selection_plans(origin="manual")] == ["manual"]
+    assert [item["plan_id"] for item in cloud_resources.list_resource_selection_plans(origin="scheduled_reevaluation")] == [first["plan_id"]]
+
+
+def test_daily_plan_reevaluation_schedule_is_idempotent(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+
+    first = cloud_resources.ensure_daily_plan_reevaluation_scheduled()
+    second = cloud_resources.ensure_daily_plan_reevaluation_scheduled()
+
+    assert first["id"] == second["id"]
+    assert first["task_type"] == cloud_resources.CLOUD_PLAN_REEVALUATION_TASK_TYPE
+    assert first["dedupe_key"].startswith("cloud-plan-reevaluation:")
+
+
+def test_plan_reevaluation_handler_rechecks_local_candidates_and_schedules_next_run(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    original = cloud_resources.save_resource_selection_plan(_empty_resource_plan())
+    monkeypatch.setattr(cloud_resources, "list_candidates", lambda limit=500: [])
+
+    class Context:
+        def __init__(self):
+            self.checkpoints = []
+
+        def checkpoint(self, value):
+            self.checkpoints.append(value)
+            return {"status": "running", "checkpoint": value}
+
+    context = Context()
+    key = "cloud-plan-reevaluation:2026-10-16"
+    result = cloud_resources.handle_plan_reevaluation_task(
+        {"trigger": "scheduled", "reevaluation_key": key},
+        None,
+        context,
+    )
+
+    assert result["status"] == "completed"
+    assert result["source_plans_considered"] == 1
+    assert result["plans_reevaluated"] == 1
+    assert result["execution_authorized"] is False
+    assert result["remote_execution_enabled"] is False
+    reevaluated = cloud_resources.get_resource_selection_plan(result["created_plan_ids"][0])
+    assert reevaluated["origin"] == "scheduled_reevaluation"
+    assert reevaluated["parent_plan_id"] == original["plan_id"]
+    assert reevaluated["reevaluation_key"] == key
+    assert context.checkpoints
+    next_task = task_manager.get_task_by_dedupe_key(
+        f"cloud-plan-reevaluation:{result['next_scheduled_at'][:10]}"
+    )
+    assert next_task is not None
