@@ -91,11 +91,16 @@ def test_learning_children_cascade_when_job_is_deleted(tmp_path, monkeypatch):
                VALUES (?, ?, ?, 1, ?)""",
             ("Cascade contract", "unverified fixture", "user_provided_text", job_id),
         )
-        conn.execute(
+        attempt_id = conn.execute(
             """INSERT INTO assessment_attempts(
                    job_id, answers_json, score, correct_count, question_count
                ) VALUES (?, '[]', 0, 0, 0)""",
             (job_id,),
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO assessment_semantic_reviews(attempt_id, job_id, model, review_json, created_at)
+               VALUES (?, ?, 'test-model', '{}', '2026-10-16T00:00:00Z')""",
+            (attempt_id, job_id),
         )
         conn.execute(
             """INSERT INTO lesson_reviews(job_id, outcomes_json, value_rating)
@@ -108,6 +113,7 @@ def test_learning_children_cascade_when_job_is_deleted(tmp_path, monkeypatch):
             "learning_source_text",
             "knowledge_items",
             "assessment_attempts",
+            "assessment_semantic_reviews",
             "lesson_reviews",
         ):
             assert conn.execute(
