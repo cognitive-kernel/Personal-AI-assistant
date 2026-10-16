@@ -213,7 +213,7 @@ def test_malformed_untrusted_policy_fields_fail_closed_without_exceptions():
          _claim("free_tier_mention", value="free tier"), _claim("region", value="us-east-1")],
     )
 
-    assert assessment["status"] == "needs_review"
+    assert assessment["status"] == "blocked"
     assert assessment["execution_authorized"] is False
     assert any("max_cost_usd" in item for item in assessment["review_needed"])
     assert any("max_session_minutes" in item for item in assessment["review_needed"])
