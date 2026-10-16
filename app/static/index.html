@@ -28,7 +28,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <button id="create-storage-backup" type="button">ایجاد پشتیبان کامل</button>
 <button id="refresh-storage-backups" type="button">فهرست پشتیبان‌ها</button>
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
-<pre id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</pre></section>
+<div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
 <section><h2>گفتگو</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
 <section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
@@ -160,11 +160,42 @@ async function refreshStorageHealth() {
 el("refresh-storage-health").addEventListener("click",refreshStorageHealth);
 async function refreshStorageBackups() {
  const output=el("storage-backups-list");
+ output.replaceChildren();
  try {
   const result=await api("/api/storage/backups");
-  output.textContent=JSON.stringify(result,null,2);
+  if(!result.items || !result.items.length) {
+   output.textContent="پشتیبان معتبری پیدا نشد.";
+   return;
+  }
+  result.items.forEach(item=>{
+   const card=document.createElement("article");
+   card.className="cloud-candidate";
+   appendText(card,"p",item.id);
+   appendText(card,"p","تاریخ: "+(item.created_at||"نامشخص")+"؛ قالب: "+item.format_version+"؛ دیتابیس‌ها: "+(item.database_roles||[]).join("، "));
+   appendText(card,"p",item.complete?"پشتیبان کامل سه‌دیتابیسی":"پشتیبان قدیمی/ناقص؛ فقط دیتابیس‌های موجود بازیابی می‌شوند","muted");
+   const restore=document.createElement("button");
+   restore.type="button";
+   restore.textContent="بازیابی آزمایشی در پوشهٔ جدا";
+   restore.addEventListener("click",()=>stageBackupRestore(item.id,restore));
+   card.append(restore);
+   output.append(card);
+  });
  } catch(error) {
   output.textContent="فهرست پشتیبان‌ها دریافت نشد: "+error.message;
+ }
+}
+async function stageBackupRestore(backupId,button) {
+ const output=el("storage-backup-output");
+ if(!window.confirm("از این پشتیبان در یک پوشهٔ staging جداگانه بازیابی و اعتبارسنجی شود؟ دیتابیس‌های زنده تغییر نمی‌کنند و هیچ جایگزینی خودکاری انجام نمی‌شود.")) return;
+ button.disabled=true;
+ output.textContent="در حال اعتبارسنجی و بازیابی پشتیبان در محیط staging…";
+ try {
+  const result=await api("/api/storage/backups/"+encodeURIComponent(backupId)+"/restore",{method:"POST",body:JSON.stringify({confirm:true})});
+  output.textContent=JSON.stringify(result,null,2);
+ } catch(error) {
+  output.textContent="بازیابی آزمایشی ناموفق بود: "+error.message;
+ } finally {
+  button.disabled=false;
  }
 }
 async function createStorageBackup() {
