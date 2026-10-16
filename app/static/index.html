@@ -1131,6 +1131,21 @@ async function refreshSelfImprovement() {
      finally{openPr.disabled=false;}
     });
     card.append(openPr);
+    const rollbackPr=document.createElement("button");
+    rollbackPr.type="button";
+    rollbackPr.textContent="ایجاد PR پیش‌نویس بازگشت";
+    rollbackPr.addEventListener("click",async()=>{
+     if(!window.confirm("فقط اگر PR اصلی ادغام شده باشد، یک PR پیش‌نویس بازگشت ایجاد می‌شود. اگر فایل‌های مربوطه پس از ادغام تغییر کرده باشند، عملیات متوقف می‌شود. هیچ ادغام یا استقراری انجام نمی‌شود. ادامه؟")) return;
+     rollbackPr.disabled=true;
+     try {
+      const result=await api("/api/self-improvement/proposals/"+item.id+"/rollback-pr",{method:"POST",body:JSON.stringify({confirm:true})});
+      const rollback=result.rollback_pull_request;
+      output.textContent="PR پیش‌نویس بازگشت: "+rollback.pull_request_url+"؛ ادغام یا استقرار انجام نشده است.";
+      await refreshSelfImprovement();
+     } catch(error){output.textContent="ایجاد PR بازگشت انجام نشد: "+error.message;}
+     finally{rollbackPr.disabled=false;}
+    });
+    card.append(rollbackPr);
    }
    if(["proposed","validated"].includes(item.status)) {
     const reject=document.createElement("button");

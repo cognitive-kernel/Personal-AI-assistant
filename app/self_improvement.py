@@ -791,6 +791,197 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
                 _git(root, ["worktree", "prune", "--expire", "now"])
 
 
+def open_rollback_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
+    """Open a draft rollback PR only when affected paths have not changed since merge."""
+    if confirm is not True:
+        raise ProposalError("Explicit confirmation is required to publish a rollback pull request.")
+    proposal = get_proposal(proposal_id)
+    if proposal is None:
+        raise KeyError(proposal_id)
+    if proposal["status"] != "approved_for_pr":
+        raise ProposalError("Only a proposal that was approved for PR review can be rolled back.")
+
+    events = proposal_events(proposal_id)
+    published = next((
+        event["details"] for event in events
+        if event["event_type"] == "approved_for_pr"
+        and event["details"].get("publication") == "pr_opened"
+    ), None)
+    if not published:
+        raise ProposalError("No published pull request is recorded for this proposal.")
+    for event in events:
+        if event["event_type"] == "approved_for_pr" and event["details"].get("publication") == "rollback_pr_opened":
+            return {"proposal_id": proposal_id, **event["details"], "already_opened": True}
+
+    repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
+    if not os.getenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "").strip():
+        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_TOKEN with repository contents and pull-request permissions.")
+    base_branch = os.getenv("SELF_IMPROVEMENT_GITHUB_BASE_BRANCH", "main").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", base_branch) or base_branch.startswith("/") or ".." in base_branch:
+        raise ProposalError("Configured GitHub base branch is invalid.")
+
+    patch_meta = validate_patch_format(proposal["patch"])
+    if patch_meta["sha256"] != proposal["patch_sha256"] or published.get("patch_sha256") != patch_meta["sha256"]:
+        raise ProposalError("The stored patch does not match the published PR evidence.")
+    pr_number = published.get("pull_request_number")
+    if isinstance(pr_number, bool) or not isinstance(pr_number, int) or pr_number < 1:
+        raise ProposalError("The original pull request number is missing from the audit record.")
+
+    original_pr = _github_api("GET", "/pulls/" + str(pr_number))
+    if original_pr.get("merged") is not True:
+        raise ProposalError("Rollback PR can only be created after the original pull request is merged.")
+    original_pr_base = original_pr.get("base", {}).get("ref")
+    if original_pr_base != base_branch or original_pr_base != published.get("base_branch"):
+        raise ProposalError("The original PR target branch differs from the configured rollback target.")
+    merge_sha = original_pr.get("merge_commit_sha")
+    if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", merge_sha):
+        raise ProposalError("GitHub did not return a valid merge commit for the original PR.")
+
+    base_branch_ref = _github_api("GET", "/git/ref/heads/" + base_branch)
+    current_base_sha = base_branch_ref.get("object", {}).get("sha")
+    if not isinstance(current_base_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", current_base_sha):
+        raise ProposalError("GitHub did not return a valid current base commit.")
+    if current_base_sha == published.get("base_commit_sha"):
+        raise ProposalError("The original PR base has not advanced; verify the configured target branch.")
+
+    original_base_sha = published.get("base_commit_sha")
+    original_base_commit = _github_api("GET", "/git/commits/" + str(original_base_sha))
+    merged_commit = _github_api("GET", "/git/commits/" + merge_sha)
+    current_commit = _github_api("GET", "/git/commits/" + current_base_sha)
+    original_tree_sha = original_base_commit.get("tree", {}).get("sha")
+    merged_tree_sha = merged_commit.get("tree", {}).get("sha")
+    current_tree_sha = current_commit.get("tree", {}).get("sha")
+    if not all(isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40,64}", value)
+               for value in (original_tree_sha, merged_tree_sha, current_tree_sha)):
+        raise ProposalError("GitHub did not return valid tree identifiers for rollback review.")
+
+    def tree_entries(tree_sha: str) -> dict[str, dict[str, Any]]:
+        response = _github_api("GET", "/git/trees/" + tree_sha + "?recursive=1")
+        entries = response.get("tree")
+        if response.get("truncated") is True or not isinstance(entries, list):
+            raise ProposalError("GitHub tree listing was truncated or invalid; rollback is blocked.")
+        result: dict[str, dict[str, Any]] = {}
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+                raise ProposalError("GitHub returned an invalid tree entry.")
+            result[entry["path"]] = entry
+        return result
+
+    original_tree = tree_entries(original_tree_sha)
+    merged_tree = tree_entries(merged_tree_sha)
+    current_tree = tree_entries(current_tree_sha)
+    rollback_entries = []
+    for relative in patch_meta["files"]:
+        before = original_tree.get(relative)
+        after_merge = merged_tree.get(relative)
+        now = current_tree.get(relative)
+        if after_merge is None or now is None:
+            raise ProposalError("An affected path is missing from the merged/current tree; manual rollback review is required.")
+        if (
+            after_merge.get("type") != "blob"
+            or after_merge.get("mode") not in {"100644", "100755"}
+            or now.get("type") != after_merge.get("type")
+            or now.get("mode") != after_merge.get("mode")
+            or now.get("sha") != after_merge.get("sha")
+        ):
+            raise ProposalError("An affected file changed after the original PR merge; automatic rollback is blocked to avoid overwriting later work.")
+        if before is None:
+            rollback_entries.append({
+                "path": relative, "mode": "100644", "type": "blob", "sha": None
+            })
+        else:
+            if before.get("type") != "blob" or before.get("mode") not in {"100644", "100755"}:
+                raise ProposalError("The original file type is not eligible for automatic rollback.")
+            if before.get("sha") != now.get("sha") or before.get("mode") != now.get("mode"):
+                rollback_entries.append({
+                    "path": relative,
+                    "mode": before["mode"],
+                    "type": "blob",
+                    "sha": before["sha"],
+                })
+    if not rollback_entries:
+        raise ProposalError("The original PR's changes are already absent; no rollback commit is needed.")
+
+    tree = _github_api("POST", "/git/trees", {
+        "base_tree": current_tree_sha,
+        "tree": rollback_entries,
+    })
+    tree_sha = tree.get("sha")
+    if not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", tree_sha):
+        raise ProposalError("GitHub did not create a valid rollback tree.")
+    commit = _github_api("POST", "/git/commits", {
+        "message": "Rollback AI proposal #" + str(proposal_id),
+        "tree": tree_sha,
+        "parents": [current_base_sha],
+    })
+    commit_sha = commit.get("sha")
+    if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", commit_sha):
+        raise ProposalError("GitHub did not create a valid rollback commit.")
+
+    branch_name = "ai-rollback/" + str(proposal_id) + "-" + merge_sha[:12]
+    ref_created = False
+    pr_created = False
+    try:
+        created_ref = _github_api("POST", "/git/refs", {
+            "ref": "refs/heads/" + branch_name,
+            "sha": commit_sha,
+        })
+        if created_ref.get("object", {}).get("sha") != commit_sha:
+            raise ProposalError("GitHub did not confirm the rollback branch.")
+        ref_created = True
+        body = (
+            "## Governed rollback proposal\n\n"
+            + "This draft proposes reverting the file-level changes from [the original PR](https://github.com/"
+            + repository + "/pull/" + str(pr_number) + ").\n\n"
+            + "- Original merge commit: `" + merge_sha + "`\n"
+            + "- Current base commit: `" + current_base_sha + "`\n"
+            + "- The affected paths were verified unchanged since the original merge.\n"
+            + "- This rollback is a draft for human review only; it is not merged or deployed.\n"
+        )
+        pull = _github_api("POST", "/pulls", {
+            "title": "[Rollback proposal #" + str(proposal_id) + "] " + proposal["title"][:140],
+            "head": branch_name,
+            "base": base_branch,
+            "body": body,
+            "draft": True,
+        })
+        number = pull.get("number")
+        url = pull.get("html_url")
+        if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+            raise ProposalError("GitHub did not return a valid rollback pull request number.")
+        if not isinstance(url, str) or not url.startswith("https://github.com/"):
+            raise ProposalError("GitHub did not return a valid rollback pull request URL.")
+        pr_created = True
+        details = {
+            "publication": "rollback_pr_opened",
+            "original_pull_request_number": pr_number,
+            "original_merge_commit_sha": merge_sha,
+            "pull_request_number": number,
+            "pull_request_url": url,
+            "branch": branch_name,
+            "commit_sha": commit_sha,
+            "base_branch": base_branch,
+            "base_commit_sha": current_base_sha,
+            "patch_sha256": patch_meta["sha256"],
+            "draft": True,
+            "merged": False,
+            "deployed": False,
+        }
+        db.init_databases()
+        with learning_connection() as conn:
+            _append_event(conn, proposal_id, "approved_for_pr", {**details, "confirm": True})
+        return {"proposal_id": proposal_id, **details, "already_opened": False}
+    except Exception:
+        if ref_created and not pr_created:
+            try:
+                _github_api("DELETE", "/git/refs/heads/" + branch_name)
+            except Exception:
+                pass
+        raise
+
+
 def reject_proposal(proposal_id: int, *, confirm: bool, reason: str = "") -> dict[str, Any]:
     if confirm is not True:
         raise ProposalError("Explicit confirmation is required.")

@@ -1438,3 +1438,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **پیکربندی:** متغیرهای `SELF_IMPROVEMENT_GITHUB_REPOSITORY` و `SELF_IMPROVEMENT_GITHUB_TOKEN` لازم‌اند؛ `SELF_IMPROVEMENT_GITHUB_BASE_BRANCH` اختیاری است. راهنمای کامل در `docs/SELF_IMPROVEMENT_PR.md` قرار دارد.
 - **آزمون‌ها:** تأیید صریح و پیکربندی، ساخت branch/PR با API mock، عدم تغییر checkout، idempotency و رد شدن روی تغییر base remote پوشش داده شده‌اند.
 - **اعتبارسنجی:** PR [#198](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/198) ادغام شد. روی head دقیق `217692e90c992b4a37f0608c51c6c7b27dec010d`، آزمون‌ها و benchmark در run [#38896434544](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38896434544) موفق شدند؛ اجرای کامل test suite و آزمون‌های واقعی Sandbox در Docker نیز در run [#38896434444](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38896434444) موفق بود. پس از ادغام، test suite در run [#38896599832](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38896599832) و آزمون Docker واقعی در run [#38896599819](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38896599819) نیز موفق شدند. تست محلی اجرا نشده است.
+
+
+## 112. 2026-10-16 — بازگشت کنترل‌شده از طریق Draft PR
+
+- **هدف:** فراهم‌کردن مسیر rollback قابل‌بازبینی برای تغییر خودبهبودی که PR اصلی آن واقعاً ادغام شده است.
+- **پیاده‌سازی:** endpoint جدید POST /api/self-improvement/proposals/{id}/rollback-pr از روی patch ثبت‌شده، رویداد PR اصلی، merge commit و snapshot درخت فایل‌ها یک rollback commit می‌سازد و PR پیش‌نویس جداگانه باز می‌کند. فایل‌های موجود به blob پیش از تغییر برگردانده می‌شوند و فایل‌های افزوده‌شده توسط patch حذف می‌شوند.
+- **کنترل تعارض:** پیش از ساخت rollback، snapshot فعلی هر مسیر با snapshot بلافاصله پس از merge مقایسه می‌شود. اگر هر فایل مرتبط بعداً تغییر کرده باشد، یا tree ناقص/truncated باشد، عملیات متوقف می‌شود تا تغییرات بعدی بازنویسی نشوند.
+- **مرز ایمنی:** rollback نیز نیازمند تأیید صریح است؛ checkout محلی تغییر نمی‌کند و merge/deploy خودکار وجود ندارد. بازگشت معنایی همچنان باید توسط انسان بازبینی شود.
+- **آزمون‌ها:** جلوگیری از rollback پیش از merge، ساخت rollback draft برای فایل دست‌نخورده پس از merge، idempotency و رد کردن تغییرات بعدی پوشش داده شده‌اند.
+- **اعتبارسنجی:** CI روی این شاخه باید قبل از ادغام موفق شود؛ اجرای محلی ادعا نمی‌شود. راهنما در docs/SELF_IMPROVEMENT_ROLLBACK.md است.
