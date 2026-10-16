@@ -218,6 +218,16 @@ def set_experience_feedback(
     return {"feedback": feedback, "changes_verification": False}
 
 
+@router.get("/{experience_id}/feedback")
+def get_experience_feedback(experience_id: int) -> dict[str, Any]:
+    try:
+        item = experience.get_experience(experience_id)
+        feedback = experience_feedback.get_feedback_map([experience_id]).get(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    return {"experience_id": experience_id, "feedback": feedback, "status": item.get("status")}
+
+
 @router.delete("/{experience_id}/feedback")
 def delete_experience_feedback(experience_id: int) -> dict[str, Any]:
     try:
