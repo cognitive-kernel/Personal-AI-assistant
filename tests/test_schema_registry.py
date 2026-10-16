@@ -228,7 +228,7 @@ def test_known_v7_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(7, expected_v7), (8, None), (9, None), (10, None)]
+        assert history == [(7, expected_v7), (8, None), (9, None), (10, None), (11, None)]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
