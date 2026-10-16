@@ -33,7 +33,7 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
             """() => {
                 const node = document.querySelector('#storage-health-output');
                 return node && node.textContent.trim() &&
-                    !node.textContent.includes('وضعیت ذخیره‌سازی هنوز بررسی نشده است');
+                    !node.textContent.includes('وضعیت ذخیره‌سازی هنوز بررسی نشده است') &&\n                    !node.textContent.includes('در حال بررسی فقط‌خواندنی سلامت ذخیره‌سازی');
             }""",
             timeout=15000,
         )
