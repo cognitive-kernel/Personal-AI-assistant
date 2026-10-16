@@ -35,9 +35,21 @@ def assess_candidate(
         blockers.append("Provider availability has not been confirmed as available.")
 
     terms_url = candidate.get("terms_url")
-    parsed_terms = urlparse(terms_url) if isinstance(terms_url, str) else None
-    if not parsed_terms or parsed_terms.scheme != "https" or not parsed_terms.hostname:
-        blockers.append("A reviewed HTTPS terms URL is missing.")
+    try:
+        parsed_terms = urlparse(terms_url) if isinstance(terms_url, str) else None
+        terms_port = parsed_terms.port if parsed_terms else None
+        terms_valid = bool(
+            parsed_terms
+            and parsed_terms.scheme == "https"
+            and parsed_terms.hostname
+            and not parsed_terms.username
+            and not parsed_terms.password
+            and terms_port in {None, 443}
+        )
+    except ValueError:
+        terms_valid = False
+    if not terms_valid:
+        blockers.append("A reviewed public HTTPS terms URL is missing or invalid.")
 
     current_hash = candidate.get("content_sha256")
     accepted = [
