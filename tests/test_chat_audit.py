@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from app import chat_audit, db
+from app import chat_audit, chat_research, db, ollama
 
 
 def _setup(tmp_path, monkeypatch):
@@ -97,3 +97,24 @@ def test_research_audit_bounds_duration_and_rejects_unknown_status(tmp_path, mon
             sources=[],
             review_status="verified",
         )
+
+
+
+def test_research_chat_persists_audit_without_raw_question_or_answer(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(chat_research.experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_research.experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "The database answer is model-generated.")
+
+    question = "How does a database query plan work?"
+    answer = chat_research.answer(question)
+    assert "not independently reviewed" in answer
+
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT query_sha256, answer_sha256, review_status FROM chat_research_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert row["query_sha256"] == hashlib.sha256(question.encode()).hexdigest()
+    assert row["answer_sha256"] == hashlib.sha256(answer.encode()).hexdigest()
+    assert row["review_status"] == "no_sources"
