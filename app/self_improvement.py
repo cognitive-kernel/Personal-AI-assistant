@@ -282,12 +282,14 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
         raise ProposalError("Patch does not apply cleanly to the recorded base; no files were changed.")
     db.init_databases()
     with learning_connection() as conn:
-        conn.execute(
+        updated = conn.execute(
             """UPDATE self_improvement_proposals
                SET status='validated', validation_report_json=?, validated_at=?, updated_at=?
                WHERE id=? AND status='proposed'""",
             (_json(report), report["validated_at"], report["validated_at"], proposal_id),
         )
+        if updated.rowcount != 1:
+            raise ProposalError("Proposal state changed during validation; reload it before continuing.")
         _append_event(conn, proposal_id, "validated", report)
         row = conn.execute("SELECT * FROM self_improvement_proposals WHERE id=?", (proposal_id,)).fetchone()
     return _proposal(row, include_patch=True)
@@ -311,12 +313,14 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     now = _now()
     db.init_databases()
     with learning_connection() as conn:
-        conn.execute(
+        updated = conn.execute(
             """UPDATE self_improvement_proposals
                SET status='approved_for_pr', approved_at=?, updated_at=?
                WHERE id=? AND status='validated'""",
             (now, now, proposal_id),
         )
+        if updated.rowcount != 1:
+            raise ProposalError("Proposal state changed during approval; reload it before continuing.")
         _append_event(conn, proposal_id, "approved_for_pr", {
             "patch_sha256": meta["sha256"],
             "base_commit_sha": proposal["base_commit_sha"],
@@ -341,12 +345,14 @@ def reject_proposal(proposal_id: int, *, confirm: bool, reason: str = "") -> dic
     now = _now()
     db.init_databases()
     with learning_connection() as conn:
-        conn.execute(
+        updated = conn.execute(
             """UPDATE self_improvement_proposals
                SET status='rejected', rejected_at=?, updated_at=?
                WHERE id=? AND status IN ('proposed','validated')""",
             (now, now, proposal_id),
         )
+        if updated.rowcount != 1:
+            raise ProposalError("Proposal state changed during rejection; reload it before continuing.")
         _append_event(conn, proposal_id, "rejected", {"reason": reason, "confirm": True})
         row = conn.execute("SELECT * FROM self_improvement_proposals WHERE id=?", (proposal_id,)).fetchone()
     return _proposal(row, include_patch=True)
