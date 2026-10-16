@@ -13,7 +13,7 @@ The local API is loopback-only and the main local web page now includes a cloud-
 
 The UI renders all page titles and excerpts with `textContent`, validates source links as HTTPS before opening them, and uses `noopener noreferrer` for new tabs. It never inserts source text as HTML.
 
-Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the page title plus fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. A generic regex adapter also extracts explicit textual claims such as vCPU counts, memory/storage sizes, GPU model names, session limits, monthly hours, credit amounts, price rates, and region codes. These signals describe what the page mentions; they do not establish that a service is free, available, suitable, or authorized for use.
+Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the page title plus fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. A generic regex adapter also extracts explicit textual claims such as vCPU counts, memory/storage sizes, GPU model names, session limits, monthly hours, credit amounts, price rates, and region codes. A source-bound Kaggle CLI documentation adapter recognizes only the official `Kaggle/kaggle-cli` kernels reference and extracts documented accelerator option names and CLI operations. These are documentation capabilities, not proof that a specific account can use an accelerator or that quotas are available. All extracted claims remain unreviewed.
 
 ## Trust and safety boundary
 
@@ -60,3 +60,17 @@ The generic adapter uses bounded regular expressions against the page title and 
 `app/cloud_resource_policy.py` evaluates a candidate using explicit blockers and review-needed reasons. The current policy is deliberately strict: current source hash must be approved, evidence must be fresh, availability must be marked available, an HTTPS terms URL must exist, capacity/limit/free-tier claims must be accepted, `quota.max_cost_usd` must be numeric zero, and no positive price-rate claim may be accepted.
 
 The highest possible result is `ready_for_provider_adapter`, not `eligible`. Every assessment includes `execution_authorized=false`. A provider-specific adapter must still enforce the terms, region, authentication, quotas, expiry, session limits, and zero-spend boundary before any remote work is considered. This assessment is a preflight checklist, not a guarantee that a provider will not charge or revoke access.
+
+
+
+## First source-bound provider adapter: Kaggle CLI documentation
+
+The source-bound adapter recognizes only HTTPS URLs on `github.com` whose path is an official `Kaggle/kaggle-cli` kernels documentation file. It extracts only explicit accelerator option names and documented CLI operations. It does not infer GPU entitlement, current quota, session allowance, price, region availability, or permission for unattended execution.
+
+Official references reviewed for the adapter contract:
+
+- Kaggle CLI kernel commands: https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md
+- Kaggle CLI authentication: https://github.com/Kaggle/kaggle-cli/blob/main/skills/references/auth.md
+- Kaggle CLI kernel metadata: https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels_metadata.md
+
+The official CLI documentation states that submitting a kernel can execute it, that credentials are required for push/status/output/log operations, and that some accelerator options may be restricted to particular competitions or administrators. Consequently, this adapter is extraction-only: it does not invoke the CLI, upload code, access credentials, create accounts, submit kernels, or authorize remote work. Account-specific quotas and terms remain unresolved until separately documented and reviewed. `execution_authorized` remains false.
