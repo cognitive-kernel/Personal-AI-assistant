@@ -102,7 +102,7 @@ def test_real_container_has_expected_docker_security_configuration(sandbox_confi
     def run():
         results["result"] = _run(
             sandbox_config,
-            "import time\\ntime.sleep(4)\\nprint('inspection-window')",
+            "import time\ntime.sleep(4)\nprint('inspection-window')",
             timeout=12,
         )
 
