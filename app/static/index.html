@@ -106,6 +106,18 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
 <button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
 <pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
+<section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
+<p class="muted">این بخش فقط diff را ثبت می‌کند و سازگاری آن را با Git بررسی می‌کند. هیچ کدی اجرا یا اعمال نمی‌شود. «تأیید برای PR» به معنی استقرار نیست و آزمون‌های ایزوله هنوز در این مرحله اجرا نمی‌شوند. برای فعال‌سازی باید SELF_IMPROVEMENT_REPO_ROOT به مسیر مطلق checkout محلی تنظیم شود.</p>
+<form id="self-improvement-form">
+<input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر">
+<textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر"></textarea>
+<textarea id="self-improvement-patch" required maxlength="262144" rows="8" placeholder="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md"></textarea>
+<button type="submit">ثبت پیشنهاد</button>
+</form>
+<p id="self-improvement-output" role="status"></p>
+<button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
+<div id="self-improvement-list"></div>
+</section>
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
@@ -1025,5 +1037,92 @@ el("experience-search-form").addEventListener("submit",async event=>{
  }
 });
 
+async function refreshSelfImprovement() {
+ const output=el("self-improvement-output");
+ const list=el("self-improvement-list");
+ try {
+  const result=await api("/api/self-improvement/proposals");
+  list.replaceChildren();
+  for (const item of result.proposals || []) {
+   const card=document.createElement("article");
+   card.style.border="1px solid #8886";
+   card.style.borderRadius="8px";
+   card.style.padding="10px";
+   card.style.margin="8px 0";
+   const heading=document.createElement("h3");
+   heading.textContent="#" + item.id + " — " + item.title + " (" + item.status + ")";
+   const rationale=document.createElement("p");
+   rationale.textContent=item.rationale;
+   const hash=document.createElement("p");
+   hash.className="muted";
+   hash.textContent="SHA-256: " + item.patch_sha256 + " | پایه: " + (item.base_commit_sha || "نامشخص");
+   card.append(heading,rationale,hash);
+   const eventButton=document.createElement("button");
+   eventButton.type="button";
+   eventButton.textContent="تاریخچه";
+   eventButton.addEventListener("click",async()=>{
+    try { const events=await api("/api/self-improvement/proposals/"+item.id+"/events"); output.textContent=JSON.stringify(events.events,null,2); }
+    catch(error){output.textContent=error.message;}
+   });
+   card.append(eventButton);
+   if(item.status==="proposed") {
+    const validate=document.createElement("button");
+    validate.type="button";
+    validate.textContent="بررسی سازگاری diff";
+    validate.addEventListener("click",async()=>{
+     validate.disabled=true;
+     try { await api("/api/self-improvement/proposals/"+item.id+"/validate",{method:"POST"}); output.textContent="بررسی سازگاری انجام شد؛ این مرحله آزمون کد اجرا نمی‌کند."; await refreshSelfImprovement(); }
+     catch(error){output.textContent=error.message;}
+     finally{validate.disabled=false;}
+    });
+    card.append(validate);
+   }
+   if(item.status==="validated") {
+    const approve=document.createElement("button");
+    approve.type="button";
+    approve.textContent="تأیید برای بررسی PR";
+    approve.addEventListener("click",async()=>{
+     if(!window.confirm("این تأیید کد را اعمال یا مستقر نمی‌کند. فقط اجازهٔ انتقال به بررسی انسانی PR را ثبت می‌کند. ادامه؟")) return;
+     approve.disabled=true;
+     try { await api("/api/self-improvement/proposals/"+item.id+"/approve",{method:"POST",body:JSON.stringify({confirm:true})}); output.textContent="تأیید ثبت شد؛ هیچ فایلی تغییر نکرد."; await refreshSelfImprovement(); }
+     catch(error){output.textContent=error.message;}
+     finally{approve.disabled=false;}
+    });
+    card.append(approve);
+   }
+   if(["proposed","validated"].includes(item.status)) {
+    const reject=document.createElement("button");
+    reject.type="button";
+    reject.textContent="رد پیشنهاد";
+    reject.addEventListener("click",async()=>{
+     if(!window.confirm("این پیشنهاد رد شود؟")) return;
+     try { await api("/api/self-improvement/proposals/"+item.id+"/reject",{method:"POST",body:JSON.stringify({confirm:true,reason:"رد از رابط محلی"})}); await refreshSelfImprovement(); }
+     catch(error){output.textContent=error.message;}
+    });
+    card.append(reject);
+   }
+   list.append(card);
+  }
+  if(!(result.proposals||[]).length) list.textContent="هنوز پیشنهادی ثبت نشده است.";
+ } catch(error) {
+  output.textContent="مدیریت پیشنهادها در دسترس نیست: "+error.message;
+ }
+}
+el("self-improvement-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const output=el("self-improvement-output");
+ output.textContent="در حال ثبت پیشنهاد…";
+ try {
+  const result=await api("/api/self-improvement/proposals",{method:"POST",body:JSON.stringify({
+   title:el("self-improvement-title").value,
+   rationale:el("self-improvement-rationale").value,
+   patch:el("self-improvement-patch").value
+  })});
+  output.textContent="پیشنهاد #"+result.proposal.id+" ثبت شد. هنوز هیچ تغییری روی فایل‌های پروژه اعمال نشده است.";
+  el("self-improvement-form").reset();
+  await refreshSelfImprovement();
+ } catch(error) { output.textContent=error.message; }
+});
+el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
 refreshTasks();
 </script><script src="/static/learning.js"></script></body></html>
