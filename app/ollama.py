@@ -72,10 +72,16 @@ def list_models() -> list[dict[str, Any]]:
     return [{"name": item.get("name"), "size": item.get("size"), "modified_at": item.get("modified_at")}
             for item in models if isinstance(item, dict)]
 
-def chat(message: str, history: list[dict[str, str]] | None = None) -> str:
+def chat(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+    system_prompt: str | None = None,
+) -> str:
     settings = get_settings()
     limits = runtime_limits(settings, detect_hardware())
     messages = []
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
     for item in history or []:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
