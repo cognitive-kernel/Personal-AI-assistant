@@ -271,3 +271,31 @@ def test_list_terminal_task_ids_waits_for_terminal_grace_period(task_store):
 def test_terminal_task_grace_period_validates_age(task_store, age):
     with pytest.raises(ValueError, match="non-negative integer"):
         task_manager.list_terminal_task_ids(min_terminal_age_seconds=age)
+
+
+def test_checkpoint_and_expired_lease_survive_store_reinitialization(task_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+
+    task = task_manager.create_task("restart-recovery", {"topic": "SQLite"}, max_attempts=2)
+    first = task_manager.claim_next_task("worker-before-restart", lease_seconds=5)
+    assert first["id"] == task["id"]
+    checkpoint = {"phase": "source_review", "source_cursor": 2}
+    task_manager.save_checkpoint(task["id"], "worker-before-restart", checkpoint)
+
+    # Reinitializing the database/schema simulates application process restart while
+    # retaining the same persistent SQLite files. No in-memory worker state is reused.
+    current = current + timedelta(seconds=6)
+    db.init_databases()
+    task_manager.initialize_task_store()
+
+    recovered = task_manager.claim_next_task("worker-after-restart", lease_seconds=30)
+    assert recovered is not None
+    assert recovered["id"] == task["id"]
+    assert recovered["status"] == "running"
+    assert recovered["attempts"] == 2
+    assert recovered["lease_owner"] == "worker-after-restart"
+    assert recovered["checkpoint"] == checkpoint
+
+    with pytest.raises(TaskManagerError, match="not owned by this worker"):
+        task_manager.save_checkpoint(task["id"], "worker-before-restart", {"phase": "stale"})
