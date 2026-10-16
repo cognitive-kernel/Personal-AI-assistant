@@ -1,4 +1,8 @@
-from app.cloud_provider_adapters import GenericPublicPageAdapter, extract_resource_claims
+from app.cloud_provider_adapters import (
+    GenericPublicPageAdapter,
+    OracleCloudAlwaysFreeDocsAdapter,
+    extract_resource_claims,
+)
 
 
 def test_generic_adapter_extracts_only_explicit_claims_with_verbatim_evidence():
@@ -118,3 +122,66 @@ def test_generic_adapter_remains_fallback_for_other_github_sources():
         "free_tier_mention",
     }
     assert all(claim.adapter_id == "generic-public-page-regex-v1" for claim in claims)
+
+
+
+def test_oracle_adapter_only_matches_the_exact_official_always_free_page():
+    adapter = OracleCloudAlwaysFreeDocsAdapter()
+    official = (
+        "https://docs.oracle.com/en-us/iaas/Content/FreeTier/"
+        "freetier_topic-Always_Free_Resources.htm"
+    )
+    assert adapter.matches("docs.oracle.com", official)
+    assert not adapter.matches("docs.oracle.com", official + "?highlight=compute")
+    assert not adapter.matches(
+        "docs.oracle.com",
+        "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm",
+    )
+    assert not adapter.matches(
+        "oracle.com",
+        "https://oracle.com/en-us/iaas/Content/FreeTier/"
+        "freetier_topic-Always_Free_Resources.htm",
+    )
+    assert not adapter.matches(
+        "docs.oracle.com",
+        "http://docs.oracle.com/en-us/iaas/Content/FreeTier/"
+        "freetier_topic-Always_Free_Resources.htm",
+    )
+
+
+def test_oracle_adapter_extracts_explicit_free_compute_limits_and_caveats():
+    source_url = (
+        "https://docs.oracle.com/en-us/iaas/Content/FreeTier/"
+        "freetier_topic-Always_Free_Resources.htm"
+    )
+    text = (
+        "All tenancies get Always Free resources in the home region. "
+        "The first 1,500 OCPU hours and 9,000 GB hours per month are free "
+        "for VM.Standard.A1.Flex. This is equivalent to 2 OCPUs and 12 GB of memory. "
+        "If you receive an out of host capacity error, capacity is temporarily unavailable. "
+        "Idle Always Free compute instances may be reclaimed."
+    )
+    claims = extract_resource_claims(
+        "docs.oracle.com",
+        "Always Free Resources",
+        text,
+        source_url=source_url,
+    )
+    by_type = {}
+    for claim in claims:
+        by_type.setdefault(claim.claim_type, []).append(claim)
+
+    assert {claim.value for claim in by_type["provider_compute_shape"]} == {
+        "VM.Standard.A1.Flex"
+    }
+    assert by_type["cpu_count"][0].value == 2
+    assert by_type["cpu_count"][0].unit.startswith("OCPU")
+    assert by_type["memory_capacity"][0].value == 12
+    assert by_type["usage_quota"][0].value == 1500
+    assert by_type["usage_quota"][1].value == 9000
+    assert any(claim.claim_type == "free_tier_mention" for claim in claims)
+    assert any(claim.claim_type == "provider_region_constraint" for claim in claims)
+    assert any(claim.claim_type == "provider_capacity_caveat" for claim in claims)
+    assert any(claim.claim_type == "provider_idle_reclamation" for claim in claims)
+    assert all(claim.adapter_id == "oracle-cloud-always-free-docs-v1" for claim in claims)
+    assert all(claim.evidence_quote in ("Always Free Resources\n" + text) for claim in claims)

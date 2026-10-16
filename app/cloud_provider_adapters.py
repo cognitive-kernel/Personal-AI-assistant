@@ -101,6 +101,122 @@ class KaggleCliDocsAdapter:
         return claims[:40]
 
 
+class OracleCloudAlwaysFreeDocsAdapter:
+    """Extract explicit OCI Always Free CPU limits from its official documentation."""
+
+    adapter_id = "oracle-cloud-always-free-docs-v1"
+    _official_paths = {
+        "/en-us/iaas/content/freetier/freetier_topic-always_free_resources.htm",
+    }
+
+    def matches(self, domain: str, source_url: str | None = None) -> bool:
+        if not isinstance(source_url, str):
+            return False
+        parsed = urllib.parse.urlsplit(source_url)
+        return (
+            parsed.scheme == "https"
+            and (parsed.hostname or "").casefold() == "docs.oracle.com"
+            and parsed.path.casefold() in self._official_paths
+            and not parsed.query
+            and not parsed.fragment
+            and not parsed.username
+            and not parsed.password
+            and domain.casefold().strip(".") == "docs.oracle.com"
+        )
+
+    @staticmethod
+    def _quote(content: str, start: int, end: int) -> str:
+        left = max(0, start - 90)
+        right = min(len(content), end + 110)
+        return content[left:right].strip()[:240]
+
+    def extract_claims(self, title: str, text: str) -> list[ExtractedResourceClaim]:
+        content = f"{title}\n{text}"
+        claims: list[ExtractedResourceClaim] = []
+        patterns = (
+            (
+                "provider_compute_shape",
+                re.compile(r"\bVM\.Standard\.E2\.1\.Micro\b"),
+                lambda match: match.group(0),
+                "documented OCI shape; actual tenancy eligibility and availability unverified",
+            ),
+            (
+                "provider_compute_shape",
+                re.compile(r"\bVM\.Standard\.A1\.Flex\b"),
+                lambda match: match.group(0),
+                "documented OCI shape; actual tenancy eligibility and availability unverified",
+            ),
+            (
+                "cpu_count",
+                re.compile(r"\b(?P<value>2)\s+OCPUs\b", re.I),
+                lambda match: int(match.group("value")),
+                "OCPU; documented Always Free aggregate, not a live capacity check",
+            ),
+            (
+                "memory_capacity",
+                re.compile(r"\b(?P<value>12)\s+GB\s+of\s+memory\b", re.I),
+                lambda match: int(match.group("value")),
+                "GB; documented Always Free aggregate, not a live capacity check",
+            ),
+            (
+                "usage_quota",
+                re.compile(r"\b(?P<value>1,500)\s+OCPU\s+hours\b", re.I),
+                lambda match: int(match.group("value").replace(",", "")),
+                "OCPU hours per month; documented Always Free limit",
+            ),
+            (
+                "usage_quota",
+                re.compile(r"\b(?P<value>9,000)\s+GB\s+hours\s+per\s+month\b", re.I),
+                lambda match: int(match.group("value").replace(",", "")),
+                "GB hours per month; documented Always Free limit",
+            ),
+            (
+                "free_tier_mention",
+                re.compile(r"\bAlways Free resources\b", re.I),
+                lambda match: match.group(0),
+                "official documentation mention; tenancy-specific eligibility unverified",
+            ),
+            (
+                "provider_region_constraint",
+                re.compile(r"\bhome region\b", re.I),
+                lambda match: "home region",
+                "documented region constraint; tenancy home region not inferred",
+            ),
+            (
+                "provider_capacity_caveat",
+                re.compile(r"\bout of host capacity\b", re.I),
+                lambda match: "out of host capacity",
+                "official documentation warns capacity can be unavailable",
+            ),
+            (
+                "provider_idle_reclamation",
+                re.compile(r"\bIdle Always Free compute instances may be reclaimed\b", re.I),
+                lambda match: match.group(0),
+                "official lifecycle caveat; do not assume persistent capacity",
+            ),
+        )
+        seen: set[tuple[str, str, str]] = set()
+        for claim_type, pattern, value_parser, unit in patterns:
+            for match in pattern.finditer(content):
+                value = value_parser(match)
+                key = (claim_type, str(value), match.group(0).casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                claims.append(
+                    ExtractedResourceClaim(
+                        claim_type=claim_type,
+                        value=value,
+                        unit=unit,
+                        evidence_quote=self._quote(content, match.start(), match.end()),
+                        adapter_id=self.adapter_id,
+                    )
+                )
+                if len(claims) >= 40:
+                    return claims
+        return claims
+
+
 class GenericPublicPageAdapter:
     """Fallback regex adapter; intentionally extracts only explicit textual claims."""
 
@@ -170,6 +286,7 @@ class GenericPublicPageAdapter:
 
 _ADAPTERS: tuple[CloudProviderAdapter, ...] = (
     KaggleCliDocsAdapter(),
+    OracleCloudAlwaysFreeDocsAdapter(),
     GenericPublicPageAdapter(),
 )
 
