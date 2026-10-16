@@ -7,6 +7,9 @@ RUN python -c "import re,sys; assert re.fullmatch(r'(?:python|docker\\.io/librar
 WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY app ./app
-RUN python -m pip install --no-cache-dir ".[dev]"
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir ".[dev]"
 
 WORKDIR /workspace
