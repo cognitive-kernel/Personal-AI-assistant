@@ -9,7 +9,7 @@
 - وضعیت مرحله: **در حال انجام؛ discovery، ثبت provenance، review hash-bound و freshness پیاده‌سازی شده‌اند**
 - وضعیت اجرای تست‌ها روی سیستم توسعه‌دهنده: **در این نشست اجرا نشده؛ نتایج CI دقیق هر PR در بخش‌های تاریخچه ثبت می‌شوند**
 - وضعیت اجرای تست‌ها در این نشست: **تست محلی اجرا نشده؛ اعتبارسنجی اجرایی فقط از CI مخزن گزارش می‌شود**
-- آخرین تغییر ثبت‌شده: پشتیبان‌گیری و بازیابی نسخه‌دار برای هر سه دیتابیس؛ بخش 116.
+- آخرین تغییر ثبت‌شده: گردش‌کار پشتیبان‌گیری کامل با تأیید صریح در داشبورد محلی؛ بخش 117.
 - مرجع الزامات: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)
 
 ## راهنمای وضعیت
@@ -1488,3 +1488,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون‌ها:** حفظ دادهٔ cloud resource پس از backup/restore، سلامت دیتابیس بازیابی‌شده، استفاده از هر سه مسیر پیکربندی‌شده و سازگاری خواندن bundleهای قدیمی دو دیتابیسی.
 - **اعتبارسنجی:** PR [#208](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/208) ادغام شد. روی head دقیق `e548f472d112f1a62d8819ae5612a5f85764b7ae`، CI در run [#38904400580](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38904400580) موفق بود. پس از ادغام روی commit `c025a2e9cf963c9525eeb3b1dbb2e63dc93d6814`، CI در run [#38904539169](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38904539169) نیز موفق شد؛ 499 passed، 4 skipped و benchmark بازیابی موفق بود. تست محلی اجرا نشده است.
 - **محدودیت باقی‌مانده:** این تغییر مسیر API یا زمان‌بندی خودکار backup اضافه نمی‌کند؛ bundleهای backup همچنان باید از نظر مجوز فایل، نگهداری و محل ذخیره‌سازی امن مدیریت شوند.
+
+
+
+## 117. 2026-10-16 — پشتیبان‌گیری کامل از داشبورد محلی
+
+- **هدف:** فراهم‌کردن مسیر عملی برای ساخت پشتیبان معتبر از هر سه دیتابیس، بدون پذیرش مسیر فایل دلخواه یا امکان بازنویسی دیتابیس زنده.
+- **پیاده‌سازی:** تنظیم `DATABASE_BACKUP_DIR`، endpointهای loopback-only برای فهرست‌کردن و ساخت پشتیبان، و کنترل داشبورد با تأیید صریح کاربر. شناسهٔ backup در سرور ساخته می‌شود؛ پاسخ API مسیر مطلق را افشا نمی‌کند. بازیابی خودکار یا overwrite در رابط ارائه نشده است.
+- **آزمون‌ها:** رد درخواست بدون تأیید، ساخت bundle کامل سه‌دیتابیسی، نمایش فهرست backup، عدم افشای مسیر و رد دسترسی از IP غیر-loopback.
+- **اعتبارسنجی:** PR [#210](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/210) ادغام شد. روی head دقیق `cf2351c9ce1d84270b09f19e1fca92d850e2a03d`، CI در run [#38905028556](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38905028556) موفق بود. پس از ادغام روی commit `8729e2708c2d443b91969a1beb1175c9b2105b1e`، CI در run [#38905213260](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38905213260) نیز موفق شد؛ 502 passed، 4 skipped و benchmark بازیابی موفق بود. تست محلی اجرا نشده است.
+- **محدودیت باقی‌مانده:** زمان‌بندی دوره‌ای، سیاست نگهداری و پاک‌سازی کنترل‌شدهٔ backupها و مسیر بازیابی دستیِ مرحله‌ای هنوز نیازمند پیاده‌سازی و آزمون مستقل‌اند.
