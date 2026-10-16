@@ -1,6 +1,7 @@
 """Loopback-only API for viewing and triggering cloud resource discovery."""
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -24,7 +25,7 @@ def list_cloud_resources(
             "latest_run": cloud_resources.latest_discovery_run(),
             "candidates": cloud_resources.list_candidates(limit=limit),
         }
-    except (OSError, RuntimeError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Cloud resource discovery storage is unavailable.") from exc
 
 
