@@ -1027,5 +1027,6 @@
 - [x] تست‌های migration، default-off، ثبت/revoke audit، نیاز به رضایت، enqueue، loopback-only و جلوگیری از bypass اضافه شدند.
 - [x] CI اول در collection به‌دلیل import جاافتاده متوقف شد؛ import اصلاح شد.
 - [x] CI دوم ۳ assertion قدیمی را آشکار کرد: قرارداد جدول‌های settings، callback کنترل sandbox و fingerprint نسخهٔ جاری؛ هر سه تست اصلاح شدند.
-- [ ] تست محلی اجرا نشده است؛ CI روی head اصلاح‌شده هنوز باید بررسی شود.
+- [x] CI روی head دقیق `5c1bcc0de8ee8b8369b46c40b681e3ef72821d8a` موفق شد؛ run [#38855817081](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855817081)، شامل کل تست‌ها و benchmark واژگانی.
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** اجرای CI و ادغام پس از موفقیت؛ سپس آزمون یکپارچگی crash recovery و اثبات توقف sandbox پس از revoke با process mock.
