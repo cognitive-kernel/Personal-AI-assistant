@@ -1208,5 +1208,18 @@
 - [x] مسیر API با candidate دارای شواهد تأییدشده، ظرفیت سازگار و policy کامل تست می‌شود و باید یک candidate پیشنهاد کند.
 - [x] همان candidate پس از stale شدن منبع باید از انتخاب خارج شود؛ تست تأیید می‌کند هیچ مجوز remote صادر نمی‌شود.
 - [x] تست‌های API پوشش loopback، ورودی نامعتبر، فهرست خالی، candidate واجدشرایط و شواهد stale را دارند.
+- [x] **PR #163** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/163)، commit ادغام `cea9b075780d55a0ab8a04adc168fe04693ae035`.
+- [x] CI روی head دقیق `49086dd795b4acd172da8d2e290d2e2ccc5c2dff` موفق بود؛ run [#38860833472](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38860833472)، شامل کل تست‌ها و benchmark بازیابی واژگانی.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** ارزیابی مجدد زمان‌دار برای freshness/سهمیه و ثبت دلیل انتخاب به‌صورت پایدار، بدون فعال‌کردن اجرای remote.
+
+
+## 88. 2026-10-16 — تاریخچهٔ پایدار برنامه‌های انتخاب منبع
+
+- [x] migration نسخهٔ ۷ برای `cloud_resource_selection_plans` و `cloud_resource_selection_decisions` اضافه شد؛ schemaهای قبلی دست‌نخورده‌اند.
+- [x] endpoint برنامه‌ریزی اکنون plan و تصمیم هر candidate را در پایگاه محلی ثبت می‌کند؛ `GET /api/cloud-resources/plans` و `GET /api/cloud-resources/plans/{id}` تاریخچه را برمی‌گردانند.
+- [x] فقط نیازمندی‌ها، شناسه/دامنه/hash منبع، ظرفیت نرمال‌شده، دلایل و وضعیت preflight ذخیره می‌شوند؛ متن خام منبع و credentialها ذخیره نمی‌شوند.
+- [x] schema و ذخیره‌سازی `execution_authorized=0` و `remote_execution_enabled=0` را با قید دیتابیس enforce می‌کنند؛ ذخیره‌سازی هر plan مدعی مجوز اجرا رد می‌شود.
+- [x] تست‌های migration، حفظ تصمیم‌ها، فهرست/جزئیات plan، 404 و رد هرگونه مجوز اجرا اضافه شدند.
 - [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** CI/ادغام؛ سپس افزودن ارزیابی مجدد زمان‌دار برای freshness/سهمیه و ثبت دلیل انتخاب به‌صورت پایدار، بدون فعال‌کردن اجرای remote.
+- **گام بعدی:** CI/ادغام؛ سپس افزودن ارزیابی مجدد زمان‌دار برای freshness و سهمیه و ثبت دلایل انتخاب/رد، بدون فعال‌کردن اجرای remote.
