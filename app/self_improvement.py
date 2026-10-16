@@ -15,6 +15,9 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from . import db, sandbox, sandbox_consent, sandbox_tasks
 from .schema_registry import initialize_database_file
@@ -29,6 +32,14 @@ _ALLOWED_STATUSES = {"proposed", "validated", "approved_for_pr", "rejected"}
 
 class ProposalError(ValueError):
     """A proposal violates the governance or validation contract."""
+
+
+class GitHubAPIError(ProposalError):
+    """A GitHub API request failed without exposing credentials or response bodies."""
+
+    def __init__(self, status_code: int | None, message: str):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _now() -> str:
@@ -190,6 +201,7 @@ def _proposal(row: Any, *, include_patch: bool = False) -> dict[str, Any]:
         "validated_at": row["validated_at"],
         "approved_at": row["approved_at"],
         "rejected_at": row["rejected_at"],
+        "pull_request": json.loads(row["pull_request_json"]) if row["pull_request_json"] else None,
     }
     if include_patch:
         result["patch"] = row["patch_text"]
