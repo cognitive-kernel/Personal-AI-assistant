@@ -21,6 +21,9 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     assert '"/api/experiences/search?query="+encodeURIComponent(query)' in page
     assert '"/api/experiences/"+item.id+"/versions"' in page
     assert '"/api/experiences/"+item.id' in page
+    assert '"/api/experiences/"+item.id+"/run-test"' in page
+    assert 'source_code:sourceInput.value' in page
+    assert 'حداقل یک assert داشته باشد' in page
     assert 'source_evidence:sourceEvidence,test_plan:testPlan,takeaway:takeawayInput.value' in page
     assert 'link.rel="noopener noreferrer"' in page
     assert 'source.protocol!=="https:"' in page

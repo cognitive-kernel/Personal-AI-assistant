@@ -731,7 +731,73 @@ function renderExperienceItems(items) {
     submit.disabled=false;
    }
   });
-  card.append(form); container.append(card);
+  card.append(form);
+  const runnableTests=(item.test_plan||[]).filter(entry=>entry&&typeof entry.test==="string"&&entry.test.trim());
+  if(!(item.source_evidence||[]).length||!runnableTests.length) {
+   appendText(card,"p","برای اجرای آزمون، ابتدا شواهد HTTPS و حداقل یک مورد برنامهٔ آزمون را ذخیره کنید.","muted");
+  } else {
+   const runnerForm=document.createElement("form");
+   appendText(runnerForm,"h4","اجرای کنترل‌شدهٔ آزمون در Docker Sandbox");
+   appendText(runnerForm,"p","کد آزمون باید حداقل یک assert داشته باشد. خروج موفق فقط نتیجهٔ همین آزمون را ثبت می‌کند؛ صحت خود آزمون را پیش از اجرا بررسی کنید. رضایت Sandbox نیز باید جداگانه فعال باشد.","muted");
+   const testLabel=document.createElement("label"); testLabel.textContent="مورد برنامهٔ آزمون";
+   const testSelect=document.createElement("select"); testSelect.required=true;
+   runnableTests.forEach(entry=>{
+    const option=document.createElement("option"); option.value=entry.test.trim(); option.textContent=entry.test.trim();
+    testSelect.append(option);
+   });
+   testLabel.append(testSelect); runnerForm.append(testLabel);
+   const sourceLabel=document.createElement("label"); sourceLabel.textContent="کد Python آزمون";
+   const sourceInput=document.createElement("textarea"); sourceInput.rows=8; sourceInput.maxLength=65536; sourceInput.required=true;
+   sourceInput.placeholder="assert actual_value == expected_value";
+   sourceLabel.append(sourceInput); runnerForm.append(sourceLabel);
+   const consentLabel=document.createElement("label");
+   const confirmInput=document.createElement("input"); confirmInput.type="checkbox"; confirmInput.required=true; confirmInput.style.width="auto";
+   consentLabel.append(confirmInput,document.createTextNode(" من کد را بررسی کرده‌ام و اجرای آن را در Sandbox محلی تأیید می‌کنم."));
+   runnerForm.append(consentLabel);
+   const runButton=document.createElement("button"); runButton.type="submit"; runButton.textContent="صف‌بندی آزمون";
+   const runFeedback=document.createElement("pre"); runFeedback.className="muted";
+   runnerForm.append(runButton,runFeedback);
+   runnerForm.addEventListener("submit",async event=>{
+    event.preventDefault(); runButton.disabled=true; runFeedback.textContent="در حال صف‌بندی آزمون…";
+    try {
+     const queued=await api("/api/experiences/"+item.id+"/run-test",{
+      method:"POST",
+      body:JSON.stringify({
+       confirm:true,test_name:testSelect.value,source_code:sourceInput.value,
+       timeout_seconds:10,max_output_bytes:32768
+      })
+     });
+     const taskId=queued.task.id;
+     runFeedback.textContent="آزمون در صف قرار گرفت: #"+taskId;
+     const poll=async()=>{
+      try {
+       const current=await api("/api/tasks/"+taskId);
+       if(["queued","running","pause_requested","paused","cancel_requested"].includes(current.status)) {
+        runFeedback.textContent="وضعیت آزمون #"+taskId+": "+current.status;
+        setTimeout(poll,1000);
+        return;
+       }
+       if(current.status==="succeeded") {
+        runFeedback.textContent=JSON.stringify(current.result||{status:current.status},null,2);
+        await refreshExperiences();
+       } else {
+        runFeedback.textContent="آزمون تکمیل نشد: "+(current.error||current.status);
+        runButton.disabled=false;
+       }
+      } catch(error) {
+       runFeedback.textContent="وضعیت آزمون قابل دریافت نیست: "+error.message;
+       runButton.disabled=false;
+      }
+     };
+     setTimeout(poll,500);
+    } catch(error) {
+     runFeedback.textContent="آزمون صف‌بندی نشد: "+error.message;
+     runButton.disabled=false;
+    }
+   });
+   card.append(runnerForm);
+  }
+  container.append(card);
  });
 }
 async function refreshExperienceAutoCaptureConsent() {

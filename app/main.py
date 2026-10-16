@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import chat_research, cloud_resources, curricula, db, learning, ollama, sandbox_tasks, task_manager
+from . import chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, sandbox_tasks, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -79,6 +79,9 @@ def startup() -> None:
     sandbox_handler = sandbox_tasks.handler_from_environment()
     if sandbox_handler is not None:
         handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
+    experience_test_handler = experience_tasks.handler_from_environment()
+    if experience_test_handler is not None:
+        handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
     _task_runtime = TaskRuntime(
         handlers,
         worker_count=worker_count,
