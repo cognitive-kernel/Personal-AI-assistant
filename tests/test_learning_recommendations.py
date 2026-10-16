@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app import db, learning_recommendations, spaced_repetition
 from app.db import learning_connection
 from app.main import app
+from app.task_routes import require_loopback_client
 
 
 def _setup(tmp_path, monkeypatch, topics):
@@ -98,8 +99,12 @@ def test_recommendations_validate_path_and_limit(tmp_path, monkeypatch):
 
 def test_recommendations_endpoint_is_loopback_only_and_returns_deterministic_plan(tmp_path, monkeypatch):
     path_id, topic_ids = _setup(tmp_path, monkeypatch, [{"topic": "Basics"}])
-    with TestClient(app) as client:
-        response = client.get("/api/learning/recommendations", params={"path_id": path_id})
+    app.dependency_overrides[require_loopback_client] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/learning/recommendations", params={"path_id": path_id})
+    finally:
+        app.dependency_overrides.pop(require_loopback_client, None)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["autonomous_action_taken"] is False
