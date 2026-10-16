@@ -122,7 +122,17 @@ def test_web_discovery_failure_is_recorded_without_blocking_model_fallback(
 
 
 
-def test_official_kaggle_cli_docs_are_not_blocked_by_kaggle_page_fetch_policy():
+def test_official_kaggle_cli_docs_are_not_blocked_by_kaggle_page_fetch_policy(monkeypatch):
+    import socket
+
+    # Keep this unit test deterministic; it does not make a real network request.
+    monkeypatch.setattr(
+        web_sources.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("140.82.112.4", 443))
+        ],
+    )
     # The official CLI docs are hosted on GitHub; the block is for fetching
     # Kaggle's own web properties, not for the provider's published source code.
     parsed = web_sources._validate_public_url(
