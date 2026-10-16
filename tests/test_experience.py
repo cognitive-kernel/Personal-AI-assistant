@@ -235,7 +235,7 @@ def test_experience_retrieval_treats_legacy_evidence_as_unknown_not_fresh(tmp_pa
 
     setup_learning_db(tmp_path, monkeypatch)
     item = experience.create_experience("SQL query plan", "An optimizer chose a table scan.")
-    experience.update_experience(
+    item = experience.update_experience(
         item["id"],
         status="verified",
         source_evidence=[{
