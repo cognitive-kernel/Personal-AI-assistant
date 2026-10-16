@@ -26,6 +26,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
         assert request["evidence"][0]["url"] == url
         return {"message": {"content": json.dumps({
             "overall": "supported",
+            "source_conflicts": [],
             "claims": [{
                 "claim": "Invalid JSON may raise a decoding error.",
                 "verdict": "supported",
@@ -70,6 +71,7 @@ def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monk
     monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
+            "source_conflicts": [],
             "claims": [{
                 "claim": "This claim is not in the excerpt.",
                 "verdict": "supported",
@@ -114,6 +116,7 @@ def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monke
     monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
+            "source_conflicts": [],
             "claims": [{
                 "claim": "Invalid JSON may raise a decoding error.",
                 "verdict": "supported",
