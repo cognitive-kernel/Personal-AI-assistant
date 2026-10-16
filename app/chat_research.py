@@ -12,7 +12,7 @@ import re
 import time
 from typing import Any
 
-from . import chat_audit, claim_review, experience, ollama, web_sources
+from . import chat_audit, claim_review, experience, experience_capture_consent, ollama, web_sources
 
 _TECHNICAL_MARKERS = (
     "error", "exception", "bug", "debug", "traceback", "stack trace", "code",
@@ -147,6 +147,60 @@ def _record_audit(
         logger.warning("Research chat audit write failed (%s)", type(exc).__name__)
 
 
+def _capture_experience(
+    question: str,
+    answer_text: str,
+    sources: list[dict[str, str]],
+    *,
+    status: str,
+) -> None:
+    """Save source-backed research only after explicit opt-in; never verify it here."""
+    if not sources or not experience_capture_consent.is_enabled():
+        return
+    evidence = [
+        {
+            "url": source["url"][:1000],
+            "claim": (source["title"] + ": " + source["content"][:400])[:1200],
+        }
+        for source in sources[:3]
+        if source.get("url", "").startswith("https://") and source.get("content")
+    ]
+    if not evidence:
+        return
+    topic = question.strip()[:300] or "Technical research"
+    problem = question.strip()[:10000]
+    try:
+        existing = next(
+            (
+                item
+                for item in experience.list_experiences(topic=topic, limit=100)
+                if item.get("problem") == problem and item.get("status") != "verified"
+            ),
+            None,
+        )
+        if existing is None:
+            verified_duplicate = any(
+                item.get("problem") == problem and item.get("status") == "verified"
+                for item in experience.list_experiences(topic=topic, limit=100)
+            )
+            if verified_duplicate:
+                return
+            existing = experience.create_experience(
+                topic,
+                problem,
+                "Captured from opted-in source-backed research; not independently verified.",
+            )
+        experience.update_experience(
+            int(existing["id"]),
+            status=status,
+            source_evidence=evidence,
+            takeaway=answer_text.strip()[:10000],
+        )
+    except Exception as exc:
+        # Capture is best-effort and must never break the chat response.
+        logger.warning("Opt-in experience capture failed (%s)", type(exc).__name__)
+
+
 def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
     """Answer normally for small-talk; use bounded source review for technical queries."""
     if not should_use_research(message):
@@ -189,6 +243,7 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
     review = _review(message, draft, sources)
     if review.get("passed") is True:
         _record_audit(message, draft, sources, "passed_model_assisted", review, memory, started_at)
+        _capture_experience(message, draft, sources, status="identified")
         return draft
     error = str(review.get("error") or "")
     if error.startswith("review_unavailable"):
@@ -199,6 +254,7 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             else "Claim review was unavailable; the factual claims should not be treated as verified.",
         )
         _record_audit(message, reply, sources, "review_unavailable", review, memory, started_at)
+        _capture_experience(message, reply, sources, status="needs_review")
         return reply
 
     repair_payload = {
@@ -228,6 +284,7 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             message, repaired, sources, "passed_model_assisted_after_repair",
             second_review, memory, started_at,
         )
+        _capture_experience(message, repaired, sources, status="identified")
         return repaired
     reply = repaired + _warning(
         message,
@@ -236,4 +293,5 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
         else "After one repair attempt, not all claims were supported by retrieved sources; further review is needed.",
     )
     _record_audit(message, reply, sources, "needs_review", second_review, memory, started_at)
+    _capture_experience(message, reply, sources, status="needs_review")
     return reply

@@ -1224,11 +1224,11 @@
 
 ## 60. Local experience-memory management UI
 
-- Status: implemented on branch `feat/experience-memory-ui-20261016`; CI validation pending.
+- Status: merged in PR #167; exact-head GitHub Actions run succeeded.
 - Added a local UI for creating and listing experience records, searching verified guidance separately from failure/review warnings, reviewing editable metadata, and viewing version history.
 - External source links are accepted for display only when HTTPS; all stored/user-provided text is rendered through DOM text nodes rather than HTML injection.
 - The UI does not provide a way to submit test results or promote an experience to verified; that remains reserved for controlled execution.
-- Added a static UI contract test. Local tests were not run in this environment; the exact-head CI result remains the validation gate.
+- Added a static UI contract test; the full suite and deterministic lexical retrieval benchmark passed in CI run [#38861512505](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38861512505).
 
 
 ## 90. 2026-10-16 — تاریخچهٔ پایدار برنامه‌های انتخاب منبع
@@ -1240,3 +1240,12 @@
 - [x] تست‌های migration، حفظ تصمیم‌ها، فهرست/جزئیات plan، 404 و رد هرگونه مجوز اجرا اضافه شدند.
 - [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** CI/ادغام؛ سپس ارزیابی مجدد زمان‌دار برای freshness و سهمیه و ثبت دلایل انتخاب/رد، بدون فعال‌کردن اجرای remote.
+
+## 91. Opt-in automatic capture of source-backed research experiences
+
+- Status: implemented on branch `feat/opt-in-experience-capture-v2-20261016`; CI validation pending.
+- Added settings migration 3 with a default-disabled consent record and auditable grant/revocation events.
+- Added loopback-only consent endpoints and a local UI control; only an explicit strict boolean confirmation enables capture.
+- With consent enabled, technical research answers with usable HTTPS sources can be saved as `identified` or `needs_review` records. Small-talk and answers without usable sources are not captured.
+- Capture stores the question, answer takeaway, and up to three source URLs with short excerpts. It never marks an experience verified or executes code; revocation stops future capture but does not delete existing records.
+- Added tests for migration/schema, consent lifecycle/API, and capture/no-source boundaries. Local tests were not run; the exact-head CI run is the validation gate.
