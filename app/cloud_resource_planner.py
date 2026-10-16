@@ -29,6 +29,17 @@ def _number(value: Any, name: str, *, minimum: float = 0) -> float:
     return parsed
 
 
+def _finite_nonnegative_number(value: Any) -> float | None:
+    """Return a safe finite non-negative float, or None for untrusted malformed input."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        parsed = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) and parsed >= 0 else None
+
+
 def _accepted_claims(candidate: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     claims = candidate.get("observed_claims", [])
     if not isinstance(claims, Sequence) or isinstance(claims, (str, bytes)):
