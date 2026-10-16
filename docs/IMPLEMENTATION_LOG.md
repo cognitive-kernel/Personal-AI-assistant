@@ -1605,3 +1605,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تغییر:** فایل [`docs/ROADMAP_ACCEPTANCE.md`](ROADMAP_ACCEPTANCE.md) وضعیت فعلی مراحل را با شواهد و دروازه‌های باقی‌مانده ثبت می‌کند: baseline روی ماشین هدف، بازبینی مستقل Issue #52، ارزیابی زنده و داوری انسانی، آزمون مرورگر، آزمون crash/multi-process و سیاست استقرار.
 - **قید:** هیچ مرحله‌ای صرفاً به‌دلیل ادغام کد یا موفقیت CI کامل اعلام نمی‌شود؛ provisioning ابری، اجرای راه‌دور، اعمال خودکار patch و deploy خودکار همچنان غیرفعال‌اند.
 - **اعتبارسنجی:** تغییر مستنداتی؛ CI روی PR لازم است.
+
+
+
+## 131. 2026-10-16 — آزمون مرورگر واقعی داشبورد در CI
+
+- **پیاده‌سازی:** workflow مستقل `.github/workflows/browser-e2e.yml` یک سرور Uvicorn را با سه دیتابیس موقت بالا می‌آورد و Chromium واقعی را با Playwright اجرا می‌کند. آزمون، بارگذاری داشبورد، بخش‌های اصلی، سلامت فقط‌خواندنی هر سه دیتابیس و پیشنهادهای یادگیریِ بدون اقدام خودکار را بررسی می‌کند؛ به مدل زنده نیاز ندارد.
+- **اعتبارسنجی:** PR [#238](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/238) ادغام شد. آزمون مرورگر روی head دقیق `047827731db2403b809233ac494133a944e20af7` در run [#38931355503](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931355503) موفق بود؛ آزمون‌های عادی نیز در run [#38931355494](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931355494) موفق شدند. پس از ادغام، آزمون مرورگر در run [#38931511081](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931511081) و آزمون‌های عادی در run [#38931511291](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931511291) موفق شدند.
+- **قید:** این یک smoke test محدود است، نه پوشش کامل همهٔ جریان‌های UI، نه آزمون روی ماشین هدف و نه تأیید کیفیت factual مدل. نسخهٔ Playwright در PR بعدی برای بازتولیدپذیری pin می‌شود.
