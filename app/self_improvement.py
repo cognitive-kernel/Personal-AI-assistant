@@ -67,7 +67,7 @@ def _validate_repo_paths(root: Path, paths: list[str]) -> None:
             chain.append(parent)
             parent = parent.parent
         for directory in reversed(chain):
-            if directory.exists() and directory.is_symlink():
+            if directory.is_symlink():
                 raise ProposalError("Patch paths cannot traverse symbolic-link directories.")
         if candidate.is_symlink():
             raise ProposalError("Patch targets cannot be symbolic links.")
