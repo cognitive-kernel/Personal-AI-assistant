@@ -286,8 +286,6 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_discovery_runs_status ON cloud_resource_discovery_runs(status, started_at DESC)",
         ),
     ),
-)
-
     Migration(
         2,
         "cloud-resource-review-and-freshness",
