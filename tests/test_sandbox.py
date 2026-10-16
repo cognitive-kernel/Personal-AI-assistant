@@ -173,3 +173,49 @@ def test_sandbox_removes_temporary_source_workspace_after_exit(tmp_path, monkeyp
     source = captured["mount"].split(",")[1].removeprefix("source=")
     assert result.status == "succeeded"
     assert not __import__("pathlib").Path(source).exists()
+
+
+
+@pytest.mark.parametrize(
+    "control,expected",
+    [
+        ("pause_requested", "paused"),
+        ("cancel_requested", "cancelled"),
+        ("unknown", "cancelled"),
+    ],
+)
+def test_sandbox_stops_container_when_task_control_changes(tmp_path, monkeypatch, control, expected):
+    executable = _configured_docker(tmp_path)
+    process = FakeProcess([], stdout=b"", stderr=b"", returncode=None)
+    monkeypatch.setattr(sandbox.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = sandbox.run_python(
+        "while True: pass",
+        docker_executable=executable,
+        image=IMAGE,
+        control_check=lambda: control,
+    )
+
+    assert result.status == expected
+    assert process.terminated
+    assert "task" in (result.reason or "").lower() or "control" in (result.reason or "").lower()
+
+
+def test_sandbox_stops_if_task_control_check_raises(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    process = FakeProcess([], stdout=b"", stderr=b"", returncode=None)
+    monkeypatch.setattr(sandbox.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    def lost_lease():
+        raise RuntimeError("lease lost")
+
+    result = sandbox.run_python(
+        "while True: pass",
+        docker_executable=executable,
+        image=IMAGE,
+        control_check=lost_lease,
+    )
+
+    assert result.status == "cancelled"
+    assert process.terminated
+    assert "lease state was unavailable" in (result.reason or "")
