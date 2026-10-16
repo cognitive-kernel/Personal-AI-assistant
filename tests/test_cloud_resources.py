@@ -287,7 +287,7 @@ def test_stale_candidate_loses_availability_and_cannot_be_reviewed(tmp_path, mon
         )
 
 
-def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path, monkeypatch):
+def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
     path = tmp_path / "legacy-cloud.db"
     with sqlite3.connect(path) as connection:
         assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS[:1]).apply(connection) == 1
