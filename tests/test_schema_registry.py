@@ -154,6 +154,7 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v8 = fingerprint_for_version(LEARNING_MIGRATIONS, 8)
     learning_v9 = fingerprint_for_version(LEARNING_MIGRATIONS, 9)
     learning_v10 = fingerprint_for_version(LEARNING_MIGRATIONS, 10)
+    learning_v10 = fingerprint_for_version(LEARNING_MIGRATIONS, 10)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3}) == 3
@@ -207,7 +208,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None)]
+        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None), (10, None)]
 
 
 def test_known_v6_schema_is_baselined_then_upgraded():
