@@ -1559,3 +1559,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **شاخص‌ها:** تطبیق سطحی عبارت‌های مورد انتظار، عبارت‌های ممنوع، وجود حداقلی نویسه‌های زبان درخواستی و وجود URL منبع؛ این‌ها فقط شاخص‌های تشخیصی‌اند، نه ارزیابی معنایی یا اثبات درستی واقعیت.
 - **محدودیت بازتولید:** بازیابی وب زنده کاملاً قابل replay نیست و endpoint فعلی Ollama اثر انگشت رمزنگاری‌شدهٔ مدل را ارائه نمی‌دهد؛ این محدودیت‌ها صریحاً در گزارش ثبت می‌شوند.
 - **اعتبارسنجی:** [PR #226](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/226) ادغام شد. CI روی head دقیق `ff007c91dda590422bda77132a73480d5e78b7e5` در [run #38924803334](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924803334) و پس از ادغام در [run #38924927356](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924927356) موفق بود؛ 529 آزمون موفق، 4 مورد skip و benchmark بازیابی موفق بود. اجرای زندهٔ Ollama و داوری انسانی هنوز انجام نشده‌اند.
+
+
+## 125. 2026-10-16 — آزمون بازیابی صف پس از راه‌اندازی مجدد
+
+- **هدف:** پوشش پذیرش باقی‌ماندهٔ صف پایدار: حفظ checkpoint و fencing مالک قبلی پس از منقضی‌شدن lease و راه‌اندازی دوبارهٔ لایهٔ ذخیره‌سازی.
+- **آزمون:** وظیفه با checkpoint پایدار ثبت می‌شود؛ دیتابیس‌ها و schema دوباره initialize می‌شوند؛ پس از انقضای lease، worker جدید وظیفه را claim می‌کند و checkpoint/attempt count حفظ می‌شوند. worker قبلی اجازهٔ نوشتن ندارد.
+- **مرز:** این آزمون restart را با reinitialization روی همان فایل SQLite شبیه‌سازی می‌کند؛ crash واقعی فرایند، قطع برق و فشار چندفرایندی را اثبات نمی‌کند.
+- **اعتبارسنجی:** PR [#228](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/228) ادغام شد. CI روی head دقیق `72cd2caeb8d327b41f21c36c3f38d85053b2d9ae` در [run #38925431123](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925431123) و پس از ادغام در [run #38925585907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925585907) موفق بود؛ 530 آزمون موفق، 4 مورد skip و benchmark بازیابی موفق بود.

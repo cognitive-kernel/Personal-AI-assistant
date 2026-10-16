@@ -2,7 +2,7 @@
 
 > Last verified: 2026-10-16 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Latest confirmed post-merge code CI: [run #38924927356](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924927356) — success; 529 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `e20b2ab4c842b5f53eda7a4f0d8f4e6e6de0adfe`.
+> Latest confirmed post-merge code CI: [run #38925585907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925585907) — success; 530 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `a1b4d1235344306b6a019e9607dc801e6e86ec69`.
 
 ## Executive status
 
@@ -60,3 +60,11 @@ The implementation log is the detailed record of merged changes and acceptance l
 - **CI evidence:** [PR-head run #38924803334](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924803334) and [post-merge run #38924927356](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924927356) succeeded; 529 passed, 4 skipped, and the deterministic retrieval benchmark passed.
 - **New runner:** `python scripts/run_answer_quality_eval.py --output reports/answer-quality-v1.json`; add `--redact-answers` to omit raw responses.
 - **Boundary:** this runner captures fingerprints, per-case source provenance metadata and lexical diagnostics. It does not provide semantic adjudication, an immutable model digest, or a fully replayable live web corpus. No live-model evaluation has been run by CI; a local Ollama run and human review remain required.
+
+
+## 2026-10-16 update — persistent task restart recovery
+
+- **Merged:** [PR #228](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/228), merge commit `a1b4d1235344306b6a019e9607dc801e6e86ec69`.
+- **CI evidence:** [PR-head run #38925431123](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925431123) and [post-merge run #38925585907](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38925585907) succeeded; 530 passed, 4 skipped, and the deterministic retrieval benchmark passed.
+- **Tested behavior:** a persisted checkpoint survives database/schema reinitialization; after lease expiry, a new worker reclaims the task with the checkpoint intact, while the previous worker is fenced from writes.
+- **Limit:** this is deterministic SQLite restart simulation, not a real operating-system process kill or multi-process stress test.
