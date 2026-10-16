@@ -42,6 +42,16 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <div class="cloud-actions"><button id="kaggle-quota-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="kaggle-quota-revoke" type="button">لغو رضایت</button><button id="kaggle-quota-refresh" type="button">خواندن سهمیه اکنون</button></div>
 <pre id="kaggle-quota-status">سهمیهٔ Kaggle غیرفعال است.</pre>
 </section>
+<section id="sandbox-section"><h2>اجرای آزمایشی کد در محیط ایزوله</h2>
+<p class="muted">این قابلیت به‌صورت پیش‌فرض غیرفعال است. اجرا فقط در Docker با image رسمی و digest ثابت، بدون شبکه و با محدودیت زمان و خروجی انجام می‌شود. پیش از فعال‌سازی، پیکربندی مدیر و رضایت صریح شما لازم است.</p>
+<pre id="sandbox-status">در حال بررسی وضعیت sandbox…</pre>
+<label><input id="sandbox-consent-confirm" type="checkbox" style="width:auto"> ریسک اجرای کد را می‌پذیرم و رضایت می‌دهم کد واردشده در محیط ایزولهٔ محلی اجرا شود.</label>
+<div class="cloud-actions"><button id="sandbox-consent-grant" type="button">ثبت رضایت</button><button id="sandbox-consent-revoke" type="button">لغو رضایت</button><button id="sandbox-refresh" type="button">به‌روزرسانی وضعیت</button></div>
+<form id="sandbox-run-form">
+<label>کد Python<textarea id="sandbox-source" rows="7" maxlength="65536" required placeholder="print('Hello')"></textarea></label>
+<div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
+<button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
+<pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
@@ -339,6 +349,85 @@ el("kaggle-quota-refresh").addEventListener("click",async()=>{
  }
 });
 
+async function refreshSandbox() {
+ const status=el("sandbox-status");
+ const runButton=el("sandbox-run");
+ try {
+  const result=await api("/api/sandbox/consent");
+  const consent=result.consent||{};
+  const enabled=result.execution_enabled===true;
+  el("sandbox-consent-confirm").checked=consent.enabled===true;
+  runButton.disabled=!enabled;
+  status.textContent=JSON.stringify({
+   configured:result.runtime_configured===true,
+   consent_enabled:consent.enabled===true,
+   execution_enabled:enabled,
+   policy_version:consent.policy_version||null,
+   consented_at:consent.consented_at||null,
+   revoked_at:consent.revoked_at||null,
+   audit_events:consent.events||[]
+  },null,2);
+ } catch(error) {
+  runButton.disabled=true;
+  status.textContent="وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند. "+error.message;
+ }
+}
+el("sandbox-refresh").addEventListener("click",refreshSandbox);
+el("sandbox-consent-grant").addEventListener("click",async()=>{
+ if(!el("sandbox-consent-confirm").checked) {
+  el("sandbox-status").textContent="برای ثبت رضایت، ابتدا چک‌باکس رضایت صریح را فعال کنید.";
+  return;
+ }
+ el("sandbox-status").textContent="در حال ثبت رضایت…";
+ try {
+  await api("/api/sandbox/consent",{method:"POST",body:JSON.stringify({confirm:true})});
+  await refreshSandbox();
+ } catch(error) {
+  el("sandbox-status").textContent="رضایت ثبت نشد؛ اجرا غیرفعال می‌ماند. "+error.message;
+  el("sandbox-run").disabled=true;
+ }
+});
+el("sandbox-consent-revoke").addEventListener("click",async()=>{
+ el("sandbox-status").textContent="در حال لغو رضایت…";
+ el("sandbox-run").disabled=true;
+ try {
+  await api("/api/sandbox/consent",{method:"DELETE"});
+  await refreshSandbox();
+ } catch(error) {
+  el("sandbox-status").textContent="لغو رضایت ناموفق بود: "+error.message;
+ }
+});
+el("sandbox-run-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const output=el("sandbox-run-output");
+ const source=el("sandbox-source").value;
+ if(!source.trim()) { output.textContent="کد خالی قابل اجرا نیست."; return; }
+ if(el("sandbox-run").disabled) { output.textContent="اجرا غیرفعال است؛ وضعیت و رضایت را بررسی کنید."; return; }
+ el("sandbox-run").disabled=true;
+ output.textContent="در حال ثبت وظیفهٔ sandbox…";
+ try {
+  const queued=await api("/api/sandbox/run",{method:"POST",body:JSON.stringify({
+   source_code:source,
+   timeout_seconds:Number(el("sandbox-timeout").value),
+   max_output_bytes:Number(el("sandbox-output-limit").value)
+  })});
+  const task=queued.task;
+  output.textContent="وظیفهٔ #"+task.id+" ثبت شد؛ وضعیت: "+task.status;
+  for(let attempt=0;attempt<180;attempt++) {
+   await new Promise(resolve=>setTimeout(resolve,1000));
+   const current=await api("/api/tasks/"+task.id);
+   output.textContent=JSON.stringify({
+    id:current.id,status:current.status,attempts:current.attempts,
+    result:current.result,error:current.error,checkpoint:current.checkpoint
+   },null,2);
+   if(["succeeded","failed","cancelled","paused"].includes(current.status)) break;
+  }
+ } catch(error) {
+  output.textContent="اجرای sandbox ثبت یا پیگیری نشد: "+error.message;
+ } finally {
+  await refreshSandbox();
+ }
+});
 refresh();
 refreshCloudResources();
 refreshKaggleQuota();
