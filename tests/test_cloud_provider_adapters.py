@@ -112,5 +112,9 @@ def test_generic_adapter_remains_fallback_for_other_github_sources():
         source_url="https://github.com/other/project/blob/main/README.md",
     )
 
-    assert {claim.claim_type for claim in claims} == {"cpu_count", "memory_capacity"}
+    assert {claim.claim_type for claim in claims} == {
+        "cpu_count",
+        "memory_capacity",
+        "free_tier_mention",
+    }
     assert all(claim.adapter_id == "generic-public-page-regex-v1" for claim in claims)
