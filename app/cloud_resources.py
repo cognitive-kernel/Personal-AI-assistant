@@ -35,6 +35,14 @@ class CloudResourceError(RuntimeError):
     """Raised when cloud-resource discovery storage or input is invalid."""
 
 
+class CloudResourceNotFoundError(CloudResourceError):
+    """Raised when a review targets a missing candidate."""
+
+
+class CloudResourceConflictError(CloudResourceError):
+    """Raised when evidence changed or is too stale to review safely."""
+
+
 def _connect() -> sqlite3.Connection:
     target = Path(defaults.cloud_resources_db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -204,16 +212,30 @@ def discover_resources(
                            discovery_query=excluded.discovery_query,
                            review_status=CASE
                                WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                                AND cloud_resource_candidates.reviewed_content_sha256=cloud_resource_candidates.content_sha256
                                THEN cloud_resource_candidates.review_status ELSE 'unreviewed' END,
                            availability_status=CASE
                                WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                                AND cloud_resource_candidates.reviewed_content_sha256=cloud_resource_candidates.content_sha256
+                                AND cloud_resource_candidates.freshness_status!='stale'
                                THEN cloud_resource_candidates.availability_status ELSE 'unknown' END,
                            quota_json=CASE
                                WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                                AND cloud_resource_candidates.reviewed_content_sha256=cloud_resource_candidates.content_sha256
                                THEN cloud_resource_candidates.quota_json ELSE '{}' END,
                            terms_url=CASE
                                WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                                AND cloud_resource_candidates.reviewed_content_sha256=cloud_resource_candidates.content_sha256
                                THEN cloud_resource_candidates.terms_url ELSE NULL END,
+                           reviewed_at=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                                AND cloud_resource_candidates.reviewed_content_sha256=cloud_resource_candidates.content_sha256
+                               THEN cloud_resource_candidates.reviewed_at ELSE NULL END,
+                           reviewed_content_sha256=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                                AND cloud_resource_candidates.reviewed_content_sha256=cloud_resource_candidates.content_sha256
+                               THEN cloud_resource_candidates.reviewed_content_sha256 ELSE NULL END,
+                           freshness_status='fresh',
                            last_seen_at=CURRENT_TIMESTAMP,
                            updated_at=CURRENT_TIMESTAMP""",
                     (
@@ -268,23 +290,118 @@ def discover_resources(
     }
 
 
+def _mark_stale_candidates(connection: sqlite3.Connection, *, max_age_days: int) -> int:
+    if isinstance(max_age_days, bool) or not isinstance(max_age_days, int) or not 1 <= max_age_days <= 3650:
+        raise ValueError("max_age_days must be between 1 and 3650.")
+    cursor = connection.execute(
+        """UPDATE cloud_resource_candidates
+           SET freshness_status='stale', availability_status='unknown',
+               updated_at=CURRENT_TIMESTAMP
+           WHERE last_seen_at < datetime('now', ?)
+             AND freshness_status != 'stale'""",
+        (f"-{max_age_days} days",),
+    )
+    return max(0, int(cursor.rowcount))
+
+
+def mark_stale_candidates(*, max_age_days: int = 30) -> int:
+    """Mark old source observations stale and clear availability claims."""
+    initialize_store()
+    with closing(_connect()) as connection:
+        changed = _mark_stale_candidates(connection, max_age_days=max_age_days)
+        connection.commit()
+    return changed
+
+
+def _serialize_candidate(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+    item = dict(row)
+    item["resource_signals"] = json.loads(item.pop("resource_signals_json"))
+    item["quota"] = json.loads(item.pop("quota_json"))
+    return item
+
+
 def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500.")
     initialize_store()
     with closing(_connect()) as connection:
+        _mark_stale_candidates(connection, max_age_days=30)
         rows = connection.execute(
             """SELECT * FROM cloud_resource_candidates
                ORDER BY last_seen_at DESC, id DESC LIMIT ?""",
             (limit,),
         ).fetchall()
-    results = []
-    for row in rows:
-        item = dict(row)
-        item["resource_signals"] = json.loads(item.pop("resource_signals_json"))
-        item["quota"] = json.loads(item.pop("quota_json"))
-        results.append(item)
-    return results
+        connection.commit()
+    return [_serialize_candidate(row) for row in rows]
+
+
+def review_candidate(
+    candidate_id: int,
+    *,
+    expected_content_sha256: str,
+    review_status: str,
+    availability_status: str = "unknown",
+    quota: dict[str, Any] | None = None,
+    terms_url: str | None = None,
+) -> dict[str, Any]:
+    """Review current evidence using an optimistic hash check; stale content cannot be approved."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise ValueError("candidate_id must be a positive integer.")
+    if not isinstance(expected_content_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", expected_content_sha256
+    ):
+        raise ValueError("expected_content_sha256 must be a lowercase SHA-256 digest.")
+    if review_status not in {"approved", "rejected"}:
+        raise ValueError("review_status must be approved or rejected.")
+    if availability_status not in {"unknown", "available", "unavailable", "requires_auth"}:
+        raise ValueError("availability_status is invalid.")
+    if quota is None:
+        quota = {}
+    if not isinstance(quota, dict):
+        raise ValueError("quota must be a JSON object.")
+    try:
+        quota_json = json.dumps(quota, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("quota must contain only finite JSON values.") from exc
+    normalized_terms_url = None
+    if terms_url is not None:
+        normalized_terms_url, _ = _normalize_source_url(terms_url)
+    if review_status == "approved" and not normalized_terms_url:
+        raise ValueError("An HTTPS terms_url is required to approve a provider candidate.")
+
+    initialize_store()
+    with closing(_connect()) as connection:
+        _mark_stale_candidates(connection, max_age_days=30)
+        row = connection.execute(
+            "SELECT * FROM cloud_resource_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if row is None:
+            raise CloudResourceNotFoundError(f"Cloud resource candidate {candidate_id} does not exist.")
+        if row["content_sha256"] != expected_content_sha256:
+            raise CloudResourceConflictError("Source content changed; refresh the candidate before reviewing.")
+        if row["freshness_status"] != "fresh":
+            raise CloudResourceConflictError("Candidate evidence is stale; run discovery again before reviewing.")
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET review_status=?, availability_status=?, quota_json=?, terms_url=?,
+                   reviewed_at=CURRENT_TIMESTAMP, reviewed_content_sha256=content_sha256,
+                   freshness_status='fresh', updated_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
+            (
+                review_status,
+                availability_status,
+                quota_json,
+                normalized_terms_url,
+                candidate_id,
+            ),
+        )
+        updated = connection.execute(
+            "SELECT * FROM cloud_resource_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        connection.commit()
+    return _serialize_candidate(updated)
 
 
 def latest_discovery_run() -> dict[str, Any] | None:
