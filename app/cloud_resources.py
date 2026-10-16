@@ -604,14 +604,20 @@ def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
     plan_version = plan.get("plan_version")
     status = plan.get("status")
     requirements = plan.get("requirements")
+    limitations = plan.get("limitations", [])
     decisions = plan.get("candidates")
     selected_id = plan.get("selected_candidate_id")
     if plan_version != "provider-neutral-selection-v1":
         raise CloudResourceError("Resource selection plan version is unsupported.")
     if status not in {"candidate_found", "no_eligible_candidate"}:
         raise CloudResourceError("Resource selection plan status is invalid.")
-    if not isinstance(requirements, dict) or not isinstance(decisions, list):
-        raise CloudResourceError("Resource selection plan requirements or decisions are invalid.")
+    if (
+        not isinstance(requirements, dict)
+        or not isinstance(limitations, list)
+        or any(not isinstance(item, str) for item in limitations)
+        or not isinstance(decisions, list)
+    ):
+        raise CloudResourceError("Resource selection plan requirements, limitations, or decisions are invalid.")
     if plan.get("execution_authorized") is not False or plan.get("remote_execution_enabled") is not False:
         raise CloudResourceError("A dry-run plan cannot authorize remote execution.")
     if selected_id is not None and (
@@ -623,17 +629,20 @@ def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
         requirements_json = json.dumps(
             requirements, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
         )
+        limitations_json = json.dumps(
+            limitations, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        )
     except (TypeError, ValueError) as exc:
-        raise CloudResourceError("Plan requirements are not safe JSON data.") from exc
+        raise CloudResourceError("Plan requirements or limitations are not safe JSON data.") from exc
 
     with closing(_connect()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         cursor = connection.execute(
             """INSERT INTO cloud_resource_selection_plans(
-                   plan_version, requirements_json, status, selected_candidate_id,
+                   plan_version, requirements_json, limitations_json, status, selected_candidate_id,
                    execution_authorized, remote_execution_enabled
-               ) VALUES (?, ?, ?, ?, 0, 0)""",
-            (plan_version, requirements_json, status, selected_id),
+               ) VALUES (?, ?, ?, ?, ?, 0, 0)""",
+            (plan_version, requirements_json, limitations_json, status, selected_id),
         )
         plan_id = int(cursor.lastrowid)
         for decision in decisions:
@@ -694,7 +703,7 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
         raise ValueError("plan_id must be a positive integer.")
     with closing(_connect()) as connection:
         row = connection.execute(
-            """SELECT id, plan_version, requirements_json, status, selected_candidate_id,
+            """SELECT id, plan_version, requirements_json, limitations_json, status, selected_candidate_id,
                       execution_authorized, remote_execution_enabled, created_at
                FROM cloud_resource_selection_plans WHERE id=?""",
             (plan_id,),
@@ -712,6 +721,7 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
         "plan_id": int(row["id"]),
         "plan_version": row["plan_version"],
         "requirements": json.loads(row["requirements_json"]),
+        "limitations": json.loads(row["limitations_json"]),
         "status": row["status"],
         "selected_candidate_id": row["selected_candidate_id"],
         "execution_authorized": False,
