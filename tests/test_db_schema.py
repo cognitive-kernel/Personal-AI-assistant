@@ -55,6 +55,8 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         "knowledge_items",
         "assessment_attempts",
         "assessment_semantic_reviews",
+        "learning_review_schedule",
+        "learning_review_events",
         "lesson_reviews",
         "learning_paths",
         "learning_path_topics",
@@ -134,3 +136,40 @@ def test_database_initialization_is_idempotent_and_preserves_user_settings(
     assert db.get_settings()["ollama_model"] == "user-selected-model"
     with db.learning_connection() as conn:
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+
+def test_spaced_repetition_history_cascades_when_topic_is_deleted(tmp_path, monkeypatch):
+    _init_stores(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        path_id = conn.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES (?, ?)",
+            ("review-test", "Review test"),
+        ).lastrowid
+        topic_id = conn.execute(
+            "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, 1)",
+            (path_id, "Spaced repetition topic"),
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO learning_review_schedule(
+                   topic_id, repetitions, interval_days, ease_factor, due_at,
+                   last_reviewed_at, last_rating, updated_at
+               ) VALUES (?, 1, 6, 2.5, '2026-10-17T00:00:00Z',
+                         '2026-10-16T00:00:00Z', 4, '2026-10-16T00:00:00Z')""",
+            (topic_id,),
+        )
+        conn.execute(
+            """INSERT INTO learning_review_events(
+                   topic_id, rating, previous_interval_days, interval_days,
+                   previous_ease_factor, ease_factor, repetitions, due_at, reviewed_at
+               ) VALUES (?, 4, 0, 6, 2.5, 2.5, 1,
+                         '2026-10-17T00:00:00Z', '2026-10-16T00:00:00Z')""",
+            (topic_id,),
+        )
+        conn.execute("DELETE FROM learning_path_topics WHERE id=?", (topic_id,))
+        assert conn.execute(
+            "SELECT COUNT(*) FROM learning_review_schedule WHERE topic_id=?", (topic_id,)
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM learning_review_events WHERE topic_id=?", (topic_id,)
+        ).fetchone()[0] == 0
