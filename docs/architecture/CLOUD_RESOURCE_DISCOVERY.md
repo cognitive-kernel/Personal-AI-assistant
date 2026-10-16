@@ -53,3 +53,10 @@ After 30 days without re-observation, `freshness_status` becomes `stale` and `av
 ## Extracted claims are not verified limits
 
 The generic adapter uses bounded regular expressions against the page title and normalized text. Each output claim includes a type, parsed value/unit, exact matched quote, adapter identifier, source content hash, extraction time, and an independent `review_status=unreviewed`. A missing match means “not extracted,” not “zero” or “unlimited.” A match proves only that the page text contains the quoted phrase; it does not prove that the offer is current, applicable to this account/region, or permitted for unattended workloads. The UI labels these claims as unverified. Each claim can be accepted or rejected independently; acceptance is blocked until the parent source is approved and does not imply that the provider is eligible for remote execution.
+
+
+## Preflight eligibility assessment
+
+`app/cloud_resource_policy.py` evaluates a candidate using explicit blockers and review-needed reasons. The current policy is deliberately strict: current source hash must be approved, evidence must be fresh, availability must be marked available, an HTTPS terms URL must exist, capacity/limit/free-tier claims must be accepted, `quota.max_cost_usd` must be numeric zero, and no positive price-rate claim may be accepted.
+
+The highest possible result is `ready_for_provider_adapter`, not `eligible`. Every assessment includes `execution_authorized=false`. A provider-specific adapter must still enforce the terms, region, authentication, quotas, expiry, session limits, and zero-spend boundary before any remote work is considered. This assessment is a preflight checklist, not a guarantee that a provider will not charge or revoke access.

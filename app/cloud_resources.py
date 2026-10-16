@@ -18,6 +18,7 @@ from urllib.parse import urlparse, urlunparse
 
 from .config import defaults
 from .cloud_provider_adapters import extract_resource_claims
+from .cloud_resource_policy import assess_candidate
 from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
 
@@ -397,6 +398,7 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
                 claim_item = dict(claim)
                 claim_item["value"] = json.loads(claim_item.pop("value_json"))
                 item["observed_claims"].append(claim_item)
+            item["eligibility_assessment"] = assess_candidate(item, item["observed_claims"])
             results.append(item)
         connection.commit()
     return results
