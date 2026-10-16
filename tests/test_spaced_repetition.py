@@ -79,3 +79,20 @@ def test_spaced_repetition_requires_topic_to_belong_to_path(tmp_path, monkeypatc
     path_id, topic_id = _setup(tmp_path, monkeypatch)
     with pytest.raises(KeyError):
         spaced_repetition.record_review(path_id + 1, topic_id, 4)
+
+
+
+def test_learning_ui_exposes_spaced_repetition_controls():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
+        encoding="utf-8"
+    )
+    index = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="refresh-due-reviews"' in index
+    assert "نمایش مرورهای سررسیدشده" in index
+    assert "ثبت مرور و زمان‌بندی بعدی" in page
+    assert '"/api/learning/reviews/due?limit=100"' in page
+    assert '"/api/learning/paths/" + path.id + "/topics/" + topic.id + "/reviews"' in page
