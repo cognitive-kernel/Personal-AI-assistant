@@ -217,6 +217,30 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_experience_embeddings_model ON learning_experience_embeddings(model, experience_version)",
         ),
     ),
+    Migration(
+        7,
+        "chat-research-audit-metadata",
+        (
+            """CREATE TABLE IF NOT EXISTS chat_research_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query_sha256 TEXT NOT NULL CHECK(length(query_sha256) = 64),
+                answer_sha256 TEXT NOT NULL CHECK(length(answer_sha256) = 64),
+                route TEXT NOT NULL CHECK(route IN ('technical_research')),
+                source_count INTEGER NOT NULL CHECK(source_count >= 0),
+                sources_json TEXT NOT NULL DEFAULT '[]',
+                review_status TEXT NOT NULL CHECK(review_status IN (
+                    'no_sources','passed_model_assisted','passed_model_assisted_after_repair',
+                    'needs_review','review_unavailable','generation_failed'
+                )),
+                review_summary_json TEXT,
+                memory_refs_json TEXT NOT NULL DEFAULT '[]',
+                duration_ms INTEGER NOT NULL CHECK(duration_ms >= 0),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_chat_research_runs_created ON chat_research_runs(created_at DESC, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_chat_research_runs_review ON chat_research_runs(review_status, created_at DESC)",
+        ),
+    ),
 )
 
 

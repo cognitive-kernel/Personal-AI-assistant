@@ -752,5 +752,29 @@
 - [x] پاسخ با دستورالعمل URL دقیق تولید می‌شود، با claim reviewer بررسی می‌شود و حداکثر یک بار اصلاح می‌شود؛ اگر منبع/بازبین در دسترس نباشد یا بررسی نهایی شکست بخورد، پاسخ همراه یادداشت عدم‌قطعیت برمی‌گردد.
 - [x] مسیر chat در `app/main.py` به research loop وصل شد؛ تست‌ها routing، system prompt، context حافظه، نبود منبع، repair محدود و fallback را پوشش می‌دهند.
 - [x] محدودیت‌ها در `docs/architecture/RESEARCH_AWARE_CHAT.md` ثبت شدند.
-- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] **PR #122** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/122)، commit `c7c8d9ad68d3e0b0c9a2767f73443bfa346f7cf8`.
+- [x] CI روی head دقیق `93e11572e0a44b060fc7096ff767974d61eb7bf6` موفق بود؛ run [#38840184548](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840184548)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 235 passed.
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** ثبت audit پایدار برای پاسخ‌های پژوهشی و منابع استفاده‌شده، سپس ساخت مجموعهٔ ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR.
+
+
+## 51. 2026-10-16 — audit محلی و حریم‌خصوصی برای پاسخ‌های پژوهشی
+
+- [x] migration نسخهٔ 7 جدول `chat_research_runs` و ایندکس‌های زمان/status را اضافه می‌کند.
+- [x] `app/chat_audit.py` فقط hash پرس‌وجو/پاسخ، URL و عنوان منبع، hash متن منبع، طول excerpt، خلاصهٔ verdictها، ارجاع ID/نسخهٔ تجربه و زمان اجرا را ذخیره می‌کند؛ متن خام پرس‌وجو، پاسخ و excerpt ذخیره نمی‌شوند.
+- [x] مسیر research chat برای موفقیت، نبود منبع، عدم دسترسی به reviewer، نیاز به بررسی بیشتر و شکست تولید، رویداد audit ثبت می‌کند؛ خطای ذخیرهٔ audit پاسخ کاربر را از کار نمی‌اندازد.
+- [x] تست‌ها نبود دادهٔ خام در audit، hashهای صحیح، حذف مقصد HTTP نامعتبر، محدودیت status و ثبت memory refs را بررسی می‌کنند.
+- [x] راهنمای research-aware chat و migration runner به‌روز شد.
+- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** پس از ادغام، ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.
+
+
+## 51. 2026-10-16 — audit محلی و حریم‌خصوصی برای پاسخ‌های پژوهشی
+
+- [x] migration نسخهٔ 7 جدول `chat_research_runs` و ایندکس‌های زمان/status را اضافه می‌کند.
+- [x] `app/chat_audit.py` فقط hash پرس‌وجو/پاسخ، URL و عنوان منبع، hash متن منبع، طول excerpt، خلاصهٔ verdictها، ارجاع ID/نسخهٔ تجربه و زمان اجرا را ذخیره می‌کند؛ متن خام پرس‌وجو، پاسخ و excerpt ذخیره نمی‌شوند.
+- [x] مسیر research chat برای موفقیت، نبود منبع، عدم دسترسی به reviewer، نیاز به بررسی بیشتر و شکست تولید، رویداد audit ثبت می‌کند؛ خطای ذخیرهٔ audit پاسخ کاربر را از کار نمی‌اندازد.
+- [x] تست‌ها نبود دادهٔ خام در audit، hashهای صحیح، حذف مقصد HTTP نامعتبر، محدودیت status، ثبت memory refs و اتصال مسیر chat به audit را بررسی می‌کنند.
+- [x] راهنمای research-aware chat و migration runner به‌روز شد.
+- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** پس از ادغام، ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.

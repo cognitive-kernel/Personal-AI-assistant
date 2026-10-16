@@ -1,6 +1,13 @@
 import json
 
+import pytest
+
 from app import chat_research, main, ollama, web_sources
+
+
+@pytest.fixture(autouse=True)
+def _avoid_chat_audit_side_effects(monkeypatch):
+    monkeypatch.setattr(chat_research.chat_audit, "record_research_run", lambda **_kwargs: 1)
 
 
 def _source():
