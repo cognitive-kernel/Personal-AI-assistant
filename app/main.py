@@ -408,7 +408,8 @@ def get_learning_assessment_review(job_id: int, attempt_id: int) -> dict[str, An
     dependencies=[Depends(require_loopback_client)],
 )
 def list_due_learning_reviews(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
-    return {"items": spaced_repetition.list_due_reviews(limit), "count": len(spaced_repetition.list_due_reviews(limit))}
+    items = spaced_repetition.list_due_reviews(limit)
+    return {"items": items, "count": len(items)}
 
 
 @app.post(
