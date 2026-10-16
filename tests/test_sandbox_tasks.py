@@ -179,3 +179,39 @@ def test_revoking_consent_stops_running_sandbox_and_records_checkpoint(
     assert context.checkpoints[-1]["source_sha256"] == hashlib.sha256(
         b"print('long task')"
     ).hexdigest()
+
+
+
+def test_terminal_container_cleanup_uses_only_durable_terminal_task_ids(
+    monkeypatch, tmp_path
+):
+    _configure(monkeypatch, tmp_path)
+    captured = {}
+
+    monkeypatch.setattr(sandbox_tasks.task_manager, "list_terminal_task_ids", lambda *, limit: [12, 18])
+
+    def fake_cleanup(**kwargs):
+        captured.update(kwargs)
+        return sandbox_tasks.sandbox.SandboxCleanupResult((), 2, ())
+
+    monkeypatch.setattr(sandbox_tasks.sandbox, "cleanup_orphaned_containers", fake_cleanup)
+    sandbox_tasks.cleanup_terminal_containers()
+
+    assert captured["terminal_task_ids"] == {12, 18}
+    assert captured["min_age_seconds"] == 60
+
+
+def test_terminal_container_cleanup_is_disabled_when_sandbox_is_off(
+    monkeypatch, tmp_path
+):
+    executable = _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv("SANDBOX_ENABLED", "false")
+    called = []
+    monkeypatch.setattr(
+        sandbox_tasks.sandbox, "cleanup_orphaned_containers",
+        lambda **kwargs: called.append(kwargs),
+    )
+
+    sandbox_tasks.cleanup_terminal_containers()
+    assert executable.is_file()
+    assert called == []
