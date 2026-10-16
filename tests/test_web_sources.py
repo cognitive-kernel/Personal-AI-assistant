@@ -23,6 +23,8 @@ def test_search_result_parser_extracts_duckduckgo_redirect_target():
         "http://user:secret@example.org/",
         "file:///etc/passwd",
         "https://example.org:8443/",
+        "https://kaggle.com/docs/notebooks",
+        "https://www.kaggle.com/code/example/notebook",
     ],
 )
 def test_url_validation_blocks_private_or_unsupported_destinations(url):
@@ -117,3 +119,13 @@ def test_web_discovery_failure_is_recorded_without_blocking_model_fallback(
     assert content == ""
     assert source_kind == "model_knowledge_no_external_source"
     assert any(item["evidence_type"] == "web_search" for item in saved["evidence"])
+
+
+
+def test_official_kaggle_cli_docs_are_not_blocked_by_kaggle_page_fetch_policy():
+    # The official CLI docs are hosted on GitHub; the block is for fetching
+    # Kaggle's own web properties, not for the provider's published source code.
+    parsed = web_sources._validate_public_url(
+        "https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md"
+    )
+    assert parsed.hostname == "github.com"
