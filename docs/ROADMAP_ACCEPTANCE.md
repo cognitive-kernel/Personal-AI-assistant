@@ -8,7 +8,7 @@ This document records repository-level evidence and the remaining acceptance gat
 
 | Stage | Status | Evidence and remaining gate |
 |---|---|---|
-| Repository audit and baseline | Partial | A redacted target-host baseline tool now records commit/runtime, read-only SQLite health, and optional full pytest counts. The tool still must be run on the actual target host; complete checkout and dependency/supply-chain audit remain. |
+| Repository audit and baseline | Partial | A redacted target-host baseline tool now records commit/runtime, read-only SQLite health, and optional full pytest counts. The tool still must be run on the actual target host; complete checkout and broader supply-chain audit remain; a scheduled `pip-audit` workflow now checks the resolved Python environment on pull requests, main pushes, and weekly. |
 | Module boundaries and contracts | Partial | Functional modules and route boundaries exist. A full dependency-cycle review and architecture-level refactor have not been accepted as complete. |
 | Persistent task execution | Implemented with bounded evidence | SQLite queue, leases, checkpoints, cancellation, recovery, thread-race tests, and a six-process independent-connection claim test are covered in CI. Target-host crash/restart, storage fault injection, sustained load, and recovery across every task type remain. |
 | Research and learning | Implemented with limitations | Source-backed research, provenance, source-conflict reporting, local quality diagnostics, learning paths, recommendations, spaced review, and advisory semantic review exist. Live Ollama runs and human adjudication on a versioned evaluation set remain necessary before claiming knowledge quality. |
