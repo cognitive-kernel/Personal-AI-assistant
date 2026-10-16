@@ -198,7 +198,7 @@ def test_real_container_syntax_checks_workspace_without_executing_candidate(sand
         image=image,
         timeout_seconds=30,
     )
-    assert result.status == "succeeded", result.stderr
+    assert result.status == "succeeded", result.stdout + result.stderr
     report = json.loads(result.stdout.strip().splitlines()[-1])
     assert report == {"status": "passed", "files_checked": 2}
     assert not marker.exists()
