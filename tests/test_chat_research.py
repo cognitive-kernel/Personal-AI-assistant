@@ -281,7 +281,7 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
         lambda _question, _answer, _sources, *, status: captured.update(status=status),
     )
 
-    reply = chat_research.answer("How does this technical feature behave by default?")
+    reply = chat_research.answer("How do SQL Server query plans behave by default?")
 
     assert "Retrieved sources materially disagree" in reply
     assert source.url in reply
