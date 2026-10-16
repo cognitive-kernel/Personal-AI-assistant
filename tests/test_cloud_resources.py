@@ -5,8 +5,11 @@ import json
 import sqlite3
 from datetime import datetime
 
+import pytest
+
 from app import cloud_resources, db, task_manager, web_sources
-from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS
+from app.schema_migrations import MigrationRunner
+from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 
 
 def _configure_paths(tmp_path, monkeypatch):
@@ -44,7 +47,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs"} <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 2
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -72,6 +75,8 @@ def test_discovery_persists_provenance_and_keeps_candidates_unreviewed(
     assert len(candidate["content_sha256"]) == 64
     assert candidate["review_status"] == "unreviewed"
     assert candidate["availability_status"] == "unknown"
+    assert candidate["freshness_status"] == "fresh"
+    assert candidate["reviewed_content_sha256"] is None
     assert candidate["quota"] == {}
     assert "gpu_or_accelerator_mentioned" in candidate["resource_signals"]
     assert "free_tier_or_credits_mentioned" in candidate["resource_signals"]
@@ -96,7 +101,8 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
         connection.execute(
             """UPDATE cloud_resource_candidates
                SET review_status='approved', availability_status='available',
-                   quota_json=?, terms_url=? WHERE source_url=?""",
+                   quota_json=?, terms_url=?, reviewed_at=CURRENT_TIMESTAMP,
+                   reviewed_content_sha256=content_sha256 WHERE source_url=?""",
             (json.dumps({"cpu": "2 vCPU"}), "https://compute.example.org/terms", first.url),
         )
         connection.commit()
@@ -122,6 +128,8 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
     assert candidate["availability_status"] == "unknown"
     assert candidate["quota"] == {}
     assert candidate["terms_url"] is None
+    assert candidate["reviewed_at"] is None
+    assert candidate["reviewed_content_sha256"] is None
 
 
 def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeypatch):
@@ -203,3 +211,109 @@ def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
         from app.schema_migrations import MigrationRunner
         assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 1
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+
+def test_review_candidate_requires_current_hash_and_https_terms(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+
+    reviewed = cloud_resources.review_candidate(
+        candidate["id"],
+        expected_content_sha256=candidate["content_sha256"],
+        review_status="approved",
+        availability_status="available",
+        quota={"cpu": "2 vCPU", "hours_per_month": 100},
+        terms_url="https://compute.example.org/terms",
+    )
+    assert reviewed["review_status"] == "approved"
+    assert reviewed["availability_status"] == "available"
+    assert reviewed["reviewed_content_sha256"] == candidate["content_sha256"]
+    assert reviewed["reviewed_at"]
+    assert reviewed["quota"] == {"cpu": "2 vCPU", "hours_per_month": 100}
+
+    with pytest.raises(cloud_resources.CloudResourceConflictError, match="content changed"):
+        cloud_resources.review_candidate(
+            candidate["id"],
+            expected_content_sha256="0" * 64,
+            review_status="approved",
+            availability_status="available",
+            terms_url="https://compute.example.org/terms",
+        )
+    with pytest.raises(cloud_resources.CloudResourceError, match="HTTPS"):
+        cloud_resources.review_candidate(
+            candidate["id"],
+            expected_content_sha256=candidate["content_sha256"],
+            review_status="approved",
+            availability_status="available",
+            terms_url="http://compute.example.org/terms",
+        )
+
+
+def test_stale_candidate_loses_availability_and_cannot_be_reviewed(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [_document()]
+    )
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET review_status='approved', availability_status='available',
+                   reviewed_at=CURRENT_TIMESTAMP, reviewed_content_sha256=content_sha256,
+                   last_seen_at=datetime('now', '-31 days')
+               WHERE id=?""",
+            (candidate["id"],),
+        )
+        connection.commit()
+
+    assert cloud_resources.mark_stale_candidates(max_age_days=30) == 1
+    stale = cloud_resources.list_candidates()[0]
+    assert stale["freshness_status"] == "stale"
+    assert stale["availability_status"] == "unknown"
+    with pytest.raises(cloud_resources.CloudResourceConflictError, match="stale"):
+        cloud_resources.review_candidate(
+            stale["id"],
+            expected_content_sha256=stale["content_sha256"],
+            review_status="approved",
+            availability_status="available",
+            terms_url="https://compute.example.org/terms",
+        )
+
+
+def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path, monkeypatch):
+    path = tmp_path / "legacy-cloud.db"
+    with sqlite3.connect(path) as connection:
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS[:1]).apply(connection) == 1
+        connection.execute(
+            """INSERT INTO cloud_resource_candidates(
+                   source_url, provider_domain, title, content_sha256,
+                   review_status, availability_status, quota_json, terms_url, discovery_query
+               ) VALUES (?, ?, ?, ?, 'approved', 'available', ?, ?, ?)""",
+            (
+                "https://compute.example.org/free",
+                "compute.example.org",
+                "Free compute",
+                "a" * 64,
+                json.dumps({"cpu": "2 vCPU"}),
+                "https://compute.example.org/terms",
+                "free compute",
+            ),
+        )
+        connection.commit()
+
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 2
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            """SELECT review_status, availability_status, quota_json, terms_url,
+                      freshness_status, reviewed_content_sha256
+               FROM cloud_resource_candidates WHERE source_url=?""",
+            ("https://compute.example.org/free",),
+        ).fetchone()
+    assert row == ("unreviewed", "unknown", "{}", None, "fresh", None)
