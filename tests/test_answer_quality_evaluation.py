@@ -5,7 +5,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app import db
+from app import db, ollama
 from app.answer_quality_evaluation import evaluate_answer_surface, summarize_surface_results
 from app.db import learning_connection
 from scripts.run_answer_quality_eval import run_evaluation
@@ -73,6 +73,14 @@ def test_runner_reports_failures_and_metadata_without_claiming_quality(tmp_path,
     dataset = tmp_path / "cases.jsonl"
     dataset.write_text("{}\n", encoding="utf-8")
     cases = [_case("en"), _case("fa")]
+    model_digest = "sha256:" + "b" * 64
+    monkeypatch.setattr(ollama, "list_models", lambda: [{
+        "name": "default-model",
+        "size": 123,
+        "modified_at": "2026-10-16T00:00:00Z",
+        "digest": model_digest,
+    }])
+    db.update_settings({"ollama_model": "default-model"})
 
     def answer(prompt):
         if prompt == "پرسش آزمایشی":
@@ -92,5 +100,6 @@ def test_runner_reports_failures_and_metadata_without_claiming_quality(tmp_path,
     assert report["results"][1]["generation_status"] == "failed"
     assert report["dataset_sha256"]
     assert report["prompt_code_sha256"]["chat_research.py"]
+    assert report["model"]["manifest_digest"] == model_digest
     assert report["surface_diagnostics"]["case_count"] == 1
     assert "not establish factual correctness" in report["interpretation"]

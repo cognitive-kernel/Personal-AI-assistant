@@ -30,7 +30,7 @@ For a report without raw model answers:
 python scripts/run_answer_quality_eval.py --output reports/answer-quality-v1-redacted.json --redact-answers
 ```
 
-The runner uses an isolated temporary SQLite database so it does not add evaluation runs or memory records to the normal application databases. It executes the normal research pipeline, records the dataset hash, code commit when available, hashes of the research/review prompt modules, configured model name and local inventory metadata, plus per-case source URL/title/excerpt hashes from the privacy-preserving audit table. Live web retrieval is not fully replayable, and Ollama's tags endpoint does not provide a cryptographic model digest; the report explicitly records these limits.
+The runner uses an isolated temporary SQLite database so it does not add evaluation runs or memory records to the normal application databases. It executes the normal research pipeline, records the dataset hash, code commit when available, hashes of the research/review prompt modules, configured model name and local inventory metadata, plus per-case source URL/title/excerpt hashes from the privacy-preserving audit table. Live web retrieval is not fully replayable. The report records the Ollama model manifest digest when the local tags endpoint supplies one; if absent, it records the limitation and falls back to name/size/modified time, which is not an immutable model pin.
 
 The output includes raw answers by default to support human adjudication; treat the report as potentially sensitive and do not publish it without review. `--redact-answers` omits answer text. Per-case generation failures are recorded and make the run `incomplete`.
 

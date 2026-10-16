@@ -134,8 +134,12 @@ def run_evaluation(
         "model": {
             "configured_name": model_name,
             "matching_local_inventory_entry": matching_model,
+            "manifest_digest": matching_model.get("digest") if isinstance(matching_model, dict) else None,
             "inventory_error": model_inventory_error,
-            "warning": "Ollama tags expose name/size/modified time, not a cryptographic model digest; this is not an immutable model pin.",
+            "warning": (
+                None if isinstance(matching_model, dict) and matching_model.get("digest")
+                else "No model manifest digest was available; name/size/modified time are not an immutable model pin."
+            ),
         },
         "runtime": {
             "pipeline": "app.chat_research.answer",
