@@ -154,3 +154,66 @@ def test_dashboard_exposes_explicit_staging_restore_without_live_cutover():
     assert "بازیابی آزمایشی در پوشهٔ جدا" in page
     assert "دیتابیس‌های زنده تغییر نمی‌کنند" in page
     assert '"/api/storage/backups/"+encodeURIComponent(backupId)+"/restore"' in page
+
+
+
+def test_backup_prune_previews_then_deletes_only_old_backups_beyond_minimum_retention(tmp_path, monkeypatch):
+    import os
+    import time
+
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        backup_ids = []
+        for _ in range(5):
+            response = client.post("/api/storage/backups", json={"confirm": True})
+            assert response.status_code == 201
+            backup_ids.append(response.json()["id"])
+
+        root = tmp_path / "backups"
+        old_time = time.time() - 60 * 86400
+        for backup_id in backup_ids[:2]:
+            path = root / backup_id
+            os.utime(path, (old_time, old_time))
+
+        preview = client.post(
+            "/api/storage/backups/prune",
+            json={"confirm": False, "keep_last": 3, "min_age_days": 30},
+        )
+        assert preview.status_code == 200
+        preview_body = preview.json()
+        assert preview_body["status"] == "preview"
+        assert preview_body["would_delete_count"] == 2
+        assert {item["id"] for item in preview_body["candidates"]} == set(backup_ids[:2])
+        assert all((root / backup_id).is_dir() for backup_id in backup_ids)
+
+        pruned = client.post(
+            "/api/storage/backups/prune",
+            json={"confirm": True, "keep_last": 3, "min_age_days": 30},
+        )
+        assert pruned.status_code == 200
+        body = pruned.json()
+        assert body["status"] == "completed"
+        assert body["deleted_count"] == 2
+        assert set(body["deleted"]) == set(backup_ids[:2])
+        assert all(not (root / backup_id).exists() for backup_id in backup_ids[:2])
+        assert all((root / backup_id).is_dir() for backup_id in backup_ids[2:])
+        assert not (root / "restore-staging").exists()
+
+
+def test_backup_prune_enforces_conservative_minimums_and_loopback_access(tmp_path, monkeypatch):
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        assert client.post(
+            "/api/storage/backups/prune",
+            json={"confirm": True, "keep_last": 2, "min_age_days": 30},
+        ).status_code == 422
+        assert client.post(
+            "/api/storage/backups/prune",
+            json={"confirm": True, "keep_last": 3, "min_age_days": 1},
+        ).status_code == 422
+    with TestClient(app, client=("192.0.2.10", 12345)) as client:
+        response = client.post(
+            "/api/storage/backups/prune",
+            json={"confirm": True, "keep_last": 3, "min_age_days": 30},
+        )
+        assert response.status_code == 403
