@@ -996,6 +996,19 @@
 - [x] `run_python()` اکنون callback کنترل وظیفه را بررسی می‌کند؛ درخواست pause/cancel یا نامعلوم‌شدن وضعیت lease باعث توقف process و بازگرداندن وضعیت مشخص می‌شود.
 - [x] تست‌های قراردادی پوشش pause، cancel و exception در بررسی کنترل را اضافه کردند؛ هیچ Docker واقعی اجرا نشده است.
 - [x] راهنمای sandbox محدودیت و رفتار توقف را ثبت کرد.
-- [ ] هنوز task handler و API اجرای sandbox ثبت نشده‌اند؛ این عمداً جدا نگه داشته شده تا schema ورودی، consent، checkpoint و ثبت شواهد با هم پیاده‌سازی شوند.
+- [x] task handler محدودشده در PR بعدی ساخته می‌شود؛ API اختصاصی ارسال وظیفه و رضایت کاربر هنوز جداگانه لازم است.
 - [x] **PR #143** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/143)، commit ادغام `3c326e7a16d50f8401a225d5391d1941840e36b4`.
 - [x] CI روی head دقیق `56e2f1fe9303f03b5fa39ebd4b833042b191fd08` موفق بود؛ run [#38852560052](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852560052).
+
+
+## 71. 2026-10-16 — handler محدودشده برای اجرای sandbox در صف وظایف
+
+- [x] `app/sandbox_tasks.py` یک handler برای `sandbox.run_python` اضافه می‌کند؛ فقط وقتی `SANDBOX_ENABLED` صریحاً فعال و مسیر مطلق Docker و image رسمی دارای digest معتبر باشند.
+- [x] payload به `source_code`, `timeout_seconds` و `max_output_bytes` محدود است؛ payload نمی‌تواند image یا Docker executable را عوض کند.
+- [x] handler قبل و بعد از اجرا checkpoint ثبت می‌کند؛ hash منبع، image، وضعیت اجرا، exit code و مدت اجرا ثبت می‌شوند، نه متن منبع در checkpoint.
+- [x] کنترل pause/cancel/lease به sandbox منتقل می‌شود؛ اجرای واقعی همچنان فقط در container محدودشده و بدون شبکه انجام می‌شود.
+- [x] `app/main.py` handler را تنها پس از opt-in و اعتبارسنجی پیکربندی به registry اضافه می‌کند؛ در حالت پیش‌فرض sandbox فعال نیست.
+- [x] تست‌های opt-in، پیکربندی نامعتبر، schema ورودی، عدم امکان override کردن image، hash و شواهد checkpoint اضافه شدند.
+- [ ] API اختصاصی loopback برای صف‌کردن اجرای sandbox و ثبت رضایت/رویداد audit هنوز وجود ندارد؛ فعلاً handler از طریق task registry محدودشده است.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** API اختصاصی با schema محدود، consent صریح و audit، سپس آزمون‌های یکپارچگی pause/cancel و crash recovery؛ image digest باید توسط مدیر برای معماری واقعی تأیید و محلی provision شود.
