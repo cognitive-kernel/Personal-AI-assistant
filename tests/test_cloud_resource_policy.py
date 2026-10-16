@@ -99,3 +99,18 @@ def test_policy_rejects_boolean_cost_as_numeric_zero():
 
     assert assessment["status"] == "needs_review"
     assert any("numeric max_cost_usd" in reason for reason in assessment["review_needed"])
+
+
+
+def test_invalid_terms_url_is_a_blocker_not_an_exception():
+    assessment = assess_candidate(
+        _candidate(terms_url="https://[invalid"),
+        [
+            _claim("cpu_count"),
+            _claim("usage_quota"),
+            _claim("free_tier_mention", value="free tier"),
+        ],
+    )
+
+    assert assessment["status"] == "blocked"
+    assert any("terms URL" in reason for reason in assessment["blockers"])
