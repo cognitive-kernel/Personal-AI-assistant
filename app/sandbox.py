@@ -230,6 +230,7 @@ def run_workspace_tests(
         "--workdir=/workspace",
         "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m,uid=65534,gid=65534",
         "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
+        "--env=SETTINGS_DB_PATH=/tmp/settings.db", "--env=LEARNING_DB_PATH=/tmp/learning.db",
         "--env=PYTHONDONTWRITEBYTECODE=1",
         "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
         "--env=PYTEST_ADDOPTS=",
