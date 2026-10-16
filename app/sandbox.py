@@ -134,7 +134,7 @@ def run_python(
         source_path.write_text(source_code, encoding="utf-8", newline="\n")
         try:
             source_path.chmod(0o444)
-            workspace.chmod(0o555)
+            workspace.chmod(0o755)
         except OSError:
             # Docker's read-only bind mount remains the enforced container boundary.
             pass
