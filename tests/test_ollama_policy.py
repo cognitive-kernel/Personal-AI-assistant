@@ -40,6 +40,7 @@ def test_ollama_policy_allows_loopback_http_endpoints(tmp_path, monkeypatch, url
         "http://2130706433:11434",
         "http://0177.0.0.1:11434",
         "http://[::ffff:127.0.0.1]:11434",
+        "http://[::ffff:192.168.1.10]:11434",
     ],
 )
 def test_ollama_policy_rejects_non_loopback_hosts(tmp_path, monkeypatch, url):
