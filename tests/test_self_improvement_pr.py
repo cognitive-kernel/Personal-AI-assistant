@@ -27,9 +27,9 @@ def proposal_repo(tmp_path, monkeypatch):
     (root / "app").mkdir(parents=True)
     (root / "tests").mkdir()
     (root / "docs").mkdir()
-    (root / "app" / "sample.py").write_text("value = 1\\n", encoding="utf-8")
-    (root / "tests" / "test_sample.py").write_text("def test_value():\\n    assert True\\n", encoding="utf-8")
-    (root / "docs" / "design.md").write_text("# Design\\n", encoding="utf-8")
+    (root / "app" / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    (root / "tests" / "test_sample.py").write_text("def test_value():\n    assert True\n", encoding="utf-8")
+    (root / "docs" / "design.md").write_text("# Design\n", encoding="utf-8")
     _git(root, "init", "-q")
     _git(root, "config", "user.name", "Self Improvement Test")
     _git(root, "config", "user.email", "test@example.invalid")
@@ -61,7 +61,7 @@ def _enable_static_check(monkeypatch):
         lambda *args, **kwargs: self_improvement.sandbox.SandboxResult(
             status="succeeded",
             exit_code=0,
-            stdout='{"status":"passed","files_checked":3}\\n',
+            stdout='{"status":"passed","files_checked":3}\n',
             stderr="",
             duration_ms=12,
         ),
@@ -70,12 +70,12 @@ def _enable_static_check(monkeypatch):
 
 def _patch() -> str:
     return (
-        "diff --git a/app/sample.py b/app/sample.py\\n"
-        "--- a/app/sample.py\\n"
-        "+++ b/app/sample.py\\n"
-        "@@ -1 +1 @@\\n"
-        "-value = 1\\n"
-        "+value = 2\\n"
+        "diff --git a/app/sample.py b/app/sample.py\n"
+        "--- a/app/sample.py\n"
+        "+++ b/app/sample.py\n"
+        "@@ -1 +1 @@\n"
+        "-value = 1\n"
+        "+value = 2\n"
     )
 
 
