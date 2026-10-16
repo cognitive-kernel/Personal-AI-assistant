@@ -50,6 +50,30 @@ class ResourcePlanningRequest(BaseModel):
     allowed_provider_domains: list[StrictStr] = Field(default_factory=list, max_length=100)
 
 
+@router.get("/plans")
+def list_resource_selection_plans(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
+    try:
+        return {
+            "plans": cloud_resources.list_resource_selection_plans(limit=limit),
+            "execution_authorized": False,
+            "remote_execution_enabled": False,
+        }
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Resource plan history is unavailable.") from exc
+
+
+@router.get("/plans/{plan_id}")
+def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
+    try:
+        return cloud_resources.get_resource_selection_plan(plan_id)
+    except cloud_resources.CloudResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Resource plan history is unavailable.") from exc
+
+
 @router.post("/plan")
 def plan_cloud_resource_selection(request: ResourcePlanningRequest) -> dict[str, Any]:
     """Return a loopback-only dry-run resource plan; never starts remote execution."""
@@ -65,7 +89,7 @@ def plan_cloud_resource_selection(request: ResourcePlanningRequest) -> dict[str,
                 "allowed_provider_domains": request.allowed_provider_domains,
             },
         )
-        return plan
+        return cloud_resources.save_resource_selection_plan(plan)
     except cloud_resource_planner.ResourcePlanningError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
