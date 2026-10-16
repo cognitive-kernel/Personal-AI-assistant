@@ -371,12 +371,12 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     workspace = tmp_path / "candidate"
     (workspace / "app").mkdir(parents=True)
     (workspace / "tests").mkdir()
-    (workspace / "app" / "sample.py").write_text("value = 1\\n", encoding="utf-8")
-    (workspace / "tests" / "test_sample.py").write_text("def test_value():\\n    assert True\\n", encoding="utf-8")
+    (workspace / "app" / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    (workspace / "tests" / "test_sample.py").write_text("def test_value():\n    assert True\n", encoding="utf-8")
     calls = []
 
     def fake_popen(args, **kwargs):
-        process = FakeProcess(args, stdout=b"5 passed in 0.2s\\n")
+        process = FakeProcess(args, stdout=b"5 passed in 0.2s\n")
         calls.append((args, kwargs, process))
         return process
 
@@ -400,8 +400,8 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert "--pids-limit=128" in args
     assert "--user=65534:65534" in args
     assert "type=bind,source=" + str(workspace.resolve()) + ",target=/workspace,readonly" in args
-    assert args[-3] == image
-    assert args[-2:] == ["python", "-I"] or args[-3:] == [image, "python", "-I", "-c", args[-1]]
+    assert args[-5] == image
+    assert args[-4:-1] == ["python", "-I", "-c"]
     assert "pytest.main" in args[-1]
     assert kwargs["shell"] is False
     assert kwargs["stdin"] == subprocess.DEVNULL
