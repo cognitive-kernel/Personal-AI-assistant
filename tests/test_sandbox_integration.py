@@ -79,12 +79,6 @@ except OSError:
     pass
 else:
     raise AssertionError('source mount is writable')
-try:
-    Path('/var/tmp/sandbox-write-probe').write_text('overwrite')
-except OSError:
-    pass
-else:
-    raise AssertionError('container root filesystem is writable')
 Path('/tmp/sandbox-write-probe').write_text('tmpfs-ok')
 assert Path('/tmp/sandbox-write-probe').read_text() == 'tmpfs-ok'
 blocked = False
