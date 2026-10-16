@@ -1613,3 +1613,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **پیاده‌سازی:** workflow مستقل `.github/workflows/browser-e2e.yml` یک سرور Uvicorn را با سه دیتابیس موقت بالا می‌آورد و Chromium واقعی را با Playwright اجرا می‌کند. آزمون، بارگذاری داشبورد، بخش‌های اصلی، سلامت فقط‌خواندنی هر سه دیتابیس و پیشنهادهای یادگیریِ بدون اقدام خودکار را بررسی می‌کند؛ به مدل زنده نیاز ندارد.
 - **اعتبارسنجی:** PR [#238](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/238) ادغام شد. آزمون مرورگر روی head دقیق `047827731db2403b809233ac494133a944e20af7` در run [#38931355503](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931355503) موفق بود؛ آزمون‌های عادی نیز در run [#38931355494](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931355494) موفق شدند. پس از ادغام، آزمون مرورگر در run [#38931511081](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931511081) و آزمون‌های عادی در run [#38931511291](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38931511291) موفق شدند.
 - **قید:** این یک smoke test محدود است، نه پوشش کامل همهٔ جریان‌های UI، نه آزمون روی ماشین هدف و نه تأیید کیفیت factual مدل. نسخهٔ Playwright در workflow به `1.64.0` pin شده است تا تغییر ناخواستهٔ نسخهٔ مرورگر کاهش یابد.
+
+
+
+## 132. 2026-10-16 — محدودسازی سراسری دسترسی شبکه به loopback
+
+- **مسئله:** برخی endpointهای محلی مانند تنظیمات، وضعیت سلامت و ایجاد کار یادگیری پیش‌تر فقط به host پیش‌فرض loopback تکیه می‌کردند؛ override کردن bind address می‌توانست سطح دسترسی شبکه‌ای ناخواسته ایجاد کند.
+- **تغییر:** middleware سراسری درخواست‌های HTTP از peerهای غیر-loopback را پیش از رسیدن به UI یا API با 403 رد می‌کند. مسیرهای دارای کنترل loopback اختصاصی همچنان همان کنترل‌های خود را حفظ می‌کنند. نام مصنوعی `testclient` فقط برای سازگاری با ASGI TestClient پذیرفته می‌شود؛ peerهای TCP واقعی IP هستند.
+- **آزمون‌ها:** درخواست از IP مستندِ غیر-loopback به صفحهٔ اصلی، سلامت، تنظیمات و کارهای یادگیری رد می‌شود؛ دسترسی loopback و تست درون‌فرایندی حفظ می‌شود.
+- **مرز اعتماد:** این کنترل جایگزین بازبینی مستقل Issue #52 نیست و دسترسی راه‌دور را پشتیبانی نمی‌کند. هر نیاز به دسترسی LAN باید با احراز هویت و بازبینی مستقل طراحی شود.
+- **اعتبارسنجی:** در انتظار CI روی PR.
