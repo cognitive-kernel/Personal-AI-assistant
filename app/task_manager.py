@@ -156,16 +156,25 @@ def list_tasks(*, statuses: list[str] | None = None, limit: int = 100) -> list[d
     return [_task(row) for row in rows]  # type: ignore[misc]
 
 
-def list_terminal_task_ids(*, limit: int = 1000) -> list[int]:
-    """Return recently settled task IDs for bounded cleanup/reconciliation work."""
+def list_terminal_task_ids(
+    *, limit: int = 1000, min_terminal_age_seconds: int = 60
+) -> list[int]:
+    """Return settled task IDs only after a grace period since terminal transition."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
         raise ValueError("limit must be between 1 and 1000.")
+    if (
+        isinstance(min_terminal_age_seconds, bool)
+        or not isinstance(min_terminal_age_seconds, int)
+        or min_terminal_age_seconds < 0
+    ):
+        raise ValueError("min_terminal_age_seconds must be a non-negative integer.")
+    cutoff = _timestamp(_now() - timedelta(seconds=min_terminal_age_seconds))
     with db.learning_connection() as conn:
         rows = conn.execute(
             """SELECT id FROM task_queue
-               WHERE status IN ('succeeded', 'failed', 'cancelled')
+               WHERE status IN ('succeeded', 'failed', 'cancelled') AND updated_at <= ?
                ORDER BY updated_at DESC, id DESC LIMIT ?""",
-            (limit,),
+            (cutoff, limit),
         ).fetchall()
     return [int(row["id"]) for row in rows]
 
