@@ -327,6 +327,21 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_experience_feedback_rating ON learning_experience_feedback(rating, updated_at DESC)",
         ),
     ),
+    Migration(
+        10,
+        "learning-semantic-assessment-reviews",
+        (
+            """CREATE TABLE assessment_semantic_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id INTEGER NOT NULL UNIQUE REFERENCES assessment_attempts(id) ON DELETE CASCADE,
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                model TEXT NOT NULL,
+                review_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_assessment_semantic_reviews_job ON assessment_semantic_reviews(job_id, created_at DESC)",
+        ),
+    ),
 )
 
 

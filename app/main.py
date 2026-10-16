@@ -2,16 +2,16 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-from . import chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, task_manager
+from pydantic import BaseModel, Field, StrictBool
+from . import assessment_review, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
-from .task_routes import router as task_router
+from .task_routes import require_loopback_client, router as task_router
 from .cloud_resource_routes import router as cloud_resource_router
 from .sandbox_routes import router as sandbox_router
 from .experience_routes import router as experience_router
@@ -120,6 +120,12 @@ class LearningRequest(BaseModel):
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
+
+class SemanticAssessmentReviewRequest(BaseModel):
+    confirm: StrictBool
+
+    class Config:
+        extra = "forbid"
 
 class CurriculumEnrollment(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
@@ -354,6 +360,41 @@ def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> di
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/learning/jobs/{job_id}/assessment/{attempt_id}/semantic-review",
+    dependencies=[Depends(require_loopback_client)],
+)
+def review_learning_assessment(
+    job_id: int,
+    attempt_id: int,
+    request: SemanticAssessmentReviewRequest,
+) -> dict[str, Any]:
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit confirmation for model-assisted review is required.")
+    try:
+        return assessment_review.review_assessment_attempt(job_id, attempt_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Assessment attempt not found for this learning job.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (ollama.OllamaError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail="Model-assisted assessment review is unavailable or invalid.") from exc
+
+
+@app.get(
+    "/api/learning/jobs/{job_id}/assessment/{attempt_id}/semantic-review",
+    dependencies=[Depends(require_loopback_client)],
+)
+def get_learning_assessment_review(job_id: int, attempt_id: int) -> dict[str, Any]:
+    try:
+        result = assessment_review.get_assessment_review(job_id, attempt_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if result is None:
+        raise HTTPException(status_code=404, detail="No semantic review is stored for this attempt.")
+    return {"job_id": job_id, "attempt_id": attempt_id, "semantic_review": result}
 
 
 @app.post("/api/learning/jobs/{job_id}/review")
