@@ -202,6 +202,18 @@ def discover_resources(
                            resource_signals_json=excluded.resource_signals_json,
                            evidence_excerpt=excluded.evidence_excerpt,
                            discovery_query=excluded.discovery_query,
+                           review_status=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.review_status ELSE 'unreviewed' END,
+                           availability_status=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.availability_status ELSE 'unknown' END,
+                           quota_json=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.quota_json ELSE '{}' END,
+                           terms_url=CASE
+                               WHEN cloud_resource_candidates.content_sha256=excluded.content_sha256
+                               THEN cloud_resource_candidates.terms_url ELSE NULL END,
                            last_seen_at=CURRENT_TIMESTAMP,
                            updated_at=CURRENT_TIMESTAMP""",
                     (
@@ -231,7 +243,7 @@ def discover_resources(
             status="partial" if unique else "failed",
             queries_attempted=queries_attempted,
             sources_seen=sources_seen,
-            candidates_upserted=len(unique),
+            candidates_upserted=0,
             query_results=query_results,
             error_summary="; ".join(errors),
         )
