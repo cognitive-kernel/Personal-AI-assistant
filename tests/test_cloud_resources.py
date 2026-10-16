@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -566,6 +566,6 @@ def test_plan_reevaluation_handler_rechecks_local_candidates_and_schedules_next_
     assert reevaluated["reevaluation_key"] == key
     assert context.checkpoints
     next_task = task_manager.get_task_by_dedupe_key(
-        f"cloud-plan-reevaluation:{(datetime.now().date() + __import__('datetime').timedelta(days=1)).isoformat()}"
+        f"cloud-plan-reevaluation:{(datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()}"
     )
     assert next_task is not None
