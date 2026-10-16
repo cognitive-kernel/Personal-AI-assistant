@@ -30,6 +30,23 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <button id="refresh-paths" type="button">بارگذاری مسیرهای من</button>
 <pre id="paths-output"></pre><div id="paths-container"></div></section>
 <section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
+<section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
+<p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
+<form id="experience-create-form">
+<div class="cloud-form-grid">
+<label>موضوع<input id="experience-topic" maxlength="300" required></label>
+<label>فرضیه<textarea id="experience-hypothesis" rows="2" maxlength="5000"></textarea></label>
+</div>
+<label>مشکل یا مشاهده<textarea id="experience-problem" rows="3" maxlength="10000" required></textarea></label>
+<button type="submit">ثبت تجربهٔ جدید</button>
+</form>
+<div class="cloud-actions"><button id="experience-refresh" type="button">بارگذاری تجربه‌ها</button></div>
+<form id="experience-search-form">
+<label>جست‌وجو در حافظه<input id="experience-query" maxlength="3000" required placeholder="موضوع یا مسئله را وارد کنید"></label>
+<button type="submit">جست‌وجو</button>
+</form>
+<pre id="experience-output">هنوز تجربه‌ای بارگذاری نشده است.</pre>
+<div id="experience-list"></div></section>
 <section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
 <p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. این فهرست فقط نامزدها و شواهد است؛ هیچ منبعی صرفاً با دیده‌شدن در این صفحه برای اجرای کار مجاز نمی‌شود.</p>
 <div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button></div>
@@ -591,4 +608,160 @@ refresh();
 refreshCloudResources();
 refreshKaggleQuota();
 refreshOciLimits();
+
+
+// Experience memory: untrusted record/source text is always rendered as text.
+const experienceStatuses = [
+ ["identified","شناسایی‌شده"],["researching","در حال پژوهش"],
+ ["ready_to_test","آمادهٔ آزمون"],["testing","در حال آزمون"],
+ ["failed","ناموفق"],["needs_review","نیازمند بازبینی"]
+];
+async function refreshExperiences() {
+ const output=el("experience-output");
+ output.textContent="در حال بارگذاری تجربه‌ها…";
+ try {
+  const result=await api("/api/experiences?limit=100");
+  output.textContent="تعداد تجربه‌ها: "+result.count;
+  renderExperienceItems(result.items||[]);
+ } catch(error) {
+  output.textContent="بارگذاری تجربه‌ها ناموفق بود: "+error.message;
+  el("experience-list").replaceChildren();
+ }
+}
+function renderExperienceItems(items) {
+ const container=el("experience-list");
+ container.replaceChildren();
+ if(!items.length) {
+  appendText(container,"p","تجربه‌ای برای نمایش پیدا نشد.");
+  return;
+ }
+ items.forEach(item=>{
+  const card=document.createElement("article");
+  card.className="cloud-candidate";
+  appendText(card,"h3",(item._memory_group?item._memory_group+" — ":"")+(item.topic||"بدون موضوع"));
+  appendText(card,"p","وضعیت: "+item.status+" | نسخه: "+item.version+" | شناسه: "+item.id,"cloud-status");
+  appendText(card,"p","مشکل: "+(item.problem||"ثبت نشده"));
+  if(item.hypothesis) appendText(card,"p","فرضیه: "+item.hypothesis);
+  if(item.takeaway) appendText(card,"p","جمع‌بندی: "+item.takeaway);
+  appendText(card,"h4","شواهد منبع");
+  const evidenceList=document.createElement("ul");
+  (item.source_evidence||[]).forEach(evidence=>{
+   const li=document.createElement("li");
+   appendText(li,"span",(evidence.claim||"ادعای بدون توضیح")+" — ");
+   try {
+    const source=new URL(evidence.url);
+    if(source.protocol!=="https:") throw new Error("HTTPS required");
+    const link=document.createElement("a");
+    link.href=source.href; link.target="_blank"; link.rel="noopener noreferrer";
+    link.textContent=evidence.url; li.append(link);
+   } catch(_) { appendText(li,"span","نشانی HTTPS معتبر نیست."); }
+   evidenceList.append(li);
+  });
+  if(!(item.source_evidence||[]).length) appendText(card,"p","هنوز شواهد منبع ثبت نشده است.","muted");
+  else card.append(evidenceList);
+  const tests=item.test_results||[];
+  appendText(card,"h4","نتایج آزمون ثبت‌شده");
+  if(!tests.length) appendText(card,"p","نتیجهٔ آزمون ثبت نشده است.","muted");
+  else {
+   const testList=document.createElement("ul");
+   tests.forEach(test=>appendText(testList,"li",(test.test||"آزمون نامشخص")+" — "+(test.passed===true?"موفق":test.passed===false?"ناموفق":"نامشخص")+(test.actual?"؛ نتیجه: "+test.actual:"")));
+   card.append(testList);
+  }
+  const versionsButton=document.createElement("button");
+  versionsButton.type="button"; versionsButton.textContent="نمایش تاریخچهٔ نسخه‌ها";
+  const versionsOutput=document.createElement("pre");
+  versionsButton.addEventListener("click",async()=>{
+   versionsOutput.textContent="در حال دریافت تاریخچه…";
+   try {
+    const result=await api("/api/experiences/"+item.id+"/versions");
+    versionsOutput.textContent=JSON.stringify(result.versions,null,2);
+   } catch(error) { versionsOutput.textContent="تاریخچه دریافت نشد: "+error.message; }
+  });
+  card.append(versionsButton,versionsOutput);
+  if(item.status==="verified") {
+   appendText(card,"p","این تجربه تأییدشده است و از رابط عمومی قابل ویرایش نیست.","muted");
+   container.append(card);
+   return;
+  }
+  const form=document.createElement("form");
+  appendText(form,"h4","بازبینی تجربه");
+  const statusLabel=document.createElement("label"); statusLabel.textContent="وضعیت";
+  const statusSelect=document.createElement("select"); statusSelect.required=true;
+  experienceStatuses.forEach(([value,label])=>{
+   const option=document.createElement("option"); option.value=value; option.textContent=label;
+   statusSelect.append(option);
+  });
+  statusSelect.value=experienceStatuses.some(([value])=>value===item.status)?item.status:"identified";
+  statusLabel.append(statusSelect); form.append(statusLabel);
+  const evidenceLabel=document.createElement("label"); evidenceLabel.textContent="شواهد منبع به‌شکل آرایهٔ JSON";
+  const evidenceInput=document.createElement("textarea"); evidenceInput.rows=3;
+  evidenceInput.value=JSON.stringify(item.source_evidence||[],null,2);
+  evidenceLabel.append(evidenceInput); form.append(evidenceLabel);
+  const planLabel=document.createElement("label"); planLabel.textContent="برنامهٔ آزمون به‌شکل آرایهٔ JSON";
+  const planInput=document.createElement("textarea"); planInput.rows=3;
+  planInput.value=JSON.stringify(item.test_plan||[],null,2);
+  planLabel.append(planInput); form.append(planLabel);
+  const takeawayLabel=document.createElement("label"); takeawayLabel.textContent="جمع‌بندی";
+  const takeawayInput=document.createElement("textarea"); takeawayInput.rows=2; takeawayInput.maxLength=10000;
+  takeawayInput.value=item.takeaway||"";
+  takeawayLabel.append(takeawayInput); form.append(takeawayLabel);
+  const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ذخیرهٔ بازبینی";
+  const feedback=document.createElement("p"); feedback.className="muted";
+  form.append(submit,feedback);
+  form.addEventListener("submit",async event=>{
+   event.preventDefault(); submit.disabled=true; feedback.textContent="در حال ذخیره…";
+   try {
+    let sourceEvidence,testPlan;
+    try { sourceEvidence=JSON.parse(evidenceInput.value||"[]"); testPlan=JSON.parse(planInput.value||"[]"); }
+    catch(_) { throw new Error("شواهد و برنامهٔ آزمون باید JSON معتبر باشند."); }
+    if(!Array.isArray(sourceEvidence)||!Array.isArray(testPlan)) throw new Error("شواهد و برنامهٔ آزمون باید آرایهٔ JSON باشند.");
+    await api("/api/experiences/"+item.id,{
+     method:"PATCH",
+     body:JSON.stringify({status:statusSelect.value,source_evidence:sourceEvidence,test_plan:testPlan,takeaway:takeawayInput.value})
+    });
+    feedback.textContent="بازبینی ذخیره شد.";
+    await refreshExperiences();
+   } catch(error) {
+    feedback.textContent="ذخیره نشد: "+error.message;
+    submit.disabled=false;
+   }
+  });
+  card.append(form); container.append(card);
+ });
+}
+el("experience-refresh").addEventListener("click",refreshExperiences);
+el("experience-create-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=event.submitter;
+ if(button) button.disabled=true;
+ el("experience-output").textContent="در حال ثبت تجربه…";
+ try {
+  await api("/api/experiences",{method:"POST",body:JSON.stringify({
+   topic:el("experience-topic").value,
+   problem:el("experience-problem").value,
+   hypothesis:el("experience-hypothesis").value
+  })});
+  el("experience-topic").value=""; el("experience-problem").value=""; el("experience-hypothesis").value="";
+  el("experience-output").textContent="تجربه ثبت شد؛ وضعیت اولیه آن تأییدنشده است.";
+  await refreshExperiences();
+ } catch(error) { el("experience-output").textContent="ثبت تجربه ناموفق بود: "+error.message; }
+ finally { if(button) button.disabled=false; }
+});
+el("experience-search-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const query=el("experience-query").value.trim();
+ const output=el("experience-output");
+ output.textContent="در حال جست‌وجوی حافظه…";
+ try {
+  const result=await api("/api/experiences/search?query="+encodeURIComponent(query));
+  const verified=(result.verified||[]).map(item=>({...item,_memory_group:"راهنمای تجربهٔ تأییدشده"}));
+  const warnings=(result.warnings||[]).map(item=>({...item,_memory_group:"هشدار از تجربهٔ ناموفق/نیازمند بازبینی"}));
+  output.textContent="تجربه‌های تأییدشده: "+verified.length+" | هشدارها: "+warnings.length;
+  renderExperienceItems([...verified,...warnings]);
+ } catch(error) {
+  output.textContent="جست‌وجو ناموفق بود: "+error.message;
+  el("experience-list").replaceChildren();
+ }
+});
+
 </script><script src="/static/learning.js"></script></body></html>
