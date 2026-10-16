@@ -845,6 +845,11 @@ def open_rollback_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, 
         raise ProposalError("GitHub did not return a valid current base commit.")
     if current_base_sha == published.get("base_commit_sha"):
         raise ProposalError("The original PR base has not advanced; verify the configured target branch.")
+    comparison = _github_api(
+        "GET", "/compare/" + merge_sha + "..." + current_base_sha
+    )
+    if comparison.get("status") not in {"ahead", "identical"}:
+        raise ProposalError("The current base branch is not a descendant of the original merge; rollback is blocked.")
 
     original_base_sha = published.get("base_commit_sha")
     original_base_commit = _github_api("GET", "/git/commits/" + str(original_base_sha))
