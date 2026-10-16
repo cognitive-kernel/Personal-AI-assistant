@@ -1099,5 +1099,16 @@
 - [x] `list_terminal_task_ids()` اکنون taskها را فقط پس از سپری‌شدن حداقل ۶۰ ثانیه از `updated_at` وضعیت terminal قابل‌استفاده برای cleanup می‌کند.
 - [x] cleanup علاوه بر سن container، سن وضعیت terminal را هم کنترل می‌کند؛ task تازه‌تبدیل‌شده به `failed` پس از انقضای lease فوراً مجاز به حذف container نیست.
 - [x] تست‌های grace period، timestamp قدیمی و اعتبارسنجی ورودی اضافه شدند.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #154** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/154)، commit ادغام `8b48fd1f4618c5f2d5762ebc8fed4e01347dba4a`.
+- [x] CI روی head دقیق `f043ba2905e02f1efc7fd761e4aa0d88af07eed8` موفق بود؛ run [#38858035018](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38858035018).
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** تست هم‌زمانی/recovery چندپردازه‌ای و بازبینی نهایی issueها و وضعیت نقشهٔ راه.
+
+
+## 79. 2026-10-16 — آزمون ترتیب recovery و cleanup در حالت فعال/منقضی
+
+- [x] تست چند worker ثابت می‌کند task دارای lease معتبر در فهرست terminal قرار نمی‌گیرد و برای cleanup قابل‌انتخاب نیست.
+- [x] تست crash recovery ثابت می‌کند `claim_next_task()` ابتدا lease منقضی‌شدهٔ sandbox با یک تلاش را به `failed` تبدیل می‌کند؛ callback پس از آن اجرا می‌شود و checkpoint حفظ می‌شود.
+- [x] راهنمای sandbox تضمین ترتیب اجرای maintenance را مستند کرد.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** اجرای CI، ادغام در صورت موفقیت و ممیزی نهایی تعداد PR/Issueهای باز و پیشرفت مرحلهٔ ۹.

@@ -150,3 +150,94 @@ def test_runtime_serializes_maintenance_callback_across_workers(runtime_store):
     release.set()
     assert runtime.stop(timeout=3) is True
     assert max_active == 1
+
+
+
+def test_cleanup_maintenance_never_marks_an_active_task_terminal(runtime_store):
+    started = threading.Event()
+    release = threading.Event()
+    callback_done = threading.Event()
+    observed_terminal_ids = []
+
+    task = task_manager.create_task("sandbox.long-running", {"value": 1})
+
+    def long_handler(payload, checkpoint, context):
+        started.set()
+        assert release.wait(timeout=3)
+        return {"finished": True}
+
+    def maintenance():
+        if not started.wait(timeout=3):
+            return
+        observed_terminal_ids.extend(
+            task_manager.list_terminal_task_ids(min_terminal_age_seconds=0)
+        )
+        callback_done.set()
+
+    runtime = TaskRuntime(
+        {"sandbox.long-running": long_handler, "runtime.noop": lambda *_: {"ok": True}},
+        worker_count=2,
+        poll_interval=0.05,
+        maintenance_callback=maintenance,
+        maintenance_interval=1,
+    )
+    runtime.start()
+    try:
+        assert started.wait(timeout=3)
+        assert callback_done.wait(timeout=3)
+        assert task["id"] not in observed_terminal_ids
+        assert task_manager.get_task(task["id"])["status"] == "running"
+    finally:
+        release.set()
+        assert runtime.stop(timeout=3) is True
+
+
+def test_expired_sandbox_lease_is_reconciled_before_cleanup_callback(runtime_store):
+    task = task_manager.create_task(
+        "sandbox.run_python",
+        {"source_code": "print('never replayed')"},
+        max_attempts=1,
+    )
+    claimed = task_manager.claim_next_task("crashed-worker", lease_seconds=30)
+    assert claimed["id"] == task["id"]
+    task_manager.save_checkpoint(
+        task["id"], "crashed-worker",
+        {"phase": "sandbox_started", "source_sha256": "a" * 64},
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET lease_expires_at=?, updated_at=? WHERE id=?",
+            (
+                "2000-01-01T00:00:00.000000+00:00",
+                "2000-01-01T00:00:00.000000+00:00",
+                task["id"],
+            ),
+        )
+
+    observed = {}
+    callback_done = threading.Event()
+
+    def maintenance():
+        saved = task_manager.get_task(task["id"])
+        observed["status"] = saved["status"]
+        observed["terminal_ids"] = task_manager.list_terminal_task_ids(
+            min_terminal_age_seconds=0
+        )
+        callback_done.set()
+
+    runtime = TaskRuntime(
+        {"runtime.noop": lambda *_: {"ok": True}},
+        poll_interval=0.05,
+        maintenance_callback=maintenance,
+        maintenance_interval=1,
+    )
+    runtime.start()
+    try:
+        assert callback_done.wait(timeout=3)
+        saved = task_manager.get_task(task["id"])
+        assert observed["status"] == "failed"
+        assert task["id"] in observed["terminal_ids"]
+        assert saved["checkpoint"]["phase"] == "sandbox_started"
+        assert saved["attempts"] == 1
+    finally:
+        assert runtime.stop(timeout=3) is True
