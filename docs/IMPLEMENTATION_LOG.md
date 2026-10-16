@@ -1637,3 +1637,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - **جریان آزموده‌شده:** آزمون مرورگر تأیید می‌کند رضایت ذخیره‌سازی خودکار به‌صورت پیش‌فرض خاموش است؛ ایجاد تجربهٔ دستی آن را فعال نمی‌کند؛ فعال‌سازی نیازمند علامت‌زدن صریح و اقدام کاربر است؛ لغو رضایت وضعیت را خاموش می‌کند و تجربه‌های قبلی را حذف نمی‌کند.
 - **اعتبارسنجی:** PR [#243](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/243) ادغام شد؛ CI روی head دقیق `28bfcb69b6f9d1b0d5f023c3bcd9197c6b347459` در run [#38933172139](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933172139) و مرورگر در run [#38933171996](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933171996) موفق شدند. پس از ادغام، آزمون‌های عادی در run [#38933345459](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933345459) و مرورگر در run [#38933345552](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38933345552) نیز موفق شدند.
+
+
+## 135. 2026-10-16 — رقابت صف وظایف در فرایندهای مستقل
+
+- **مسئله:** آزمون قبلی رقابت workerها در threadهای یک فرایند اجرا می‌شد؛ این به‌تنهایی تضمین نمی‌کند که اتصال‌های مستقل SQLite در چند فرایند نیز فقط یک مالک برای هر task انتخاب کنند.
+- **تغییر:** آزمون `test_independent_processes_cannot_claim_the_same_task` شش مفسر Python مستقل را با روش `spawn` راه‌اندازی می‌کند. همه به یک فایل دیتابیس مشترک وصل می‌شوند و برای یک task رقابت می‌کنند؛ آزمون باید دقیقاً یک claim موفق، یک attempt و یک lease owner نهایی ببیند.
+- **مرز شواهد:** این آزمون CI چندفرایندی است، نه آزمون crash/restart روی ماشین هدف، قطع برق/خرابی دیسک، بار طولانی یا fault injection برای تمام انواع task.
+- **اعتبارسنجی پیش از ادغام:** آزمون‌های مخزن در run [#38934201861](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934201861) و آزمون مرورگر در run [#38934202148](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934202148) برای head دقیق `14a7a49fa309d4856a3fb3f438162f1218fe0216` موفق شدند. تغییر در PR [#246](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/246) ادغام شد؛ آزمون‌های پس از ادغام در حال اجرا هستند و پس از تکمیل ثبت می‌شوند.
