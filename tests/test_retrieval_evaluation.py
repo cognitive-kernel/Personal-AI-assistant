@@ -85,6 +85,10 @@ def test_lexical_benchmark_runs_in_an_isolated_database(tmp_path):
     assert 0.0 <= report["recall_at_5"] <= 1.0
     assert 0.0 <= report["precision_at_5"] <= 1.0
     assert 0.0 <= report["mrr"] <= 1.0
+    # Regression gates for the current synthetic fixture, not production-quality targets.
+    assert report["recall_at_5"] >= 0.90
+    assert report["precision_at_5"] >= 0.20
+    assert report["mrr"] >= 0.90
     assert report["dataset_type"] == "synthetic_bilingual"
     assert report["retrieval_mode"] == "lexical_fallback_no_vectors_cached"
     assert len(report["per_query"]) == len(dataset["queries"])

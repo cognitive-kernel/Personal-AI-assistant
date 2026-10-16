@@ -40,3 +40,14 @@ CI runs the lexical-only baseline and prints its report, including Recall@5, Pre
 
 
 The hard-case fixture is intended to expose ranking regressions and ambiguity rather than maximize a headline score. Always inspect per-query rankings and false positives alongside Recall@5/MRR. A perfect score on synthetic data still does not validate retrieval quality on real user experiences; real-data evaluation requires a privacy-reviewed, manually adjudicated dataset.
+
+
+## Recorded synthetic lexical baseline
+
+The CI run on 2026-10-16 for fixture v2 reported:
+
+- Recall@5: 1.000
+- Precision@5: 0.225
+- MRR: 1.000
+
+The regression test currently requires Recall@5 >= 0.90, Precision@5 >= 0.20, and MRR >= 0.90 on this exact synthetic fixture. These are change-detection thresholds only; they are not service-level objectives and must not be presented as real-world quality targets. A fixture change must include a reviewed explanation of relevance labels and a deliberate baseline update. The hybrid/vector mode still has no measured CI baseline because a local embedding model is not available in the standard CI runner.

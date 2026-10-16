@@ -763,19 +763,6 @@
 - [x] migration نسخهٔ 7 جدول `chat_research_runs` و ایندکس‌های زمان/status را اضافه می‌کند.
 - [x] `app/chat_audit.py` فقط hash پرس‌وجو/پاسخ، URL و عنوان منبع، hash متن منبع، طول excerpt، خلاصهٔ verdictها، ارجاع ID/نسخهٔ تجربه و زمان اجرا را ذخیره می‌کند؛ متن خام پرس‌وجو، پاسخ و excerpt ذخیره نمی‌شوند.
 - [x] مسیر research chat برای موفقیت، نبود منبع، عدم دسترسی به reviewer، نیاز به بررسی بیشتر و شکست تولید، رویداد audit ثبت می‌کند؛ خطای ذخیرهٔ audit پاسخ کاربر را از کار نمی‌اندازد.
-- [x] تست‌ها نبود دادهٔ خام در audit، hashهای صحیح، حذف مقصد HTTP نامعتبر، محدودیت status و ثبت memory refs را بررسی می‌کنند.
-- [x] راهنمای research-aware chat و migration runner به‌روز شد.
-- [x] **PR #123** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/123)، commit `75fe2990abf5f00d40c32732aa7945d3fa7af9c3`.
-- [x] CI روی head دقیق `583fe6d5fff5d590910f01589209c5199382deed` موفق بود؛ run [#38840504920](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840504920)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 239 passed.
-- [ ] تست محلی اجرا نشده است.
-- **گام بعدی:** ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.
-
-
-## 51. 2026-10-16 — audit محلی و حریم‌خصوصی برای پاسخ‌های پژوهشی
-
-- [x] migration نسخهٔ 7 جدول `chat_research_runs` و ایندکس‌های زمان/status را اضافه می‌کند.
-- [x] `app/chat_audit.py` فقط hash پرس‌وجو/پاسخ، URL و عنوان منبع، hash متن منبع، طول excerpt، خلاصهٔ verdictها، ارجاع ID/نسخهٔ تجربه و زمان اجرا را ذخیره می‌کند؛ متن خام پرس‌وجو، پاسخ و excerpt ذخیره نمی‌شوند.
-- [x] مسیر research chat برای موفقیت، نبود منبع، عدم دسترسی به reviewer، نیاز به بررسی بیشتر و شکست تولید، رویداد audit ثبت می‌کند؛ خطای ذخیرهٔ audit پاسخ کاربر را از کار نمی‌اندازد.
 - [x] تست‌ها نبود دادهٔ خام در audit، hashهای صحیح، حذف مقصد HTTP نامعتبر، محدودیت status، ثبت memory refs و اتصال مسیر chat به audit را بررسی می‌کنند.
 - [x] راهنمای research-aware chat و migration runner به‌روز شد.
 - [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
@@ -813,5 +800,17 @@
 - [x] تست‌ها به تعداد queryهای fixture وابسته‌اند و وجود نمونه‌های چند-مرتبط و موارد دشوار را کنترل می‌کنند.
 - [x] سنجهٔ `Precision@k` به خروجی ارزیابی اضافه شد تا همراه Recall@k و MRR، تعداد نتایج مرتبط در پنجرهٔ محدود را نیز گزارش کند.
 - [x] مستندات تصریح می‌کنند که relevanceها قضاوت‌های نویسندهٔ fixture هستند و benchmark مصنوعی جایگزین dataset واقعیِ بازبینی‌شده نیست.
+- [x] CI روی head دقیق `aab9e2a5d3d045b1480615ddaafd02bbb1e9600c` موفق بود: [run #38842263942](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38842263942)، 250 تست موفق؛ benchmark: Recall@5=1.000، Precision@5=0.225، MRR=1.000.
+- [x] **PR #127** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/127)، commit ادغام `d66b619fd9f864dda10b1d4e0aa7eb96963efde0`.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** افزودن regression gate برای baseline مصنوعی و آماده‌سازی dataset واقعی با بازبینی حریم خصوصی و adjudication انسانی.
+
+
+## 55. 2026-10-16 — تثبیت baseline واژگانی و دروازهٔ رگرسیون
+
+- [x] baseline ثبت‌شدهٔ fixture v2 در CI: Recall@5=1.000، Precision@5=0.225، MRR=1.000.
+- [x] تست CI اکنون حداقل‌های صریح و مخصوص همین fixture را کنترل می‌کند: Recall@5 >= 0.90، Precision@5 >= 0.20 و MRR >= 0.90.
+- [x] راهنما روشن می‌کند این اعداد فقط دروازهٔ تشخیص رگرسیون در دادهٔ مصنوعی‌اند؛ نه هدف کیفیت production و نه نتیجهٔ بازیابی hybrid.
+- [x] بخش تکراری ناقص شمارهٔ 51 از گزارش حذف شد تا وضعیت merge و CI تنها یک‌بار ثبت شود.
 - [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** تحلیل per-query و false positiveها از CI، سپس تعیین آستانه‌های regression قابل‌دفاع و آماده‌سازی dataset واقعی با بازبینی حریم خصوصی و adjudication انسانی.
+- **گام بعدی:** dataset واقعی با بازبینی حریم خصوصی و relevance adjudication انسانی تهیه شود؛ سپس benchmark با embedding محلی اجرا و با baseline واژگانی مقایسه شود.
