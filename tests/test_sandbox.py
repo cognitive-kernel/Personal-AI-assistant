@@ -423,3 +423,24 @@ def test_workspace_tests_reject_mutable_or_unavailable_test_images(tmp_path, mon
         image="sha256:" + "d" * 64,
     )
     assert result.status == "unavailable"
+
+
+
+def test_workspace_tests_report_failure_without_host_fallback(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    workspace = tmp_path / "candidate"
+    (workspace / "app").mkdir(parents=True)
+    (workspace / "tests").mkdir()
+    process = FakeProcess([], stdout=b"1 failed", stderr=b"assertion failed", returncode=1)
+    monkeypatch.setattr(sandbox.subprocess, "Popen", lambda *args, **kwargs: process)
+
+    result = sandbox.run_workspace_tests(
+        workspace,
+        docker_executable=executable,
+        image="sha256:" + "e" * 64,
+    )
+
+    assert result.status == "failed"
+    assert result.exit_code == 1
+    assert result.stdout == "1 failed"
+    assert result.stderr == "assertion failed"
