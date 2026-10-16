@@ -9,6 +9,22 @@ async function learningApi(path, options = {}) {
 
 const learningDelay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+async function refreshDueLearningReviews() {
+ const output = learningEl("due-reviews-output");
+ if (!output) return;
+ output.textContent = "در حال بارگذاری مرورهای سررسیدشده…";
+ try {
+  const result = await learningApi("/api/learning/reviews/due?limit=100");
+  const items = result.items || [];
+  output.textContent = items.length
+   ? items.map(item => item.path_title + " — " + item.topic +
+      "\nسررسید: " + item.due_at + "؛ فاصله فعلی: " + item.interval_days + " روز").join("\n\n")
+   : "در حال حاضر مرور سررسیدشده‌ای وجود ندارد.";
+ } catch (error) {
+  output.textContent = "دریافت مرورهای سررسیدشده ناموفق بود: " + error.message;
+ }
+}
+
 async function waitForLearningJob(jobId, output) {
  for (let attempt = 0; attempt < 600; attempt += 1) {
   const job = await learningApi("/api/learning/jobs/" + jobId);
@@ -242,7 +258,7 @@ function renderLessonResult(output, job, path, topic) {
     item.index + ". " + item.judgment + " — " + item.rationale +
     ((item.missing_concepts || []).length ? "؛ مفاهیم جاافتاده: " + item.missing_concepts.join("، ") : "")
    );
-   semanticReviewResult.textContent = lines.join("\\n") + "\\n\\n" + review.note;
+   semanticReviewResult.textContent = lines.join("\n") + "\n\n" + review.note;
   } catch (error) {
    semanticReviewResult.textContent = "بازبینی معنایی در دسترس نیست: " + error.message;
   } finally {
@@ -494,9 +510,40 @@ async function loadLearningPaths() {
     stop.disabled = true;
     const output = document.createElement("div");
     output.className = "path-topic-lesson";
+    const reviewLabel = document.createElement("label");
+    reviewLabel.textContent = "میزان یادآوری (۰ تا ۵)";
+    const reviewRating = document.createElement("select");
+    [[0,"۰ — کاملاً فراموش کردم"],[1,"۱ — بسیار دشوار"],[2,"۲ — دشوار"],[3,"۳ — با تلاش یادآوردم"],[4,"۴ — خوب"],[5,"۵ — آسان"]].forEach(([value,title]) => {
+     const option = document.createElement("option");
+     option.value = String(value);
+     option.textContent = title;
+     reviewRating.append(option);
+    });
+    reviewLabel.append(reviewRating);
+    const reviewButton = document.createElement("button");
+    reviewButton.type = "button";
+    reviewButton.textContent = "ثبت مرور و زمان‌بندی بعدی";
+    const reviewOutput = document.createElement("p");
+    reviewOutput.setAttribute("role", "status");
+    reviewButton.addEventListener("click", async () => {
+     reviewButton.disabled = true;
+     reviewOutput.textContent = "در حال ثبت مرور…";
+     try {
+      const result = await learningApi("/api/learning/paths/" + path.id + "/topics/" + topic.id + "/reviews", {
+       method: "POST", body: JSON.stringify({rating: Number(reviewRating.value)})
+      });
+      reviewOutput.textContent = "مرور ثبت شد. مرور بعدی: " + result.due_at +
+       " (فاصله: " + result.interval_days + " روز). " + result.note;
+      await refreshDueLearningReviews();
+     } catch (error) {
+      reviewOutput.textContent = "ثبت مرور ناموفق بود: " + error.message;
+     } finally {
+      reviewButton.disabled = false;
+     }
+    });
     start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
     stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
-    row.append(label, status, score, save, start, stop, output);
+    row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, output);
     details.append(row);
    });
    container.append(details);
@@ -517,6 +564,8 @@ document.addEventListener("DOMContentLoaded", () => {
   } catch (error) { learningEl("paths-output").textContent = error.message; }
  });
  learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
+ learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
  loadLearningCurricula();
  loadLearningPaths();
+ refreshDueLearningReviews();
 });

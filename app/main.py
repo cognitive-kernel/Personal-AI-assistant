@@ -2,11 +2,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictBool
-from . import assessment_review, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, task_manager
+from pydantic import BaseModel, Field, StrictBool, StrictInt
+from . import assessment_review, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -123,6 +123,12 @@ class AssessmentSubmission(BaseModel):
 
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
+
+    class Config:
+        extra = "forbid"
+
+class SpacedRepetitionRequest(BaseModel):
+    rating: StrictInt = Field(ge=0, le=5)
 
     class Config:
         extra = "forbid"
@@ -395,6 +401,49 @@ def get_learning_assessment_review(job_id: int, attempt_id: int) -> dict[str, An
     if result is None:
         raise HTTPException(status_code=404, detail="No semantic review is stored for this attempt.")
     return {"job_id": job_id, "attempt_id": attempt_id, "semantic_review": result}
+
+
+@app.get(
+    "/api/learning/reviews/due",
+    dependencies=[Depends(require_loopback_client)],
+)
+def list_due_learning_reviews(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
+    items = spaced_repetition.list_due_reviews(limit)
+    return {"items": items, "count": len(items)}
+
+
+@app.post(
+    "/api/learning/paths/{path_id}/topics/{topic_id}/reviews",
+    dependencies=[Depends(require_loopback_client)],
+)
+def record_learning_topic_review(
+    path_id: int,
+    topic_id: int,
+    request: SpacedRepetitionRequest,
+) -> dict[str, Any]:
+    try:
+        return spaced_repetition.record_review(path_id, topic_id, request.rating)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning path topic not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/learning/paths/{path_id}/topics/{topic_id}/reviews",
+    dependencies=[Depends(require_loopback_client)],
+)
+def get_learning_topic_review_history(
+    path_id: int,
+    topic_id: int,
+    limit: int = Query(default=30, ge=1, le=100),
+) -> dict[str, Any]:
+    try:
+        return spaced_repetition.get_topic_review_history(path_id, topic_id, limit)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning path topic not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/learning/jobs/{job_id}/review")

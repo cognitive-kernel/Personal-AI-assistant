@@ -342,6 +342,36 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_assessment_semantic_reviews_job ON assessment_semantic_reviews(job_id, created_at DESC)",
         ),
     ),
+    Migration(
+        11,
+        "learning-spaced-repetition-schedule",
+        (
+            """CREATE TABLE learning_review_schedule (
+                topic_id INTEGER PRIMARY KEY REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                repetitions INTEGER NOT NULL DEFAULT 0 CHECK(repetitions >= 0),
+                interval_days INTEGER NOT NULL DEFAULT 0 CHECK(interval_days >= 0),
+                ease_factor REAL NOT NULL DEFAULT 2.5 CHECK(ease_factor >= 1.3),
+                due_at TEXT NOT NULL,
+                last_reviewed_at TEXT NOT NULL,
+                last_rating INTEGER NOT NULL CHECK(last_rating BETWEEN 0 AND 5),
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE TABLE learning_review_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                rating INTEGER NOT NULL CHECK(rating BETWEEN 0 AND 5),
+                previous_interval_days INTEGER NOT NULL CHECK(previous_interval_days >= 0),
+                interval_days INTEGER NOT NULL CHECK(interval_days >= 1),
+                previous_ease_factor REAL NOT NULL CHECK(previous_ease_factor >= 1.3),
+                ease_factor REAL NOT NULL CHECK(ease_factor >= 1.3),
+                repetitions INTEGER NOT NULL CHECK(repetitions >= 0),
+                due_at TEXT NOT NULL,
+                reviewed_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_learning_review_schedule_due ON learning_review_schedule(due_at, topic_id)",
+            "CREATE INDEX idx_learning_review_events_topic ON learning_review_events(topic_id, id DESC)",
+        ),
+    ),
 )
 
 
