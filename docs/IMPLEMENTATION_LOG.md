@@ -839,5 +839,18 @@
 - [x] بازبینی به hash عنوان+متن پیوند می‌خورد؛ تغییر محتوا وضعیت review را به `unreviewed` برمی‌گرداند و اطلاعات availability/quota/terms قبلی را پاک می‌کند.
 - [x] نامزدهای مشاهده‌نشده بیش از ۳۰ روز `stale` می‌شوند و availability آن‌ها به `unknown` برمی‌گردد؛ شواهد stale قابل تأیید نیستند تا discovery مجدد انجام شود.
 - [x] migration از schema نسخهٔ 1، پاک‌سازی تأییدهای قدیمی فاقد hash، تست API، optimistic concurrency و تازگی اضافه شدند.
-- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی head دقیق `0f79e977bcb7a2575677c4c6fcc842730dd1e773` موفق بود: [run #38843714938](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38843714938)، 265 تست موفق و benchmark موفق.
+- [x] **PR #130** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/130)، commit ادغام `c1087275a6f8d60e5df8a9d2305717fa6435f9b3`.
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** UI بازبینی نامزدها و سپس adapterهای رسمی provider برای استخراج شواهد محدودیت/هزینه، احراز هویت مجاز و eligibility؛ هیچ remote execution تا تکمیل این قرارداد فعال نشود.
+
+
+## 58. 2026-10-16 — رابط گرافیکی کشف و بازبینی منابع ابری
+
+- [x] صفحهٔ اصلی محلی بخش «کشف منابع پردازشی ابری» دارد: مشاهدهٔ آخرین اجرا، فهرست نامزدها، اجرای جست‌وجوی دستی و نمایش وضعیت task.
+- [x] برای هر نامزد، دامنه، URL، سیگنال‌ها، excerpt، وضعیت review/availability/freshness و فرم بازبینی quota/terms نمایش داده می‌شود.
+- [x] تأیید/رد از UI از مسیر API محلی و با `expected_content_sha256` انجام می‌شود؛ stale evidence دکمهٔ بازبینی غیرفعال دارد و تغییر محتوا با خطای conflict آشکار می‌شود.
+- [x] متن منبع با `textContent` نمایش داده می‌شود، پیوند فقط برای HTTPS باز می‌شود و تب جدید از `noopener noreferrer` استفاده می‌کند؛ HTML منبع هرگز اجرا یا تزریق نمی‌شود.
+- [x] تست static برای کنترل‌های UI و مرز XSS اضافه شد.
+- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** provider adapters رسمی، استخراج quota/cost/region/session limits با provenance، و قرارداد eligibility قبل از هر نوع اجرای remote.
