@@ -61,6 +61,7 @@ def test_sandbox_handler_requires_absolute_existing_docker_and_digest_pinned_ima
 def test_handler_records_hash_and_execution_evidence_without_storing_source_in_checkpoint(
     monkeypatch, tmp_path
 ):
+    monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
     executable = _configure(monkeypatch, tmp_path)
     calls = []
 
@@ -84,7 +85,8 @@ def test_handler_records_hash_and_execution_evidence_without_storing_source_in_c
     assert calls[0][0] == source
     assert calls[0][1]["docker_executable"] == executable
     assert calls[0][1]["image"].endswith("a" * 64)
-    assert calls[0][1]["control_check"] == context.control_status
+    assert callable(calls[0][1]["control_check"])
+    assert calls[0][1]["control_check"]() == "running"
     assert len(context.checkpoints) == 2
     assert context.checkpoints[0]["phase"] == "sandbox_started"
     assert context.checkpoints[1]["phase"] == "sandbox_finished"
@@ -123,4 +125,15 @@ def test_handler_rejects_invalid_payloads_before_checkpoint(monkeypatch, tmp_pat
     context = FakeContext()
     with pytest.raises(ValueError):
         handler(payload, None, context)
+    assert context.checkpoints == []
+
+
+
+def test_handler_refuses_execution_without_explicit_consent(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: False)
+    handler = sandbox_tasks.handler_from_environment()
+    context = FakeContext()
+    with pytest.raises(ValueError, match="explicit, current user consent"):
+        handler({"source_code": "print('blocked')"}, None, context)
     assert context.checkpoints == []
