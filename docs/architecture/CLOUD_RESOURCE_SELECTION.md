@@ -42,3 +42,10 @@ The cloud-resource database stores a minimal local snapshot for each dry-run pla
 - `GET /api/cloud-resources/plans?limit=20` lists recent plans.
 - `GET /api/cloud-resources/plans/{plan_id}` retrieves a plan and its candidate decisions.
 - The database schema constrains both execution flags to false; plans that claim execution authorization are rejected.
+
+
+## Scheduled reevaluation
+
+A daily allow-listed task rechecks up to 20 recent **manual** plans against the currently stored candidate list. It records new plan rows with origin `scheduled_reevaluation`, links each result to its source plan, and uses a daily idempotency key so a task retry cannot create duplicate results for the same source plan/day. Cooperative checkpoints allow pause/cancel between plans.
+
+This task uses only local candidate evidence and reviewed quota metadata. It does not call provider CLIs/APIs or refresh credentials. External quota refresh remains an explicit user action, and scheduled reevaluation never authorizes remote execution.
