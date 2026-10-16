@@ -63,7 +63,11 @@ def build_worksheet(
         raise ValueError("The selected benchmark dataset is invalid.") from exc
     case_by_id = {case["id"]: case for case in cases}
     results = report.get("results")
-    if not isinstance(results, list) or len(results) != len(case_by_id):
+    if (
+        not isinstance(results, list)
+        or len(results) != len(case_by_id)
+        or report.get("case_count") != len(results)
+    ):
         raise ValueError("The report result count does not match the benchmark dataset.")
 
     source_by_id: dict[str, Any] = {}
