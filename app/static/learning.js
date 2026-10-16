@@ -18,7 +18,7 @@ async function refreshDueLearningReviews() {
   const items = result.items || [];
   output.textContent = items.length
    ? items.map(item => item.path_title + " — " + item.topic +
-      "\\nسررسید: " + item.due_at + "؛ فاصله فعلی: " + item.interval_days + " روز").join("\\n\\n")
+      "\nسررسید: " + item.due_at + "؛ فاصله فعلی: " + item.interval_days + " روز").join("\n\n")
    : "در حال حاضر مرور سررسیدشده‌ای وجود ندارد.";
  } catch (error) {
   output.textContent = "دریافت مرورهای سررسیدشده ناموفق بود: " + error.message;
@@ -258,7 +258,7 @@ function renderLessonResult(output, job, path, topic) {
     item.index + ". " + item.judgment + " — " + item.rationale +
     ((item.missing_concepts || []).length ? "؛ مفاهیم جاافتاده: " + item.missing_concepts.join("، ") : "")
    );
-   semanticReviewResult.textContent = lines.join("\\n") + "\\n\\n" + review.note;
+   semanticReviewResult.textContent = lines.join("\n") + "\n\n" + review.note;
   } catch (error) {
    semanticReviewResult.textContent = "بازبینی معنایی در دسترس نیست: " + error.message;
   } finally {
