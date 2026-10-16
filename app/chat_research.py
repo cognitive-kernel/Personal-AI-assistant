@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 from . import chat_audit, claim_review, experience, experience_capture_consent, ollama, web_sources
 
@@ -201,18 +201,39 @@ def _capture_experience(
         logger.warning("Opt-in experience capture failed (%s)", type(exc).__name__)
 
 
-def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
+def _checkpoint(
+    callback: Callable[[dict[str, Any]], Any] | None,
+    phase: str,
+    **details: Any,
+) -> None:
+    if callback is not None:
+        callback({"phase": phase, **details})
+
+
+def answer(
+    message: str,
+    history: list[dict[str, str]] | None = None,
+    *,
+    checkpoint: Callable[[dict[str, Any]], Any] | None = None,
+) -> str:
     """Answer normally for small-talk; use bounded source review for technical queries."""
     if not should_use_research(message):
-        return ollama.chat(message, history)
+        _checkpoint(checkpoint, "chat_generation_started")
+        reply = ollama.chat(message, history)
+        _checkpoint(checkpoint, "chat_generation_completed")
+        return reply
 
     started_at = time.perf_counter()
+    _checkpoint(checkpoint, "memory_lookup_started")
     memory = _memory_context(message)
+    _checkpoint(checkpoint, "memory_lookup_completed")
+    _checkpoint(checkpoint, "source_discovery_started")
     try:
         documents = web_sources.discover_sources(message, limit=3)
     except Exception:
         documents = []
     sources = _source_payload(documents)
+    _checkpoint(checkpoint, "source_discovery_completed", source_count=len(sources))
     payload = {
         "question": message[:3000],
         "sources": sources,
@@ -225,11 +246,13 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             "sources or memory. Return the answer only, not JSON."
         ),
     }
+    _checkpoint(checkpoint, "draft_generation_started")
     try:
         draft = ollama.chat(json.dumps(payload, ensure_ascii=False), history, system_prompt=_SYSTEM_PROMPT)
     except Exception:
         _record_audit(message, "", sources, "generation_failed", None, memory, started_at)
         raise
+    _checkpoint(checkpoint, "draft_generation_completed")
     if not sources:
         reply = draft + _warning(
             message,
@@ -238,12 +261,17 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             else "No usable external source was found; this answer is based on model knowledge and was not independently reviewed.",
         )
         _record_audit(message, reply, sources, "no_sources", None, memory, started_at)
+        _checkpoint(checkpoint, "research_answer_completed", source_count=0)
         return reply
 
+    _checkpoint(checkpoint, "claim_review_started")
     review = _review(message, draft, sources)
+    _checkpoint(checkpoint, "claim_review_completed", review_passed=review.get("passed") is True)
     if review.get("passed") is True:
         _record_audit(message, draft, sources, "passed_model_assisted", review, memory, started_at)
+        _checkpoint(checkpoint, "before_experience_capture")
         _capture_experience(message, draft, sources, status="identified")
+        _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources))
         return draft
     error = str(review.get("error") or "")
     if error.startswith("review_unavailable"):
@@ -254,7 +282,9 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             else "Claim review was unavailable; the factual claims should not be treated as verified.",
         )
         _record_audit(message, reply, sources, "review_unavailable", review, memory, started_at)
+        _checkpoint(checkpoint, "before_experience_capture")
         _capture_experience(message, reply, sources, status="needs_review")
+        _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources))
         return reply
 
     repair_payload = {
@@ -269,6 +299,7 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
             "content. Preserve useful details and answer in the user's language. Return answer text only."
         ),
     }
+    _checkpoint(checkpoint, "repair_generation_started")
     try:
         repaired = ollama.chat(
             json.dumps(repair_payload, ensure_ascii=False),
@@ -278,13 +309,18 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
     except Exception:
         _record_audit(message, "", sources, "generation_failed", review, memory, started_at)
         raise
+    _checkpoint(checkpoint, "repair_generation_completed")
+    _checkpoint(checkpoint, "second_claim_review_started")
     second_review = _review(message, repaired, sources)
+    _checkpoint(checkpoint, "second_claim_review_completed", review_passed=second_review.get("passed") is True)
     if second_review.get("passed") is True:
         _record_audit(
             message, repaired, sources, "passed_model_assisted_after_repair",
             second_review, memory, started_at,
         )
+        _checkpoint(checkpoint, "before_experience_capture")
         _capture_experience(message, repaired, sources, status="identified")
+        _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources))
         return repaired
     reply = repaired + _warning(
         message,
@@ -293,5 +329,7 @@ def answer(message: str, history: list[dict[str, str]] | None = None) -> str:
         else "After one repair attempt, not all claims were supported by retrieved sources; further review is needed.",
     )
     _record_audit(message, reply, sources, "needs_review", second_review, memory, started_at)
+    _checkpoint(checkpoint, "before_experience_capture")
     _capture_experience(message, reply, sources, status="needs_review")
+    _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources))
     return reply
