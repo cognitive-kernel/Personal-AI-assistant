@@ -2,8 +2,8 @@
 
 > Last verified: 2026-10-16 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Main commit: `d14b141a6ca12abfb2c41eaf1e7b571166ee2c54`  
-> Latest main CI: [run #38910413735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38910413735) — success, 518 passed, 4 skipped; deterministic retrieval benchmark succeeded.
+> Main commit: `5e7f34eff9f3e9a1d2f210e97dca8a3d117758b1`  
+> Latest main CI: [run #38912322972](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38912322972) — success; deterministic retrieval benchmark succeeded. The exact run is the post-merge validation for the restore-staging cleanup. Consult the run for the final test summary.
 
 ## Executive status
 
@@ -20,9 +20,9 @@
 | [#210](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/210) | Full verified backups of settings, learning, and cloud-resource databases; dashboard create/list controls | [#38905028556](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38905028556) and post-merge [#38905213260](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38905213260); 502 passed on the recorded run | MERGED / CI PASS |
 | [#212](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/212) | Explicit-confirmation restore into a new staging directory; no live database cutover | [#38908516889](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38908516889) and post-merge [#38908671281](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38908671281); 506 passed | MERGED / CI PASS |
 | [#215](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/215) | Preview-first retention cleanup; preserve at least 3 recent backups and never target backups younger than 30 days by default | [#38909496091](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38909496091) and post-merge [#38909676412](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38909676412); 509 passed | MERGED / CI PASS |
-| [#216](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/216) | Opt-in periodic verified backups; disabled by default, 1–168 hour interval | [#38910242920](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38910242920) and post-merge [#38910413735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38910413735); 518 passed | MERGED / CI PASS |
+| [#216](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/216) | Opt-in periodic verified backups; disabled by default, 1–168 hour interval | [#38910242920](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38910242920) and post-merge [#38910413735](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38910413735); 518 passed | MERGED / CI PASS |\n| [#219](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/219) | Preview-first cleanup for old, integrity-checked restore-staging snapshots; keeps the newest restore and defaults to a 7-day minimum age | [#38912202128](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38912202128) and post-merge [#38912322972](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38912322972); both successful | MERGED / CI PASS |
 
-The implementation log is the detailed record of merged changes and acceptance limits: [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md).
+The implementation log is the detailed record of merged changes and acceptance limits: [docs/IMPLEMENTATION_LOG.md](IMPLEMENTATION_LOG.md). The restore-staging cleanup keeps the most recent valid staging copy and only considers older-than-7-day candidates after preview and explicit confirmation.
 
 ## Workstream tracker
 
@@ -33,7 +33,7 @@ The implementation log is the detailed record of merged changes and acceptance l
 | Learning assessment | Deterministic scoring plus optional model-assisted semantic review | Compare against a human-labeled dataset; never treat model self-review as independent verification |
 | Docker sandbox | Policy and integration tests exist | Run the manual integration workflow with an approved digest-pinned image; archive the exact run and inspect isolation controls |
 | Safe self-improvement | Proposal/test-runner components exist; end-to-end promotion/rollback acceptance incomplete | Demonstrate a patch from proposal to isolated tests, human approval, staged promotion, and verified rollback; no autonomous production promotion |
-| Backup/restore/retention | Verified snapshot, staging restore, preview-first cleanup, opt-in scheduler | Run an operational restore drill; monitor disk use; test shutdown during snapshot; establish encrypted/off-device backup policy |
+| Backup/restore/retention | Verified snapshot, staging restore, preview-first backup and staging cleanup, opt-in scheduler | Run an operational restore drill; monitor disk use; test shutdown during snapshot; establish encrypted/off-device backup policy |
 | Security | Independent review pending | Resolve [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) with a separate reviewer and documented threat model |
 | Cloud resources | Discovery/planning only; remote execution disabled | Keep provisioning disabled until auth, consent, cost limits, cleanup, and security acceptance tests pass |
 
