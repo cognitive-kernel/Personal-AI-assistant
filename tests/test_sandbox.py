@@ -1,5 +1,7 @@
 import io
+import json
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -219,3 +221,94 @@ def test_sandbox_stops_if_task_control_check_raises(tmp_path, monkeypatch):
     assert result.status == "cancelled"
     assert process.terminated
     assert "lease state was unavailable" in (result.reason or "")
+
+
+
+def test_sandbox_container_is_labeled_with_task_id(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    captured = {}
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        return FakeProcess(args)
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    result = sandbox.run_python(
+        "print('task')",
+        docker_executable=executable,
+        image=IMAGE,
+        task_id=41,
+    )
+
+    assert result.status == "succeeded"
+    assert "--label" in captured["args"]
+    assert f"{sandbox._SANDBOX_LABEL}=true" in captured["args"]
+    assert f"{sandbox._TASK_ID_LABEL}=41" in captured["args"]
+
+
+def test_cleanup_removes_only_old_containers_for_confirmed_terminal_tasks(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    old = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
+    recent = datetime.now(timezone.utc).isoformat()
+    container_ids = ["a" * 12, "b" * 12, "c" * 12, "d" * 12]
+    metadata = {
+        container_ids[0]: ({sandbox._SANDBOX_LABEL: "true", sandbox._TASK_ID_LABEL: "7"}, "running", old),
+        container_ids[1]: ({sandbox._SANDBOX_LABEL: "true", sandbox._TASK_ID_LABEL: "8"}, "running", old),
+        container_ids[2]: ({sandbox._SANDBOX_LABEL: "true", sandbox._TASK_ID_LABEL: "9"}, "exited", recent),
+        container_ids[3]: ({sandbox._SANDBOX_LABEL: "false", sandbox._TASK_ID_LABEL: "7"}, "exited", old),
+    }
+    removed = []
+
+    def fake_run(args, **kwargs):
+        if args[1:3] == ["ps", "-aq"]:
+            return subprocess.CompletedProcess(args, 0, "\n".join(container_ids), "")
+        if args[1] == "inspect":
+            labels, state, created = metadata[args[-1]]
+            return subprocess.CompletedProcess(
+                args, 0, f"{json.dumps(labels)}|{state}|{created}", ""
+            )
+        if args[1] == "rm":
+            removed.append(args[-1])
+            return subprocess.CompletedProcess(args, 0, args[-1], "")
+        raise AssertionError(f"Unexpected Docker command: {args[1:]}")
+
+    monkeypatch.setattr(sandbox.subprocess, "run", fake_run)
+    result = sandbox.cleanup_orphaned_containers(
+        docker_executable=executable,
+        terminal_task_ids={7, 9},
+        min_age_seconds=60,
+    )
+
+    assert result.removed == (container_ids[0],)
+    assert result.skipped == 3
+    assert result.errors == ()
+    assert removed == [container_ids[0]]
+
+
+def test_cleanup_fails_closed_when_docker_listing_fails(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+
+    def fake_run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 1, "", "daemon unavailable")
+
+    monkeypatch.setattr(sandbox.subprocess, "run", fake_run)
+    result = sandbox.cleanup_orphaned_containers(
+        docker_executable=executable,
+        terminal_task_ids={1},
+    )
+
+    assert result.removed == ()
+    assert result.errors == ("Docker could not list sandbox containers.",)
+
+
+def test_cleanup_rejects_invalid_task_ids_before_running_docker(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    called = []
+    monkeypatch.setattr(sandbox.subprocess, "run", lambda *args, **kwargs: called.append(args))
+
+    with pytest.raises(ValueError, match="positive integer"):
+        sandbox.cleanup_orphaned_containers(
+            docker_executable=executable,
+            terminal_task_ids={True},
+        )
+    assert called == []
