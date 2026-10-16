@@ -36,3 +36,10 @@ The local dashboard exposes an explicit **ایجاد پشتیبان کامل** a
 - `POST /api/storage/backups` with JSON `{"confirm": true}` — create a complete format-v2 bundle in the configured `DATABASE_BACKUP_DIR` (default: `data/backups`).
 
 The API generates the backup identifier itself; clients cannot choose an arbitrary filesystem path. The endpoint returns the bundle identifier, database roles, and verification result, not the absolute path. The UI does not offer automatic restore or overwrite operations.
+
+
+## Dashboard/API staged restore
+
+The loopback-only endpoint `POST /api/storage/backups/{backup_id}/restore` accepts only `{"confirm": true}`. The backup identifier must match the server-generated snapshot ID format and resolve to a real backup directly inside the configured backup root. The restore process verifies manifest, hashes, schema inventory, SQLite integrity and foreign keys, then creates a new directory under `restore-staging/`. The response contains a generated staging ID and database roles, never absolute paths.
+
+This endpoint **does not modify the live databases**, overwrite a destination, or perform a cutover. Inspect and validate the staged files and application behavior separately before planning any manual deployment. Failed validation does not publish a staging directory. The staging directory contains private application data and should be protected and cleaned up under an explicit operational policy.
