@@ -390,7 +390,7 @@ def validate_proposal(proposal_id: int) -> dict[str, Any]:
 
 
 def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
-    """Apply a proposal only in a temporary Git worktree, then AST-parse in Docker."""
+    """Apply a proposal only in a temporary worktree; check syntax and run tests in Docker."""
     if confirm is not True:
         raise ProposalError("Explicit confirmation is required for isolated syntax checking.")
     proposal = get_proposal(proposal_id)
@@ -408,6 +408,11 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
         raise ProposalError("Sandbox configuration is invalid.") from exc
     if configured_handler is None:
         raise ProposalError("Sandbox is disabled or not configured.")
+    test_image = os.getenv("SANDBOX_TEST_IMAGE", "").strip()
+    if not sandbox.is_valid_test_image_reference(test_image):
+        raise ProposalError(
+            "Configure SANDBOX_TEST_IMAGE as an immutable sha256 image ID/reference with pytest and project dependencies installed."
+        )
     docker_executable = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
     image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
 
@@ -463,9 +468,35 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
                     except (ValueError, IndexError):
                         parsed = {}
                     if parsed.get("status") == "passed" and isinstance(parsed.get("files_checked"), int) and parsed["files_checked"] > 0:
-                        report["status"] = "passed"
                         report["syntax_check"] = "passed"
                         report["files_checked"] = parsed["files_checked"]
+                        behavioral = sandbox.run_workspace_tests(
+                            workspace,
+                            docker_executable=docker_executable,
+                            image=test_image,
+                            timeout_seconds=120,
+                            max_output_bytes=65536,
+                        )
+                        report["behavioral_tests"] = {
+                            "status": behavioral.status,
+                            "exit_code": behavioral.exit_code,
+                            "duration_ms": behavioral.duration_ms,
+                            "stdout": behavioral.stdout[-12000:],
+                            "stderr": behavioral.stderr[-12000:],
+                            "reason": behavioral.reason,
+                            "image": test_image,
+                        }
+                        report["tests_executed"] = behavioral.status in {
+                            "succeeded", "failed", "timed_out", "output_limit_exceeded"
+                        }
+                        report["candidate_code_executed"] = report["tests_executed"]
+                        if behavioral.status == "succeeded":
+                            report["status"] = "passed"
+                        else:
+                            report["diagnostic"] = (
+                                "Isolated behavioral tests did not pass: "
+                                + (behavioral.reason or behavioral.status)
+                            )[:1000]
                     else:
                         report["syntax_check"] = "invalid_checker_output"
                 else:
@@ -501,7 +532,7 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     if proposal["status"] != "validated" or not proposal["validation_report"]:
         raise ProposalError("Only a validated proposal can be approved for a human-reviewed PR.")
     if not proposal["static_check"] or proposal["static_check"].get("status") != "passed":
-        raise ProposalError("An isolated syntax check and test-integrity guard must pass before approval for a PR.")
+        raise ProposalError("An isolated syntax check, test-integrity guard, and behavior test run must pass before approval for a PR.")
     if not proposal["static_check"].get("test_integrity") or proposal["static_check"]["test_integrity"].get("status") != "passed":
         raise ProposalError("The static test-integrity guard must pass before approval for a PR.")
     root = _repo_root()

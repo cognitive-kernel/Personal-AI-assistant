@@ -50,7 +50,19 @@ def _enable_static_check(monkeypatch):
     monkeypatch.setenv("SANDBOX_ENABLED", "1")
     monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", sys.executable)
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "b" * 64)
+    monkeypatch.setenv("SANDBOX_TEST_IMAGE", "sha256:" + "c" * 64)
     monkeypatch.setattr(self_improvement.sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        self_improvement.sandbox,
+        "run_workspace_tests",
+        lambda *args, **kwargs: self_improvement.sandbox.SandboxResult(
+            status="succeeded",
+            exit_code=0,
+            stdout="5 passed",
+            stderr="",
+            duration_ms=120,
+        ),
+    )
     monkeypatch.setattr(
         self_improvement.sandbox,
         "run_workspace_syntax_check",
@@ -121,7 +133,9 @@ def test_proposal_validation_and_approval_never_apply_code(proposal_repo, monkey
         self_improvement.static_check_proposal(proposal["id"], confirm=False)
     checked = self_improvement.static_check_proposal(proposal["id"], confirm=True)
     assert checked["static_check"]["status"] == "passed"
-    assert checked["static_check"]["tests_executed"] is False
+    assert checked["static_check"]["tests_executed"] is True
+    assert checked["static_check"]["candidate_code_executed"] is True
+    assert checked["static_check"]["behavioral_tests"]["status"] == "succeeded"
     approved = self_improvement.approve_for_pr(proposal["id"], confirm=True)
     assert approved["status"] == "approved_for_pr"
     assert source.read_text(encoding="utf-8") == before
@@ -129,6 +143,31 @@ def test_proposal_validation_and_approval_never_apply_code(proposal_repo, monkey
     assert [event["event_type"] for event in self_improvement.proposal_events(proposal["id"])] == [
         "proposed", "validated", "static_checked", "approved_for_pr"
     ]
+
+
+
+def test_failed_behavior_tests_block_proposal_approval(proposal_repo, monkeypatch):
+    proposal = self_improvement.create_proposal(
+        "Failing candidate", "Behavioral tests must pass before approval.", _patch()
+    )
+    self_improvement.validate_proposal(proposal["id"])
+    _enable_static_check(monkeypatch)
+    monkeypatch.setattr(
+        self_improvement.sandbox,
+        "run_workspace_tests",
+        lambda *args, **kwargs: self_improvement.sandbox.SandboxResult(
+            status="failed", exit_code=1, stdout="1 failed", stderr="", duration_ms=80
+        ),
+    )
+
+    checked = self_improvement.static_check_proposal(proposal["id"], confirm=True)
+
+    assert checked["static_check"]["status"] == "failed"
+    assert checked["static_check"]["behavioral_tests"]["status"] == "failed"
+    assert checked["static_check"]["tests_executed"] is True
+    with pytest.raises(self_improvement.ProposalError, match="behavior test run"):
+        self_improvement.approve_for_pr(proposal["id"], confirm=True)
+
 
 
 def test_validation_fails_closed_when_repository_head_changes(proposal_repo):
@@ -218,7 +257,8 @@ def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
     )
     assert 'id="self-improvement-section"' in page
     assert "SELF_IMPROVEMENT_REPO_ROOT" in page
-    assert "هیچ کدی اجرا یا اعمال نمی‌شود" in page
+    assert "کد پیشنهادی فقط داخل کانتینر اجرا می‌شود" in page
+    assert "آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند" in page
     assert "تأیید برای بررسی PR" in page
     assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in page
     assert '"/api/self-improvement/proposals/"+item.id+"/static-check"' in page
