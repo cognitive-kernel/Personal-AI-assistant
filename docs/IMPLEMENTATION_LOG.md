@@ -675,3 +675,13 @@
 - [x] CI روی head دقیق `dd875dded0f13a74bb79245ad0828dc622ddf9a2` موفق بود؛ run [#38805038559](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38805038559)، شامل نصب وابستگی‌ها و `pytest`.
 - [x] PRهای قدیمی #6 و #88 پس از انتقال قابلیت منبع‌یابی به ساختار فعلی بسته شدند.
 - **گام بعدی:** افزودن regression test برای redirect امنیتی Ollama، سپس fault-injection در commitهای learning/task و آزمون pause/cancel پس از restart.
+
+
+## 45. 2026-10-16 — انتقال اصلاح دانلود partial به main فعلی
+
+- [x] PR قدیمی #19 بر پایهٔ main قدیمی بود و با main فعلی conflict داشت؛ تغییرات به شاخهٔ تازهٔ `fix/strict-installer-range-current-main` منتقل شد، بدون ادغام شاخهٔ قدیمی.
+- [x] `run.py` اکنون پاسخ HTTP 206 را فقط برای درخواست Range معتبر، با `Content-Range` دقیق و offset منطبق می‌پذیرد؛ پاسخ نامعتبر یا ناقص فایل موقت را حفظ می‌کند و نمی‌تواند fragment را به‌عنوان installer کامل ثبت کند.
+- [x] تست‌های mocked برای پاسخ 206 ناخواسته/نامعتبر، بازهٔ معتبر، پاسخ 200 هنگام نادیده‌گرفتن Range و طول ناقص پاسخ اضافه شدند.
+- [x] **PR #5** برای بهبود بازخورد retry درس با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/5)، commit `0150d4e30f97fab69fd805c9d64e29add8156092`. CI روی head دقیق `f41173bd166c17987663ad334b02b9441e883def` موفق بود؛ run [#38129271591](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38129271591).
+- [ ] CI روی head تازهٔ PR دانلود باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** تأیید CI دقیق PR جدید؛ سپس تعیین تکلیف PRهای قدیمی و stacked #8/#11/#13/#17 بدون از دست‌دادن قابلیت‌های مفید.
