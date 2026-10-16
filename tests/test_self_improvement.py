@@ -133,7 +133,9 @@ def test_proposal_validation_and_approval_never_apply_code(proposal_repo, monkey
         self_improvement.static_check_proposal(proposal["id"], confirm=False)
     checked = self_improvement.static_check_proposal(proposal["id"], confirm=True)
     assert checked["static_check"]["status"] == "passed"
-    assert checked["static_check"]["tests_executed"] is False
+    assert checked["static_check"]["tests_executed"] is True
+    assert checked["static_check"]["candidate_code_executed"] is True
+    assert checked["static_check"]["behavioral_tests"]["status"] == "succeeded"
     approved = self_improvement.approve_for_pr(proposal["id"], confirm=True)
     assert approved["status"] == "approved_for_pr"
     assert source.read_text(encoding="utf-8") == before
