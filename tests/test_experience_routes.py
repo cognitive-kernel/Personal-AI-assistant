@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db, experience_source_checks, web_sources
+from app import cloud_resources, db, experience, experience_source_checks, web_sources
 from app.main import app
 
 
@@ -156,3 +156,40 @@ def test_experience_source_revalidation_requires_confirmation_and_preserves_reco
         assert history.json()["count"] == 1
         detail = client.get(f"/api/experiences/{experience_id}")
         assert detail.json()["experience"]["version"] == version_before
+
+
+
+def test_feedback_api_requires_verified_record_and_can_be_cleared(tmp_path, monkeypatch):
+    _isolate_app(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/experiences",
+            json={"topic": "Python", "problem": "A tested retrieval issue."},
+        )
+        experience_id = created.json()["experience"]["id"]
+        rejected = client.post(
+            f"/api/experiences/{experience_id}/feedback",
+            json={"rating": 1},
+        )
+        assert rejected.status_code == 422
+
+        experience.update_experience(
+            experience_id,
+            status="verified",
+            source_evidence=[{"url": "https://docs.example.org/", "claim": "Official docs"}],
+            test_plan=[{"test": "regression"}],
+            test_results=[{"test": "regression", "passed": True}],
+            takeaway="Tested result",
+            _controlled_run=True,
+        )
+        saved = client.post(
+            f"/api/experiences/{experience_id}/feedback",
+            json={"rating": -1},
+        )
+        assert saved.status_code == 200
+        assert saved.json()["feedback"]["rating"] == -1
+        assert saved.json()["changes_verification"] is False
+
+        cleared = client.delete(f"/api/experiences/{experience_id}/feedback")
+        assert cleared.status_code == 200
+        assert cleared.json()["deleted"] is True
