@@ -120,15 +120,15 @@ def test_explicit_negative_feedback_reduces_retrieval_rank_without_unverifying(
     tmp_path, monkeypatch
 ):
     _setup(tmp_path, monkeypatch)
-    preferred = _verified(
-        "Python JSON parser",
-        "Parser rejects an empty payload.",
-        "Validate input before parsing.",
-    )
     alternate = _verified(
         "Python JSON parser",
         "Parser rejects an empty payload.",
         "Check the schema and input boundaries.",
+    )
+    preferred = _verified(
+        "Python JSON parser",
+        "Parser rejects an empty payload.",
+        "Validate input before parsing.",
     )
 
     def unavailable(*_args, **_kwargs):
