@@ -134,6 +134,8 @@ def _github_api(method: str, path: str, payload: dict[str, Any] | None = None) -
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             raw = response.read(1024 * 1024)
+            if response.status == 204 or not raw:
+                return {}
             value = json.loads(raw.decode("utf-8"))
             if not isinstance(value, dict):
                 raise ProposalError("GitHub returned an unexpected API response.")
@@ -665,6 +667,7 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
 
     worktree_path: Path | None = None
     ref_created = False
+    pr_created = False
     branch_name = "ai-proposal/" + str(proposal_id) + "-" + meta["sha256"][:12]
     try:
         with tempfile.TemporaryDirectory(prefix="ai-pr-worktree-") as temp_dir:
@@ -744,6 +747,7 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
                 raise ProposalError("GitHub did not return a valid pull request number.")
             if not isinstance(url, str) or not url.startswith("https://github.com/"):
                 raise ProposalError("GitHub did not return a valid pull request URL.")
+            pr_created = True
             details = {
                 "pull_request_number": number,
                 "pull_request_url": url,
@@ -761,7 +765,7 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
                 _append_event(conn, proposal_id, "pr_opened", details)
             return {"proposal_id": proposal_id, **details, "already_opened": False}
     except Exception:
-        if ref_created:
+        if ref_created and not pr_created:
             try:
                 _github_api("DELETE", "/git/refs/heads/" + branch_name)
             except Exception:
@@ -769,7 +773,11 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
         raise
     finally:
         if worktree_path is not None:
-            _git(root, ["worktree", "remove", "--force", str(worktree_path)])
+            if worktree_path.exists():
+                _git(root, ["worktree", "remove", "--force", str(worktree_path)])
+            else:
+                # TemporaryDirectory already removed the path; prune its stale git metadata.
+                _git(root, ["worktree", "prune", "--expire", "now"])
 
 
 def reject_proposal(proposal_id: int, *, confirm: bool, reason: str = "") -> dict[str, Any]:
