@@ -206,5 +206,13 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
             arg=task_id,
             timeout=10000,
         )
-        assert "وضعیت: cancelled" in card.inner_text()
+        page.wait_for_function(
+            """(taskId) => {
+                const card = Array.from(document.querySelectorAll('#tasks-container article'))
+                    .find(node => node.textContent.includes('#' + taskId + ' — e2e.scheduled-cancellation'));
+                return card && card.textContent.includes('وضعیت: cancelled');
+            }""",
+            arg=task_id,
+            timeout=10000,
+        )
         browser.close()
