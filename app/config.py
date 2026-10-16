@@ -28,6 +28,7 @@ class Defaults:
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
     cloud_resources_db_path: str = os.getenv("CLOUD_RESOURCES_DB_PATH", "data/cloud_resources.db")
+    database_backup_dir: str = os.getenv("DATABASE_BACKUP_DIR", "data/backups")
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = _int_env("PORT", 8000)
 
