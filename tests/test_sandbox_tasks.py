@@ -85,7 +85,8 @@ def test_handler_records_hash_and_execution_evidence_without_storing_source_in_c
     assert calls[0][0] == source
     assert calls[0][1]["docker_executable"] == executable
     assert calls[0][1]["image"].endswith("a" * 64)
-    assert calls[0][1]["control_check"] == context.control_status
+    assert callable(calls[0][1]["control_check"])
+    assert calls[0][1]["control_check"]() == "running"
     assert len(context.checkpoints) == 2
     assert context.checkpoints[0]["phase"] == "sandbox_started"
     assert context.checkpoints[1]["phase"] == "sandbox_finished"
