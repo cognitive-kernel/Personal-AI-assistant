@@ -1087,5 +1087,17 @@
 - [x] پس از هر poll، ابتدا `claim_next_task()` فرصت reconciliation leaseهای منقضی‌شده را دارد؛ سپس cleanup فهرست شناسه‌های terminal را از صف پایدار می‌گیرد.
 - [x] پاک‌سازی فقط در صورت فعال بودن sandbox ثبت می‌شود، حداکثر هر ۳۰ ثانیه اجرا می‌شود و هر pass حداکثر ۱۰۰ container را بررسی می‌کند.
 - [x] تست‌های callback، جلوگیری از اجرای موازی cleanup، انتخاب taskهای terminal و خاموش‌بودن قابلیت هنگام غیرفعال‌بودن sandbox اضافه شدند.
+- [x] **PR #153** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/153)، commit ادغام `1a8f06d57c6a3fca637591c9487825c611f85024`.
+- [x] CI روی head دقیق `9537ddce6925610a67e59d9c48b1733060008935` موفق بود؛ run [#38857835888](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38857835888).
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** افزودن grace period بر مبنای زمان ثبت وضعیت terminal، نه فقط سن container؛ سپس تست بازیابی چندپردازه‌ای و ممیزی Issueهای باز.
+
+
+## 78. 2026-10-16 — مهلت محافظتی از زمان terminal شدن task
+
+- [x] بازبینی ایمنی نشان داد سن container به‌تنهایی برای جلوگیری از race کافی نیست: task ممکن است همین حالا terminal شده باشد، درحالی‌که container از قبل قدیمی است.
+- [x] `list_terminal_task_ids()` اکنون taskها را فقط پس از سپری‌شدن حداقل ۶۰ ثانیه از `updated_at` وضعیت terminal قابل‌استفاده برای cleanup می‌کند.
+- [x] cleanup علاوه بر سن container، سن وضعیت terminal را هم کنترل می‌کند؛ task تازه‌تبدیل‌شده به `failed` پس از انقضای lease فوراً مجاز به حذف container نیست.
+- [x] تست‌های grace period، timestamp قدیمی و اعتبارسنجی ورودی اضافه شدند.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** بررسی crash/restart چندپردازه‌ای و اثبات اینکه task فعال یا task دارای lease معتبر هیچ‌وقت cleanup نمی‌شود؛ سپس ممیزی نهایی نقشه راه و Issueهای باز.
+- **گام بعدی:** تست هم‌زمانی/recovery چندپردازه‌ای و بازبینی نهایی issueها و وضعیت نقشهٔ راه.
