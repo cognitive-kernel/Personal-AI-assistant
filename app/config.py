@@ -27,6 +27,7 @@ class Defaults:
     ollama_num_thread: int = _int_env("OLLAMA_NUM_THREAD", 0)
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
+    cloud_resources_db_path: str = os.getenv("CLOUD_RESOURCES_DB_PATH", "data/cloud_resources.db")
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = _int_env("PORT", 8000)
 
