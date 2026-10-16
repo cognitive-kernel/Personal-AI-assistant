@@ -221,6 +221,34 @@ function renderLessonResult(output, job, path, topic) {
  form.append(submit);
  const result = document.createElement("p");
  form.append(result);
+ const semanticReviewButton = document.createElement("button");
+ semanticReviewButton.type = "button";
+ semanticReviewButton.textContent = "بازبینی معنایی کمکی پاسخ‌ها";
+ semanticReviewButton.hidden = true;
+ const semanticReviewResult = document.createElement("p");
+ semanticReviewResult.setAttribute("role", "status");
+ form.append(semanticReviewButton, semanticReviewResult);
+ let latestAttemptId = null;
+ semanticReviewButton.addEventListener("click", async () => {
+  if (!latestAttemptId) return;
+  if (!window.confirm("این بازبینی توسط همان مدل محلی به‌صورت کمکی انجام می‌شود؛ مستقل نیست و نمره آزمون را تغییر نمی‌دهد. ادامه می‌دهید؟")) return;
+  semanticReviewButton.disabled = true;
+  semanticReviewResult.textContent = "در حال بازبینی معنایی کمکی…";
+  try {
+   const review = await learningApi("/api/learning/jobs/" + job.id + "/assessment/" + latestAttemptId + "/semantic-review", {
+    method: "POST", body: JSON.stringify({confirm: true})
+   });
+   const lines = (review.review && review.review.items || []).map(item =>
+    item.index + ". " + item.judgment + " — " + item.rationale +
+    ((item.missing_concepts || []).length ? "؛ مفاهیم جاافتاده: " + item.missing_concepts.join("، ") : "")
+   );
+   semanticReviewResult.textContent = lines.join("\\n") + "\\n\\n" + review.note;
+  } catch (error) {
+   semanticReviewResult.textContent = "بازبینی معنایی در دسترس نیست: " + error.message;
+  } finally {
+   semanticReviewButton.disabled = false;
+  }
+ });
  form.addEventListener("submit", async event => {
   event.preventDefault();
   submit.disabled = true;
@@ -230,6 +258,9 @@ function renderLessonResult(output, job, path, topic) {
     method: "POST",
     body: JSON.stringify({answers: fields.map(field => field.value)})
    });
+   latestAttemptId = outcome.attempt_id;
+   semanticReviewButton.hidden = false;
+   semanticReviewResult.textContent = "بازبینی معنایی اختیاری است و پس از ثبت آزمون فعال می‌شود.";
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
     outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
     outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
