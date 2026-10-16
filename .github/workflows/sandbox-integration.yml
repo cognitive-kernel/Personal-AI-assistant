@@ -1,0 +1,53 @@
+name: Sandbox integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      python_image:
+        description: "Official Python image pinned by SHA-256 digest (for example python:3.12-slim@sha256:<64 hex characters>)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  real-docker-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SANDBOX_PYTHON_IMAGE: ${{ inputs.python_image }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Validate digest-pinned official Python image
+        run: |
+          python - <<'PY'
+          import os
+          import re
+
+          image = os.environ["SANDBOX_PYTHON_IMAGE"]
+          pattern = r"(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}"
+          if not re.fullmatch(pattern, image):
+              raise SystemExit("Provide an official Python image pinned by a 64-character SHA-256 digest.")
+          PY
+
+      - name: Pull the exact image digest
+        run: |
+          docker pull "$SANDBOX_PYTHON_IMAGE"
+          echo "SANDBOX_DOCKER_EXECUTABLE=$(command -v docker)" >> "$GITHUB_ENV"
+
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run real Docker sandbox integration tests
+        env:
+          RUN_SANDBOX_INTEGRATION: "1"
+        run: python -m pytest -m sandbox_integration -q
