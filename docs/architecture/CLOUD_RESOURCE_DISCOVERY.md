@@ -9,7 +9,7 @@ The local API is loopback-only:
 - `GET /api/cloud-resources?limit=100` lists recent candidates and the latest discovery run.
 - `POST /api/cloud-resources/discover` queues a manual discovery task and returns HTTP 202.
 
-Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. These signals describe what the page mentions; they do not establish that a service is free, available, suitable, or authorized for use.
+Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the page title plus fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. These signals describe what the page mentions; they do not establish that a service is free, available, suitable, or authorized for use.
 
 ## Trust and safety boundary
 
