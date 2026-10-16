@@ -217,3 +217,16 @@ def test_backup_prune_enforces_conservative_minimums_and_loopback_access(tmp_pat
             json={"confirm": True, "keep_last": 3, "min_age_days": 30},
         )
         assert response.status_code == 403
+
+
+
+def test_dashboard_exposes_preview_first_backup_retention_controls():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="prune-storage-backups"' in page
+    assert '"/api/storage/backups/prune"' in page
+    assert "keep_last:3,min_age_days:30" in page
+    assert "این کار قابل بازگشت نیست." in page
