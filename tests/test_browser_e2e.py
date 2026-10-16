@@ -227,12 +227,12 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     original_content = development_doc.read_text(encoding="utf-8")
     title = "Browser E2E proposal safety boundary"
     patch = (
-        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\\n"
-        "--- a/docs/DEVELOPMENT.md\\n"
-        "+++ b/docs/DEVELOPMENT.md\\n"
-        "@@ -1 +1 @@\\n"
-        "-# راه‌اندازی محیط توسعه\\n"
-        "+# راه‌اندازی محیط توسعه (پیشنهاد آزمایشی)\\n"
+        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\n"
+        "--- a/docs/DEVELOPMENT.md\n"
+        "+++ b/docs/DEVELOPMENT.md\n"
+        "@@ -1 +1 @@\n"
+        "-# راه‌اندازی محیط توسعه\n"
+        "+# راه‌اندازی محیط توسعه (پیشنهاد آزمایشی)\n"
     )
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
