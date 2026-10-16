@@ -4,7 +4,7 @@
 
 - Only HTTP(S) URLs with literal loopback IP addresses are accepted.
 - The exact hostname `localhost` is normalized to `127.0.0.1` before the request URL is built. The HTTP client therefore does not rely on DNS or hosts-file resolution for this name.
-- Hostnames such as `localhost.evil`, `localhost.`, `localhost.localdomain`, and DNS aliases for loopback are rejected.
+- Hostnames such as `localhost.evil`, `localhost.`, `localhost.localdomain`, DNS aliases for loopback, and IPv4-mapped IPv6 literals are rejected.
 - Invalid ports, URL credentials, paths, queries, and fragments are rejected.
 - Redirects are not followed and environment-configured proxies are disabled.
 - Response bodies are capped at 8 MiB before JSON parsing; malformed UTF-8 and JSON errors are surfaced as `OllamaError`.
