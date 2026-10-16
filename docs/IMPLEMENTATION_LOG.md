@@ -1580,3 +1580,10 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **حریم خصوصی:** گزارش ممیزی فقط تعداد تعارض‌ها و زوج URLها را نگه می‌دارد، نه عنوان موضوع یا شرح خام تعارض.
 - **اعتبارسنجی:** PR [#231](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/231) ادغام شد؛ CI روی head دقیق `e3b240ab7d95b2dc37fa1a4f40cfceb00fe96f39` در [run #38927015468](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927015468) و پس از ادغام در [run #38927136189](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927136189) موفق بود؛ 537 آزمون موفق، 4 مورد skip و benchmark بازیابی موفق بود.
 - **محدودیت:** تشخیص تعارض هنوز مدل‌محور است و ممکن است اختلاف واقعی را از دست بدهد؛ این تغییر فقط هنگام گزارش تعارض رفتار fail-closed را تضمین می‌کند.
+
+
+## 128. 2026-10-16 — ثبت digest مدل Ollama در گزارش ارزیابی
+
+- **پیاده‌سازی:** `ollama.list_models()` فیلد `digest` را در صورت وجود حفظ می‌کند؛ گزارش ارزیابی پاسخ، digest مدل پیکربندی‌شده را کنار نام، اندازه و زمان تغییر ثبت می‌کند. اگر digest در دسترس نباشد، محدودیت صریح در گزارش درج می‌شود.
+- **هدف:** افزایش قابلیت شناسایی دقیق مدل در اجرای ارزیابی؛ این تغییر به‌تنهایی منبع زندهٔ وب یا کل محیط اجرا را ثابت و قابل بازپخش نمی‌کند.
+- **اعتبارسنجی:** PR [#233](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/233) ادغام شد. CI روی head دقیق `8e1fd0696407167414ff3a1dff719aa58b42d60b` در [run #38927880019](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927880019) و پس از ادغام در [run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) موفق بود؛ 539 آزمون موفق، 4 مورد skip و benchmark بازیابی موفق بود.
