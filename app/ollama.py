@@ -13,6 +13,9 @@ from .hardware import detect_hardware, runtime_limits
 class OllamaError(RuntimeError):
     pass
 
+
+_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+
 def _base_url() -> str:
     base = str(get_settings()["ollama_base_url"]).rstrip("/")
     parsed = urllib.parse.urlparse(base)
@@ -46,10 +49,17 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         method="GET" if payload is None else "POST",
     )
     try:
-        with urllib.request.build_opener(_NoRedirectHandler()).open(
+        # Never let environment-configured proxies forward local prompts elsewhere.
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            _NoRedirectHandler(),
+        )
+        with opener.open(
             request, timeout=timeout or int(settings["ollama_timeout_seconds"])
         ) as response:
-            body = response.read(8 * 1024 * 1024)
+            body = response.read(_MAX_RESPONSE_BYTES + 1)
+        if len(body) > _MAX_RESPONSE_BYTES:
+            raise OllamaError("Ollama response exceeded the 8 MiB limit.")
         result = json.loads(body.decode("utf-8"))
         if not isinstance(result, dict):
             raise OllamaError("Unexpected Ollama response shape.")
