@@ -80,7 +80,7 @@ The official CLI documentation states that submitting a kernel can execute it, t
 
 The official CLI exposes a top-level `kaggle quota --csv` command for the authenticated account's weekly GPU and TPU usage. Its rows contain resource, used, remaining, total, and quota refresh time. This is account-specific, shared across the account's projects, and can change when another notebook runs; it must not be treated as a permanent public resource claim.
 
-`app/kaggle_quota.py` parses bounded CSV output supplied by an explicitly authorized caller, rejects malformed/inconsistent values, requires an observation timestamp, and considers the snapshot stale after 15 minutes or at the next quota reset. The parser does not execute a command, read tokens, contact Kaggle, or persist credentials. A future live adapter must require explicit user consent, use the existing account only, refresh quota before dispatch, and fail closed on missing/stale quota. Kaggle's current Terms of Use state that a user may not operate more than one active account and restrict automated scraping; account rotation and scraping are therefore not fallback strategies.
+`app/kaggle_quota.py` parses bounded CSV output, rejects malformed/inconsistent values, requires an observation timestamp, and considers the snapshot stale after 15 minutes or at the next quota reset. `app/kaggle_quota_client.py` adds a read-only client that runs only the fixed `quota --csv` command when both a feature flag and explicit user-consent argument are true; it requires an absolute executable path, uses no shell, bounds execution time, passes only a small environment allowlist, and does not persist credentials, stdout, or stderr. The application does not call this client automatically yet. Any future dispatch must refresh quota and fail closed on missing/stale quota. Kaggle's current Terms of Use state that a user may not operate more than one active account and restrict automated scraping; account rotation and scraping are therefore not fallback strategies.
 
 References:
 
@@ -89,3 +89,10 @@ References:
 - Kaggle Terms of Use (active version listed as June 22, 2025): https://www.kaggle.com/terms
 
 No provider job is submitted by this stage. The provider policy still returns `execution_authorized=false`.
+
+
+## Explicitly consented read-only quota client
+
+`fetch_quota_snapshot()` is a standalone building block, not an enabled background integration. It requires both `enabled=True` and `user_consent=True`, and an absolute path to the CLI executable. It executes only `quota --csv`; there is no command interpolation, shell, account creation, kernel push, upload, or deletion. Only the environment variables needed for process startup and Kaggle CLI credential discovery are passed to the child process. CLI error output is deliberately not propagated to avoid leaking account details or credentials.
+
+The application startup and cloud scheduler do not call this client. A later UI/API integration must persist an auditable consent state, explain the account data accessed, and provide revocation before enabling periodic quota checks.
