@@ -291,6 +291,30 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_chat_research_runs_review ON chat_research_runs(review_status, created_at DESC)",
         ),
     ),
+    Migration(
+        8,
+        "experience-source-revalidation-history",
+        (
+            """CREATE TABLE learning_experience_source_checks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experience_id INTEGER NOT NULL REFERENCES learning_experiences(id) ON DELETE CASCADE,
+                experience_version INTEGER NOT NULL CHECK(experience_version >= 1),
+                source_url TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome IN (
+                    'baseline','unchanged','changed','unavailable','blocked'
+                )),
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256) = 64),
+                previous_content_sha256 TEXT CHECK(
+                    previous_content_sha256 IS NULL OR length(previous_content_sha256) = 64
+                ),
+                title TEXT NOT NULL DEFAULT '',
+                error_kind TEXT NOT NULL DEFAULT '',
+                checked_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_experience_source_checks_latest ON learning_experience_source_checks(experience_id, source_url, checked_at DESC, id DESC)",
+        ),
+    ),
 )
 
 

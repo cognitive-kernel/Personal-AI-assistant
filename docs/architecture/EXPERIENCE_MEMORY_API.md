@@ -40,3 +40,12 @@ The route tests cover creation, editing, filtering, version history, rejection o
 ## Opt-in research capture
 
 Automatic capture is disabled by default. After explicit local consent, technical research answers with usable HTTPS sources may be saved as `identified` or `needs_review` experiences. The question, answer takeaway, and up to three source URLs with short excerpts are stored locally. Small-talk and research answers without usable sources are not captured. Captured experiences are never marked verified by this path; no test code is executed. Consent grant/revocation events are stored in the settings database, and revocation stops future captures without deleting existing records.
+
+
+## Source revalidation
+
+- `POST /api/experiences/{id}/refresh-sources` requires an explicit `{"confirm": true}` request and only fetches up to three HTTPS URLs already attached to that experience.
+- URL validation, public-destination checks, bounded response size, and safe redirect validation use the existing web-source adapter. No arbitrary URL can be supplied in the request body.
+- `GET /api/experiences/{id}/source-checks` returns the durable check history.
+- Each check stores a hash of bounded extracted title/text, the prior hash, outcome (`baseline`, `unchanged`, `changed`, `unavailable`, or `blocked`), timestamp, and a bounded error category. Full fetched page content and raw exception details are not persisted.
+- A changed fingerprint is not proof of a factual change, and an unchanged fingerprint covers only bounded extracted text. Revalidation never edits or promotes the experience; a person must review changes and run the controlled test separately.

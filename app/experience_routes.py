@@ -10,7 +10,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, StrictBool
 
-from . import experience, experience_capture_consent, experience_tasks, sandbox_consent, task_manager
+from . import experience, experience_capture_consent, experience_source_checks, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -51,6 +51,13 @@ class ExperienceUpdateRequest(BaseModel):
 
 
 class ExperienceAutoCaptureConsentRequest(BaseModel):
+    confirm: StrictBool
+
+    class Config:
+        extra = "forbid"
+
+
+class ExperienceSourceRefreshRequest(BaseModel):
     confirm: StrictBool
 
     class Config:
@@ -188,6 +195,37 @@ def queue_experience_test(
         "task": task,
         "message": "Controlled test queued. Verification depends on the actual sandbox result and saved source/test evidence.",
     }
+
+
+@router.post("/{experience_id}/refresh-sources")
+def refresh_experience_sources(
+    experience_id: int,
+    request: ExperienceSourceRefreshRequest,
+) -> dict[str, Any]:
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit confirmation to fetch saved source URLs is required.")
+    try:
+        return experience_source_checks.refresh_experience_sources(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience source revalidation could not be completed.") from exc
+
+
+@router.get("/{experience_id}/source-checks")
+def get_experience_source_checks(
+    experience_id: int,
+    limit: int = Query(default=30, ge=1, le=100),
+) -> dict[str, Any]:
+    try:
+        checks = experience_source_checks.list_source_checks(experience_id, limit=limit)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience source-check history is unavailable.") from exc
+    return {"experience_id": experience_id, "checks": checks, "count": len(checks)}
 
 
 @router.get("/{experience_id}/versions")
