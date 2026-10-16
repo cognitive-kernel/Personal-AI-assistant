@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app import db, self_improvement
 from app.db import learning_connection
@@ -129,3 +130,50 @@ def test_rejection_requires_confirmation_and_is_audited(proposal_repo):
     )
     assert rejected["status"] == "rejected"
     assert self_improvement.proposal_events(proposal["id"])[-1]["details"]["reason"] == "Not worth the risk."
+
+
+
+def test_self_improvement_api_is_loopback_guarded_and_uses_explicit_approval(
+    proposal_repo, tmp_path, monkeypatch
+):
+    from app import cloud_resources
+    from app.main import app
+    from app.task_routes import require_loopback_client
+
+    monkeypatch.setattr(
+        db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
+    )
+    monkeypatch.setattr(
+        cloud_resources,
+        "ensure_daily_discovery_scheduled",
+        lambda: {"status": "disabled_for_test"},
+    )
+    app.dependency_overrides[require_loopback_client] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/self-improvement/proposals",
+                json={
+                    "title": "API proposal",
+                    "rationale": "Verify local proposal lifecycle.",
+                    "patch": _patch(),
+                },
+            )
+            assert response.status_code == 201, response.text
+            proposal_id = response.json()["proposal"]["id"]
+            assert client.post(
+                f"/api/self-improvement/proposals/{proposal_id}/validate"
+            ).status_code == 200
+            denied = client.post(
+                f"/api/self-improvement/proposals/{proposal_id}/approve",
+                json={"confirm": False},
+            )
+            assert denied.status_code == 409
+            approved = client.post(
+                f"/api/self-improvement/proposals/{proposal_id}/approve",
+                json={"confirm": True},
+            )
+            assert approved.status_code == 200
+            assert approved.json()["proposal"]["status"] == "approved_for_pr"
+    finally:
+        app.dependency_overrides.pop(require_loopback_client, None)
