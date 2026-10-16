@@ -45,7 +45,14 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
-        assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs", "cloud_resource_claims"} <= tables
+        assert {
+            "schema_migrations",
+            "cloud_resource_candidates",
+            "cloud_resource_discovery_runs",
+            "cloud_resource_claims",
+            "cloud_resource_selection_plans",
+            "cloud_resource_selection_decisions",
+        } <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
         ).fetchone()[0] == 7
