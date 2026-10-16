@@ -1160,5 +1160,19 @@
 - [x] پنل UI مسیر CLI و config، profile، region و OCID را می‌گیرد؛ فقط مسیرها/شناسه‌های لازم محلی ذخیره می‌شوند، نه محتوای config یا کلید خصوصی.
 - [x] snapshotهای parsed شامل نام limit، value/used/available، scope، region و زمان مشاهده ذخیره می‌شوند؛ با لغو رضایت snapshot و مسیرهای تنظیم‌شده پاک می‌شوند.
 - [x] پاسخ API و UI صریحاً `execution_authorized=false` نمایش می‌دهند؛ این endpoint فقط‌خواندنی است و provisioning/remote execution انجام نمی‌دهد.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** CI و ادغام؛ سپس بازبینی provider-neutralization و تعیین قرارداد eligibility پیش از هرگونه اجرای remote.
+- [x] **PR #159** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/159)، commit ادغام `61e159c201c8888599da19a66caf498dc4bc108e`.
+- [x] CI روی head دقیق `5cf9f6227041e0233b1bcf8bf75e778fa879afc1` موفق بود؛ run [#38859682414](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38859682414)، شامل نصب وابستگی‌ها، مجموعهٔ تست و benchmark بازیابی واژگانی.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** planner مستقل از provider برای انتخاب dry-run منابع مناسب، با دلایل قابل‌توضیح و اجرای remote همچنان غیرفعال.
+
+
+## 84. 2026-10-16 — برنامه‌ریز انتخاب منبع مستقل از provider (dry-run)
+
+- [x] `app/cloud_resource_planner.py` اضافه شد تا candidateها را بر اساس CPU، RAM به GiB، GPU/model، allowlist دامنه و نتیجهٔ policy جاری ارزیابی کند.
+- [x] فقط claimهای current، پذیرفته‌شده و متصل به hash محتوای فعلی برای ارزیابی ظرفیت استفاده می‌شوند؛ ادعای stale یا تأییدنشده ظرفیت معتبر محسوب نمی‌شود.
+- [x] خروجی برای هر candidate دلایل واجدشرایط‌نبودن، blockerهای policy و نیازهای بازبینی را می‌دهد و نتیجهٔ پیشنهادی را از مجوز اجرا جدا می‌کند.
+- [x] planner صریحاً `execution_authorized=false` و `remote_execution_enabled=false` برمی‌گرداند؛ هیچ صف‌بندی، تماس provider، ساخت حساب یا provisioning انجام نمی‌شود.
+- [x] تست‌های انتخاب امن، claimهای stale، تبدیل GB/GiB، GPU model، allowlist، ورودی malformed و اعداد overflow اضافه شدند.
+- [ ] planner هنوز به API/UI یا زمان‌بند متصل نشده است؛ ابتدا CI روی head دقیق PR بررسی می‌شود.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** CI/ادغام؛ سپس API dry-run محدود به loopback برای مشاهدهٔ plan و دلایل تصمیم، بدون اجرای remote.
