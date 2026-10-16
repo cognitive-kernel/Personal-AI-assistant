@@ -10,6 +10,12 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     assert 'id="experience-create-form"' in page
     assert 'id="experience-refresh"' in page
     assert 'id="experience-search-form"' in page
+    assert 'id="experience-auto-capture-section"' in page
+    assert 'id="experience-auto-capture-confirm"' in page
+    assert '"/api/experiences/auto-capture/consent"' in page
+    assert 'method:"POST",body:JSON.stringify({confirm:true})' in page
+    assert 'method:"DELETE"' in page
+    assert 'به‌صورت پیش‌فرض خاموش است' in page
     assert 'id="experience-list"' in page
     assert '"/api/experiences?limit=100"' in page
     assert '"/api/experiences/search?query="+encodeURIComponent(query)' in page
