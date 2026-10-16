@@ -76,3 +76,17 @@ def test_general_health_does_not_disclose_database_filesystem_paths(tmp_path, mo
     assert str(tmp_path) not in str(result)
     assert db.defaults.settings_db_path not in str(result)
     assert db.defaults.learning_db_path not in str(result)
+
+
+
+def test_local_dashboard_exposes_read_only_storage_health_panel():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="storage-health-section"' in page
+    assert 'id="refresh-storage-health"' in page
+    assert 'id="storage-health-output"' in page
+    assert 'api("/api/health/storage")' in page
+    assert "فقط‌خواندنی است" in page

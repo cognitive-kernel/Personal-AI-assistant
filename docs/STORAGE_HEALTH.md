@@ -20,3 +20,6 @@ Possible per-store statuses include:
 The response deliberately omits absolute paths, raw SQLite errors, table contents, and record values. A degraded result is diagnostic only; it does not attempt automatic repair. Before any recovery or migration, take a verified backup and follow the database recovery procedure.
 
 The existing `GET /api/health` endpoint also no longer returns absolute database paths. It exposes only whether the stores are configured and whether their configured paths are distinct.
+
+
+The local dashboard includes a **سلامت ذخیره‌سازی** panel that calls this endpoint on page load and offers a manual refresh button. The panel displays the diagnostic response as text; it does not provide repair controls.
