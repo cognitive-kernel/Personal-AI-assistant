@@ -43,3 +43,10 @@ The API generates the backup identifier itself; clients cannot choose an arbitra
 The loopback-only endpoint `POST /api/storage/backups/{backup_id}/restore` accepts only `{"confirm": true}`. The backup identifier must match the server-generated snapshot ID format and resolve to a real backup directly inside the configured backup root. The restore process verifies manifest, hashes, schema inventory, SQLite integrity and foreign keys, then creates a new directory under `restore-staging/`. The response contains a generated staging ID and database roles, never absolute paths.
 
 This endpoint **does not modify the live databases**, overwrite a destination, or perform a cutover. Inspect and validate the staged files and application behavior separately before planning any manual deployment. Failed validation does not publish a staging directory. The staging directory contains private application data and should be protected and cleaned up under an explicit operational policy.
+
+
+## Retention and cleanup
+
+The local dashboard offers preview-first cleanup through `POST /api/storage/backups/prune`. The preview request uses `{"confirm": false, "keep_last": 3, "min_age_days": 30}` and does not delete anything. After displaying the eligible server-generated snapshot IDs, the UI asks for a second explicit confirmation before sending `confirm: true`.
+
+The policy preserves at least the three newest recognized snapshots and never considers snapshots younger than 30 days for deletion. The API permits a keep count of 3–50 and an age threshold of 30–3650 days. Only direct child directories with recognized snapshot IDs and a compatible manifest/file inventory are eligible; symbolic links, staging restores, and unrecognized folders are skipped. This is a manually initiated cleanup, not an automatic scheduler. Keep external/off-device copies for disaster recovery.
