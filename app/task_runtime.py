@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 
 from .task_worker import TaskHandler, TaskWorker
 
@@ -21,6 +22,8 @@ class TaskRuntime:
         worker_prefix: str = "task-worker",
         poll_interval: float = 0.5,
         lease_seconds: int = 300,
+        maintenance_callback: Callable[[], None] | None = None,
+        maintenance_interval: float = 30.0,
     ) -> None:
         if isinstance(worker_count, bool) or not isinstance(worker_count, int) or not 1 <= worker_count <= 8:
             raise ValueError("worker_count must be an integer between 1 and 8.")
@@ -28,6 +31,10 @@ class TaskRuntime:
             raise ValueError("worker_prefix must be a non-empty string.")
         if isinstance(poll_interval, bool) or not isinstance(poll_interval, (int, float)) or not 0.05 <= poll_interval <= 60:
             raise ValueError("poll_interval must be between 0.05 and 60 seconds.")
+        if maintenance_callback is not None and not callable(maintenance_callback):
+            raise ValueError("maintenance_callback must be callable when provided.")
+        if isinstance(maintenance_interval, bool) or not isinstance(maintenance_interval, (int, float)) or not 1 <= maintenance_interval <= 3600:
+            raise ValueError("maintenance_interval must be between 1 and 3600 seconds.")
         # Validate the registry and lease configuration before any threads start.
         TaskWorker(f"{worker_prefix.strip()}-validation", handlers, lease_seconds=lease_seconds)
         self.handlers = dict(handlers)
@@ -35,6 +42,10 @@ class TaskRuntime:
         self.worker_prefix = worker_prefix.strip()
         self.poll_interval = float(poll_interval)
         self.lease_seconds = lease_seconds
+        self.maintenance_callback = maintenance_callback
+        self.maintenance_interval = float(maintenance_interval)
+        self._last_maintenance_at = 0.0
+        self._maintenance_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._threads: list[threading.Thread] = []
         self._lock = threading.Lock()
@@ -65,6 +76,22 @@ class TaskRuntime:
                 self._threads.append(thread)
                 thread.start()
 
+    def _run_maintenance_if_due(self) -> None:
+        callback = self.maintenance_callback
+        if callback is None:
+            return
+        with self._maintenance_lock:
+            now = time.monotonic()
+            if now - self._last_maintenance_at < self.maintenance_interval:
+                return
+            # Reserve the interval before invoking external maintenance so worker
+            # threads cannot run the same cleanup concurrently.
+            self._last_maintenance_at = now
+            try:
+                callback()
+            except Exception:
+                logger.exception("Task maintenance callback failed; it will retry after the interval.")
+
     def _run_worker(self, worker: TaskWorker) -> None:
         while not self._stop_event.is_set():
             try:
@@ -72,6 +99,7 @@ class TaskRuntime:
             except Exception:
                 logger.exception("Task worker loop failed; it will retry after the poll interval.")
                 processed = False
+            self._run_maintenance_if_due()
             if not processed:
                 self._stop_event.wait(self.poll_interval)
 
