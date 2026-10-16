@@ -714,5 +714,18 @@
 - [x] بردار نسخهٔ قدیمی برای نسخهٔ جدید تجربه استفاده نمی‌شود؛ cache قابل بازسازی است و فقط تجربه‌های verified وارد مسیر توصیه می‌شوند. تجربه‌های failed/needs_review در مسیر هشدار جدا می‌مانند.
 - [x] تست‌های ورودی/خروجی embedding، retrieval معنایی بدون هم‌پوشانی واژگانی، fallback، و cache نسخه‌بندی‌شده اضافه شدند.
 - [x] راهنمای معماری در `docs/architecture/EXPERIENCE_RETRIEVAL.md` ثبت شد.
-- [ ] CI روی head دقیق PR بررسی شود؛ اجرای محلی در این محیط انجام نشده است.
-- **گام بعدی:** پس از ادغام، ارزیابی Recall@5/MRR روی مجموعهٔ فارسی/انگلیسی و سپس انتقال claim-review با تطبیق دقیق URL به ساختار فعلی.
+- [x] **PR #119** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/119)، commit `878eba9fd07b7e315faf287f3de9b21933565ad7`.
+- [x] CI روی head دقیق `57164de5d35e1b208603d5731bb93560d6d39232` موفق بود؛ run [#38839450131](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38839450131)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 215 passed.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** ارزیابی Recall@5/MRR روی مجموعهٔ فارسی/انگلیسی و ادغام claim-review با جریان chat/learning.
+
+
+## 48. 2026-10-16 — هستهٔ claim review و تطبیق دقیق URL citation
+
+- [x] `app/claim_review.py` اضافه شد تا claimهای مهم را با excerptهای محدودشده از منابع بررسی کند؛ verdictها و schema JSON اعتبارسنجی می‌شوند و خطا/خروجی ناقص به `passed=false` منتهی می‌شود.
+- [x] تطبیق URL به token کامل تغییر کرد؛ تطبیق substring، suffix، query string یا میزبان مشابه دیگر به‌عنوان citation معتبر پذیرفته نمی‌شود. نقطه‌گذاری پایانی و براکت/نقل‌قول پیرامون URL مجاز است.
+- [x] تست‌های verdict، malformed JSON، URL ناشناخته، URL گمراه‌کننده، punctuation، angle bracket و quote اضافه شدند.
+- [x] مستندات `docs/architecture/CLAIM_REVIEW.md` مرز اعتماد و محدودیت‌های reviewer را مشخص می‌کند.
+- [ ] این PR هنوز review primitive را به chat endpoint یا learning-job pipeline وصل نمی‌کند؛ این اتصال باید جداگانه با fallback و ثبت `needs_review` آزمون شود.
+- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** ادغام این primitive پس از CI، سپس اتصال محدود به مسیر learning-job و ارزیابی ادعای factual بدون مسدودکردن پاسخ‌های معمول.
