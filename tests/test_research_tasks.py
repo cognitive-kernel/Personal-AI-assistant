@@ -51,7 +51,7 @@ def test_research_task_runs_answer_with_safe_checkpoints(monkeypatch):
 )
 def test_research_task_rejects_invalid_or_untrusted_payload(payload):
     with pytest.raises(ValueError):
-        research_tasks._validate_payload(payload)
+        research_tasks.validate_payload(payload)
 
 
 def test_research_task_propagates_pause_or_cancel_checkpoint(monkeypatch):
