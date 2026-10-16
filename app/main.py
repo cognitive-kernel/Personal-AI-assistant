@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, task_manager
+from . import assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -152,12 +152,29 @@ class PathTopicProgress(BaseModel):
 def api_health() -> dict[str, Any]:
     hardware = detect_hardware()
     settings = db.get_settings()
-    return {"status": "ok", "ollama": ollama.health(), "hardware": hardware,
-            "runtime_limits": runtime_limits(settings, hardware),
-            "storage": {"settings_database": defaults.settings_db_path, "learning_database": defaults.learning_db_path,
-                        "cloud_resources_database": defaults.cloud_resources_db_path,
-                        "separate": len({defaults.settings_db_path, defaults.learning_db_path,
-                                         defaults.cloud_resources_db_path}) == 3}}
+    configured_paths = (
+        defaults.settings_db_path,
+        defaults.learning_db_path,
+        defaults.cloud_resources_db_path,
+    )
+    return {
+        "status": "ok",
+        "ollama": ollama.health(),
+        "hardware": hardware,
+        "runtime_limits": runtime_limits(settings, hardware),
+        "storage": {
+            "settings_database_configured": bool(configured_paths[0]),
+            "learning_database_configured": bool(configured_paths[1]),
+            "cloud_resources_database_configured": bool(configured_paths[2]),
+            "separate": len(set(configured_paths)) == 3,
+        },
+    }
+
+
+@app.get("/api/health/storage", dependencies=[Depends(require_loopback_client)])
+def api_storage_health() -> dict[str, Any]:
+    """Read-only local diagnostics; never migrate, repair, or expose database paths."""
+    return storage_health.check_storage_health()
 
 @app.get("/api/models")
 def models() -> dict[str, Any]:
