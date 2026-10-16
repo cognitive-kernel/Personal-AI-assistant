@@ -301,28 +301,49 @@ def latest_discovery_run() -> dict[str, Any] | None:
     return item
 
 
-def enqueue_discovery_task(*, manual: bool = False) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
-    if manual:
-        key = "cloud-discovery-manual:" + now.strftime("%Y%m%dT%H%M%S%fZ")
-        trigger = "manual"
-    else:
-        key = f"cloud-discovery:{now.date().isoformat()}"
-        trigger = "scheduled"
+def _enqueue_with_key(
+    key: str,
+    *,
+    trigger: str,
+    scheduled_at: datetime,
+) -> dict[str, Any]:
     return task_manager.create_task(
         CLOUD_DISCOVERY_TASK_TYPE,
         {"trigger": trigger},
         priority=-10,
         max_attempts=1,
-        scheduled_at=now,
+        scheduled_at=scheduled_at,
         dedupe_key=key,
     )
+
+
+def enqueue_discovery_task(*, manual: bool = False) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    if manual:
+        key = "cloud-discovery-manual:" + now.strftime("%Y%m%dT%H%M%S%fZ")
+        return _enqueue_with_key(key, trigger="manual", scheduled_at=now)
+    key = f"cloud-discovery:{now.date().isoformat()}"
+    return _enqueue_with_key(key, trigger="scheduled", scheduled_at=now)
 
 
 def ensure_daily_discovery_scheduled() -> dict[str, Any]:
     """Idempotently ensure one discovery task exists for the current UTC day."""
     initialize_store()
-    return enqueue_discovery_task(manual=False)
+    now = datetime.now(timezone.utc)
+    day_key = f"cloud-discovery:{now.date().isoformat()}"
+    existing = task_manager.get_task_by_dedupe_key(day_key)
+    if existing is not None and existing["status"] not in {"failed", "cancelled"}:
+        return existing
+    if existing is None:
+        return _enqueue_with_key(day_key, trigger="scheduled", scheduled_at=now)
+
+    # If a queued run was explicitly cancelled before it could chain tomorrow's
+    # task, allow one recovery run after the next application startup.
+    recovery_key = f"{day_key}:recovery"
+    recovery = task_manager.get_task_by_dedupe_key(recovery_key)
+    if recovery is not None:
+        return recovery
+    return _enqueue_with_key(recovery_key, trigger="scheduled", scheduled_at=now)
 
 
 def _schedule_next_daily_run() -> tuple[dict[str, Any], datetime]:
