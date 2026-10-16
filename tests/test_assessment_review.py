@@ -12,6 +12,7 @@ from app.db import learning_connection
 def _setup(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
     db.init_databases()
     job = learning.create_job("Semantic review contract")
     assessment = {
