@@ -113,6 +113,26 @@ def _warning(message: str, reason: str) -> str:
     return "\n\nVerification note: " + reason
 
 
+def _source_conflict_reason(message: str, review: dict[str, Any]) -> str:
+    conflicts = review.get("source_conflicts", [])
+    urls: list[str] = []
+    if isinstance(conflicts, list):
+        for conflict in conflicts[:5]:
+            if not isinstance(conflict, dict):
+                continue
+            for key in ("source_a_url", "source_b_url"):
+                url = conflict.get(key)
+                if isinstance(url, str) and url.startswith("https://") and url not in urls:
+                    urls.append(url[:1000])
+    sources_note = (" منابع متعارض: " if re.search(r"[\u0600-\u06FF]", message) else " Conflicting sources: ")
+    prefix = (
+        "منابع بازیابی‌شده دربارهٔ یک نکتهٔ مهم با هم تعارض دارند؛ این پاسخ قطعی نیست و به بررسی انسانی نیاز دارد."
+        if re.search(r"[\u0600-\u06FF]", message)
+        else "Retrieved sources materially disagree; this answer is not conclusive and requires human review."
+    )
+    return prefix + (sources_note + "، ".join(urls) if urls else "")
+
+
 def _review(question: str, answer_text: str, sources: list[dict[str, str]]) -> dict[str, Any]:
     try:
         return claim_review.review_answer_claims(question, answer_text, sources)
@@ -277,6 +297,14 @@ def answer(
         _capture_experience(message, draft, sources, status="identified")
         _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources))
         return draft
+    if review.get("source_conflicts"):
+        reply = draft + _warning(message, _source_conflict_reason(message, review))
+        _record_audit(message, reply, sources, "needs_review", review, memory, started_at)
+        _checkpoint(checkpoint, "before_experience_capture")
+        _capture_experience(message, reply, sources, status="needs_review")
+        _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources), source_conflict_count=len(review["source_conflicts"]))
+        return reply
+
     error = str(review.get("error") or "")
     if error.startswith("review_unavailable"):
         reply = draft + _warning(
