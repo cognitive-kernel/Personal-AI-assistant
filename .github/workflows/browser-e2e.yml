@@ -14,10 +14,6 @@ jobs:
     timeout-minutes: 10
     env:
       E2E_BASE_URL: http://127.0.0.1:8000
-      SETTINGS_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/settings.db
-      LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/learning.db
-      CLOUD_RESOURCES_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/cloud.db
-      DATABASE_BACKUP_DIR: ${{ runner.temp }}/personal-ai-e2e/backups
       DATABASE_BACKUP_INTERVAL_HOURS: "0"
       OLLAMA_BASE_URL: http://127.0.0.1:11434
     steps:
@@ -30,6 +26,11 @@ jobs:
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Start isolated local application
+        env:
+          SETTINGS_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/settings.db
+          LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/learning.db
+          CLOUD_RESOURCES_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/cloud.db
+          DATABASE_BACKUP_DIR: ${{ runner.temp }}/personal-ai-e2e/backups
         run: |
           mkdir -p "${{ runner.temp }}/personal-ai-e2e"
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > "${{ runner.temp }}/personal-ai-e2e/app.log" 2>&1 &
