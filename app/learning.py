@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import re
 from typing import Any
 from urllib.parse import urlencode
 from .db import learning_connection, get_settings
@@ -102,6 +103,29 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
                 f"Retrieved public page; title: {document.title}. Content has not been independently verified."))
     return combined, "web_retrieved"
 
+def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
+    """Extract bounded source excerpts from the structured text stored by web discovery."""
+    pattern = re.compile(
+        r"Source title:\s*(?P<title>[^\n]{1,300})\n"
+        r"Source URL:\s*(?P<url>https://[^\s]+)\n"
+        r"Content:\n(?P<content>.*?)(?=\n\nSource title:|\Z)",
+        re.DOTALL,
+    )
+    sources = []
+    for match in pattern.finditer(source_text[:12000]):
+        excerpt = match.group("content").strip()[:2500]
+        url = match.group("url").strip()
+        if len(excerpt) >= 40 and url.startswith("https://"):
+            sources.append({
+                "title": match.group("title").strip()[:250],
+                "url": url,
+                "content": excerpt,
+            })
+        if len(sources) >= 3:
+            break
+    return sources
+
+
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
@@ -122,7 +146,7 @@ def run_job(job_id: int) -> None:
     prompt = {
         "topic": topic,
         "source_text": source_text,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation."
+        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
     }
     if lesson_review:
         prompt["learner_review"] = lesson_review
@@ -168,7 +192,7 @@ def run_job(job_id: int) -> None:
                 "دقیقاً 3 سؤال مرتبط و برای هرکدام یک پاسخ مستقیم و توضیحی در answer_key بده. "
                 "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند. "
                 "از حروف سیریلیک و واژه‌های نامربوط استفاده نکن. "
-                "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. پاسخ فقط JSON باشد."
+                "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. اگر source_text شامل URL است، انتهای lesson یک بخش منابع با URL دقیق منبع‌های استفاده‌شده اضافه کن؛ URL نساز یا تغییر نده. پاسخ فقط JSON باشد."
             )
             retry_response = _request("/api/chat", {
                 "model": str(settings["ollama_model"]), "stream": False, "format": "json",
@@ -202,6 +226,29 @@ def run_job(job_id: int) -> None:
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        claim_review_result: dict[str, Any] | None = None
+        if quality["accepted"] and source_kind == "web_retrieved" and source_text:
+            sources = _claim_review_sources(source_text)
+            if sources:
+                try:
+                    from .claim_review import review_answer_claims
+
+                    claim_review_result = review_answer_claims(topic, result["lesson"], sources)
+                except Exception as exc:
+                    claim_review_result = {
+                        "passed": False,
+                        "overall": "insufficient_evidence",
+                        "claims": [],
+                        "error": f"review_unavailable:{type(exc).__name__}",
+                        "reviewer": "local_ollama_model_assisted_not_independent",
+                    }
+                quality["claim_review_status"] = (
+                    "passed_model_assisted" if claim_review_result.get("passed") is True else "needs_review"
+                )
+                quality["claim_review"] = claim_review_result
+            else:
+                quality["claim_review_status"] = "no_usable_sources"
+
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
             # If the user stopped the path while Ollama was generating, discard this result.
@@ -224,6 +271,17 @@ def run_job(job_id: int) -> None:
                 )
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
+            if claim_review_result is not None:
+                claim_note = (
+                    f"Model-assisted claim review passed={claim_review_result.get('passed') is True}; "
+                    "this is not an independent verification."
+                )
+                conn.execute(
+                    """INSERT INTO learning_evidence(
+                           job_id, evidence_type, source_ref, content_hash, note
+                       ) VALUES (?, 'claim_review', 'local_ollama_model_assisted', NULL, ?)""",
+                    (job_id, claim_note),
+                )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",

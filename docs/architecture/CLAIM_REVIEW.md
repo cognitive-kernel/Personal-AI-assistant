@@ -12,4 +12,6 @@ Malformed JSON, missing claims, unknown evidence URLs, invalid verdicts, or unsu
 
 ## Integration status
 
-This PR adds the tested review primitive and exact URL-token validation. It is not yet wired into the normal chat endpoint or learning-job completion path. The next integration change must preserve ordinary chat availability when review is unavailable while recording `needs_review` rather than promoting unsupported content.
+The learning-job path now calls the review primitive after deterministic lesson-quality checks when retrieved web source excerpts are available. It asks the generator to include exact source URLs, extracts at most three HTTPS source excerpts, stores the review result in the quality record and operational evidence log, and uses `passed_model_assisted` or `needs_review` as a separate review status. A review failure does not discard an otherwise usable lesson; the canonical knowledge item remains `unverified` either way.
+
+This integration does not yet apply claim review to the normal chat endpoint. A passing review is still model-assisted and is not independent proof; factual verification and any later promotion policy must remain explicit.
