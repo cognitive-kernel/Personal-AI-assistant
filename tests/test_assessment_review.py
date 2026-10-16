@@ -75,3 +75,16 @@ def test_semantic_review_rejects_attempt_from_another_job(tmp_path, monkeypatch)
     job_id, attempt_id = _setup(tmp_path, monkeypatch)
     with pytest.raises(KeyError):
         assessment_review.review_assessment_attempt(job_id + 1000, attempt_id)
+
+
+
+def test_learning_ui_exposes_opt_in_advisory_semantic_review():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
+        encoding="utf-8"
+    )
+    assert "بازبینی معنایی کمکی پاسخ‌ها" in page
+    assert 'JSON.stringify({confirm: true})' in page
+    assert "نمره آزمون را تغییر نمی‌دهد" in page
+    assert '"/api/learning/jobs/" + job.id + "/assessment/" + latestAttemptId + "/semantic-review"' in page
