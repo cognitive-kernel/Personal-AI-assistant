@@ -20,6 +20,7 @@ from urllib.parse import urlparse, urlunparse
 from .config import defaults
 from .cloud_provider_adapters import extract_resource_claims
 from .cloud_resource_policy import assess_candidate
+from .cloud_resource_planner import build_selection_plan
 from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
 
@@ -596,9 +597,34 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
     return results
 
 
-def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
-    """Persist a minimal local snapshot of a dry-run plan and per-candidate decisions."""
+def save_resource_selection_plan(
+    plan: Any,
+    *,
+    origin: str = "manual",
+    parent_plan_id: int | None = None,
+    reevaluation_key: str | None = None,
+) -> dict[str, Any]:
+    """Persist a minimal local snapshot; scheduled reevaluations are idempotent per parent/day."""
     initialize_store()
+    if origin not in {"manual", "scheduled_reevaluation"}:
+        raise CloudResourceError("Resource plan origin is invalid.")
+    if origin == "manual":
+        if parent_plan_id is not None or reevaluation_key is not None:
+            raise CloudResourceError("Manual plans cannot have a parent or reevaluation key.")
+    else:
+        if isinstance(parent_plan_id, bool) or not isinstance(parent_plan_id, int) or parent_plan_id < 1:
+            raise CloudResourceError("Scheduled reevaluation requires a positive parent plan ID.")
+        if not isinstance(reevaluation_key, str) or not reevaluation_key.startswith("cloud-plan-reevaluation:") or len(reevaluation_key) > 128:
+            raise CloudResourceError("Scheduled reevaluation key is invalid.")
+        with closing(_connect()) as existing_connection:
+            existing = existing_connection.execute(
+                """SELECT id FROM cloud_resource_selection_plans
+                   WHERE plan_origin='scheduled_reevaluation'
+                     AND parent_plan_id=? AND reevaluation_key=?""",
+                (parent_plan_id, reevaluation_key),
+            ).fetchone()
+        if existing is not None:
+            return get_resource_selection_plan(int(existing["id"]))
     if not isinstance(plan, dict):
         raise CloudResourceError("Resource selection plan must be an object.")
     plan_version = plan.get("plan_version")
@@ -640,9 +666,10 @@ def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
         cursor = connection.execute(
             """INSERT INTO cloud_resource_selection_plans(
                    plan_version, requirements_json, limitations_json, status, selected_candidate_id,
-                   execution_authorized, remote_execution_enabled
-               ) VALUES (?, ?, ?, ?, ?, 0, 0)""",
-            (plan_version, requirements_json, limitations_json, status, selected_id),
+                   execution_authorized, remote_execution_enabled, plan_origin, parent_plan_id, reevaluation_key
+               ) VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, ?)""",
+            (plan_version, requirements_json, limitations_json, status, selected_id,
+             origin, parent_plan_id, reevaluation_key),
         )
         plan_id = int(cursor.lastrowid)
         for decision in decisions:
@@ -704,7 +731,8 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
     with closing(_connect()) as connection:
         row = connection.execute(
             """SELECT id, plan_version, requirements_json, limitations_json, status, selected_candidate_id,
-                      execution_authorized, remote_execution_enabled, created_at
+                      execution_authorized, remote_execution_enabled, plan_origin, parent_plan_id,
+                      reevaluation_key, created_at
                FROM cloud_resource_selection_plans WHERE id=?""",
             (plan_id,),
         ).fetchone()
@@ -723,6 +751,9 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
         "requirements": json.loads(row["requirements_json"]),
         "limitations": json.loads(row["limitations_json"]),
         "status": row["status"],
+        "origin": row["plan_origin"],
+        "parent_plan_id": row["parent_plan_id"],
+        "reevaluation_key": row["reevaluation_key"],
         "selected_candidate_id": row["selected_candidate_id"],
         "execution_authorized": False,
         "remote_execution_enabled": False,
@@ -746,15 +777,27 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
     }
 
 
-def list_resource_selection_plans(*, limit: int = 20) -> list[dict[str, Any]]:
+def list_resource_selection_plans(
+    *,
+    limit: int = 20,
+    origin: str | None = None,
+) -> list[dict[str, Any]]:
     initialize_store()
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
         raise ValueError("limit must be between 1 and 100.")
+    if origin not in {None, "manual", "scheduled_reevaluation"}:
+        raise ValueError("origin is invalid.")
     with closing(_connect()) as connection:
-        rows = connection.execute(
-            "SELECT id FROM cloud_resource_selection_plans ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+        if origin is None:
+            rows = connection.execute(
+                "SELECT id FROM cloud_resource_selection_plans ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                "SELECT id FROM cloud_resource_selection_plans WHERE plan_origin=? ORDER BY id DESC LIMIT ?",
+                (origin, limit),
+            ).fetchall()
     return [get_resource_selection_plan(int(row["id"])) for row in rows]
 
 
