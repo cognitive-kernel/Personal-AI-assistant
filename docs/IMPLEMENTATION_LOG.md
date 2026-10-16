@@ -1309,7 +1309,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تغییرات:** هنگام ذخیرهٔ تجربه از پژوهش دارای رضایت، زمان مشاهدهٔ منبع با UTC در هر مدرک ثبت می‌شود. رتبه‌بندی ترکیبی واژگانی/برداری با ضریب freshness تنظیم می‌شود: تا ۳۰ روز ضریب ۱٫۰، ۳۱ تا ۹۰ روز ۰٫۷۵، بیش از ۹۰ روز ۰٫۴۵؛ شواهد فاقد زمان یا timestamp نامعتبر ضریب محافظه‌کارانهٔ ۰٫۸ می‌گیرند.
 - **قید اعتماد:** این زمان فقط زمان مشاهده/ذخیره در برنامه است، نه زمان آخرین تغییر وب‌سایت و نه اثبات فعلی بودن محتوا. نتیجهٔ retrieval وضعیت freshness را برمی‌گرداند؛ هیچ تجربه‌ای خودکار تأیید یا حذف نمی‌شود.
 - **تست‌های اضافه‌شده:** رتبه‌بندی تجربهٔ تازه بالاتر از تجربهٔ هم‌موضوع با منبع ۱۸۰ روزه؛ رفتار محافظه‌کارانه برای شواهد فاقد timestamp.
-- **وضعیت اجرا:** تست محلی اجرا نشده است؛ CI باید روی head دقیق PR موفق شود. تست Docker واقعی و ممیزی کامل checkout همچنان جداگانه باقی‌اند.
+- **اعتبارسنجی:** PR [#178](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/178) ادغام شد؛ CI روی head دقیق `a0595eeaa0b09e4caedf256a48a714f9abd70527` در run [#38871163653](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38871163653) و CI پس از ادغام در run [#38871267642](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38871267642) موفق شدند. تست محلی اجرا نشده است؛ تست Docker واقعی و ممیزی کامل checkout همچنان باقی‌اند.
 
 
 ## 98. 2026-10-16 — بازبینی مجدد منابع تجربه با ثبت تاریخچه
@@ -1319,4 +1319,4 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **حدود اجرا:** هر درخواست حداکثر سه URL HTTPS موجود در همان تجربه را بررسی می‌کند. اعتبارسنجی مقصد عمومی و redirect از آداپتر منبع موجود استفاده می‌کند. متن کامل صفحه یا متن خام خطا ذخیره نمی‌شود؛ فقط hash، عنوان محدود، نتیجه، زمان و نوع کلی خطا ثبت می‌شوند.
 - **حدود اعتماد:** `baseline` فقط نخستین fingerprint است؛ `changed` نشان‌دهندهٔ تفاوت متن استخراج‌شدهٔ محدود است و لزوماً به‌معنای تغییر واقعیت نیست. `unchanged` نیز تمام صفحه را پوشش نمی‌دهد. این کار هیچ تجربه‌ای را تغییر نمی‌دهد یا تأیید نمی‌کند.
 - **تست‌های افزوده‌شده:** baseline/unchanged/changed، سیاست fail-closed، ثبت خطای محدود، سقف سه منبع، الزام HTTPS، تأیید صریح API و حفظ نسخهٔ تجربه.
-- **وضعیت اجرا:** تست محلی اجرا نشده است؛ نتیجهٔ CI روی head دقیق PR باید بررسی شود. بازبینی واقعی Docker و ممیزی مستقل امنیت همچنان باقی‌اند.
+- **ادغام و CI:** PR [#179](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/179) با squash ادغام شد؛ commit ادغام `e19ace6b042f95d40a8e1bd428aafc2215f64c11`. CI روی head دقیق `4ec695a32c1efda0baf3c3aaf3bf56108186b9ba` در run [#38872046542](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38872046542) موفق شد؛ پس از ادغام نیز run [#38872143584](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38872143584) موفق بود: ۴۳۵ تست موفق، ۳ تست skipped، benchmark بازیابی واژگانی موفق. تست محلی اجرا نشده است؛ بازبینی واقعی Docker و ممیزی مستقل امنیت همچنان باقی‌اند.
