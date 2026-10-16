@@ -4,6 +4,7 @@ The regular unit suite skips these unless E2E_BASE_URL is explicitly configured.
 """
 import json
 import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -215,4 +216,48 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
             arg=task_id,
             timeout=10000,
         )
+        browser.close()
+
+
+
+def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    development_doc = Path(__file__).resolve().parents[1] / "docs" / "DEVELOPMENT.md"
+    original_content = development_doc.read_text(encoding="utf-8")
+    title = "Browser E2E proposal safety boundary"
+    patch = (
+        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\\n"
+        "--- a/docs/DEVELOPMENT.md\\n"
+        "+++ b/docs/DEVELOPMENT.md\\n"
+        "@@ -1 +1 @@\\n"
+        "-# راه‌اندازی محیط توسعه\\n"
+        "+# راه‌اندازی محیط توسعه (پیشنهاد آزمایشی)\\n"
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#self-improvement-title").fill(title)
+        page.locator("#self-improvement-rationale").fill(
+            "Verify the local UI records a proposed patch without applying it to the checkout."
+        )
+        page.locator("#self-improvement-patch").fill(patch)
+        page.locator("#self-improvement-form button[type=submit]").click()
+        page.wait_for_function(
+            """() => {
+                const output = document.querySelector('#self-improvement-output');
+                return output && output.textContent.includes('هنوز هیچ تغییری روی فایل‌های پروژه اعمال نشده است');
+            }""",
+            timeout=10000,
+        )
+        response = page.request.get(base_url.rstrip("/") + "/api/self-improvement/proposals")
+        assert response.status == 200
+        proposals = response.json()["proposals"]
+        proposal = next(item for item in proposals if item["title"] == title)
+        assert proposal["status"] == "proposed"
+        assert proposal["approved_at"] is None
+        assert development_doc.read_text(encoding="utf-8") == original_content
+        assert page.locator("#self-improvement-list").inner_text().find(title) >= 0
         browser.close()
