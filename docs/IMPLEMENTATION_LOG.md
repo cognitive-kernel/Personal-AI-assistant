@@ -1401,5 +1401,14 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تأیید:** اجرای این مرحله به تأیید صریح درخواست و رضایت فعال Sandbox نیاز دارد. image باید از قبل در Docker موجود باشد؛ pull یا fallback به اجرای میزبان وجود ندارد.
 - **مرز اعتماد:** این مرحله فقط syntax را بررسی می‌کند، نه رفتار یا امنیت patch را. کد پیشنهادی import/execute نمی‌شود؛ گزارش tests_executed=false و candidate_code_executed=false است. تأیید PR تا موفقیت این مرحله مسدود می‌ماند.
 - **تست‌ها:** قرارداد پرچم‌های Docker، شبکهٔ غیرفعال، mount فقط‌خواندنی، پاک‌سازی worktree، مسیر تأیید و رد، و migration نسخهٔ ۱۳.
-- **مراحل بعدی:** آزمون رفتاری واقعی در image تست از پیش آماده، حفاظت در برابر تضعیف آزمون‌ها، ساخت PR کنترل‌شده، rollback واقعی و بازبینی مستقل Issue #52 همچنان باقی‌اند.
-- **اعتبارسنجی:** PR در انتظار CI روی head دقیق است؛ تست محلی اجرا نشده است.
+- **مراحل بعدی:** آزمون رفتاری واقعی در image تست از پیش آماده، ساخت PR کنترل‌شده، rollback واقعی و بازبینی مستقل Issue #52 همچنان باقی‌اند.
+- **اعتبارسنجی:** PR [#192](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/192) ادغام شد؛ CI روی head دقیق a329dd55ad58b23f21e7ecf1cfb2c7d02379ca27 در run [#38890486514](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890486514) و پس از ادغام روی 6975da2466cdeed634ec59956674aca7a4fc9dd1 در run [#38890596909](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890596909) موفق بود. تست محلی اجرا نشده است.
+
+
+## 108. 2026-10-16 — جلوگیری ایستا از تضعیف آزمون‌ها در خودبهبود
+
+- **هدف:** جلوگیری از تأیید پیشنهادهایی که با حذف تست‌ها یا تضعیف آشکار assertionها، کنترل کیفیت را دور می‌زنند.
+- **پیاده‌سازی:** پیش از موفقیت دروازهٔ بررسی کد، AST آزمون‌های پایه و candidate مقایسه می‌شود. حذف فایل/تابع آزمون، کاهش assertion یا pytest.raises در آزمون موجود و افزایش markerهای skip/skipif/xfail باعث شکست دروازه می‌شود. گزارش با شواهد بررسی ایزوله ذخیره می‌شود و تأیید پیشنهاد بدون موفقیت این دروازه رد می‌شود.
+- **مرز اعتماد:** این یک heuristic ایستا است، نه اثبات کیفیت آزمون؛ assertionهای بی‌اثر یا تغییر معنایی آزمون را به‌طور کامل کشف نمی‌کند. آزمون رفتاری و بازبینی انسانی همچنان لازم‌اند؛ هیچ کد candidate توسط این guard اجرا نمی‌شود.
+- **آزمون‌ها:** کاهش assertion، اضافه‌شدن skip marker و افزایش پوشش آزمون به‌صورت regression test پوشش داده شده‌اند.
+- **اعتبارسنجی:** PR [#193](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/193) ادغام شد؛ CI روی head دقیق a329dd55ad58b23f21e7ecf1cfb2c7d02379ca27 در run [#38890486514](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890486514) و پس از ادغام روی 6975da2466cdeed634ec59956674aca7a4fc9dd1 در run [#38890596909](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890596909) موفق بود. تست محلی اجرا نشده است.
