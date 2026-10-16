@@ -82,6 +82,10 @@ def startup() -> None:
         worker_count=worker_count,
         poll_interval=0.5,
         lease_seconds=300,
+        maintenance_callback=(
+            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None
+        ),
+        maintenance_interval=30.0,
     )
     _task_runtime.start()
 
