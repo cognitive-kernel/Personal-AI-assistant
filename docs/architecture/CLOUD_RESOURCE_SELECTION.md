@@ -18,3 +18,8 @@ The existing provider-neutral policy preflight must return `ready_for_provider_a
 The planner reports the candidate recommendation, normalized capacity, evidence/policy blockers, and reasons for rejecting other candidates. Its output always contains `execution_authorized=false` and `remote_execution_enabled=false`.
 
 This is not a scheduler and does not enqueue tasks, contact provider APIs, access credentials, create accounts, provision machines, or send user data. A later API can expose the dry-run result; any provider execution requires a separate adapter, explicit authorization, contract tests, local checkpointing, quota enforcement, and failover/recovery tests.
+
+
+## Local dry-run API
+
+The loopback-only endpoint `POST /api/cloud-resources/plan` accepts a JSON object with `min_cpu_count`, `min_memory_gib`, `require_gpu`, `gpu_models`, and `allowed_provider_domains`. It evaluates stored candidates and returns the plan, per-candidate reasons, and policy review needs. It does not enqueue a task or call a provider client. Invalid numeric requirements return HTTP 422; non-loopback requests are rejected by the shared router dependency.

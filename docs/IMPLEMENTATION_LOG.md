@@ -1173,6 +1173,18 @@
 - [x] خروجی برای هر candidate دلایل واجدشرایط‌نبودن، blockerهای policy و نیازهای بازبینی را می‌دهد و نتیجهٔ پیشنهادی را از مجوز اجرا جدا می‌کند.
 - [x] planner صریحاً `execution_authorized=false` و `remote_execution_enabled=false` برمی‌گرداند؛ هیچ صف‌بندی، تماس provider، ساخت حساب یا provisioning انجام نمی‌شود.
 - [x] تست‌های انتخاب امن، claimهای stale، تبدیل GB/GiB، GPU model، allowlist، ورودی malformed و اعداد overflow اضافه شدند.
-- [ ] planner هنوز به API/UI یا زمان‌بند متصل نشده است؛ ابتدا CI روی head دقیق PR بررسی می‌شود.
+- [x] **PR #160** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/160)، commit ادغام `5b682c82d2699234cf7d930b63e2b8f9f79a0bb7`.
+- [x] CI روی head دقیق `ef573e02576b229ec4a369f2c9599bae5baefc7f` موفق بود؛ run [#38860310974](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38860310974): ابتدا ۳ تست به‌علت helper تعریف‌نشده شکست خوردند؛ helper اضافه شد و اجرای مجدد تمام تست‌ها و benchmark را با موفقیت گذراند.
 - [ ] تست محلی اجرا نشده است.
-- **گام بعدی:** CI/ادغام؛ سپس API dry-run محدود به loopback برای مشاهدهٔ plan و دلایل تصمیم، بدون اجرای remote.
+- **گام بعدی:** API dry-run محدود به loopback برای مشاهدهٔ plan و دلایل تصمیم، بدون اجرای remote.
+
+
+## 85. 2026-10-16 — API محلی برای مشاهدهٔ برنامهٔ انتخاب منبع
+
+- [x] `POST /api/cloud-resources/plan` به router موجود اضافه شد؛ دسترسی از middleware loopback-only به ارث می‌رسد.
+- [x] endpoint فقط نامزدهای ذخیره‌شده را با نیاز CPU/RAM/GPU و allowlist دامنه به planner می‌دهد و نتیجهٔ قابل‌توضیح را برمی‌گرداند.
+- [x] ورودی‌های malformed با 422 رد می‌شوند؛ تست loopback و منع دسترسی غیرمحلی اضافه شد.
+- [x] پاسخ planner همچنان `execution_authorized=false` و `remote_execution_enabled=false` است؛ endpoint هیچ وظیفه‌ای enqueue نمی‌کند و هیچ provider/client را فراخوانی نمی‌کند.
+- [ ] این API هنوز به UI متصل نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** CI/ادغام؛ سپس پنل UI برای واردکردن نیازهای منابع و مشاهدهٔ نتیجهٔ dry-run.

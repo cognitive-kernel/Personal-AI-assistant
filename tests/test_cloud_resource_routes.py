@@ -352,3 +352,44 @@ def test_oci_limit_consent_requires_strict_json_booleans(tmp_path, monkeypatch):
             json={"enabled": 1, "user_consent": True},
         )
     assert response.status_code == 422
+
+
+
+def test_resource_plan_api_is_loopback_only_and_never_authorizes_execution(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.post(
+            "/api/cloud-resources/plan",
+            json={
+                "min_cpu_count": 2,
+                "min_memory_gib": 8,
+                "require_gpu": True,
+                "gpu_models": ["NVIDIA A10"],
+                "allowed_provider_domains": ["compute.example.org"],
+            },
+        )
+        blocked = TestClient(app, client=("192.0.2.10", 12345)).post(
+            "/api/cloud-resources/plan",
+            json={},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "no_eligible_candidate"
+    assert body["selected_candidate_id"] is None
+    assert body["execution_authorized"] is False
+    assert body["remote_execution_enabled"] is False
+    assert body["candidates"] == []
+    assert blocked.status_code == 403
+
+
+def test_resource_plan_api_rejects_invalid_requirements_without_side_effects(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.post(
+            "/api/cloud-resources/plan",
+            json={"min_cpu_count": True},
+        )
+
+    assert response.status_code == 422
+    assert "min_cpu_count" in response.json()["detail"]
