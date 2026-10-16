@@ -455,3 +455,32 @@ def test_resource_plan_api_reports_eligible_candidate_and_rejects_stale_evidence
         "stale" in reason.lower()
         for reason in stale.json()["candidates"][0]["policy_blockers"]
     )
+
+
+
+def test_resource_plan_api_persists_and_lists_dry_run_history(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/cloud-resources/plan",
+            json={"min_cpu_count": 3, "min_memory_gib": 12},
+        )
+        assert created.status_code == 200
+        plan = created.json()
+        assert plan["plan_id"] > 0
+        assert plan["execution_authorized"] is False
+        assert plan["remote_execution_enabled"] is False
+
+        fetched = client.get(f"/api/cloud-resources/plans/{plan['plan_id']}")
+        listed = client.get("/api/cloud-resources/plans")
+        missing = client.get("/api/cloud-resources/plans/99999")
+
+    assert fetched.status_code == 200
+    assert fetched.json()["plan_id"] == plan["plan_id"]
+    assert fetched.json()["requirements"]["min_cpu_count"] == 3
+    assert fetched.json()["limitations"] == plan["limitations"]
+    assert fetched.json()["execution_authorized"] is False
+    assert listed.status_code == 200
+    assert listed.json()["plans"][0]["plan_id"] == plan["plan_id"]
+    assert listed.json()["remote_execution_enabled"] is False
+    assert missing.status_code == 404
