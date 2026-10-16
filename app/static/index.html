@@ -35,6 +35,13 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button></div>
 <pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
 <div id="cloud-candidates"></div></section>
+<section id="kaggle-quota-section"><h2>سهمیهٔ حساب Kaggle (اختیاری)</h2>
+<p class="muted">به‌طور پیش‌فرض غیرفعال است. فقط با فعال‌سازی صریح، برنامه از CLI رسمی Kaggle استفاده می‌کند تا سهمیهٔ GPU/TPU حساب فعلی را بخواند. هیچ notebook ارسال یا اجرا نمی‌شود؛ توکن‌ها ذخیره نمی‌شوند. شرایط استفادهٔ Kaggle و محدودیت یک حساب فعال را رعایت کنید.</p>
+<label>مسیر کامل فایل اجرایی Kaggle CLI<input id="kaggle-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه"></label>
+<label><input id="kaggle-quota-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه با اعتبارنامهٔ از قبل تنظیم‌شدهٔ حساب فعلی، سهمیهٔ GPU/TPU را فقط هنگام درخواست من بخواند.</label>
+<div class="cloud-actions"><button id="kaggle-quota-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="kaggle-quota-revoke" type="button">لغو رضایت</button><button id="kaggle-quota-refresh" type="button">خواندن سهمیه اکنون</button></div>
+<pre id="kaggle-quota-status">سهمیهٔ Kaggle غیرفعال است.</pre>
+</section>
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
@@ -269,6 +276,70 @@ el("cloud-discover").addEventListener("click",async()=>{
  } catch(error) { output.textContent="جست‌وجو صف‌بندی نشد: "+error.message; }
 });
 
+async function refreshKaggleQuota() {
+ try {
+  const result=await api("/api/cloud-resources/kaggle-quota");
+  const consent=result.consent||{};
+  el("kaggle-quota-consent").checked=!!consent.enabled&&!!consent.user_consent;
+  if(consent.executable_path) el("kaggle-cli-path").value=consent.executable_path;
+  const snapshots=result.snapshots||[];
+  const events=result.consent_events||[];
+  const state=consent.enabled&&consent.user_consent
+   ? "رضایت فعال است؛ بررسی سهمیه فقط با دکمهٔ دستی اجرا می‌شود."
+   : "رضایت غیرفعال است؛ هیچ دسترسی به Kaggle انجام نمی‌شود.";
+  el("kaggle-quota-status").textContent=state+"\n\nآخرین سهمیهٔ ذخیره‌شده:\n"+
+   (snapshots.length?JSON.stringify(snapshots,null,2):"هنوز سهمیه‌ای ثبت نشده است.")+
+   "\n\nتاریخچهٔ رضایت:\n"+JSON.stringify(events,null,2);
+ } catch(error) {
+  el("kaggle-quota-status").textContent="وضعیت سهمیه قابل دریافت نیست: "+error.message;
+ }
+}
+el("kaggle-quota-enable").addEventListener("click",async()=>{
+ const path=el("kaggle-cli-path").value.trim();
+ if(!el("kaggle-quota-consent").checked) {
+  el("kaggle-quota-status").textContent="برای فعال‌سازی، ابتدا چک‌باکس رضایت صریح را علامت بزنید.";
+  return;
+ }
+ if(!path) {
+  el("kaggle-quota-status").textContent="مسیر کامل فایل اجرایی Kaggle CLI الزامی است.";
+  return;
+ }
+ el("kaggle-quota-status").textContent="در حال ثبت رضایت…";
+ try {
+  await api("/api/cloud-resources/kaggle-quota/consent",{
+   method:"PATCH",
+   body:JSON.stringify({enabled:true,user_consent:true,executable_path:path})
+  });
+  await refreshKaggleQuota();
+ } catch(error) {
+  el("kaggle-quota-status").textContent="رضایت ذخیره نشد: "+error.message;
+ }
+});
+el("kaggle-quota-revoke").addEventListener("click",async()=>{
+ el("kaggle-quota-status").textContent="در حال لغو رضایت…";
+ try {
+  await api("/api/cloud-resources/kaggle-quota/consent",{
+   method:"PATCH",
+   body:JSON.stringify({enabled:false,user_consent:false,executable_path:""})
+  });
+  el("kaggle-cli-path").value="";
+  el("kaggle-quota-consent").checked=false;
+  await refreshKaggleQuota();
+ } catch(error) {
+  el("kaggle-quota-status").textContent="لغو رضایت انجام نشد: "+error.message;
+ }
+});
+el("kaggle-quota-refresh").addEventListener("click",async()=>{
+ el("kaggle-quota-status").textContent="در حال خواندن سهمیه از CLI رسمی…";
+ try {
+  await api("/api/cloud-resources/kaggle-quota/refresh",{method:"POST"});
+  await refreshKaggleQuota();
+ } catch(error) {
+  el("kaggle-quota-status").textContent="سهمیه دریافت نشد: "+error.message;
+ }
+});
+
 refresh();
 refreshCloudResources();
+refreshKaggleQuota();
 </script><script src="/static/learning.js"></script></body></html>
