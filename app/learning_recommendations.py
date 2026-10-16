@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .db import init_databases, learning_connection
-from .spaced_repetition import list_due_reviews
 
 
 def _now() -> datetime:
@@ -60,12 +59,19 @@ def get_learning_recommendations(
             ).fetchall()
         }
 
-    due_rows = list_due_reviews(limit=100)
-    due_by_topic = {
-        int(item["topic_id"]): item
-        for item in due_rows
-        if path_id is None or int(item["path_id"]) == path_id
-    }
+    due_by_topic: dict[int, dict[str, Any]] = {}
+    for item in topics:
+        topic_id = int(item["topic_id"])
+        schedule = schedules.get(topic_id)
+        due_at = str(schedule.get("due_at") or "") if schedule else ""
+        if due_at and due_at <= now_iso:
+            due_by_topic[topic_id] = {
+                **item,
+                "due_at": due_at,
+                "repetitions": schedule.get("repetitions", 0),
+                "interval_days": schedule.get("interval_days", 0),
+                "last_rating": schedule.get("last_rating"),
+            }
     recommendations: list[dict[str, Any]] = []
     seen: set[int] = set()
 
