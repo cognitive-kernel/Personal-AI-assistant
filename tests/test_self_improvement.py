@@ -177,3 +177,16 @@ def test_self_improvement_api_is_loopback_guarded_and_uses_explicit_approval(
             assert approved.json()["proposal"]["status"] == "approved_for_pr"
     finally:
         app.dependency_overrides.pop(require_loopback_client, None)
+
+
+
+def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="self-improvement-section"' in page
+    assert "SELF_IMPROVEMENT_REPO_ROOT" in page
+    assert "هیچ کدی اجرا یا اعمال نمی‌شود" in page
+    assert "تأیید برای بررسی PR" in page
+    assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in page
+    assert '"/api/self-improvement/proposals/"+item.id+"/approve"' in page
