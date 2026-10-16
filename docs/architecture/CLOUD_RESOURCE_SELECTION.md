@@ -28,3 +28,8 @@ The loopback-only endpoint `POST /api/cloud-resources/plan` accepts a JSON objec
 ## UI
 
 The local page includes a dry-run form for minimum CPU and memory, optional GPU/model requirements, and an optional provider-domain allowlist. Results are rendered as text, including per-candidate reasons. The form invokes only the loopback planning endpoint and cannot start remote execution.
+
+
+## Verification coverage
+
+The API integration suite covers an empty candidate list, malformed requirements, loopback enforcement, a fully reviewed candidate that matches requested CPU/memory, and the same candidate becoming ineligible when its source is stale. Every scenario asserts that remote execution remains disabled.
