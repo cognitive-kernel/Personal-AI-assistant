@@ -1448,3 +1448,12 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **مرز ایمنی:** rollback نیز نیازمند تأیید صریح است؛ checkout محلی تغییر نمی‌کند و merge/deploy خودکار وجود ندارد. بازگشت معنایی همچنان باید توسط انسان بازبینی شود.
 - **آزمون‌ها:** جلوگیری از rollback پیش از merge، ساخت rollback draft برای فایل دست‌نخورده پس از merge، idempotency و رد کردن تغییرات بعدی پوشش داده شده‌اند.
 - **اعتبارسنجی:** PR [#200](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/200) ادغام شد. روی head دقیق `178317145552a597154c088fdd3e24753eb8d286`، ۴۸۵ آزمون موفق و ۴ آزمون skipped ثبت شد و benchmark بازیابی موفق بود (run [#38897400031](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38897400031)). اجرای کامل test suite و آزمون واقعی Sandbox در Docker موفق بود (run [#38897400238](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38897400238)). پس از ادغام، آزمون‌ها در run [#38897572639](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38897572639) و Docker در run [#38897573137](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38897573137) نیز موفق شدند. تست محلی اجرا نشده است. راهنما در docs/SELF_IMPROVEMENT_ROLLBACK.md است.
+
+
+## 113. 2026-10-16 — برنامه‌ریز قطعی گام بعدی یادگیری
+
+- **هدف:** اولویت‌بندی قابل‌توضیح برای ادامهٔ یادگیری، بدون شروع خودکار کار یا تغییر پیشرفت کاربر.
+- **پیاده‌سازی:** endpoint محلی GET /api/learning/recommendations و پنل رابط کاربری؛ اولویت با مرورهای سررسیدشده و میزان تأخیر، سپس موضوع فعال، تقویت درس‌های تکمیل‌شده با نمره کمتر از ۷۰، و در نهایت اولین موضوع pending که پیش‌نیازهای ترتیبی آن تکمیل شده‌اند.
+- **سیاست:** deterministic و read-only؛ نتیجه شامل policy_version، generated_at، دلیل و action پیشنهادی و autonomous_action_taken=false است. برنامه‌ریز درس ایجاد نمی‌کند، نمره را تغییر نمی‌دهد، مرور جدید زمان‌بندی نمی‌کند و وظیفه‌ای به صف نمی‌فرستد.
+- **آزمون‌ها:** ترتیب موضوعات، اولویت مرور سررسیدشده، تقویت نمره پایین، جلوگیری از تکرار مرور آینده، اعتبارسنجی ورودی، endpoint و قرارداد UI پوشش داده شده‌اند.
+- **اعتبارسنجی:** CI روی head دقیق این شاخه باید قبل از ادغام موفق شود؛ اجرای محلی ادعا نمی‌شود. راهنما در docs/LEARNING_RECOMMENDATIONS.md است.
