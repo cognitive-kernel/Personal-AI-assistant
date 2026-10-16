@@ -106,6 +106,7 @@ def handler_from_environment() -> Callable[
             timeout_seconds=timeout_seconds,
             max_output_bytes=max_output_bytes,
             control_check=control_check,
+            task_id=context.task_id,
         )
         evidence = {
             "phase": "sandbox_finished",
