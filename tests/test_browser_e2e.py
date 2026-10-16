@@ -4,6 +4,7 @@ The regular unit suite skips these unless E2E_BASE_URL is explicitly configured.
 """
 import json
 import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -160,4 +161,50 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
         )
         assert not consent_checkbox.is_checked()
         assert "Browser E2E experience creation" in page.locator("#experience-list").inner_text()
+        browser.close()
+
+
+
+def test_browser_can_cancel_a_persisted_scheduled_task():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        response = page.request.post(
+            base_url.rstrip("/") + "/api/tasks",
+            data={
+                "task_type": "e2e.scheduled-cancellation",
+                "payload": {"case": "browser-task-controls"},
+                "priority": 3,
+                "max_attempts": 1,
+                "scheduled_at": scheduled_at,
+            },
+        )
+        assert response.status == 202
+        created = response.json()
+        task_id = created["id"]
+        assert created["status"] == "queued"
+
+        page.locator("#refresh-tasks").click()
+        card = page.locator("#tasks-container article").filter(
+            has_text=f"#{task_id} — e2e.scheduled-cancellation"
+        )
+        card.wait_for(state="visible", timeout=10000)
+        card.get_by_role("button", name="لغو").click()
+        page.wait_for_function(
+            """async (taskId) => {
+                const response = await fetch('/api/tasks/' + taskId);
+                if (!response.ok) return false;
+                const task = await response.json();
+                return task.status === 'cancelled';
+            }""",
+            arg=task_id,
+            timeout=10000,
+        )
+        assert "وضعیت: cancelled" in card.inner_text()
         browser.close()
