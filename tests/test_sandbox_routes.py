@@ -82,6 +82,9 @@ def test_generic_task_endpoint_cannot_bypass_sandbox_consent_route(local_client)
 
 
 def test_sandbox_routes_are_loopback_only(tmp_path, monkeypatch):
+    monkeypatch.delenv("SANDBOX_ENABLED", raising=False)
+    monkeypatch.delenv("SANDBOX_DOCKER_EXECUTABLE", raising=False)
+    monkeypatch.delenv("SANDBOX_PYTHON_IMAGE", raising=False)
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud.db"))
