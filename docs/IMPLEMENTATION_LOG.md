@@ -1238,5 +1238,18 @@
 - [x] فقط نیازمندی‌ها، شناسه/دامنه/hash منبع، ظرفیت نرمال‌شده، دلایل و وضعیت preflight ذخیره می‌شوند؛ متن خام منبع و credentialها ذخیره نمی‌شوند.
 - [x] schema و ذخیره‌سازی `execution_authorized=0` و `remote_execution_enabled=0` را با قید دیتابیس enforce می‌کنند؛ ذخیره‌سازی هر plan مدعی مجوز اجرا رد می‌شود.
 - [x] تست‌های migration، حفظ تصمیم‌ها، فهرست/جزئیات plan، 404 و رد هرگونه مجوز اجرا اضافه شدند.
+- [x] **PR #169** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/169)، commit ادغام `59c6230d60954e44b917d1d7b6eca1f0970504d2`.
+- [x] CI روی head دقیق `d6a16c95f9e9acc82a153ce158aa026dc83c0177` موفق بود؛ run [#38861818478](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38861818478). اجرای اول دو assertion نسخهٔ schema قدیمی را پیدا کرد؛ تست‌ها به نسخهٔ ۷ به‌روزرسانی شدند و اجرای مجدد کامل موفق بود.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** ارزیابی مجدد زمان‌دار برای freshness و سهمیه و ثبت دلایل انتخاب/رد، بدون فعال‌کردن اجرای remote.
+
+
+## 91. 2026-10-16 — بازبینی روزانهٔ planهای انتخاب منبع
+
+- [x] migration نسخهٔ ۸ ستون‌های `plan_origin`, `parent_plan_id` و `reevaluation_key` را اضافه می‌کند؛ unique index از ثبت تکراری برای همان plan مبدأ و روز جلوگیری می‌کند.
+- [x] task روزانهٔ `cloud.reevaluate_resource_plans` ثبت و به runtime وصل شد؛ برای حداکثر ۲۰ plan دستی اخیر، evidence و freshness محلی فعلی دوباره ارزیابی می‌شود.
+- [x] checkpointهای تعاونی قبل و بعد از هر plan ثبت می‌شوند؛ توقف/لغو می‌تواند بین planها اعمال شود و کلید idempotency تکرار بعد از crash را مهار می‌کند.
+- [x] نتیجه‌ها به‌عنوان planهای `scheduled_reevaluation` با ارجاع به plan مبدأ ذخیره می‌شوند؛ خروجی و schema اجرای remote را غیرفعال نگه می‌دارند.
+- [x] هیچ CLI/API ابری در این بازبینی روزانه فراخوانی نمی‌شود؛ سهمیهٔ ارائه‌دهنده فقط از metadata محلی/تأییدشده قابل استفاده است و refresh خارجی همچنان نیازمند اقدام صریح کاربر است.
 - [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** CI/ادغام؛ سپس ارزیابی مجدد زمان‌دار برای freshness و سهمیه و ثبت دلایل انتخاب/رد، بدون فعال‌کردن اجرای remote.
+- **گام بعدی:** CI/ادغام؛ سپس نمایش تاریخچهٔ بازبینی زمان‌دار و افزودن age/validity contract برای quota snapshotها، بدون تماس خودکار با provider.
