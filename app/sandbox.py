@@ -161,6 +161,106 @@ def run_workspace_syntax_check(
     return SandboxResult("failed", exit_code, stdout, stderr, duration_ms)
 
 
+def run_workspace_pytest(
+    workspace_path: str | Path,
+    *,
+    docker_executable: str | Path,
+    image: str,
+    suite: Literal["tests", "tests_baseline"],
+    timeout_seconds: int = 180,
+    max_output_bytes: int = 65536,
+) -> SandboxResult:
+    """Run one pytest suite in an immutable test image against a read-only workspace."""
+    workspace_value = Path(workspace_path).expanduser()
+    if not workspace_value.is_absolute():
+        raise ValueError("workspace_path must be an absolute path.")
+    try:
+        workspace = workspace_value.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("workspace_path must exist.") from exc
+    if not workspace.is_dir() or not (workspace / "app").is_dir() or not (workspace / "tests").is_dir():
+        raise ValueError("workspace_path must contain app/ and tests/ directories.")
+    if suite not in {"tests", "tests_baseline"}:
+        raise ValueError("suite must be tests or tests_baseline.")
+    suite_path = workspace / suite
+    if not suite_path.is_dir():
+        raise ValueError("Requested test suite directory does not exist.")
+    if "," in str(workspace):
+        raise ValueError("Workspace path cannot contain commas.")
+    if not isinstance(image, str) or not _IMMUTABLE_TEST_IMAGE.fullmatch(image):
+        raise ValueError("image must be an immutable SHA-256 image ID or digest reference.")
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 300:
+        raise ValueError("timeout_seconds must be an integer from 1 to 300.")
+    if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 65536:
+        raise ValueError("max_output_bytes must be an integer from 1 to 65536.")
+
+    executable = Path(docker_executable).expanduser()
+    if not executable.is_absolute() or not executable.is_file():
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="", duration_ms=0,
+            reason="Docker executable is not available at the configured absolute path.",
+        )
+    command = [
+        str(executable), "run", "--rm", "--pull=never",
+        "--label", f"{_SANDBOX_LABEL}=true",
+        "--network=none", "--read-only", "--cap-drop=ALL",
+        "--security-opt=no-new-privileges", "--pids-limit=128",
+        "--memory=1g", "--memory-swap=1g", "--cpus=2",
+        "--stop-timeout=1", "--user=65534:65534",
+        "--workdir=/workspace",
+        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=512m,uid=65534,gid=65534",
+        "--env=PYTHONDONTWRITEBYTECODE=1",
+        "--env=PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+        "--mount", f"type=bind,source={str(workspace)},target=/workspace,readonly",
+        image, "python", "-I", "-m", "pytest", "-q", "-p", "no:cacheprovider", suite,
+    ]
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, shell=False, close_fds=True, env=_docker_environment(),
+        )
+    except (FileNotFoundError, PermissionError, OSError):
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="",
+            duration_ms=int((time.monotonic() - started) * 1000),
+            reason="Docker could not be started; no host execution fallback is permitted.",
+        )
+
+    stdout_buffer = bytearray()
+    stderr_buffer = bytearray()
+    overflow = threading.Event()
+    readers = [
+        threading.Thread(target=_read_bounded, args=(process.stdout, stdout_buffer, max_output_bytes, overflow), daemon=True),
+        threading.Thread(target=_read_bounded, args=(process.stderr, stderr_buffer, max_output_bytes, overflow), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+    timed_out = False
+    while process.poll() is None:
+        if overflow.is_set():
+            _stop_process(process)
+            break
+        if time.monotonic() - started >= timeout_seconds:
+            timed_out = True
+            _stop_process(process)
+            break
+        time.sleep(0.02)
+    exit_code = process.wait()
+    for reader in readers:
+        reader.join(timeout=2)
+    duration_ms = int((time.monotonic() - started) * 1000)
+    stdout = stdout_buffer.decode("utf-8", errors="replace")
+    stderr = stderr_buffer.decode("utf-8", errors="replace")
+    if timed_out:
+        return SandboxResult("timed_out", exit_code, stdout, stderr, duration_ms, "Pytest exceeded its execution time limit.")
+    if overflow.is_set():
+        return SandboxResult("output_limit_exceeded", exit_code, stdout, stderr, duration_ms, "Pytest output exceeded its configured limit.")
+    if exit_code == 0:
+        return SandboxResult("succeeded", exit_code, stdout, stderr, duration_ms)
+    return SandboxResult("failed", exit_code, stdout, stderr, duration_ms)
+
+
 def cleanup_orphaned_containers(
     *,
     docker_executable: str | Path,
@@ -264,6 +364,7 @@ _OFFICIAL_PYTHON_IMAGE = re.compile(
 )
 _MAX_SOURCE_BYTES = 64 * 1024
 _DEFAULT_MAX_OUTPUT_BYTES = 32 * 1024
+_IMMUTABLE_TEST_IMAGE = re.compile(r"^(?:sha256:[0-9a-f]{64}|[A-Za-z0-9._/:+-]+@sha256:[0-9a-f]{64})$")
 _ALLOWED_DOCKER_ENV = (
     "PATH",
     "HOME",
