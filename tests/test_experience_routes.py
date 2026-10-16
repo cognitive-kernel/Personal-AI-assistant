@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db
+from app import cloud_resources, db, experience_source_checks, web_sources
 from app.main import app
 
 
@@ -103,3 +103,56 @@ def test_experience_api_requires_loopback_client(tmp_path, monkeypatch):
     with TestClient(app, client=("192.0.2.10", 12345)) as client:
         response = client.get("/api/experiences")
     assert response.status_code == 403
+
+
+
+def test_experience_source_revalidation_requires_confirmation_and_preserves_record(
+    tmp_path, monkeypatch
+):
+    _isolate_app(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        experience_source_checks.web_sources, "_validate_public_url", lambda url: None
+    )
+    monkeypatch.setattr(
+        experience_source_checks.web_sources,
+        "_fetch_document",
+        lambda url, title_hint, *, max_chars=6000: web_sources.SourceDocument(
+            url=url, title="Official guide", text="A sufficiently long technical page body " * 5
+        ),
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/experiences",
+            json={"topic": "Python", "problem": "Check a saved documentation source."},
+        )
+        experience_id = created.json()["experience"]["id"]
+        updated = client.patch(
+            f"/api/experiences/{experience_id}",
+            json={"source_evidence": [{
+                "url": "https://docs.example.org/guide",
+                "claim": "Official documentation",
+            }]},
+        )
+        assert updated.status_code == 200
+        version_before = updated.json()["experience"]["version"]
+
+        rejected = client.post(
+            f"/api/experiences/{experience_id}/refresh-sources",
+            json={"confirm": False},
+        )
+        assert rejected.status_code == 422
+
+        refreshed = client.post(
+            f"/api/experiences/{experience_id}/refresh-sources",
+            json={"confirm": True},
+        )
+        assert refreshed.status_code == 200
+        assert refreshed.json()["checks"][0]["outcome"] == "baseline"
+        assert refreshed.json()["verified"] is False
+        assert refreshed.json()["experience_mutated"] is False
+
+        history = client.get(f"/api/experiences/{experience_id}/source-checks")
+        assert history.status_code == 200
+        assert history.json()["count"] == 1
+        detail = client.get(f"/api/experiences/{experience_id}")
+        assert detail.json()["experience"]["version"] == version_before
