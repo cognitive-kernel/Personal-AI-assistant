@@ -17,6 +17,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
 
 from .config import defaults
+from .cloud_provider_adapters import extract_resource_claims
 from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
 
@@ -117,6 +118,7 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
             _resource_signals(title, text), ensure_ascii=False, separators=(",", ":")
         ),
         "evidence_excerpt": excerpt,
+        "normalized_text": text,
         "discovery_query": query[:300],
     }
 
@@ -199,6 +201,15 @@ def discover_resources(
 
         with closing(_connect()) as connection:
             for candidate in unique.values():
+                previous = connection.execute(
+                    "SELECT id, content_sha256 FROM cloud_resource_candidates WHERE source_url=?",
+                    (candidate["source_url"],),
+                ).fetchone()
+                if previous is not None and previous["content_sha256"] != candidate["content_sha256"]:
+                    connection.execute(
+                        "UPDATE cloud_resource_claims SET is_current=0 WHERE candidate_id=?",
+                        (previous["id"],),
+                    )
                 connection.execute(
                     """INSERT INTO cloud_resource_candidates(
                            source_url, provider_domain, title, content_sha256,
@@ -249,6 +260,42 @@ def discover_resources(
                         candidate["discovery_query"],
                     ),
                 )
+                candidate_row = connection.execute(
+                    "SELECT id FROM cloud_resource_candidates WHERE source_url=?",
+                    (candidate["source_url"],),
+                ).fetchone()
+                candidate_id = int(candidate_row["id"])
+                claims = extract_resource_claims(
+                    candidate["provider_domain"],
+                    candidate["title"],
+                    candidate["normalized_text"],
+                )
+                for claim in claims:
+                    value_json = json.dumps(
+                        claim.value,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        allow_nan=False,
+                        separators=(",", ":"),
+                    )
+                    connection.execute(
+                        """INSERT INTO cloud_resource_claims(
+                               candidate_id, source_content_sha256, claim_type, value_json,
+                               unit, evidence_quote, adapter_id, is_current
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+                           ON CONFLICT(candidate_id, source_content_sha256, claim_type,
+                                       value_json, evidence_quote)
+                           DO UPDATE SET is_current=1""",
+                        (
+                            candidate_id,
+                            candidate["content_sha256"],
+                            claim.claim_type,
+                            value_json,
+                            claim.unit,
+                            claim.evidence_quote,
+                            claim.adapter_id,
+                        ),
+                    )
             _mark_stale_candidates(connection, max_age_days=30)
             connection.commit()
 
@@ -333,8 +380,26 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
                ORDER BY last_seen_at DESC, id DESC LIMIT ?""",
             (limit,),
         ).fetchall()
+        results = []
+        for row in rows:
+            item = _serialize_candidate(row)
+            claim_rows = connection.execute(
+                """SELECT id, source_content_sha256, claim_type, value_json, unit,
+                          evidence_quote, adapter_id, review_status, is_current, extracted_at
+                   FROM cloud_resource_claims
+                   WHERE candidate_id=? AND is_current=1
+                   ORDER BY claim_type, id""",
+                (row["id"],),
+            ).fetchall()
+            item["observed_claims"] = [
+                {**dict(claim), "value": json.loads(claim["value_json"])}
+                for claim in claim_rows
+            ]
+            for claim in item["observed_claims"]:
+                claim.pop("value_json", None)
+            results.append(item)
         connection.commit()
-    return [_serialize_candidate(row) for row in rows]
+    return results
 
 
 def review_candidate(

@@ -852,5 +852,18 @@
 - [x] تأیید/رد از UI از مسیر API محلی و با `expected_content_sha256` انجام می‌شود؛ stale evidence دکمهٔ بازبینی غیرفعال دارد و تغییر محتوا با خطای conflict آشکار می‌شود.
 - [x] متن منبع با `textContent` نمایش داده می‌شود، پیوند فقط برای HTTPS باز می‌شود و تب جدید از `noopener noreferrer` استفاده می‌کند؛ HTML منبع هرگز اجرا یا تزریق نمی‌شود.
 - [x] تست static برای کنترل‌های UI و مرز XSS اضافه شد.
+- [x] CI روی head دقیق `c3b86f2e3dc67fc94390da98edc63f3256638998` موفق بود: [run #38844001044](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38844001044)، 266 تست موفق و benchmark موفق.
+- [x] **PR #131** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/131)، commit ادغام `50f1d7878c466d9b236cf87b28e15f7e3fd6eaad`.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** استخراج claims متنی با provenance و ثبت آن‌ها به‌عنوان شواهد تأییدنشده؛ سپس بازبینی مستقل هر claim و قرارداد eligibility قبل از اجرای remote.
+
+
+## 59. 2026-10-16 — استخراج ادعاهای صریح منابع با provenance نسخه‌دار
+
+- [x] `app/cloud_provider_adapters.py` به‌عنوان registry قابل گسترش برای adapterها اضافه شد؛ fallback فعلی فقط regexهای صریح و محدود را اجرا می‌کند.
+- [x] claimهای CPU، RAM، storage، مدل GPU، ساعات ماهانه، حد جلسه، اعتبار، نرخ قیمت، region و عبارت‌های free-tier همراه quote دقیق استخراج می‌شوند؛ هیچ مقدار غایب به‌صورت تخمینی پر نمی‌شود.
+- [x] migration نسخهٔ 3 جدول `cloud_resource_claims` را با content hash، adapter id، quote، status مستقل و تاریخچهٔ current/non-current اضافه می‌کند.
+- [x] تغییر متن منبع، claimهای قبلی را به تاریخچه منتقل می‌کند و claimهای تازه را unreviewed نگه می‌دارد؛ تأیید نامزد به‌طور خودکار claimها را تأیید نمی‌کند.
+- [x] UI ادعاهای استخراج‌شده را با برچسب «هنوز تأییدنشده» و quote دقیق نمایش می‌دهد.
 - [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** provider adapters رسمی، استخراج quota/cost/region/session limits با provenance، و قرارداد eligibility قبل از هر نوع اجرای remote.
+- **محدودیت:** این adapter عمومی است و هنوز provider-specific terms/APIها، claim review API، احراز هویت مجاز، eligibility و remote execution وجود ندارند.

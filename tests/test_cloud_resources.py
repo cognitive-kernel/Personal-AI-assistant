@@ -44,10 +44,10 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
-        assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs"} <= tables
+        assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs", "cloud_resource_claims"} <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 2
+        ).fetchone()[0] == 3
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -81,6 +81,8 @@ def test_discovery_persists_provenance_and_keeps_candidates_unreviewed(
     assert "gpu_or_accelerator_mentioned" in candidate["resource_signals"]
     assert "free_tier_or_credits_mentioned" in candidate["resource_signals"]
     assert candidate["evidence_excerpt"]
+    assert any(claim["claim_type"] == "free_tier_mention" for claim in candidate["observed_claims"])
+    assert all(claim["review_status"] == "unreviewed" for claim in candidate["observed_claims"])
     latest = cloud_resources.latest_discovery_run()
     assert latest["id"] == report["run_id"]
     assert latest["status"] == "completed"
@@ -92,7 +94,8 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
 ):
     _configure_paths(tmp_path, monkeypatch)
     first = _document(text="Free tier GPU compute quota. Official usage terms. " * 4)
-    changed = _document(text="CPU compute credits and storage quota. Official usage terms. " * 4)
+    changed = _document(text=("CPU compute credits and storage quota. Official usage terms. "
+                              "2 vCPU and 16 GB RAM. " * 4))
     monkeypatch.setattr(
         web_sources, "discover_sources", lambda query, limit=3: [first]
     )
@@ -130,6 +133,16 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
     assert candidate["terms_url"] is None
     assert candidate["reviewed_at"] is None
     assert candidate["reviewed_content_sha256"] is None
+    assert any(claim["claim_type"] == "cpu_count" for claim in candidate["observed_claims"])
+    assert any(claim["claim_type"] == "memory_capacity" for claim in candidate["observed_claims"])
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        history = connection.execute(
+            "SELECT source_content_sha256, is_current FROM cloud_resource_claims WHERE candidate_id=?",
+            (candidate["id"],),
+        ).fetchall()
+    assert any(content_hash != candidate["content_sha256"] and current == 0 for content_hash, current in history)
+    assert all(content_hash == candidate["content_sha256"] and current == 1
+               for content_hash, current in history if current == 1)
 
 
 def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeypatch):
@@ -209,7 +222,7 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
-        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 2
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 3
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -308,7 +321,7 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
         )
         connection.commit()
 
-    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 2
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 3
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             """SELECT review_status, availability_status, quota_json, terms_url,

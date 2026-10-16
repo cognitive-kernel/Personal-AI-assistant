@@ -12,7 +12,7 @@ The local API is loopback-only and the main local web page now includes a cloud-
 
 The UI renders all page titles and excerpts with `textContent`, validates source links as HTTPS before opening them, and uses `noopener noreferrer` for new tabs. It never inserts source text as HTML.
 
-Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the page title plus fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. These signals describe what the page mentions; they do not establish that a service is free, available, suitable, or authorized for use.
+Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the page title plus fetched text, a short evidence excerpt, the discovery query, and keyword signals such as GPU, CPU, free-tier/credits, quota, terms, notebook, VM/container, and storage mentions. A generic regex adapter also extracts explicit textual claims such as vCPU counts, memory/storage sizes, GPU model names, session limits, monthly hours, credit amounts, price rates, and region codes. These signals describe what the page mentions; they do not establish that a service is free, available, suitable, or authorized for use.
 
 ## Trust and safety boundary
 
@@ -21,6 +21,7 @@ Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the pag
 - New candidates start as `review_status=unreviewed` and `availability_status=unknown`. Quotas and terms remain unknown unless separately reviewed and recorded.
 - The content hash covers the page title plus fetched text. If either changes, the review status is reset to unreviewed and previous availability/quota/terms claims are cleared. Re-seeing identical evidence preserves the review.
 - Candidate evidence not seen for 30 days becomes stale and its availability is reset to unknown. Stale evidence cannot be approved until a new discovery refreshes it.
+- Extracted claims are stored separately with the source content hash, adapter version, exact quote, and their own `unreviewed` status. When source content changes, previous claim rows remain as history with `is_current=0`; newly extracted claims are unreviewed. Candidate-level approval never auto-accepts individual claims.
 - A source review is not the same as provider eligibility: no remote execution should be allowed without fresh evidence, explicit eligibility, valid authorization, and a provider adapter that enforces quotas and terms.
 - No account creation, credential handling, provisioning, job execution on remote hosts, quota bypass, or provider terms acceptance is implemented here.
 - Durable source metadata and discovery history remain local. The provider catalog is stored in its own versioned database because it has a distinct operational lifecycle and review policy; this is a data-domain boundary, not a separate server requirement.
@@ -46,3 +47,8 @@ No resource is automatically selected for execution by this implementation.
 Candidates are initially `unreviewed`, `unknown`, and `fresh` only because the page was just observed. The local reviewer can submit the current `content_sha256` to `PATCH /api/cloud-resources/{id}/review`; the server rejects stale hashes with HTTP 409. Approval requires an HTTPS `terms_url`, records `reviewed_at` and `reviewed_content_sha256`, and stores explicitly supplied quota/availability values. A page refresh with the same hash preserves review metadata; a changed title or text invalidates it.
 
 After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Remote jobs must remain disabled until provider-specific terms, quota, credentials, and capability checks are implemented.
+
+
+## Extracted claims are not verified limits
+
+The generic adapter uses bounded regular expressions against the page title and normalized text. Each output claim includes a type, parsed value/unit, exact matched quote, adapter identifier, source content hash, extraction time, and an independent `review_status=unreviewed`. A missing match means “not extracted,” not “zero” or “unlimited.” A match proves only that the page text contains the quoted phrase; it does not prove that the offer is current, applicable to this account/region, or permitted for unattended workloads. The UI labels these claims as unverified.
