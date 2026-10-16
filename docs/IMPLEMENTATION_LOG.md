@@ -1653,3 +1653,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تغییر:** `scripts/run_target_host_baseline.py` گزارش نسخهٔ commit، وضعیت working tree، نسخهٔ Python و بسته‌ها، و سلامت فقط‌خواندنی سه دیتابیس را تولید می‌کند. اجرای کل pytest با `--run-tests` اختیاری است؛ گزارش فقط کد خروج و شمارش JUnit را نگه می‌دارد و خروجی خام و مسیرهای محلی را حذف می‌کند.
 - **ایمنی:** این ابزار دیتابیس را ایجاد، migrate یا repair نمی‌کند و به Ollama یا سرویس راه‌دور وصل نمی‌شود. این ابزار به‌تنهایی baseline ماشین هدف را ثبت نکرده؛ باید روی همان سیستم و محیطی که قرار است اجرا شود، اجرا و گزارش آن نگهداری شود.
 - **اعتبارسنجی پیش از ادغام:** آزمون‌های مخزن در run [#38934857075](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934857075) و مرورگر در run [#38934857107](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934857107) برای head دقیق `ab3a8636004b7327b739e5b289b2340d30480686` موفق شدند. PR [#248](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/248) ادغام شد. پس از ادغام نیز آزمون‌های مخزن در run [#38935013031](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935013031) و مرورگر در run [#38935013142](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935013142) موفق شدند.
+
+
+## 137. 2026-10-16 — کنترل لغو وظیفه در مرورگر واقعی
+
+- **جریان آزموده‌شده:** آزمون Chromium یک وظیفهٔ آینده‌زمان‌بندی‌شده را از API ایجاد می‌کند، آن را در پنل مدیریت وظایف می‌بیند، از خود UI لغو می‌کند و وضعیت نهایی `cancelled` را دوباره از API می‌خواند.
+- **هدف:** پوشش یک مسیر واقعی UI برای کنترل وظایف پایدار بدون وابستگی به Ollama یا اجرای worker؛ زمان‌بندی آینده مانع اجرای خودکار task در طول آزمون می‌شود.
+- **مرز شواهد:** این فقط آزمون لغو وظیفهٔ صف‌شده است؛ بازیابی پس از crash، لغو حین اجرای پژوهش، و همهٔ گردش‌کارهای self-improvement را پوشش نمی‌دهد.
+- **اعتبارسنجی پیش از ادغام:** آزمون مرورگر در run [#38935582581](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935582581) و آزمون‌های مخزن در run [#38935582638](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935582638) برای head دقیق `c7a1146cab7cd26337b1041bf3515454ab9b8950` موفق شدند. PR [#250](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/250) ادغام شد؛ نتایج CI پس از ادغام پس از تکمیل ثبت می‌شوند.
