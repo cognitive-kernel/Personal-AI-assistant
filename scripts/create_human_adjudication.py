@@ -168,7 +168,7 @@ def main() -> int:
         print(f"Could not create adjudication worksheet: {type(exc).__name__}", file=sys.stderr)
         return 2
     print(json.dumps({
-        "output": str(args.output),
+        "output_file": args.output.name,
         "case_count": len(worksheet["cases"]),
         "answer_available_count": sum(item["answer_available"] for item in worksheet["cases"]),
         "rubric_version": worksheet["rubric_version"],
