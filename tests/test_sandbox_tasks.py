@@ -8,6 +8,7 @@ from app.sandbox import SandboxResult
 
 class FakeContext:
     def __init__(self):
+        self.task_id = 123
         self.checkpoints = []
         self.status = "running"
 
