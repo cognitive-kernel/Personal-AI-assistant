@@ -103,3 +103,33 @@ The application startup and cloud scheduler do not call this client. A later UI/
 The local UI now offers an optional Kaggle quota panel. The default state is disabled. Enabling it requires a checkbox plus a valid absolute path to the user's existing Kaggle CLI executable. The local API is loopback-only and records consent-granted/revoked events in the cloud-resource database with the consent-policy version; it does not store API tokens or raw CLI output.
 
 Quota refresh is manual only: the user presses the refresh button, and the backend runs only the fixed read-only `quota --csv` command through the opt-in client. There is no startup check, periodic polling, notebook submission, upload, or remote execution. Parsed GPU/TPU quota values and observation/reset times are stored locally. Revocation disables access, clears the executable path and current quota snapshot, and retains the consent audit events.
+
+
+## Second source-bound provider adapter: Oracle Cloud Always Free documentation
+
+The Oracle adapter recognizes only the exact official OCI Always Free resources page on
+`docs.oracle.com`. It extracts explicit documented shape names, CPU/memory limits,
+monthly OCPU/GB-hour limits, the home-region constraint, temporary host-capacity
+unavailability, and the warning that idle Always Free compute instances may be reclaimed.
+All extracted claims remain unreviewed and bound to the source content; they do not
+establish that a particular tenancy currently has capacity or is eligible.
+
+Official references:
+
+- Always Free resources and limits:
+  https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm
+- Free Tier versus time-limited trial:
+  https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm
+- OCI REST API and required request signing:
+  https://docs.oracle.com/en-us/iaas/Content/API/Concepts/usingapi.htm
+- Required API signing keys and tenancy/user OCIDs:
+  https://docs.oracle.com/en-us/iaas/Content/API/Concepts/apisigningkey.htm
+
+The published Always Free compute offer is CPU-based, not a GPU entitlement: the
+documentation describes up to 2 OCPUs and 12 GB memory for Ampere A1 in the tenancy's
+home region, subject to current quota and host capacity. Idle instances may be reclaimed.
+OCI API operations require signed requests and account-specific tenancy/user credentials.
+This adapter does not read credentials, create accounts, provision resources, launch jobs,
+or authorize execution. The policy continues to return `execution_authorized=false`;
+provider-specific terms, actual tenancy limits, budget enforcement, and remote-execution
+consent remain mandatory before an execution adapter can be enabled.
