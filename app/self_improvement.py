@@ -278,7 +278,7 @@ def _test_file_metrics(path: Path) -> dict[str, Any]:
         "tests": tests,
         "asserts": sum(item["asserts"] for item in tests.values()),
         "raises": sum(item["raises"] for item in tests.values()),
-        "skip_markers": len(re.findall(r"pytest\\s*\\.\\s*mark\\s*\\.\\s*(?:skip|skipif|xfail)\\b", source)),
+        "skip_markers": sum(source.count(marker) for marker in ("pytest.mark.skip", "pytest.mark.skipif", "pytest.mark.xfail")),
     }
 
 
@@ -453,7 +453,11 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
                 report["sandbox_status"] = result.status
                 report["duration_ms"] = result.duration_ms
                 report["diagnostic"] = (result.reason or result.stderr or "").strip()[:1000]
-                if result.status == "succeeded":
+                report["test_integrity"] = _test_integrity_report(root, workspace)
+                if report["test_integrity"]["status"] != "passed":
+                    report["syntax_check"] = "test_integrity_failed"
+                    report["diagnostic"] = "Static test-integrity guard detected possible test weakening."
+                elif result.status == "succeeded":
                     try:
                         parsed = json.loads(result.stdout.strip().splitlines()[-1])
                     except (ValueError, IndexError):
@@ -466,6 +470,7 @@ def static_check_proposal(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
                         report["syntax_check"] = "invalid_checker_output"
                 else:
                     report["syntax_check"] = result.status
+
         finally:
             _git(root, ["worktree", "remove", "--force", str(workspace)])
             _git(root, ["worktree", "prune"])
@@ -496,7 +501,9 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     if proposal["status"] != "validated" or not proposal["validation_report"]:
         raise ProposalError("Only a validated proposal can be approved for a human-reviewed PR.")
     if not proposal["static_check"] or proposal["static_check"].get("status") != "passed":
-        raise ProposalError("An isolated syntax check must pass before approval for a PR.")
+        raise ProposalError("Isolated syntax and test-integrity checks must pass before approval for a PR.")
+    if not proposal["static_check"].get("test_integrity") or proposal["static_check"]["test_integrity"].get("status") != "passed":
+        raise ProposalError("The static test-integrity guard must pass before approval for a PR.")
     root = _repo_root()
     head = _git(root, ["rev-parse", "--verify", "HEAD"])
     if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
