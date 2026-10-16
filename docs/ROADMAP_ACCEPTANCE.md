@@ -26,7 +26,7 @@ This document records repository-level evidence and the remaining acceptance gat
 3. **Live-model quality evaluation:** run the versioned Persian/English evaluation dataset against the intended local model; capture model digest where available; obtain human review for factual correctness, source support, source conflicts, and prompt-injection resistance.
 4. **Operational UI acceptance:** run browser-level end-to-end scenarios for research, task cancellation/recovery, consent revocation, experience review, backup preview/restore staging, and self-improvement draft workflows.
 5. **Recovery and load evidence:** exercise process crash/restart and multi-process contention on disposable data; measure latency, memory, CPU, disk growth, queue recovery, and backup/restore behavior.
-6. **Deployment policy:** document local install/update/rollback and backup procedures. Keep remote execution/cloud provisioning disabled until a separate security and cost review approves them.
+6. **Deployment policy:** local install/update/rollback and backup procedures are documented in `docs/operations/INSTALL_UPDATE_ROLLBACK.md`; the target-host rehearsal, including staging restore and rollback, remains outstanding. Keep remote execution/cloud provisioning disabled until a separate security and cost review approves them.
 
 ## Non-goals without a separate approval gate
 
