@@ -2,7 +2,10 @@ import json
 
 import pytest
 
-from app import assessment_review, db, learning, ollama
+from fastapi.testclient import TestClient
+
+from app import assessment_review, cloud_resources, db, learning, ollama
+from app.main import app
 from app.db import learning_connection
 
 
@@ -88,3 +91,39 @@ def test_learning_ui_exposes_opt_in_advisory_semantic_review():
     assert 'JSON.stringify({confirm: true})' in page
     assert "نمره آزمون را تغییر نمی‌دهد" in page
     assert '"/api/learning/jobs/" + job.id + "/assessment/" + latestAttemptId + "/semantic-review"' in page
+
+
+
+def test_semantic_review_route_requires_confirmation_and_loopback(tmp_path, monkeypatch):
+    job_id, attempt_id = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(cloud_resources, "ensure_daily_discovery_scheduled", lambda: {"status": "disabled"})
+    monkeypatch.setattr(
+        assessment_review.ollama,
+        "chat",
+        lambda *_args, **_kwargs: json.dumps({
+            "items": [{
+                "index": 1, "judgment": "matches",
+                "rationale": "Equivalent meaning.", "missing_concepts": []
+            }],
+            "overall_note": "Advisory only.",
+        }),
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        rejected = client.post(
+            f"/api/learning/jobs/{job_id}/assessment/{attempt_id}/semantic-review",
+            json={"confirm": False},
+        )
+        assert rejected.status_code == 422
+
+        accepted = client.post(
+            f"/api/learning/jobs/{job_id}/assessment/{attempt_id}/semantic-review",
+            json={"confirm": True},
+        )
+        assert accepted.status_code == 200
+        assert accepted.json()["independent_verification"] is False
+
+        remote = TestClient(app, client=("192.0.2.4", 12345))
+        denied = remote.get(
+            f"/api/learning/jobs/{job_id}/assessment/{attempt_id}/semantic-review"
+        )
+        assert denied.status_code == 403
