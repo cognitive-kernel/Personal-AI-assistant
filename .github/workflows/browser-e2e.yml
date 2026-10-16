@@ -30,6 +30,7 @@ jobs:
           SETTINGS_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/settings.db
           LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/learning.db
           CLOUD_RESOURCES_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/cloud.db
+          SELF_IMPROVEMENT_REPO_ROOT: ${{ github.workspace }}
           DATABASE_BACKUP_DIR: ${{ runner.temp }}/personal-ai-e2e/backups
         run: |
           mkdir -p "${{ runner.temp }}/personal-ai-e2e"
