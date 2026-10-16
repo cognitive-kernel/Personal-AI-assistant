@@ -39,7 +39,7 @@ def handle_research_task(
     checkpoint: dict[str, Any] | None,
     context: TaskContext,
 ) -> dict[str, Any]:
-    message, history = _validate_payload(payload)
+    message, history = validate_payload(payload)
     message_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
 
     def save_phase(state: dict[str, Any]) -> None:
