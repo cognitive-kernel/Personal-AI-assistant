@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -368,6 +369,8 @@ def review_candidate(
         normalized_terms_url, _ = _normalize_source_url(terms_url)
     if review_status == "approved" and not normalized_terms_url:
         raise ValueError("An HTTPS terms_url is required to approve a provider candidate.")
+    if review_status == "rejected" and availability_status == "available":
+        raise ValueError("A rejected provider candidate cannot be marked available.")
 
     initialize_store()
     with closing(_connect()) as connection:
