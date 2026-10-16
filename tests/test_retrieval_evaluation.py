@@ -49,10 +49,14 @@ def test_bilingual_benchmark_fixture_has_valid_relevance_targets():
     dataset = json.loads(path.read_text(encoding="utf-8"))
     slugs = {item["slug"] for item in dataset["experiences"]}
     assert len(dataset["experiences"]) >= 10
-    assert len(dataset["queries"]) >= 8
+    assert len(dataset["queries"]) >= 15
     assert {"fa", "en"} <= {case["language"] for case in dataset["queries"]}
     assert all(case["relevant_slugs"] and set(case["relevant_slugs"]) <= slugs for case in dataset["queries"])
     assert all(case["query_variants"] for case in dataset["queries"])
+    assert any(len(case["relevant_slugs"]) > 1 for case in dataset["queries"])
+    assert {"en_lease_duplicate", "fa_lease_recovery", "fa_proxy_isolation", "en_model_response_limit"} <= {
+        case["id"] for case in dataset["queries"]
+    }
 
 
 
@@ -68,9 +72,10 @@ def test_lexical_benchmark_runs_in_an_isolated_database(tmp_path):
         check=True,
     )
     report = json.loads(completed.stdout)
-    assert report["query_count"] == 10
+    dataset = json.loads((root / "tests" / "fixtures" / "experience_retrieval_eval.json").read_text(encoding="utf-8"))
+    assert report["query_count"] == len(dataset["queries"])
     assert 0.0 <= report["recall_at_5"] <= 1.0
     assert 0.0 <= report["mrr"] <= 1.0
     assert report["dataset_type"] == "synthetic_bilingual"
     assert report["retrieval_mode"] == "lexical_fallback_no_vectors_cached"
-    assert len(report["per_query"]) == 10
+    assert len(report["per_query"]) == len(dataset["queries"])
