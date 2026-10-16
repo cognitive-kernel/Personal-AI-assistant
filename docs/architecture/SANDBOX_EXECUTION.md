@@ -43,3 +43,10 @@ The image must match the official Python image name and include a SHA-256 digest
 The task payload accepts only `source_code`, `timeout_seconds` (1–120, default 10), and `max_output_bytes` (1–65536, default 32768). It cannot choose the Docker executable or image. The handler records a SHA-256 source digest and execution metadata in task checkpoints/results, not the source itself; the source remains in the task payload because it is the input being tested. Execution remains disabled unless the operator explicitly sets `SANDBOX_ENABLED` and supplies the local Docker path plus a verified image reference.
 
 This adapter does not install dependencies, enable network access, expose an HTTP endpoint, or run arbitrary payloads outside the registered sandbox handler.
+
+
+## Consent and local API
+
+The loopback-only `/api/sandbox` routes expose consent status/history, explicit consent grant, revocation, and bounded task submission. Consent defaults to off and is stored in the settings database with a policy version and append-only grant/revoke events. The generic `/api/tasks` endpoint rejects `sandbox.run_python` so callers must use the consent-aware route.
+
+The handler checks current consent before execution and periodically while the container runs. Revocation causes the sandbox client to stop at its next control poll; queued tasks also fail closed if consent is absent when they begin. This is an explicit local consent mechanism, not a claim of strong user authentication: the API remains loopback-only and the host account/Docker daemon must be protected.
