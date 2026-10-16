@@ -183,3 +183,135 @@ def test_self_improvement_ui_requires_confirmation_before_opening_draft_pr():
     assert '"/api/self-improvement/proposals/"+item.id+"/open-pr"' in page
     assert "PR ادغام یا مستقر نمی‌شود" in page
     assert 'JSON.stringify({confirm:true})' in page
+
+
+
+def _record_published_pr(proposal, base_sha):
+    details = {
+        "publication": "pr_opened",
+        "pull_request_number": 42,
+        "pull_request_url": "https://github.com/owner/repository/pull/42",
+        "base_commit_sha": base_sha,
+        "patch_sha256": hashlib.sha256(_patch().encode("utf-8")).hexdigest(),
+        "commit_sha": "e" * 40,
+    }
+    db.init_databases()
+    with learning_connection() as conn:
+        self_improvement._append_event(conn, proposal["id"], "approved_for_pr", details)
+
+
+def test_rollback_pr_requires_original_pr_merged(proposal_repo, monkeypatch):
+    proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
+    _record_published_pr(proposal, base_sha)
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    monkeypatch.setattr(
+        self_improvement,
+        "_github_api",
+        lambda method, path, payload=None: {
+            "merged": False,
+            "merge_commit_sha": None,
+        } if method == "GET" and path == "/pulls/42" else {},
+    )
+    with pytest.raises(self_improvement.ProposalError, match="only be created after the original pull request is merged"):
+        self_improvement.open_rollback_pull_request(proposal["id"], confirm=True)
+
+
+def test_rollback_pr_restores_only_unchanged_merged_paths(proposal_repo, monkeypatch):
+    proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
+    _record_published_pr(proposal, base_sha)
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    calls = []
+    merge_sha = "1" * 40
+    current_sha = "2" * 40
+    tree_before = "3" * 40
+    tree_merged = "4" * 40
+    tree_current = "5" * 40
+    rollback_tree = "6" * 40
+    rollback_commit = "7" * 40
+    old_blob = "8" * 40
+    merged_blob = "9" * 40
+
+    def fake_github_api(method, path, payload=None):
+        calls.append((method, path, payload))
+        if method == "GET" and path == "/pulls/42":
+            return {"merged": True, "merge_commit_sha": merge_sha}
+        if method == "GET" and path == "/git/ref/heads/main":
+            return {"object": {"sha": current_sha}}
+        if method == "GET" and path == "/git/commits/" + base_sha:
+            return {"tree": {"sha": tree_before}}
+        if method == "GET" and path == "/git/commits/" + merge_sha:
+            return {"tree": {"sha": tree_merged}}
+        if method == "GET" and path == "/git/commits/" + current_sha:
+            return {"tree": {"sha": tree_current}}
+        if method == "GET" and path == "/git/trees/" + tree_before + "?recursive=1":
+            return {"truncated": False, "tree": [{"path": "app/sample.py", "type": "blob", "mode": "100644", "sha": old_blob}]}
+        if method == "GET" and path == "/git/trees/" + tree_merged + "?recursive=1":
+            return {"truncated": False, "tree": [{"path": "app/sample.py", "type": "blob", "mode": "100644", "sha": merged_blob}]}
+        if method == "GET" and path == "/git/trees/" + tree_current + "?recursive=1":
+            return {"truncated": False, "tree": [{"path": "app/sample.py", "type": "blob", "mode": "100644", "sha": merged_blob}]}
+        if method == "POST" and path == "/git/trees":
+            assert payload["base_tree"] == tree_current
+            assert payload["tree"] == [{"path": "app/sample.py", "mode": "100644", "type": "blob", "sha": old_blob}]
+            return {"sha": rollback_tree}
+        if method == "POST" and path == "/git/commits":
+            assert payload["tree"] == rollback_tree
+            assert payload["parents"] == [current_sha]
+            return {"sha": rollback_commit}
+        if method == "POST" and path == "/git/refs":
+            assert payload["sha"] == rollback_commit
+            return {"object": {"sha": rollback_commit}}
+        if method == "POST" and path == "/pulls":
+            assert payload["draft"] is True
+            assert payload["base"] == "main"
+            return {"number": 43, "html_url": "https://github.com/owner/repository/pull/43"}
+        raise AssertionError("Unexpected GitHub API request: " + method + " " + path)
+
+    monkeypatch.setattr(self_improvement, "_github_api", fake_github_api)
+    result = self_improvement.open_rollback_pull_request(proposal["id"], confirm=True)
+    assert result["pull_request_number"] == 43
+    assert result["draft"] is True
+    assert result["merged"] is False
+    repeated = self_improvement.open_rollback_pull_request(proposal["id"], confirm=True)
+    assert repeated["already_opened"] is True
+    assert repeated["pull_request_number"] == 43
+    assert len([call for call in calls if call[0] == "POST" and call[1] == "/pulls"]) == 1
+
+
+def test_rollback_pr_refuses_to_overwrite_later_changes(proposal_repo, monkeypatch):
+    proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
+    _record_published_pr(proposal, base_sha)
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    merge_sha = "1" * 40
+    current_sha = "2" * 40
+    tree_before, tree_merged, tree_current = "3" * 40, "4" * 40, "5" * 40
+
+    def fake_github_api(method, path, payload=None):
+        if method == "GET" and path == "/pulls/42":
+            return {"merged": True, "merge_commit_sha": merge_sha}
+        if method == "GET" and path == "/git/ref/heads/main":
+            return {"object": {"sha": current_sha}}
+        if method == "GET" and path == "/git/commits/" + base_sha:
+            return {"tree": {"sha": tree_before}}
+        if method == "GET" and path == "/git/commits/" + merge_sha:
+            return {"tree": {"sha": tree_merged}}
+        if method == "GET" and path == "/git/commits/" + current_sha:
+            return {"tree": {"sha": tree_current}}
+        if method == "GET" and path.startswith("/git/trees/"):
+            tree_sha = path.split("/git/trees/", 1)[1].split("?", 1)[0]
+            blob = "8" * 40 if tree_sha == tree_before else "9" * 40 if tree_sha == tree_merged else "a" * 40
+            return {"truncated": False, "tree": [{"path": "app/sample.py", "type": "blob", "mode": "100644", "sha": blob}]}
+        raise AssertionError("Unexpected GitHub API request: " + method + " " + path)
+
+    monkeypatch.setattr(self_improvement, "_github_api", fake_github_api)
+    with pytest.raises(self_improvement.ProposalError, match="changed after the original PR merge"):
+        self_improvement.open_rollback_pull_request(proposal["id"], confirm=True)
+
+
+def test_rollback_pr_ui_is_explicit_and_advisory():
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert "ایجاد PR پیش‌نویس بازگشت" in page
+    assert '"/api/self-improvement/proposals/"+item.id+"/rollback-pr"' in page
+    assert "هیچ ادغام یا استقراری انجام نمی‌شود" in page
