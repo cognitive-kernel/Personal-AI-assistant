@@ -142,3 +142,15 @@ def test_restore_api_rejects_tampered_backup(tmp_path, monkeypatch):
         )
         assert response.status_code == 422
         assert not (tmp_path / "backups" / "restore-staging").exists()
+
+
+
+def test_dashboard_exposes_explicit_staging_restore_without_live_cutover():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert "بازیابی آزمایشی در پوشهٔ جدا" in page
+    assert "دیتابیس‌های زنده تغییر نمی‌کنند" in page
+    assert '"/api/storage/backups/"+encodeURIComponent(backupId)+"/restore"' in page
