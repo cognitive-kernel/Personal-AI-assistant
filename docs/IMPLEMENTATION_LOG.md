@@ -980,14 +980,15 @@
 - [x] **PR #141** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/141)، commit ادغام `9153a45bceccf576b06bb655bb5c7de392f8f7ac`.
 - [x] CI روی head دقیق `111fce12fe238cc8654093070ea922a3a0d473d5` موفق بود؛ run [#38852247649](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852247649).
 - [ ] تست محلی اجرا نشده است.
-- **گام بعدی:** تثبیت رفتار timeout/cleanup و انتخاب digest رسمی برای معماری هدف؛ سپس handler با schema ورودی محدود، ثبت شواهد اجرا و checkpoint ایجاد شود. هیچ کد ناشناخته‌ای مستقیم روی میزبان اجرا نشود.
+- **گام بعدی:** انتخاب و تأیید digest رسمی image برای معماری هدف؛ سپس handler با schema ورودی محدود، ثبت شواهد اجرا و checkpoint ایجاد شود. هیچ کد ناشناخته‌ای مستقیم روی میزبان اجرا نشود.
 
 
 ## 69. 2026-10-16 — تثبیت cleanup آزمایشگاه و ثبت merge
 
 - [x] تست اضافه شد که مسیر workspace و فایل منبع پس از پایان container client دیگر وجود ندارند؛ تست با process mock اجرا می‌شود و به Docker واقعی وابسته نیست.
 - [x] وضعیت PR #141 و CI موفق روی head دقیق در گزارش پیاده‌سازی ثبت شد.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #142** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/142)، commit ادغام `8031c87a2d92903a776492c0b78d1b1649a2fd3f`.
+- [x] CI روی head دقیق `ba574598b461e2674e7a9535c1e27829e628e0c0` موفق بود؛ run [#38852392618](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852392618).
 
 
 ## 70. 2026-10-16 — توقف تعاونی sandbox برای pause/cancel
@@ -996,4 +997,5 @@
 - [x] تست‌های قراردادی پوشش pause، cancel و exception در بررسی کنترل را اضافه کردند؛ هیچ Docker واقعی اجرا نشده است.
 - [x] راهنمای sandbox محدودیت و رفتار توقف را ثبت کرد.
 - [ ] هنوز task handler و API اجرای sandbox ثبت نشده‌اند؛ این عمداً جدا نگه داشته شده تا schema ورودی، consent، checkpoint و ثبت شواهد با هم پیاده‌سازی شوند.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #143** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/143)، commit ادغام `3c326e7a16d50f8401a225d5391d1941840e36b4`.
+- [x] CI روی head دقیق `56e2f1fe9303f03b5fa39ebd4b833042b191fd08` موفق بود؛ run [#38852560052](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38852560052).
