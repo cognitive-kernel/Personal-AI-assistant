@@ -146,7 +146,9 @@ def cleanup_terminal_containers() -> None:
 
     # TaskWorker.run_once() calls claim_next_task() before runtime maintenance, so
     # expired leases are reconciled by the queue before terminal IDs are collected.
-    terminal_task_ids = set(task_manager.list_terminal_task_ids(limit=1000))
+    terminal_task_ids = set(
+        task_manager.list_terminal_task_ids(limit=1000, min_terminal_age_seconds=60)
+    )
     result = sandbox.cleanup_orphaned_containers(
         docker_executable=executable,
         terminal_task_ids=terminal_task_ids,
