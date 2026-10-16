@@ -5,9 +5,9 @@ import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, Field, StrictBool, StrictStr
 
-from . import cloud_resources
+from . import cloud_resource_planner, cloud_resources
 from .kaggle_quota_client import KaggleQuotaClientError, fetch_quota_snapshot
 from .oci_quota_client import OciQuotaClientError, fetch_service_limits
 from .task_routes import require_loopback_client
@@ -40,6 +40,36 @@ def request_cloud_discovery() -> dict[str, Any]:
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail="Cloud resource discovery could not be queued.") from exc
 
+
+
+class ResourcePlanningRequest(BaseModel):
+    min_cpu_count: Any = 1
+    min_memory_gib: Any = 0
+    require_gpu: StrictBool = False
+    gpu_models: list[StrictStr] = Field(default_factory=list, max_length=20)
+    allowed_provider_domains: list[StrictStr] = Field(default_factory=list, max_length=100)
+
+
+@router.post("/plan")
+def plan_cloud_resource_selection(request: ResourcePlanningRequest) -> dict[str, Any]:
+    """Return a loopback-only dry-run resource plan; never starts remote execution."""
+    try:
+        candidates = cloud_resources.list_candidates(limit=500)
+        plan = cloud_resource_planner.build_selection_plan(
+            candidates,
+            {
+                "min_cpu_count": request.min_cpu_count,
+                "min_memory_gib": request.min_memory_gib,
+                "require_gpu": request.require_gpu,
+                "gpu_models": request.gpu_models,
+                "allowed_provider_domains": request.allowed_provider_domains,
+            },
+        )
+        return plan
+    except cloud_resource_planner.ResourcePlanningError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Cloud resource planning is unavailable.") from exc
 
 
 class CandidateReviewRequest(BaseModel):
