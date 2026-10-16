@@ -195,3 +195,58 @@ def test_experience_versions_can_be_inspected_and_controlled_rollback_is_a_new_v
     assert restored["status"] == "needs_review"
     assert restored["takeaway"] == "First recorded takeaway."
     assert {row["version"] for row in experience.list_experience_versions(item["id"])} == {1, 2, 3, 4}
+
+
+
+def test_experience_retrieval_penalizes_stale_source_observations(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from app import experience_retrieval
+
+    setup_learning_db(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    recent = experience.create_experience("Python parser", "Parser behavior for empty JSON input.")
+    stale = experience.create_experience("Python parser", "Parser behavior for empty JSON input.")
+    for item, observed_at in (
+        (recent, now.isoformat().replace("+00:00", "Z")),
+        (stale, (now - timedelta(days=180)).isoformat().replace("+00:00", "Z")),
+    ):
+        experience.update_experience(
+            item["id"],
+            status="verified",
+            source_evidence=[{
+                "url": "https://docs.python.org/3/library/json.html",
+                "claim": "Python JSON parser behavior",
+                "observed_at": observed_at,
+            }],
+            test_plan=[{"test": "empty input contract"}],
+            test_results=[{"test": "empty input contract", "passed": True}],
+            takeaway="Validate empty JSON input.",
+            _controlled_run=True,
+        )
+    monkeypatch.setattr(experience_retrieval, "_vector_ranking", lambda items, variants: [])
+    results = experience.search_relevant_experiences("Python parser empty JSON input", limit=2)
+    assert [row["id"] for row in results] == [recent["id"], stale["id"]]
+    assert results[0]["source_freshness"]["status"] == "recently_observed"
+    assert results[1]["source_freshness"]["status"] == "stale_or_unknown"
+
+
+def test_experience_retrieval_treats_legacy_evidence_as_unknown_not_fresh(tmp_path, monkeypatch):
+    from app import experience_retrieval
+
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience("SQL query plan", "An optimizer chose a table scan.")
+    item = experience.update_experience(
+        item["id"],
+        status="verified",
+        source_evidence=[{
+            "url": "https://learn.microsoft.com/en-us/sql/relational-databases/",
+            "claim": "SQL Server query plans",
+        }],
+        test_plan=[{"test": "query plan contract"}],
+        test_results=[{"test": "query plan contract", "passed": True}],
+        takeaway="Inspect the actual execution plan.",
+        _controlled_run=True,
+    )
+    freshness = experience_retrieval._source_freshness(item)
+    assert freshness["status"] == "stale_or_unknown"
+    assert freshness["multiplier"] == 0.8

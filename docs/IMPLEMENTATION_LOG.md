@@ -1301,3 +1301,12 @@ This is a status snapshot, not a declaration that the full roadmap is complete.
 - **Stage 9 — hardening and optimization:** the Ollama loopback boundary has additional tests, but Issue #52 still requires independent security review; real Docker validation, restart/fault-injection tests, and performance/resource benchmarks remain.
 
 Do not mark any remaining stage complete without its acceptance tests and evidence recorded here.
+
+
+## 97. 2026-10-16 — Freshness-aware experience retrieval
+
+- **هدف:** کاهش اولویت تجربه‌های تأییدشده‌ای که شواهد آن‌ها قدیمی یا زمان مشاهده‌شان نامشخص است؛ بدون حذف تاریخچه و بدون ادعای بررسی مجدد منبع.
+- **تغییرات:** هنگام ذخیرهٔ تجربه از پژوهش دارای رضایت، زمان مشاهدهٔ منبع با UTC در هر مدرک ثبت می‌شود. رتبه‌بندی ترکیبی واژگانی/برداری با ضریب freshness تنظیم می‌شود: تا ۳۰ روز ضریب ۱٫۰، ۳۱ تا ۹۰ روز ۰٫۷۵، بیش از ۹۰ روز ۰٫۴۵؛ شواهد فاقد زمان یا timestamp نامعتبر ضریب محافظه‌کارانهٔ ۰٫۸ می‌گیرند.
+- **قید اعتماد:** این زمان فقط زمان مشاهده/ذخیره در برنامه است، نه زمان آخرین تغییر وب‌سایت و نه اثبات فعلی بودن محتوا. نتیجهٔ retrieval وضعیت freshness را برمی‌گرداند؛ هیچ تجربه‌ای خودکار تأیید یا حذف نمی‌شود.
+- **تست‌های اضافه‌شده:** رتبه‌بندی تجربهٔ تازه بالاتر از تجربهٔ هم‌موضوع با منبع ۱۸۰ روزه؛ رفتار محافظه‌کارانه برای شواهد فاقد timestamp.
+- **وضعیت اجرا:** تست محلی اجرا نشده است؛ CI باید روی head دقیق PR موفق شود. تست Docker واقعی و ممیزی کامل checkout همچنان جداگانه باقی‌اند.

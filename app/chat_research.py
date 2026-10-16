@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from . import chat_audit, claim_review, experience, experience_capture_consent, ollama, web_sources
@@ -60,8 +61,10 @@ def _memory_context(message: str) -> dict[str, list[dict[str, Any]]]:
                 "topic": str(item.get("topic", ""))[:300],
                 "version": int(item.get("version", 1)),
                 "takeaway": str(item.get("takeaway", ""))[:1200],
+                "source_freshness": item.get("source_freshness", {"status": "unknown"}),
                 "evidence": [
-                    {"url": str(entry.get("url", ""))[:500], "claim": str(entry.get("claim", ""))[:500]}
+                    {"url": str(entry.get("url", ""))[:500], "claim": str(entry.get("claim", ""))[:500],
+                     "observed_at": str(entry.get("observed_at", ""))[:40]}
                     for entry in item.get("source_evidence", [])[:3]
                     if isinstance(entry, dict)
                 ],
@@ -161,6 +164,7 @@ def _capture_experience(
         {
             "url": source["url"][:1000],
             "claim": (source["title"] + ": " + source["content"][:400])[:1200],
+            "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         }
         for source in sources[:3]
         if source.get("url", "").startswith("https://") and source.get("content")
