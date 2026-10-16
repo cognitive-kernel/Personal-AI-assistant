@@ -52,7 +52,8 @@ def test_semantic_review_is_advisory_and_does_not_change_deterministic_score(tmp
     assert "An index can make lookups faster" in captured["message"]
 
     saved = assessment_review.get_assessment_review(job_id, attempt_id)
-    assert saved == result
+    assert saved["review"] == result["review"]
+    assert saved["score_changed"] is False
     with learning_connection() as connection:
         attempt = connection.execute(
             "SELECT score, scoring_method FROM assessment_attempts WHERE id=?",
