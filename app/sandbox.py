@@ -167,6 +167,13 @@ _TEST_IMAGE_REF = re.compile(
 )
 
 
+
+def is_valid_test_image_reference(image: str) -> bool:
+    """Return whether a behavior-test image is pinned to an immutable SHA-256 ID."""
+    return isinstance(image, str) and bool(_TEST_IMAGE_REF.fullmatch(image))
+
+
+
 def run_workspace_tests(
     workspace_path: str | Path,
     *,
