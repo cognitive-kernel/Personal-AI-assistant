@@ -121,6 +121,16 @@ def open_proposal_pull_request(proposal_id: int, request: ExplicitConfirmation) 
         _proposal_error(exc)
 
 
+@router.post("/proposals/{proposal_id}/rollback-pr")
+def open_proposal_rollback_pull_request(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
+    try:
+        return {"rollback_pull_request": self_improvement.open_rollback_pull_request(
+            proposal_id, confirm=request.confirm
+        )}
+    except (ProposalError, KeyError) as exc:
+        _proposal_error(exc)
+
+
 @router.post("/proposals/{proposal_id}/reject")
 def reject_proposal(proposal_id: int, request: RejectProposalRequest) -> dict[str, Any]:
     try:
