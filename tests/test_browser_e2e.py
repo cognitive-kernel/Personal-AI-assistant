@@ -244,7 +244,13 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
             "Verify the local UI records a proposed patch without applying it to the checkout."
         )
         page.locator("#self-improvement-patch").fill(patch)
-        page.locator("#self-improvement-form button[type=submit]").click()
+        with page.expect_response(
+            lambda response: response.url.endswith("/api/self-improvement/proposals")
+            and response.request.method == "POST"
+        ) as response_info:
+            page.locator("#self-improvement-form button[type=submit]").click()
+        create_response = response_info.value
+        assert create_response.status == 201, create_response.text()
         page.wait_for_function(
             """() => {
                 const output = document.querySelector('#self-improvement-output');
