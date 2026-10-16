@@ -133,7 +133,7 @@ def get_learning_recommendations(
                     **item,
                     "recommendation_type": "reinforcement",
                     "action": "reinforce_topic",
-                    "priority": 70 - min(30, max(0, int(float(score)))),
+                    "priority": 70 + min(30, max(0, 70 - int(float(score)))),
                     "reason": "The latest assessment score is below 70; reinforce this topic.",
                     "due_at": None,
                     "overdue_days": 0,
