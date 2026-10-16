@@ -64,3 +64,43 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+
+def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        consent_checkbox = page.locator("#experience-auto-capture-confirm")
+        assert not consent_checkbox.is_checked()
+        page.locator("#experience-auto-capture-refresh").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#experience-auto-capture-status');
+                return node && node.textContent.includes('ذخیرهٔ خودکار غیرفعال است');
+            }""",
+            timeout=10000,
+        )
+
+        topic = "Browser E2E experience creation"
+        page.locator("#experience-topic").fill(topic)
+        page.locator("#experience-hypothesis").fill("A local UI submission should create a draft record.")
+        page.locator("#experience-problem").fill("Verify that a user-created experience is visible and not verified automatically.")
+        page.locator("#experience-create-form button[type=submit]").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#experience-output');
+                const list = document.querySelector('#experience-list');
+                return node && node.textContent.includes('تعداد تجربه‌ها') &&
+                    list && list.textContent.includes('Browser E2E experience creation');
+            }""",
+            timeout=15000,
+        )
+        assert "وضعیت: identified" in page.locator("#experience-list").inner_text()
+        assert not consent_checkbox.is_checked()
+        browser.close()
