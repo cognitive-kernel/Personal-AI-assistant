@@ -1,6 +1,6 @@
 import sqlite3
 
-from app import cloud_resources, db, storage_health
+from app import cloud_resources, db, main, storage_health
 
 
 def _configure(tmp_path, monkeypatch):
@@ -60,3 +60,19 @@ def test_storage_health_detects_schema_drift_without_repairing_it(tmp_path, monk
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='untracked_health_drift'"
         ).fetchone() is not None
+
+
+
+def test_general_health_does_not_disclose_database_filesystem_paths(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    db.init_databases()
+    monkeypatch.setattr(main, "detect_hardware", lambda: {"cpu_count": 2})
+    monkeypatch.setattr(main, "runtime_limits", lambda settings, hardware: {"workers": 1})
+    monkeypatch.setattr(main.ollama, "health", lambda: {"status": "ok"})
+
+    result = main.api_health()
+
+    assert result["storage"]["separate"] is True
+    assert str(tmp_path) not in str(result)
+    assert db.defaults.settings_db_path not in str(result)
+    assert db.defaults.learning_db_path not in str(result)
