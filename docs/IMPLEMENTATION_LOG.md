@@ -964,5 +964,18 @@
 - [x] رضایت و لغو با نسخهٔ policy و timestamp audit می‌شوند؛ با لغو، مسیر executable و snapshot فعلی پاک می‌شود، اما تاریخچهٔ رویدادهای رضایت باقی می‌ماند.
 - [x] پنل محلی چک‌باکس رضایت، مسیر CLI، refresh دستی و نمایش snapshotها/تاریخچه را اضافه کرد؛ هیچ درخواست quota در startup یا scheduler انجام نمی‌شود.
 - [x] تست‌های API برای default-off، عدم refresh پیش از رضایت، ثبت و لغو، پاک‌سازی snapshot، endpointهای غیر loopback و booleanهای malformed اضافه شدند.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #140** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/140)، commit ادغام `82bb00c25912eccc6050921bc5b9ac24cff574c0`.
+- [x] CI روی head دقیق `9b5ed633d8eb2bfcc0c45e56a52b4482b206ca99` موفق بود؛ run [#38851914729](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38851914729).
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** بررسی رفتار crash و لغو رضایت هم‌زمان با refresh؛ سپس طراحی job dispatcher با checkpoint و ارسال حداقلی داده. هیچ اجرای remote تا تکمیل قرارداد provider و sandbox فعال نشود.
+
+
+## 68. 2026-10-16 — primitive اولیهٔ آزمایشگاه ایزولهٔ Python
+
+- [x] `app/sandbox.py` فقط با Docker و image رسمی Python دارای digest کار می‌کند؛ در نبود Docker هیچ fallback به اجرای مستقیم روی میزبان ندارد.
+- [x] container با شبکهٔ قطع، root filesystem و source mount فقط‌خواندنی، کاربر غیرریشه، حذف capabilityها، no-new-privileges، سقف حافظه/CPU/PID، timeout و سقف خروجی اجرا می‌شود.
+- [x] environment ورودی Docker CLI به allowlist محدود است؛ credentialهای Kaggle و سایر اسرار برنامه به subprocess داده نمی‌شوند.
+- [x] تست‌های قراردادی برای آرگومان‌های امنیتی، نبود Docker، digest نامعتبر، ورودی بزرگ، سقف خروجی، exit code و timeout اضافه شدند؛ تست‌ها Docker واقعی اجرا نمی‌کنند.
+- [x] راهنمای `docs/architecture/SANDBOX_EXECUTION.md` محدودیت‌ها را ثبت می‌کند؛ sandbox هنوز به task registry یا API متصل نیست.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** تثبیت رفتار timeout/cleanup و انتخاب digest رسمی برای معماری هدف؛ سپس handler با schema ورودی محدود، ثبت شواهد اجرا و checkpoint ایجاد شود. هیچ کد ناشناخته‌ای مستقیم روی میزبان اجرا نشود.
