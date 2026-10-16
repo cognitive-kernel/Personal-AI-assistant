@@ -70,3 +70,13 @@ It uses argument arrays, a restricted Docker CLI environment, bounded command
 timeouts, and no shell. The explicit caller must not infer terminal state from lease
 expiry alone; first reconcile the durable task state. Automatic startup integration
 is deferred until multi-process reconciliation and recovery ordering are tested.
+
+
+### Recovery-order guarantees
+
+The runtime calls maintenance only after `TaskWorker.run_once()`; the worker claims
+through `claim_next_task()`, which reconciles expired leases before returning. A
+task with a valid active lease is absent from the terminal-task query. An expired
+single-attempt sandbox task is made terminal before its ID can be considered, and
+the terminal-age grace period delays any container removal for another 60 seconds.
+Regression tests cover both the active-task and expired-lease paths.
