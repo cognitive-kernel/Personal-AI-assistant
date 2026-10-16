@@ -1217,17 +1217,17 @@
 
 - Status: merged in PR #165; exact-head GitHub Actions run succeeded.
 - Added loopback-only routes for listing, creating, searching, inspecting and updating experience records, plus version history.
-- Public API updates cannot set a record to `verified`, submit `test_results`, or pass the internal `_controlled_run` flag. These remain reserved for a future controlled runner with actual execution evidence.
+- Public API updates cannot set a record to `verified`, submit `test_results`, or pass the internal `_controlled_run` flag. The controlled runner added in section 92 owns this transition and records actual sandbox execution evidence.
 - Added route tests for record lifecycle, version history, validation boundaries, and rejection of non-loopback clients.
 - Added `docs/architecture/EXPERIENCE_MEMORY_API.md` to document the API contract and trust boundary.
-- The change exposes existing experience storage to the local interface; it does not complete autonomous experience capture or execution-based verification.
+- The API provides the base for local curation; opt-in research capture is documented in section 91, and controlled execution is documented in section 92.
 
 ## 60. Local experience-memory management UI
 
 - Status: merged in PR #167; exact-head GitHub Actions run succeeded.
 - Added a local UI for creating and listing experience records, searching verified guidance separately from failure/review warnings, reviewing editable metadata, and viewing version history.
 - External source links are accepted for display only when HTTPS; all stored/user-provided text is rendered through DOM text nodes rather than HTML injection.
-- The UI does not provide a way to submit test results or promote an experience to verified; that remains reserved for controlled execution.
+- The UI cannot directly submit test results or promote records; it queues a controlled sandbox test through the runner documented in section 92.
 - Added a static UI contract test; the full suite and deterministic lexical retrieval benchmark passed in CI run [#38861512505](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38861512505).
 
 
@@ -1243,9 +1243,18 @@
 
 ## 91. Opt-in automatic capture of source-backed research experiences
 
-- Status: implemented on branch `feat/opt-in-experience-capture-v2-20261016`; CI validation pending.
+- Status: merged in PR #170; exact-head GitHub Actions run #38862238858 succeeded.
 - Added settings migration 3 with a default-disabled consent record and auditable grant/revocation events.
 - Added loopback-only consent endpoints and a local UI control; only an explicit strict boolean confirmation enables capture.
 - With consent enabled, technical research answers with usable HTTPS sources can be saved as `identified` or `needs_review` records. Small-talk and answers without usable sources are not captured.
 - Capture stores the question, answer takeaway, and up to three source URLs with short excerpts. It never marks an experience verified or executes code; revocation stops future capture but does not delete existing records.
-- Added tests for migration/schema, consent lifecycle/API, and capture/no-source boundaries. Local tests were not run; the exact-head CI run is the validation gate.
+- Migration/schema, consent lifecycle/API, and capture/no-source boundary tests passed in CI; local tests were not run.
+
+## 92. Controlled experience test runner
+
+- Status: implemented on branch `feat/controlled-experience-test-runner-20261016`; CI validation pending.
+- Added `experience.run_test`, registered only when the administrator-configured Docker sandbox is available.
+- The local API requires loopback access, explicit request confirmation, current sandbox consent, HTTPS source evidence, a saved test-plan entry matching the requested test, and a syntactically valid Python harness containing at least one `assert`.
+- The handler rechecks the experience state and test-plan match at execution time, delegates execution to the existing isolated sandbox, and checks cancellation/consent again before recording evidence.
+- Passing execution with exit code 0 can promote the experience to `verified` only through the controlled internal path; failure records a failed result. The result includes source SHA-256, pinned image, execution status, exit code, duration, and bounded stdout/stderr.
+- Added UI queue/polling, runner unit tests, API queue tests, and `docs/architecture/EXPERIENCE_TEST_RUNNER.md`. Local tests were not run; exact-head CI remains the merge gate.
