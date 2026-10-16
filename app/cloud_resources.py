@@ -103,7 +103,7 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
         "source_url": url,
         "provider_domain": domain,
         "title": title,
-        "content_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "content_sha256": hashlib.sha256(f"{title}\n{text}".encode("utf-8")).hexdigest(),
         "resource_signals_json": json.dumps(
             _resource_signals(title, text), ensure_ascii=False, separators=(",", ":")
         ),
