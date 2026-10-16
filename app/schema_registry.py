@@ -286,6 +286,23 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_discovery_runs_status ON cloud_resource_discovery_runs(status, started_at DESC)",
         ),
     ),
+    Migration(
+        2,
+        "cloud-resource-review-and-freshness",
+        (
+            """ALTER TABLE cloud_resource_candidates ADD COLUMN freshness_status TEXT NOT NULL
+               DEFAULT 'fresh' CHECK(freshness_status IN ('fresh','stale','unknown'))""",
+            "ALTER TABLE cloud_resource_candidates ADD COLUMN reviewed_at TEXT",
+            """ALTER TABLE cloud_resource_candidates ADD COLUMN reviewed_content_sha256 TEXT
+               CHECK(reviewed_content_sha256 IS NULL OR length(reviewed_content_sha256) = 64)""",
+            """UPDATE cloud_resource_candidates
+               SET review_status='unreviewed', availability_status='unknown',
+                   quota_json='{}', terms_url=NULL
+               WHERE review_status != 'unreviewed'""",
+            "CREATE INDEX idx_cloud_candidates_freshness ON cloud_resource_candidates(freshness_status, last_seen_at DESC)",
+            "CREATE INDEX idx_cloud_candidates_reviewed ON cloud_resource_candidates(reviewed_at DESC)",
+        ),
+    ),
 )
 
 

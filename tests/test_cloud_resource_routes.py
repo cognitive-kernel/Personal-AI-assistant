@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db
+from app import cloud_resources, db, web_sources
 from app.main import app
 
 
@@ -57,3 +57,46 @@ def test_cloud_resource_api_rejects_non_loopback_clients(tmp_path, monkeypatch):
         response = client.get("/api/cloud-resources")
 
     assert response.status_code == 403
+
+
+
+def test_cloud_resource_review_api_requires_current_hash_and_terms_url(
+    tmp_path, monkeypatch
+):
+    _configure(tmp_path, monkeypatch)
+    document = web_sources.SourceDocument(
+        url="https://compute.example.org/free-tier",
+        title="Free GPU compute",
+        text=("Free GPU compute credits, quota limits, and terms. " * 4),
+    )
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        approved = client.patch(
+            f"/api/cloud-resources/{candidate['id']}/review",
+            json={
+                "expected_content_sha256": candidate["content_sha256"],
+                "review_status": "approved",
+                "availability_status": "available",
+                "quota": {"cpu": "2 vCPU"},
+                "terms_url": "https://compute.example.org/terms",
+            },
+        )
+        assert approved.status_code == 200
+        assert approved.json()["candidate"]["review_status"] == "approved"
+        assert approved.json()["candidate"]["reviewed_content_sha256"] == candidate["content_sha256"]
+
+        stale_hash = client.patch(
+            f"/api/cloud-resources/{candidate['id']}/review",
+            json={
+                "expected_content_sha256": "0" * 64,
+                "review_status": "approved",
+                "availability_status": "available",
+                "terms_url": "https://compute.example.org/terms",
+            },
+        )
+        assert stale_hash.status_code == 409

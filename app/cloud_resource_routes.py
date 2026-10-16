@@ -5,6 +5,7 @@ import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
 from . import cloud_resources
 from .task_routes import require_loopback_client
@@ -36,3 +37,37 @@ def request_cloud_discovery() -> dict[str, Any]:
         return {"task": task, "message": "Cloud resource discovery queued; candidates remain unreviewed until verified."}
     except (OSError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail="Cloud resource discovery could not be queued.") from exc
+
+
+
+class CandidateReviewRequest(BaseModel):
+    expected_content_sha256: str = Field(min_length=64, max_length=64)
+    review_status: str = Field(min_length=1, max_length=20)
+    availability_status: str = Field(default="unknown", min_length=1, max_length=30)
+    quota: dict[str, Any] = Field(default_factory=dict)
+    terms_url: str | None = Field(default=None, max_length=2048)
+
+
+@router.patch("/{candidate_id}/review")
+def review_cloud_resource(
+    candidate_id: int,
+    request: CandidateReviewRequest,
+) -> dict[str, Any]:
+    try:
+        candidate = cloud_resources.review_candidate(
+            candidate_id,
+            expected_content_sha256=request.expected_content_sha256,
+            review_status=request.review_status,
+            availability_status=request.availability_status,
+            quota=request.quota,
+            terms_url=request.terms_url,
+        )
+        return {"candidate": candidate}
+    except cloud_resources.CloudResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except cloud_resources.CloudResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (cloud_resources.CloudResourceError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Cloud resource review storage is unavailable.") from exc
