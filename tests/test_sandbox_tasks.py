@@ -55,6 +55,10 @@ def test_sandbox_handler_requires_absolute_existing_docker_and_digest_pinned_ima
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:latest")
     with pytest.raises(ValueError, match="SHA-256 digest"):
         sandbox_tasks.handler_from_environment()
+    monkeypatch.setenv(
+        "SANDBOX_PYTHON_IMAGE", "docker.io/library/python:3.12-slim@sha256:" + "a" * 64
+    )
+    assert sandbox_tasks.handler_from_environment() is not None
     assert executable.is_file()
 
 
@@ -137,3 +141,40 @@ def test_handler_refuses_execution_without_explicit_consent(monkeypatch, tmp_pat
     with pytest.raises(ValueError, match="explicit, current user consent"):
         handler({"source_code": "print('blocked')"}, None, context)
     assert context.checkpoints == []
+
+
+
+def test_revoking_consent_stops_running_sandbox_and_records_checkpoint(
+    monkeypatch, tmp_path
+):
+    _configure(monkeypatch, tmp_path)
+    consent_states = iter([True, True, False])
+    monkeypatch.setattr(
+        sandbox_tasks.sandbox_consent,
+        "is_enabled",
+        lambda: next(consent_states),
+    )
+    clock = iter([10.0, 11.0])
+    monkeypatch.setattr(sandbox_tasks.time, "monotonic", lambda: next(clock))
+
+    def fake_run(source, **kwargs):
+        control_check = kwargs["control_check"]
+        assert control_check() == "running"
+        assert control_check() == "control_unavailable"
+        return SandboxResult(
+            "cancelled", -15, "", "", 50,
+            "Sandbox stopped because task control/lease state was unavailable.",
+        )
+
+    monkeypatch.setattr(sandbox_tasks.sandbox, "run_python", fake_run)
+    handler = sandbox_tasks.handler_from_environment()
+    context = FakeContext()
+
+    with pytest.raises(RuntimeError, match="consent was revoked"):
+        handler({"source_code": "print('long task')"}, None, context)
+
+    assert len(context.checkpoints) == 2
+    assert context.checkpoints[-1]["execution_status"] == "cancelled"
+    assert context.checkpoints[-1]["source_sha256"] == hashlib.sha256(
+        b"print('long task')"
+    ).hexdigest()
