@@ -1653,3 +1653,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تغییر:** `scripts/run_target_host_baseline.py` گزارش نسخهٔ commit، وضعیت working tree، نسخهٔ Python و بسته‌ها، و سلامت فقط‌خواندنی سه دیتابیس را تولید می‌کند. اجرای کل pytest با `--run-tests` اختیاری است؛ گزارش فقط کد خروج و شمارش JUnit را نگه می‌دارد و خروجی خام و مسیرهای محلی را حذف می‌کند.
 - **ایمنی:** این ابزار دیتابیس را ایجاد، migrate یا repair نمی‌کند و به Ollama یا سرویس راه‌دور وصل نمی‌شود. این ابزار به‌تنهایی baseline ماشین هدف را ثبت نکرده؛ باید روی همان سیستم و محیطی که قرار است اجرا شود، اجرا و گزارش آن نگهداری شود.
 - **اعتبارسنجی پیش از ادغام:** آزمون‌های مخزن در run [#38934857075](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934857075) و مرورگر در run [#38934857107](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934857107) برای head دقیق `ab3a8636004b7327b739e5b289b2340d30480686` موفق شدند. PR [#248](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/248) ادغام شد. پس از ادغام نیز آزمون‌های مخزن در run [#38935013031](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935013031) و مرورگر در run [#38935013142](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935013142) موفق شدند.
+
+
+## 137. 2026-10-16 — ممیزی خودکار آسیب‌پذیری وابستگی‌های پایتون
+
+- **مسئله:** نقشهٔ راه ممیزی زنجیرهٔ تأمین را به‌عنوان یکی از دروازه‌های پذیرش باز نگه داشته بود؛ آزمون‌های کاربردی به‌تنهایی آسیب‌پذیری نسخه‌های وابستگی را بررسی نمی‌کنند.
+- **تغییر:** workflow جدید `.github/workflows/dependency-audit.yml` محیط حل‌شدهٔ پروژه و وابستگی‌های توسعه را با `pip-audit` بررسی می‌کند؛ روی pull request، push به `main`، به‌صورت هفتگی و با اجرای دستی فعال است.
+- **محدودیت شواهد:** این اسکن فقط آسیب‌پذیری‌های شناخته‌شدهٔ بسته‌های Python را در محیط حل‌شده بررسی می‌کند؛ جایگزین lockfile قابل‌بازتولید، بررسی مجوزها، ممیزی اکشن‌های GitHub، اسکن اسرار یا بازبینی مستقل امنیتی نیست. این تغییر نیز ادعای پاک‌بودن وابستگی‌ها ندارد تا اجرای workflow نتیجه‌ای ثبت کند.
+- **وضعیت:** در انتظار CI روی pull request و نتیجهٔ نخستین اجرای ممیزی.
