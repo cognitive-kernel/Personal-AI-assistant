@@ -501,7 +501,7 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     if proposal["status"] != "validated" or not proposal["validation_report"]:
         raise ProposalError("Only a validated proposal can be approved for a human-reviewed PR.")
     if not proposal["static_check"] or proposal["static_check"].get("status") != "passed":
-        raise ProposalError("Isolated syntax and test-integrity checks must pass before approval for a PR.")
+        raise ProposalError("An isolated syntax check and test-integrity guard must pass before approval for a PR.")
     if not proposal["static_check"].get("test_integrity") or proposal["static_check"]["test_integrity"].get("status") != "passed":
         raise ProposalError("The static test-integrity guard must pass before approval for a PR.")
     root = _repo_root()
