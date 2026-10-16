@@ -16,6 +16,7 @@ from .cloud_resource_routes import router as cloud_resource_router
 from .sandbox_routes import router as sandbox_router
 from .experience_routes import router as experience_router
 from .research_routes import router as research_router
+from .self_improvement_routes import router as self_improvement_router
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
@@ -24,6 +25,7 @@ app.include_router(cloud_resource_router)
 app.include_router(sandbox_router)
 app.include_router(experience_router)
 app.include_router(research_router)
+app.include_router(self_improvement_router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
 
