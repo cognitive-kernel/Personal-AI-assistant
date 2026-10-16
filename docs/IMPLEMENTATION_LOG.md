@@ -865,5 +865,18 @@
 - [x] migration نسخهٔ 3 جدول `cloud_resource_claims` را با content hash، adapter id، quote، status مستقل و تاریخچهٔ current/non-current اضافه می‌کند.
 - [x] تغییر متن منبع، claimهای قبلی را به تاریخچه منتقل می‌کند و claimهای تازه را unreviewed نگه می‌دارد؛ تأیید نامزد به‌طور خودکار claimها را تأیید نمی‌کند.
 - [x] UI ادعاهای استخراج‌شده را با برچسب «هنوز تأییدنشده» و quote دقیق نمایش می‌دهد.
+- [x] CI روی head دقیق `cae11b8fbbe0c5956476f87af14c57f8b60a71ff` موفق بود: [run #38844458229](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38844458229)، 269 تست موفق و benchmark موفق.
+- [x] **PR #132** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/132)، commit ادغام `4e2f16d2b1d32b8391ba1d0d4613cd69deb48a87`.
+- [ ] تست محلی اجرا نشده است.
+- **محدودیت:** این adapter عمومی است؛ claim review API و UI در مرحلهٔ بعدی هستند، و provider-specific terms/APIها، احراز هویت مجاز، eligibility و remote execution هنوز وجود ندارند.
+
+
+## 60. 2026-10-16 — بازبینی مستقل claimهای استخراج‌شده
+
+- [x] migration نسخهٔ 4 ستون `reviewed_at` را برای audit بازبینی claim اضافه می‌کند.
+- [x] endpoint محلی برای قبول/رد claim با hash منبع و کنترل `is_current` اضافه شد؛ claim قدیمی یا hash ناسازگار conflict می‌دهد.
+- [x] قبول claim فقط وقتی مجاز است که منبع والد قبلاً تأیید شده باشد؛ تأیید claim به معنی مجازبودن اجرای remote نیست.
+- [x] UI دکمه‌های قبول/رد مستقل برای هر claim دارد و وضعیت بازبینی را پس از ذخیره تازه‌سازی می‌کند.
+- [x] تست‌های domain، route و UI برای source approval prerequisite، hash mismatch و وضعیت claim اضافه شدند.
 - [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
-- **محدودیت:** این adapter عمومی است و هنوز provider-specific terms/APIها، claim review API، احراز هویت مجاز، eligibility و remote execution وجود ندارند.
+- **گام بعدی:** provider-specific adapters و policy engine برای eligibility؛ باید هزینه، quota، منطقه، محدودیت نشست، شرایط استفاده، احراز هویت و تازگی شواهد را به قرارداد صریح تبدیل کند. هیچ job remote تا تکمیل این مرحله فعال نشود.
