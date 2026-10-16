@@ -249,6 +249,7 @@ def discover_resources(
                         candidate["discovery_query"],
                     ),
                 )
+            _mark_stale_candidates(connection, max_age_days=30)
             connection.commit()
 
         if errors and unique:
