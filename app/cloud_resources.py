@@ -598,6 +598,7 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
 
 def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
     """Persist a minimal local snapshot of a dry-run plan and per-candidate decisions."""
+    initialize_store()
     if not isinstance(plan, dict):
         raise CloudResourceError("Resource selection plan must be an object.")
     plan_version = plan.get("plan_version")
@@ -688,6 +689,7 @@ def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
 
 
 def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
+    initialize_store()
     if isinstance(plan_id, bool) or not isinstance(plan_id, int) or plan_id < 1:
         raise ValueError("plan_id must be a positive integer.")
     with closing(_connect()) as connection:
@@ -735,6 +737,7 @@ def get_resource_selection_plan(plan_id: int) -> dict[str, Any]:
 
 
 def list_resource_selection_plans(*, limit: int = 20) -> list[dict[str, Any]]:
+    initialize_store()
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
         raise ValueError("limit must be between 1 and 100.")
     with closing(_connect()) as connection:
