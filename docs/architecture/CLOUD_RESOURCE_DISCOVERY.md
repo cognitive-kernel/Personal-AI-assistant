@@ -18,7 +18,7 @@ Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the pag
 ## Trust and safety boundary
 
 - Search results and page content are untrusted data. They are never interpreted as instructions or executed.
-- Only HTTPS source URLs are persisted. The existing web-source adapter validates public destinations, redirects, content type, timeouts, and response size.
+- Only HTTPS source URLs are persisted. The existing web-source adapter validates public destinations, redirects, content type, timeouts, and response size. It explicitly refuses automated page fetches from `kaggle.com` and its subdomains because the current [Kaggle Terms of Use](https://www.kaggle.com/terms) prohibit automated crawling/scraping of its services. The source-bound Kaggle adapter reads the official CLI documentation hosted on GitHub, not Kaggle web pages.
 - New candidates start as `review_status=unreviewed` and `availability_status=unknown`. Quotas and terms remain unknown unless separately reviewed and recorded.
 - The content hash covers the page title plus fetched text. If either changes, the review status is reset to unreviewed and previous availability/quota/terms claims are cleared. Re-seeing identical evidence preserves the review.
 - Candidate evidence not seen for 30 days becomes stale and its availability is reset to unknown. Stale evidence cannot be approved until a new discovery refreshes it.
@@ -74,3 +74,18 @@ Official references reviewed for the adapter contract:
 - Kaggle CLI kernel metadata: https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels_metadata.md
 
 The official CLI documentation states that submitting a kernel can execute it, that credentials are required for push/status/output/log operations, and that some accelerator options may be restricted to particular competitions or administrators. Consequently, this adapter is extraction-only: it does not invoke the CLI, upload code, access credentials, create accounts, submit kernels, or authorize remote work. Account-specific quotas and terms remain unresolved until separately documented and reviewed. `execution_authorized` remains false.
+
+
+## Kaggle quota snapshots: parser only, no credential access
+
+The official CLI exposes a top-level `kaggle quota --csv` command for the authenticated account's weekly GPU and TPU usage. Its rows contain resource, used, remaining, total, and quota refresh time. This is account-specific, shared across the account's projects, and can change when another notebook runs; it must not be treated as a permanent public resource claim.
+
+`app/kaggle_quota.py` parses bounded CSV output supplied by an explicitly authorized caller, rejects malformed/inconsistent values, requires an observation timestamp, and considers the snapshot stale after 15 minutes or at the next quota reset. The parser does not execute a command, read tokens, contact Kaggle, or persist credentials. A future live adapter must require explicit user consent, use the existing account only, refresh quota before dispatch, and fail closed on missing/stale quota. Kaggle's current Terms of Use state that a user may not operate more than one active account and restrict automated scraping; account rotation and scraping are therefore not fallback strategies.
+
+References:
+
+- Official Kaggle CLI quota implementation: https://github.com/Kaggle/kaggle-cli/blob/main/src/kaggle/api/kaggle_api_extended.py
+- Official Kaggle CLI kernel commands and credential requirements: https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md
+- Kaggle Terms of Use (active version listed as June 22, 2025): https://www.kaggle.com/terms
+
+No provider job is submitted by this stage. The provider policy still returns `execution_authorized=false`.

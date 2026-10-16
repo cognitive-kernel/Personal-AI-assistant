@@ -17,6 +17,9 @@ import urllib.request
 SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
 MAX_RESPONSE_BYTES = 1_000_000
 DEFAULT_TIMEOUT_SECONDS = 6
+# Kaggle's current Terms of Use prohibit automated crawling/scraping of its services.
+# Use its documented CLI/API through an explicitly authorized adapter instead.
+AUTOMATED_FETCH_BLOCKED_HOSTS = ("kaggle.com",)
 
 
 class SourceFetchError(RuntimeError):
@@ -44,8 +47,15 @@ def _validate_public_url(url: str) -> urllib.parse.ParseResult:
         raise SourceFetchError("URL port is invalid.") from exc
     if port not in {None, 80, 443}:
         raise SourceFetchError("Non-standard ports are not allowed.")
-    hostname = parsed.hostname.rstrip(".")
-    if hostname.lower() == "localhost":
+    hostname = parsed.hostname.rstrip(".").lower()
+    if any(
+        hostname == blocked or hostname.endswith("." + blocked)
+        for blocked in AUTOMATED_FETCH_BLOCKED_HOSTS
+    ):
+        raise SourceFetchError(
+            "Automated page fetching is disabled for this provider; use its documented API/CLI if authorized."
+        )
+    if hostname == "localhost":
         raise SourceFetchError("Local network destinations are not allowed.")
     try:
         addresses = [ipaddress.ip_address(hostname)]

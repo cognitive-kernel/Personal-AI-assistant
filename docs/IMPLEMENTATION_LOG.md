@@ -926,6 +926,18 @@
 - [x] `cloud_resources.py` URL منبع را به adapter می‌دهد؛ fallback عمومی برای منابع دیگر حفظ شد.
 - [x] تست‌ها تشخیص URL رسمی، رد مسیر/دامنهٔ مشابه، استخراج فقط شواهد موجود و حفظ fallback عمومی را پوشش می‌دهند.
 - [x] مستندات رسمی مرجع و محدودیت‌ها در `docs/architecture/CLOUD_RESOURCE_DISCOVERY.md` ثبت شد.
-- [ ] هیچ اجرای remote یا فراخوانی Kaggle CLI اضافه نشده است؛ authentication، quota و شرایط دقیق اجرای unattended هنوز نیازمند بررسی جداگانه‌اند.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #137** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/137)، commit ادغام `5e8089a6bb720130b48171d7eb40091be11909dd`.
+- [x] CI روی head نهایی `3fc3939a134b46731c02d2f760adb6c60449007e` موفق بود؛ run [#38851168554](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38851168554). اجرای remote و فراخوانی Kaggle CLI اضافه نشد.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR جدید بررسی شود.
 - **گام بعدی:** اجرای contract tests برای آداپتر استخراج، سپس بررسی رسمی سهمیه/محدودیت Kaggle و سیاست استفاده قبل از طراحی آداپتر اجرای remote. اجرای remote تا آن زمان خاموش بماند.
+
+
+## 65. 2026-10-16 — مرزبندی شرایط Kaggle و parser سهمیهٔ حساب
+
+- [x] بر اساس [شرایط رسمی Kaggle](https://www.kaggle.com/terms)، fetch خودکار صفحه‌های `kaggle.com` و زیردامنه‌هایش در `web_sources` رد می‌شود؛ مستندات CLI روی GitHub از این محدودیت مستثنا هستند.
+- [x] `app/kaggle_quota.py` parser خالص برای خروجی CSV دستور رسمی quota اضافه می‌کند؛ فقط متن خروجی و timestamp مشاهده را می‌گیرد و هیچ CLI یا credential اجرا/نمی‌خواند.
+- [x] سهمیه‌های GPU/TPU از هم جدا، ساعت‌ها اعتبارسنجی و زمان reset ثبت می‌شوند؛ snapshot بعد از ۱۵ دقیقه یا در زمان reset منقضی می‌شود و مقدار گمشده را صفر فرض نمی‌کند.
+- [x] تست‌های malformed CSV، مقادیر ناسازگار، resource تکراری/ناشناخته، timezone و تازگی snapshot اضافه شدند.
+- [ ] quota parser هنوز به provider runtime وصل نیست؛ هر اتصال آینده نیازمند رضایت کاربر برای استفاده از حساب فعلی، بررسی تازهٔ quota و fail-closed خواهد بود.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** provider adapter فقط با consent صریح و از طریق API/CLI رسمی؛ پیش از ارسال job، policy باید snapshot تازهٔ سهمیه، حد زمانی اجرا و منع هزینه را اجباری کند. هیچ remote execution تا آن زمان فعال نشود.
