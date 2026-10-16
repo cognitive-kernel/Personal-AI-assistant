@@ -67,7 +67,7 @@ def test_cloud_resource_review_api_requires_current_hash_and_terms_url(
     document = web_sources.SourceDocument(
         url="https://compute.example.org/free-tier",
         title="Free GPU compute",
-        text=("Free GPU compute credits, quota limits, and terms. " * 4),
+        text=("Free tier includes 2 vCPU and 8 GB RAM. Read terms before use. " * 4),
     )
     monkeypatch.setattr(
         web_sources, "discover_sources", lambda query, limit=3: [document]
@@ -89,6 +89,29 @@ def test_cloud_resource_review_api_requires_current_hash_and_terms_url(
         assert approved.status_code == 200
         assert approved.json()["candidate"]["review_status"] == "approved"
         assert approved.json()["candidate"]["reviewed_content_sha256"] == candidate["content_sha256"]
+        refreshed = client.get("/api/cloud-resources").json()["candidates"]
+        cpu_claim = next(
+            claim for claim in refreshed[0]["observed_claims"]
+            if claim["claim_type"] == "cpu_count"
+        )
+        claim_review = client.patch(
+            f"/api/cloud-resources/{candidate['id']}/claims/{cpu_claim['id']}/review",
+            json={
+                "expected_source_content_sha256": candidate["content_sha256"],
+                "review_status": "accepted",
+            },
+        )
+        assert claim_review.status_code == 200
+        assert claim_review.json()["claim"]["review_status"] == "accepted"
+
+        stale_claim = client.patch(
+            f"/api/cloud-resources/{candidate['id']}/claims/{cpu_claim['id']}/review",
+            json={
+                "expected_source_content_sha256": "0" * 64,
+                "review_status": "rejected",
+            },
+        )
+        assert stale_claim.status_code == 409
 
         stale_hash = client.patch(
             f"/api/cloud-resources/{candidate['id']}/review",

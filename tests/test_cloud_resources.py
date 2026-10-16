@@ -47,7 +47,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs", "cloud_resource_claims"} <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 3
+        ).fetchone()[0] == 4
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -222,7 +222,7 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
-        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 3
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 4
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -321,7 +321,7 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
         )
         connection.commit()
 
-    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 3
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 4
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             """SELECT review_status, availability_status, quota_json, terms_url,
@@ -330,3 +330,54 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
             ("https://compute.example.org/free",),
         ).fetchone()
     assert row == ("unreviewed", "unknown", "{}", None, "fresh", None)
+
+
+def test_claim_acceptance_requires_approved_source_and_exact_current_hash(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document(text=(
+        "Free tier includes 2 vCPU and 8 GB RAM. Read terms before use. " * 4
+    ))
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+    claim = next(
+        item for item in candidate["observed_claims"]
+        if item["claim_type"] == "cpu_count"
+    )
+
+    with pytest.raises(cloud_resources.CloudResourceConflictError, match="approve the candidate"):
+        cloud_resources.review_claim(
+            candidate["id"],
+            claim["id"],
+            expected_source_content_sha256=candidate["content_sha256"],
+            review_status="accepted",
+        )
+
+    cloud_resources.review_candidate(
+        candidate["id"],
+        expected_content_sha256=candidate["content_sha256"],
+        review_status="approved",
+        availability_status="unknown",
+        terms_url="https://compute.example.org/terms",
+    )
+    reviewed = cloud_resources.review_claim(
+        candidate["id"],
+        claim["id"],
+        expected_source_content_sha256=candidate["content_sha256"],
+        review_status="accepted",
+    )
+    assert reviewed["review_status"] == "accepted"
+    assert reviewed["reviewed_at"]
+    assert reviewed["source_content_sha256"] == candidate["content_sha256"]
+
+    with pytest.raises(cloud_resources.CloudResourceConflictError, match="evidence changed"):
+        cloud_resources.review_claim(
+            candidate["id"],
+            claim["id"],
+            expected_source_content_sha256="0" * 64,
+            review_status="rejected",
+        )

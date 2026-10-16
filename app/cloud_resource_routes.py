@@ -71,3 +71,33 @@ def review_cloud_resource(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (OSError, RuntimeError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Cloud resource review storage is unavailable.") from exc
+
+
+
+class ClaimReviewRequest(BaseModel):
+    expected_source_content_sha256: str = Field(min_length=64, max_length=64)
+    review_status: str = Field(min_length=1, max_length=20)
+
+
+@router.patch("/{candidate_id}/claims/{claim_id}/review")
+def review_cloud_resource_claim(
+    candidate_id: int,
+    claim_id: int,
+    request: ClaimReviewRequest,
+) -> dict[str, Any]:
+    try:
+        claim = cloud_resources.review_claim(
+            candidate_id,
+            claim_id,
+            expected_source_content_sha256=request.expected_source_content_sha256,
+            review_status=request.review_status,
+        )
+        return {"claim": claim}
+    except cloud_resources.CloudResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except cloud_resources.CloudResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (cloud_resources.CloudResourceError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Cloud resource claim review storage is unavailable.") from exc

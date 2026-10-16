@@ -326,6 +326,11 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "CREATE INDEX idx_cloud_claims_review ON cloud_resource_claims(review_status, is_current, extracted_at DESC)",
         ),
     ),
+    Migration(
+        4,
+        "cloud-resource-claim-review-audit",
+        ("ALTER TABLE cloud_resource_claims ADD COLUMN reviewed_at TEXT",),
+    ),
 )
 
 

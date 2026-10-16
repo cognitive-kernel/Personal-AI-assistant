@@ -385,18 +385,18 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
             item = _serialize_candidate(row)
             claim_rows = connection.execute(
                 """SELECT id, source_content_sha256, claim_type, value_json, unit,
-                          evidence_quote, adapter_id, review_status, is_current, extracted_at
+                          evidence_quote, adapter_id, review_status, is_current, extracted_at,
+                          reviewed_at
                    FROM cloud_resource_claims
                    WHERE candidate_id=? AND is_current=1
                    ORDER BY claim_type, id""",
                 (row["id"],),
             ).fetchall()
-            item["observed_claims"] = [
-                {**dict(claim), "value": json.loads(claim["value_json"])}
-                for claim in claim_rows
-            ]
-            for claim in item["observed_claims"]:
-                claim.pop("value_json", None)
+            item["observed_claims"] = []
+            for claim in claim_rows:
+                claim_item = dict(claim)
+                claim_item["value"] = json.loads(claim_item.pop("value_json"))
+                item["observed_claims"].append(claim_item)
             results.append(item)
         connection.commit()
     return results
@@ -471,6 +471,87 @@ def review_candidate(
         ).fetchone()
         connection.commit()
     return _serialize_candidate(updated)
+
+def review_claim(
+    candidate_id: int,
+    claim_id: int,
+    *,
+    expected_source_content_sha256: str,
+    review_status: str,
+) -> dict[str, Any]:
+    """Accept/reject one extracted claim only for the current reviewed source version."""
+    for name, value in (("candidate_id", candidate_id), ("claim_id", claim_id)):
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            raise ValueError(f"{name} must be a positive integer.")
+    if not isinstance(expected_source_content_sha256, str) or not re.fullmatch(
+        r"[0-9a-f]{64}", expected_source_content_sha256
+    ):
+        raise ValueError("expected_source_content_sha256 must be a lowercase SHA-256 digest.")
+    if review_status not in {"accepted", "rejected"}:
+        raise ValueError("review_status must be accepted or rejected.")
+
+    initialize_store()
+    with closing(_connect()) as connection:
+        _mark_stale_candidates(connection, max_age_days=30)
+        row = connection.execute(
+            """SELECT claim.id, claim.source_content_sha256, claim.claim_type,
+                      claim.value_json, claim.unit, claim.evidence_quote, claim.adapter_id,
+                      claim.review_status, claim.is_current, claim.extracted_at, claim.reviewed_at,
+                      candidate.content_sha256 AS candidate_content_sha256,
+                      candidate.review_status AS candidate_review_status,
+                      candidate.freshness_status AS candidate_freshness_status
+               FROM cloud_resource_claims AS claim
+               JOIN cloud_resource_candidates AS candidate
+                 ON candidate.id=claim.candidate_id
+               WHERE claim.id=? AND claim.candidate_id=?""",
+            (claim_id, candidate_id),
+        ).fetchone()
+        if row is None:
+            raise CloudResourceNotFoundError(
+                f"Claim {claim_id} for candidate {candidate_id} does not exist."
+            )
+        if (
+            row["is_current"] != 1
+            or row["source_content_sha256"] != expected_source_content_sha256
+            or row["candidate_content_sha256"] != expected_source_content_sha256
+        ):
+            raise CloudResourceConflictError(
+                "Claim evidence changed; refresh the candidate before reviewing."
+            )
+        if row["candidate_freshness_status"] != "fresh":
+            raise CloudResourceConflictError(
+                "Candidate evidence is stale; run discovery again before reviewing claims."
+            )
+        if review_status == "accepted" and row["candidate_review_status"] != "approved":
+            raise CloudResourceConflictError(
+                "Review and approve the candidate source before accepting an extracted claim."
+            )
+        cursor = connection.execute(
+            """UPDATE cloud_resource_claims
+               SET review_status=?, reviewed_at=CURRENT_TIMESTAMP
+               WHERE id=? AND candidate_id=? AND is_current=1
+                 AND source_content_sha256=?""",
+            (
+                review_status,
+                claim_id,
+                candidate_id,
+                expected_source_content_sha256,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise CloudResourceConflictError("Claim changed during review; reload and try again.")
+        updated = connection.execute(
+            """SELECT id, source_content_sha256, claim_type, value_json, unit,
+                      evidence_quote, adapter_id, review_status, is_current, extracted_at,
+                      reviewed_at
+               FROM cloud_resource_claims WHERE id=?""",
+            (claim_id,),
+        ).fetchone()
+        connection.commit()
+    item = dict(updated)
+    item["value"] = json.loads(item.pop("value_json"))
+    return item
+
 
 
 def latest_discovery_run() -> dict[str, Any] | None:

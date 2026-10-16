@@ -155,8 +155,35 @@ function renderCloudCandidates(candidates) {
   else {
    const claimList=document.createElement("ul");
    claims.forEach(claim=>{
-    const value=JSON.stringify(claim.value);
-    appendText(claimList,"li",claim.claim_type+": "+value+(claim.unit?" "+claim.unit:"")+" — «"+claim.evidence_quote+"» ["+claim.review_status+"]");
+    const item=document.createElement("li");
+    appendText(item,"span",claim.claim_type+": "+JSON.stringify(claim.value)+(claim.unit?" "+claim.unit:"")+" — «"+claim.evidence_quote+"» ["+claim.review_status+"] ");
+    const controls=document.createElement("span"); controls.className="cloud-actions";
+    const accept=document.createElement("button"); accept.type="button"; accept.textContent="تأیید ادعا";
+    accept.disabled=candidate.freshness_status==="stale"||candidate.review_status!=="approved";
+    const reject=document.createElement("button"); reject.type="button"; reject.textContent="رد ادعا";
+    reject.disabled=candidate.freshness_status==="stale";
+    const claimFeedback=document.createElement("span"); claimFeedback.className="muted";
+    const sendClaimReview=async decision=>{
+     claimFeedback.textContent="در حال ذخیره…"; accept.disabled=true; reject.disabled=true;
+     try {
+      await api("/api/cloud-resources/"+candidate.id+"/claims/"+claim.id+"/review",{
+       method:"PATCH",
+       body:JSON.stringify({
+        expected_source_content_sha256:claim.source_content_sha256,
+        review_status:decision
+       })
+      });
+      claimFeedback.textContent="ذخیره شد.";
+      await refreshCloudResources();
+     } catch(error) {
+      claimFeedback.textContent="ذخیره نشد: "+error.message;
+      accept.disabled=candidate.freshness_status==="stale"||candidate.review_status!=="approved";
+      reject.disabled=candidate.freshness_status==="stale";
+     }
+    };
+    accept.addEventListener("click",()=>sendClaimReview("accepted"));
+    reject.addEventListener("click",()=>sendClaimReview("rejected"));
+    controls.append(accept,reject,claimFeedback); item.append(controls); claimList.append(item);
    });
    card.append(claimList);
   }

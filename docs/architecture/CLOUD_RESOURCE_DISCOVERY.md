@@ -9,6 +9,7 @@ The local API is loopback-only and the main local web page now includes a cloud-
 - `GET /api/cloud-resources?limit=100` lists recent candidates and the latest discovery run.
 - `POST /api/cloud-resources/discover` queues a manual discovery task and returns HTTP 202.
 - `PATCH /api/cloud-resources/{id}/review` records an explicit local review only if the submitted content hash still matches; approving a candidate requires an HTTPS terms URL.
+- `PATCH /api/cloud-resources/{candidate_id}/claims/{claim_id}/review` accepts/rejects a single extracted claim only when the claim is current and its source hash matches. Accepting a claim requires the parent source to be approved first.
 
 The UI renders all page titles and excerpts with `textContent`, validates source links as HTTPS before opening them, and uses `noopener noreferrer` for new tabs. It never inserts source text as HTML.
 
@@ -46,9 +47,9 @@ No resource is automatically selected for execution by this implementation.
 
 Candidates are initially `unreviewed`, `unknown`, and `fresh` only because the page was just observed. The local reviewer can submit the current `content_sha256` to `PATCH /api/cloud-resources/{id}/review`; the server rejects stale hashes with HTTP 409. Approval requires an HTTPS `terms_url`, records `reviewed_at` and `reviewed_content_sha256`, and stores explicitly supplied quota/availability values. A page refresh with the same hash preserves review metadata; a changed title or text invalidates it.
 
-After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Remote jobs must remain disabled until provider-specific terms, quota, credentials, and capability checks are implemented.
+After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Remote jobs must remain disabled until provider-specific terms, quota, credentials, and capability checks are implemented. Accepted claims are evidence inputs only; they are not an authorization or scheduling decision.
 
 
 ## Extracted claims are not verified limits
 
-The generic adapter uses bounded regular expressions against the page title and normalized text. Each output claim includes a type, parsed value/unit, exact matched quote, adapter identifier, source content hash, extraction time, and an independent `review_status=unreviewed`. A missing match means “not extracted,” not “zero” or “unlimited.” A match proves only that the page text contains the quoted phrase; it does not prove that the offer is current, applicable to this account/region, or permitted for unattended workloads. The UI labels these claims as unverified.
+The generic adapter uses bounded regular expressions against the page title and normalized text. Each output claim includes a type, parsed value/unit, exact matched quote, adapter identifier, source content hash, extraction time, and an independent `review_status=unreviewed`. A missing match means “not extracted,” not “zero” or “unlimited.” A match proves only that the page text contains the quoted phrase; it does not prove that the offer is current, applicable to this account/region, or permitted for unattended workloads. The UI labels these claims as unverified. Each claim can be accepted or rejected independently; acceptance is blocked until the parent source is approved and does not imply that the provider is eligible for remote execution.
