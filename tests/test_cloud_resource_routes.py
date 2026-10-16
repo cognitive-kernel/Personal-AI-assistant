@@ -393,3 +393,65 @@ def test_resource_plan_api_rejects_invalid_requirements_without_side_effects(tmp
 
     assert response.status_code == 422
     assert "min_cpu_count" in response.json()["detail"]
+
+
+
+def test_resource_plan_api_reports_eligible_candidate_and_rejects_stale_evidence(
+    tmp_path, monkeypatch
+):
+    _configure(tmp_path, monkeypatch)
+    candidate = {
+        "id": 41,
+        "provider_domain": "compute.example.org",
+        "content_sha256": "a" * 64,
+        "reviewed_content_sha256": "a" * 64,
+        "review_status": "approved",
+        "freshness_status": "fresh",
+        "availability_status": "available",
+        "terms_url": "https://compute.example.org/terms",
+        "quota": {
+            "max_cost_usd": 0,
+            "auth_method": "anonymous",
+            "selected_region": "us-east-1",
+            "allowed_regions": ["us-east-1"],
+            "max_session_minutes": 60,
+            "max_monthly_hours": 100,
+        },
+        "observed_claims": [
+            {"claim_type": "cpu_count", "value": 4, "unit": None,
+             "source_content_sha256": "a" * 64, "review_status": "accepted", "is_current": 1},
+            {"claim_type": "memory_capacity", "value": 16, "unit": "GiB",
+             "source_content_sha256": "a" * 64, "review_status": "accepted", "is_current": 1},
+            {"claim_type": "usage_quota", "value": "100 hours", "unit": None,
+             "source_content_sha256": "a" * 64, "review_status": "accepted", "is_current": 1},
+            {"claim_type": "free_tier_mention", "value": "free tier", "unit": None,
+             "source_content_sha256": "a" * 64, "review_status": "accepted", "is_current": 1},
+            {"claim_type": "region", "value": "us-east-1", "unit": None,
+             "source_content_sha256": "a" * 64, "review_status": "accepted", "is_current": 1},
+        ],
+    }
+    monkeypatch.setattr(cloud_resources, "list_candidates", lambda limit=100: [candidate])
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        eligible = client.post(
+            "/api/cloud-resources/plan",
+            json={"min_cpu_count": 2, "min_memory_gib": 8},
+        )
+        candidate["freshness_status"] = "stale"
+        stale = client.post(
+            "/api/cloud-resources/plan",
+            json={"min_cpu_count": 2, "min_memory_gib": 8},
+        )
+
+    assert eligible.status_code == 200
+    assert eligible.json()["status"] == "candidate_found"
+    assert eligible.json()["selected_candidate_id"] == 41
+    assert eligible.json()["execution_authorized"] is False
+    assert eligible.json()["remote_execution_enabled"] is False
+    assert stale.status_code == 200
+    assert stale.json()["status"] == "no_eligible_candidate"
+    assert stale.json()["selected_candidate_id"] is None
+    assert any(
+        "stale" in reason.lower()
+        for reason in stale.json()["candidates"][0]["policy_blockers"]
+    )
