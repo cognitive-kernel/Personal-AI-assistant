@@ -832,6 +832,9 @@ def open_rollback_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, 
     original_pr = _github_api("GET", "/pulls/" + str(pr_number))
     if original_pr.get("merged") is not True:
         raise ProposalError("Rollback PR can only be created after the original pull request is merged.")
+    original_pr_base = original_pr.get("base", {}).get("ref")
+    if original_pr_base != base_branch or original_pr_base != published.get("base_branch"):
+        raise ProposalError("The original PR target branch differs from the configured rollback target.")
     merge_sha = original_pr.get("merge_commit_sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", merge_sha):
         raise ProposalError("GitHub did not return a valid merge commit for the original PR.")
