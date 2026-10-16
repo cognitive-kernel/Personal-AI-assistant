@@ -1067,14 +1067,14 @@ def _enqueue_plan_reevaluation(
 
 
 def ensure_daily_plan_reevaluation_scheduled() -> dict[str, Any]:
-    """Idempotently schedule a daily local-only recheck of recent manual selection plans."""
+    """Idempotently schedule the next daily local-only recheck without running on startup."""
     initialize_store()
-    now = datetime.now(timezone.utc)
-    day_key = f"cloud-plan-reevaluation:{now.date().isoformat()}"
+    scheduled_at = datetime.now(timezone.utc) + timedelta(days=1)
+    day_key = f"cloud-plan-reevaluation:{scheduled_at.date().isoformat()}"
     existing = task_manager.get_task_by_dedupe_key(day_key)
     if existing is None:
         return _enqueue_plan_reevaluation(
-            day_key, reevaluation_key=day_key, scheduled_at=now
+            day_key, reevaluation_key=day_key, scheduled_at=scheduled_at
         )
     if existing["status"] not in {"failed", "cancelled"}:
         return existing
@@ -1083,7 +1083,7 @@ def ensure_daily_plan_reevaluation_scheduled() -> dict[str, Any]:
     if recovery is not None:
         return recovery
     return _enqueue_plan_reevaluation(
-        recovery_key, reevaluation_key=day_key, scheduled_at=now
+        recovery_key, reevaluation_key=day_key, scheduled_at=scheduled_at
     )
 
 
