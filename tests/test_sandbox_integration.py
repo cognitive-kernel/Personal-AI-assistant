@@ -102,61 +102,63 @@ def test_real_container_has_expected_docker_security_configuration(sandbox_confi
     def run():
         results["result"] = _run(
             sandbox_config,
-            "import time\ntime.sleep(4)\nprint('inspection-window')",
+            "import time\\ntime.sleep(4)\\nprint('inspection-window')",
             timeout=12,
         )
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
-    container_id = None
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline and thread.is_alive():
-        listing = subprocess.run(
-            [
-                str(docker), "ps", "-q",
-                "--filter", "label=com.cognitivekernel.personal-ai-assistant.sandbox=true",
-                "--filter", f"label=com.cognitivekernel.personal-ai-assistant.task-id={_INTEGRATION_TASK_ID}",
-            ],
+    try:
+        container_id = None
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and thread.is_alive():
+            listing = subprocess.run(
+                [
+                    str(docker), "ps", "-q",
+                    "--filter", "label=com.cognitivekernel.personal-ai-assistant.sandbox=true",
+                    "--filter", f"label=com.cognitivekernel.personal-ai-assistant.task-id={_INTEGRATION_TASK_ID}",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if listing.returncode == 0 and listing.stdout.strip():
+                container_id = listing.stdout.strip().splitlines()[0]
+                break
+            time.sleep(0.05)
+        assert container_id, "sandbox container did not appear for inspection"
+
+        inspected = subprocess.run(
+            [str(docker), "inspect", container_id],
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=5,
             check=False,
         )
-        if listing.returncode == 0 and listing.stdout.strip():
-            container_id = listing.stdout.strip().splitlines()[0]
-            break
-        time.sleep(0.05)
-    assert container_id, "sandbox container did not appear for inspection"
+        assert inspected.returncode == 0, inspected.stderr
+        record = json.loads(inspected.stdout)[0]
+        host = record["HostConfig"]
+        config = record["Config"]
+        mounts = record["Mounts"]
+        assert host["NetworkMode"] == "none"
+        assert host["ReadonlyRootfs"] is True
+        assert "ALL" in (host.get("CapDrop") or [])
+        assert host["Memory"] == 256 * 1024 * 1024
+        assert host["PidsLimit"] == 64
+        assert "no-new-privileges" in " ".join(host.get("SecurityOpt") or [])
+        assert config["User"] == "65534:65534"
+        workspace_mount = next(mount for mount in mounts if mount.get("Destination") == "/workspace")
+        assert workspace_mount["RW"] is False
+        assert image in config.get("Image", "") or record.get("Config", {}).get("Image") == image
+    finally:
+        thread.join(timeout=15)
 
-    inspected = subprocess.run(
-        [str(docker), "inspect", container_id],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        text=True,
-        timeout=5,
-        check=False,
-    )
-    assert inspected.returncode == 0, inspected.stderr
-    record = json.loads(inspected.stdout)[0]
-    host = record["HostConfig"]
-    config = record["Config"]
-    mounts = record["Mounts"]
-    assert host["NetworkMode"] == "none"
-    assert host["ReadonlyRootfs"] is True
-    assert "ALL" in (host.get("CapDrop") or [])
-    assert host["Memory"] == 256 * 1024 * 1024
-    assert host["PidsLimit"] == 64
-    assert "no-new-privileges" in " ".join(host.get("SecurityOpt") or [])
-    assert config["User"] == "65534:65534"
-    workspace_mount = next(mount for mount in mounts if mount.get("Destination") == "/workspace")
-    assert workspace_mount["RW"] is False
-
-    thread.join(timeout=15)
     assert not thread.is_alive(), "sandbox integration worker did not finish"
     assert results["result"].status == "succeeded"
     assert results["result"].stdout.strip() == "inspection-window"
-    assert image in config.get("Image", "") or record.get("Config", {}).get("Image") == image
 
 
 def test_real_container_timeout_and_output_limit_are_reported(sandbox_config):
