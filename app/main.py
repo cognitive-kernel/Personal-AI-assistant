@@ -61,6 +61,7 @@ def startup() -> None:
     try:
         cloud_resources.initialize_store()
         cloud_resources.ensure_daily_discovery_scheduled()
+        cloud_resources.ensure_daily_plan_reevaluation_scheduled()
     except Exception:
         # Cloud discovery is an optional subsystem; storage/network failures must not
         # prevent the local chat and learning runtime from starting.
@@ -75,6 +76,7 @@ def startup() -> None:
     handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
+        cloud_resources.CLOUD_PLAN_REEVALUATION_TASK_TYPE: cloud_resources.handle_plan_reevaluation_task,
     }
     sandbox_handler = sandbox_tasks.handler_from_environment()
     if sandbox_handler is not None:
