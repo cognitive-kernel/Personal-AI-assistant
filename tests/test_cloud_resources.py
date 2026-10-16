@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
-from datetime import datetime, timezone
-
-import pytest
+from datetime import datetime
 
 from app import cloud_resources, db, task_manager, web_sources
-from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
+from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS
 
 
 def _configure_paths(tmp_path, monkeypatch):
@@ -107,7 +106,7 @@ def test_refresh_updates_evidence_without_overwriting_review_decisions(
     )
     cloud_resources.discover_resources()
     candidate = cloud_resources.list_candidates()[0]
-    assert candidate["content_sha256"] == __import__("hashlib").sha256(
+    assert candidate["content_sha256"] == hashlib.sha256(
         second.text.encode()
     ).hexdigest()
     assert candidate["review_status"] == "approved"
