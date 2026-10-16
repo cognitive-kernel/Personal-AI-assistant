@@ -315,6 +315,18 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_experience_source_checks_latest ON learning_experience_source_checks(experience_id, source_url, checked_at DESC, id DESC)",
         ),
     ),
+    Migration(
+        9,
+        "experience-explicit-retrieval-feedback",
+        (
+            """CREATE TABLE learning_experience_feedback (
+                experience_id INTEGER PRIMARY KEY REFERENCES learning_experiences(id) ON DELETE CASCADE,
+                rating INTEGER NOT NULL CHECK(rating IN (-1, 1)),
+                updated_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_experience_feedback_rating ON learning_experience_feedback(rating, updated_at DESC)",
+        ),
+    ),
 )
 
 

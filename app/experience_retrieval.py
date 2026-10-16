@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from collections import Counter
 from typing import Any, Sequence
 
-from . import ollama
+from . import experience_feedback, ollama
 from .db import get_settings, learning_connection
 from .experience import list_experiences
 
@@ -258,6 +258,11 @@ def search_relevant_experiences(
     except ollama.OllamaError:
         vector = []
     vector_ranks = {item_id: rank for rank, (item_id, _) in enumerate(vector, 1)}
+    try:
+        feedback_map = experience_feedback.get_feedback_map([int(item["id"]) for item in items])
+    except Exception:
+        # Ranking remains available if the optional feedback store is unavailable.
+        feedback_map = {}
     ranked: list[tuple[float, tuple[str, int], int, dict[str, Any]]] = []
     for item in items:
         item_id = int(item["id"])
@@ -269,9 +274,14 @@ def search_relevant_experiences(
         if relevance <= 0:
             continue
         freshness = _source_freshness(item)
-        score = relevance * float(freshness["multiplier"])
+        feedback = feedback_map.get(item_id)
+        feedback_multiplier = 1.10 if feedback and feedback["rating"] > 0 else (
+            0.75 if feedback and feedback["rating"] < 0 else 1.0
+        )
+        score = relevance * float(freshness["multiplier"]) * feedback_multiplier
         enriched = dict(item)
         enriched["source_freshness"] = freshness
+        enriched["retrieval_feedback"] = feedback
         ranked.append((score, _item_sort_key(items, item_id), item_id, enriched))
     ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
     return [row[3] for row in ranked[:result_limit]]

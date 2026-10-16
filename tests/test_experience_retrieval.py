@@ -1,6 +1,6 @@
 import json
 
-from app import db, experience, ollama
+from app import db, experience, experience_feedback, ollama
 from app.db import learning_connection
 from app.ollama import OllamaError
 
@@ -113,3 +113,35 @@ def test_embedding_cache_is_versioned_and_old_vectors_are_not_reused(tmp_path, m
         ).fetchall()
     assert [row[0] for row in versions] == [item["version"], updated["version"]]
     assert len(calls) == 4
+
+
+
+def test_explicit_negative_feedback_reduces_retrieval_rank_without_unverifying(
+    tmp_path, monkeypatch
+):
+    _setup(tmp_path, monkeypatch)
+    alternate = _verified(
+        "Python JSON parser",
+        "Parser rejects an empty payload.",
+        "Check the schema and input boundaries.",
+    )
+    preferred = _verified(
+        "Python JSON parser",
+        "Parser rejects an empty payload.",
+        "Validate input before parsing.",
+    )
+
+    def unavailable(*_args, **_kwargs):
+        raise OllamaError("embedding model unavailable")
+
+    monkeypatch.setattr(ollama, "embed", unavailable)
+    before = experience.search_relevant_experiences("Python JSON parser")
+    assert before[0]["id"] == preferred["id"]
+
+    experience_feedback.set_feedback(preferred["id"], -1)
+    after = experience.search_relevant_experiences("Python JSON parser")
+    assert after[0]["id"] == alternate["id"]
+    assert next(item for item in after if item["id"] == preferred["id"])[
+        "retrieval_feedback"
+    ]["rating"] == -1
+    assert experience.get_experience(preferred["id"])["status"] == "verified"

@@ -799,6 +799,42 @@ function renderExperienceItems(items) {
   });
   card.append(versionsButton,versionsOutput);
   if(item.status==="verified") {
+   appendText(card,"h4","بازخورد برای بهبود رتبه‌بندی بازیابی");
+   appendText(card,"p","این رأی فقط روی اولویت بازیابی اثر می‌گذارد و وضعیت تأیید تجربه را تغییر نمی‌دهد.","muted");
+   const feedbackStatus=document.createElement("p"); feedbackStatus.className="muted";
+   feedbackStatus.textContent="در حال دریافت بازخورد ثبت‌شده…";
+   const positiveButton=document.createElement("button");
+   positiveButton.type="button"; positiveButton.textContent="مفید بود";
+   const negativeButton=document.createElement("button");
+   negativeButton.type="button"; negativeButton.textContent="مفید نبود";
+   const clearFeedbackButton=document.createElement("button");
+   clearFeedbackButton.type="button"; clearFeedbackButton.textContent="پاک‌کردن رأی";
+   const sendFeedback=async rating=>{
+    positiveButton.disabled=true; negativeButton.disabled=true; clearFeedbackButton.disabled=true;
+    feedbackStatus.textContent="در حال ذخیرهٔ رأی…";
+    try {
+     if(rating===null) await api("/api/experiences/"+item.id+"/feedback",{method:"DELETE"});
+     else await api("/api/experiences/"+item.id+"/feedback",{method:"POST",body:JSON.stringify({rating})});
+     await loadFeedback();
+    } catch(error) { feedbackStatus.textContent="ذخیرهٔ رأی ناموفق بود: "+error.message; }
+    finally { positiveButton.disabled=false; negativeButton.disabled=false; clearFeedbackButton.disabled=false; }
+   };
+   const loadFeedback=async()=>{
+    try {
+     const result=await api("/api/experiences/"+item.id+"/feedback");
+     feedbackStatus.textContent=!result.feedback?"هنوز رأیی ثبت نشده است.":result.feedback.rating===1?"رأی فعلی: مفید بود":"رأی فعلی: مفید نبود";
+     positiveButton.disabled=result.feedback?.rating===1;
+     negativeButton.disabled=result.feedback?.rating===-1;
+     clearFeedbackButton.disabled=!result.feedback;
+    } catch(error) { feedbackStatus.textContent="وضعیت رأی دریافت نشد: "+error.message; }
+   };
+   positiveButton.addEventListener("click",()=>sendFeedback(1));
+   negativeButton.addEventListener("click",()=>sendFeedback(-1));
+   clearFeedbackButton.addEventListener("click",()=>sendFeedback(null));
+   card.append(feedbackStatus,positiveButton,negativeButton,clearFeedbackButton);
+   loadFeedback();
+  }
+  if(item.status==="verified") {
    appendText(card,"p","این تجربه تأییدشده است و از رابط عمومی قابل ویرایش نیست.","muted");
    container.append(card);
    return;

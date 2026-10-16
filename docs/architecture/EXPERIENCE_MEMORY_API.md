@@ -49,3 +49,12 @@ Automatic capture is disabled by default. After explicit local consent, technica
 - `GET /api/experiences/{id}/source-checks` returns the durable check history.
 - Each check stores a hash of bounded extracted title/text, the prior hash, outcome (`baseline`, `unchanged`, `changed`, `unavailable`, or `blocked`), timestamp, and a bounded error category. Full fetched page content and raw exception details are not persisted.
 - A changed fingerprint is not proof of a factual change, and an unchanged fingerprint covers only bounded extracted text. Revalidation never edits or promotes the experience; a person must review changes and run the controlled test separately.
+
+
+## Explicit retrieval feedback
+
+- `POST /api/experiences/{id}/feedback` accepts only `{"rating": 1}` (useful) or `{"rating": -1}` (not useful), and only for an already verified experience.
+- `GET /api/experiences/{id}/feedback` returns the current local feedback; `DELETE` removes it. A later vote replaces the earlier vote for that experience.
+- Feedback is local and explicit. It does not alter source evidence, test results, version history, or verification status.
+- Hybrid retrieval applies a bounded ranking factor: 1.10 for positive feedback, 0.75 for negative feedback, and 1.0 when there is no vote. This affects ordering only; negative feedback does not suppress an otherwise relevant experience.
+- The feedback table stores one current vote per experience and an update timestamp. It does not store a free-form note or the user's query.

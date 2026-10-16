@@ -10,7 +10,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, StrictBool
 
-from . import experience, experience_capture_consent, experience_source_checks, experience_tasks, sandbox_consent, task_manager
+from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -59,6 +59,13 @@ class ExperienceAutoCaptureConsentRequest(BaseModel):
 
 class ExperienceSourceRefreshRequest(BaseModel):
     confirm: StrictBool
+
+    class Config:
+        extra = "forbid"
+
+
+class ExperienceFeedbackRequest(BaseModel):
+    rating: Literal[-1, 1]
 
     class Config:
         extra = "forbid"
@@ -195,6 +202,39 @@ def queue_experience_test(
         "task": task,
         "message": "Controlled test queued. Verification depends on the actual sandbox result and saved source/test evidence.",
     }
+
+
+@router.post("/{experience_id}/feedback")
+def set_experience_feedback(
+    experience_id: int,
+    request: ExperienceFeedbackRequest,
+) -> dict[str, Any]:
+    try:
+        feedback = experience_feedback.set_feedback(experience_id, request.rating)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"feedback": feedback, "changes_verification": False}
+
+
+@router.get("/{experience_id}/feedback")
+def get_experience_feedback(experience_id: int) -> dict[str, Any]:
+    try:
+        item = experience.get_experience(experience_id)
+        feedback = experience_feedback.get_feedback_map([experience_id]).get(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    return {"experience_id": experience_id, "feedback": feedback, "status": item.get("status")}
+
+
+@router.delete("/{experience_id}/feedback")
+def delete_experience_feedback(experience_id: int) -> dict[str, Any]:
+    try:
+        deleted = experience_feedback.delete_feedback(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    return {"experience_id": experience_id, "deleted": deleted}
 
 
 @router.post("/{experience_id}/refresh-sources")
