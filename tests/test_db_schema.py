@@ -44,6 +44,8 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         "settings",
         "sandbox_execution_consent",
         "sandbox_execution_consent_events",
+        "experience_auto_capture_consent",
+        "experience_auto_capture_consent_events",
     }
     assert {"key", "value_json", "updated_at"} <= settings_columns
     assert {
