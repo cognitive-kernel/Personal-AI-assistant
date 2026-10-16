@@ -253,6 +253,96 @@ def list_proposals(limit: int = 50) -> list[dict[str, Any]]:
     return [_proposal(row) for row in rows]
 
 
+
+def _test_file_metrics(path: Path) -> dict[str, Any]:
+    """Collect conservative, non-executing signals from a Python test file."""
+    import ast
+
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    tests: dict[str, dict[str, int]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+            tests[node.name] = {
+                "asserts": sum(isinstance(child, ast.Assert) for child in ast.walk(node)),
+                "raises": sum(
+                    isinstance(child, ast.Call)
+                    and isinstance(child.func, ast.Attribute)
+                    and child.func.attr == "raises"
+                    and isinstance(child.func.value, ast.Name)
+                    and child.func.value.id == "pytest"
+                    for child in ast.walk(node)
+                ),
+            }
+    return {
+        "tests": tests,
+        "asserts": sum(item["asserts"] for item in tests.values()),
+        "raises": sum(item["raises"] for item in tests.values()),
+        "skip_markers": len(re.findall(r"pytest\\s*\\.\\s*mark\\s*\\.\\s*(?:skip|skipif|xfail)\\b", source)),
+    }
+
+
+def _test_integrity_report(base_root: Path, candidate_root: Path) -> dict[str, Any]:
+    """Block obvious test weakening; this is a heuristic, not a behavioral proof."""
+    baseline_files = sorted((base_root / "tests").rglob("test_*.py"))
+    candidate_files = sorted((candidate_root / "tests").rglob("test_*.py"))
+    baseline_by_rel = {str(path.relative_to(base_root)): path for path in baseline_files}
+    candidate_by_rel = {str(path.relative_to(candidate_root)): path for path in candidate_files}
+    if not baseline_by_rel:
+        return {"status": "failed", "reason": "baseline_tests_missing", "tests_executed": False}
+    removed_files = sorted(set(baseline_by_rel) - set(candidate_by_rel))
+    if removed_files:
+        return {
+            "status": "failed", "reason": "test_files_removed",
+            "removed_files": removed_files[:50], "tests_executed": False,
+        }
+    try:
+        before = {name: _test_file_metrics(path) for name, path in baseline_by_rel.items()}
+        after = {name: _test_file_metrics(path) for name, path in candidate_by_rel.items()}
+    except (OSError, UnicodeError, SyntaxError, ValueError) as exc:
+        return {
+            "status": "failed", "reason": "test_source_unreadable",
+            "diagnostic": type(exc).__name__, "tests_executed": False,
+        }
+    weakened = []
+    for filename, metrics in before.items():
+        candidate = after[filename]
+        old_tests, new_tests = metrics["tests"], candidate["tests"]
+        removed_tests = sorted(set(old_tests) - set(new_tests))
+        if removed_tests:
+            weakened.append({"file": filename, "reason": "test_functions_removed", "tests": removed_tests[:50]})
+            continue
+        for test_name, old in old_tests.items():
+            new = new_tests[test_name]
+            if new["asserts"] < old["asserts"] or new["raises"] < old["raises"]:
+                weakened.append({
+                    "file": filename, "test": test_name, "reason": "test_assertions_or_exception_checks_reduced",
+                    "before": old, "after": new,
+                })
+        if candidate["skip_markers"] > metrics["skip_markers"]:
+            weakened.append({
+                "file": filename, "reason": "skip_or_xfail_markers_increased",
+                "before": metrics["skip_markers"], "after": candidate["skip_markers"],
+            })
+    before_asserts = sum(item["asserts"] for item in before.values())
+    after_asserts = sum(item["asserts"] for item in after.values())
+    before_raises = sum(item["raises"] for item in before.values())
+    after_raises = sum(item["raises"] for item in after.values())
+    passed = not weakened and after_asserts >= before_asserts and after_raises >= before_raises
+    return {
+        "status": "passed" if passed else "failed",
+        "files_compared": len(before),
+        "baseline_asserts": before_asserts,
+        "candidate_asserts": after_asserts,
+        "baseline_pytest_raises": before_raises,
+        "candidate_pytest_raises": after_raises,
+        "weakened_signals": weakened[:100],
+        "tests_executed": False,
+        "note": "Static heuristic only; does not establish test quality or replace behavioral tests and human review.",
+    }
+
+
+
 def validate_proposal(proposal_id: int) -> dict[str, Any]:
     proposal = get_proposal(proposal_id)
     if proposal is None:
