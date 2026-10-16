@@ -128,7 +128,7 @@ class OracleCloudAlwaysFreeDocsAdapter:
     def _quote(content: str, start: int, end: int) -> str:
         left = max(0, start - 90)
         right = min(len(content), end + 110)
-        return " ".join(content[left:right].split())[:240]
+        return content[left:right].strip()[:240]
 
     def extract_claims(self, title: str, text: str) -> list[ExtractedResourceClaim]:
         content = f"{title}\n{text}"
