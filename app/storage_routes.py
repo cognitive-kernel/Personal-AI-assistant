@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, StrictBool, ConfigDict
 
 from .config import defaults
-from .db_backup import BackupRestoreError, backup_configured_databases
+from .db_backup import BackupRestoreError, backup_configured_databases, restore_databases
 from .task_routes import require_loopback_client
 
 logger = logging.getLogger("personal_ai_assistant.storage")
@@ -106,3 +106,42 @@ def get_backups() -> dict[str, Any]:
 @router.post("/backups", status_code=201)
 def post_backup(request: BackupRequest) -> dict[str, Any]:
     return create_backup(request)
+
+
+@router.post("/backups/{backup_id}/restore", status_code=201)
+def post_restore(backup_id: str, request: BackupRequest) -> dict[str, Any]:
+    """Restore a verified backup into a fresh staging directory, never live DB paths."""
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit confirmation is required to stage a restore.")
+    if not _BACKUP_ID.fullmatch(backup_id):
+        raise HTTPException(status_code=404, detail="Backup not found.")
+    root = _backup_root()
+    source = root / backup_id
+    try:
+        if source.is_symlink() or not source.is_dir() or source.resolve().parent != root:
+            raise HTTPException(status_code=404, detail="Backup not found.")
+        restore_root = root / "restore-staging"
+        if restore_root.is_symlink() or (
+            restore_root.exists()
+            and (not restore_root.is_dir() or restore_root.resolve().parent != root)
+        ):
+            raise HTTPException(status_code=503, detail="Restore staging location is unavailable.")
+        restore_id = datetime.now(timezone.utc).strftime("restore-%Y%m%dT%H%M%S%fZ")
+        destination = restore_root / restore_id
+        restored = restore_databases(source, destination)
+    except HTTPException:
+        raise
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="A staging restore with this identifier already exists; retry the request.") from None
+    except (BackupRestoreError, OSError, ValueError) as exc:
+        logger.error("Database restore staging failed (%s).", type(exc).__name__)
+        raise HTTPException(status_code=422, detail="The selected backup could not be verified and staged.") from None
+    return {
+        "status": "staged",
+        "source_backup_id": backup_id,
+        "restore_id": restore_id,
+        "database_roles": sorted(restored),
+        "verified": True,
+        "live_databases_changed": False,
+        "next_step": "Validate the restored application and plan any cutover separately.",
+    }
