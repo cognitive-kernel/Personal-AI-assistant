@@ -291,7 +291,6 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_chat_research_runs_review ON chat_research_runs(review_status, created_at DESC)",
         ),
     ),
-,
     Migration(
         8,
         "experience-source-revalidation-history",
