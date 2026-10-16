@@ -651,8 +651,8 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
         or proposal["static_check"].get("base_commit_sha") != proposal["base_commit_sha"]
         or not proposal["static_check"].get("test_integrity")
         or proposal["static_check"]["test_integrity"].get("status") != "passed"
-        or not proposal["static_check"].get("behavior_test")
-        or proposal["static_check"]["behavior_test"].get("status") != "passed"
+        or not proposal["static_check"].get("behavioral_tests")
+        or proposal["static_check"]["behavioral_tests"].get("status") != "succeeded"
     ):
         raise ProposalError("Passing syntax, test-integrity, and isolated behavioral evidence for this exact patch is required.")
 
