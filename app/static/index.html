@@ -8,7 +8,12 @@
 header,section{border:1px solid #8886;border-radius:12px;padding:16px;margin:14px 0}
 textarea,input,button{font:inherit;padding:9px;border-radius:7px}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}button{cursor:pointer;margin:4px 0}
 pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-template-columns:minmax(160px,2fr) minmax(130px,1fr) minmax(100px,.7fr) auto;gap:8px;align-items:center;border-bottom:1px solid #8884;padding:8px 0}.path-topic label{margin:0}.path-topic select,.path-topic input{width:100%;min-width:0;box-sizing:border-box}.muted{opacity:.75;font-size:.92rem}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:700px){.row{grid-template-columns:1fr}}
+.cloud-candidate{border:1px solid #8886;border-radius:10px;padding:14px;margin:12px 0}
+.cloud-candidate h3{margin-top:0}.cloud-status{font-weight:600}.cloud-evidence{border-inline-start:3px solid #8888;padding:8px 12px}
+.cloud-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cloud-form-grid label{min-width:0}.cloud-form-grid select,.cloud-form-grid input,.cloud-form-grid textarea{width:100%;box-sizing:border-box}
+.cloud-actions{display:flex;gap:8px;flex-wrap:wrap}.cloud-actions button{width:auto}
+@media(max-width:700px){.row{grid-template-columns:1fr}.cloud-form-grid{grid-template-columns:1fr}}
 </style></head>
 <body>
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
@@ -25,6 +30,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <button id="refresh-paths" type="button">بارگذاری مسیرهای من</button>
 <pre id="paths-output"></pre><div id="paths-container"></div></section>
 <section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
+<section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
+<p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. این فهرست فقط نامزدها و شواهد است؛ هیچ منبعی صرفاً با دیده‌شدن در این صفحه برای اجرای کار مجاز نمی‌شود.</p>
+<div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button></div>
+<pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
+<div id="cloud-candidates"></div></section>
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
@@ -89,5 +99,133 @@ el("settings-form").addEventListener("submit", async event => {
  try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
 });
+
+async function refreshCloudResources() {
+ const output=el("cloud-output");
+ output.textContent="در حال بارگذاری نامزدهای منابع…";
+ try {
+  const result=await api("/api/cloud-resources?limit=100");
+  const run=result.latest_run;
+  output.textContent=run
+   ? "آخرین اجرا: "+run.status+" | زمان: "+(run.finished_at||run.started_at)+" | منابع دیده‌شده: "+run.sources_seen+" | نامزدهای ذخیره‌شده: "+run.candidates_upserted
+   : "هنوز اجرای جست‌وجو ثبت نشده است.";
+  renderCloudCandidates(result.candidates||[]);
+ } catch(error) {
+  output.textContent="خطا در بارگذاری منابع: "+error.message;
+  el("cloud-candidates").replaceChildren();
+ }
+}
+function appendText(parent, tag, text, className) {
+ const node=document.createElement(tag);
+ node.textContent=text;
+ if(className) node.className=className;
+ parent.append(node);
+ return node;
+}
+function renderCloudCandidates(candidates) {
+ const container=el("cloud-candidates");
+ container.replaceChildren();
+ if(!candidates.length) {
+  appendText(container,"p","هنوز نامزدی ثبت نشده است. اجرای جست‌وجوی جدید را انتخاب کنید.");
+  return;
+ }
+ candidates.forEach(candidate=>{
+  const card=document.createElement("article");
+  card.className="cloud-candidate";
+  appendText(card,"h3",candidate.title||candidate.provider_domain);
+  const linkLine=document.createElement("p");
+  const link=document.createElement("a");
+  try {
+   const source=new URL(candidate.source_url);
+   if(source.protocol!=="https:") throw new Error("HTTPS required");
+   link.href=source.href; link.target="_blank"; link.rel="noopener noreferrer";
+   link.textContent=candidate.source_url;
+   linkLine.append(link);
+  } catch(_) {
+   linkLine.textContent="نشانی منبع نامعتبر است و پیوند باز نمی‌شود.";
+  }
+  card.append(linkLine);
+  appendText(card,"p","دامنه: "+candidate.provider_domain+" | بازبینی: "+candidate.review_status+" | ظرفیت: "+candidate.availability_status+" | تازگی: "+candidate.freshness_status,"cloud-status");
+  appendText(card,"p","سیگنال‌های متنی: "+((candidate.resource_signals||[]).join("، ")||"موردی شناسایی نشد"));
+  appendText(card,"p","آخرین مشاهده: "+candidate.last_seen_at);
+  appendText(card,"p",candidate.evidence_excerpt||"خلاصه شواهد موجود نیست.","cloud-evidence");
+  if(candidate.freshness_status==="stale") {
+   appendText(card,"p","شواهد قدیمی است؛ پیش از بازبینی باید منبع دوباره کشف شود.","muted");
+  }
+  const form=document.createElement("form");
+  const grid=document.createElement("div"); grid.className="cloud-form-grid";
+  const reviewLabel=document.createElement("label"); reviewLabel.textContent="تصمیم بازبینی";
+  const review=document.createElement("select"); review.required=true;
+  [["","انتخاب تصمیم"],["approved","تأیید شواهد"],["rejected","رد منبع"]].forEach(([value,label])=>{
+   const option=document.createElement("option"); option.value=value; option.textContent=label; review.append(option);
+  });
+  if(["approved","rejected"].includes(candidate.review_status)) review.value=candidate.review_status;
+  review.addEventListener("change",()=>{if(review.value==="rejected"&&availability.value==="available")availability.value="unknown";});
+  reviewLabel.append(review); grid.append(reviewLabel);
+  const availabilityLabel=document.createElement("label"); availabilityLabel.textContent="وضعیت ظرفیت";
+  const availability=document.createElement("select");
+  [["unknown","نامشخص"],["available","در دسترس (بررسی‌شده)"],["unavailable","در دسترس نیست"],["requires_auth","نیازمند احراز هویت"]].forEach(([value,label])=>{
+   const option=document.createElement("option"); option.value=value; option.textContent=label; availability.append(option);
+  });
+  availability.value=candidate.availability_status||"unknown";
+  availabilityLabel.append(availability); grid.append(availabilityLabel);
+  const termsLabel=document.createElement("label"); termsLabel.textContent="نشانی HTTPS شرایط استفاده (برای تأیید الزامی)";
+  const terms=document.createElement("input"); terms.type="url"; terms.placeholder="https://…"; terms.value=candidate.terms_url||"";
+  termsLabel.append(terms); grid.append(termsLabel);
+  const quotaLabel=document.createElement("label"); quotaLabel.textContent="سهمیه‌های تأییدشده به‌شکل JSON";
+  const quota=document.createElement("textarea"); quota.rows=3; quota.value=JSON.stringify(candidate.quota||{},null,2);
+  quotaLabel.append(quota); grid.append(quotaLabel);
+  form.append(grid);
+  const actions=document.createElement("div"); actions.className="cloud-actions";
+  const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ذخیره بازبینی";
+  submit.disabled=candidate.freshness_status==="stale";
+  actions.append(submit); form.append(actions);
+  const feedback=document.createElement("p"); feedback.className="muted"; form.append(feedback);
+  form.addEventListener("submit",async event=>{
+   event.preventDefault(); feedback.textContent="در حال ذخیره…"; submit.disabled=true;
+   try {
+    let quotaValue;
+    try { quotaValue=JSON.parse(quota.value||"{}"); } catch(_) { throw new Error("JSON سهمیه معتبر نیست."); }
+    if(!quotaValue||Array.isArray(quotaValue)||typeof quotaValue!=="object") throw new Error("سهمیه باید یک شیء JSON باشد.");
+    const result=await api("/api/cloud-resources/"+candidate.id+"/review",{
+     method:"PATCH",
+     body:JSON.stringify({
+      expected_content_sha256:candidate.content_sha256,
+      review_status:review.value,
+      availability_status:availability.value,
+      quota:quotaValue,
+      terms_url:terms.value.trim()||null
+     })
+    });
+    feedback.textContent="بازبینی ذخیره شد: "+result.candidate.review_status;
+    await refreshCloudResources();
+   } catch(error) {
+    feedback.textContent="ذخیره نشد: "+error.message;
+    submit.disabled=candidate.freshness_status==="stale";
+   }
+  });
+  card.append(form); container.append(card);
+ });
+}
+el("cloud-refresh").addEventListener("click",refreshCloudResources);
+el("cloud-discover").addEventListener("click",async()=>{
+ const output=el("cloud-output"); output.textContent="در حال صف‌بندی جست‌وجوی جدید…";
+ try {
+  const response=await api("/api/cloud-resources/discover",{method:"POST"});
+  const task=response.task;
+  output.textContent="وظیفهٔ جست‌وجو در صف قرار گرفت: #"+task.id+" ("+task.status+").";
+  const poll=async()=>{
+   try {
+    const current=await api("/api/tasks/"+task.id);
+    output.textContent="وظیفهٔ جست‌وجو: #"+current.id+" — "+current.status;
+    if(["queued","running","pause_requested"].includes(current.status)) setTimeout(poll,2000);
+    else await refreshCloudResources();
+   } catch(error) { output.textContent="وضعیت وظیفه قابل دریافت نیست: "+error.message; }
+  };
+  setTimeout(poll,1000);
+ } catch(error) { output.textContent="جست‌وجو صف‌بندی نشد: "+error.message; }
+});
+
 refresh();
+refreshCloudResources();
 </script><script src="/static/learning.js"></script></body></html>
