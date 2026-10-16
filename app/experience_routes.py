@@ -10,7 +10,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, StrictBool
 
-from . import experience, experience_capture_consent
+from . import experience, experience_capture_consent, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -118,6 +118,76 @@ def create_experience(request: ExperienceCreateRequest) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {"experience": item}
+
+
+class ExperienceTestRunRequest(BaseModel):
+    confirm: StrictBool
+    test_name: str = Field(min_length=1, max_length=300)
+    source_code: str = Field(min_length=1, max_length=65536)
+    timeout_seconds: int = Field(default=10, ge=1, le=120)
+    max_output_bytes: int = Field(default=32768, ge=1, le=65536)
+
+    class Config:
+        extra = "forbid"
+
+
+@router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
+def queue_experience_test(
+    experience_id: int,
+    request: ExperienceTestRunRequest,
+) -> dict[str, Any]:
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit confirmation to execute this test harness is required.")
+    try:
+        item = experience.get_experience(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    if item.get("status") == "verified":
+        raise HTTPException(status_code=409, detail="Verified experiences are immutable; create a new experience to retest.")
+    if not item.get("source_evidence"):
+        raise HTTPException(status_code=409, detail="Experience needs source evidence before a test can run.")
+    if not item.get("test_plan"):
+        raise HTTPException(status_code=409, detail="Experience needs a test plan before a test can run.")
+    if not any(
+        isinstance(entry, dict)
+        and isinstance(entry.get("test"), str)
+        and entry["test"].strip() == request.test_name.strip()
+        for entry in item["test_plan"]
+    ):
+        raise HTTPException(status_code=422, detail="test_name must exactly match an item in the saved test plan.")
+    try:
+        experience_tasks.validate_test_harness(request.source_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not sandbox_consent.is_enabled():
+        raise HTTPException(status_code=409, detail="Sandbox execution requires explicit, current user consent.")
+    try:
+        configured_handler = experience_tasks.handler_from_environment()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="The controlled sandbox runner is misconfigured.") from exc
+    if configured_handler is None:
+        raise HTTPException(status_code=503, detail="The controlled sandbox runner is not configured.")
+    try:
+        task = task_manager.create_task(
+            experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
+            {
+                "experience_id": experience_id,
+                "test_name": request.test_name.strip(),
+                "source_code": request.source_code,
+                "timeout_seconds": request.timeout_seconds,
+                "max_output_bytes": request.max_output_bytes,
+            },
+            priority=5,
+            max_attempts=1,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Experience test could not be queued.") from exc
+    return {
+        "task": task,
+        "message": "Controlled test queued. Verification depends on the actual sandbox result and saved source/test evidence.",
+    }
 
 
 @router.get("/{experience_id}/versions")
