@@ -121,8 +121,39 @@ el("refresh-knowledge").addEventListener("click", async () => {
  catch(error) { el("knowledge-output").textContent=error.message; }
 });
 el("chat-form").addEventListener("submit", async event => {
- event.preventDefault(); el("chat-output").textContent="در حال پاسخ‌گویی…";
- try { el("chat-output").textContent=(await api("/api/chat",{method:"POST",body:JSON.stringify({message:el("message").value})})).reply; } catch(error) { el("chat-output").textContent=error.message; }
+ event.preventDefault();
+ const button=el("chat-form").querySelector('button[type="submit"]');
+ const message=el("message").value;
+ if(button) button.disabled=true;
+ el("chat-output").textContent="در حال صف‌بندی پژوهش…";
+ try {
+  const queued=await api("/api/research/tasks",{method:"POST",body:JSON.stringify({message})});
+  const taskId=queued.task.id;
+  el("chat-output").textContent="پژوهش در صف قرار گرفت: #"+taskId+" ("+queued.task.status+").";
+  const poll=async()=>{
+   try {
+    const current=await api("/api/tasks/"+taskId);
+    if(["queued","running","pause_requested","paused","cancel_requested"].includes(current.status)) {
+     el("chat-output").textContent="وضعیت پژوهش #"+taskId+": "+current.status;
+     setTimeout(poll,1000);
+     return;
+    }
+    if(current.status==="succeeded") {
+     el("chat-output").textContent=(current.result&&current.result.reply)||"پژوهش کامل شد، اما پاسخی در نتیجه ثبت نشده است.";
+    } else {
+     el("chat-output").textContent="پژوهش تکمیل نشد: "+(current.error||current.status);
+    }
+    if(button) button.disabled=false;
+   } catch(error) {
+    el("chat-output").textContent="وضعیت پژوهش قابل دریافت نیست: "+error.message;
+    if(button) button.disabled=false;
+   }
+  };
+  setTimeout(poll,500);
+ } catch(error) {
+  el("chat-output").textContent=error.message;
+  if(button) button.disabled=false;
+ }
 });
 function showLearningJob(result) {
  el("learning-output").textContent=JSON.stringify(result,null,2);
