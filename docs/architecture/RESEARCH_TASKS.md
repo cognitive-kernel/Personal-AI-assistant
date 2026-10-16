@@ -4,6 +4,7 @@
 
 - `POST /api/research/tasks` queues a durable `research.answer` task and returns its task record.
 - `GET /api/tasks/{id}` returns status and the final result; the local UI polls this endpoint.
+- The local task-manager panel lists persisted tasks after page reload and exposes pause, resume, and cancel controls without rendering raw task payloads.
 - The existing synchronous `POST /api/chat` endpoint remains available for API compatibility.
 - Both the research queue route and task-control routes require a loopback client.
 
