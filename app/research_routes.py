@@ -27,9 +27,15 @@ class ResearchTaskRequest(BaseModel):
 @router.post("/tasks", status_code=202)
 def queue_research_task(request: ResearchTaskRequest) -> dict[str, Any]:
     try:
+        message, history = research_tasks._validate_payload(
+            {"message": request.message, "history": request.history}
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
         task = task_manager.create_task(
             research_tasks.RESEARCH_TASK_TYPE,
-            {"message": request.message, "history": request.history},
+            {"message": message, "history": history},
             priority=0,
             max_attempts=1,
         )
