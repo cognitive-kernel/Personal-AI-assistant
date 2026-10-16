@@ -5,6 +5,7 @@ This module records and validates patches but never applies them. Approval means
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -14,6 +15,8 @@ import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+import urllib.error
+import urllib.request
 from typing import Any
 
 from . import db, sandbox, sandbox_consent, sandbox_tasks
@@ -104,6 +107,52 @@ def _git(root: Path, args: list[str], *, input_text: str | None = None) -> subpr
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ProposalError("Git validation could not complete safely.") from exc
+
+
+def _github_api(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Call the GitHub REST API without placing credentials in command arguments."""
+    token = os.getenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "").strip()
+    repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
+    if not token:
+        raise ProposalError("GitHub PR creation is disabled: SELF_IMPROVEMENT_GITHUB_TOKEN is not configured.")
+    if len(token) > 300 or any(ord(char) < 33 or ord(char) > 126 for char in token):
+        raise ProposalError("Configured GitHub token has an invalid format.")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ProposalError("GitHub PR creation is disabled: configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
+    if not path.startswith("/"):
+        raise ProposalError("GitHub API path is invalid.")
+    request_body = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.github.com/repos/" + repository + path,
+        data=request_body,
+        method=method,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": "Bearer " + token,
+            "X-GitHub-Api-Version": "2022-11-28",
+            **({"Content-Type": "application/json"} if request_body is not None else {}),
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            raw = response.read(1024 * 1024)
+            if response.status == 204 or not raw:
+                return {}
+            value = json.loads(raw.decode("utf-8"))
+            if not isinstance(value, dict):
+                raise ProposalError("GitHub returned an unexpected API response.")
+            return value
+    except urllib.error.HTTPError as exc:
+        # Do not surface provider response bodies, which may contain sensitive metadata.
+        if exc.code == 404:
+            raise ProposalError("The configured GitHub repository, base ref, or commit was not found.") from None
+        if exc.code == 401 or exc.code == 403:
+            raise ProposalError("GitHub denied the request; verify token permissions and repository access.") from None
+        if exc.code == 422:
+            raise ProposalError("GitHub rejected the requested branch or pull request; check for an existing ref or PR.") from None
+        raise ProposalError("GitHub API request failed with HTTP " + str(exc.code) + ".") from None
+    except (OSError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProposalError("GitHub API is unavailable or returned invalid JSON.") from exc
 
 
 def validate_patch_format(patch: str) -> dict[str, Any]:
@@ -566,6 +615,180 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
         })
         row = conn.execute("SELECT * FROM self_improvement_proposals WHERE id=?", (proposal_id,)).fetchone()
     return _proposal(row, include_patch=True)
+
+
+def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
+    """Publish an approved patch as a review-only GitHub PR; never merge or deploy it."""
+    if confirm is not True:
+        raise ProposalError("Explicit confirmation is required to publish a pull request.")
+    proposal = get_proposal(proposal_id)
+    if proposal is None:
+        raise KeyError(proposal_id)
+    if proposal["status"] != "approved_for_pr":
+        raise ProposalError("Only a proposal approved for PR review can be published.")
+    for event in proposal_events(proposal_id):
+        if event["event_type"] == "approved_for_pr" and event["details"].get("publication") == "pr_opened":
+            return {"proposal_id": proposal_id, **event["details"], "already_opened": True}
+
+    repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
+    if not os.getenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "").strip():
+        raise ProposalError("Configure SELF_IMPROVEMENT_GITHUB_TOKEN with repository contents and pull-request permissions.")
+    base_branch = os.getenv("SELF_IMPROVEMENT_GITHUB_BASE_BRANCH", "main").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", base_branch) or base_branch.startswith("/") or ".." in base_branch:
+        raise ProposalError("Configured GitHub base branch is invalid.")
+
+    root = _repo_root()
+    head = _git(root, ["rev-parse", "--verify", "HEAD"])
+    if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
+        raise ProposalError("Local repository HEAD changed after validation; validate a new proposal.")
+    meta = validate_patch_format(proposal["patch"])
+    _validate_repo_paths(root, meta["files"])
+    if meta["sha256"] != proposal["patch_sha256"]:
+        raise ProposalError("Stored patch hash changed; PR creation is blocked.")
+    if (
+        not proposal["static_check"]
+        or proposal["static_check"].get("status") != "passed"
+        or proposal["static_check"].get("patch_sha256") != meta["sha256"]
+        or proposal["static_check"].get("base_commit_sha") != proposal["base_commit_sha"]
+        or not proposal["static_check"].get("test_integrity")
+        or proposal["static_check"]["test_integrity"].get("status") != "passed"
+        or not proposal["static_check"].get("behavioral_tests")
+        or proposal["static_check"]["behavioral_tests"].get("status") != "succeeded"
+    ):
+        raise ProposalError("Passing syntax, test-integrity, and isolated behavioral evidence for this exact patch is required.")
+
+    base_ref = _github_api("GET", "/git/ref/heads/" + base_branch)
+    remote_base_sha = base_ref.get("object", {}).get("sha")
+    if remote_base_sha != proposal["base_commit_sha"]:
+        raise ProposalError("Remote base branch has moved since validation; rebase/revalidate before publishing.")
+    base_commit = _github_api("GET", "/git/commits/" + proposal["base_commit_sha"])
+    base_tree = base_commit.get("tree", {}).get("sha")
+    if not isinstance(base_tree, str) or not base_tree:
+        raise ProposalError("GitHub did not return a valid base tree.")
+
+    worktree_path: Path | None = None
+    ref_created = False
+    pr_created = False
+    branch_name = "ai-proposal/" + str(proposal_id) + "-" + meta["sha256"][:12]
+    try:
+        with tempfile.TemporaryDirectory(prefix="ai-pr-worktree-") as temp_dir:
+            worktree_path = Path(temp_dir) / "candidate"
+            added = _git(root, ["worktree", "add", "--detach", str(worktree_path), proposal["base_commit_sha"]])
+            if added.returncode != 0:
+                raise ProposalError("A clean temporary worktree could not be created.")
+            check = _git(worktree_path, ["apply", "--check"], input_text=proposal["patch"])
+            if check.returncode != 0:
+                raise ProposalError("The approved patch no longer applies cleanly to its recorded base.")
+            applied = _git(worktree_path, ["apply", "--whitespace=error-all", "-"], input_text=proposal["patch"])
+            if applied.returncode != 0:
+                raise ProposalError("The approved patch could not be applied in the temporary worktree.")
+            changed = _git(worktree_path, ["diff", "--name-only", "--no-ext-diff"])
+            if changed.returncode != 0:
+                raise ProposalError("Changed paths could not be enumerated safely.")
+            tracked_changed_paths = changed.stdout.splitlines()
+            if not set(tracked_changed_paths).issubset(set(meta["files"])):
+                raise ProposalError("Applied patch changed paths outside the reviewed patch manifest.")
+            changed_paths = meta["files"]
+            entries = []
+            for relative in changed_paths:
+                if not _ALLOWED_PATH.fullmatch(relative):
+                    raise ProposalError("A changed path is outside the allowlist.")
+                file_path = worktree_path / relative
+                if not file_path.is_file() or file_path.is_symlink():
+                    raise ProposalError("Every changed path must resolve to a regular text file.")
+                content = file_path.read_bytes()
+                try:
+                    decoded = content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise ProposalError("Changed files must remain UTF-8 text.") from exc
+                blob = _github_api("POST", "/git/blobs", {
+                    "content": base64.b64encode(decoded.encode("utf-8")).decode("ascii"),
+                    "encoding": "base64",
+                })
+                blob_sha = blob.get("sha")
+                if not isinstance(blob_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", blob_sha):
+                    raise ProposalError("GitHub did not create a valid file blob.")
+                entries.append({"path": relative, "mode": "100644", "type": "blob", "sha": blob_sha})
+
+            tree = _github_api("POST", "/git/trees", {"base_tree": base_tree, "tree": entries})
+            tree_sha = tree.get("sha")
+            if not isinstance(tree_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", tree_sha):
+                raise ProposalError("GitHub did not create a valid candidate tree.")
+            commit = _github_api("POST", "/git/commits", {
+                "message": "AI proposal #" + str(proposal_id) + ": " + proposal["title"][:120],
+                "tree": tree_sha,
+                "parents": [proposal["base_commit_sha"]],
+            })
+            commit_sha = commit.get("sha")
+            if not isinstance(commit_sha, str) or not re.fullmatch(r"[0-9a-f]{40,64}", commit_sha):
+                raise ProposalError("GitHub did not create a valid candidate commit.")
+            created_ref = _github_api("POST", "/git/refs", {
+                "ref": "refs/heads/" + branch_name,
+                "sha": commit_sha,
+            })
+            if created_ref.get("object", {}).get("sha") != commit_sha:
+                raise ProposalError("GitHub did not confirm the candidate branch.")
+            ref_created = True
+            body = (
+                "## Governed AI self-improvement proposal\n\n"
+                + proposal["rationale"]
+                + "\n\n## Evidence\n"
+                + "- Proposal ID: " + str(proposal_id) + "\n"
+                + "- Base commit: `" + proposal["base_commit_sha"] + "`\n"
+                + "- Patch SHA-256: `" + meta["sha256"] + "`\n"
+                + "- Isolated syntax, test-integrity, and behavioral gates passed for this exact patch.\n"
+                + "- This PR was opened for human review only. It was not merged, deployed, or applied to the local working tree.\n"
+            )
+            pull = _github_api("POST", "/pulls", {
+                "title": "[AI proposal #" + str(proposal_id) + "] " + proposal["title"][:160],
+                "head": branch_name,
+                "base": base_branch,
+                "body": body,
+                "draft": True,
+            })
+            number = pull.get("number")
+            url = pull.get("html_url")
+            if isinstance(number, bool) or not isinstance(number, int) or number < 1:
+                raise ProposalError("GitHub did not return a valid pull request number.")
+            if not isinstance(url, str) or not url.startswith("https://github.com/"):
+                raise ProposalError("GitHub did not return a valid pull request URL.")
+            pr_created = True
+            details = {
+                "pull_request_number": number,
+                "pull_request_url": url,
+                "branch": branch_name,
+                "commit_sha": commit_sha,
+                "base_branch": base_branch,
+                "base_commit_sha": proposal["base_commit_sha"],
+                "patch_sha256": meta["sha256"],
+                "draft": True,
+                "merged": False,
+                "deployed": False,
+            }
+            db.init_databases()
+            with learning_connection() as conn:
+                _append_event(conn, proposal_id, "approved_for_pr", {
+                    **details,
+                    "publication": "pr_opened",
+                    "confirm": True,
+                })
+            return {"proposal_id": proposal_id, **details, "already_opened": False}
+    except Exception:
+        if ref_created and not pr_created:
+            try:
+                _github_api("DELETE", "/git/refs/heads/" + branch_name)
+            except Exception:
+                pass
+        raise
+    finally:
+        if worktree_path is not None:
+            if worktree_path.exists():
+                _git(root, ["worktree", "remove", "--force", str(worktree_path)])
+            else:
+                # TemporaryDirectory already removed the path; prune its stale git metadata.
+                _git(root, ["worktree", "prune", "--expire", "now"])
 
 
 def reject_proposal(proposal_id: int, *, confirm: bool, reason: str = "") -> dict[str, Any]:

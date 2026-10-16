@@ -1427,3 +1427,14 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **هدف:** اطمینان از اینکه runner جدید واقعاً test suite را در کانتینر اجرا می‌کند، نه اینکه فقط فراخوانی Docker به‌صورت mock آزموده شده باشد.
 - **پیاده‌سازی:** CI یک تصویر dependency از base Python رسمی و digest-pinned می‌سازد، شناسهٔ image محلی را به runner می‌دهد، سپس کل test suite را از checkout فقط‌خواندنی با شبکهٔ غیرفعال اجرا می‌کند. آزمون‌های یکپارچگی واقعی Sandbox نیز جداگانه اجرا می‌شوند.
 - **اعتبارسنجی:** PR [#196](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/196) ادغام شد؛ اجرای CI روی head دقیق 81f55685fae6e2e9692c065e069d757c0cd72de6 در run [#38892119596](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892119596) و آزمون Docker واقعی در run [#38892119587](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892119587) موفق بود. CI پس از ادغام روی commit 0e984c681431332910ed8a4ef316ccdec917bbc2 در run [#38892296225](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892296225) و اجرای Docker واقعی در run [#38892296182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892296182) نیز موفق بود.
+
+
+## 111. 2026-10-16 — انتشار کنترل‌شدهٔ پیشنهاد خودبهبود به‌صورت Draft PR
+
+- **هدف:** تکمیل مسیر بین تأیید داخلی پیشنهاد و بازبینی انسانی در GitHub، بدون ادغام یا استقرار خودکار.
+- **پیاده‌سازی:** endpoint جدید `POST /api/self-improvement/proposals/{id}/open-pr` با تأیید صریح؛ ساخت branch، blob/tree/commit و PR پیش‌نویس از طریق GitHub REST API. فقط مسیرهای مجاز Python و Markdown پذیرفته می‌شوند. patch فقط در worktree موقت اعمال می‌شود و checkout اصلی دست‌نخورده می‌ماند.
+- **دروازه‌ها:** وضعیت `approved_for_pr`، تطابق hash و base commit، موفقیت بررسی نحوی، test-integrity و آزمون رفتاری روی همان patch، و تطابق HEAD شاخهٔ remote با base تأییدشده الزامی است. در صورت تغییر شاخهٔ remote، عملیات fail-closed می‌شود.
+- **امنیت:** token فقط از متغیر محیطی خوانده و در Authorization header HTTPS ارسال می‌شود؛ هیچ tokenی به UI، دیتابیس یا لاگ برگردانده نمی‌شود. PR همیشه draft است و این قابلیت merge، deploy یا تغییر checkout محلی انجام نمی‌دهد. تکرار درخواست پس از ثبت موفق، همان PR را برمی‌گرداند.
+- **پیکربندی:** متغیرهای `SELF_IMPROVEMENT_GITHUB_REPOSITORY` و `SELF_IMPROVEMENT_GITHUB_TOKEN` لازم‌اند؛ `SELF_IMPROVEMENT_GITHUB_BASE_BRANCH` اختیاری است. راهنمای کامل در `docs/SELF_IMPROVEMENT_PR.md` قرار دارد.
+- **آزمون‌ها:** تأیید صریح و پیکربندی، ساخت branch/PR با API mock، عدم تغییر checkout، idempotency و رد شدن روی تغییر base remote پوشش داده شده‌اند.
+- **محدودیت:** تست‌ها در این مرحله از طریق CI بررسی می‌شوند؛ اجرای محلی ادعا نمی‌شود. ادغام، استقرار و rollback پس از merge همچنان خارج از این مرحله‌اند.

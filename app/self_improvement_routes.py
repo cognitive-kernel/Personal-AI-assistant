@@ -111,6 +111,16 @@ def approve_proposal(proposal_id: int, request: ExplicitConfirmation) -> dict[st
         _proposal_error(exc)
 
 
+@router.post("/proposals/{proposal_id}/open-pr")
+def open_proposal_pull_request(proposal_id: int, request: ExplicitConfirmation) -> dict[str, Any]:
+    try:
+        return {"pull_request": self_improvement.open_review_pull_request(
+            proposal_id, confirm=request.confirm
+        )}
+    except (ProposalError, KeyError) as exc:
+        _proposal_error(exc)
+
+
 @router.post("/proposals/{proposal_id}/reject")
 def reject_proposal(proposal_id: int, request: RejectProposalRequest) -> dict[str, Any]:
     try:
