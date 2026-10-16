@@ -9,7 +9,7 @@
 - وضعیت مرحله: **در حال انجام؛ discovery، ثبت provenance، review hash-bound و freshness پیاده‌سازی شده‌اند**
 - وضعیت اجرای تست‌ها روی سیستم توسعه‌دهنده: **در این نشست اجرا نشده؛ نتایج CI دقیق هر PR در بخش‌های تاریخچه ثبت می‌شوند**
 - وضعیت اجرای تست‌ها در این نشست: **تست محلی اجرا نشده؛ اعتبارسنجی اجرایی فقط از CI مخزن گزارش می‌شود**
-- آخرین تغییر ثبت‌شده: نمایش وضعیت سلامت ذخیره‌سازی در داشبورد محلی؛ بخش 115.
+- آخرین تغییر ثبت‌شده: پشتیبان‌گیری و بازیابی نسخه‌دار برای هر سه دیتابیس؛ بخش 116.
 - مرجع الزامات: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)
 
 ## راهنمای وضعیت
@@ -1477,3 +1477,14 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **پیاده‌سازی:** بخش «سلامت ذخیره‌سازی» در داشبورد، بررسی خودکار هنگام بارگذاری صفحه و دکمهٔ به‌روزرسانی دستی. پاسخ endpoint به‌صورت متن نمایش داده می‌شود؛ هیچ کنترل تعمیر یا مهاجرتی در رابط اضافه نشده است.
 - **آزمون‌ها:** قرارداد رابط برای شناسه‌های بخش، دکمه و خروجی و استفاده از endpoint تشخیصی.
 - **اعتبارسنجی:** PR [#206](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/206) ادغام شد. روی head دقیق `9dc1bfbe916c3d62bd50554d718bedc66a6fb147`، CI در run [#38903734518](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38903734518) موفق بود. پس از ادغام روی commit `9289ad0de317989124cac609faec28da54ed820f`، CI در run [#38903877367](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38903877367) موفق شد؛ 497 passed، 4 skipped و benchmark بازیابی موفق بود. تست محلی اجرا نشده است.
+
+
+
+## 116. 2026-10-16 — پشتیبان‌گیری کامل از سه دیتابیس
+
+- **هدف:** جلوگیری از جا ماندن داده‌های کشف منابع ابری از چرخهٔ پشتیبان‌گیری و بازیابی.
+- **پیاده‌سازی:** فرمت نسخهٔ ۲ برای bundle کامل شامل settings، learning و cloud resources؛ تابع `backup_configured_databases` مسیرهای پیکربندی‌شده را می‌خواند. restore با حفظ سازگاری، bundleهای قدیمی فرمت ۱ را نیز می‌پذیرد و مقصد موجود را بازنویسی نمی‌کند.
+- **اعتبارسنجی پشتیبان:** هر snapshot با SQLite backup API ساخته و از نظر hash، schema metadata، integrity و foreign keys بررسی می‌شود؛ انتشار bundle فقط پس از موفقیت همهٔ snapshotها و با rename اتمی انجام می‌شود. بازیابی در یک پوشهٔ تازه انجام می‌شود و دیتابیس زنده را جایگزین نمی‌کند.
+- **آزمون‌ها:** حفظ دادهٔ cloud resource پس از backup/restore، سلامت دیتابیس بازیابی‌شده، استفاده از هر سه مسیر پیکربندی‌شده و سازگاری خواندن bundleهای قدیمی دو دیتابیسی.
+- **اعتبارسنجی:** PR [#208](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/208) ادغام شد. روی head دقیق `e548f472d112f1a62d8819ae5612a5f85764b7ae`، CI در run [#38904400580](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38904400580) موفق بود. پس از ادغام روی commit `c025a2e9cf963c9525eeb3b1dbb2e63dc93d6814`، CI در run [#38904539169](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38904539169) نیز موفق شد؛ 499 passed، 4 skipped و benchmark بازیابی موفق بود. تست محلی اجرا نشده است.
+- **محدودیت باقی‌مانده:** این تغییر مسیر API یا زمان‌بندی خودکار backup اضافه نمی‌کند؛ bundleهای backup همچنان باید از نظر مجوز فایل، نگهداری و محل ذخیره‌سازی امن مدیریت شوند.
