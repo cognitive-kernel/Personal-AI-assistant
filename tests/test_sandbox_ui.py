@@ -13,6 +13,8 @@ def test_local_ui_exposes_sandbox_consent_status_and_bounded_execution():
     assert 'id="sandbox-consent-confirm"' in html
     assert 'id="sandbox-consent-grant"' in html
     assert 'id="sandbox-consent-revoke"' in html
+    assert 'id="sandbox-cancel" type="button" disabled' in html
+    assert 'api("/api/tasks/"+taskId+"/cancel"' in html
     assert 'id="sandbox-run-form"' in html
     assert 'id="sandbox-run" type="submit" disabled' in html
     assert 'api("/api/sandbox/consent")' in html
