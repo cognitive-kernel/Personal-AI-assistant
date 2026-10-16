@@ -1062,5 +1062,18 @@
 - [x] تست اختصاصی صف نشان می‌دهد وظیفهٔ `sandbox.run_python` با `max_attempts=1` پس از انقضای lease به `failed` می‌رسد و پس از restart/claim مجدد به‌صورت خودکار اجرا نمی‌شود.
 - [x] checkpoint مرحلهٔ شروع و hash منبع پس از crash حفظ می‌شود؛ lease آزاد می‌شود و دلیل پایان به‌صورت روشن ثبت می‌ماند.
 - [x] این رفتار با سیاست sandbox همسو است: اجرای دلخواه کد idempotent فرض نمی‌شود و اجرای مجدد خودکار ممکن است اثر جانبی تکراری داشته باشد.
+- [x] **PR #151** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/151)، commit ادغام `4948891520d332c5f227b8198892e6da42ef804f`.
+- [x] CI روی head دقیق `4948891520d332c5f227b8198892e6da42ef804f` موفق بود؛ run [#38856909578](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38856909578).
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** cleanup صریح containerهای orphan شده با برچسب مالکیت و شناسهٔ task؛ عدم حذف container متعلق به task فعال و تأخیر محافظتی برای جلوگیری از رقابت چندپردازه‌ای.
+
+
+## 76. 2026-10-16 — پاک‌سازی محافظه‌کارانهٔ containerهای orphan شده
+
+- [x] اجرای sandbox برای taskهای صف، برچسب مالکیت برنامه و شناسهٔ پایدار task را روی container ثبت می‌کند.
+- [x] `cleanup_orphaned_containers()` فقط containerهای دارای برچسب صحیح و task ID موجود در فهرست terminal تأییدشده را بررسی و حذف می‌کند؛ containerهای تازه‌تر از ۶۰ ثانیه، taskهای فعال/نامعلوم و خروجی‌های نامعتبر Docker حذف نمی‌شوند.
+- [x] فرمان‌های Docker با آرایهٔ آرگومان، `shell=False`، محیط محدود، timeout محدود و اعتبارسنجی شناسهٔ container اجرا می‌شوند.
+- [x] تست‌های برچسب task، حذف فقط task terminal قدیمی، حفظ task فعال/نامعلوم، grace period، شکست daemon و رد ورودی نامعتبر اضافه شدند.
+- [ ] cleanup عمداً به startup وصل نشده است؛ caller باید وضعیت terminal را از صف پایدار پس از reconciliation بگیرد. اجرای خودکار قبل از تکمیل recovery می‌تواند به رقابت چند worker منجر شود.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** CI و ادغام؛ سپس ارزیابی cleanup صریح containerهای orphan شده با درنظرگرفتن چندپردازه‌ای بودن سرور و عدم حذف container متعلق به worker فعال.
+- **گام بعدی:** بررسی نتیجهٔ CI و سپس طراحی integration با reconciliation صف؛ هم‌زمان فهرست Issue/PR را در هر milestone ممیزی کنیم و فقط Issue #52 را برای بررسی امنیتی مستقل باز نگه داریم.
