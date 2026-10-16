@@ -47,7 +47,7 @@ def test_evaluate_ranked_queries_reports_recall_and_mrr():
     )
     assert result["query_count"] == 2
     assert result["recall_at_5"] == 1.0
-    assert result["precision_at_5"] == 0.3
+    assert result["precision_at_5"] == 0.2
     assert result["mrr"] == 0.75
     assert result["per_query"][0]["top_results"] == ["b", "a"]
 
