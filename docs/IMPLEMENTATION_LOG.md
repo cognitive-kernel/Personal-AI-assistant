@@ -1363,4 +1363,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **پیاده‌سازی:** workflow جدید `.github/workflows/sandbox-integration-ci.yml` روی pull request و pushهای مرتبط اجرا می‌شود؛ image رسمی Python 3.11 slim برای linux/amd64 با digest ثابت `sha256:922f47525757de33aff59f24cdfc85f412ac4a06aa8af7c7e9028d584b7bcdeb` قفل شده و permission مخزن فقط خواندنی است. workflow دستی موجود برای انتخاب صریح digest همچنان حفظ شده است.
 - **آزمون‌ها:** همان تست‌های Docker واقعی برای تنظیمات کانتینر، شبکهٔ غیرفعال، محدودیت منابع، timeout، سقف خروجی و نبود fallback به اجرای میزبان اجرا می‌شوند.
 - **مبنای image:** digest از صفحهٔ رسمی Docker Hub برای `python:3.11-slim` گرفته شده است؛ این مقدار digest مانيفست linux/amd64 است.
-- **اعتبارسنجی:** PR جدید است؛ انتظار می‌رود workflow واقعی در خود این PR اجرا شود. تا پایان CI هیچ ادعایی دربارهٔ موفقیت اجرای Docker واقعی ثبت نمی‌شود.
+- **اعتبارسنجی:** PR [#186](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/186) ادغام شد. CI عادی روی head دقیق در run [#38875055860](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38875055860) و آزمون واقعی Docker در run [#38875055987](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38875055987) هر دو موفق شدند. پس از ادغام نیز CI عادی در run [#38875183918](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38875183918) و آزمون واقعی Docker در run [#38875183923](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38875183923) موفق شدند. آزمون محلی روی سیستم هدف اجرا نشده است.
+
+
+## 104. 2026-10-16 — تأیید واقعی Sandbox پس از ادغام
+
+- **نتیجه:** آزمون‌های واقعی Docker اکنون در CI مرتبط با تغییرات Sandbox اجرا می‌شوند؛ PR #186 و commit ادغام‌شده هر دو از آزمون عادی و آزمون Docker واقعی عبور کردند.
+- **شواهد:** runهای PR #38875055860 و #38875055987 موفق؛ runهای پس از ادغام #38875183918 و #38875183923 موفق.
+- **محدودیت باقی‌مانده:** این CI روی GitHub-hosted Linux اجرا شده و جایگزین آزمون نصب/استقرار روی ماشین هدف نیست. Issue #52 همچنان به بازبینی مستقل امنیت نیاز دارد؛ اجرای ابری همچنان غیرفعال است.
