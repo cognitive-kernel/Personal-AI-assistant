@@ -191,10 +191,12 @@ def _source_freshness(item: dict[str, Any], *, now: datetime | None = None) -> d
     now = now or datetime.now(timezone.utc)
     multipliers: list[float] = []
     ages: list[float] = []
+    unknown_count = 0
     for entry in evidence:
         observed_at = entry.get("observed_at") if isinstance(entry, dict) else None
         if not isinstance(observed_at, str) or not observed_at.strip():
             multipliers.append(0.80)
+            unknown_count += 1
             continue
         try:
             parsed = datetime.fromisoformat(observed_at.strip().replace("Z", "+00:00"))
@@ -203,6 +205,7 @@ def _source_freshness(item: dict[str, Any], *, now: datetime | None = None) -> d
             age_days = max(0.0, (now - parsed.astimezone(timezone.utc)).total_seconds() / 86400)
         except (TypeError, ValueError, OverflowError):
             multipliers.append(0.80)
+            unknown_count += 1
             continue
         ages.append(age_days)
         if age_days <= 30:
@@ -212,7 +215,9 @@ def _source_freshness(item: dict[str, Any], *, now: datetime | None = None) -> d
         else:
             multipliers.append(0.45)
     multiplier = min(multipliers, default=0.80)
-    if multiplier >= 1.0:
+    if unknown_count:
+        status = "stale_or_unknown"
+    elif multiplier >= 1.0:
         status = "recently_observed"
     elif multiplier >= 0.75:
         status = "aging"
