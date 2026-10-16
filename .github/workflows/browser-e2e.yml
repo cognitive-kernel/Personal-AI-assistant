@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install application and browser test dependency
-        run: python -m pip install -e ".[dev]" playwright
+        run: python -m pip install -e ".[dev]" "playwright==1.64.0"
       - name: Install Chromium
         run: python -m playwright install --with-deps chromium
       - name: Start isolated local application
