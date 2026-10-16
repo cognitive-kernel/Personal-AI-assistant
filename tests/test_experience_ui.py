@@ -19,7 +19,7 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     assert 'link.rel="noopener noreferrer"' in page
     assert 'source.protocol!=="https:"' in page
     assert 'item.status==="verified"' in page
-    assert 'نتیجهٔ آزمون ثبت‌شده' in page
+    assert 'نتایج آزمون ثبت‌شده' in page
     # Database content and external source text must never be injected as HTML.
     assert 'node.textContent=text' in page
     assert 'innerHTML' not in page
