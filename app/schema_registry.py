@@ -452,6 +452,7 @@ CLOUD_RESOURCE_MIGRATIONS = (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 plan_version TEXT NOT NULL,
                 requirements_json TEXT NOT NULL,
+                limitations_json TEXT NOT NULL DEFAULT '[]',
                 status TEXT NOT NULL CHECK(status IN ('candidate_found','no_eligible_candidate')),
                 selected_candidate_id INTEGER,
                 execution_authorized INTEGER NOT NULL DEFAULT 0 CHECK(execution_authorized = 0),
