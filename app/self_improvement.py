@@ -115,6 +115,8 @@ def _github_api(method: str, path: str, payload: dict[str, Any] | None = None) -
     repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
     if not token:
         raise ProposalError("GitHub PR creation is disabled: SELF_IMPROVEMENT_GITHUB_TOKEN is not configured.")
+    if len(token) > 300 or any(ord(char) < 33 or ord(char) > 126 for char in token):
+        raise ProposalError("Configured GitHub token has an invalid format.")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
         raise ProposalError("GitHub PR creation is disabled: configure SELF_IMPROVEMENT_GITHUB_REPOSITORY as owner/repository.")
     if not path.startswith("/"):
@@ -583,6 +585,7 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     if not proposal["static_check"].get("test_integrity") or proposal["static_check"]["test_integrity"].get("status") != "passed":
         raise ProposalError("The static test-integrity guard must pass before approval for a PR.")
     root = _repo_root()
+    _validate_repo_paths(root, meta["files"])
     head = _git(root, ["rev-parse", "--verify", "HEAD"])
     if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
         raise ProposalError("Repository HEAD changed after validation; validate a new proposal.")
@@ -678,20 +681,24 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
             check = _git(worktree_path, ["apply", "--check"], input_text=proposal["patch"])
             if check.returncode != 0:
                 raise ProposalError("The approved patch no longer applies cleanly to its recorded base.")
-            applied = _git(worktree_path, ["apply"], input_text=proposal["patch"])
+            applied = _git(worktree_path, ["apply", "--whitespace=error-all", "-"], input_text=proposal["patch"])
             if applied.returncode != 0:
                 raise ProposalError("The approved patch could not be applied in the temporary worktree.")
             changed = _git(worktree_path, ["diff", "--name-only", "--no-ext-diff"])
             if changed.returncode != 0:
                 raise ProposalError("Changed paths could not be enumerated safely.")
-            changed_paths = changed.stdout.splitlines()
-            if sorted(changed_paths) != sorted(meta["files"]):
-                raise ProposalError("Applied patch paths do not match the reviewed patch manifest.")
+            tracked_changed_paths = changed.stdout.splitlines()
+            if not set(tracked_changed_paths).issubset(set(meta["files"])):
+                raise ProposalError("Applied patch changed paths outside the reviewed patch manifest.")
+            changed_paths = meta["files"]
             entries = []
             for relative in changed_paths:
                 if not _ALLOWED_PATH.fullmatch(relative):
                     raise ProposalError("A changed path is outside the allowlist.")
-                content = (worktree_path / relative).read_bytes()
+                file_path = worktree_path / relative
+                if not file_path.is_file() or file_path.is_symlink():
+                    raise ProposalError("Every changed path must resolve to a regular text file.")
+                content = file_path.read_bytes()
                 try:
                     decoded = content.decode("utf-8")
                 except UnicodeDecodeError as exc:
