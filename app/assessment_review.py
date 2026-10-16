@@ -41,12 +41,17 @@ def _parse_review(raw: str, expected_count: int) -> dict[str, Any]:
         raise ValueError("The evaluator returned a different number of review items.")
     normalized = []
     for expected_index, item in enumerate(items, start=1):
-        if not isinstance(item, dict) or item.get("index") != expected_index:
+        if (
+            not isinstance(item, dict)
+            or isinstance(item.get("index"), bool)
+            or not isinstance(item.get("index"), int)
+            or item.get("index") != expected_index
+        ):
             raise ValueError("The evaluator returned an invalid question index.")
         judgment = item.get("judgment")
         rationale = item.get("rationale")
         missing = item.get("missing_concepts", [])
-        if judgment not in _ALLOWED_JUDGMENTS:
+        if not isinstance(judgment, str) or judgment not in _ALLOWED_JUDGMENTS:
             raise ValueError("The evaluator returned an unsupported judgment.")
         if not isinstance(rationale, str) or not rationale.strip() or len(rationale) > 600:
             raise ValueError("The evaluator rationale is invalid.")
