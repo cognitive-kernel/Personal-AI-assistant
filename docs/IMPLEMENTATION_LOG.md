@@ -1412,3 +1412,18 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **مرز اعتماد:** این یک heuristic ایستا است، نه اثبات کیفیت آزمون؛ assertionهای بی‌اثر یا تغییر معنایی آزمون را به‌طور کامل کشف نمی‌کند. آزمون رفتاری و بازبینی انسانی همچنان لازم‌اند؛ هیچ کد candidate توسط این guard اجرا نمی‌شود.
 - **آزمون‌ها:** کاهش assertion، اضافه‌شدن skip marker و افزایش پوشش آزمون به‌صورت regression test پوشش داده شده‌اند.
 - **اعتبارسنجی:** PR [#193](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/193) ادغام شد؛ CI روی head دقیق a329dd55ad58b23f21e7ecf1cfb2c7d02379ca27 در run [#38890486514](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890486514) و پس از ادغام روی 6975da2466cdeed634ec59956674aca7a4fc9dd1 در run [#38890596909](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38890596909) موفق بود. تست محلی اجرا نشده است.
+
+
+## 109. 2026-10-16 — اجرای آزمون‌های رفتاری پیشنهاد خودبهبود در Docker
+
+- **هدف:** ارتقای دروازهٔ خودبهبود از بررسی نحوی صرف به اجرای واقعی آزمون‌های پروژه، بدون اجرای candidate روی میزبان.
+- **پیاده‌سازی:** تابع run_workspace_tests تصویر آزمون immutable و از پیش ساخته‌شده می‌خواهد؛ container با network=none، root filesystem و checkout فقط‌خواندنی، کاربر غیرریشه، حذف capabilities، محدودیت حافظه/CPU/PID، timeout و خروجی محدود اجرا می‌شود. هیچ pull یا fallback میزبان وجود ندارد.
+- **دروازهٔ تأیید:** تأیید پیشنهاد اکنون مستلزم موفقیت بررسی نحوی، یکپارچگی ایستای آزمون‌ها و اجرای رفتاری موفق است. گزارش مشخص می‌کند آیا candidate اجرا شده و نتیجهٔ آزمون چه بوده است.
+- **پیکربندی:** تصویر تست باید توسط مدیر از Dockerfile مستندشده و base image رسمی digest-pinned ساخته و بازبینی شود؛ مقدار SANDBOX_TEST_IMAGE باید شناسهٔ immutable آن باشد. ساخت تصویر ممکن است به شبکه نیاز داشته باشد، اما اجرای آزمون آفلاین است.
+- **اعتبارسنجی:** PR [#195](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/195) ادغام شد؛ CI روی head دقیق a17ea846818898a9e12f6b2018441854250a029c در run [#38891641757](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38891641757) موفق شد. اعتبارسنجی واقعی end-to-end در PR [#196](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/196) انجام شد.
+
+## 110. 2026-10-16 — آزمون end-to-end در کانتینر CI
+
+- **هدف:** اطمینان از اینکه runner جدید واقعاً test suite را در کانتینر اجرا می‌کند، نه اینکه فقط فراخوانی Docker به‌صورت mock آزموده شده باشد.
+- **پیاده‌سازی:** CI یک تصویر dependency از base Python رسمی و digest-pinned می‌سازد، شناسهٔ image محلی را به runner می‌دهد، سپس کل test suite را از checkout فقط‌خواندنی با شبکهٔ غیرفعال اجرا می‌کند. آزمون‌های یکپارچگی واقعی Sandbox نیز جداگانه اجرا می‌شوند.
+- **اعتبارسنجی:** PR [#196](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/196) ادغام شد؛ اجرای CI روی head دقیق 81f55685fae6e2e9692c065e069d757c0cd72de6 در run [#38892119596](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892119596) و آزمون Docker واقعی در run [#38892119587](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892119587) موفق بود. CI پس از ادغام روی commit 0e984c681431332910ed8a4ef316ccdec917bbc2 در run [#38892296225](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892296225) و اجرای Docker واقعی در run [#38892296182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38892296182) نیز موفق بود.
