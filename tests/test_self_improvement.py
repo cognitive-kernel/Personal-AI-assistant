@@ -223,3 +223,53 @@ def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
     assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in page
     assert '"/api/self-improvement/proposals/"+item.id+"/static-check"' in page
     assert '"/api/self-improvement/proposals/"+item.id+"/approve"' in page
+
+
+
+def test_test_integrity_guard_rejects_removed_assertions(tmp_path):
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    (baseline / "tests").mkdir(parents=True)
+    (candidate / "tests").mkdir(parents=True)
+    original = "def test_contract():\n    assert value == 1\n    assert other == 2\n"
+    weakened = "def test_contract():\n    assert value == 1\n"
+    (baseline / "tests" / "test_contract.py").write_text(original, encoding="utf-8")
+    (candidate / "tests" / "test_contract.py").write_text(weakened, encoding="utf-8")
+
+    report = self_improvement._test_integrity_report(baseline, candidate)
+
+    assert report["status"] == "failed"
+    assert report["weakened_signals"][0]["reason"] == "test_assertions_or_exception_checks_reduced"
+    assert report["tests_executed"] is False
+
+
+def test_test_integrity_guard_rejects_added_skip_marker(tmp_path):
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    (baseline / "tests").mkdir(parents=True)
+    (candidate / "tests").mkdir(parents=True)
+    original = "import pytest\ndef test_contract():\n    assert value == 1\n"
+    weakened = "import pytest\n@pytest.mark.skip\ndef test_contract():\n    assert value == 1\n"
+    (baseline / "tests" / "test_contract.py").write_text(original, encoding="utf-8")
+    (candidate / "tests" / "test_contract.py").write_text(weakened, encoding="utf-8")
+
+    report = self_improvement._test_integrity_report(baseline, candidate)
+
+    assert report["status"] == "failed"
+    assert any(item["reason"] == "skip_or_xfail_markers_increased" for item in report["weakened_signals"])
+
+
+def test_test_integrity_guard_accepts_additive_test_coverage(tmp_path):
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    (baseline / "tests").mkdir(parents=True)
+    (candidate / "tests").mkdir(parents=True)
+    original = "def test_contract():\n    assert value == 1\n"
+    additive = original + "\ndef test_additional_contract():\n    assert value == 2\n"
+    (baseline / "tests" / "test_contract.py").write_text(original, encoding="utf-8")
+    (candidate / "tests" / "test_contract.py").write_text(additive, encoding="utf-8")
+
+    report = self_improvement._test_integrity_report(baseline, candidate)
+
+    assert report["status"] == "passed"
+    assert report["candidate_asserts"] > report["baseline_asserts"]
