@@ -54,8 +54,13 @@ _task_runtime: TaskRuntime | None = None
 def startup() -> None:
     global _task_runtime
     db.init_databases()
-    cloud_resources.initialize_store()
-    cloud_resources.ensure_daily_discovery_scheduled()
+    try:
+        cloud_resources.initialize_store()
+        cloud_resources.ensure_daily_discovery_scheduled()
+    except Exception:
+        # Cloud discovery is an optional subsystem; storage/network failures must not
+        # prevent the local chat and learning runtime from starting.
+        logger.exception("Cloud resource discovery could not be initialized or scheduled.")
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
     if _task_runtime is not None and _task_runtime.is_running:
