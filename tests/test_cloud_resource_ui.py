@@ -15,6 +15,9 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'expected_content_sha256:candidate.content_sha256' in page
     assert 'link.rel="noopener noreferrer"' in page
     assert 'source.protocol!=="https:"' in page
+    assert 'candidate.observed_claims||[]' in page
+    assert 'claim.evidence_quote' in page
+    assert 'ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)' in page
     # External source text must be rendered as text, never injected as markup.
     assert 'node.textContent=text' in page
     assert 'innerHTML' not in page
