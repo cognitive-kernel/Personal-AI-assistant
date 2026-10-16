@@ -19,6 +19,11 @@ def isolate_cloud_discovery_for_task_route_tests(tmp_path, monkeypatch):
         "ensure_daily_discovery_scheduled",
         lambda: {"status": "disabled_for_test"},
     )
+    monkeypatch.setattr(
+        cloud_resources,
+        "ensure_daily_plan_reevaluation_scheduled",
+        lambda: {"status": "disabled_for_test"},
+    )
 
 
 def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
