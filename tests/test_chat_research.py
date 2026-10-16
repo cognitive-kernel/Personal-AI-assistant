@@ -240,3 +240,47 @@ def test_research_answer_reports_cooperative_checkpoint_phases(monkeypatch):
     assert "draft_generation_completed" in phase_names
     assert "claim_review_completed" in phase_names
     assert "research_answer_completed" in phase_names
+
+
+def test_material_source_conflict_is_shown_to_user_without_repair_or_verification(monkeypatch):
+    source = _source()
+    second_url = "https://docs.example.org/alternate-guide"
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    chat_calls = []
+    monkeypatch.setattr(ollama, "chat", lambda *args, **kwargs: chat_calls.append((args, kwargs)) or "Draft answer")
+    conflict_review = {
+        "passed": False,
+        "overall": "insufficient_evidence",
+        "claims": [],
+        "source_conflicts": [{
+            "topic": "Default behavior",
+            "source_a_url": source.url,
+            "source_b_url": second_url,
+            "description": "The sources disagree on the default behavior.",
+        }],
+        "error": "source_conflicts_require_human_review",
+        "reviewer": "local_ollama_model_assisted_not_independent",
+    }
+    monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: conflict_review)
+    audit = {}
+    monkeypatch.setattr(
+        chat_research.chat_audit,
+        "record_research_run",
+        lambda **kwargs: audit.update(kwargs) or 1,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        chat_research,
+        "_capture_experience",
+        lambda _question, _answer, _sources, *, status: captured.update(status=status),
+    )
+
+    reply = chat_research.answer("How does this technical feature behave by default?")
+
+    assert "Retrieved sources materially disagree" in reply
+    assert source.url in reply
+    assert second_url in reply
+    assert len(chat_calls) == 1
+    assert audit["review_status"] == "needs_review"
+    assert captured["status"] == "needs_review"
