@@ -5,13 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from app.retrieval_evaluation import evaluate_ranked_queries, recall_at_k, reciprocal_rank
+from app.retrieval_evaluation import (
+    evaluate_ranked_queries,
+    precision_at_k,
+    recall_at_k,
+    reciprocal_rank,
+)
 
 
 def test_recall_at_k_and_reciprocal_rank():
     ranked = ["a", "b", "c", "d"]
     relevant = {"b", "d"}
     assert recall_at_k(ranked, relevant, k=2) == 0.5
+    assert precision_at_k(ranked, relevant, k=2) == 0.5
+    assert precision_at_k(ranked, relevant, k=4) == 0.5
     assert reciprocal_rank(ranked, relevant) == 0.5
     assert recall_at_k(ranked, {"missing"}, k=3) == 0.0
     assert reciprocal_rank(ranked, {"missing"}) == 0.0
@@ -40,6 +47,7 @@ def test_evaluate_ranked_queries_reports_recall_and_mrr():
     )
     assert result["query_count"] == 2
     assert result["recall_at_5"] == 1.0
+    assert result["precision_at_5"] == 0.3
     assert result["mrr"] == 0.75
     assert result["per_query"][0]["top_results"] == ["b", "a"]
 
@@ -75,6 +83,7 @@ def test_lexical_benchmark_runs_in_an_isolated_database(tmp_path):
     dataset = json.loads((root / "tests" / "fixtures" / "experience_retrieval_eval.json").read_text(encoding="utf-8"))
     assert report["query_count"] == len(dataset["queries"])
     assert 0.0 <= report["recall_at_5"] <= 1.0
+    assert 0.0 <= report["precision_at_5"] <= 1.0
     assert 0.0 <= report["mrr"] <= 1.0
     assert report["dataset_type"] == "synthetic_bilingual"
     assert report["retrieval_mode"] == "lexical_fallback_no_vectors_cached"
