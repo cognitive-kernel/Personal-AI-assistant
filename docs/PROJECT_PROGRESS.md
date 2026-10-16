@@ -2,7 +2,7 @@
 
 > Last verified: 2026-10-16 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Latest confirmed post-merge code CI: [run #38921600179](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38921600179) — success; test suite and deterministic retrieval benchmark passed for merge commit `5698afaaeb61eec08c75309fe9083fde3326e44d`. The subsequent documentation-only merge is awaiting its post-merge CI run.
+> Latest confirmed post-merge code CI: [run #38924927356](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924927356) — success; 529 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `e20b2ab4c842b5f53eda7a4f0d8f4e6e6de0adfe`.
 
 ## Executive status
 
@@ -52,3 +52,11 @@ The implementation log is the detailed record of merged changes and acceptance l
 3. Obtain an independent review for Issue #52.
 4. Exercise the full self-improvement proposal → sandbox test → human approval → staged promotion → rollback path.
 5. Run a documented restore drill and confirm the configured backup directory, disk capacity, and off-device protection policy.
+
+
+## 2026-10-16 update — bilingual answer-quality diagnostic runner
+
+- **Merged:** [PR #226](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/226), merge commit `e20b2ab4c842b5f53eda7a4f0d8f4e6e6de0adfe`.
+- **CI evidence:** [PR-head run #38924803334](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924803334) and [post-merge run #38924927356](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38924927356) succeeded; 529 passed, 4 skipped, and the deterministic retrieval benchmark passed.
+- **New runner:** `python scripts/run_answer_quality_eval.py --output reports/answer-quality-v1.json`; add `--redact-answers` to omit raw responses.
+- **Boundary:** this runner captures fingerprints, per-case source provenance metadata and lexical diagnostics. It does not provide semantic adjudication, an immutable model digest, or a fully replayable live web corpus. No live-model evaluation has been run by CI; a local Ollama run and human review remain required.
