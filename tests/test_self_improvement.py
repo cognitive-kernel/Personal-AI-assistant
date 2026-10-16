@@ -232,7 +232,8 @@ def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
     )
     assert 'id="self-improvement-section"' in page
     assert "SELF_IMPROVEMENT_REPO_ROOT" in page
-    assert "هیچ کدی اجرا یا اعمال نمی‌شود" in page
+    assert "کد پیشنهادی فقط داخل کانتینر اجرا می‌شود" in page
+    assert "آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند" in page
     assert "تأیید برای بررسی PR" in page
     assert '"/api/self-improvement/proposals/"+item.id+"/validate"' in page
     assert '"/api/self-improvement/proposals/"+item.id+"/static-check"' in page
