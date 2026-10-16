@@ -14,10 +14,10 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 
-SandboxStatus = Literal["succeeded", "failed", "timed_out", "output_limit_exceeded", "unavailable"]
+SandboxStatus = Literal["succeeded", "failed", "timed_out", "paused", "cancelled", "output_limit_exceeded", "unavailable"]
 
 
 @dataclass(frozen=True)
@@ -101,6 +101,7 @@ def run_python(
     image: str,
     timeout_seconds: int = 10,
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
+    control_check: Callable[[], str] | None = None,
 ) -> SandboxResult:
     """Run one Python file in a bounded, no-network Docker container."""
     if not isinstance(source_code, str) or not source_code.strip():
@@ -207,7 +208,26 @@ def run_python(
             reader.start()
 
         timed_out = False
+        interrupted_status: str | None = None
+        interruption_reason: str | None = None
         while process.poll() is None:
+            if control_check is not None:
+                try:
+                    control = control_check()
+                except Exception:
+                    control = "control_unavailable"
+                if control in {"pause_requested", "paused"}:
+                    interrupted_status = "paused"
+                    interruption_reason = "Sandbox stopped at a task pause request."
+                elif control in {"cancel_requested", "cancelled"}:
+                    interrupted_status = "cancelled"
+                    interruption_reason = "Sandbox stopped at a task cancellation request."
+                elif control != "running":
+                    interrupted_status = "cancelled"
+                    interruption_reason = "Sandbox stopped because task control/lease state was unavailable."
+                if interrupted_status is not None:
+                    _stop_process(process)
+                    break
             if overflow.is_set():
                 _stop_process(process)
                 break
@@ -223,6 +243,11 @@ def run_python(
         duration_ms = int((time.monotonic() - started) * 1000)
         stdout = stdout_buffer.decode("utf-8", errors="replace")
         stderr = stderr_buffer.decode("utf-8", errors="replace")
+        if interrupted_status is not None:
+            return SandboxResult(
+                interrupted_status, exit_code, stdout, stderr, duration_ms,
+                interruption_reason,
+            )
         if timed_out:
             return SandboxResult(
                 "timed_out", exit_code, stdout, stderr, duration_ms,
