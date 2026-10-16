@@ -15,7 +15,7 @@ The container is started with:
 - a strict timeout and bounded stdout/stderr per stream;
 - a restricted environment for the Docker CLI, with application/Kaggle secrets excluded.
 
-The source file is stored in a temporary directory and removed after the Docker client exits. The result separates `succeeded`, `failed`, `timed_out`, `output_limit_exceeded`, and `unavailable`. Lack of Docker never falls back to running source code directly on the host.
+The source file is stored in a temporary directory and removed after the Docker client exits. The result separates `succeeded`, `failed`, `timed_out`, `paused`, `cancelled`, `output_limit_exceeded`, and `unavailable`. A supplied task-control callback is checked while the container runs; pause, cancellation, or loss of control/lease state stops the Docker client and fails closed. Lack of Docker never falls back to running source code directly on the host.
 
 ## Image and setup requirements
 
