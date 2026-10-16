@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from . import chat_research, cloud_resources, curricula, db, learning, ollama, task_manager
+from . import chat_research, cloud_resources, curricula, db, learning, ollama, sandbox_tasks, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -68,11 +68,15 @@ def startup() -> None:
     settings = db.get_settings()
     configured_workers = int(settings.get("learning_max_concurrent_jobs", 1))
     worker_count = max(1, min(8, configured_workers))
+    handlers = {
+        LEARNING_TASK_TYPE: handle_learning_job,
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
+    }
+    sandbox_handler = sandbox_tasks.handler_from_environment()
+    if sandbox_handler is not None:
+        handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
     _task_runtime = TaskRuntime(
-        {
-            LEARNING_TASK_TYPE: handle_learning_job,
-            cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
-        },
+        handlers,
         worker_count=worker_count,
         poll_interval=0.5,
         lease_seconds=300,
