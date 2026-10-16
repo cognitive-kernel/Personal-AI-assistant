@@ -1065,6 +1065,14 @@ async function refreshSelfImprovement() {
     catch(error){output.textContent=error.message;}
    });
    card.append(eventButton);
+   const diffButton=document.createElement("button");
+   diffButton.type="button";
+   diffButton.textContent="مشاهدهٔ diff";
+   diffButton.addEventListener("click",async()=>{
+    try { const detail=await api("/api/self-improvement/proposals/"+item.id); output.textContent=detail.proposal.patch; }
+    catch(error){output.textContent=error.message;}
+   });
+   card.append(diffButton);
    if(item.status==="proposed") {
     const validate=document.createElement("button");
     validate.type="button";
