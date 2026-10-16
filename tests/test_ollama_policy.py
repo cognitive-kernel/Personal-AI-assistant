@@ -132,3 +132,103 @@ def test_ollama_request_does_not_follow_redirects_to_non_loopback(
         finally:
             redirect_server.shutdown()
             redirect_thread.join(timeout=2)
+
+
+
+def test_ollama_request_ignores_environment_configured_proxies(
+    tmp_path, monkeypatch
+):
+    import json
+    import threading
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    target_requests = []
+    proxy_requests = []
+
+    class TargetHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            target_requests.append(self.path)
+            body = json.dumps({"models": []}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    class ProxyHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            proxy_requests.append(self.path)
+            body = b'{"proxied": true}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler) as target, ThreadingHTTPServer(
+        ("127.0.0.1", 0), ProxyHandler
+    ) as proxy:
+        threads = [
+            threading.Thread(target=server.serve_forever, daemon=True)
+            for server in (target, proxy)
+        ]
+        for thread in threads:
+            thread.start()
+        try:
+            monkeypatch.setattr(
+                urllib.request,
+                "getproxies",
+                lambda: {"http": f"http://127.0.0.1:{proxy.server_port}"},
+            )
+            monkeypatch.setattr(urllib.request, "proxy_bypass", lambda host: False)
+            configure_ollama_url(
+                tmp_path,
+                monkeypatch,
+                f"http://127.0.0.1:{target.server_port}",
+            )
+            assert ollama._request("/api/tags") == {"models": []}
+            assert target_requests == ["/api/tags"]
+            assert proxy_requests == []
+        finally:
+            for server in (target, proxy):
+                server.shutdown()
+            for thread in threads:
+                thread.join(timeout=2)
+
+
+def test_ollama_request_rejects_oversized_response(tmp_path, monkeypatch):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class LargeResponseHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'{"models":[]}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    monkeypatch.setattr(ollama, "_MAX_RESPONSE_BYTES", 8)
+    with ThreadingHTTPServer(("127.0.0.1", 0), LargeResponseHandler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            configure_ollama_url(
+                tmp_path,
+                monkeypatch,
+                f"http://127.0.0.1:{server.server_port}",
+            )
+            with pytest.raises(ollama.OllamaError, match="exceeded the 8 MiB limit"):
+                ollama._request("/api/tags", timeout=2)
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
