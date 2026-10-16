@@ -125,7 +125,7 @@ def test_client_runs_only_fixed_read_only_compute_limits_command(tmp_path, monke
     )
 
     args = captured["args"]
-    assert args[:6] == [
+    assert args[:7] == [
         str(executable), "--config-file", str(config), "--profile",
         "DEFAULT", "--region", REGION,
     ]
