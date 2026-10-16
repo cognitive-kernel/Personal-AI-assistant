@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from . import chat_audit, claim_review, experience, experience_capture_consent, ollama, web_sources
@@ -161,6 +162,7 @@ def _capture_experience(
         {
             "url": source["url"][:1000],
             "claim": (source["title"] + ": " + source["content"][:400])[:1200],
+            "observed_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         }
         for source in sources[:3]
         if source.get("url", "").startswith("https://") and source.get("content")
