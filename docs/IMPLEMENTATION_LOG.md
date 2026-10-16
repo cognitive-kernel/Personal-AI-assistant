@@ -739,5 +739,18 @@
 - [x] نتیجهٔ review در `quality_json` ذخیره می‌شود؛ وضعیت جداگانهٔ `passed_model_assisted`, `needs_review` یا `no_usable_sources` دارد و رویداد audit در `learning_evidence` ثبت می‌شود.
 - [x] شکست/عدم دسترسی reviewer مانع ذخیرهٔ درس با کیفیت قابل قبول نمی‌شود، اما وضعیت claim review به `needs_review` می‌رود و `knowledge_items.status` همچنان `unverified` می‌ماند.
 - [x] تست‌های parser منبع، نتیجهٔ review موفق/ناموفق، ثبت evidence و عدم promotion به verified اضافه شدند.
-- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] **PR #121** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/121)، commit `b2d5437d75888e7ad8afe4891e65fd3b9bb1642f`.
+- [x] CI روی head دقیق `2a863f927fe23710b19b06399b4b9a3579eea789` موفق بود؛ run [#38839885398](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38839885398)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 228 passed.
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** اتصال محدود به chat endpoint با سیاست پاسخ معمول در صورت عدم دسترسی به منبع، سپس آزمون کیفیت بازیابی Recall@5/MRR روی پرس‌وجوهای فارسی و انگلیسی.
+
+
+## 50. 2026-10-16 — اتصال بازیابی تجربه و claim review به chat
+
+- [x] `ollama.chat()` پارامتر system prompt قابل‌اعتماد می‌پذیرد و آن را قبل از تاریخچهٔ user/assistant قرار می‌دهد؛ نقش‌های system ورودی از history کاربر پذیرفته نمی‌شوند.
+- [x] `app/chat_research.py` برای small talk از مسیر مستقیم استفاده می‌کند و برای پرس‌وجوهای فنی/پژوهشی تا سه منبع عمومی، حافظهٔ تجربهٔ تأییدشده و هشدارهای شکست را گردآوری می‌کند.
+- [x] پاسخ با دستورالعمل URL دقیق تولید می‌شود، با claim reviewer بررسی می‌شود و حداکثر یک بار اصلاح می‌شود؛ اگر منبع/بازبین در دسترس نباشد یا بررسی نهایی شکست بخورد، پاسخ همراه یادداشت عدم‌قطعیت برمی‌گردد.
+- [x] مسیر chat در `app/main.py` به research loop وصل شد؛ تست‌ها routing، system prompt، context حافظه، نبود منبع، repair محدود و fallback را پوشش می‌دهند.
+- [x] محدودیت‌ها در `docs/architecture/RESEARCH_AWARE_CHAT.md` ثبت شدند.
+- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** ثبت audit پایدار برای پاسخ‌های پژوهشی و منابع استفاده‌شده، سپس ساخت مجموعهٔ ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR.
