@@ -1,7 +1,7 @@
-"""Reviewed, versioned schema definitions for fresh SQLite installations.
+"""Reviewed, versioned SQLite schema definitions and safe legacy initialization.
 
-The registry is intentionally not wired into application startup yet. Legacy
-adoption requires comparing a live database against reviewed fingerprints.
+Application startup uses this registry. Legacy schemas are adopted only after
+matching a reviewed canonical fingerprint; unknown schemas fail closed.
 """
 from __future__ import annotations
 
@@ -160,6 +160,46 @@ LEARNING_MIGRATIONS = (
         4,
         "learning-job-lesson-review-context",
         ("ALTER TABLE learning_jobs ADD COLUMN lesson_review_json TEXT",),
+    ),
+    Migration(
+        5,
+        "learning-experience-memory",
+        (
+            """CREATE TABLE IF NOT EXISTS learning_experiences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic TEXT NOT NULL,
+                problem TEXT NOT NULL,
+                hypothesis TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'identified'
+                    CHECK(status IN ('identified','researching','ready_to_test','testing',
+                                     'verified','failed','needs_review')),
+                source_evidence_json TEXT NOT NULL DEFAULT '[]',
+                test_plan_json TEXT NOT NULL DEFAULT '[]',
+                test_results_json TEXT NOT NULL DEFAULT '[]',
+                takeaway TEXT NOT NULL DEFAULT '',
+                version INTEGER NOT NULL DEFAULT 1 CHECK(version >= 1),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_learning_experiences_topic ON learning_experiences(topic, id DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_learning_experiences_status ON learning_experiences(status, id DESC)",
+            """CREATE TABLE IF NOT EXISTS learning_experience_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                experience_id INTEGER NOT NULL REFERENCES learning_experiences(id) ON DELETE CASCADE,
+                version INTEGER NOT NULL CHECK(version >= 1),
+                topic TEXT NOT NULL,
+                problem TEXT NOT NULL,
+                hypothesis TEXT NOT NULL,
+                status TEXT NOT NULL,
+                source_evidence_json TEXT NOT NULL,
+                test_plan_json TEXT NOT NULL,
+                test_results_json TEXT NOT NULL,
+                takeaway TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(experience_id, version)
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_experience_versions_lookup ON learning_experience_versions(experience_id, version DESC)",
+        ),
     ),
 )
 

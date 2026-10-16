@@ -677,11 +677,27 @@
 - **گام بعدی:** افزودن regression test برای redirect امنیتی Ollama، سپس fault-injection در commitهای learning/task و آزمون pause/cancel پس از restart.
 
 
-## 45. 2026-10-16 — انتقال اصلاح دانلود partial به main فعلی
+## 45. 2026-10-16 — انتقال و ادغام اصلاح دانلود partial
 
-- [x] PR قدیمی #19 بر پایهٔ main قدیمی بود و با main فعلی conflict داشت؛ تغییرات به شاخهٔ تازهٔ `fix/strict-installer-range-current-main` منتقل شد، بدون ادغام شاخهٔ قدیمی.
-- [x] `run.py` اکنون پاسخ HTTP 206 را فقط برای درخواست Range معتبر، با `Content-Range` دقیق و offset منطبق می‌پذیرد؛ پاسخ نامعتبر یا ناقص فایل موقت را حفظ می‌کند و نمی‌تواند fragment را به‌عنوان installer کامل ثبت کند.
-- [x] تست‌های mocked برای پاسخ 206 ناخواسته/نامعتبر، بازهٔ معتبر، پاسخ 200 هنگام نادیده‌گرفتن Range و طول ناقص پاسخ اضافه شدند.
-- [x] **PR #5** برای بهبود بازخورد retry درس با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/5)، commit `0150d4e30f97fab69fd805c9d64e29add8156092`. CI روی head دقیق `f41173bd166c17987663ad334b02b9441e883def` موفق بود؛ run [#38129271591](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38129271591).
-- [ ] CI روی head تازهٔ PR دانلود باید بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** تأیید CI دقیق PR جدید؛ سپس تعیین تکلیف PRهای قدیمی و stacked #8/#11/#13/#17 بدون از دست‌دادن قابلیت‌های مفید.
+- [x] PR قدیمی #19 بر پایهٔ main قدیمی بود و با main فعلی conflict داشت؛ تغییرات آن به شاخهٔ تازهٔ `fix/strict-installer-range-current-main` منتقل شد.
+- [x] `run.py` پاسخ HTTP 206 را فقط برای درخواست Range معتبر، با `Content-Range` دقیق و offset منطبق می‌پذیرد؛ پاسخ نامعتبر یا ناقص فایل موقت را حفظ می‌کند.
+- [x] تست‌های mocked برای پاسخ 206 نامعتبر، بازهٔ معتبر، پاسخ 200 هنگام نادیده‌گرفتن Range و طول ناقص پاسخ اضافه شدند.
+- [x] **PR #5** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/5)، commit `0150d4e30f97fab69fd805c9d64e29add8156092`; CI run [#38129271591](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38129271591) موفق بود.
+- [x] **PR #117** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/117)، commit `d10b78778ebc7e24f4d3c1917d224af89259f4d1`.
+- [x] CI روی head دقیق `7611467d5c55e11f8d3d14c2dbe362a57e964866` موفق بود؛ run [#38838734628](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38838734628)، شامل نصب وابستگی‌ها و `pytest`.
+- [x] PR قدیمی #19 به‌عنوان superseded بسته شد؛ تغییرات آن در #117 حفظ و ادغام شدند.
+- **گام بعدی:** ممیزی/انتقال مرحله‌ای حافظهٔ تجربه و بازیابی از شاخهٔ معماری قدیمی به migrationها و runtime فعلی.
+
+
+## 46. 2026-10-16 — پاک‌سازی PRهای قدیمی و آغاز حافظهٔ تجربهٔ نسخه‌بندی‌شده
+
+- [x] PR #8 (۴۸ فایل و conflict با main فعلی) بسته شد؛ علت: معماری قدیمی و حجم بزرگ تغییرات، نه تکمیل قابلیت‌ها. تجربه، بازیابی و claim review آن در main هنوز پیاده‌سازی نشده‌اند و باید مرحله‌ای بازسازی شوند.
+- [x] PRهای stacked #11 و #13 بسته شدند؛ جداسازی feedback غیرقابل‌اعتماد و تطبیق دقیق URL citation هنوز قابلیت‌های انتقال‌نیافته‌اند و نباید به‌عنوان پیاده‌سازی‌شده شمرده شوند.
+- [x] PR #17 بسته شد چون ممیزی وضعیت محصول بر SHA قدیمی main استوار بود؛ نیازمندی‌ها و log فعلی مرجع‌اند.
+- [x] PR #5 و #117 ادغام شدند؛ PR قدیمی #19 نیز پس از انتقال کامل تغییرات بسته شد.
+- [x] Issue #52 عمداً باز می‌ماند؛ بررسی امنیتی مستقل redirectهای Ollama هنوز انجام نشده و پیاده‌ساز نباید آن را به‌جای بازبین مستقل تأیید کند.
+- [x] migration نسخهٔ 5 برای `learning_experiences` و `learning_experience_versions` افزوده شد؛ تغییرات تجربه از مسیر migration نسخه‌بندی‌شده انجام می‌شوند، نه DDL پراکنده.
+- [x] `app/experience.py` و تست‌ها برای ثبت تجربه، evidence، طرح و نتیجهٔ تست، retrieval تفکیک‌شدهٔ موفق/ناموفق، تاریخچهٔ immutable و rollback کنترل‌شده منتقل شدند.
+- [x] CI نخستین head `802f1c3b475d3d18a31053c1864848f67c243f84` دو assertion قدیمیِ نسخهٔ جاری (هنوز 4 را انتظار داشتند) را شکست داد؛ 195 تست موفق و 2 تست شکست خوردند. هر دو انتظار به نسخهٔ 5 به‌روزرسانی شدند. run [#38838984888](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38838984888).
+- [ ] CI مجدد روی head اصلاح‌شده باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** پس از CI موفق، ادغام هستهٔ تجربه؛ سپس بازسازی retrieval hybrid و claim review در PRهای مستقل مبتنی بر main.
