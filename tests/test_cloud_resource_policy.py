@@ -196,3 +196,25 @@ def test_non_finite_cost_and_runtime_caps_never_pass_preflight():
     assert assessment["execution_authorized"] is False
     assert any("max_cost_usd" in item for item in assessment["review_needed"])
     assert any("max_session_minutes" in item for item in assessment["review_needed"])
+
+
+
+def test_malformed_untrusted_policy_fields_fail_closed_without_exceptions():
+    assessment = assess_candidate(
+        _candidate(quota={
+            "max_cost_usd": 10 ** 1000,
+            "auth_method": ["not", "a", "method"],
+            "selected_region": "us-east-1",
+            "allowed_regions": ["us-east-1"],
+            "max_session_minutes": 10 ** 1000,
+            "max_monthly_hours": 100,
+        }),
+        [_claim("cpu_count"), _claim("usage_quota"),
+         _claim("free_tier_mention", value="free tier"), _claim("region", value="us-east-1")],
+    )
+
+    assert assessment["status"] == "needs_review"
+    assert assessment["execution_authorized"] is False
+    assert any("max_cost_usd" in item for item in assessment["review_needed"])
+    assert any("max_session_minutes" in item for item in assessment["review_needed"])
+    assert any("Authentication method" in item for item in assessment["blockers"])
