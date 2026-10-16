@@ -6,9 +6,9 @@ paths. It reports enough state to guide recovery without exposing database conte
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import quote
 
 from .config import defaults
 from .schema_migrations import schema_fingerprint
@@ -48,7 +48,7 @@ def _inspect_database(name: str, raw_path: str, migrations: Iterable[Any]) -> di
         return base
 
     try:
-        with _connect_read_only(path) as connection:
+        with closing(_connect_read_only(path)) as connection:
             integrity_rows = connection.execute("PRAGMA integrity_check").fetchall()
             integrity_ok = len(integrity_rows) == 1 and integrity_rows[0][0] == "ok"
             base["integrity"] = "ok" if integrity_ok else "failed"
