@@ -44,7 +44,7 @@ class GenericPublicPageAdapter:
         ("monthly_compute_hours", re.compile(r"\b(?P<value>\d+(?:\.\d+)?)\s*(?:compute\s*)?hours?\s*(?:per|/)\s*month\b", re.I)),
         ("session_limit", re.compile(r"\b(?:maximum|max|up to|limited to|limit(?:ed)? to)\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>minutes?|hours?|hrs?)\s*(?:per\s+)?session\b", re.I)),
         ("session_limit", re.compile(r"\bsession(?: time)? limit\s*[:=]?\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>minutes?|hours?|hrs?)\b", re.I)),
-        ("credit_amount", re.compile(r"\b(?:USD\s*)?\$\s?(?P<value>\d+(?:\.\d{1,2})?)\s*(?:in\s+)?(?:cloud\s+)?credits?\b", re.I)),
+        ("credit_amount", re.compile(r"(?<!\w)(?:USD\s*)?\$\s?(?P<value>\d+(?:\.\d{1,2})?)\s*(?:in\s+)?(?:cloud\s+)?credits?\b", re.I)),
         ("price_rate", re.compile(r"\$\s?(?P<value>\d+(?:\.\d{1,2})?)\s*(?:/|per\s+)(?P<unit>hour|month)\b", re.I)),
         ("gpu_model", re.compile(r"\b(?:NVIDIA\s+)?(?P<value>A100|H100|T4|L4|V100|A10G|RTX\s?\d{3,4})\s*(?:GPU)?\b", re.I)),
         ("region", re.compile(r"\b(?P<value>us-east-1|us-west-1|us-west-2|eu-west-1|eu-central-1|ap-southeast-1|us-central1|europe-west\d|eastus|westus2|westeurope)\b", re.I)),
