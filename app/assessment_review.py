@@ -17,6 +17,10 @@ _ALLOWED_JUDGMENTS = {"matches", "partial", "incorrect", "uncertain"}
 _MAX_REVIEW_INPUT = 9000
 
 
+class SemanticReviewError(RuntimeError):
+    """The local model failed to produce a schema-valid advisory review."""
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -119,7 +123,10 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
             "Use uncertain when the provided material is insufficient."
         ),
     )
-    review = _parse_review(raw, len(questions))
+    try:
+        review = _parse_review(raw, len(questions))
+    except ValueError as exc:
+        raise SemanticReviewError("The local model returned an invalid semantic review.") from exc
     settings = get_settings()
     model = str(settings.get("ollama_model", "unknown"))[:120]
     created_at = _now()
