@@ -23,3 +23,8 @@ This is not a scheduler and does not enqueue tasks, contact provider APIs, acces
 ## Local dry-run API
 
 The loopback-only endpoint `POST /api/cloud-resources/plan` accepts a JSON object with `min_cpu_count`, `min_memory_gib`, `require_gpu`, `gpu_models`, and `allowed_provider_domains`. It evaluates stored candidates and returns the plan, per-candidate reasons, and policy review needs. It does not enqueue a task or call a provider client. Invalid numeric requirements return HTTP 422; non-loopback requests are rejected by the shared router dependency.
+
+
+## UI
+
+The local page includes a dry-run form for minimum CPU and memory, optional GPU/model requirements, and an optional provider-domain allowlist. Results are rendered as text, including per-candidate reasons. The form invokes only the loopback planning endpoint and cannot start remote execution.
