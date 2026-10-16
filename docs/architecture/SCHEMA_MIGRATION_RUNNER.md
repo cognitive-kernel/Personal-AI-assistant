@@ -17,7 +17,7 @@
 
 The registry is wired into `db.init_databases()` and `task_manager.initialize_task_store()`. Startup uses the registered settings and learning migrations, seeds missing default settings, and avoids the former scattered `CREATE TABLE`/`ALTER TABLE` schema logic. Before baseline adoption or a forward migration, an existing database receives a verified SQLite backup named `*.pre-migration-<UTC timestamp>.bak`. If its schema is unknown, startup fails without adopting it; the backup remains available for diagnosis. No existing live user database was modified as part of this change.
 
-Do not call `MigrationRunner.apply()` against current application databases until known legacy fingerprints are reviewed and startup adoption is implemented. Existing databases without history are intentionally rejected rather than automatically marked as current.
+Startup already uses `initialize_database_file()` and `initialize_connection()` for the settings and learning stores. Do not bypass those entry points for application databases: they create a verified pre-migration backup when needed, accept only a known schema fingerprint, check integrity, and reject unknown schema variants without adopting or modifying them.
 
 ## API outline
 
@@ -42,7 +42,7 @@ Each SQL statement must be a single statement supported by `Connection.execute()
 
 ## Next step
 
-Build reviewed migration definitions for the settings and learning schemas, with fresh-install migrations and explicit legacy adoption fixtures. Only after the schema signatures, backup/restore, and upgrade tests pass should startup use the runner and the ad-hoc `ALTER TABLE` operations be removed.
+Next: extend failure-injection coverage for interrupted learning/task reconciliation and continue provider-specific cloud adapter work only after official API/terms, authentication, quota, and cost limits have been documented. Remote execution remains disabled until the provider contract and mock/contract tests are complete.
 
 
 ## Legacy baseline adoption
@@ -71,7 +71,7 @@ The history stores the registered migration's checksum and the matched baseline 
 ## Registered application migrations
 
 - Settings database: version 1 creates the `settings` table.
-- Learning database: version 1 creates learning, assessment, path, and task tables without later-added columns; version 2 adds `learning_jobs.quality_json`; version 3 adds `learning_jobs.path_topic_id`, `task_queue.dedupe_key`, and the related indexes.
+- Learning database: version 1 creates learning, assessment, path, and task tables; versions 2–7 add quality/review context, path-topic/idempotency fields, learning experience memory and its rebuildable embedding cache, and chat research audit metadata. See `app/schema_registry.py` for the authoritative ordered registry.
 - `fingerprint_for_version()` builds a canonical schema fixture in memory from the registered migrations. These fingerprints are candidates for explicit baseline matching, not permission to accept any live schema.
 
 
