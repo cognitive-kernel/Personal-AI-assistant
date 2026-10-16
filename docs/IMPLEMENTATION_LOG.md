@@ -1261,8 +1261,16 @@
 
 ## 93. Ollama loopback hostname hardening
 
-- Status: implemented on branch `security/normalize-localhost-ollama-20261016`; CI validation pending.
-- Exact `localhost` is normalized to the literal loopback address `127.0.0.1`, preventing hosts-file/DNS resolution from changing the destination. Only loopback IP literals or exact `localhost` are accepted.
+- Status: merged in PR #174; exact-head GitHub Actions run #38863235410 succeeded.
+- Exact `localhost` is normalized to the literal loopback address `127.0.0.1`, preventing hosts-file/DNS resolution from changing the destination. Only loopback IP literals or exact `localhost` are accepted; IPv4-mapped IPv6 spellings are rejected.
 - Added validation for invalid ports and malformed UTF-8 response bodies; redirect blocking, proxy isolation, response byte caps, and timeout behavior remain in place.
 - Added regression cases for deceptive localhost suffixes, DNS aliases, integer/leading-zero IPv4 forms, IPv4-mapped IPv6, invalid ports, and invalid UTF-8.
 - Added `docs/security/OLLAMA_LOOPBACK_HARDENING.md`. Issue #52 remains open because this is not an independent security review.
+
+## 94. Real-Docker sandbox integration workflow
+
+- Status: implemented on branch `test/sandbox-real-docker-integration-20261016`; CI validation pending.
+- Added an opt-in `sandbox_integration` test suite that uses a real preloaded, digest-pinned official Python image.
+- The suite inspects the actual container configuration (network mode, read-only root, dropped capabilities, no-new-privileges, non-root user, memory/PID limits, and read-only workspace mount) and exercises network isolation, timeout, output limits, and no host fallback.
+- Added manual `.github/workflows/sandbox-integration.yml`; the operator must supply an official image digest. The regular CI run skips these tests unless explicitly enabled.
+- Added documentation describing the workflow and its scope. Local Docker tests were not run in this environment; exact-head CI validates default-suite compatibility, while the manual workflow must be run with an approved image digest to validate actual container behavior.
