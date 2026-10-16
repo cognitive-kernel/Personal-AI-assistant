@@ -114,3 +114,8 @@ Migration `learning-experience-memory` adds `learning_experiences` and immutable
 ## Learning schema version 6
 
 Migration `learning-experience-embedding-cache` adds a rebuildable local embedding cache keyed by experience ID, immutable experience version, and embedding-model name. It is a derived index: canonical experience records remain authoritative, stale vectors are not used for newer versions, and the cache can be deleted/rebuilt without losing experience data. Version 5 databases are backed up and upgraded through the normal migration path.
+
+
+## Learning schema version 7
+
+Migration `chat-research-audit-metadata` adds `chat_research_runs`. It stores hashes of the user query and final answer, source URL/title and content hashes, review status/summary, references to experience IDs and versions, duration, and timestamp. Raw questions, answers, and source excerpts are deliberately excluded. This is audit metadata, not a conversation archive.
