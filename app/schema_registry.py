@@ -1,7 +1,7 @@
-"""Reviewed, versioned schema definitions for fresh SQLite installations.
+"""Reviewed, versioned SQLite schema definitions and safe legacy initialization.
 
-The registry is intentionally not wired into application startup yet. Legacy
-adoption requires comparing a live database against reviewed fingerprints.
+Application startup uses this registry. Legacy schemas are adopted only after
+matching a reviewed canonical fingerprint; unknown schemas fail closed.
 """
 from __future__ import annotations
 
