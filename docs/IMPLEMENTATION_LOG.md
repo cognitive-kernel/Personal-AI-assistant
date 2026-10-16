@@ -1122,5 +1122,18 @@
 - [x] thread نگهداری تا پایان اولین poll کارگر منتظر می‌ماند تا lease reconciliation پیش از cleanup اجرا شود.
 - [x] خطای callback ثبت می‌شود و اجرای بعدی پس از فاصلهٔ تعیین‌شده ادامه می‌یابد؛ shutdown همچنان مهلت مشترک و محدود دارد.
 - [x] تستی اضافه شد که maintenance را عمداً مسدود می‌کند و ثابت می‌کند workerها همچنان وظیفهٔ جدید را اجرا می‌کنند.
+- [x] **PR #156** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/156)، commit ادغام `da3b73ff668d3f7c5c1659672bf384dcec5b589a`.
+- [x] CI روی head دقیق `dedb07c86fbd3b079de05f9b16b7f64681b8efef` موفق بود؛ run [#38858467388](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38858467388).
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** افزودن یک adapter منبع‌محور دیگر برای مستندات رسمی Always Free و نگه‌داشتن provisioning/remote execution در حالت غیرفعال تا بررسی حساب، سهمیه و مجوزها.
+
+
+## 81. 2026-10-16 — آداپتر منبع‌محور Oracle Cloud Always Free
+
+- [x] آداپتر جدید فقط مسیر دقیق مستندات رسمی OCI Always Free را می‌پذیرد؛ query/fragment، HTTP، مسیرهای دیگر و دامنه‌های مشابه رد می‌شوند.
+- [x] claimهای صریح شکل ماشین، OCPU، RAM، سهمیه ماهانه، محدودیت home region، کمبود موقت ظرفیت و احتمال reclaim شدن ماشین idle استخراج می‌شوند.
+- [x] تست‌ها URL allowlist و مقادیر استخراج‌شده/شواهد متنی را بررسی می‌کنند؛ claimها خودکار تأیید نمی‌شوند.
+- [x] مستندات توضیح می‌دهند این offer پردازنده‌ای است نه GPU، و API واقعی به credentials/OCID و امضای درخواست نیاز دارد.
+- [ ] provisioning، credential access و اجرای remote عمداً اضافه نشده‌اند؛ `execution_authorized=false` باقی می‌ماند.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** CI/ادغام و ممیزی نهایی وضعیت GitHub و باقیمانده‌های مرحلهٔ ۹.
+- **گام بعدی:** CI و ادغام؛ سپس بررسی providerهای بیشتر با API رسمی و محدودیت هزینه/شرایط روشن، بدون افزودن issueهای تکراری.
