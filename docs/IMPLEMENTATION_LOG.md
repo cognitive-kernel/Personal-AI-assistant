@@ -1050,5 +1050,17 @@
 - [x] فرم اجرای Python محدودیت‌های API را منعکس می‌کند: حداکثر 64 KiB کد، timeout تا 120 ثانیه و خروجی تا 64 KiB؛ وضعیت و نتیجه از task API خوانده می‌شود.
 - [x] دکمهٔ لغو اجرای فعال به `POST /api/tasks/{id}/cancel` متصل شد؛ در صورت خطای خواندن وضعیت، اجرای جدید fail-closed باقی می‌ماند.
 - [x] تست‌های قرارداد UI بررسی وجود endpointها، حدود ورودی و غیرفعال ماندن اجرا هنگام شکست دریافت وضعیت را اضافه کردند.
+- [x] **PR #150** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/150)، commit ادغام `ebbcbb85c9f9b2781c2af4fbfacc1b1a922851ae`.
+- [x] CI روی head دقیق `0b8275dcebc4dfcc6bfc008b97de2ce50289f854` موفق شد؛ run [#38856734081](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38856734081)، شامل مجموعه تست و benchmark واژگانی.
+- [x] PR #149 به‌عنوان تکراری/قدیمی بسته شد و PR #150 از head به‌روز main ساخته شد؛ از این پس تنها PR جایگزین دنبال می‌شود.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** آزمون crash recovery برای وظایف sandbox و هماهنگی آن با lease/retry.
+
+
+## 75. 2026-10-16 — بازیابی وظیفهٔ sandbox پس از crash بدون اجرای تکراری
+
+- [x] تست اختصاصی صف نشان می‌دهد وظیفهٔ `sandbox.run_python` با `max_attempts=1` پس از انقضای lease به `failed` می‌رسد و پس از restart/claim مجدد به‌صورت خودکار اجرا نمی‌شود.
+- [x] checkpoint مرحلهٔ شروع و hash منبع پس از crash حفظ می‌شود؛ lease آزاد می‌شود و دلیل پایان به‌صورت روشن ثبت می‌ماند.
+- [x] این رفتار با سیاست sandbox همسو است: اجرای دلخواه کد idempotent فرض نمی‌شود و اجرای مجدد خودکار ممکن است اثر جانبی تکراری داشته باشد.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** اجرای CI روی head دقیق PR، سپس ادغام؛ بعد بررسی crash recovery برای وظایف sandbox و هماهنگی با lease/retry.
+- **گام بعدی:** CI و ادغام؛ سپس ارزیابی cleanup صریح containerهای orphan شده با درنظرگرفتن چندپردازه‌ای بودن سرور و عدم حذف container متعلق به worker فعال.
