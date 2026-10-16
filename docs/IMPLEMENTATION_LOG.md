@@ -912,5 +912,20 @@
 - [x] وضعیت راهنما اصلاح شد: startup از قبل از `initialize_database_file()` برای دیتابیس‌های settings و learning استفاده می‌کند؛ متن‌های قدیمی که می‌گفتند اتصال startup هنوز انجام نشده حذف شدند.
 - [x] شماره نسخه‌های ثبت‌شدهٔ schema در راهنما به migrationهای فعلی تا نسخهٔ ۷ به‌روز شد.
 - [x] گام بعدی با وضعیت واقعی هماهنگ شد: fault-injection در reconciliation صف/یادگیری و سپس adapterهای ابری فقط پس از مستندسازی API/شرایط رسمی، احراز هویت، quota و هزینه. اجرای راه‌دور همچنان غیرفعال است.
-- [ ] تست محلی اجرا نشده است؛ این تغییر مستنداتی است و باید CI روی head دقیق PR بررسی شود.
-- [ ] وضعیت GitHub در بررسی این مرحله: صفر PR باز؛ issue #52 تنها issue باز است و برای بازبینی مستقل مرز شبکهٔ Ollama عمداً باز می‌ماند.
+- [x] **PR #136** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/136)، commit ادغام `f0106fb7f6b41a56afa6fc2e7d8f0c16ffb731af`.
+- [x] CI روی head دقیق `19b7f20782fc20f866aa2959e252471f401eeab3` موفق بود؛ run [#38850925092](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38850925092)، شامل `pytest` و benchmark واژگانی.
+- [ ] تست محلی اجرا نشده است.
+- [x] در ممیزی backlog پیش از ساخت PR جدید، صفر PR باز و فقط issue #52 باز بود؛ issue امنیتی عمداً باز می‌ماند تا بازبین مستقل آن را بررسی کند.
+
+
+## 64. 2026-10-16 — اولین آداپتر استخراج منبع‌محور برای مستندات Kaggle CLI
+
+- [x] قرارداد آداپتر اکنون URL کامل منبع را می‌گیرد تا انتخاب provider صرفاً بر اساس دامنهٔ عمومی `github.com` انجام نشود.
+- [x] آداپتر Kaggle فقط مسیرهای مشخص مستندات رسمی `Kaggle/kaggle-cli` را می‌پذیرد و نام acceleratorها و عملیات CLI را فقط وقتی متن صریحاً وجود دارد استخراج می‌کند.
+- [x] ادعاهای جدید نوع `provider_accelerator_option` و `provider_operation` صرفاً شواهد مستنداتی‌اند؛ از آن‌ها quota، entitlement، قیمت یا مجوز اجرای راه‌دور استنتاج نمی‌شود.
+- [x] `cloud_resources.py` URL منبع را به adapter می‌دهد؛ fallback عمومی برای منابع دیگر حفظ شد.
+- [x] تست‌ها تشخیص URL رسمی، رد مسیر/دامنهٔ مشابه، استخراج فقط شواهد موجود و حفظ fallback عمومی را پوشش می‌دهند.
+- [x] مستندات رسمی مرجع و محدودیت‌ها در `docs/architecture/CLOUD_RESOURCE_DISCOVERY.md` ثبت شد.
+- [ ] هیچ اجرای remote یا فراخوانی Kaggle CLI اضافه نشده است؛ authentication، quota و شرایط دقیق اجرای unattended هنوز نیازمند بررسی جداگانه‌اند.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** اجرای contract tests برای آداپتر استخراج، سپس بررسی رسمی سهمیه/محدودیت Kaggle و سیاست استفاده قبل از طراحی آداپتر اجرای remote. اجرای remote تا آن زمان خاموش بماند.

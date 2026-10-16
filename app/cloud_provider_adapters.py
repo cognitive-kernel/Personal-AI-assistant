@@ -6,6 +6,7 @@ No model is asked to infer missing limits and no claim is accepted automatically
 from __future__ import annotations
 
 import re
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -22,7 +23,7 @@ class ExtractedResourceClaim:
 class CloudProviderAdapter(Protocol):
     adapter_id: str
 
-    def matches(self, domain: str) -> bool: ...
+    def matches(self, domain: str, source_url: str | None = None) -> bool: ...
 
     def extract_claims(self, title: str, text: str) -> list[ExtractedResourceClaim]: ...
 
@@ -30,6 +31,74 @@ class CloudProviderAdapter(Protocol):
 def _number(value: str) -> int | float:
     number = float(value)
     return int(number) if number.is_integer() else number
+
+
+class KaggleCliDocsAdapter:
+    """Extract documented Kaggle CLI options, not account-specific quota or entitlement."""
+
+    adapter_id = "kaggle-cli-docs-v1"
+    _official_paths = {
+        "/kaggle/kaggle-cli/blob/main/docs/kernels.md",
+        "/kaggle/kaggle-cli/blob/main/skills/references/kernels.md",
+    }
+    _accelerators = (
+        "NvidiaTeslaT4",
+        "NvidiaTeslaA100",
+        "NvidiaL4",
+        "TpuV5E8",
+        "TpuV6E8",
+        "NvidiaH100",
+        "NvidiaRtxPro6000",
+    )
+    _operations = (
+        "kaggle kernels push",
+        "kaggle kernels status",
+        "kaggle kernels output",
+        "kaggle kernels logs",
+    )
+
+    def matches(self, domain: str, source_url: str | None = None) -> bool:
+        if not isinstance(source_url, str):
+            return False
+        parsed = urllib.parse.urlsplit(source_url)
+        return (
+            parsed.scheme == "https"
+            and (parsed.hostname or "").casefold() == "github.com"
+            and parsed.path.casefold() in self._official_paths
+            and not parsed.query
+            and not parsed.fragment
+            and domain.casefold().strip(".") == "github.com"
+        )
+
+    def extract_claims(self, title: str, text: str) -> list[ExtractedResourceClaim]:
+        content = f"{title}\n{text}"
+        claims: list[ExtractedResourceClaim] = []
+        for accelerator in self._accelerators:
+            pattern = re.compile(rf"(?<![A-Za-z0-9]){re.escape(accelerator)}(?![A-Za-z0-9])")
+            for match in pattern.finditer(content):
+                claims.append(
+                    ExtractedResourceClaim(
+                        claim_type="provider_accelerator_option",
+                        value=accelerator,
+                        unit="documented CLI option; account entitlement and availability unverified",
+                        evidence_quote=" ".join(match.group(0).split()),
+                        adapter_id=self.adapter_id,
+                    )
+                )
+        folded = content.casefold()
+        for operation in self._operations:
+            if operation.casefold() in folded:
+                claims.append(
+                    ExtractedResourceClaim(
+                        claim_type="provider_operation",
+                        value=operation,
+                        unit="documented CLI operation; not an execution authorization",
+                        evidence_quote=operation,
+                        adapter_id=self.adapter_id,
+                    )
+                )
+        # Keep each claim tied to text that actually appeared in the fetched document.
+        return claims[:40]
 
 
 class GenericPublicPageAdapter:
@@ -52,7 +121,7 @@ class GenericPublicPageAdapter:
         ("usage_quota", re.compile(r"\b(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>hours?|credits?|requests?|tokens?)\s*(?:per|/)\s*(?P<period>month|day|week)\b", re.I)),
     )
 
-    def matches(self, domain: str) -> bool:
+    def matches(self, domain: str, source_url: str | None = None) -> bool:
         return bool(domain)
 
     def extract_claims(self, title: str, text: str) -> list[ExtractedResourceClaim]:
@@ -99,16 +168,20 @@ class GenericPublicPageAdapter:
         return claims
 
 
-_ADAPTERS: tuple[CloudProviderAdapter, ...] = (GenericPublicPageAdapter(),)
+_ADAPTERS: tuple[CloudProviderAdapter, ...] = (
+    KaggleCliDocsAdapter(),
+    GenericPublicPageAdapter(),
+)
 
 
 def extract_resource_claims(
     domain: str,
     title: str,
     text: str,
+    source_url: str | None = None,
 ) -> list[ExtractedResourceClaim]:
-    """Select a matching adapter; fallback claims remain unreviewed and evidence-bound."""
+    """Select a source-aware adapter; extracted claims always remain unreviewed."""
     for adapter in _ADAPTERS:
-        if adapter.matches(domain):
+        if adapter.matches(domain, source_url):
             return adapter.extract_claims(title, text)
     return []

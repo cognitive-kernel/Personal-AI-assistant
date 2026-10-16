@@ -270,6 +270,7 @@ def discover_resources(
                     candidate["provider_domain"],
                     candidate["title"],
                     candidate["normalized_text"],
+                    source_url=candidate["source_url"],
                 )
                 for claim in claims:
                     value_json = json.dumps(
