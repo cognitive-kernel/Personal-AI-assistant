@@ -18,10 +18,20 @@ from app.schema_registry import (
 def test_settings_schema_can_be_created_from_versioned_migrations():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(SETTINGS_MIGRATIONS)
-        assert runner.apply(connection) == 1
-        assert runner.apply(connection) == 1
+        assert runner.apply(connection) == 2
+        assert runner.apply(connection) == 2
         columns = {row[1] for row in connection.execute("PRAGMA table_info(settings)")}
         assert {"key", "value_json", "updated_at"} <= columns
+        consent_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(sandbox_execution_consent)")
+        }
+        assert {"enabled", "policy_version", "consented_at", "revoked_at"} <= consent_columns
+        assert connection.execute(
+            "SELECT enabled FROM sandbox_execution_consent WHERE id=1"
+        ).fetchone() == (0,)
+        assert connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        ).fetchall() == [(1,), (2,)]
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
