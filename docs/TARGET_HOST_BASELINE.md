@@ -1,0 +1,31 @@
+# Target-host acceptance baseline
+
+This tool creates a redacted report for the exact checkout and configured local SQLite stores. It is a preparation step for target-machine acceptance, not a security certification or a model-quality result.
+
+Run from the repository root in the intended Python environment:
+
+```bash
+python scripts/run_target_host_baseline.py
+python scripts/run_target_host_baseline.py --run-tests --output /path/outside/repository/target-host-baseline.json
+```
+
+On Windows PowerShell, use an absolute output path appropriate to the host, for example:
+
+```powershell
+python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target-host-baseline.json
+```
+
+## What it checks
+
+- Exact Git commit and whether the working tree is clean.
+- Python/platform metadata and installed package versions.
+- Read-only health of the configured settings, learning, and cloud-resource SQLite stores: integrity, foreign-key violations, migration history, schema fingerprint, and expected schema version.
+- When `--run-tests` is supplied, the full pytest suite's exit code and JUnit counts.
+
+## Safety and interpretation
+
+- Storage diagnostics open existing databases in read-only mode. They do not create databases, migrate schemas, repair data, or include filesystem paths in the report.
+- Test execution is opt-in because it can take time. The test suite should still be run only in the intended development/acceptance environment; do not assume that passing CI substitutes for running on the target host.
+- Raw test output is intentionally omitted from the JSON report because test output can contain local paths or configuration details.
+- Exit code is `0` only when storage is healthy and any requested test run passes. Missing or outdated databases produce a non-zero result; the script does not attempt automatic repair.
+- This does not run a live Ollama factuality evaluation, browser workflows, Docker sandbox validation, crash/load tests, or an independent security review. Those remain separate acceptance gates.
