@@ -158,7 +158,7 @@ def run_python(
             "--stop-timeout=1",
             "--user=65534:65534",
             "--workdir=/workspace",
-            "--tmpfs=/tmp:rw,noexec,nosuid,size=16m",
+            "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65534,gid=65534",
             "--env=PYTHONDONTWRITEBYTECODE=1",
             "--mount",
             f"type=bind,source={mount_source},target=/workspace,readonly",
