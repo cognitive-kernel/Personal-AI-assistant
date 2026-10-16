@@ -5,6 +5,7 @@ import json
 import logging
 import re
 import shutil
+import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,13 @@ class BackupPruneRequest(BaseModel):
     confirm: StrictBool
     keep_last: int = Field(default=3, ge=3, le=50)
     min_age_days: int = Field(default=30, ge=30, le=3650)
+
+
+class RestoreStagingPruneRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirm: StrictBool
+    keep_last: int = Field(default=1, ge=1, le=20)
+    min_age_days: int = Field(default=7, ge=7, le=3650)
 
 
 def _backup_root() -> Path:
@@ -267,3 +275,120 @@ def prune_backups(request: BackupPruneRequest) -> dict[str, Any]:
 @router.post("/backups/prune")
 def post_prune_backups(request: BackupPruneRequest) -> dict[str, Any]:
     return prune_backups(request)
+
+
+def _valid_staging_snapshot(path: Path) -> bool:
+    """Recognize only complete, non-symlink SQLite restore snapshots."""
+    expected = {
+        "settings.sqlite3",
+        "learning.sqlite3",
+        "cloud_resources.sqlite3",
+    }
+    try:
+        if path.is_symlink() or not path.is_dir():
+            return False
+        names = {item.name for item in path.iterdir()}
+        if names not in (
+            {"settings.sqlite3", "learning.sqlite3"},
+            expected,
+        ):
+            return False
+        for name in names:
+            database_path = path / name
+            if database_path.is_symlink() or not database_path.is_file():
+                return False
+            uri = database_path.resolve().as_uri() + "?mode=ro"
+            with sqlite3.connect(uri, uri=True, timeout=1) as connection:
+                result = connection.execute("PRAGMA integrity_check").fetchone()
+                if not result or result[0] != "ok":
+                    return False
+        return True
+    except (OSError, sqlite3.Error):
+        return False
+
+
+def _staging_retention_candidates(keep_last: int, min_age_days: int) -> dict[str, Any]:
+    root = _backup_root() / "restore-staging"
+    if not root.exists():
+        return {"eligible": [], "preserved": 0}
+    if root.is_symlink() or not root.is_dir() or root.resolve().parent != _backup_root():
+        raise HTTPException(status_code=503, detail="Restore staging location is unavailable.")
+    recognized: list[tuple[float, str, Path]] = []
+    try:
+        children = list(root.iterdir())
+    except OSError:
+        raise HTTPException(status_code=503, detail="Restore staging location is unavailable.") from None
+    for child in children:
+        if child.is_symlink() or not child.is_dir() or not _RESTORE_ID.fullmatch(child.name):
+            continue
+        if child.resolve().parent != root or not _valid_staging_snapshot(child):
+            continue
+        try:
+            modified = child.stat(follow_symlinks=False).st_mtime
+        except OSError:
+            continue
+        recognized.append((modified, child.name, child))
+    recognized.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    protected = {name for _, name, _ in recognized[:keep_last]}
+    cutoff = time.time() - min_age_days * 86400
+    eligible = [
+        {
+            "id": name,
+            "modified_at": datetime.fromtimestamp(modified, timezone.utc).isoformat().replace("+00:00", "Z"),
+        }
+        for modified, name, _ in recognized
+        if name not in protected and modified <= cutoff
+    ]
+    return {"eligible": eligible, "preserved": len(recognized) - len(eligible)}
+
+
+def prune_restore_staging(request: RestoreStagingPruneRequest) -> dict[str, Any]:
+    plan = _staging_retention_candidates(request.keep_last, request.min_age_days)
+    eligible = plan["eligible"]
+    if request.confirm is not True:
+        return {
+            "status": "preview",
+            "confirm_required": bool(eligible),
+            "keep_last": request.keep_last,
+            "min_age_days": request.min_age_days,
+            "would_delete_count": len(eligible),
+            "candidates": eligible,
+            "preserved_count": plan["preserved"],
+            "deleted": [],
+        }
+
+    root = _backup_root() / "restore-staging"
+    deleted: list[str] = []
+    failed: list[str] = []
+    for item in eligible:
+        restore_id = item["id"]
+        path = root / restore_id
+        try:
+            if (
+                not _RESTORE_ID.fullmatch(restore_id)
+                or path.is_symlink()
+                or not path.is_dir()
+                or path.resolve().parent != root
+                or not _valid_staging_snapshot(path)
+            ):
+                failed.append(restore_id)
+                continue
+            shutil.rmtree(path)
+            deleted.append(restore_id)
+        except OSError:
+            logger.warning("Could not prune restore staging snapshot %s.", restore_id)
+            failed.append(restore_id)
+    return {
+        "status": "completed" if not failed else "partial",
+        "keep_last": request.keep_last,
+        "min_age_days": request.min_age_days,
+        "deleted": deleted,
+        "failed": failed,
+        "deleted_count": len(deleted),
+        "preserved_count": plan["preserved"],
+    }
+
+
+@router.post("/restore-staging/prune")
+def post_prune_restore_staging(request: RestoreStagingPruneRequest) -> dict[str, Any]:
+    return prune_restore_staging(request)
