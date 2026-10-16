@@ -315,7 +315,6 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_experience_source_checks_latest ON learning_experience_source_checks(experience_id, source_url, checked_at DESC, id DESC)",
         ),
     ),
-,
     Migration(
         9,
         "experience-explicit-retrieval-feedback",
