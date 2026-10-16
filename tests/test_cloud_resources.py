@@ -209,7 +209,7 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
-        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 1
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 2
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
