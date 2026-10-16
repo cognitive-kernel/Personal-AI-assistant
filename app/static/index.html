@@ -35,6 +35,18 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button></div>
 <pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
 <div id="cloud-candidates"></div></section>
+<section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
+<p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
+<div class="cloud-form-grid">
+<label>حداقل تعداد CPU<input id="plan-min-cpu" type="number" min="0" max="256" step="1" value="1"></label>
+<label>حداقل حافظه (GiB)<input id="plan-min-memory" type="number" min="0" max="1048576" step="0.5" value="0"></label>
+<label><input id="plan-require-gpu" type="checkbox" style="width:auto"> نیاز به GPU دارم</label>
+<label>مدل‌های GPU مجاز (با ویرگول جدا کنید)<input id="plan-gpu-models" type="text" maxlength="1000" placeholder="NVIDIA A10, NVIDIA T4"></label>
+<label>دامنه‌های ارائه‌دهندهٔ مجاز (با ویرگول جدا کنید)<input id="plan-provider-domains" type="text" maxlength="2000" placeholder="compute.example.org"></label>
+</div>
+<div class="cloud-actions"><button id="cloud-plan-run" type="button">ساخت برنامهٔ انتخاب</button></div>
+<pre id="cloud-plan-output">برای ساخت برنامه، نیازهای منابع را وارد کنید.</pre>
+</section>
 <section id="kaggle-quota-section"><h2>سهمیهٔ حساب Kaggle (اختیاری)</h2>
 <p class="muted">به‌طور پیش‌فرض غیرفعال است. فقط با فعال‌سازی صریح، برنامه از CLI رسمی Kaggle استفاده می‌کند تا سهمیهٔ GPU/TPU حساب فعلی را بخواند. هیچ notebook ارسال یا اجرا نمی‌شود؛ توکن‌ها ذخیره نمی‌شوند. شرایط استفادهٔ Kaggle و محدودیت یک حساب فعال را رعایت کنید.</p>
 <label>مسیر کامل فایل اجرایی Kaggle CLI<input id="kaggle-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه"></label>
@@ -297,6 +309,44 @@ el("cloud-discover").addEventListener("click",async()=>{
   };
   setTimeout(poll,1000);
  } catch(error) { output.textContent="جست‌وجو صف‌بندی نشد: "+error.message; }
+});
+
+el("cloud-plan-run").addEventListener("click",async()=>{
+ const output=el("cloud-plan-output");
+ const cpuRaw=el("plan-min-cpu").value;
+ const memoryRaw=el("plan-min-memory").value;
+ const cpu=Number(cpuRaw);
+ const memory=Number(memoryRaw);
+ if(!cpuRaw.trim()||!Number.isInteger(cpu)||cpu<0||cpu>256) {
+  output.textContent="حداقل CPU باید عدد صحیحی بین ۰ و ۲۵۶ باشد.";
+  return;
+ }
+ if(!memoryRaw.trim()||!Number.isFinite(memory)||memory<0||memory>1048576) {
+  output.textContent="حداقل حافظه باید عددی معتبر بین ۰ و ۱۰۴۸۵۷۶ GiB باشد.";
+  return;
+ }
+ const splitList=value=>value.split(",").map(item=>item.trim()).filter(Boolean);
+ const request={
+  min_cpu_count:cpu,
+  min_memory_gib:memory,
+  require_gpu:el("plan-require-gpu").checked,
+  gpu_models:splitList(el("plan-gpu-models").value),
+  allowed_provider_domains:splitList(el("plan-provider-domains").value)
+ };
+ const button=el("cloud-plan-run");
+ button.disabled=true;
+ output.textContent="در حال ارزیابی شواهد فعلی…";
+ try {
+  const plan=await api("/api/cloud-resources/plan",{
+   method:"POST",
+   body:JSON.stringify(request)
+  });
+  output.textContent=JSON.stringify(plan,null,2);
+ } catch(error) {
+  output.textContent="برنامه ساخته نشد: "+error.message;
+ } finally {
+  button.disabled=false;
+ }
 });
 
 async function refreshKaggleQuota() {
