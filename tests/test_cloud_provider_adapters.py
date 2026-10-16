@@ -43,3 +43,74 @@ def test_generic_adapter_deduplicates_repeated_claims():
     claims = GenericPublicPageAdapter().extract_claims("CPU", text)
 
     assert sum(claim.claim_type == "cpu_count" for claim in claims) == 2
+
+
+
+def test_kaggle_adapter_only_matches_exact_official_cli_documentation():
+    from app.cloud_provider_adapters import KaggleCliDocsAdapter
+
+    adapter = KaggleCliDocsAdapter()
+    assert adapter.matches(
+        "github.com",
+        "https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md",
+    )
+    assert not adapter.matches(
+        "github.com",
+        "https://github.com/someone/kaggle-cli/blob/main/docs/kernels.md",
+    )
+    assert not adapter.matches(
+        "github.com",
+        "https://github.com/Kaggle/kaggle-cli/blob/main/README.md",
+    )
+    assert not adapter.matches(
+        "github.com",
+        "https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md?raw=1",
+    )
+    assert not adapter.matches(
+        "kaggle.com",
+        "https://kaggle.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md",
+    )
+
+
+def test_kaggle_adapter_extracts_only_documented_options_not_entitlements():
+    source_url = "https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md"
+    text = (
+        "The --accelerator option accepts NvidiaTeslaT4 and NvidiaL4. "
+        "Use kaggle kernels push to run the kernel, then kaggle kernels status "
+        "to inspect it. Some accelerator types may be restricted to competitions."
+    )
+    claims = extract_resource_claims(
+        "github.com",
+        "Kaggle Kernels Commands",
+        text,
+        source_url=source_url,
+    )
+
+    assert {claim.claim_type for claim in claims} == {
+        "provider_accelerator_option",
+        "provider_operation",
+    }
+    assert {claim.value for claim in claims if claim.claim_type == "provider_accelerator_option"} == {
+        "NvidiaTeslaT4",
+        "NvidiaL4",
+    }
+    assert {claim.value for claim in claims if claim.claim_type == "provider_operation"} == {
+        "kaggle kernels push",
+        "kaggle kernels status",
+    }
+    assert all(claim.adapter_id == "kaggle-cli-docs-v1" for claim in claims)
+    assert all(claim.evidence_quote in ("Kaggle Kernels Commands\n" + text) for claim in claims)
+    assert all("unverified" in (claim.unit or "") or "not an execution authorization" in (claim.unit or "")
+               for claim in claims)
+
+
+def test_generic_adapter_remains_fallback_for_other_github_sources():
+    claims = extract_resource_claims(
+        "github.com",
+        "Free compute",
+        "The free tier includes 2 vCPU and 8 GB RAM.",
+        source_url="https://github.com/other/project/blob/main/README.md",
+    )
+
+    assert {claim.claim_type for claim in claims} == {"cpu_count", "memory_capacity"}
+    assert all(claim.adapter_id == "generic-public-page-regex-v1" for claim in claims)
