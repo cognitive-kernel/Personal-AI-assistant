@@ -192,6 +192,7 @@ def _record_published_pr(proposal, base_sha):
         "pull_request_number": 42,
         "pull_request_url": "https://github.com/owner/repository/pull/42",
         "base_commit_sha": base_sha,
+        "base_branch": "main",
         "patch_sha256": hashlib.sha256(_patch().encode("utf-8")).hexdigest(),
         "commit_sha": "e" * 40,
     }
@@ -236,7 +237,7 @@ def test_rollback_pr_restores_only_unchanged_merged_paths(proposal_repo, monkeyp
     def fake_github_api(method, path, payload=None):
         calls.append((method, path, payload))
         if method == "GET" and path == "/pulls/42":
-            return {"merged": True, "merge_commit_sha": merge_sha}
+            return {"merged": True, "merge_commit_sha": merge_sha, "base": {"ref": "main"}}
         if method == "GET" and path == "/git/ref/heads/main":
             return {"object": {"sha": current_sha}}
         if method == "GET" and path == "/git/commits/" + base_sha:
