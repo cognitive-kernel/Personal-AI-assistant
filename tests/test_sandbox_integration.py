@@ -187,10 +187,10 @@ def test_real_container_syntax_checks_workspace_without_executing_candidate(sand
     (workspace / "tests").mkdir()
     marker = tmp_path / "candidate-was-executed"
     (workspace / "app" / "safe.py").write_text(
-        "from pathlib import Path\\nPath(" + repr(str(marker)) + ").write_text('executed')\\n",
+        "from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('executed')\n",
         encoding="utf-8",
     )
-    (workspace / "tests" / "test_safe.py").write_text("def test_safe():\\n    assert True\\n", encoding="utf-8")
+    (workspace / "tests" / "test_safe.py").write_text("def test_safe():\n    assert True\n", encoding="utf-8")
 
     result = sandbox.run_workspace_syntax_check(
         workspace,
@@ -203,7 +203,7 @@ def test_real_container_syntax_checks_workspace_without_executing_candidate(sand
     assert report == {"status": "passed", "files_checked": 2}
     assert not marker.exists()
 
-    (workspace / "app" / "broken.py").write_text("def broken(:\\n", encoding="utf-8")
+    (workspace / "app" / "broken.py").write_text("def broken(:\n", encoding="utf-8")
     invalid = sandbox.run_workspace_syntax_check(
         workspace,
         docker_executable=docker,
