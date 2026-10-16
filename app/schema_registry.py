@@ -295,6 +295,10 @@ CLOUD_RESOURCE_MIGRATIONS = (
             "ALTER TABLE cloud_resource_candidates ADD COLUMN reviewed_at TEXT",
             """ALTER TABLE cloud_resource_candidates ADD COLUMN reviewed_content_sha256 TEXT
                CHECK(reviewed_content_sha256 IS NULL OR length(reviewed_content_sha256) = 64)""",
+            """UPDATE cloud_resource_candidates
+               SET review_status='unreviewed', availability_status='unknown',
+                   quota_json='{}', terms_url=NULL
+               WHERE review_status != 'unreviewed'""",
             "CREATE INDEX idx_cloud_candidates_freshness ON cloud_resource_candidates(freshness_status, last_seen_at DESC)",
             "CREATE INDEX idx_cloud_candidates_reviewed ON cloud_resource_candidates(reviewed_at DESC)",
         ),
