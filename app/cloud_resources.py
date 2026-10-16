@@ -313,13 +313,7 @@ def ensure_daily_discovery_scheduled() -> dict[str, Any]:
     return enqueue_discovery_task(manual=False)
 
 
-def handle_discovery_task(
-    payload: dict[str, Any],
-    checkpoint_data: dict[str, Any] | None,
-    context: Any,
-) -> dict[str, Any]:
-    """Run discovery under durable task controls and schedule the next daily pass."""
-    report = discover_resources(checkpoint=context.checkpoint)
+def _schedule_next_daily_run() -> tuple[dict[str, Any], datetime]:
     next_run = datetime.now(timezone.utc) + timedelta(days=1)
     next_key = f"cloud-discovery:{next_run.date().isoformat()}"
     next_task = task_manager.create_task(
@@ -330,4 +324,24 @@ def handle_discovery_task(
         scheduled_at=next_run,
         dedupe_key=next_key,
     )
-    return {**report, "next_scheduled_task_id": next_task["id"], "next_scheduled_at": next_run.isoformat()}
+    return next_task, next_run
+
+
+def handle_discovery_task(
+    payload: dict[str, Any],
+    checkpoint_data: dict[str, Any] | None,
+    context: Any,
+) -> dict[str, Any]:
+    """Run discovery under durable task controls and schedule the next daily pass."""
+    try:
+        report = discover_resources(checkpoint=context.checkpoint)
+    except Exception:
+        # Keep the daily chain alive even when a task is paused/cancelled or discovery fails.
+        _schedule_next_daily_run()
+        raise
+    next_task, next_run = _schedule_next_daily_run()
+    return {
+        **report,
+        "next_scheduled_task_id": next_task["id"],
+        "next_scheduled_at": next_run.isoformat(),
+    }
