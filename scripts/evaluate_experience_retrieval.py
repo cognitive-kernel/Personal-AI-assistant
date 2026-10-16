@@ -2,6 +2,7 @@
 """Run the bilingual experience-retrieval benchmark against an isolated temporary DB."""
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import tempfile
@@ -47,6 +48,18 @@ def _seed_experiences(dataset: dict[str, Any]) -> dict[int, str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--lexical-only",
+        action="store_true",
+        help="disable local embeddings to produce a deterministic lexical baseline",
+    )
+    args = parser.parse_args()
+    if args.lexical_only:
+        def _embeddings_disabled(*_args, **_kwargs):
+            raise ollama.OllamaError("disabled by --lexical-only")
+        ollama.embed = _embeddings_disabled
+
     dataset_path = ROOT / "tests" / "fixtures" / "experience_retrieval_eval.json"
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
     original_settings_path = db.defaults.settings_db_path

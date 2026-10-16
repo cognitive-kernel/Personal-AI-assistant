@@ -29,7 +29,11 @@ The first implementation scans a bounded corpus and computes cosine similarity i
 A synthetic bilingual fixture lives at `tests/fixtures/experience_retrieval_eval.json`. It includes English and Persian queries, cross-language variants, synthetic experience records, and explicit relevant slugs. The benchmark runner seeds an isolated temporary SQLite database, never the user's live database, and uses the configured local embedding model when available:
 
 ```bash
+# Real local model, if the configured embedding model is installed:
 python scripts/evaluate_experience_retrieval.py
+
+# Deterministic baseline without a local model:
+python scripts/evaluate_experience_retrieval.py --lexical-only
 ```
 
-The report includes Recall@5, MRR, per-query ranking, embedding cache row count, and whether vector retrieval was available or lexical fallback was used. Recall@5 measures the fraction of relevant records found in the top five; MRR is the mean reciprocal rank of the first relevant result. The fixture is synthetic and is only a regression benchmark, not evidence of general real-world retrieval quality. No measured benchmark result should be claimed until the runner has actually been executed against a configured local model.
+CI runs the lexical-only baseline and prints its report. The local-model command includes Recall@5, MRR, per-query ranking, embedding cache row count, and whether vector retrieval was available or lexical fallback was used. Recall@5 measures the fraction of relevant records found in the top five; MRR is the mean reciprocal rank of the first relevant result. The fixture is synthetic and is only a regression benchmark, not evidence of general real-world retrieval quality. No measured benchmark result should be claimed until the runner has actually been executed against a configured local model.

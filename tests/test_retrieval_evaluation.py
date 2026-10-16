@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -51,3 +53,24 @@ def test_bilingual_benchmark_fixture_has_valid_relevance_targets():
     assert {"fa", "en"} <= {case["language"] for case in dataset["queries"]}
     assert all(case["relevant_slugs"] and set(case["relevant_slugs"]) <= slugs for case in dataset["queries"])
     assert all(case["query_variants"] for case in dataset["queries"])
+
+
+
+def test_lexical_benchmark_runs_in_an_isolated_database(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    script = root / "scripts" / "evaluate_experience_retrieval.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--lexical-only"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=True,
+    )
+    report = json.loads(completed.stdout)
+    assert report["query_count"] == 10
+    assert 0.0 <= report["recall_at_5"] <= 1.0
+    assert 0.0 <= report["mrr"] <= 1.0
+    assert report["dataset_type"] == "synthetic_bilingual"
+    assert report["retrieval_mode"] == "lexical_fallback_no_vectors_cached"
+    assert len(report["per_query"]) == 10
