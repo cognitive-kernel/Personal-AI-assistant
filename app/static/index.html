@@ -1115,6 +1115,23 @@ async function refreshSelfImprovement() {
     });
     card.append(approve);
    }
+   if(item.status==="approved_for_pr") {
+    const openPr=document.createElement("button");
+    openPr.type="button";
+    openPr.textContent="ایجاد PR پیش‌نویس در GitHub";
+    openPr.addEventListener("click",async()=>{
+     if(!window.confirm("این اقدام patch تأییدشده را به‌صورت branch و PR پیش‌نویس در مخزن GitHub پیکربندی‌شده منتشر می‌کند. PR ادغام یا مستقر نمی‌شود و checkout محلی تغییر نمی‌کند. ادامه؟")) return;
+     openPr.disabled=true;
+     try {
+      const result=await api("/api/self-improvement/proposals/"+item.id+"/open-pr",{method:"POST",body:JSON.stringify({confirm:true})});
+      const pr=result.pull_request;
+      output.textContent="PR پیش‌نویس ایجاد شد: "+pr.pull_request_url+"؛ branch: "+pr.branch+"؛ ادغام یا استقرار انجام نشده است.";
+      await refreshSelfImprovement();
+     } catch(error){output.textContent="ایجاد PR انجام نشد: "+error.message;}
+     finally{openPr.disabled=false;}
+    });
+    card.append(openPr);
+   }
    if(["proposed","validated"].includes(item.status)) {
     const reject=document.createElement("button");
     reject.type="button";
