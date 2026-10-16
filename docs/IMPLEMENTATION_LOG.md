@@ -1147,6 +1147,18 @@
 - [x] `app/oci_quota_client.py` فقط فرمان ثابت `limits value list` را اجرا می‌کند؛ مسیر مطلق CLI و config، profile، region و OCID باید صریح باشند و هم enablement و هم consent لازم‌اند.
 - [x] `shell=False`، timeout محدود، environment allowlist، عدم افشای stderr و آزمون ورودی‌های شبیه argument injection اضافه شدند.
 - [x] مستندات روشن می‌کنند service limits به‌تنهایی اثبات free-tier entitlement یا ظرفیت فعلی نیستند.
-- [ ] client هنوز به UI، consent store یا ذخیره‌سازی snapshot متصل نشده و هیچ‌گاه از startup فراخوانی نمی‌شود.
+- [x] **PR #158** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/158)، commit ادغام `630e56d44c2356bd50ee3834c30006be6767fc8e`.
+- [x] اجرای دوم CI روی head دقیق `1c981f7fc33386435d724bf2f442e0728a3d49d0` موفق بود؛ run [#38859181580](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38859181580). اجرای اول فقط به‌علت طول اشتباه assertion آرگومان‌های CLI شکست خورد؛ assertion اصلاح شد.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** اتصال consent و snapshot فقط‌خواندنی OCI به UI/API loopback؛ بدون ذخیرهٔ credential یا خروجی خام.
+
+
+## 83. 2026-10-16 — یکپارچه‌سازی رضایت OCI و snapshot محدودیت‌ها در UI/API
+
+- [x] migration نسخهٔ ۶ برای consent، audit event و snapshot محدودیت‌های OCI اضافه شد؛ migrationهای قدیمی دست‌نخورده‌اند.
+- [x] endpointهای loopback-only برای وضعیت، ثبت/لغو رضایت و refresh دستی ساخته شدند؛ refresh تا زمان فعال‌سازی و رضایت صریح رد می‌شود.
+- [x] پنل UI مسیر CLI و config، profile، region و OCID را می‌گیرد؛ فقط مسیرها/شناسه‌های لازم محلی ذخیره می‌شوند، نه محتوای config یا کلید خصوصی.
+- [x] snapshotهای parsed شامل نام limit، value/used/available، scope، region و زمان مشاهده ذخیره می‌شوند؛ با لغو رضایت snapshot و مسیرهای تنظیم‌شده پاک می‌شوند.
+- [x] پاسخ API و UI صریحاً `execution_authorized=false` نمایش می‌دهند؛ این endpoint فقط‌خواندنی است و provisioning/remote execution انجام نمی‌دهد.
 - [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
-- **گام بعدی:** CI/ادغام؛ سپس یکپارچه‌سازی رضایت و نگهداری snapshot در UI/API به‌صورت عمومی و provider-aware، بدون ذخیرهٔ credential یا خروجی خام.
+- **گام بعدی:** CI و ادغام؛ سپس بازبینی provider-neutralization و تعیین قرارداد eligibility پیش از هرگونه اجرای remote.

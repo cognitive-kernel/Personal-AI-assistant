@@ -839,3 +839,244 @@ def handle_discovery_task(
         "next_scheduled_task_id": next_task["id"],
         "next_scheduled_at": next_run.isoformat(),
     }
+
+
+
+OCI_PROVIDER_ID = "oracle_cloud"
+OCI_LIMIT_CONSENT_VERSION = "oci-readonly-limits-v1"
+
+
+def get_oci_limit_consent() -> dict[str, Any]:
+    with closing(_connect()) as connection:
+        row = connection.execute(
+            """SELECT provider_id, enabled, user_consent, executable_path, config_file,
+                      profile, region, compartment_id, consent_version, consented_at,
+                      revoked_at, updated_at
+               FROM oci_limit_access_consents WHERE provider_id=?""",
+            (OCI_PROVIDER_ID,),
+        ).fetchone()
+    if row is None:
+        return {
+            "provider_id": OCI_PROVIDER_ID,
+            "enabled": False,
+            "user_consent": False,
+            "executable_path": "",
+            "config_file": "",
+            "profile": "",
+            "region": "",
+            "compartment_id": "",
+            "consent_version": OCI_LIMIT_CONSENT_VERSION,
+            "consented_at": None,
+            "revoked_at": None,
+            "updated_at": None,
+        }
+    result = dict(row)
+    result["enabled"] = bool(result["enabled"])
+    result["user_consent"] = bool(result["user_consent"])
+    return result
+
+
+def record_oci_limit_consent(
+    *,
+    enabled: bool,
+    user_consent: bool,
+    executable_path: str = "",
+    config_file: str = "",
+    profile: str = "",
+    region: str = "",
+    compartment_id: str = "",
+) -> dict[str, Any]:
+    """Record explicit consent for read-only OCI service-limit checks, never credentials."""
+    if type(enabled) is not bool or type(user_consent) is not bool:
+        raise CloudResourceError("Consent and enablement must be explicit booleans.")
+    if enabled and not user_consent:
+        raise CloudResourceError("OCI access cannot be enabled without explicit user consent.")
+    if enabled:
+        if not isinstance(executable_path, str) or len(executable_path) > 2048:
+            raise CloudResourceError("A valid absolute OCI CLI executable path is required.")
+        if not isinstance(config_file, str) or len(config_file) > 2048:
+            raise CloudResourceError("A valid absolute OCI config file path is required.")
+        executable = Path(executable_path).expanduser()
+        config = Path(config_file).expanduser()
+        if not executable.is_absolute() or not executable.is_file():
+            raise CloudResourceError("A valid absolute OCI CLI executable path is required.")
+        if not config.is_absolute() or not config.is_file():
+            raise CloudResourceError("A valid absolute OCI config file path is required.")
+        if not isinstance(profile, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", profile):
+            raise CloudResourceError("OCI profile contains unsupported characters.")
+        if not isinstance(region, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,78}[a-z0-9]", region):
+            raise CloudResourceError("OCI region contains unsupported characters.")
+        if not isinstance(compartment_id, str) or not re.fullmatch(
+            r"ocid1\.(?:tenancy|compartment)\.[A-Za-z0-9-]+\.[A-Za-z0-9._-]+",
+            compartment_id,
+        ):
+            raise CloudResourceError("OCI compartment ID must be a valid tenancy/compartment OCID.")
+        values = (
+            str(executable), str(config), profile, region, compartment_id
+        )
+    else:
+        if user_consent:
+            raise CloudResourceError("Revocation must disable access and clear consent.")
+        values = ("", "", "", "", "")
+
+    now = datetime.now(timezone.utc).isoformat()
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            """SELECT enabled, executable_path, config_file, profile, region, compartment_id
+               FROM oci_limit_access_consents WHERE provider_id=?""",
+            (OCI_PROVIDER_ID,),
+        ).fetchone()
+        if enabled:
+            changed = existing is None or not bool(existing["enabled"]) or tuple(
+                existing[key] for key in (
+                    "executable_path", "config_file", "profile", "region", "compartment_id"
+                )
+            ) != values
+            if changed:
+                connection.execute(
+                    """INSERT INTO oci_limit_consent_events(provider_id, event_type, consent_version)
+                       VALUES (?, 'consent_granted', ?)""",
+                    (OCI_PROVIDER_ID, OCI_LIMIT_CONSENT_VERSION),
+                )
+            connection.execute(
+                """INSERT INTO oci_limit_access_consents(
+                       provider_id, enabled, user_consent, executable_path, config_file,
+                       profile, region, compartment_id, consent_version, consented_at,
+                       revoked_at, updated_at
+                   ) VALUES (?, 1, 1, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                   ON CONFLICT(provider_id) DO UPDATE SET
+                       enabled=1, user_consent=1, executable_path=excluded.executable_path,
+                       config_file=excluded.config_file, profile=excluded.profile,
+                       region=excluded.region, compartment_id=excluded.compartment_id,
+                       consent_version=excluded.consent_version,
+                       consented_at=CASE
+                           WHEN oci_limit_access_consents.enabled=1
+                            AND oci_limit_access_consents.executable_path=excluded.executable_path
+                            AND oci_limit_access_consents.config_file=excluded.config_file
+                            AND oci_limit_access_consents.profile=excluded.profile
+                            AND oci_limit_access_consents.region=excluded.region
+                            AND oci_limit_access_consents.compartment_id=excluded.compartment_id
+                           THEN oci_limit_access_consents.consented_at
+                           ELSE excluded.consented_at END,
+                       revoked_at=NULL, updated_at=excluded.updated_at""",
+                (
+                    OCI_PROVIDER_ID, *values, OCI_LIMIT_CONSENT_VERSION, now, now
+                ),
+            )
+        elif existing is not None and bool(existing["enabled"]):
+            connection.execute(
+                """INSERT INTO oci_limit_consent_events(provider_id, event_type, consent_version)
+                   VALUES (?, 'consent_revoked', ?)""",
+                (OCI_PROVIDER_ID, OCI_LIMIT_CONSENT_VERSION),
+            )
+            connection.execute(
+                """UPDATE oci_limit_access_consents
+                   SET enabled=0, user_consent=0, executable_path='', config_file='',
+                       profile='', region='', compartment_id='', revoked_at=?, updated_at=?
+                   WHERE provider_id=?""",
+                (now, now, OCI_PROVIDER_ID),
+            )
+            connection.execute(
+                "DELETE FROM oci_limit_snapshots WHERE provider_id=?",
+                (OCI_PROVIDER_ID,),
+            )
+        connection.commit()
+    return get_oci_limit_consent()
+
+
+def list_oci_limit_consent_events(*, limit: int = 20) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise CloudResourceError("OCI consent event limit must be between 1 and 100.")
+    with closing(_connect()) as connection:
+        rows = connection.execute(
+            """SELECT id, provider_id, event_type, consent_version, created_at
+               FROM oci_limit_consent_events WHERE provider_id=?
+               ORDER BY id DESC LIMIT ?""",
+            (OCI_PROVIDER_ID, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_oci_limit_snapshot(snapshot: Any) -> list[dict[str, Any]]:
+    """Persist only parsed OCI limit numbers and scopes, never raw CLI output."""
+    if not hasattr(snapshot, "observed_at") or not hasattr(snapshot, "region") or not hasattr(snapshot, "limits"):
+        raise CloudResourceError("OCI limit snapshot has an invalid shape.")
+    if not isinstance(snapshot.observed_at, datetime) or snapshot.observed_at.tzinfo is None:
+        raise CloudResourceError("OCI limit snapshot requires a timezone-aware observation time.")
+    consent = get_oci_limit_consent()
+    if not consent["enabled"] or not consent["user_consent"]:
+        raise CloudResourceError("OCI limit snapshot cannot be stored without current consent.")
+    if snapshot.region != consent["region"]:
+        raise CloudResourceError("OCI snapshot region does not match the consented region.")
+    if not isinstance(snapshot.limits, (list, tuple)) or not snapshot.limits:
+        raise CloudResourceError("OCI limit snapshot contains no limits.")
+    rows: list[tuple[str, float, float | None, float | None, str, str]] = []
+    for item in snapshot.limits:
+        name = getattr(item, "name", None)
+        value = getattr(item, "value", None)
+        used = getattr(item, "used", None)
+        available = getattr(item, "available", None)
+        scope_type = getattr(item, "scope_type", None) or ""
+        scope_value = getattr(item, "scope_value", None) or ""
+        if not isinstance(name, str) or not name.strip() or len(name) > 200:
+            raise CloudResourceError("OCI limit name is invalid.")
+        for field, number in (("value", value), ("used", used), ("available", available)):
+            if number is None and field != "value":
+                continue
+            if isinstance(number, bool) or not isinstance(number, (int, float)):
+                raise CloudResourceError(f"OCI limit {field} must be numeric.")
+            try:
+                finite = math.isfinite(float(number))
+            except (OverflowError, TypeError, ValueError):
+                finite = False
+            if not finite or number < 0:
+                raise CloudResourceError(f"OCI limit {field} must be finite and non-negative.")
+        if not isinstance(scope_type, str) or not isinstance(scope_value, str):
+            raise CloudResourceError("OCI limit scope fields must be strings.")
+        rows.append((
+            name.strip(), float(value), None if used is None else float(used),
+            None if available is None else float(available),
+            scope_type[:80], scope_value[:200],
+        ))
+    observed_at = snapshot.observed_at.astimezone(timezone.utc).isoformat()
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            """SELECT enabled, user_consent, region FROM oci_limit_access_consents
+               WHERE provider_id=?""",
+            (OCI_PROVIDER_ID,),
+        ).fetchone()
+        if (
+            current is None or not current["enabled"] or not current["user_consent"]
+            or current["region"] != snapshot.region
+        ):
+            connection.rollback()
+            raise CloudResourceError("OCI consent changed before limit snapshot persistence.")
+        connection.execute("DELETE FROM oci_limit_snapshots WHERE provider_id=?", (OCI_PROVIDER_ID,))
+        for name, value, used, available, scope_type, scope_value in rows:
+            connection.execute(
+                """INSERT INTO oci_limit_snapshots(
+                       provider_id, resource_name, limit_value, used_value, available_value,
+                       scope_type, scope_value, region, observed_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (OCI_PROVIDER_ID, name, value, used, available, scope_type, scope_value,
+                 snapshot.region, observed_at),
+            )
+        connection.commit()
+    return list_oci_limit_snapshots()
+
+
+def list_oci_limit_snapshots() -> list[dict[str, Any]]:
+    consent = get_oci_limit_consent()
+    if not consent["enabled"] or not consent["user_consent"]:
+        return []
+    with closing(_connect()) as connection:
+        rows = connection.execute(
+            """SELECT resource_name, limit_value, used_value, available_value,
+                      scope_type, scope_value, region, observed_at
+               FROM oci_limit_snapshots WHERE provider_id=?
+               ORDER BY resource_name, scope_type, scope_value""",
+            (OCI_PROVIDER_ID,),
+        ).fetchall()
+    return [dict(row) for row in rows]

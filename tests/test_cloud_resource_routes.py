@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app import cloud_resource_routes, cloud_resources, db, web_sources
 from app.kaggle_quota import KaggleQuotaSnapshot, ResourceQuota
+from app.oci_quota import OciQuotaSnapshot, OciServiceLimit
 from app.main import app
 
 
@@ -221,4 +222,133 @@ def test_kaggle_quota_consent_requires_json_booleans_not_coercible_values(tmp_pa
             json={"enabled": 1, "user_consent": True, "executable_path": "/tmp/kaggle"},
         )
 
+    assert response.status_code == 422
+
+
+
+def test_oci_limit_consent_refresh_and_revocation_are_audited(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    cli = tmp_path / "oci"
+    config = tmp_path / "oci-config"
+    cli.write_text("test executable placeholder", encoding="utf-8")
+    config.write_text("[DEFAULT]\n", encoding="utf-8")
+    calls = []
+    now = datetime.now(timezone.utc)
+    snapshot = OciQuotaSnapshot(
+        observed_at=now,
+        region="us-ashburn-1",
+        limits=(
+            OciServiceLimit(
+                name="standard-a1-core-count",
+                value=2,
+                used=1,
+                available=1,
+                scope_type="REGION",
+                scope_value="us-ashburn-1",
+            ),
+        ),
+    )
+
+    def fake_fetch(**kwargs):
+        calls.append(kwargs)
+        return snapshot
+
+    monkeypatch.setattr(cloud_resource_routes, "fetch_service_limits", fake_fetch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        initial = client.get("/api/cloud-resources/oci-limits")
+        assert initial.status_code == 200
+        assert initial.json()["consent"]["enabled"] is False
+        assert initial.json()["snapshots"] == []
+        assert initial.json()["execution_authorized"] is False
+
+        disabled = client.post("/api/cloud-resources/oci-limits/refresh")
+        assert disabled.status_code == 409
+        assert calls == []
+
+        invalid = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": "oci",
+                "config_file": str(config.resolve()),
+                "profile": "DEFAULT",
+                "region": "us-ashburn-1",
+                "compartment_id": "ocid1.compartment.oc1..aaaaaaaaexample",
+            },
+        )
+        assert invalid.status_code == 422
+
+        granted = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(cli.resolve()),
+                "config_file": str(config.resolve()),
+                "profile": "DEFAULT",
+                "region": "us-ashburn-1",
+                "compartment_id": "ocid1.compartment.oc1..aaaaaaaaexample",
+            },
+        )
+        assert granted.status_code == 200
+        assert granted.json()["consent"]["enabled"] is True
+        assert granted.json()["consent"]["user_consent"] is True
+        assert granted.json()["consent_events"][0]["event_type"] == "consent_granted"
+
+        refreshed = client.post("/api/cloud-resources/oci-limits/refresh")
+        assert refreshed.status_code == 200
+        body = refreshed.json()
+        assert body["execution_authorized"] is False
+        assert body["snapshots"][0]["resource_name"] == "standard-a1-core-count"
+        assert body["snapshots"][0]["limit_value"] == 2
+        assert body["snapshots"][0]["available_value"] == 1
+        assert calls[0]["enabled"] is True and calls[0]["user_consent"] is True
+        assert calls[0]["config_file"] == str(config.resolve())
+        assert "private_key" not in str(body).casefold()
+
+        revoked = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={
+                "enabled": False,
+                "user_consent": False,
+                "executable_path": "",
+                "config_file": "",
+                "profile": "",
+                "region": "",
+                "compartment_id": "",
+            },
+        )
+        assert revoked.status_code == 200
+        assert revoked.json()["consent"]["enabled"] is False
+        assert revoked.json()["consent"]["config_file"] == ""
+        assert revoked.json()["snapshots"] == []
+        assert [event["event_type"] for event in revoked.json()["consent_events"][:2]] == [
+            "consent_revoked",
+            "consent_granted",
+        ]
+
+
+def test_oci_limit_endpoints_require_loopback_clients(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    with TestClient(app, client=("192.0.2.10", 12345)) as client:
+        status_response = client.get("/api/cloud-resources/oci-limits")
+        consent_response = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={"enabled": True, "user_consent": True},
+        )
+        refresh_response = client.post("/api/cloud-resources/oci-limits/refresh")
+
+    assert status_response.status_code == 403
+    assert consent_response.status_code == 403
+    assert refresh_response.status_code == 403
+
+
+def test_oci_limit_consent_requires_strict_json_booleans(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={"enabled": 1, "user_consent": True},
+        )
     assert response.status_code == 422

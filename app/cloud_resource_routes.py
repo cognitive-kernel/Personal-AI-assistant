@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StrictBool
 
 from . import cloud_resources
 from .kaggle_quota_client import KaggleQuotaClientError, fetch_quota_snapshot
+from .oci_quota_client import OciQuotaClientError, fetch_service_limits
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -169,3 +170,87 @@ def refresh_kaggle_quota() -> dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Kaggle quota refresh failed safely.") from exc
+
+
+
+class OciLimitConsentRequest(BaseModel):
+    enabled: StrictBool
+    user_consent: StrictBool
+    executable_path: str = Field(default="", max_length=2048)
+    config_file: str = Field(default="", max_length=2048)
+    profile: str = Field(default="", max_length=64)
+    region: str = Field(default="", max_length=80)
+    compartment_id: str = Field(default="", max_length=512)
+
+
+@router.get("/oci-limits")
+def get_oci_limits_status() -> dict[str, Any]:
+    try:
+        return {
+            "consent": cloud_resources.get_oci_limit_consent(),
+            "snapshots": cloud_resources.list_oci_limit_snapshots(),
+            "consent_events": cloud_resources.list_oci_limit_consent_events(limit=20),
+            "execution_authorized": False,
+        }
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="OCI limit status storage is unavailable.") from exc
+
+
+@router.patch("/oci-limits/consent")
+def update_oci_limit_consent(request: OciLimitConsentRequest) -> dict[str, Any]:
+    try:
+        consent = cloud_resources.record_oci_limit_consent(
+            enabled=request.enabled,
+            user_consent=request.user_consent,
+            executable_path=request.executable_path,
+            config_file=request.config_file,
+            profile=request.profile,
+            region=request.region,
+            compartment_id=request.compartment_id,
+        )
+        return {
+            "consent": consent,
+            "snapshots": cloud_resources.list_oci_limit_snapshots(),
+            "consent_events": cloud_resources.list_oci_limit_consent_events(limit=20),
+            "execution_authorized": False,
+        }
+    except cloud_resources.CloudResourceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="OCI limit consent storage is unavailable.") from exc
+
+
+@router.post("/oci-limits/refresh")
+def refresh_oci_limits() -> dict[str, Any]:
+    try:
+        consent = cloud_resources.get_oci_limit_consent()
+        if not consent["enabled"] or not consent["user_consent"]:
+            raise HTTPException(
+                status_code=409,
+                detail="OCI limit access is disabled; enable it with explicit consent first.",
+            )
+        snapshot = fetch_service_limits(
+            executable_path=consent["executable_path"],
+            config_file=consent["config_file"],
+            profile=consent["profile"],
+            region=consent["region"],
+            compartment_id=consent["compartment_id"],
+            enabled=consent["enabled"],
+            user_consent=consent["user_consent"],
+        )
+        snapshots = cloud_resources.save_oci_limit_snapshot(snapshot)
+        return {
+            "consent": cloud_resources.get_oci_limit_consent(),
+            "snapshots": snapshots,
+            "consent_events": cloud_resources.list_oci_limit_consent_events(limit=20),
+            "observed_at": snapshot.observed_at.isoformat(),
+            "execution_authorized": False,
+        }
+    except HTTPException:
+        raise
+    except OciQuotaClientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except cloud_resources.CloudResourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="OCI limit refresh failed safely.") from exc

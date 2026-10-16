@@ -47,7 +47,7 @@ def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypa
         assert {"schema_migrations", "cloud_resource_candidates", "cloud_resource_discovery_runs", "cloud_resource_claims"} <= tables
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 5
+        ).fetchone()[0] == 6
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -224,7 +224,7 @@ def test_discovery_handler_schedules_next_daily_pass(tmp_path, monkeypatch):
 def test_cloud_discovery_migrations_can_initialize_a_fresh_database():
     with sqlite3.connect(":memory:") as connection:
         from app.schema_migrations import MigrationRunner
-        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 5
+        assert MigrationRunner(CLOUD_RESOURCE_MIGRATIONS).apply(connection) == 6
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -323,7 +323,7 @@ def test_cloud_resource_v1_upgrade_invalidates_legacy_approval(tmp_path):
         )
         connection.commit()
 
-    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 5
+    assert initialize_database_file(path, CLOUD_RESOURCE_MIGRATIONS) == 6
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             """SELECT review_status, availability_status, quota_json, terms_url,
