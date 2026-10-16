@@ -245,8 +245,13 @@ def test_research_answer_reports_cooperative_checkpoint_phases(monkeypatch):
 def test_material_source_conflict_is_shown_to_user_without_repair_or_verification(monkeypatch):
     source = _source()
     second_url = "https://docs.example.org/alternate-guide"
+    second_source = web_sources.SourceDocument(
+        url=second_url,
+        title="Alternate Guide",
+        text="This alternate official excerpt provides enough technical detail to contrast the default behavior. " * 4,
+    )
     _disable_memory(monkeypatch)
-    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source, second_source])
     chat_calls = []
     monkeypatch.setattr(ollama, "chat", lambda *args, **kwargs: chat_calls.append((args, kwargs)) or "Draft answer")
     conflict_review = {
