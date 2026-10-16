@@ -44,15 +44,19 @@ class TaskRuntime:
         self.lease_seconds = lease_seconds
         self.maintenance_callback = maintenance_callback
         self.maintenance_interval = float(maintenance_interval)
-        self._last_maintenance_at = 0.0
-        self._maintenance_lock = threading.Lock()
+        self._maintenance_ready = threading.Event()
+        self._maintenance_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._threads: list[threading.Thread] = []
         self._lock = threading.Lock()
 
     @property
     def is_running(self) -> bool:
-        return any(thread.is_alive() for thread in self._threads)
+        workers_running = any(thread.is_alive() for thread in self._threads)
+        maintenance_running = (
+            self._maintenance_thread is not None and self._maintenance_thread.is_alive()
+        )
+        return workers_running or maintenance_running
 
     def start(self) -> None:
         """Start the configured workers; repeated start calls are idempotent."""
@@ -60,6 +64,7 @@ class TaskRuntime:
             if self.is_running:
                 return
             self._stop_event.clear()
+            self._maintenance_ready.clear()
             self._threads = []
             for index in range(self.worker_count):
                 worker = TaskWorker(
@@ -75,22 +80,32 @@ class TaskRuntime:
                 )
                 self._threads.append(thread)
                 thread.start()
+            self._maintenance_thread = None
+            if self.maintenance_callback is not None:
+                self._maintenance_thread = threading.Thread(
+                    target=self._run_maintenance,
+                    name=f"{self.worker_prefix}-maintenance",
+                    daemon=True,
+                )
+                self._maintenance_thread.start()
 
-    def _run_maintenance_if_due(self) -> None:
+    def _run_maintenance(self) -> None:
         callback = self.maintenance_callback
         if callback is None:
             return
-        with self._maintenance_lock:
-            now = time.monotonic()
-            if now - self._last_maintenance_at < self.maintenance_interval:
+        while not self._stop_event.is_set():
+            # Do not run maintenance until at least one worker poll has completed.
+            # claim_next_task() reconciles expired leases before this event is set.
+            if not self._maintenance_ready.wait(timeout=self.poll_interval):
+                continue
+            if self._stop_event.is_set():
                 return
-            # Reserve the interval before invoking external maintenance so worker
-            # threads cannot run the same cleanup concurrently.
-            self._last_maintenance_at = now
             try:
                 callback()
             except Exception:
                 logger.exception("Task maintenance callback failed; it will retry after the interval.")
+            if self._stop_event.wait(self.maintenance_interval):
+                return
 
     def _run_worker(self, worker: TaskWorker) -> None:
         while not self._stop_event.is_set():
@@ -99,7 +114,7 @@ class TaskRuntime:
             except Exception:
                 logger.exception("Task worker loop failed; it will retry after the poll interval.")
                 processed = False
-            self._run_maintenance_if_due()
+            self._maintenance_ready.set()
             if not processed:
                 self._stop_event.wait(self.poll_interval)
 
@@ -110,6 +125,8 @@ class TaskRuntime:
         with self._lock:
             self._stop_event.set()
             threads = list(self._threads)
+            if self._maintenance_thread is not None:
+                threads.append(self._maintenance_thread)
         # Join against a shared monotonic deadline so total shutdown time is bounded.
         end = time.monotonic() + timeout
         for thread in threads:
@@ -117,5 +134,5 @@ class TaskRuntime:
             thread.join(remaining)
         stopped = not self.is_running
         if not stopped:
-            logger.warning("Task runtime shutdown timed out; one or more handlers are still active.")
+            logger.warning("Task runtime shutdown timed out; worker or maintenance threads are still active.")
         return stopped
