@@ -188,7 +188,14 @@ def test_terminal_container_cleanup_uses_only_durable_terminal_task_ids(
     _configure(monkeypatch, tmp_path)
     captured = {}
 
-    monkeypatch.setattr(sandbox_tasks.task_manager, "list_terminal_task_ids", lambda *, limit: [12, 18])
+    terminal_query = {}
+
+    def fake_terminal_ids(*, limit, min_terminal_age_seconds):
+        terminal_query["limit"] = limit
+        terminal_query["min_terminal_age_seconds"] = min_terminal_age_seconds
+        return [12, 18]
+
+    monkeypatch.setattr(sandbox_tasks.task_manager, "list_terminal_task_ids", fake_terminal_ids)
 
     def fake_cleanup(**kwargs):
         captured.update(kwargs)
@@ -199,6 +206,7 @@ def test_terminal_container_cleanup_uses_only_durable_terminal_task_ids(
 
     assert captured["terminal_task_ids"] == {12, 18}
     assert captured["min_age_seconds"] == 60
+    assert terminal_query == {"limit": 1000, "min_terminal_age_seconds": 60}
 
 
 def test_terminal_container_cleanup_is_disabled_when_sandbox_is_off(
