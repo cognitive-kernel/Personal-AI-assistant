@@ -26,3 +26,13 @@ Format-version-1 bundles created by the older two-store API remain restorable fo
 - A successful integrity check does not prove that every business-level invariant is correct.
 - Restore into a staging directory first, validate the restored application, and only then plan any controlled cutover.
 - Backups contain private local data and should be protected by filesystem permissions and an appropriate retention policy.
+
+
+## Local dashboard and API
+
+The local dashboard exposes an explicit **ایجاد پشتیبان کامل** action. The user must confirm in the browser before the request is sent. The loopback-only endpoints are:
+
+- `GET /api/storage/backups` — list up to 50 recognized backup manifests without exposing filesystem paths.
+- `POST /api/storage/backups` with JSON `{"confirm": true}` — create a complete format-v2 bundle in the configured `DATABASE_BACKUP_DIR` (default: `data/backups`).
+
+The API generates the backup identifier itself; clients cannot choose an arbitrary filesystem path. The endpoint returns the bundle identifier, database roles, and verification result, not the absolute path. The UI does not offer automatic restore or overwrite operations.
