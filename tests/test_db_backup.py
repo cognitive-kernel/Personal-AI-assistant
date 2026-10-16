@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from app import db, task_manager
+from app import cloud_resources, db, task_manager
 from app.db_backup import BackupRestoreError, backup_databases, restore_databases
 
 
@@ -10,15 +10,18 @@ from app.db_backup import BackupRestoreError, backup_databases, restore_database
 def initialized_databases(tmp_path, monkeypatch):
     settings_path = tmp_path / "live" / "settings.db"
     learning_path = tmp_path / "live" / "learning.db"
+    cloud_path = tmp_path / "live" / "cloud_resources.db"
     monkeypatch.setattr(db.defaults, "settings_db_path", str(settings_path))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(learning_path))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(cloud_path))
     db.init_databases()
+    cloud_resources.initialize_store()
     task_manager.initialize_task_store()
-    return settings_path, learning_path
+    return settings_path, learning_path, cloud_path
 
 
 def test_backup_and_restore_preserve_both_databases(initialized_databases, tmp_path):
-    settings_path, learning_path = initialized_databases
+    settings_path, learning_path, _cloud_path = initialized_databases
     with db.settings_connection() as connection:
         connection.execute(
             "INSERT INTO settings(key, value_json) VALUES ('backup_test', 'true')"
@@ -58,7 +61,7 @@ def test_backup_and_restore_preserve_both_databases(initialized_databases, tmp_p
 
 
 def test_restore_rejects_modified_backup_file(initialized_databases, tmp_path):
-    settings_path, learning_path = initialized_databases
+    settings_path, learning_path, _cloud_path = initialized_databases
     bundle = tmp_path / "backup"
     backup_databases(settings_path, learning_path, bundle)
     with (bundle / "settings.sqlite3").open("ab") as stream:
@@ -69,7 +72,7 @@ def test_restore_rejects_modified_backup_file(initialized_databases, tmp_path):
 
 
 def test_backup_and_restore_never_overwrite_existing_destinations(initialized_databases, tmp_path):
-    settings_path, learning_path = initialized_databases
+    settings_path, learning_path, _cloud_path = initialized_databases
     bundle = tmp_path / "backup"
     backup_databases(settings_path, learning_path, bundle)
     with pytest.raises(FileExistsError):
@@ -84,3 +87,49 @@ def test_backup_requires_distinct_database_paths(tmp_path):
         connection.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY)")
     with pytest.raises(ValueError, match="distinct"):
         backup_databases(same_path, same_path, tmp_path / "backup")
+
+
+
+def test_full_backup_and_restore_include_cloud_resource_database(initialized_databases, tmp_path):
+    settings_path, learning_path, cloud_path = initialized_databases
+    with sqlite3.connect(cloud_path) as connection:
+        connection.execute(
+            """INSERT INTO cloud_resource_candidates(
+                   source_url, provider_domain, title, content_sha256, discovery_query
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (
+                "https://provider.example/resources",
+                "provider.example",
+                "Example provider",
+                "a" * 64,
+                "test query",
+            ),
+        )
+
+    bundle = tmp_path / "backups" / "full-snapshot"
+    manifest = backup_databases(
+        settings_path, learning_path, bundle, cloud_resources_path=cloud_path
+    )
+    assert manifest["format_version"] == 2
+    assert set(manifest["databases"]) == {"settings", "learning", "cloud_resources"}
+
+    restored = restore_databases(bundle, tmp_path / "restored-full")
+    assert set(restored) == {"settings", "learning", "cloud_resources"}
+    with sqlite3.connect(restored["cloud_resources"]) as connection:
+        row = connection.execute(
+            "SELECT source_url, title FROM cloud_resource_candidates"
+        ).fetchone()
+        assert row == ("https://provider.example/resources", "Example provider")
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_configured_backup_includes_all_three_application_stores(initialized_databases, tmp_path):
+    from app.db_backup import backup_configured_databases
+
+    settings_path, learning_path, cloud_path = initialized_databases
+    bundle = tmp_path / "backups" / "configured"
+    manifest = backup_configured_databases(bundle)
+    assert set(manifest["databases"]) == {"settings", "learning", "cloud_resources"}
+    assert manifest["databases"]["settings"]["filename"] == "settings.sqlite3"
+    assert manifest["databases"]["learning"]["filename"] == "learning.sqlite3"
+    assert manifest["databases"]["cloud_resources"]["filename"] == "cloud_resources.sqlite3"
