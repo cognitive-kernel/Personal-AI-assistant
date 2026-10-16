@@ -585,7 +585,6 @@ def approve_for_pr(proposal_id: int, *, confirm: bool) -> dict[str, Any]:
     if not proposal["static_check"].get("test_integrity") or proposal["static_check"]["test_integrity"].get("status") != "passed":
         raise ProposalError("The static test-integrity guard must pass before approval for a PR.")
     root = _repo_root()
-    _validate_repo_paths(root, meta["files"])
     head = _git(root, ["rev-parse", "--verify", "HEAD"])
     if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
         raise ProposalError("Repository HEAD changed after validation; validate a new proposal.")
@@ -645,6 +644,7 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
     if head.returncode != 0 or head.stdout.strip() != proposal["base_commit_sha"]:
         raise ProposalError("Local repository HEAD changed after validation; validate a new proposal.")
     meta = validate_patch_format(proposal["patch"])
+    _validate_repo_paths(root, meta["files"])
     if meta["sha256"] != proposal["patch_sha256"]:
         raise ProposalError("Stored patch hash changed; PR creation is blocked.")
     if (
