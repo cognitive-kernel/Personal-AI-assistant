@@ -60,7 +60,7 @@ def main() -> int:
             raise ollama.OllamaError("disabled by --lexical-only")
         ollama.embed = _embeddings_disabled
 
-    dataset_path = ROOT / "tests" / "fixtures" / "experience_retrieval_eval.json
+    dataset_path = ROOT / "tests" / "fixtures" / "experience_retrieval_eval.json"
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
     original_settings_path = db.defaults.settings_db_path
     original_learning_path = db.defaults.learning_db_path
