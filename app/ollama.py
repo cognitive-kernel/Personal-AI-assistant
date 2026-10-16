@@ -41,7 +41,10 @@ def _base_url() -> str:
         base = urllib.parse.urlunparse(parsed)
         hostname = "127.0.0.1"
     try:
-        loopback = ipaddress.ip_address(hostname).is_loopback
+        address = ipaddress.ip_address(hostname)
+        loopback = address.is_loopback
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            loopback = False
     except ValueError:
         loopback = False
     if not loopback:
