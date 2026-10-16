@@ -283,3 +283,30 @@ def test_ollama_request_wraps_invalid_utf8_response(tmp_path, monkeypatch):
         finally:
             server.shutdown()
             thread.join(timeout=2)
+
+
+def test_ollama_model_inventory_exposes_manifest_digest(tmp_path, monkeypatch):
+    configure_ollama_url(tmp_path, monkeypatch, "http://127.0.0.1:11434")
+    digest = "sha256:" + "a" * 64
+    monkeypatch.setattr(ollama, "_request", lambda path, **_kwargs: {
+        "models": [{
+            "name": "test-model:latest",
+            "size": 1234,
+            "modified_at": "2026-10-16T00:00:00Z",
+            "digest": digest,
+        }]
+    })
+    assert ollama.list_models() == [{
+        "name": "test-model:latest",
+        "size": 1234,
+        "modified_at": "2026-10-16T00:00:00Z",
+        "digest": digest,
+    }]
+
+
+def test_ollama_model_inventory_handles_missing_or_invalid_digest(tmp_path, monkeypatch):
+    configure_ollama_url(tmp_path, monkeypatch, "http://127.0.0.1:11434")
+    monkeypatch.setattr(ollama, "_request", lambda path, **_kwargs: {
+        "models": [{"name": "test-model:latest", "digest": 42}]
+    })
+    assert ollama.list_models()[0]["digest"] is None
