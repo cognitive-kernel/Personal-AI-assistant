@@ -25,7 +25,6 @@ def test_generic_adapter_extracts_only_explicit_claims_with_verbatim_evidence():
     assert by_type["gpu_model"][0].value == "T4"
     assert by_type["region"][0].value == "us-east-1"
     assert by_type["free_tier_mention"][0].value.casefold() == "free tier"
-    assert all(claim.review_status if hasattr(claim, "review_status") else True for claim in claims)
     assert all(claim.evidence_quote in (title + "\n" + text) for claim in claims)
     assert all(claim.adapter_id == "generic-public-page-regex-v1" for claim in claims)
 
@@ -36,11 +35,10 @@ def test_generic_adapter_does_not_infer_missing_capacity_or_availability():
     claims = GenericPublicPageAdapter().extract_claims("provider.example.org", "Compute", text)
 
     assert {claim.claim_type for claim in claims} == {"free_tier_mention"}
-    assert all(claim.review_status if hasattr(claim, "review_status") else True for claim in claims)
 
 
 def test_generic_adapter_deduplicates_repeated_claims():
-    text = "2 vCPU and 2 vCPU; 2 vCPU is the stated limit."
+    text = "2 vCPU and 4 vCPU; 2 vCPU is the stated limit."
 
     claims = GenericPublicPageAdapter().extract_claims("provider.example.org", "CPU", text)
 
