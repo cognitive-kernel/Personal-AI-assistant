@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -37,13 +38,15 @@ def _git_commit() -> str | None:
 
 
 def run_benchmark(
-    *, task_count: int, producers: int, settings_path: str, learning_path: str
+    *, task_count: int, producers: int, workers: int, settings_path: str, learning_path: str
 ) -> dict[str, Any]:
-    """Run concurrent enqueues then claim/complete every task in an isolated store."""
+    """Run concurrent enqueues and concurrent claim/complete workers in an isolated store."""
     if isinstance(task_count, bool) or not isinstance(task_count, int) or not 1 <= task_count <= 100_000:
         raise ValueError("task_count must be an integer from 1 to 100000.")
     if isinstance(producers, bool) or not isinstance(producers, int) or not 1 <= producers <= 16:
         raise ValueError("producers must be an integer from 1 to 16.")
+    if isinstance(workers, bool) or not isinstance(workers, int) or not 1 <= workers <= 16:
+        raise ValueError("workers must be an integer from 1 to 16.")
 
     old_settings = db.defaults.settings_db_path
     old_learning = db.defaults.learning_db_path
@@ -66,16 +69,38 @@ def run_benchmark(
 
         lifecycle_started = time.perf_counter()
         completed = 0
-        while completed < task_count:
-            task = task_manager.claim_next_task("benchmark-worker", lease_seconds=60)
-            if task is None:
-                raise RuntimeError(
-                    f"Queue became empty after {completed} of {task_count} tasks."
-                )
-            if task["task_type"] != "benchmark.noop" or task["payload"].get("benchmark") is not True:
-                raise RuntimeError("Benchmark encountered an unexpected task in its isolated store.")
-            task_manager.complete_task(task["id"], "benchmark-worker", {"ok": True})
-            completed += 1
+        completed_lock = threading.Lock()
+        stop_workers = threading.Event()
+        deadline = time.monotonic() + max(60, task_count * 0.1)
+
+        def consume(worker_number: int) -> None:
+            nonlocal completed
+            worker_id = f"benchmark-worker-{worker_number}"
+            try:
+                while not stop_workers.is_set():
+                    with completed_lock:
+                        if completed >= task_count:
+                            return
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("Queue benchmark exceeded its bounded execution deadline.")
+                    task = task_manager.claim_next_task(worker_id, lease_seconds=60)
+                    if task is None:
+                        # Another worker may currently own the remaining tasks.
+                        time.sleep(0.001)
+                        continue
+                    if task["task_type"] != "benchmark.noop" or task["payload"].get("benchmark") is not True:
+                        raise RuntimeError("Benchmark encountered an unexpected task in its isolated store.")
+                    task_manager.complete_task(task["id"], worker_id, {"ok": True})
+                    with completed_lock:
+                        completed += 1
+            except BaseException:
+                stop_workers.set()
+                raise
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(consume, number) for number in range(workers)]
+            for future in futures:
+                future.result()
         lifecycle_seconds = time.perf_counter() - lifecycle_started
 
         with db.learning_connection() as connection:
@@ -98,6 +123,7 @@ def run_benchmark(
             "task_count_enqueued": len(ids),
             "task_count_succeeded": terminal_count,
             "producer_workers": producers,
+            "consumer_workers": workers,
             "enqueue_seconds": round(enqueue_seconds, 6),
             "enqueue_tasks_per_second": round(task_count / max(enqueue_seconds, 1e-9), 2),
             "claim_and_complete_seconds": round(lifecycle_seconds, 6),
@@ -119,6 +145,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tasks", type=int, default=1000, help="Number of disposable tasks (1..100000).")
     parser.add_argument("--producers", type=int, default=4, help="Concurrent enqueue workers (1..16).")
+    parser.add_argument("--workers", type=int, default=4, help="Concurrent claim/complete workers (1..16).")
     parser.add_argument("--output", type=Path, help="Optional JSON report path.")
     args = parser.parse_args()
 
@@ -128,6 +155,7 @@ def main() -> int:
             report = run_benchmark(
                 task_count=args.tasks,
                 producers=args.producers,
+                workers=args.workers,
                 settings_path=str(root / "settings.db"),
                 learning_path=str(root / "learning.db"),
             )
