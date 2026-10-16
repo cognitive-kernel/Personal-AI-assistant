@@ -826,5 +826,18 @@
 - [x] API محلی loopback-only برای مشاهدهٔ نامزدها و صف‌بندی اجرای دستی اضافه شد؛ هیچ حسابی ساخته نمی‌شود و هیچ کدی روی ارائه‌دهندهٔ دور اجرا نمی‌شود.
 - [x] نامزدها به‌صورت پیش‌فرض `unreviewed/unknown` هستند؛ تغییر hash منبع تأیید قبلی و اطلاعات quota/terms را باطل می‌کند.
 - [x] تست‌های migration، provenance، deduplication، حفظ/ابطال بازبینی، رد URLهای HTTP، idempotency زمان‌بندی و endpointهای محلی اضافه شدند.
-- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی head دقیق `ef39d8a9baea38e1dc2f3608d81631a981f1b57e` موفق بود: [run #38843207937](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38843207937)، 261 تست موفق و benchmark موفق.
+- [x] **PR #129** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/129)، commit ادغام `85cdc3f7031cec6d3984d4206880a6d685067676`.
+- [ ] تست محلی اجرا نشده است.
 - **محدودیت:** این مرحله کشف منبع است، نه provisioning یا تخصیص محاسبات. استخراج قابل اتکای شرایط استفاده/سهمیه، provider adapters، ارزیابی ظرفیت و اجرای امن remote job هنوز پیاده‌سازی نشده‌اند.
+
+
+## 57. 2026-10-16 — بازبینی hash-bound و تازگی شواهد منابع ابری
+
+- [x] migration نسخهٔ 2 برای cloud resources ستون‌های `freshness_status`, `reviewed_at` و `reviewed_content_sha256` و indexهای لازم را اضافه می‌کند.
+- [x] API محلی برای تأیید/رد نامزد با hash مورد انتظار اضافه شد؛ hash ناسازگار پاسخ conflict می‌دهد و تأیید نیازمند URL شرایط استفاده با HTTPS است.
+- [x] بازبینی به hash عنوان+متن پیوند می‌خورد؛ تغییر محتوا وضعیت review را به `unreviewed` برمی‌گرداند و اطلاعات availability/quota/terms قبلی را پاک می‌کند.
+- [x] نامزدهای مشاهده‌نشده بیش از ۳۰ روز `stale` می‌شوند و availability آن‌ها به `unknown` برمی‌گردد؛ شواهد stale قابل تأیید نیستند تا discovery مجدد انجام شود.
+- [x] migration از schema نسخهٔ 1، پاک‌سازی تأییدهای قدیمی فاقد hash، تست API، optimistic concurrency و تازگی اضافه شدند.
+- [ ] CI روی head دقیق PR باید بررسی شود؛ تست محلی اجرا نشده است.
+- **گام بعدی:** UI بازبینی نامزدها و سپس adapterهای رسمی provider برای استخراج شواهد محدودیت/هزینه، احراز هویت مجاز و eligibility؛ هیچ remote execution تا تکمیل این قرارداد فعال نشود.
