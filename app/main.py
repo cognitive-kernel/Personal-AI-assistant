@@ -14,7 +14,7 @@ from .hardware import detect_hardware, runtime_limits
 from .task_routes import router as task_router
 from .cloud_resource_routes import router as cloud_resource_router
 from .sandbox_routes import router as sandbox_router
-from .experience_routes import experience_router
+from .experience_routes import router as experience_router
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
