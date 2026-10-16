@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
 from contextlib import closing
@@ -62,6 +63,196 @@ def initialize_store() -> int:
         defaults.cloud_resources_db_path,
         CLOUD_RESOURCE_MIGRATIONS,
     )
+
+
+KAGGLE_PROVIDER_ID = "kaggle"
+KAGGLE_QUOTA_CONSENT_VERSION = "kaggle-quota-readonly-v1"
+
+
+def get_provider_consent(provider_id: str = KAGGLE_PROVIDER_ID) -> dict[str, Any]:
+    if provider_id != KAGGLE_PROVIDER_ID:
+        raise CloudResourceError("Unknown provider consent scope.")
+    with closing(_connect()) as connection:
+        row = connection.execute(
+            "SELECT provider_id, enabled, user_consent, executable_path, consent_version, "
+            "consented_at, revoked_at, updated_at FROM provider_access_consents WHERE provider_id=?",
+            (provider_id,),
+        ).fetchone()
+    if row is None:
+        return {
+            "provider_id": provider_id,
+            "enabled": False,
+            "user_consent": False,
+            "executable_path": "",
+            "consent_version": KAGGLE_QUOTA_CONSENT_VERSION,
+            "consented_at": None,
+            "revoked_at": None,
+            "updated_at": None,
+        }
+    result = dict(row)
+    result["enabled"] = bool(result["enabled"])
+    result["user_consent"] = bool(result["user_consent"])
+    return result
+
+
+def record_provider_consent(
+    *,
+    enabled: bool,
+    user_consent: bool,
+    executable_path: str = "",
+    provider_id: str = KAGGLE_PROVIDER_ID,
+) -> dict[str, Any]:
+    """Record an explicit local opt-in/revocation without storing credentials."""
+    if provider_id != KAGGLE_PROVIDER_ID:
+        raise CloudResourceError("Unknown provider consent scope.")
+    if type(enabled) is not bool or type(user_consent) is not bool:
+        raise CloudResourceError("Consent and enablement must be explicit booleans.")
+    if enabled and not user_consent:
+        raise CloudResourceError("Provider access cannot be enabled without explicit consent.")
+    if enabled:
+        if not isinstance(executable_path, str) or len(executable_path) > 2048:
+            raise CloudResourceError("A valid absolute Kaggle CLI executable path is required.")
+        executable = Path(executable_path).expanduser()
+        if not executable.is_absolute() or not executable.is_file():
+            raise CloudResourceError("A valid absolute Kaggle CLI executable path is required.")
+        normalized_path = str(executable)
+    else:
+        if user_consent:
+            raise CloudResourceError("Revocation must disable access and clear consent.")
+        normalized_path = ""
+
+    now = datetime.now(timezone.utc).isoformat()
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT enabled, executable_path FROM provider_access_consents WHERE provider_id=?",
+            (provider_id,),
+        ).fetchone()
+        if enabled:
+            changed = existing is None or not bool(existing["enabled"]) or existing["executable_path"] != normalized_path
+            if changed:
+                connection.execute(
+                    "INSERT INTO provider_access_consent_events(provider_id, event_type, consent_version) "
+                    "VALUES (?, 'consent_granted', ?)",
+                    (provider_id, KAGGLE_QUOTA_CONSENT_VERSION),
+                )
+            connection.execute(
+                """INSERT INTO provider_access_consents(
+                       provider_id, enabled, user_consent, executable_path, consent_version,
+                       consented_at, revoked_at, updated_at
+                   ) VALUES (?, 1, 1, ?, ?, ?, NULL, ?)
+                   ON CONFLICT(provider_id) DO UPDATE SET
+                       enabled=1, user_consent=1, executable_path=excluded.executable_path,
+                       consent_version=excluded.consent_version,
+                       consented_at=CASE WHEN provider_access_consents.enabled=1
+                                             AND provider_access_consents.executable_path=excluded.executable_path
+                                         THEN provider_access_consents.consented_at
+                                         ELSE excluded.consented_at END,
+                       revoked_at=NULL, updated_at=excluded.updated_at""",
+                (provider_id, normalized_path, KAGGLE_QUOTA_CONSENT_VERSION, now, now),
+            )
+        elif existing is not None and bool(existing["enabled"]):
+            connection.execute(
+                "INSERT INTO provider_access_consent_events(provider_id, event_type, consent_version) "
+                "VALUES (?, 'consent_revoked', ?)",
+                (provider_id, KAGGLE_QUOTA_CONSENT_VERSION),
+            )
+            connection.execute(
+                """UPDATE provider_access_consents
+                   SET enabled=0, user_consent=0, executable_path='',
+                       revoked_at=?, updated_at=? WHERE provider_id=?""",
+                (now, now, provider_id),
+            )
+            # Account-specific quota values are removed on revocation; the consent audit remains.
+            connection.execute(
+                "DELETE FROM provider_quota_snapshots WHERE provider_id=?",
+                (provider_id,),
+            )
+        connection.commit()
+    return get_provider_consent(provider_id)
+
+
+def list_provider_consent_events(
+    provider_id: str = KAGGLE_PROVIDER_ID,
+    *,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    if provider_id != KAGGLE_PROVIDER_ID:
+        raise CloudResourceError("Unknown provider consent scope.")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise CloudResourceError("Consent event limit must be between 1 and 100.")
+    with closing(_connect()) as connection:
+        rows = connection.execute(
+            """SELECT id, provider_id, event_type, consent_version, created_at
+               FROM provider_access_consent_events WHERE provider_id=?
+               ORDER BY id DESC LIMIT ?""",
+            (provider_id, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_provider_quota_snapshot(snapshot: Any, provider_id: str = KAGGLE_PROVIDER_ID) -> list[dict[str, Any]]:
+    """Persist only parsed quota numbers, never raw CLI output or credentials."""
+    if provider_id != KAGGLE_PROVIDER_ID:
+        raise CloudResourceError("Unknown provider quota scope.")
+    if not hasattr(snapshot, "observed_at") or not hasattr(snapshot, "refresh_at"):
+        raise CloudResourceError("Quota snapshot has an invalid shape.")
+    consent = get_provider_consent(provider_id)
+    if not consent["enabled"] or not consent["user_consent"]:
+        raise CloudResourceError("Quota cannot be stored without current provider consent.")
+    rows: list[tuple[str, float, float, float]] = []
+    for resource_name in ("GPU", "TPU"):
+        quota = getattr(snapshot, resource_name.lower(), None)
+        if quota is None:
+            continue
+        values = (quota.used_hours, quota.remaining_hours, quota.total_hours)
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
+            raise CloudResourceError("Quota snapshot contains invalid numeric values.")
+        if any(not math.isfinite(value) or value < 0 for value in values):
+            raise CloudResourceError("Quota snapshot contains invalid numeric values.")
+        rows.append((resource_name, float(values[0]), float(values[1]), float(values[2])))
+    if not rows:
+        raise CloudResourceError("Quota snapshot contains no known GPU or TPU quota.")
+    observed_at = snapshot.observed_at.astimezone(timezone.utc).isoformat()
+    refresh_at = snapshot.refresh_at.astimezone(timezone.utc).isoformat()
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT enabled, user_consent FROM provider_access_consents WHERE provider_id=?",
+            (provider_id,),
+        ).fetchone()
+        if current is None or not current["enabled"] or not current["user_consent"]:
+            connection.rollback()
+            raise CloudResourceError("Provider consent was revoked before quota persistence.")
+        connection.execute("DELETE FROM provider_quota_snapshots WHERE provider_id=?", (provider_id,))
+        for resource_name, used, remaining, total in rows:
+            connection.execute(
+                """INSERT INTO provider_quota_snapshots(
+                       provider_id, resource, used_hours, remaining_hours, total_hours,
+                       observed_at, refresh_at
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (provider_id, resource_name, used, remaining, total, observed_at, refresh_at),
+            )
+        connection.commit()
+    return list_provider_quota_snapshots(provider_id)
+
+
+def list_provider_quota_snapshots(
+    provider_id: str = KAGGLE_PROVIDER_ID,
+) -> list[dict[str, Any]]:
+    if provider_id != KAGGLE_PROVIDER_ID:
+        raise CloudResourceError("Unknown provider quota scope.")
+    consent = get_provider_consent(provider_id)
+    if not consent["enabled"] or not consent["user_consent"]:
+        return []
+    with closing(_connect()) as connection:
+        rows = connection.execute(
+            """SELECT resource, used_hours, remaining_hours, total_hours, observed_at, refresh_at
+               FROM provider_quota_snapshots WHERE provider_id=?
+               ORDER BY resource""",
+            (provider_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def _normalize_source_url(url: str) -> tuple[str, str]:

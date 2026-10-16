@@ -331,6 +331,45 @@ CLOUD_RESOURCE_MIGRATIONS = (
         "cloud-resource-claim-review-audit",
         ("ALTER TABLE cloud_resource_claims ADD COLUMN reviewed_at TEXT",),
     ),
+    Migration(
+        5,
+        "cloud-provider-consent-and-quota-snapshots",
+        (
+            """CREATE TABLE provider_access_consents (
+                provider_id TEXT PRIMARY KEY CHECK(provider_id = 'kaggle'),
+                enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+                user_consent INTEGER NOT NULL DEFAULT 0 CHECK(user_consent IN (0,1)),
+                executable_path TEXT NOT NULL DEFAULT '',
+                consent_version TEXT NOT NULL DEFAULT 'kaggle-quota-readonly-v1',
+                consented_at TEXT,
+                revoked_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(enabled = 0 OR
+                      (user_consent = 1 AND length(trim(executable_path)) > 0
+                       AND consented_at IS NOT NULL))
+            )""",
+            """CREATE TABLE provider_access_consent_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL CHECK(provider_id = 'kaggle'),
+                event_type TEXT NOT NULL CHECK(event_type IN ('consent_granted','consent_revoked')),
+                consent_version TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE provider_quota_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                provider_id TEXT NOT NULL CHECK(provider_id = 'kaggle'),
+                resource TEXT NOT NULL CHECK(resource IN ('GPU','TPU')),
+                used_hours REAL NOT NULL CHECK(used_hours >= 0),
+                remaining_hours REAL NOT NULL CHECK(remaining_hours >= 0),
+                total_hours REAL NOT NULL CHECK(total_hours >= 0),
+                observed_at TEXT NOT NULL,
+                refresh_at TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_provider_consent_events_created ON provider_access_consent_events(provider_id, created_at DESC, id DESC)",
+            "CREATE INDEX idx_provider_quota_latest ON provider_quota_snapshots(provider_id, resource, observed_at DESC, id DESC)",
+        ),
+    ),
 )
 
 

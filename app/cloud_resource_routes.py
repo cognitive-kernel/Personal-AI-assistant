@@ -5,9 +5,10 @@ import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool
 
 from . import cloud_resources
+from .kaggle_quota_client import KaggleQuotaClientError, fetch_quota_snapshot
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -101,3 +102,70 @@ def review_cloud_resource_claim(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except (OSError, RuntimeError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Cloud resource claim review storage is unavailable.") from exc
+
+
+class ProviderQuotaConsentRequest(BaseModel):
+    enabled: StrictBool
+    user_consent: StrictBool
+    executable_path: str = Field(default="", max_length=2048)
+
+
+@router.get("/kaggle-quota")
+def get_kaggle_quota_status() -> dict[str, Any]:
+    try:
+        return {
+            "consent": cloud_resources.get_provider_consent(),
+            "snapshots": cloud_resources.list_provider_quota_snapshots(),
+            "consent_events": cloud_resources.list_provider_consent_events(limit=20),
+        }
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Kaggle quota status storage is unavailable.") from exc
+
+
+@router.patch("/kaggle-quota/consent")
+def update_kaggle_quota_consent(request: ProviderQuotaConsentRequest) -> dict[str, Any]:
+    try:
+        consent = cloud_resources.record_provider_consent(
+            enabled=request.enabled,
+            user_consent=request.user_consent,
+            executable_path=request.executable_path,
+        )
+        return {
+            "consent": consent,
+            "snapshots": cloud_resources.list_provider_quota_snapshots(),
+            "consent_events": cloud_resources.list_provider_consent_events(limit=20),
+        }
+    except cloud_resources.CloudResourceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Kaggle quota consent storage is unavailable.") from exc
+
+
+@router.post("/kaggle-quota/refresh")
+def refresh_kaggle_quota() -> dict[str, Any]:
+    try:
+        consent = cloud_resources.get_provider_consent()
+        if not consent["enabled"] or not consent["user_consent"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Kaggle quota access is disabled; enable it with explicit consent first.",
+            )
+        snapshot = fetch_quota_snapshot(
+            executable_path=consent["executable_path"],
+            enabled=consent["enabled"],
+            user_consent=consent["user_consent"],
+        )
+        snapshots = cloud_resources.save_provider_quota_snapshot(snapshot)
+        return {
+            "consent": cloud_resources.get_provider_consent(),
+            "snapshots": snapshots,
+            "consent_events": cloud_resources.list_provider_consent_events(limit=20),
+        }
+    except HTTPException:
+        raise
+    except KaggleQuotaClientError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except cloud_resources.CloudResourceError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Kaggle quota refresh failed safely.") from exc

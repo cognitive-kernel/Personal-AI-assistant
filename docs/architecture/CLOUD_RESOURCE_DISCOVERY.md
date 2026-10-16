@@ -96,3 +96,10 @@ No provider job is submitted by this stage. The provider policy still returns `e
 `fetch_quota_snapshot()` is a standalone building block, not an enabled background integration. It requires both `enabled=True` and `user_consent=True`, and an absolute path to the CLI executable. It executes only `quota --csv`; there is no command interpolation, shell, account creation, kernel push, upload, or deletion. Only the environment variables needed for process startup and Kaggle CLI credential discovery are passed to the child process. CLI error output is deliberately not propagated to avoid leaking account details or credentials.
 
 The application startup and cloud scheduler do not call this client. A later UI/API integration must persist an auditable consent state, explain the account data accessed, and provide revocation before enabling periodic quota checks.
+
+
+## Local opt-in and revocation workflow
+
+The local UI now offers an optional Kaggle quota panel. The default state is disabled. Enabling it requires a checkbox plus a valid absolute path to the user's existing Kaggle CLI executable. The local API is loopback-only and records consent-granted/revoked events in the cloud-resource database with the consent-policy version; it does not store API tokens or raw CLI output.
+
+Quota refresh is manual only: the user presses the refresh button, and the backend runs only the fixed read-only `quota --csv` command through the opt-in client. There is no startup check, periodic polling, notebook submission, upload, or remote execution. Parsed GPU/TPU quota values and observation/reset times are stored locally. Revocation disables access, clears the executable path and current quota snapshot, and retains the consent audit events.

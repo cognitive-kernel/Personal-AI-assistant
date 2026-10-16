@@ -951,5 +951,18 @@
 - [x] محیط فرزند به allowlist محدود شد؛ stdout فقط برای parsing استفاده می‌شود و stderr/اطلاعات خطا برای جلوگیری از افشای اطلاعات حساب به caller منتقل نمی‌شود.
 - [x] تست‌ها consent اجباری، فرمان ثابت، عدم استفاده از shell، timeout، مسیر نامعتبر، خروجی خراب و عدم افشای stderr را پوشش می‌دهند.
 - [x] راهنمای معماری روشن می‌کند که client هنوز از startup، scheduler یا UI فراخوانی نمی‌شود؛ اتصال دوره‌ای نیازمند تنظیمات رضایت قابل‌ابطال و audit است.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] **PR #139** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/139)، commit ادغام `93bcf1230b6d70038b89542d7507b9f9ecc31de5`.
+- [x] CI روی head دقیق `181225ea8b6e41540b0b4903f2aaaeeb0b7f130a` موفق بود؛ run [#38851560844](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38851560844).
+- [ ] تست محلی اجرا نشده است.
 - **گام بعدی:** افزودن تنظیم/رابط محلی برای opt-in، رضایت قابل‌ابطال و نمایش آخرین quota با زمان مشاهده؛ تا آن مرحله هیچ بررسی دوره‌ای یا اجرای remote فعال نشود.
+
+
+## 67. 2026-10-16 — رضایت قابل‌ابطال و نمایش سهمیه در پنل محلی
+
+- [x] migration نسخهٔ ۵ پایگاه cloud resources جدول‌های `provider_access_consents`, `provider_access_consent_events` و `provider_quota_snapshots` را اضافه کرد.
+- [x] API loopback-only وضعیت رضایت، ثبت رضایت صریح، لغو رضایت و refresh دستی quota را فراهم می‌کند؛ booleanها strict هستند و مسیر CLI باید مطلق و موجود باشد.
+- [x] رضایت و لغو با نسخهٔ policy و timestamp audit می‌شوند؛ با لغو، مسیر executable و snapshot فعلی پاک می‌شود، اما تاریخچهٔ رویدادهای رضایت باقی می‌ماند.
+- [x] پنل محلی چک‌باکس رضایت، مسیر CLI، refresh دستی و نمایش snapshotها/تاریخچه را اضافه کرد؛ هیچ درخواست quota در startup یا scheduler انجام نمی‌شود.
+- [x] تست‌های API برای default-off، عدم refresh پیش از رضایت، ثبت و لغو، پاک‌سازی snapshot، endpointهای غیر loopback و booleanهای malformed اضافه شدند.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** بررسی رفتار crash و لغو رضایت هم‌زمان با refresh؛ سپس طراحی job dispatcher با checkpoint و ارسال حداقلی داده. هیچ اجرای remote تا تکمیل قرارداد provider و sandbox فعال نشود.
