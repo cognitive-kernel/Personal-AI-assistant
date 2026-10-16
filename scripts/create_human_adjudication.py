@@ -73,9 +73,32 @@ def build_worksheet(
     for snapshot in snapshots:
         if not isinstance(snapshot, dict) or not isinstance(snapshot.get("case_id"), str):
             raise ValueError("The report contains an invalid source snapshot.")
+        if snapshot["case_id"] not in {case["id"] for case in cases}:
+            raise ValueError("The report contains a source snapshot for an unknown case.")
         if snapshot["case_id"] in source_by_id:
             raise ValueError("The report contains duplicate source snapshots.")
-        source_by_id[snapshot["case_id"]] = snapshot.get("sources", [])
+        sources = snapshot.get("sources", [])
+        if not isinstance(sources, list):
+            raise ValueError("The report contains an invalid source list.")
+        sanitized_sources = []
+        for source in sources:
+            if not isinstance(source, dict):
+                raise ValueError("The report contains an invalid source record.")
+            clean_source = {}
+            for field, max_length in (("url", 2048), ("title", 500), ("content_sha256", 64)):
+                value = source.get(field)
+                if value is not None and (not isinstance(value, str) or len(value) > max_length):
+                    raise ValueError("The report contains invalid source metadata.")
+                clean_source[field] = value
+            excerpt_chars = source.get("excerpt_chars")
+            if excerpt_chars is not None and (
+                isinstance(excerpt_chars, bool) or not isinstance(excerpt_chars, int)
+                or excerpt_chars < 0
+            ):
+                raise ValueError("The report contains invalid source excerpt metadata.")
+            clean_source["excerpt_chars"] = excerpt_chars
+            sanitized_sources.append(clean_source)
+        source_by_id[snapshot["case_id"]] = sanitized_sources
 
     worksheet_cases = []
     seen_ids: set[str] = set()
@@ -131,7 +154,14 @@ def build_worksheet(
             "created_at_utc": report.get("created_at_utc"),
             "code_commit": report.get("code_commit"),
             "dataset_sha256": dataset_digest,
-            "model": report.get("model"),
+            "model": {
+                "configured_name": report.get("model", {}).get("configured_name")
+                if isinstance(report.get("model"), dict) else None,
+                "manifest_digest": report.get("model", {}).get("manifest_digest")
+                if isinstance(report.get("model"), dict) else None,
+                "warning": report.get("model", {}).get("warning")
+                if isinstance(report.get("model"), dict) else None,
+            },
             "run_status": report.get("run_status"),
             "case_count": report.get("case_count"),
             "completed_count": report.get("completed_count"),
