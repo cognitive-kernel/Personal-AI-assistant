@@ -80,3 +80,12 @@ task with a valid active lease is absent from the terminal-task query. An expire
 single-attempt sandbox task is made terminal before its ID can be considered, and
 the terminal-age grace period delays any container removal for another 60 seconds.
 Regression tests cover both the active-task and expired-lease paths.
+
+
+## Real-Docker integration validation
+
+The normal CI suite uses mocked Docker execution for deterministic unit tests. A separate manual workflow, `.github/workflows/sandbox-integration.yml`, runs real containers on a GitHub-hosted Linux runner.
+
+To run it, use **Actions → Sandbox integration → Run workflow** and supply an official Python image pinned by SHA-256 digest, such as a verified `python:3.12-slim@sha256:<digest>` reference. The workflow validates the image reference, pulls that exact digest, and checks non-root execution, read-only root/mounts, no network, resource limits, timeout behavior, output limits, and the absence of host-execution fallback.
+
+The real-Docker workflow is manual because it pulls a container image and requires an explicit operator-selected digest. Passing unit tests alone does not prove Docker runtime behavior. The Ollama network-boundary issue #52 also remains open pending an independent security review.
