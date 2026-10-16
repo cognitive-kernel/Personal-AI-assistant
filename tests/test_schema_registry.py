@@ -299,7 +299,7 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
 def test_migration_runner_rejects_out_of_band_schema_drift():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(LEARNING_MIGRATIONS)
-        assert runner.apply(connection) == 4
+        assert runner.apply(connection) == 5
         connection.execute("DROP INDEX idx_task_queue_ready")
         with pytest.raises(MigrationError, match="does not match the registered migration history"):
             runner.apply(connection)
