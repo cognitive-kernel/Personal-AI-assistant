@@ -765,8 +765,10 @@
 - [x] مسیر research chat برای موفقیت، نبود منبع، عدم دسترسی به reviewer، نیاز به بررسی بیشتر و شکست تولید، رویداد audit ثبت می‌کند؛ خطای ذخیرهٔ audit پاسخ کاربر را از کار نمی‌اندازد.
 - [x] تست‌ها نبود دادهٔ خام در audit، hashهای صحیح، حذف مقصد HTTP نامعتبر، محدودیت status و ثبت memory refs را بررسی می‌کنند.
 - [x] راهنمای research-aware chat و migration runner به‌روز شد.
-- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** پس از ادغام، ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.
+- [x] **PR #123** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/123)، commit `75fe2990abf5f00d40c32732aa7945d3fa7af9c3`.
+- [x] CI روی head دقیق `583fe6d5fff5d590910f01589209c5199382deed` موفق بود؛ run [#38840504920](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840504920)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 239 passed.
+- [ ] تست محلی اجرا نشده است.
+- **گام بعدی:** ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.
 
 
 ## 51. 2026-10-16 — audit محلی و حریم‌خصوصی برای پاسخ‌های پژوهشی
@@ -778,3 +780,13 @@
 - [x] راهنمای research-aware chat و migration runner به‌روز شد.
 - [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
 - **گام بعدی:** پس از ادغام، ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.
+
+
+## 52. 2026-10-16 — dataset و سنجه‌های قابل‌بازتولید برای کیفیت بازیابی
+
+- [x] `app/retrieval_evaluation.py` سنجه‌های Recall@k، reciprocal rank و MRR را بدون وابستگی به موتور بازیابی پیاده‌سازی می‌کند.
+- [x] fixture مصنوعی دوزبانه با 12 تجربهٔ فنی و 10 پرس‌وجوی فارسی/انگلیسی به همراه query variant و relevant target اضافه شد.
+- [x] `scripts/evaluate_experience_retrieval.py` روی دیتابیس SQLite موقت seed می‌کند؛ دیتابیس کاربر را تغییر نمی‌دهد و در صورت نبود embedding model از fallback واژگانی استفاده می‌کند.
+- [x] خروجی گزارش شامل Recall@5، MRR، ranking هر query، مدل embedding و تعداد بردارهای cache‌شده است؛ مستندات تأکید می‌کنند که benchmark مصنوعی، اثبات کیفیت عمومی نیست.
+- [ ] CI روی head دقیق PR باید بررسی شود؛ benchmark واقعی محلی اجرا نشده و هیچ مقدار عملکرد واقعی ادعا نمی‌شود.
+- **گام بعدی:** اجرای benchmark در محیط دارای مدل embedding محلی، ثبت baseline واقعی، سپس گسترش dataset با نمونه‌های واقعیِ بازبینی‌شده و ارزیابی Recall@5/MRR پیش از تغییر الگوریتم.

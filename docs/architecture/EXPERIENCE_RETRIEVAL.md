@@ -22,3 +22,14 @@ The first implementation scans a bounded corpus and computes cosine similarity i
 - If the embedding model is missing, times out, or returns invalid data, the query falls back to lexical ranking. It does not fail the chat/learning task solely because vector retrieval is unavailable.
 - The model name and experience version are part of the cache key; switching models causes cache rebuild rather than mixing incompatible vectors.
 - This cache is a retrieval aid, not evidence that an experience is true. Evidence and passing test results remain mandatory for verified status.
+
+
+## Reproducible quality evaluation
+
+A synthetic bilingual fixture lives at `tests/fixtures/experience_retrieval_eval.json`. It includes English and Persian queries, cross-language variants, synthetic experience records, and explicit relevant slugs. The benchmark runner seeds an isolated temporary SQLite database, never the user's live database, and uses the configured local embedding model when available:
+
+```bash
+python scripts/evaluate_experience_retrieval.py
+```
+
+The report includes Recall@5, MRR, per-query ranking, embedding cache row count, and whether vector retrieval was available or lexical fallback was used. Recall@5 measures the fraction of relevant records found in the top five; MRR is the mean reciprocal rank of the first relevant result. The fixture is synthetic and is only a regression benchmark, not evidence of general real-world retrieval quality. No measured benchmark result should be claimed until the runner has actually been executed against a configured local model.

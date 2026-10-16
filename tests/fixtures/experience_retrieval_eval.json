@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "description": "Synthetic, license-safe benchmark for bilingual experience retrieval. Source URLs are reserved example.org URLs and are not fetched.",
+  "experiences": [
+    {
+      "slug": "sql_execution_plan",
+      "topic": "SQL Server execution plan",
+      "problem": "Investigate query plan operators, estimated versus actual rows, and logical reads.",
+      "hypothesis": "Comparing actual and estimated rows plus logical reads helps identify a poor query plan.",
+      "takeaway": "Inspect execution plans and compare actual rows and logical reads against a baseline.",
+      "claim": "Execution plans expose operators and estimated versus actual row counts.",
+      "source_url": "https://docs.example.org/sql-execution-plan"
+    },
+    {
+      "slug": "sql_index_tradeoffs",
+      "topic": "SQL Server index tradeoffs",
+      "problem": "Evaluate index selectivity, write overhead, and maintenance cost.",
+      "hypothesis": "An index may improve reads while increasing write and storage costs.",
+      "takeaway": "Measure representative reads and write overhead before keeping an index.",
+      "claim": "Index usefulness depends on workload, selectivity, and maintenance cost.",
+      "source_url": "https://docs.example.org/sql-index-tradeoffs"
+    },
+    {
+      "slug": "python_json_errors",
+      "topic": "Python JSONDecodeError",
+      "problem": "Handle malformed JSON passed to json.loads without crashing the application.",
+      "hypothesis": "Validate input boundaries and catch JSONDecodeError at the parsing boundary.",
+      "takeaway": "Catch JSONDecodeError and preserve a clear failure state for malformed JSON.",
+      "claim": "Python json.loads can raise JSONDecodeError for malformed JSON text.",
+      "source_url": "https://docs.example.org/python-json-errors"
+    },
+    {
+      "slug": "ollama_redirect_security",
+      "topic": "Ollama loopback redirect security",
+      "problem": "Prevent a local Ollama endpoint from redirecting requests to another host.",
+      "hypothesis": "A no-redirect HTTP handler prevents loopback requests from following redirects.",
+      "takeaway": "Reject redirects from the loopback Ollama endpoint and validate the configured base URL.",
+      "claim": "A client that follows redirects can leave the intended loopback destination.",
+      "source_url": "https://docs.example.org/ollama-redirect-security"
+    },
+    {
+      "slug": "sqlite_migration_safety",
+      "topic": "SQLite schema migration safety",
+      "problem": "Upgrade a legacy SQLite schema while preserving rows, foreign keys, and rollback safety.",
+      "hypothesis": "A reviewed fingerprint, backup, ordered migration, and integrity checks reduce unsafe adoption.",
+      "takeaway": "Back up first, match known schema fingerprints, apply ordered migrations, then validate integrity.",
+      "claim": "Schema migrations should be versioned and checked for integrity and foreign-key violations.",
+      "source_url": "https://docs.example.org/sqlite-migration-safety"
+    },
+    {
+      "slug": "embedding_cache_versioning",
+      "topic": "Embedding cache versioning",
+      "problem": "Avoid reusing stale vectors after an experience record changes or the embedding model changes.",
+      "hypothesis": "Cache keys must include record version and model name.",
+      "takeaway": "Key embeddings by record ID, immutable version, and embedding model.",
+      "claim": "Vectors generated for a prior record version or model may be incompatible with the current representation.",
+      "source_url": "https://docs.example.org/embedding-cache-versioning"
+    },
+    {
+      "slug": "web_source_ssrf",
+      "topic": "Public URL validation and SSRF",
+      "problem": "Fetch public web documentation without allowing private-address or redirect-based SSRF.",
+      "hypothesis": "Validate every redirect destination and enforce response size and timeout limits.",
+      "takeaway": "Validate scheme, host, DNS results, redirects, content type, timeout, and maximum bytes.",
+      "claim": "Redirect destinations must be validated as well as the initial URL.",
+      "source_url": "https://docs.example.org/web-source-ssrf"
+    },
+    {
+      "slug": "task_lease_recovery",
+      "topic": "Persistent task lease recovery",
+      "problem": "Prevent duplicate execution when a long-running worker outlives its lease.",
+      "hypothesis": "Heartbeats, ownership checks, checkpoints, and idempotency reduce duplicate work.",
+      "takeaway": "Renew leases while running and reconcile ownership at checkpoints.",
+      "claim": "A lease that expires can allow another worker to claim a task unless ownership is renewed or reconciled.",
+      "source_url": "https://docs.example.org/task-lease-recovery"
+    },
+    {
+      "slug": "css_grid_layout",
+      "topic": "CSS Grid layout",
+      "problem": "Center an item inside a responsive container using CSS Grid alignment.",
+      "hypothesis": "Grid alignment properties can center an item without fixed margins.",
+      "takeaway": "Use place-items or align-items and justify-items for grid alignment.",
+      "claim": "CSS Grid supports alignment properties for positioning items within a grid container.",
+      "source_url": "https://docs.example.org/css-grid-layout"
+    },
+    {
+      "slug": "sqlite_backup_restore",
+      "topic": "SQLite atomic backup restore",
+      "problem": "Restore a database backup without replacing a working target before validation.",
+      "hypothesis": "Restore to a temporary file, validate it, then atomically replace the target with explicit opt-in.",
+      "takeaway": "Validate integrity and foreign keys before atomic replacement; require explicit overwrite permission.",
+      "claim": "A backup restore should validate the restored database before replacing the target.",
+      "source_url": "https://docs.example.org/sqlite-backup-restore"
+    },
+    {
+      "slug": "python_async_retry",
+      "topic": "Python asynchronous retry policy",
+      "problem": "Bound retries for transient network failures without retrying permanent errors forever.",
+      "hypothesis": "Retry limits, exponential backoff, and idempotency prevent unbounded repeated work.",
+      "takeaway": "Retry only eligible failures with bounded attempts and backoff.",
+      "claim": "Retry policy should distinguish transient errors from permanent failures.",
+      "source_url": "https://docs.example.org/python-async-retry"
+    },
+    {
+      "slug": "http_timeout_retries",
+      "topic": "HTTP timeout and retry handling",
+      "problem": "Set bounded HTTP timeouts and retry behavior for a flaky remote service.",
+      "hypothesis": "Separate connect/read timeouts and cap retry attempts to bound latency.",
+      "takeaway": "Use explicit timeouts and a bounded retry budget for network calls.",
+      "claim": "Unbounded network waits can hold a worker indefinitely.",
+      "source_url": "https://docs.example.org/http-timeout-retries"
+    }
+  ],
+  "queries": [
+    {
+      "id": "en_sql_plan",
+      "language": "en",
+      "query": "How do I diagnose a slow SQL Server query plan and compare logical reads?",
+      "query_variants": [
+        "چطور execution plan و logical reads در SQL Server را بررسی کنم؟"
+      ],
+      "relevant_slugs": [
+        "sql_execution_plan"
+      ]
+    },
+    {
+      "id": "fa_index_tradeoffs",
+      "language": "fa",
+      "query": "هزینه نگهداری ایندکس در SQL Server و تأثیر آن بر نوشتن چیست؟",
+      "query_variants": [
+        "SQL Server index maintenance cost write overhead selectivity"
+      ],
+      "relevant_slugs": [
+        "sql_index_tradeoffs"
+      ]
+    },
+    {
+      "id": "en_json_error",
+      "language": "en",
+      "query": "How should a Python app handle JSONDecodeError from malformed JSON?",
+      "query_variants": [
+        "مدیریت خطای JSONDecodeError در پایتون برای JSON نامعتبر"
+      ],
+      "relevant_slugs": [
+        "python_json_errors"
+      ]
+    },
+    {
+      "id": "fa_ollama_redirect",
+      "language": "fa",
+      "query": "چطور جلوی redirect ناامن در endpoint محلی Ollama را بگیرم؟",
+      "query_variants": [
+        "Ollama loopback endpoint redirect security no redirect handler"
+      ],
+      "relevant_slugs": [
+        "ollama_redirect_security"
+      ]
+    },
+    {
+      "id": "en_sqlite_migration",
+      "language": "en",
+      "query": "How can I safely migrate a legacy SQLite schema with backup and rollback?",
+      "query_variants": [
+        "مهاجرت امن schema در SQLite با backup و rollback"
+      ],
+      "relevant_slugs": [
+        "sqlite_migration_safety"
+      ]
+    },
+    {
+      "id": "fa_embedding_cache",
+      "language": "fa",
+      "query": "چطور با تغییر نسخه تجربه یا مدل، cache embedding را نامعتبر کنم؟",
+      "query_variants": [
+        "embedding cache key experience version model invalidation"
+      ],
+      "relevant_slugs": [
+        "embedding_cache_versioning"
+      ]
+    },
+    {
+      "id": "en_ssrf",
+      "language": "en",
+      "query": "How do I prevent SSRF when fetching public URLs and following redirects?",
+      "query_variants": [
+        "اعتبارسنجی URL عمومی و redirect برای جلوگیری از SSRF"
+      ],
+      "relevant_slugs": [
+        "web_source_ssrf"
+      ]
+    },
+    {
+      "id": "fa_task_lease",
+      "language": "fa",
+      "query": "تمدید lease وظیفه طولانی و جلوگیری از اجرای دوباره worker چگونه انجام می‌شود؟",
+      "query_variants": [
+        "persistent task lease heartbeat checkpoint idempotency"
+      ],
+      "relevant_slugs": [
+        "task_lease_recovery"
+      ]
+    },
+    {
+      "id": "en_css_grid",
+      "language": "en",
+      "query": "How can I center an element using CSS Grid alignment?",
+      "query_variants": [
+        "مرکزچین کردن عنصر با CSS Grid و place-items"
+      ],
+      "relevant_slugs": [
+        "css_grid_layout"
+      ]
+    },
+    {
+      "id": "fa_sqlite_restore",
+      "language": "fa",
+      "query": "چطور backup پایگاه SQLite را پس از اعتبارسنجی به‌صورت اتمی restore کنم؟",
+      "query_variants": [
+        "SQLite atomic backup restore integrity check overwrite"
+      ],
+      "relevant_slugs": [
+        "sqlite_backup_restore"
+      ]
+    }
+  ]
+}
