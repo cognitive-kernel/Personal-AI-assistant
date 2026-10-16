@@ -316,7 +316,7 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
         ).fetchone() == ("preserve me", "queued")
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 11
+        ).fetchone()[0] == 12
 
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
