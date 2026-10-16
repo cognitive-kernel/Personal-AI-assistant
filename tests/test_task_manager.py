@@ -240,8 +240,34 @@ def test_list_terminal_task_ids_excludes_queued_and_running_tasks(task_store):
     claimed_running = task_manager.claim_next_task("worker-running")
     assert claimed_running["id"] == running["id"]
 
-    terminal_ids = task_manager.list_terminal_task_ids(limit=1000)
+    terminal_ids = task_manager.list_terminal_task_ids(limit=1000, min_terminal_age_seconds=0)
     assert succeeded["id"] in terminal_ids
     assert failed["id"] in terminal_ids
     assert queued["id"] not in terminal_ids
     assert running["id"] not in terminal_ids
+
+
+
+def test_list_terminal_task_ids_waits_for_terminal_grace_period(task_store):
+    task = task_manager.create_task("grace.success", {})
+    claimed = task_manager.claim_next_task("grace-worker")
+    assert claimed["id"] == task["id"]
+    task_manager.complete_task(task["id"], "grace-worker", {"ok": True})
+
+    assert task["id"] not in task_manager.list_terminal_task_ids(
+        min_terminal_age_seconds=60
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET updated_at=? WHERE id=?",
+            ("2000-01-01T00:00:00.000000+00:00", task["id"]),
+        )
+    assert task["id"] in task_manager.list_terminal_task_ids(
+        min_terminal_age_seconds=60
+    )
+
+
+@pytest.mark.parametrize("age", [-1, True, 1.5])
+def test_terminal_task_grace_period_validates_age(task_store, age):
+    with pytest.raises(ValueError, match="non-negative integer"):
+        task_manager.list_terminal_task_ids(min_terminal_age_seconds=age)
