@@ -54,6 +54,11 @@ def _raise_task_error(exc: TaskManagerError) -> None:
 
 @router.post("", status_code=202)
 def create_task(request: TaskCreateRequest) -> dict[str, Any]:
+    if request.task_type.strip() == "sandbox.run_python":
+        raise HTTPException(
+            status_code=422,
+            detail="Submit sandbox execution through POST /api/sandbox/run so consent and audit checks are enforced.",
+        )
     try:
         return task_manager.create_task(
             request.task_type,
