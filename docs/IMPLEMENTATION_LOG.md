@@ -1655,7 +1655,16 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **اعتبارسنجی پیش از ادغام:** آزمون‌های مخزن در run [#38934857075](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934857075) و مرورگر در run [#38934857107](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38934857107) برای head دقیق `ab3a8636004b7327b739e5b289b2340d30480686` موفق شدند. PR [#248](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/248) ادغام شد. پس از ادغام نیز آزمون‌های مخزن در run [#38935013031](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935013031) و مرورگر در run [#38935013142](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935013142) موفق شدند.
 
 
-## 137. 2026-10-16 — ممیزی خودکار آسیب‌پذیری وابستگی‌های پایتون
+## 137. 2026-10-16 — کنترل لغو وظیفه در مرورگر واقعی و اصلاح race رابط
+
+- **جریان آزموده‌شده:** آزمون Chromium یک وظیفهٔ آینده‌زمان‌بندی‌شده را از API ایجاد می‌کند، آن را در پنل مدیریت وظایف می‌بیند، از UI لغو می‌کند و وضعیت نهایی `cancelled` را از API و کارت UI تأیید می‌کند.
+- **هدف:** پوشش کنترل وظایف پایدار بدون وابستگی به Ollama یا اجرای worker؛ زمان‌بندی آینده مانع اجرای خودکار task در طول آزمون می‌شود.
+- **اعتبارسنجی اولیه:** PR [#250](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/250) روی head `c7a1146cab7cd26337b1041bf3515454ab9b8950` در آزمون مرورگر [run #38935582581](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935582581) و آزمون‌های مخزن [run #38935582638](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935582638) موفق شد.
+- **یافتهٔ پس از ادغام:** مرورگر در run [#38935777673](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38935777673) نشان داد API وضعیت `cancelled` را ذخیره کرده بود، اما DOM هنوز نسخهٔ قبلی کارت را نمایش می‌داد؛ assertion فوری یک race در آزمون UI بود.
+- **اصلاح و retest:** PR [#252](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/252) انتظار صریح برای به‌روزرسانی DOM را اضافه کرد. آزمون مرورگر در [run #38936033892](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936033892) و آزمون‌های مخزن در [run #38936033909](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936033909) روی head دقیق `5d3c2fb7f37a04d2fcbd23771fa380f6d97b09d3` موفق شدند. PR #252 ادغام شد. پس از ادغام نیز آزمون‌های مخزن در [run #38936188613](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936188613) و مرورگر در [run #38936188618](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38936188618) موفق شدند.
+- **مرز شواهد:** این فقط آزمون لغو وظیفهٔ صف‌شده است؛ بازیابی پس از crash، لغو حین اجرای پژوهش و همهٔ گردش‌کارهای self-improvement را پوشش نمی‌دهد.
+
+## 138. 2026-10-16 — ممیزی خودکار آسیب‌پذیری وابستگی‌های پایتون
 
 - **مسئله:** نقشهٔ راه ممیزی زنجیرهٔ تأمین را به‌عنوان یکی از دروازه‌های پذیرش باز نگه داشته بود؛ آزمون‌های کاربردی به‌تنهایی آسیب‌پذیری نسخه‌های وابستگی را بررسی نمی‌کنند.
 - **تغییر:** workflow جدید `.github/workflows/dependency-audit.yml` محیط حل‌شدهٔ پروژه و وابستگی‌های توسعه را با `pip-audit` بررسی می‌کند؛ روی pull request، push به `main`، به‌صورت هفتگی و با اجرای دستی فعال است.
