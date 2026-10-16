@@ -61,8 +61,10 @@ def _memory_context(message: str) -> dict[str, list[dict[str, Any]]]:
                 "topic": str(item.get("topic", ""))[:300],
                 "version": int(item.get("version", 1)),
                 "takeaway": str(item.get("takeaway", ""))[:1200],
+                "source_freshness": item.get("source_freshness", {"status": "unknown"}),
                 "evidence": [
-                    {"url": str(entry.get("url", ""))[:500], "claim": str(entry.get("claim", ""))[:500]}
+                    {"url": str(entry.get("url", ""))[:500], "claim": str(entry.get("claim", ""))[:500],
+                     "observed_at": str(entry.get("observed_at", ""))[:40]}
                     for entry in item.get("source_evidence", [])[:3]
                     if isinstance(entry, dict)
                 ],
