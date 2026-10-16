@@ -327,7 +327,6 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_experience_feedback_rating ON learning_experience_feedback(rating, updated_at DESC)",
         ),
     ),
-,
     Migration(
         10,
         "learning-semantic-assessment-reviews",
