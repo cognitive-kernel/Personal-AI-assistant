@@ -195,3 +195,37 @@ def test_task_store_migrates_preexisting_queue_schema(worker_store, tmp_path, mo
         assert backup.execute(
             "SELECT task_type FROM task_queue WHERE id=1"
         ).fetchone() == ("legacy.task",)
+
+
+
+def test_cancel_requested_after_handler_work_wins_over_success_result(worker_store):
+    task = task_manager.create_task("test.cancel_race", {})
+
+    def finish_after_cancel(_payload, _checkpoint, context):
+        context.checkpoint({"phase": "work_finished"})
+        requested = task_manager.request_cancel(context.task_id)
+        assert requested["status"] == "cancel_requested"
+        return {"must_not_publish": True}
+
+    worker = TaskWorker("worker-cancel-race", {"test.cancel_race": finish_after_cancel})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "cancelled"
+    assert saved["result"] is None
+    assert saved["checkpoint"] == {"phase": "work_finished"}
+
+
+def test_cancel_requested_before_handler_failure_wins_over_retry(worker_store):
+    task = task_manager.create_task("test.cancel_failure_race", {}, max_attempts=3)
+
+    def fail_after_cancel(_payload, _checkpoint, context):
+        task_manager.request_cancel(context.task_id)
+        raise RuntimeError("late failure must not schedule a retry")
+
+    worker = TaskWorker("worker-cancel-failure-race", {"test.cancel_failure_race": fail_after_cancel})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "cancelled"
+    assert saved["attempts"] == 1
+    assert saved["result"] is None
+    assert saved["error"] is None
