@@ -627,7 +627,7 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
     if proposal["status"] != "approved_for_pr":
         raise ProposalError("Only a proposal approved for PR review can be published.")
     for event in proposal_events(proposal_id):
-        if event["event_type"] == "pr_opened":
+        if event["event_type"] == "approved_for_pr" and event["details"].get("publication") == "pr_opened":
             return {"proposal_id": proposal_id, **event["details"], "already_opened": True}
 
     repository = os.getenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "").strip()
@@ -769,7 +769,11 @@ def open_review_pull_request(proposal_id: int, *, confirm: bool) -> dict[str, An
             }
             db.init_databases()
             with learning_connection() as conn:
-                _append_event(conn, proposal_id, "pr_opened", details)
+                _append_event(conn, proposal_id, "approved_for_pr", {
+                    **details,
+                    "publication": "pr_opened",
+                    "confirm": True,
+                })
             return {"proposal_id": proposal_id, **details, "already_opened": False}
     except Exception:
         if ref_created and not pr_created:
