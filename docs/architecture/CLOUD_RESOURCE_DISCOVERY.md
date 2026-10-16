@@ -147,6 +147,9 @@ and explicit user consent are required; shell execution is disabled, the child r
 a minimal environment, and CLI stderr is not propagated.
 
 This snapshot reports **service limits**, not Always Free eligibility, current physical
-capacity, zero cost, or permission to provision an instance. It is not called by startup,
-the scheduler, or the UI and does not persist results yet. No OCI credentials are read by
-the application unless a caller explicitly invokes the opt-in client with consent.
+capacity, zero cost, or permission to provision an instance. A loopback-only API and UI now expose this client behind an explicit, revocable consent
+record. The user manually triggers each refresh; startup and the task scheduler never
+call it. Parsed numeric limits and scope metadata are stored in the local cloud-resource
+database only while consent remains enabled. Raw CLI output, private keys, and credentials
+are not stored. Revocation clears the snapshot and stored paths/identifiers. This remains
+a read-only service-limit check, not an execution authorization.
