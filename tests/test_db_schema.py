@@ -55,6 +55,8 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         "knowledge_items",
         "assessment_attempts",
         "assessment_semantic_reviews",
+        "self_improvement_proposals",
+        "self_improvement_events",
         "learning_review_schedule",
         "learning_review_events",
         "lesson_reviews",
