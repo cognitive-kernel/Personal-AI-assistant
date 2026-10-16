@@ -938,6 +938,18 @@
 - [x] `app/kaggle_quota.py` parser خالص برای خروجی CSV دستور رسمی quota اضافه می‌کند؛ فقط متن خروجی و timestamp مشاهده را می‌گیرد و هیچ CLI یا credential اجرا/نمی‌خواند.
 - [x] سهمیه‌های GPU/TPU از هم جدا، ساعت‌ها اعتبارسنجی و زمان reset ثبت می‌شوند؛ snapshot بعد از ۱۵ دقیقه یا در زمان reset منقضی می‌شود و مقدار گمشده را صفر فرض نمی‌کند.
 - [x] تست‌های malformed CSV، مقادیر ناسازگار، resource تکراری/ناشناخته، timezone و تازگی snapshot اضافه شدند.
+- [x] **PR #138** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/138)، commit ادغام `729ac48bdde9ae658da9d62478f373d577e8858e`.
+- [x] CI روی head دقیق `d77205828dca74bd17f2324b3e67058ca65a5e1b` موفق بود؛ run [#38851414970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38851414970).
 - [ ] quota parser هنوز به provider runtime وصل نیست؛ هر اتصال آینده نیازمند رضایت کاربر برای استفاده از حساب فعلی، بررسی تازهٔ quota و fail-closed خواهد بود.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR جدید بررسی شود.
 - **گام بعدی:** provider adapter فقط با consent صریح و از طریق API/CLI رسمی؛ پیش از ارسال job، policy باید snapshot تازهٔ سهمیه، حد زمانی اجرا و منع هزینه را اجباری کند. هیچ remote execution تا آن زمان فعال نشود.
+
+
+## 66. 2026-10-16 — client فقط‌خواندنی سهمیه با رضایت صریح
+
+- [x] `app/kaggle_quota_client.py` فقط پس از `enabled=True` و `user_consent=True`، با مسیر مطلق executable، دستور ثابت `quota --csv` را بدون shell و با timeout اجرا می‌کند.
+- [x] محیط فرزند به allowlist محدود شد؛ stdout فقط برای parsing استفاده می‌شود و stderr/اطلاعات خطا برای جلوگیری از افشای اطلاعات حساب به caller منتقل نمی‌شود.
+- [x] تست‌ها consent اجباری، فرمان ثابت، عدم استفاده از shell، timeout، مسیر نامعتبر، خروجی خراب و عدم افشای stderr را پوشش می‌دهند.
+- [x] راهنمای معماری روشن می‌کند که client هنوز از startup، scheduler یا UI فراخوانی نمی‌شود؛ اتصال دوره‌ای نیازمند تنظیمات رضایت قابل‌ابطال و audit است.
+- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- **گام بعدی:** افزودن تنظیم/رابط محلی برای opt-in، رضایت قابل‌ابطال و نمایش آخرین quota با زمان مشاهده؛ تا آن مرحله هیچ بررسی دوره‌ای یا اجرای remote فعال نشود.
