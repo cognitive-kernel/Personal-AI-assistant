@@ -209,7 +209,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None)]
+        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None)]
 
 
 def test_known_v6_schema_is_baselined_then_upgraded():
@@ -219,7 +219,7 @@ def test_known_v6_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None)]
+        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None)]
 
 
 def test_known_v7_schema_is_baselined_then_upgraded():
@@ -229,7 +229,7 @@ def test_known_v7_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(7, expected_v7), (8, None), (9, None), (10, None), (11, None)]
+        assert history == [(7, expected_v7), (8, None), (9, None), (10, None), (11, None), (12, None)]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
