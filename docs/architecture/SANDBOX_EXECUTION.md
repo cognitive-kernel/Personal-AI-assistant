@@ -84,8 +84,8 @@ Regression tests cover both the active-task and expired-lease paths.
 
 ## Real-Docker integration validation
 
-The normal CI suite uses mocked Docker execution for deterministic unit tests. A separate manual workflow, `.github/workflows/sandbox-integration.yml`, runs real containers on a GitHub-hosted Linux runner.
+The normal CI suite uses mocked Docker execution for deterministic unit tests. The workflow `.github/workflows/sandbox-integration-ci.yml` now runs the real-Docker integration suite on pull requests and pushes that touch sandbox implementation, integration tests, its own workflow, or project dependencies. It pins the official Python 3.11 slim Linux/amd64 manifest by SHA-256 digest and has read-only repository permissions.
 
-To run it, use **Actions → Sandbox integration → Run workflow** and supply an official Python image pinned by SHA-256 digest, such as a verified `python:3.12-slim@sha256:<digest>` reference. The workflow validates the image reference, pulls that exact digest, and checks non-root execution, read-only root/mounts, no network, resource limits, timeout behavior, output limits, and the absence of host-execution fallback.
+The manual workflow, `.github/workflows/sandbox-integration.yml`, remains available for an operator-selected, official Python image digest. Use **Actions → Sandbox integration → Run workflow** and supply a verified digest-pinned reference. Both workflows check non-root execution, read-only root/mounts, no network, resource limits, timeout behavior, output limits, and absence of host-execution fallback.
 
-The real-Docker workflow is manual because it pulls a container image and requires an explicit operator-selected digest. Passing unit tests alone does not prove Docker runtime behavior. The Ollama network-boundary issue #52 also remains open pending an independent security review.
+The automated job makes real-container behavior a repeatable acceptance gate for relevant code changes; it does not replace a local deployment test. Passing unit tests alone does not prove Docker runtime behavior. The Ollama network-boundary issue #52 remains open pending an independent security review.
