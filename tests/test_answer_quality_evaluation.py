@@ -41,7 +41,7 @@ def test_surface_evaluation_normalizes_persian_letter_variants():
     assert result["surface_matched_concepts"] == ["منبع معتبر", "عدم قطعیت"]
     assert result["surface_concept_coverage"] == 1.0
     assert result["source_count"] == 1
-    assert "does not prove" not in result["interpretation"]
+    assert "do not prove factual correctness" in result["interpretation"]
 
 
 def test_surface_evaluation_reports_prohibited_phrases_and_language():
