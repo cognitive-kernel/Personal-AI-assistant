@@ -33,3 +33,12 @@ The local page includes a dry-run form for minimum CPU and memory, optional GPU/
 ## Verification coverage
 
 The API integration suite covers an empty candidate list, malformed requirements, loopback enforcement, a fully reviewed candidate that matches requested CPU/memory, and the same candidate becoming ineligible when its source is stale. Every scenario asserts that remote execution remains disabled.
+
+
+## Persistent plan history
+
+The cloud-resource database stores a minimal local snapshot for each dry-run plan and a decision row for each evaluated candidate. History includes requirements, selected candidate ID, source hash, provider domain, normalized capabilities, eligibility, preflight status, and decision reasons. Raw source text and credentials are not stored.
+
+- `GET /api/cloud-resources/plans?limit=20` lists recent plans.
+- `GET /api/cloud-resources/plans/{plan_id}` retrieves a plan and its candidate decisions.
+- The database schema constrains both execution flags to false; plans that claim execution authorization are rejected.
