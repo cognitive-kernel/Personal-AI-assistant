@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from . import experience
 from .db import init_databases, learning_connection
 
 
@@ -12,13 +11,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def _require_experience_status(experience_id: int) -> str:
+    """Read only the fields needed here, avoiding a dependency on app.experience."""
+    init_databases()
+    with learning_connection() as connection:
+        row = connection.execute(
+            "SELECT status FROM learning_experiences WHERE id=?",
+            (experience_id,),
+        ).fetchone()
+    if row is None:
+        raise KeyError(experience_id)
+    return str(row["status"])
+
+
 def set_feedback(experience_id: int, rating: int) -> dict[str, Any]:
     if rating not in (-1, 1) or isinstance(rating, bool):
         raise ValueError("Feedback rating must be -1 or 1.")
-    item = experience.get_experience(experience_id)
-    if item.get("status") != "verified":
+    if _require_experience_status(experience_id) != "verified":
         raise ValueError("Feedback can only be recorded for a verified experience.")
-    init_databases()
     updated_at = _now()
     with learning_connection() as connection:
         connection.execute(
@@ -62,7 +72,7 @@ def get_feedback_map(experience_ids: list[int] | None = None) -> dict[int, dict[
 
 
 def delete_feedback(experience_id: int) -> bool:
-    experience.get_experience(experience_id)
+    _require_experience_status(experience_id)
     init_databases()
     with learning_connection() as connection:
         cursor = connection.execute(
