@@ -387,12 +387,12 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     original_content = development_doc.read_text(encoding="utf-8")
     title = "Browser E2E proposal validation and rejection"
     patch = (
-        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\\n"
-        "--- a/docs/DEVELOPMENT.md\\n"
-        "+++ b/docs/DEVELOPMENT.md\\n"
-        "@@ -1 +1 @@\\n"
-        "-# راه‌اندازی محیط توسعه\\n"
-        "+# راه‌اندازی محیط توسعه (پیشنهاد ردشده)\\n"
+        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\n"
+        "--- a/docs/DEVELOPMENT.md\n"
+        "+++ b/docs/DEVELOPMENT.md\n"
+        "@@ -1 +1 @@\n"
+        "-# راه‌اندازی محیط توسعه\n"
+        "+# راه‌اندازی محیط توسعه (پیشنهاد ردشده)\n"
     )
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
