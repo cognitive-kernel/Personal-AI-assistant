@@ -376,3 +376,34 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
         assert "New advisory note." in new_output.inner_text()
         assert new_calls == {"get": 1, "post": 1, "confirm": {"confirm": True}}
         browser.close()
+
+def test_browser_reloads_and_recovers_persisted_research_task():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    private_message = "E2E private research reload marker 7d91a2"
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        response = page.request.post(
+            base_url.rstrip("/") + "/api/research/tasks",
+            data={"message": private_message},
+        )
+        assert response.status == 202, response.text()
+        task = response.json()["task"]
+        task_id = task["id"]
+        assert task["task_type"] == "research.answer"
+
+        # The durable task list, not transient chat-page state, must restore the
+        # task after navigation. The user prompt itself must remain hidden.
+        page.reload(wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        card = page.locator("#tasks-container article").filter(
+            has_text=f"#{task_id} — research.answer"
+        )
+        card.wait_for(state="visible", timeout=10000)
+        assert "وضعیت:" in card.inner_text()
+        assert private_message not in card.inner_text()
+        browser.close()
