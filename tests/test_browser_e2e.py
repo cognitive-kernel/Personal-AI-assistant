@@ -671,6 +671,11 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert "focus-visible" in stylesheet.text()
 
         assert page.locator("html").get_attribute("dir") == "rtl"
+        assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
+        missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
+            "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.id || node.tagName)"
+        )
+        assert missing_names == [], f"Controls missing accessible names: {missing_names}"
         for width in (360, 768, 1280):
             page.set_viewport_size({"width": width, "height": 900})
             page.wait_for_timeout(50)
