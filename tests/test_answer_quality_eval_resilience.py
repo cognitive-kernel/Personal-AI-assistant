@@ -1,6 +1,9 @@
 from pathlib import Path
+import sys
 
-import scripts.run_answer_quality_eval as evaluation
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import run_answer_quality_eval as evaluation
 
 
 def test_source_audit_failure_does_not_turn_successful_generation_into_failure(
