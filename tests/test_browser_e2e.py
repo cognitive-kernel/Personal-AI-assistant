@@ -415,13 +415,13 @@ def test_browser_can_review_and_persist_an_unverified_experience():
 
         card = page.locator("#experience-list article").filter(has_text=topic)
         page.wait_for_function(
-            """(topic, takeaway) => {
+            """({topic, takeaway}) => {
                 const cards = Array.from(document.querySelectorAll('#experience-list article'));
                 const card = cards.find(node => node.textContent.includes(topic));
                 return !!card && card.textContent.includes('وضعیت: researching') &&
                     card.textContent.includes(takeaway);
             }""",
-            arg=[topic, takeaway],
+            arg={"topic": topic, "takeaway": takeaway},
             timeout=15000,
         )
         response = page.request.get(base_url.rstrip("/") + "/api/experiences?limit=100")
