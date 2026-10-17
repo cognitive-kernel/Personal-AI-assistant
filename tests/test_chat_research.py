@@ -289,3 +289,94 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
     assert len(chat_calls) == 1
     assert audit["review_status"] == "needs_review"
     assert captured["status"] == "needs_review"
+
+def test_wrong_language_draft_is_retried_before_being_returned(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    outputs = iter([
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de comparer les preuves.",
+        "When credible sources disagree, compare their evidence and explain the uncertainty.",
+    ])
+    calls = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        calls.append(json.loads(message))
+        return next(outputs)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("Two credible sources disagree about a technical claim. How should the assistant respond?")
+
+    assert reply.startswith("When credible sources disagree")
+    assert "Quand deux sources" not in reply
+    assert len(calls) == 2
+    assert "Rewrite the entire answer in English" in calls[1]["instruction"]
+
+
+def test_persian_request_retries_an_english_only_answer(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    outputs = iter([
+        "A retrieved passage alone is not independent proof and uncertainty should be stated.",
+        "یک متن بازیابی‌شده به‌تنهایی اثبات مستقل نیست و باید عدم قطعیت بیان شود.",
+    ])
+    calls = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        calls.append(json.loads(message))
+        return next(outputs)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("خطا در SQL Server: آیا یک متن بازیابی‌شده برای تأیید ادعا کافی است؟")
+
+    assert reply.startswith("یک متن بازیابی‌شده")
+    assert len(calls) == 2
+    assert "Persian (Farsi)" in calls[1]["instruction"]
+
+
+def test_persistently_wrong_language_returns_safe_fallback(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    outputs = iter([
+        "Quand deux sources fiables contredisent une affirmation technique, il faut comparer les preuves.",
+        "Quand les sources sont contradictoires, il faut examiner les preuves et les limites.",
+    ])
+    monkeypatch.setattr(
+        ollama,
+        "chat",
+        lambda *_args, **_kwargs: next(outputs),
+    )
+
+    reply = chat_research.answer("Two credible sources disagree about a technical claim.")
+
+    assert reply.startswith("I could not reliably produce an answer in English")
+    assert "Quand deux sources" not in reply
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "آیا این ادعا را می‌توان فقط بر اساس یک متن بازیابی‌شده تأییدشده دانست؟",
+        "دو منبع معتبر درباره یک موضوع فنی نتایج متناقض دارند؛ چگونه پاسخ بدهی؟",
+        "کاربر می‌گوید پاسخ قبلی اشتباه است و یک اصلاح پیشنهاد می‌کند؛ آیا آن را به حافظه دانشی معتبر تبدیل می‌کنی؟",
+        "پرسش فارسی است اما بهترین منبع موجود انگلیسی است؛ چه باید کرد؟",
+        "Can a retrieved passage alone justify marking a claim as verified?",
+        "Two credible sources disagree about a technical claim. How should the assistant respond?",
+        "A user supplies a correction. Should it become trusted knowledge automatically?",
+        "The user asks in English, but the strongest source is written in Persian.",
+    ],
+)
+def test_answer_quality_cases_use_research_policy(prompt):
+    assert chat_research.should_use_research(prompt), prompt
+
+def test_source_discovery_exception_is_reported_as_unavailable_not_empty(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(
+        chat_research.web_sources,
+        "discover_sources",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("private network detail")),
+    )
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "A cautious answer.")
+    reply = chat_research.answer("How should a technical claim be verified?")
+
+    assert "source discovery failed" in reply.lower()
+    assert "private network detail" not in reply
+
