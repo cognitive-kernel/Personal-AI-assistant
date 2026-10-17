@@ -192,3 +192,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#25334a;background:var(--s
 #main-content section[id]{scroll-margin-top:88px}
 #chat-section,#learning-section{min-width:0}
 @media(max-width:600px){.dashboard-nav{top:0;margin-inline:-2px;padding:7px;border-radius:11px}.dashboard-nav a{min-height:36px;padding:6px 10px;font-size:.85rem}#main-content section[id]{scroll-margin-top:72px}}
+
+
+/* Prevent long unbroken content and intrinsic grid sizes from widening mobile pages. */
+body{overflow-wrap:anywhere}
+#main-content,#main-content *{min-width:0}
+#main-content input,#main-content textarea,#main-content select,#main-content button,#main-content pre{max-width:100%}
+#main-content p,#main-content h1,#main-content h2,#main-content h3,#main-content label,#main-content a{overflow-wrap:anywhere}
