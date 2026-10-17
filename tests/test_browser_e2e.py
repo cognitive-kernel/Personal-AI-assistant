@@ -175,6 +175,13 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
             timeout=10000,
         )
         assert not page.locator("#experience-auto-capture-confirm").is_checked()
+        page.wait_for_function(
+            """() => {
+                const list = document.querySelector('#experience-list');
+                return list && list.textContent.includes('Browser E2E experience creation');
+            }""",
+            timeout=15000,
+        )
         assert "Browser E2E experience creation" in page.locator("#experience-list").inner_text()
         browser.close()
 
