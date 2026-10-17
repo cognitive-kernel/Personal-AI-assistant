@@ -42,7 +42,7 @@ A checklist item may be marked complete only with a test name, CI run, or reprod
 
 ## Evidence recorded for the initial UI foundation
 
-The following repository-level checks passed on the PR head containing the current navigation and RTL/LTR assertions:
+The following repository-level checks passed on code/test commit `62b6767828775d69a8612c2b583232750528ce64`, which contains the current navigation and RTL/LTR assertions. A documentation-only commit followed; CI must be green again on the final PR head before merge:
 
 - [x] Local stylesheet is served from the app; no remote font/CDN dependency is introduced.
 - [x] Navigation links resolve to all dashboard workflow sections; skip-to-content is the first keyboard stop.
