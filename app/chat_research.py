@@ -349,9 +349,13 @@ def answer(
     memory = _memory_context(message)
     _checkpoint(checkpoint, "memory_lookup_completed")
     _checkpoint(checkpoint, "source_discovery_started")
+    source_discovery_error: str | None = None
     try:
         documents = web_sources.discover_sources(message, limit=3)
-    except Exception:
+    except Exception as exc:
+        # Keep diagnostics useful without exposing URLs, proxy settings, or local paths.
+        source_discovery_error = type(exc).__name__
+        logger.warning("Research source discovery failed (%s)", source_discovery_error)
         documents = []
     sources = _source_payload(documents)
     _checkpoint(checkpoint, "source_discovery_completed", source_count=len(sources))
@@ -387,12 +391,19 @@ def answer(
         _checkpoint(checkpoint, "research_answer_completed", source_count=len(sources), language_guard_failed=True)
         return draft
     if not sources:
-        reply = draft + _warning(
-            message,
-            "منبع بیرونی قابل‌استفاده پیدا نشد؛ پاسخ بر پایه دانش مدل است و مستقل بررسی نشده است."
-            if re.search(r"[\u0600-\u06FF]", message)
-            else "No usable external source was found; this answer is based on model knowledge and was not independently reviewed.",
-        )
+        if source_discovery_error:
+            no_source_reason = (
+                "جست‌وجوی منبع بیرونی به دلیل خطای ارتباط یا ارائه‌دهنده انجام نشد؛ پاسخ بر پایه دانش مدل است و مستقل بررسی نشده است."
+                if re.search(r"[\u0600-\u06FF]", message)
+                else "External source discovery failed because of a network or provider error; this answer is based on model knowledge and was not independently reviewed."
+            )
+        else:
+            no_source_reason = (
+                "منبع بیرونی قابل‌استفاده پیدا نشد؛ پاسخ بر پایه دانش مدل است و مستقل بررسی نشده است."
+                if re.search(r"[\u0600-\u06FF]", message)
+                else "No usable external source was found; this answer is based on model knowledge and was not independently reviewed."
+            )
+        reply = draft + _warning(message, no_source_reason)
         _record_audit(message, reply, sources, "no_sources", None, memory, started_at)
         _checkpoint(checkpoint, "research_answer_completed", source_count=0)
         return reply
