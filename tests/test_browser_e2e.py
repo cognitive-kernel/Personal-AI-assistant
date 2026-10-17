@@ -387,12 +387,12 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     assert not proposed_doc.exists()
     title = "Browser E2E proposal validation and rejection"
     patch = (
-        "diff --git a/docs/E2E-REJECTED-PROPOSAL.md b/docs/E2E-REJECTED-PROPOSAL.md\\n"
-        "new file mode 100644\\n"
-        "--- /dev/null\\n"
-        "+++ b/docs/E2E-REJECTED-PROPOSAL.md\\n"
-        "@@ -0,0 +1 @@\\n"
-        "+# Temporary proposal that must never be applied\\n"
+        "diff --git a/docs/E2E-REJECTED-PROPOSAL.md b/docs/E2E-REJECTED-PROPOSAL.md\n"
+        "new file mode 100644\n"
+        "--- /dev/null\n"
+        "+++ b/docs/E2E-REJECTED-PROPOSAL.md\n"
+        "@@ -0,0 +1 @@\n"
+        "+# Temporary proposal that must never be applied\n"
     )
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
