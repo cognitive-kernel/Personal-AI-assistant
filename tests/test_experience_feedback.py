@@ -46,3 +46,12 @@ def test_feedback_cannot_change_verification_or_be_added_to_unverified_record(tm
     with pytest.raises(ValueError, match="must be -1 or 1"):
         experience_feedback.set_feedback(item["id"], 0)
     assert experience.get_experience(item["id"])["status"] == "identified"
+
+
+
+def test_feedback_requires_existing_experience(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    with pytest.raises(KeyError, match="999"):
+        experience_feedback.set_feedback(999, 1)
+    with pytest.raises(KeyError, match="999"):
+        experience_feedback.delete_feedback(999)
