@@ -660,7 +660,9 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         for target in (
             "storage-health-section", "chat-section", "learning-section",
             "task-manager-section", "experience-memory-section",
-            "cloud-resources-section", "sandbox-section", "self-improvement-section",
+            "cloud-resources-section", "cloud-plan-section", "kaggle-quota-section",
+            "oci-limits-section", "sandbox-section", "self-improvement-section",
+            "learning-paths-section", "knowledge-section", "settings-section",
         ):
             assert navigation.locator(f'a[href="#{target}"]').count() == 1
             assert page.locator(f"#{target}").count() == 1
