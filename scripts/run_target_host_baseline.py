@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import ipaddress
 import json
 import platform
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -50,6 +53,90 @@ def _package_versions() -> dict[str, str | None]:
         except importlib.metadata.PackageNotFoundError:
             versions[label] = None
     return versions
+
+
+def _effective_setting(key: str) -> tuple[Any, str]:
+    """Read one setting without initializing or migrating its SQLite store."""
+    from app.config import SETTING_DEFAULTS, defaults
+
+    fallback = SETTING_DEFAULTS.get(key)
+    database_path = Path(defaults.settings_db_path)
+    if not database_path.is_file():
+        return fallback, "default"
+    connection = None
+    try:
+        uri = database_path.resolve().as_uri() + "?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=1)
+        row = connection.execute(
+            "SELECT value_json FROM settings WHERE key=?", (key,)
+        ).fetchone()
+        if row is None:
+            return fallback, "default"
+        return json.loads(row[0]), "database"
+    except (OSError, sqlite3.Error, TypeError, ValueError):
+        return None, "unavailable"
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def _ollama_endpoint_status(value: Any) -> str:
+    """Classify the configured endpoint without making a network request or exposing it."""
+    if not isinstance(value, str) or not value:
+        return "unavailable"
+    try:
+        parsed = urlsplit(value.rstrip("/"))
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username
+            or parsed.password
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            return "invalid_or_non_loopback"
+        port = parsed.port
+        if port is not None and not 1 <= port <= 65535:
+            return "invalid_or_non_loopback"
+        if parsed.hostname.lower() == "localhost":
+            return "localhost_normalized"
+        address = ipaddress.ip_address(parsed.hostname)
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            return "invalid_or_non_loopback"
+        return "loopback_literal" if address.is_loopback else "invalid_or_non_loopback"
+    except (ValueError, TypeError):
+        return "invalid_or_non_loopback"
+
+
+def _network_boundary_summary() -> dict[str, Any]:
+    """Check configured local-only network boundaries without probing the network."""
+    from app.config import defaults
+
+    try:
+        bind_address = ipaddress.ip_address(str(defaults.host))
+        if isinstance(bind_address, ipaddress.IPv6Address) and bind_address.ipv4_mapped is not None:
+            bind_status = "hostname_or_invalid"
+        elif bind_address.is_loopback:
+            bind_status = "loopback_literal"
+        else:
+            bind_status = "non_loopback_literal"
+    except ValueError:
+        bind_status = "hostname_or_invalid"
+
+    ollama_value, source = _effective_setting("ollama_base_url")
+    ollama_status = _ollama_endpoint_status(ollama_value)
+    safe = bind_status == "loopback_literal" and ollama_status in {
+        "loopback_literal", "localhost_normalized"
+    }
+    return {
+        "status": "ok" if safe else "unsafe_or_unverified",
+        "app_bind": bind_status,
+        "ollama_endpoint": ollama_status,
+        "ollama_setting_source": source,
+        "raw_configuration_included": False,
+        "network_probe_performed": False,
+    }
 
 
 def _storage_summary() -> dict[str, Any]:
@@ -126,6 +213,7 @@ def _run_tests(timeout_seconds: int) -> dict[str, Any]:
 
 def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dict[str, Any]:
     storage = _storage_summary()
+    network_boundary = _network_boundary_summary()
     tests = _run_tests(timeout_seconds) if run_tests else {"status": "not_run"}
     dirty = _git_value("status", "--porcelain")
     return {
@@ -144,6 +232,7 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dic
             "packages": _package_versions(),
         },
         "storage": storage,
+        "network_boundary": network_boundary,
         "tests": tests,
         "scope": {
             "storage_check_is_read_only": True,
@@ -179,8 +268,9 @@ def main() -> int:
             return 2
     print(rendered, end="")
     storage_ok = report["storage"].get("status") == "ok"
+    network_ok = report["network_boundary"].get("status") == "ok"
     tests_ok = report["tests"].get("status") in {"not_run", "passed"}
-    return 0 if storage_ok and tests_ok else 1
+    return 0 if storage_ok and network_ok and tests_ok else 1
 
 
 if __name__ == "__main__":
