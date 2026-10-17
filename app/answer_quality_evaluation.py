@@ -36,6 +36,15 @@ def evaluate_answer_surface(case: dict[str, Any], answer: str, sources: list[dic
             url = source.get("url")
             if isinstance(url, str) and url.startswith("https://") and url not in source_urls:
                 source_urls.append(url)
+
+    # URLs written by the model are not treated as retrieved evidence unless
+    # the exact URL also appears in the structured source metadata.
+    answer_urls = []
+    for match in re.findall(r"https://\S+", answer):
+        url = match.rstrip(".,;:!?)]}")
+        if url and url not in answer_urls:
+            answer_urls.append(url)
+    unattributed_answer_urls = [url for url in answer_urls if url not in source_urls]
     return {
         "case_id": case["id"],
         "language": case["language"],
@@ -48,6 +57,9 @@ def evaluate_answer_surface(case: dict[str, Any], answer: str, sources: list[dic
         "expected_language_script_present": expected_language_marker,
         "source_urls": source_urls,
         "source_count": len(source_urls),
+        "answer_urls": answer_urls,
+        "unattributed_answer_urls": unattributed_answer_urls,
+        "unattributed_answer_url_count": len(unattributed_answer_urls),
         "interpretation": (
             "Lexical indicators only; paraphrases may be missed and phrase presence does not prove correctness."
         ),
@@ -73,5 +85,11 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             "cases_with_prohibited_phrase_hits": sum(bool(item["prohibited_phrase_hits"]) for item in items),
             "cases_with_expected_language_script": sum(item["expected_language_script_present"] is True for item in items),
             "cases_with_sources": sum(int(item["source_count"]) > 0 for item in items),
+            "cases_with_unattributed_answer_urls": sum(
+                int(item.get("unattributed_answer_url_count", 0)) > 0 for item in items
+            ),
+            "unattributed_answer_url_count": sum(
+                int(item.get("unattributed_answer_url_count", 0)) for item in items
+            ),
         }
     return summary

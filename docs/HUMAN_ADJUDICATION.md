@@ -38,3 +38,8 @@ Reviewers should add concise notes and cite the specific claim/source when ident
 The report and worksheet can contain user prompts, generated answers, and source URLs. Keep them local, restrict access, and do not commit them. `--redact-answers` prevents the evaluation report from storing generated answers, but a worksheet made from such a report cannot adjudicate answer content; its `answer_available` field will be false.
 
 This process makes human review reproducible; it does not automatically establish product quality, prove external sources are replayable, or replace independent security review and target-host acceptance.
+
+
+## Interpreting answer URLs and source provenance
+
+The report distinguishes URLs present in the model's answer from URLs recorded in the structured retrieval/audit metadata. A URL written by the model is not evidence that the source was retrieved, opened, or checked. Review `unattributed_answer_urls` for each case: these are answer URLs that do not exactly match the structured source URLs for that case. Treat them as an investigation signal, not automatic proof that a URL is fabricated. Check redirects, canonicalization, and source logs manually where relevant. A case with no structured sources cannot receive a positive source-support rating merely because the answer includes links.

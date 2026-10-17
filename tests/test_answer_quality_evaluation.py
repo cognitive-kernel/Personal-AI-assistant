@@ -148,3 +148,38 @@ def test_cli_summary_distinguishes_generation_from_quality_status(tmp_path, monk
     assert summary["generation_failed_count"] == 0
     assert summary["quality_assessment_status"] == "not_scored"
     assert saved_report["quality_assessment_status"] == "not_scored"
+
+
+def test_surface_evaluation_flags_answer_urls_without_structured_source_attribution():
+    case = _case("en")
+    answer = (
+        "The guide is available at https://docs.example.org/guide. "
+        "Another claimed reference is https://example.invalid/not-retrieved)."
+    )
+    result = evaluate_answer_surface(
+        case,
+        answer,
+        [{"url": "https://docs.example.org/guide", "title": "Official Guide"}],
+    )
+
+    assert result["answer_urls"] == [
+        "https://docs.example.org/guide",
+        "https://example.invalid/not-retrieved",
+    ]
+    assert result["source_urls"] == ["https://docs.example.org/guide"]
+    assert result["unattributed_answer_urls"] == ["https://example.invalid/not-retrieved"]
+    assert result["unattributed_answer_url_count"] == 1
+
+    summary = summarize_surface_results([result])
+    assert summary["languages"]["en"]["cases_with_unattributed_answer_urls"] == 1
+    assert summary["languages"]["en"]["unattributed_answer_url_count"] == 1
+
+
+def test_surface_evaluation_does_not_flag_exact_structured_source_urls():
+    result = evaluate_answer_surface(
+        _case("en"),
+        "See https://docs.example.org/guide for the details.",
+        [{"url": "https://docs.example.org/guide", "title": "Official Guide"}],
+    )
+    assert result["unattributed_answer_urls"] == []
+    assert result["unattributed_answer_url_count"] == 0
