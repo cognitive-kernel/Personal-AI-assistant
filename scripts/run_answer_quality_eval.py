@@ -71,26 +71,50 @@ def run_evaluation(
 ) -> dict[str, Any]:
     """Execute each case once and produce a versioned diagnostic report."""
     raw_results: list[dict[str, Any]] = []
+    sources_by_case_id: dict[str, list[dict[str, Any]]] = {}
     for case in cases:
         entry: dict[str, Any] = {"case_id": case["id"], "language": case["language"]}
         try:
             answer = answer_fn(case["prompt"])
             if not isinstance(answer, str) or not answer.strip():
                 raise ValueError("assistant returned an empty/non-string answer")
-            sources = _audit_sources(case["prompt"])
-            entry.update(evaluate_answer_surface(case, answer, sources))
-            if not redact_answers:
-                entry["answer"] = answer
-            entry["generation_status"] = "completed"
-        except Exception as exc:  # Report failures per case; never silently drop them.
+        except Exception as exc:  # Keep error details out of potentially shared reports.
             entry.update({
                 "generation_status": "failed",
-                "error_type": type(exc).__name__,
-                "error": str(exc)[:500],
+                "generation_error_type": type(exc).__name__,
             })
+            raw_results.append(entry)
+            continue
+
+        # Generation success is independent of optional provenance and lexical diagnostics.
+        entry["generation_status"] = "completed"
+        if not redact_answers:
+            entry["answer"] = answer
+        try:
+            sources = _audit_sources(case["prompt"])
+        except Exception as exc:
+            sources = []
+            entry.update({
+                "source_audit_status": "unavailable",
+                "source_audit_error_type": type(exc).__name__,
+            })
+        else:
+            entry["source_audit_status"] = "completed"
+        sources_by_case_id[case["id"]] = sources
+
+        try:
+            entry.update(evaluate_answer_surface(case, answer, sources))
+        except Exception as exc:
+            entry.update({
+                "surface_diagnostic_status": "failed",
+                "surface_diagnostic_error_type": type(exc).__name__,
+            })
+        else:
+            entry["surface_diagnostic_status"] = "completed"
         raw_results.append(entry)
 
     completed = [item for item in raw_results if item["generation_status"] == "completed"]
+    diagnosed = [item for item in completed if item.get("surface_diagnostic_status") == "completed"]
     settings = get_settings()
     model_name = str(settings.get("ollama_model", "unknown"))
     try:
@@ -111,9 +135,7 @@ def run_evaluation(
                     "content_sha256": source.get("content_sha256"),
                     "excerpt_chars": source.get("excerpt_chars"),
                 }
-                for source in _audit_sources(next(
-                    case["prompt"] for case in cases if case["id"] == item["case_id"]
-                ))
+                for source in sources_by_case_id.get(item["case_id"], [])
                 if isinstance(source, dict)
             ],
         }
@@ -158,8 +180,10 @@ def run_evaluation(
                 "surface_concept_coverage", "prohibited_phrase_hits",
                 "expected_language_script_present", "source_urls", "source_count", "interpretation"
             }}
-            for item in completed
-        ]) if completed else None,
+            for item in diagnosed
+        ]) if diagnosed else None,
+        "surface_diagnostic_completed_count": len(diagnosed),
+        "surface_diagnostic_failed_count": len(completed) - len(diagnosed),
         "source_snapshots": source_snapshots,
         "results": raw_results,
         "interpretation": (
