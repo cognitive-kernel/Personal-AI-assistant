@@ -383,16 +383,16 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
         pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
-    development_doc = Path(__file__).resolve().parents[1] / "docs" / "DEVELOPMENT.md"
-    original_content = development_doc.read_text(encoding="utf-8")
+    proposed_doc = Path(__file__).resolve().parents[1] / "docs" / "E2E-REJECTED-PROPOSAL.md"
+    assert not proposed_doc.exists()
     title = "Browser E2E proposal validation and rejection"
     patch = (
-        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\n"
-        "--- a/docs/DEVELOPMENT.md\n"
-        "+++ b/docs/DEVELOPMENT.md\n"
-        "@@ -1 +1 @@\n"
-        "-# راه‌اندازی محیط توسعه\n"
-        "+# راه‌اندازی محیط توسعه (پیشنهاد ردشده)\n"
+        "diff --git a/docs/E2E-REJECTED-PROPOSAL.md b/docs/E2E-REJECTED-PROPOSAL.md\\n"
+        "new file mode 100644\\n"
+        "--- /dev/null\\n"
+        "+++ b/docs/E2E-REJECTED-PROPOSAL.md\\n"
+        "@@ -0,0 +1 @@\\n"
+        "+# Temporary proposal that must never be applied\\n"
     )
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -401,7 +401,7 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
         page.on("dialog", lambda dialog: dialog.accept())
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
-            "Exercise the proposal validation and rejection lifecycle without changing the checkout."
+            "Exercise proposal validation and rejection without changing the checkout."
         )
         page.locator("#self-improvement-patch").fill(patch)
         with page.expect_response(
@@ -441,5 +441,5 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
         proposal = next(item for item in proposals if item["title"] == title)
         assert proposal["status"] == "rejected"
         assert proposal["approved_at"] is None
-        assert development_doc.read_text(encoding="utf-8") == original_content
+        assert not proposed_doc.exists()
         browser.close()
