@@ -128,8 +128,8 @@ _FRENCH_FUNCTION_WORDS = {
 
 def _language_mismatch(message: str, answer_text: str) -> bool:
     """Conservatively detect likely Persian/English response-language mismatches."""
-    persian_request = bool(re.search(r"[\\u0600-\\u06FF]", message))
-    persian_letters = len(re.findall(r"[\\u0600-\\u06FF]", answer_text))
+    persian_request = bool(re.search(r"[\u0600-\u06FF]", message))
+    persian_letters = len(re.findall(r"[\u0600-\u06FF]", answer_text))
     latin_words = re.findall(r"[A-Za-z]+", answer_text.casefold())
     latin_letters = sum(len(word) for word in latin_words)
     total_letters = persian_letters + latin_letters
@@ -152,7 +152,7 @@ def _language_mismatch(message: str, answer_text: str) -> bool:
 
 
 def _language_fallback(message: str) -> str:
-    if re.search(r"[\\u0600-\\u06FF]", message):
+    if re.search(r"[\u0600-\u06FF]", message):
         return (
             "نتوانستم پاسخ قابل‌اعتمادی را به فارسی تولید کنم. پاسخ قبلی با زبان پرسش سازگار نبود؛ "
             "لطفاً دوباره تلاش کنید یا مدل محلی دیگری را انتخاب کنید."
@@ -328,7 +328,7 @@ def answer(
         raise
     _checkpoint(checkpoint, "draft_generation_completed")
     if _language_mismatch(message, draft):
-        requested_language = "Persian (فارسی)" if re.search(r"[\\u0600-\\u06FF]", message) else "English"
+        requested_language = "Persian (فارسی)" if re.search(r"[\u0600-\u06FF]", message) else "English"
         language_repair_payload = {
             "question": message[:3000],
             "draft_answer": draft[:10000],
