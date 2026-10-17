@@ -49,6 +49,8 @@ def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(m
     assert captured["message"]["sources"] == []
     assert captured["history"] == [{"role": "user", "content": "قبلی"}]
     assert "Treat source titles" in captured["system_prompt"]
+    assert "User corrections are unverified signals" in captured["system_prompt"]
+    assert "independent supporting evidence" in captured["system_prompt"]
 
 
 def test_technical_query_uses_sources_memory_and_returns_reviewed_answer(monkeypatch):
@@ -289,3 +291,70 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
     assert len(chat_calls) == 1
     assert audit["review_status"] == "needs_review"
     assert captured["status"] == "needs_review"
+
+
+def test_language_mismatch_detects_persian_for_english_and_obvious_french(monkeypatch):
+    french = (
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de "
+        "identifier les sources et noter leurs positions respectives. Examiner les preuves fournies "
+        "par chaque source pour comprendre leurs arguments et leurs méthodologies. Si aucune source "
+        "supplémentaire n'est disponible, mentionner la contradiction et suggérer une recherche."
+    )
+    persian = "برای پاسخ دقیق باید منابع معتبر را بررسی کنیم و میزان عدم قطعیت را توضیح دهیم."
+    english = (
+        "When two credible sources disagree, the assistant should compare the evidence and explain "
+        "the uncertainty. It should not silently choose one source, and it should preserve the source "
+        "attribution. If the evidence is insufficient, it should say so clearly."
+    )
+    assert chat_research._language_mismatch("How should the assistant respond?", french)
+    assert chat_research._language_mismatch("What is this error?", persian)
+    assert not chat_research._language_mismatch("How should the assistant respond?", english)
+    assert not chat_research._language_mismatch("چگونه پاسخ بدهی؟", persian)
+
+
+def test_wrong_language_draft_is_retried_and_falls_back_safely_if_retry_fails(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    french = (
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de "
+        "identifier les sources et noter leurs positions respectives. Examiner les preuves fournies "
+        "par chaque source pour comprendre leurs arguments et leurs méthodologies. Si aucune source "
+        "supplémentaire n'est disponible, mentionner la contradiction et suggérer une recherche."
+    )
+    answers = iter([french, french])
+    captured = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        captured.append(json.loads(message))
+        return next(answers)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("Two credible sources disagree about a technical claim. How should the assistant respond?")
+
+    assert len(captured) == 2
+    assert captured[1]["instruction"].startswith("Rewrite the answer entirely in English")
+    assert "couldn't reliably produce an answer in English" in reply
+    assert "Verification note:" not in reply
+
+
+def test_direct_chat_does_not_claim_unverified_feedback_was_promoted(monkeypatch):
+    captured = {}
+
+    def fake_chat(message, history=None, system_prompt=None):
+        captured.update(message=message, system_prompt=system_prompt)
+        return "I will not promote this correction to trusted knowledge automatically; it remains unverified feedback."
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    monkeypatch.setattr(
+        chat_research.web_sources,
+        "discover_sources",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("small feedback question should not trigger web search")),
+    )
+
+    reply = chat_research.answer(
+        "A user says my previous answer was wrong and suggests a correction. Should it become trusted knowledge automatically?"
+    )
+
+    assert "trusted knowledge" in reply
+    assert "unverified feedback" in captured["system_prompt"]
+    assert "independent supporting evidence" in captured["system_prompt"]
