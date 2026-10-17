@@ -376,3 +376,70 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
         assert "New advisory note." in new_output.inner_text()
         assert new_calls == {"get": 1, "post": 1, "confirm": {"confirm": True}}
         browser.close()
+
+
+
+def test_browser_validates_and_rejects_self_improvement_proposal_without_applying_patch():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    development_doc = Path(__file__).resolve().parents[1] / "docs" / "DEVELOPMENT.md"
+    original_content = development_doc.read_text(encoding="utf-8")
+    title = "Browser E2E proposal validation and rejection"
+    patch = (
+        "diff --git a/docs/DEVELOPMENT.md b/docs/DEVELOPMENT.md\\n"
+        "--- a/docs/DEVELOPMENT.md\\n"
+        "+++ b/docs/DEVELOPMENT.md\\n"
+        "@@ -1 +1 @@\\n"
+        "-# راه‌اندازی محیط توسعه\\n"
+        "+# راه‌اندازی محیط توسعه (پیشنهاد ردشده)\\n"
+    )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.locator("#self-improvement-title").fill(title)
+        page.locator("#self-improvement-rationale").fill(
+            "Exercise the proposal validation and rejection lifecycle without changing the checkout."
+        )
+        page.locator("#self-improvement-patch").fill(patch)
+        with page.expect_response(
+            lambda response: response.url.endswith("/api/self-improvement/proposals")
+            and response.request.method == "POST"
+        ) as response_info:
+            page.locator("#self-improvement-form button[type=submit]").click()
+        assert response_info.value.status == 201, response_info.value.text()
+
+        card = page.locator("#self-improvement-list article").filter(has_text=title)
+        card.wait_for(state="visible", timeout=10000)
+        card.get_by_role("button", name="بررسی سازگاری diff").click()
+        page.wait_for_function(
+            """(proposalTitle) => {
+                const card = Array.from(document.querySelectorAll('#self-improvement-list article'))
+                    .find(node => node.textContent.includes(proposalTitle));
+                return card && card.textContent.includes('(validated)');
+            }""",
+            arg=title,
+            timeout=10000,
+        )
+
+        card = page.locator("#self-improvement-list article").filter(has_text=title)
+        card.get_by_role("button", name="رد پیشنهاد").click()
+        page.wait_for_function(
+            """(proposalTitle) => {
+                const card = Array.from(document.querySelectorAll('#self-improvement-list article'))
+                    .find(node => node.textContent.includes(proposalTitle));
+                return card && card.textContent.includes('(rejected)');
+            }""",
+            arg=title,
+            timeout=10000,
+        )
+        response = page.request.get(base_url.rstrip("/") + "/api/self-improvement/proposals")
+        assert response.status == 200
+        proposals = response.json()["proposals"]
+        proposal = next(item for item in proposals if item["title"] == title)
+        assert proposal["status"] == "rejected"
+        assert proposal["approved_at"] is None
+        assert development_doc.read_text(encoding="utf-8") == original_content
+        browser.close()
