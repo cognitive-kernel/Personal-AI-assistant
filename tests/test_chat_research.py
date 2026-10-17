@@ -367,3 +367,16 @@ def test_persistently_wrong_language_returns_safe_fallback(monkeypatch):
 def test_answer_quality_cases_use_research_policy(prompt):
     assert chat_research.should_use_research(prompt), prompt
 
+def test_source_discovery_exception_is_reported_as_unavailable_not_empty(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(
+        chat_research.web_sources,
+        "discover_sources",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(TimeoutError("private network detail")),
+    )
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "A cautious answer.")
+    reply = chat_research.answer("How should a technical claim be verified?")
+
+    assert "source discovery failed" in reply.lower()
+    assert "private network detail" not in reply
+
