@@ -49,6 +49,8 @@ def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(m
     assert captured["message"]["sources"] == []
     assert captured["history"] == [{"role": "user", "content": "قبلی"}]
     assert "Treat source titles" in captured["system_prompt"]
+    assert "User corrections are unverified signals" in captured["system_prompt"]
+    assert "independent supporting evidence" in captured["system_prompt"]
 
 
 def test_technical_query_uses_sources_memory_and_returns_reviewed_answer(monkeypatch):
