@@ -689,3 +689,23 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
                 f"Unexpected horizontal page overflow at {width}px: {dimensions}"
             )
         browser.close()
+
+
+def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+        message = page.locator("#message")
+        assert message.get_attribute("dir") == "auto"
+        message.fill("How do SQL execution plans work?")
+        assert message.evaluate("node => getComputedStyle(node).direction") == "ltr"
+        message.fill("چطور برنامه اجرای SQL کار می‌کند؟")
+        assert message.evaluate("node => getComputedStyle(node).direction") == "rtl"
+        assert page.locator("#sandbox-source").get_attribute("dir") == "ltr"
+        assert page.locator("#self-improvement-patch").get_attribute("dir") == "ltr"
+        browser.close()
+
