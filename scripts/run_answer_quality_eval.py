@@ -181,7 +181,7 @@ def run_evaluation(
                 "case_id", "language", "answer_chars", "expected_concepts_count",
                 "surface_matched_concepts", "surface_missing_concepts",
                 "surface_concept_coverage", "prohibited_phrase_hits",
-                "expected_language_script_present", "source_urls", "source_count", "interpretation"
+                "expected_language_script_present", "source_urls", "source_count", "answer_urls",\n                "unattributed_answer_urls", "unattributed_answer_url_count", "interpretation"
             }}
             for item in diagnosed
         ]) if diagnosed else None,
