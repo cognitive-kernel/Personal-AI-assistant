@@ -342,7 +342,7 @@ def test_direct_chat_does_not_claim_unverified_feedback_was_promoted(monkeypatch
 
     def fake_chat(message, history=None, system_prompt=None):
         captured.update(message=message, system_prompt=system_prompt)
-        return "I will review the correction rather than treating it as established truth."
+        return "I will not promote this correction to trusted knowledge automatically; it remains unverified feedback."
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
     monkeypatch.setattr(
