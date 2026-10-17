@@ -63,3 +63,50 @@ def test_target_host_baseline_reports_test_timeout_without_raw_output(monkeypatc
         "timeout_seconds": 1, "counts": None,
     }
     assert "sensitive path" not in json.dumps(result)
+
+
+def test_network_boundary_baseline_accepts_local_literals_without_exposing_urls(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    monkeypatch.setattr(db.defaults, "host", "127.0.0.1")
+    db.init_databases()
+
+    report = baseline.build_report()
+
+    assert report["network_boundary"]["status"] == "ok"
+    assert report["network_boundary"]["app_bind"] == "loopback_literal"
+    assert report["network_boundary"]["ollama_endpoint"] in {
+        "loopback_literal", "localhost_normalized"
+    }
+    assert report["network_boundary"]["raw_configuration_included"] is False
+    assert "127.0.0.1" not in json.dumps(report["network_boundary"])
+
+
+def test_network_boundary_baseline_flags_non_loopback_bind_and_ollama_url(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    monkeypatch.setattr(db.defaults, "host", "0.0.0.0")
+    db.init_databases()
+    db.update_settings({"ollama_base_url": "https://example.com:11434"})
+
+    report = baseline.build_report()
+
+    assert report["network_boundary"]["status"] == "unsafe_or_unverified"
+    assert report["network_boundary"]["app_bind"] == "non_loopback_literal"
+    assert report["network_boundary"]["ollama_endpoint"] == "invalid_or_non_loopback"
+    assert "example.com" not in json.dumps(report)
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://127.0.0.1:11434", "loopback_literal"),
+        ("http://[::1]:11434", "loopback_literal"),
+        ("http://localhost:11434", "localhost_normalized"),
+        ("http://0.0.0.0:11434", "invalid_or_non_loopback"),
+        ("http://[::ffff:127.0.0.1]:11434", "invalid_or_non_loopback"),
+        ("https://example.com:11434", "invalid_or_non_loopback"),
+        ("http://user:pass@127.0.0.1:11434", "invalid_or_non_loopback"),
+        ("http://127.0.0.1:11434/api", "invalid_or_non_loopback"),
+    ],
+)
+def test_ollama_endpoint_classifier_matches_local_only_policy(url, expected):
+    assert baseline._ollama_endpoint_status(url) == expected
