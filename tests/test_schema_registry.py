@@ -365,6 +365,9 @@ def test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file(tm
             "INSERT INTO learning_jobs(topic, status, source_kind) VALUES (?, ?, ?)",
             ("restore me", "queued", "test"),
         )
+    # sqlite3.Connection's context manager commits but does not close the handle.
+    # Windows cannot replace a database file while this connection remains open.
+    connection.close()
 
     assert initialize_database_file(path, LEARNING_MIGRATIONS) == 13
     backup = next(tmp_path.glob("learning.db.pre-migration-*.bak"))
