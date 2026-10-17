@@ -289,3 +289,65 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
     assert len(chat_calls) == 1
     assert audit["review_status"] == "needs_review"
     assert captured["status"] == "needs_review"
+
+def test_wrong_language_draft_is_retried_before_being_returned(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    outputs = iter([
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de comparer les preuves.",
+        "When credible sources disagree, compare their evidence and explain the uncertainty.",
+    ])
+    calls = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        calls.append(json.loads(message))
+        return next(outputs)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("Two credible sources disagree about a technical claim. How should the assistant respond?")
+
+    assert reply.startswith("When credible sources disagree")
+    assert "Quand deux sources" not in reply
+    assert len(calls) == 2
+    assert "Rewrite the entire answer in English" in calls[1]["instruction"]
+
+
+def test_persian_request_retries_an_english_only_answer(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    outputs = iter([
+        "A retrieved passage alone is not independent proof and uncertainty should be stated.",
+        "یک متن بازیابی‌شده به‌تنهایی اثبات مستقل نیست و باید عدم قطعیت بیان شود.",
+    ])
+    calls = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        calls.append(json.loads(message))
+        return next(outputs)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("آیا یک متن بازیابی‌شده برای تأیید ادعا کافی است؟")
+
+    assert reply.startswith("یک متن بازیابی‌شده")
+    assert len(calls) == 2
+    assert "Persian (Farsi)" in calls[1]["instruction"]
+
+
+def test_persistently_wrong_language_returns_safe_fallback(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    outputs = iter([
+        "Quand deux sources fiables contredisent une affirmation technique, il faut comparer les preuves.",
+        "Quand les sources sont contradictoires, il faut examiner les preuves et les limites.",
+    ])
+    monkeypatch.setattr(
+        ollama,
+        "chat",
+        lambda *_args, **_kwargs: next(outputs),
+    )
+
+    reply = chat_research.answer("Two credible sources disagree about a technical claim.")
+
+    assert reply.startswith("I could not reliably produce an answer in English")
+    assert "Quand deux sources" not in reply
+
