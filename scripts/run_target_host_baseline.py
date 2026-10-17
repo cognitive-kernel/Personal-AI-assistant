@@ -126,9 +126,10 @@ def _network_boundary_summary() -> dict[str, Any]:
 
     ollama_value, source = _effective_setting("ollama_base_url")
     ollama_status = _ollama_endpoint_status(ollama_value)
-    safe = bind_status == "loopback_literal" and ollama_status in {
-        "loopback_literal", "localhost_normalized"
-    }
+    # Do not treat a hostname as equivalent to a loopback IP literal. A local
+    # hosts/DNS override can change where "localhost" resolves; this read-only
+    # report deliberately does not resolve names or probe the network.
+    safe = bind_status == "loopback_literal" and ollama_status == "loopback_literal"
     return {
         "status": "ok" if safe else "unsafe_or_unverified",
         "app_bind": bind_status,
