@@ -639,3 +639,44 @@ def test_browser_can_review_and_persist_an_unverified_experience():
         assert saved["takeaway"] == takeaway
         assert saved.get("verified_at") is None
         browser.close()
+
+def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        skip_link = page.locator(".skip-link")
+        assert skip_link.get_attribute("href") == "#main-content"
+        assert page.locator("#main-content").get_attribute("tabindex") == "-1"
+        navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
+        assert navigation.is_visible()
+        for target in (
+            "storage-health-section", "chat-section", "learning-section",
+            "task-manager-section", "experience-memory-section",
+            "cloud-resources-section", "sandbox-section", "self-improvement-section",
+        ):
+            assert navigation.locator(f'a[href="#{target}"]').count() == 1
+            assert page.locator(f"#{target}").count() == 1
+
+        stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
+        assert stylesheet.status == 200
+        assert "prefers-reduced-motion" in stylesheet.text()
+        assert "focus-visible" in stylesheet.text()
+
+        assert page.locator("html").get_attribute("dir") == "rtl"
+        for width in (360, 768, 1280):
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(50)
+            dimensions = page.evaluate("""() => ({
+                viewport: document.documentElement.clientWidth,
+                document: document.documentElement.scrollWidth
+            })""")
+            assert dimensions["document"] <= dimensions["viewport"] + 1, (
+                f"Unexpected horizontal page overflow at {width}px: {dimensions}"
+            )
+        browser.close()
