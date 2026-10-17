@@ -145,6 +145,14 @@
 </main>
 <script>
 const el = id => document.getElementById(id);
+const ltrFieldIds = new Set([
+ "model", "plan-gpu-models", "plan-provider-domains", "kaggle-cli-path",
+ "oci-cli-path", "oci-config-path", "oci-profile", "oci-region",
+ "oci-compartment-id", "sandbox-source", "self-improvement-patch"
+]);
+document.querySelectorAll('textarea, input[type="text"], input:not([type])').forEach(field => {
+ field.setAttribute("dir", ltrFieldIds.has(field.id) ? "ltr" : "auto");
+});
 async function api(path, options = {}) {
  const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
  const data = await response.json().catch(() => ({}));
