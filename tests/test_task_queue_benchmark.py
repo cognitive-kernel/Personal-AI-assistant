@@ -62,3 +62,41 @@ def test_task_queue_benchmark_rejects_invalid_consumer_count(tmp_path):
             settings_path=str(tmp_path / "settings.db"),
             learning_path=str(tmp_path / "learning.db"),
         )
+
+
+def test_task_queue_benchmark_refuses_configured_application_databases(tmp_path, monkeypatch):
+    import pytest
+
+    live_settings = tmp_path / "live-settings.db"
+    live_learning = tmp_path / "live-learning.db"
+    live_settings.write_bytes(b"preserve settings")
+    live_learning.write_bytes(b"preserve learning")
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(live_settings))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(live_learning))
+
+    with pytest.raises(ValueError, match="configured database stores"):
+        run_benchmark(
+            task_count=1,
+            producers=1,
+            workers=1,
+            settings_path=str(live_settings),
+            learning_path=str(tmp_path / "benchmark-learning.db"),
+        )
+
+    assert live_settings.read_bytes() == b"preserve settings"
+    assert live_learning.read_bytes() == b"preserve learning"
+
+
+def test_task_queue_benchmark_refuses_same_file_for_both_stores(tmp_path):
+    import pytest
+
+    shared_path = str(tmp_path / "shared.db")
+    with pytest.raises(ValueError, match="different files"):
+        run_benchmark(
+            task_count=1,
+            producers=1,
+            workers=1,
+            settings_path=shared_path,
+            learning_path=str(tmp_path / "." / "shared.db"),
+        )
+    assert not (tmp_path / "shared.db").exists()
