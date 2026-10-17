@@ -96,6 +96,9 @@ def test_runner_reports_failures_and_metadata_without_claiming_quality(tmp_path,
     assert report["run_status"] == "incomplete"
     assert report["completed_count"] == 1
     assert report["failed_count"] == 1
+    assert report["generation_completed_count"] == 1
+    assert report["generation_failed_count"] == 1
+    assert report["quality_assessment_status"] == "not_scored"
     assert "answer" not in report["results"][0]
     assert report["results"][1]["generation_status"] == "failed"
     assert report["dataset_sha256"]
