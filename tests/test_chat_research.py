@@ -326,7 +326,7 @@ def test_persian_request_retries_an_english_only_answer(monkeypatch):
         return next(outputs)
 
     monkeypatch.setattr(ollama, "chat", fake_chat)
-    reply = chat_research.answer("آیا یک متن بازیابی‌شده برای تأیید ادعا کافی است؟")
+    reply = chat_research.answer("خطا در SQL Server: آیا یک متن بازیابی‌شده برای تأیید ادعا کافی است؟")
 
     assert reply.startswith("یک متن بازیابی‌شده")
     assert len(calls) == 2
@@ -350,4 +350,20 @@ def test_persistently_wrong_language_returns_safe_fallback(monkeypatch):
 
     assert reply.startswith("I could not reliably produce an answer in English")
     assert "Quand deux sources" not in reply
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "آیا این ادعا را می‌توان فقط بر اساس یک متن بازیابی‌شده تأییدشده دانست؟",
+        "دو منبع معتبر درباره یک موضوع فنی نتایج متناقض دارند؛ چگونه پاسخ بدهی؟",
+        "کاربر می‌گوید پاسخ قبلی اشتباه است و یک اصلاح پیشنهاد می‌کند؛ آیا آن را به حافظه دانشی معتبر تبدیل می‌کنی؟",
+        "پرسش فارسی است اما بهترین منبع موجود انگلیسی است؛ چه باید کرد؟",
+        "Can a retrieved passage alone justify marking a claim as verified?",
+        "Two credible sources disagree about a technical claim. How should the assistant respond?",
+        "A user supplies a correction. Should it become trusted knowledge automatically?",
+        "The user asks in English, but the strongest source is written in Persian.",
+    ],
+)
+def test_answer_quality_cases_use_research_policy(prompt):
+    assert chat_research.should_use_research(prompt), prompt
 
