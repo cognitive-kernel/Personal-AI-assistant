@@ -8,6 +8,7 @@ sys.path.insert(0, str(ROOT))
 from app import db, ollama
 from app.answer_quality_evaluation import evaluate_answer_surface, summarize_surface_results
 from app.db import learning_connection
+import scripts.run_answer_quality_eval as answer_quality_runner
 from scripts.run_answer_quality_eval import run_evaluation
 
 
@@ -96,6 +97,9 @@ def test_runner_reports_failures_and_metadata_without_claiming_quality(tmp_path,
     assert report["run_status"] == "incomplete"
     assert report["completed_count"] == 1
     assert report["failed_count"] == 1
+    assert report["generation_completed_count"] == 1
+    assert report["generation_failed_count"] == 1
+    assert report["quality_assessment_status"] == "not_scored"
     assert "answer" not in report["results"][0]
     assert report["results"][1]["generation_status"] == "failed"
     assert report["dataset_sha256"]
@@ -103,3 +107,44 @@ def test_runner_reports_failures_and_metadata_without_claiming_quality(tmp_path,
     assert report["model"]["manifest_digest"] == model_digest
     assert report["surface_diagnostics"]["case_count"] == 1
     assert "not establish factual correctness" in report["interpretation"]
+
+def test_cli_summary_distinguishes_generation_from_quality_status(tmp_path, monkeypatch, capsys):
+    dataset = tmp_path / "cases.jsonl"
+    dataset.write_text("{}\n", encoding="utf-8")
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(answer_quality_runner, "load_cases", lambda _path: [_case()])
+    monkeypatch.setattr(db, "init_databases", lambda: None)
+    monkeypatch.setattr(
+        answer_quality_runner,
+        "run_evaluation",
+        lambda **_kwargs: {
+            "run_status": "completed",
+            "generation_completed_count": 1,
+            "generation_failed_count": 0,
+            "quality_assessment_status": "not_scored",
+            "surface_diagnostics": {"case_count": 1},
+            "interpretation": "Surface diagnostics do not establish factual correctness.",
+            "results": [],
+        },
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_answer_quality_eval.py",
+            "--dataset",
+            str(dataset),
+            "--output",
+            str(output),
+            "--redact-answers",
+        ],
+    )
+
+    assert answer_quality_runner.main() == 0
+    summary = json.loads(capsys.readouterr().out)
+    saved_report = json.loads(output.read_text(encoding="utf-8"))
+
+    assert summary["completed_count"] == 1
+    assert summary["generation_failed_count"] == 0
+    assert summary["quality_assessment_status"] == "not_scored"
+    assert saved_report["quality_assessment_status"] == "not_scored"

@@ -151,6 +151,9 @@ def run_evaluation(
         "case_count": len(cases),
         "completed_count": len(completed),
         "failed_count": len(cases) - len(completed),
+        "generation_completed_count": len(completed),
+        "generation_failed_count": len(cases) - len(completed),
+        "quality_assessment_status": "not_scored",
         "surface_diagnostics": summarize_surface_results([
             {key: value for key, value in item.items() if key in {
                 "case_id", "language", "answer_chars", "expected_concepts_count",
@@ -205,8 +208,9 @@ def main() -> int:
     print(json.dumps({
         "output": str(args.output),
         "run_status": report["run_status"],
-        "completed_count": report["completed_count"],
-        "failed_count": report["failed_count"],
+        "completed_count": report["generation_completed_count"],
+        "generation_failed_count": report["generation_failed_count"],
+        "quality_assessment_status": report["quality_assessment_status"],
         "surface_diagnostics": report["surface_diagnostics"],
         "warning": report["interpretation"],
     }, ensure_ascii=False, indent=2))
