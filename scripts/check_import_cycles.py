@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Report strongly connected import components in a Python package.
+"""Report strongly connected components in module-time Python imports.
 
-This is an architectural diagnostic, not a proof that imports are safe. By
-default it reports cycles without failing so existing architecture can first
-be measured; pass --fail-on-cycle to use it as a CI gate after review.
+Imports inside function bodies are deferred until those functions run and are
+excluded from the default graph. This avoids reporting intentional lazy-import
+edges as if they were eager module-initialization cycles. This diagnostic is
+not a proof that imports are safe; pass --fail-on-cycle to gate CI after review.
 """
 from __future__ import annotations
 
@@ -64,8 +65,49 @@ def _import_targets(
     return targets
 
 
+class _ModuleTimeImports(ast.NodeVisitor):
+    """Collect imports executed while defining a module, not inside functions."""
+
+    def __init__(self, current_module: str, is_package: bool, known_modules: set[str]):
+        self.current_module = current_module
+        self.is_package = is_package
+        self.known_modules = known_modules
+        self.targets: set[str] = set()
+
+    def visit_Import(self, node: ast.Import) -> None:
+        self.targets.update(
+            _import_targets(node, self.current_module, self.is_package, self.known_modules)
+        )
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        self.targets.update(
+            _import_targets(node, self.current_module, self.is_package, self.known_modules)
+        )
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        # Decorators/default expressions execute at definition time, but imports
+        # in the function body do not. Visit only the former.
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        for default in [*node.args.defaults, *node.args.kw_defaults]:
+            if default is not None:
+                self.visit(default)
+        for annotation in [node.returns, *node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]:
+            if annotation is not None:
+                self.visit(annotation.annotation if isinstance(annotation, ast.arg) else annotation)
+        for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs:
+            if arg.annotation is not None:
+                self.visit(arg.annotation)
+        if node.args.vararg and node.args.vararg.annotation:
+            self.visit(node.args.vararg.annotation)
+        if node.args.kwarg and node.args.kwarg.annotation:
+            self.visit(node.args.kwarg.annotation)
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+
 def build_import_graph(package_root: Path) -> dict[str, set[str]]:
-    """Build a local-module import graph using Python's AST, without importing code."""
+    """Build a local module-time import graph using AST, without importing code."""
     files = sorted(package_root.rglob("*.py"))
     modules = {module_name(path, package_root): path for path in files}
     known_modules = set(modules)
@@ -76,12 +118,9 @@ def build_import_graph(package_root: Path) -> dict[str, set[str]]:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         except (OSError, UnicodeError, SyntaxError) as exc:
             raise ValueError(f"Cannot parse {path}: {exc}") from exc
-        is_package = path.name == "__init__.py"
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
-                graph[name].update(
-                    _import_targets(node, name, is_package, known_modules)
-                )
+        visitor = _ModuleTimeImports(name, path.name == "__init__.py", known_modules)
+        visitor.visit(tree)
+        graph[name].update(visitor.targets)
     return graph
 
 
