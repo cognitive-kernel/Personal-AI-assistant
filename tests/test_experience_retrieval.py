@@ -116,6 +116,36 @@ def test_embedding_cache_is_versioned_and_old_vectors_are_not_reused(tmp_path, m
 
 
 
+def test_embedding_cache_reads_all_batches_over_sqlite_parameter_limit(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    with learning_connection() as connection:
+        connection.executemany(
+            """INSERT INTO learning_experiences (topic, problem, status, version)
+               VALUES (?, ?, 'verified', 1)""",
+            [(f"Cache item {index}", "Batch cache regression fixture") for index in range(405)],
+        )
+        ids = [
+            int(row["id"])
+            for row in connection.execute(
+                "SELECT id FROM learning_experiences ORDER BY id"
+            ).fetchall()
+        ]
+        connection.executemany(
+            """INSERT INTO learning_experience_embeddings
+                   (experience_id, experience_version, model, dimensions, embedding_json)
+               VALUES (?, 1, 'test-embedding-model', 2, '[1.0, 0.0]')""",
+            [(item_id,) for item_id in ids],
+        )
+
+    from app.experience_retrieval import _cached_embeddings
+
+    cached = _cached_embeddings([(item_id, 1) for item_id in ids], "test-embedding-model")
+
+    assert len(cached) == 405
+    assert set(cached) == {(item_id, 1) for item_id in ids}
+    assert all(vector == [1.0, 0.0] for vector in cached.values())
+
+
 def test_explicit_negative_feedback_reduces_retrieval_rank_without_unverifying(
     tmp_path, monkeypatch
 ):
