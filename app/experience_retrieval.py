@@ -117,7 +117,7 @@ def _cached_embeddings(item_versions: list[tuple[int, int]], model: str) -> dict
                     WHERE model=? AND (experience_id, experience_version) IN ({placeholders})""",
                 params,
             ).fetchall()
-    for row in rows:
+            for row in rows:
         try:
             vector = json.loads(row["embedding_json"])
         except (TypeError, ValueError):
