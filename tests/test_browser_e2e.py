@@ -376,3 +376,97 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
         assert "New advisory note." in new_output.inner_text()
         assert new_calls == {"get": 1, "post": 1, "confirm": {"confirm": True}}
         browser.close()
+
+
+
+def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    proposal_id = 990123
+    proposal = {
+        "id": proposal_id,
+        "title": "Browser E2E draft PR controls",
+        "rationale": "Verify confirmation and draft-only behavior.",
+        "patch": "diff --git a/docs/example.md b/docs/example.md",
+        "status": "approved_for_pr",
+        "approved_at": "2026-10-17T00:00:00Z",
+        "static_check": {"status": "passed"},
+    }
+    calls = {"open_pr": [], "rollback_pr": []}
+    dialogs = {"next_action": "dismiss"}
+
+    def api_route(route):
+        request = route.request
+        if request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"proposals": [proposal]}),
+            )
+            return
+        path = request.url.split("?", 1)[0]
+        if path.endswith(f"/{proposal_id}/open-pr"):
+            calls["open_pr"].append(request.post_data_json)
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"pull_request": {
+                    "pull_request_url": "https://github.com/example/repo/pull/123",
+                    "branch": "self-improvement/example",
+                    "draft": True,
+                    "merged": False,
+                }}),
+            )
+            return
+        if path.endswith(f"/{proposal_id}/rollback-pr"):
+            calls["rollback_pr"].append(request.post_data_json)
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"rollback_pull_request": {
+                    "pull_request_url": "https://github.com/example/repo/pull/124",
+                    "draft": True,
+                    "merged": False,
+                }}),
+            )
+            return
+        route.fulfill(status=404, content_type="application/json", body='{"detail":"unexpected request"}')
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("**/api/self-improvement/proposals", api_route)
+        page.route("**/api/self-improvement/proposals/*/open-pr", api_route)
+        page.route("**/api/self-improvement/proposals/*/rollback-pr", api_route)
+
+        def handle_dialog(dialog):
+            if dialogs["next_action"] == "dismiss":
+                dialogs["next_action"] = "accept"
+                dialog.dismiss()
+            else:
+                dialog.accept()
+
+        page.on("dialog", handle_dialog)
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        card = page.locator("#self-improvement-list article").filter(
+            has_text=proposal["title"]
+        )
+        open_button = card.get_by_role("button", name="ایجاد PR پیش‌نویس در GitHub")
+        open_button.wait_for(state="visible", timeout=10000)
+        open_button.click()
+        assert calls["open_pr"] == []
+
+        open_button.click()
+        page.get_by_text("https://github.com/example/repo/pull/123").wait_for(timeout=10000)
+        assert calls["open_pr"] == [{"confirm": True}]
+        assert "ادغام یا استقرار انجام نشده است" in page.locator("#self-improvement-output").inner_text()
+
+        rollback_button = card.get_by_role("button", name="ایجاد PR پیش‌نویس بازگشت")
+        rollback_button.click()
+        page.get_by_text("https://github.com/example/repo/pull/124").wait_for(timeout=10000)
+        assert calls["rollback_pr"] == [{"confirm": True}]
+        assert "ادغام یا استقرار انجام نشده است" in page.locator("#self-improvement-output").inner_text()
+        browser.close()
