@@ -10,11 +10,17 @@
   <a href="#storage-health-section">سلامت و پشتیبان</a>
   <a href="#chat-section">گفتگو و پژوهش</a>
   <a href="#learning-section">یادگیری</a>
+  <a href="#learning-paths-section">مسیرهای آموزشی</a>
+  <a href="#knowledge-section">دانش ذخیره‌شده</a>
   <a href="#task-manager-section">وظایف</a>
   <a href="#experience-memory-section">حافظهٔ تجربه</a>
   <a href="#cloud-resources-section">منابع پردازشی</a>
+  <a href="#cloud-plan-section">برنامه‌ریزی منابع</a>
+  <a href="#kaggle-quota-section">سهمیهٔ Kaggle</a>
+  <a href="#oci-limits-section">محدودیت‌های OCI</a>
   <a href="#sandbox-section">محیط ایزوله</a>
   <a href="#self-improvement-section">بهبود کد</a>
+  <a href="#settings-section">تنظیمات</a>
 </nav>
 <main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
@@ -40,7 +46,7 @@
 <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
 <pre id="tasks-output" role="status" aria-live="polite" aria-atomic="true">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
-<section><h2>مسیرهای آموزشی</h2>
+<section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
 <p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
 <label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
 <button id="enroll-curriculum" type="button">ثبت‌نام در دوره</button>
@@ -50,7 +56,7 @@
 <pre id="learning-recommendations-output"></pre>
 <pre id="due-reviews-output"></pre>
 <pre id="paths-output" role="status" aria-live="polite" aria-atomic="true"></pre><div id="paths-container"></div></section>
-<section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output" role="status" aria-live="polite" aria-atomic="true"></pre></section>
+<section id="knowledge-section"><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output" role="status" aria-live="polite" aria-atomic="true"></pre></section>
 <section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
 <p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
 <form id="experience-create-form">
@@ -132,7 +138,7 @@
 <button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
 <div id="self-improvement-list"></div>
 </section>
-<section><h2>تنظیمات محلی</h2><form id="settings-form">
+<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
 <label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite" aria-atomic="true"></pre></section>
