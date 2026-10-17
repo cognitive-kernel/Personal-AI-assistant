@@ -20,6 +20,7 @@ python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target
 - Exact Git commit and whether the working tree is clean.
 - Python/platform metadata and installed package versions.
 - Read-only health of the configured settings, learning, and cloud-resource SQLite stores: integrity, foreign-key violations, migration history, schema fingerprint, and expected schema version.
+- Local-only network configuration: the application bind must be a loopback IP literal, and the effective Ollama endpoint must satisfy the same loopback-only URL policy as the client. The report records only classifications, never the configured host or URL.
 - When `--run-tests` is supplied, the full pytest suite's exit code and JUnit counts.
 
 ## Safety and interpretation
@@ -27,5 +28,5 @@ python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target
 - Storage diagnostics open existing databases in read-only mode. They do not create databases, migrate schemas, repair data, or include filesystem paths in the report.
 - Test execution is opt-in because it can take time. The test suite should still be run only in the intended development/acceptance environment; do not assume that passing CI substitutes for running on the target host.
 - Raw test output is intentionally omitted from the JSON report because test output can contain local paths or configuration details.
-- Exit code is `0` only when storage is healthy and any requested test run passes. Missing or outdated databases produce a non-zero result; the script does not attempt automatic repair.
+- Exit code is `0` only when storage is healthy, the configured network boundary is safe and any requested test run passes. A non-loopback or unverified bind, a non-loopback/invalid Ollama URL, missing or outdated databases, or a failing requested test run produces a non-zero result; the script does not attempt automatic repair.
 - This does not run a live Ollama factuality evaluation, browser workflows, Docker sandbox validation, crash/load tests, or an independent security review. Those remain separate acceptance gates.
