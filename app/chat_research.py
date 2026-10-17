@@ -131,8 +131,8 @@ def _language_mismatch(message: str, answer_text: str) -> bool:
     """Detect high-confidence script/language mismatches without external dependencies."""
     if not message.strip() or not answer_text.strip():
         return False
-    requested_persian = bool(re.search(r"[\\u0600-\\u06FF]", message))
-    persian_chars = len(re.findall(r"[\\u0600-\\u06FF]", answer_text))
+    requested_persian = bool(re.search(r"[\u0600-\u06FF]", message))
+    persian_chars = len(re.findall(r"[\u0600-\u06FF]", answer_text))
     latin_words = re.findall(r"[a-zA-ZÀ-ÿ]+", answer_text.casefold())
     latin_count = sum(len(word) for word in latin_words)
     total_letters = persian_chars + latin_count
@@ -156,17 +156,17 @@ def _language_fallback(message: str, sources: list[dict[str, str]]) -> str:
         source["url"] for source in sources[:3]
         if isinstance(source.get("url"), str) and source["url"].startswith("https://")
     ]
-    if re.search(r"[\\u0600-\\u06FF]", message):
+    if re.search(r"[\u0600-\u06FF]", message):
         result = (
             "نتوانستم پاسخ را با اطمینان به فارسی تولید کنم؛ بنابراین پاسخ نامطمئن را به‌عنوان "
             "پاسخ نهایی ارائه نمی‌کنم. لطفاً دوباره تلاش کنید یا پرسش را دقیق‌تر بیان کنید."
         )
-        return result + ("\\n\\nمنابع بازیابی‌شده (تأیید مستقل نشده‌اند):\\n" + "\\n".join(urls) if urls else "")
+        return result + ("\n\nمنابع بازیابی‌شده (تأیید مستقل نشده‌اند):\n" + "\n".join(urls) if urls else "")
     result = (
         "I could not reliably produce an answer in English, so I am not presenting the "
         "language-mismatched draft as a final answer. Please retry or rephrase the question."
     )
-    return result + ("\\n\\nRetrieved sources (not independently verified):\\n" + "\\n".join(urls) if urls else "")
+    return result + ("\n\nRetrieved sources (not independently verified):\n" + "\n".join(urls) if urls else "")
 
 
 def _enforce_answer_language(
@@ -179,7 +179,7 @@ def _enforce_answer_language(
     if not _language_mismatch(message, draft):
         return draft, False
 
-    requested_language = "Persian (Farsi)" if re.search(r"[\\u0600-\\u06FF]", message) else "English"
+    requested_language = "Persian (Farsi)" if re.search(r"[\u0600-\u06FF]", message) else "English"
     payload = {
         "question": message[:3000],
         "draft_answer": draft[:10000],
