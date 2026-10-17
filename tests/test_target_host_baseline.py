@@ -93,7 +93,7 @@ def test_network_boundary_baseline_does_not_assume_localhost_dns_is_loopback(tmp
     assert report["network_boundary"]["status"] == "unsafe_or_unverified"
     assert report["network_boundary"]["app_bind"] == "loopback_literal"
     assert report["network_boundary"]["ollama_endpoint"] == "localhost_normalized"
-    assert "localhost" not in json.dumps(report)
+    assert "http://localhost:11434" not in json.dumps(report)
 
 
 def test_network_boundary_baseline_flags_non_loopback_bind_and_ollama_url(tmp_path, monkeypatch):
