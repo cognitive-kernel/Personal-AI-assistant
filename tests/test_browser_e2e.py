@@ -162,6 +162,20 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
         )
         assert not consent_checkbox.is_checked()
         assert "Browser E2E experience creation" in page.locator("#experience-list").inner_text()
+
+        # Revocation must survive a fresh dashboard load, not merely update the
+        # current DOM. Existing experience records must remain available.
+        page.reload(wait_until="domcontentloaded")
+        page.locator("#experience-auto-capture-refresh").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#experience-auto-capture-status');
+                return node && node.textContent.includes('ذخیرهٔ خودکار غیرفعال است');
+            }""",
+            timeout=10000,
+        )
+        assert not page.locator("#experience-auto-capture-confirm").is_checked()
+        assert "Browser E2E experience creation" in page.locator("#experience-list").inner_text()
         browser.close()
 
 
