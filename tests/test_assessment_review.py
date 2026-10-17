@@ -88,9 +88,12 @@ def test_learning_ui_exposes_opt_in_advisory_semantic_review():
     page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
         encoding="utf-8"
     )
-    assert "بازبینی معنایی کمکی پاسخ‌ها" in page
+    assert "مشاهده/اجرای بازبینی معنایی کمکی" in page
     assert 'JSON.stringify({confirm: true})' in page
     assert "نمره آزمون را تغییر نمی‌دهد" in page
+    assert 'const saved = await learningApi(reviewPath);' in page
+    assert "if (error.status !== 404) throw error;" in page
+    assert "job.assessment_attempts[0].id" in page
     assert '"/api/learning/jobs/" + job.id + "/assessment/" + latestAttemptId + "/semantic-review"' in page
 
 
