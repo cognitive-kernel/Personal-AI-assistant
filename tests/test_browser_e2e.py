@@ -175,6 +175,7 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
             timeout=10000,
         )
         assert not page.locator("#experience-auto-capture-confirm").is_checked()
+        page.locator("#experience-refresh").click()
         page.wait_for_function(
             """() => {
                 const list = document.querySelector('#experience-list');
