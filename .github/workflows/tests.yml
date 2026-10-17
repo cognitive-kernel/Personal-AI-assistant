@@ -20,3 +20,18 @@ jobs:
         run: python scripts/check_import_cycles.py
       - name: Run deterministic lexical retrieval benchmark
         run: python scripts/evaluate_experience_retrieval.py --lexical-only
+
+  windows-storage-regressions:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install project and test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Test SQLite restore and staging cleanup on Windows
+        run: >-
+          python -m pytest -q
+          tests/test_schema_registry.py::test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file
+          tests/test_storage_routes.py::test_restore_staging_cleanup_previews_and_deletes_only_old_verified_snapshots
