@@ -18,27 +18,27 @@
 </nav>
 <main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
-<button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
+<button id="refresh">بررسی وضعیت سیستم</button><pre id="health" role="status" aria-live="polite" aria-atomic="true">وضعیت هنوز بررسی نشده است.</pre></header>
 <section id="storage-health-section"><h2>سلامت ذخیره‌سازی</h2>
 <p class="muted">این بررسی فقط‌خواندنی است؛ دیتابیس را ایجاد، مهاجرت یا تعمیر نمی‌کند. برای رفع خرابی ابتدا از پشتیبان معتبر استفاده کنید.</p>
 <button id="refresh-storage-health" type="button">بررسی سلامت دیتابیس‌ها</button>
-<pre id="storage-health-output">وضعیت ذخیره‌سازی هنوز بررسی نشده است.</pre>
+<pre id="storage-health-output" role="status" aria-live="polite" aria-atomic="true">وضعیت ذخیره‌سازی هنوز بررسی نشده است.</pre>
 <hr>
 <h3>پشتیبان‌گیری کامل</h3>
 <p class="muted">با تأیید شما، از هر سه دیتابیس یک پشتیبان بررسی‌شده ساخته می‌شود. فایل‌ها در پوشهٔ پشتیبان محلی ذخیره می‌شوند؛ این عملیات دیتابیس زنده را تغییر نمی‌دهد.</p>
 <button id="create-storage-backup" type="button">ایجاد پشتیبان کامل</button>
 <button id="refresh-storage-backups" type="button">فهرست پشتیبان‌ها</button><button id="prune-storage-backups" type="button">پاک‌سازی پشتیبان‌های قدیمی</button><button id="prune-restore-staging" type="button">پاک‌سازی بازیابی‌های آزمایشی قدیمی</button>
-<pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
+<pre id="storage-backup-output" role="status" aria-live="polite" aria-atomic="true">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
-<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite" aria-atomic="true"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output" role="status" aria-live="polite" aria-atomic="true"></pre><div id="assessment-form-container"></div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
-<pre id="tasks-output">فهرست وظایف هنوز بارگذاری نشده است.</pre>
+<pre id="tasks-output" role="status" aria-live="polite" aria-atomic="true">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
 <section><h2>مسیرهای آموزشی</h2>
 <p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
@@ -49,8 +49,8 @@
 <button id="refresh-learning-recommendations" type="button">پیشنهاد گام بعدی یادگیری</button>
 <pre id="learning-recommendations-output"></pre>
 <pre id="due-reviews-output"></pre>
-<pre id="paths-output"></pre><div id="paths-container"></div></section>
-<section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
+<pre id="paths-output" role="status" aria-live="polite" aria-atomic="true"></pre><div id="paths-container"></div></section>
+<section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output" role="status" aria-live="polite" aria-atomic="true"></pre></section>
 <section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
 <p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
 <form id="experience-create-form">
@@ -71,12 +71,12 @@
 <label><input id="experience-auto-capture-confirm" type="checkbox" style="width:auto"> رضایت می‌دهم پرسش و پاسخ‌های فنیِ دارای منبع به‌صورت محلی در حافظهٔ تجربه‌ها ذخیره شوند.</label>
 <div class="cloud-actions"><button id="experience-auto-capture-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="experience-auto-capture-revoke" type="button">لغو رضایت</button><button id="experience-auto-capture-refresh" type="button">به‌روزرسانی وضعیت</button></div>
 <pre id="experience-auto-capture-status">ذخیرهٔ خودکار غیرفعال است.</pre></section>
-<pre id="experience-output">هنوز تجربه‌ای بارگذاری نشده است.</pre>
+<pre id="experience-output" role="status" aria-live="polite" aria-atomic="true">هنوز تجربه‌ای بارگذاری نشده است.</pre>
 <div id="experience-list"></div></section>
 <section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
 <p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. این فهرست فقط نامزدها و شواهد است؛ هیچ منبعی صرفاً با دیده‌شدن در این صفحه برای اجرای کار مجاز نمی‌شود.</p>
 <div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button></div>
-<pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
+<pre id="cloud-output" role="status" aria-live="polite" aria-atomic="true">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
 <div id="cloud-candidates"></div></section>
 <section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
 <p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
@@ -119,7 +119,7 @@
 <label>کد Python<textarea id="sandbox-source" rows="7" maxlength="65536" required placeholder="print('Hello')" aria-label="print('Hello')"></textarea></label>
 <div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
 <button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
-<pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
+<pre id="sandbox-run-output" role="status" aria-live="polite" aria-atomic="true">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
 <p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
 <form id="self-improvement-form">
@@ -135,7 +135,7 @@
 <section><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
-<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
+<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite" aria-atomic="true"></pre></section>
 </main>
 <script>
 const el = id => document.getElementById(id);
