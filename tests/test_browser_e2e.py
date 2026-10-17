@@ -376,3 +376,58 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
         assert "New advisory note." in new_output.inner_text()
         assert new_calls == {"get": 1, "post": 1, "confirm": {"confirm": True}}
         browser.close()
+
+
+def test_browser_can_review_and_persist_an_unverified_experience():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    topic = "Browser E2E experience review persistence"
+    takeaway = "Review changes persist while verification remains explicit."
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        page.locator("#experience-topic").fill(topic)
+        page.locator("#experience-hypothesis").fill(
+            "A review submitted in the browser should persist to the local store."
+        )
+        page.locator("#experience-problem").fill(
+            "Ensure review controls update a draft without silently verifying it."
+        )
+        page.locator("#experience-create-form button[type=submit]").click()
+        page.get_by_text(topic, exact=True).wait_for(timeout=15000)
+
+        card = page.locator("#experience-list article").filter(has_text=topic)
+        card.wait_for(state="visible", timeout=10000)
+        assert "وضعیت: identified" in card.inner_text()
+        review_form = card.locator("form").filter(has=page.get_by_role("heading", name="بازبینی تجربه"))
+        review_form.locator("select").select_option("researching")
+        review_form.locator("textarea").nth(2).fill(takeaway)
+
+        with page.expect_response(
+            lambda response: "/api/experiences/" in response.url
+            and response.request.method == "PATCH"
+        ) as response_info:
+            review_form.get_by_role("button", name="ذخیرهٔ بازبینی").click()
+        assert response_info.value.ok, response_info.value.text()
+
+        card = page.locator("#experience-list article").filter(has_text=topic)
+        page.wait_for_function(
+            """(topic, takeaway) => {
+                const cards = Array.from(document.querySelectorAll('#experience-list article'));
+                const card = cards.find(node => node.textContent.includes(topic));
+                return !!card && card.textContent.includes('وضعیت: researching') &&
+                    card.textContent.includes(takeaway);
+            }""",
+            arg=[topic, takeaway],
+            timeout=15000,
+        )
+        response = page.request.get(base_url.rstrip("/") + "/api/experiences?limit=100")
+        assert response.status == 200
+        saved = next(item for item in response.json()["items"] if item["topic"] == topic)
+        assert saved["status"] == "researching"
+        assert saved["takeaway"] == takeaway
+        assert saved.get("verified_at") is None
+        browser.close()
