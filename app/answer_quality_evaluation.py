@@ -40,8 +40,8 @@ def evaluate_answer_surface(case: dict[str, Any], answer: str, sources: list[dic
     # URLs written by the model are not treated as retrieved evidence unless
     # the exact URL also appears in the structured source metadata.
     answer_urls = []
-    for match in re.findall(r"https://\\S+", answer):
-        url = match.rstrip(".,;:!?)]}")]}\\\"'")
+    for match in re.findall(r"https://\S+", answer):
+        url = match.rstrip(".,;:!?)]}")
         if url and url not in answer_urls:
             answer_urls.append(url)
     unattributed_answer_urls = [url for url in answer_urls if url not in source_urls]
