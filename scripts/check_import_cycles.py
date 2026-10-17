@@ -85,23 +85,29 @@ class _ModuleTimeImports(ast.NodeVisitor):
         )
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        # Decorators/default expressions execute at definition time, but imports
-        # in the function body do not. Visit only the former.
-        for decorator in node.decorator_list:
-            self.visit(decorator)
-        for default in [*node.args.defaults, *node.args.kw_defaults]:
-            if default is not None:
-                self.visit(default)
-        for annotation in [node.returns, *node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]:
+        # Decorators, defaults and annotations execute while the function is
+        # defined; imports in its body execute only when called.
+        for expression in node.decorator_list:
+            self.visit(expression)
+        for expression in [*node.args.defaults, *node.args.kw_defaults]:
+            if expression is not None:
+                self.visit(expression)
+        annotations = [node.returns]
+        annotations.extend(
+            argument.annotation
+            for argument in (
+                *node.args.posonlyargs,
+                *node.args.args,
+                *node.args.kwonlyargs,
+            )
+        )
+        if node.args.vararg:
+            annotations.append(node.args.vararg.annotation)
+        if node.args.kwarg:
+            annotations.append(node.args.kwarg.annotation)
+        for annotation in annotations:
             if annotation is not None:
-                self.visit(annotation.annotation if isinstance(annotation, ast.arg) else annotation)
-        for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs:
-            if arg.annotation is not None:
-                self.visit(arg.annotation)
-        if node.args.vararg and node.args.vararg.annotation:
-            self.visit(node.args.vararg.annotation)
-        if node.args.kwarg and node.args.kwarg.annotation:
-            self.visit(node.args.kwarg.annotation)
+                self.visit(annotation)
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
