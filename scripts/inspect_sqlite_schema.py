@@ -150,7 +150,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     report = inspect_database(args.database, args.kind)
-    rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\\n"
+    rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
