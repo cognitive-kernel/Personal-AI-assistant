@@ -651,6 +651,8 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert response is not None and response.status == 200
 
         skip_link = page.locator(".skip-link")
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.className === 'skip-link'")
         assert skip_link.get_attribute("href") == "#main-content"
         assert page.locator("#main-content").get_attribute("tabindex") == "-1"
         navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
