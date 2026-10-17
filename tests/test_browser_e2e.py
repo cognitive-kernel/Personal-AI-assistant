@@ -402,7 +402,7 @@ def test_browser_can_review_and_persist_an_unverified_experience():
         card = page.locator("#experience-list article").filter(has_text=topic)
         card.wait_for(state="visible", timeout=10000)
         assert "وضعیت: identified" in card.inner_text()
-        review_form = card.locator("form").filter(has=page.get_by_role("heading", name="بازبینی تجربه"))
+        review_form = card.locator("form").last
         review_form.locator("select").select_option("researching")
         review_form.locator("textarea").nth(2).fill(takeaway)
 
