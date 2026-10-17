@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from app.config import defaults
@@ -24,7 +25,7 @@ def reset_learning_database(path: Path) -> dict[str, object]:
         # Fail safely if the application or another process still holds a write
         # transaction. Do not delete a database that cannot be exclusively locked.
         try:
-            with sqlite3.connect(str(path), timeout=2) as connection:
+            with closing(sqlite3.connect(str(path), timeout=2)) as connection:
                 connection.execute("PRAGMA busy_timeout = 2000")
                 connection.execute("BEGIN EXCLUSIVE")
                 integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
@@ -50,7 +51,7 @@ def reset_learning_database(path: Path) -> dict[str, object]:
 
     version = initialize_database_file(str(path), LEARNING_MIGRATIONS)
 
-    with sqlite3.connect(str(path)) as connection:
+    with closing(sqlite3.connect(str(path))) as connection:
         integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
         history = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
