@@ -51,7 +51,9 @@ def _import_targets(
     if node.module:
         base.extend(node.module.split("."))
     base_name = ".".join(base)
-    if base_name in known_modules:
+    # "from . import child" addresses the package namespace to resolve a
+    # child, but does not import the package as a dependency itself.
+    if node.module and base_name in known_modules:
         targets.add(base_name)
 
     # "from app import db" and "from . import db" can import submodules.
