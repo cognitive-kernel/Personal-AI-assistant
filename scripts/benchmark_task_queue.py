@@ -50,6 +50,20 @@ def run_benchmark(
 
     old_settings = db.defaults.settings_db_path
     old_learning = db.defaults.learning_db_path
+    try:
+        requested_settings = Path(settings_path).resolve()
+        requested_learning = Path(learning_path).resolve()
+        configured_stores = {
+            Path(old_settings).resolve(),
+            Path(old_learning).resolve(),
+        }
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        raise ValueError("Benchmark database paths must be valid filesystem paths.") from exc
+    if requested_settings == requested_learning:
+        raise ValueError("settings_path and learning_path must refer to different files.")
+    if requested_settings in configured_stores or requested_learning in configured_stores:
+        raise ValueError("Benchmark paths must not overlap the application's configured database stores.")
+
     db.defaults.settings_db_path = settings_path
     db.defaults.learning_db_path = learning_path
     try:
