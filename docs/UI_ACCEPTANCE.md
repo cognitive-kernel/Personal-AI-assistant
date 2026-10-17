@@ -39,3 +39,19 @@ This document defines the acceptance contract for the local-first operations das
 ## Status semantics
 
 A checklist item may be marked complete only with a test name, CI run, or reproducible target-host evidence. If a gate requires user-machine access or an independent reviewer, it must remain explicitly blocked until that evidence is supplied.
+
+## Evidence recorded for the initial UI foundation
+
+The following repository-level checks passed on the PR head containing the current navigation and RTL/LTR assertions:
+
+- [x] Local stylesheet is served from the app; no remote font/CDN dependency is introduced.
+- [x] Navigation links resolve to all dashboard workflow sections; skip-to-content is the first keyboard stop.
+- [x] Focus-visible and reduced-motion CSS rules are present.
+- [x] Text entry follows typed-script direction for English/Persian; code and patch fields remain left-to-right.
+- [x] Chromium viewport checks cover 360px, 768px, and 1280px without page-level horizontal overflow.
+- [x] Browser E2E workflow: [run 39030101108](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39030101108).
+- [x] Full test and Windows storage regression workflows: [run 39030101107](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39030101107).
+- [x] Dependency audit: [run 39030101121](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39030101121).
+
+These checks establish the UI foundation only. They do **not** complete the broader functional E2E matrix, target-host usability acceptance, manual keyboard/screen-reader review, contrast audit, or release acceptance. Those gates remain open.
+
