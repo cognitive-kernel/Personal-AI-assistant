@@ -285,6 +285,7 @@ function renderLessonResult(output, job, path, topic) {
    item.index + ". " + item.judgment + " — " + item.rationale +
    ((item.missing_concepts || []).length ? "؛ مفاهیم جاافتاده: " + item.missing_concepts.join("، ") : "")
   );
+  if (body.overall_note) lines.push(body.overall_note);
   semanticReviewResult.textContent = lines.join("\n") + (review.note ? "\n\n" + review.note : "");
  };
  semanticReviewButton.addEventListener("click", async () => {
