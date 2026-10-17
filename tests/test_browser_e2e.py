@@ -448,6 +448,7 @@ def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
 
         page.on("dialog", handle_dialog)
         page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#self-improvement-refresh").click()
 
         card = page.locator("#self-improvement-list article").filter(
             has_text=proposal["title"]
