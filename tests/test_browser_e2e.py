@@ -437,9 +437,7 @@ def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.route("**/api/self-improvement/proposals", api_route)
-        page.route("**/api/self-improvement/proposals/*/open-pr", api_route)
-        page.route("**/api/self-improvement/proposals/*/rollback-pr", api_route)
+        page.route("**/api/self-improvement/proposals**", api_route)
 
         def handle_dialog(dialog):
             if dialogs["next_action"] == "dismiss":
