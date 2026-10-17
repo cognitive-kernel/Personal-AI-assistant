@@ -7,6 +7,7 @@ import re
 import shutil
 import sqlite3
 import time
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -299,7 +300,7 @@ def _valid_staging_snapshot(path: Path) -> bool:
             if database_path.is_symlink() or not database_path.is_file():
                 return False
             uri = database_path.resolve().as_uri() + "?mode=ro"
-            with sqlite3.connect(uri, uri=True, timeout=1) as connection:
+            with closing(sqlite3.connect(uri, uri=True, timeout=1)) as connection:
                 result = connection.execute("PRAGMA integrity_check").fetchone()
                 if not result or result[0] != "ok":
                     return False
