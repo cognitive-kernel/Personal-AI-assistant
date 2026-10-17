@@ -118,17 +118,17 @@ def _cached_embeddings(item_versions: list[tuple[int, int]], model: str) -> dict
                 params,
             ).fetchall()
             for row in rows:
-        try:
-            vector = json.loads(row["embedding_json"])
-        except (TypeError, ValueError):
-            continue
-        if isinstance(vector, list) and vector and all(
-            isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
-            for value in vector
-        ):
-            cached[(int(row["experience_id"]), int(row["experience_version"]))] = [
-                float(value) for value in vector
-            ]
+                try:
+                    vector = json.loads(row["embedding_json"])
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(vector, list) and vector and all(
+                    isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                    for value in vector
+                ):
+                    cached[(int(row["experience_id"]), int(row["experience_version"]))] = [
+                        float(value) for value in vector
+                    ]
     return cached
 
 
