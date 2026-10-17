@@ -335,3 +335,26 @@ def test_wrong_language_draft_is_retried_and_falls_back_safely_if_retry_fails(mo
     assert captured[1]["instruction"].startswith("Rewrite the answer entirely in English")
     assert "couldn't reliably produce an answer in English" in reply
     assert "Verification note:" not in reply
+
+
+def test_direct_chat_does_not_claim_unverified_feedback_was_promoted(monkeypatch):
+    captured = {}
+
+    def fake_chat(message, history=None, system_prompt=None):
+        captured.update(message=message, system_prompt=system_prompt)
+        return "I will review the correction rather than treating it as established truth."
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    monkeypatch.setattr(
+        chat_research.web_sources,
+        "discover_sources",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("small feedback question should not trigger web search")),
+    )
+
+    reply = chat_research.answer(
+        "A user says my previous answer was wrong and suggests a correction. Should it become trusted knowledge automatically?"
+    )
+
+    assert "trusted knowledge" in reply
+    assert "unverified feedback" in captured["system_prompt"]
+    assert "independent supporting evidence" in captured["system_prompt"]
