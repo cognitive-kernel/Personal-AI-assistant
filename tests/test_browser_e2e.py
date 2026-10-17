@@ -266,3 +266,113 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
         assert development_doc.read_text(encoding="utf-8") == original_content
         assert title in page.locator("#self-improvement-list").inner_text()
         browser.close()
+
+
+def test_browser_restores_saved_semantic_review_and_only_generates_after_confirmation():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        saved_review = {
+            "kind": "model_assisted_advisory",
+            "review": {
+                "items": [{
+                    "index": 1,
+                    "judgment": "matches",
+                    "rationale": "Saved semantic review rationale.",
+                    "missing_concepts": [],
+                }],
+                "overall_note": "Saved advisory note.",
+            },
+            "note": "This review is advisory only.",
+            "score_changed": False,
+            "independent_verification": False,
+        }
+        saved_calls = {"get": 0, "post": 0}
+
+        def saved_route(route):
+            request = route.request
+            if request.method == "GET":
+                saved_calls["get"] += 1
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                    "job_id": 990001,
+                    "attempt_id": 11,
+                    "semantic_review": saved_review,
+                }))
+            else:
+                saved_calls["post"] += 1
+                route.fulfill(status=500, content_type="application/json", body='{"detail":"unexpected POST"}')
+
+        page.route("**/api/learning/jobs/990001/assessment/11/semantic-review", saved_route)
+        page.evaluate("""() => {
+            const output = document.createElement('div');
+            output.id = 'semantic-review-saved-output';
+            document.body.append(output);
+            renderLessonResult(output, {
+                id: 990001, status: 'completed', lesson: 'A saved lesson.',
+                quality: {score: 90},
+                assessment: {questions: ['Question?'], answer_key: ['Answer']},
+                assessment_attempts: [{id: 11, score: 0, correct_count: 0, question_count: 1}],
+                latest_review: null
+            }, {id: 1}, {id: 2, row: null});
+        }""")
+        saved_output = page.locator("#semantic-review-saved-output")
+        saved_output.get_by_role("button", name="مشاهده/اجرای بازبینی معنایی کمکی").click()
+        page.get_by_text("Saved semantic review rationale.").wait_for(timeout=5000)
+        assert "Saved advisory note." in saved_output.inner_text()
+        assert saved_calls == {"get": 1, "post": 0}
+
+        new_calls = {"get": 0, "post": 0, "confirm": None}
+
+        def new_route(route):
+            request = route.request
+            if request.method == "GET":
+                new_calls["get"] += 1
+                route.fulfill(
+                    status=404,
+                    content_type="application/json",
+                    body='{"detail":"No semantic review is stored for this attempt."}',
+                )
+                return
+            new_calls["post"] += 1
+            new_calls["confirm"] = request.post_data_json
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                "kind": "model_assisted_advisory",
+                "review": {
+                    "items": [{
+                        "index": 1,
+                        "judgment": "partial",
+                        "rationale": "Newly generated advisory rationale.",
+                        "missing_concepts": ["trade-off"],
+                    }],
+                    "overall_note": "New advisory note.",
+                },
+                "note": "This review is advisory only.",
+                "score_changed": False,
+                "independent_verification": False,
+            }))
+
+        page.route("**/api/learning/jobs/990002/assessment/22/semantic-review", new_route)
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.evaluate("""() => {
+            const output = document.createElement('div');
+            output.id = 'semantic-review-new-output';
+            document.body.append(output);
+            renderLessonResult(output, {
+                id: 990002, status: 'completed', lesson: 'Another lesson.',
+                quality: {score: 90},
+                assessment: {questions: ['Question?'], answer_key: ['Answer']},
+                assessment_attempts: [{id: 22, score: 0, correct_count: 0, question_count: 1}],
+                latest_review: null
+            }, {id: 1}, {id: 3, row: null});
+        }""")
+        new_output = page.locator("#semantic-review-new-output")
+        new_output.get_by_role("button", name="مشاهده/اجرای بازبینی معنایی کمکی").click()
+        page.get_by_text("Newly generated advisory rationale.").wait_for(timeout=5000)
+        assert "New advisory note." in new_output.inner_text()
+        assert new_calls == {"get": 1, "post": 1, "confirm": {"confirm": True}}
+        browser.close()
