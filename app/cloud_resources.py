@@ -290,6 +290,42 @@ def _normalize_source_url(url: str) -> tuple[str, str]:
     return normalized, hostname
 
 
+_SPECIFIC_COMPUTE_SERVICE_PATTERNS = (
+    # Require product/infra language, not an incidental mention of hardware.
+    r"\b(?:cloud|hosted)\s+(?:jupyter\s+)?notebooks?\b",
+    r"\b(?:virtual machines?|vm instances?|compute instances?|codespaces?|container runtimes?|developer sandboxes?)\b",
+    r"\b(?:gpu|tpu|cpu)\s+(?:compute|resources?|instances?|hours?|credits?|quotas?|runtime|access)\b",
+    r"\bcompute\s+(?:resources?|instances?|hours?|credits?|quotas?|runtime)\b",
+    r"\b(?:ocpu|vcpu)\b",
+)
+_SPECIFIC_COMPUTE_OFFER_PATTERNS = (
+    r"\balways\s+free\b",
+    r"\bfree\s+tier\b",
+    r"\bfree\s+of\s+charge\b",
+    r"\bfree\s+(?:compute|gpu|tpu|cpu|credits?|resources?|runtime|notebooks?)\b",
+    r"\bmonthly\s+(?:usage\s+)?quotas?\b",
+    r"\busage\s+quotas?\s+included\b",
+    r"\b(?:runtime|compute)\s+limits?\b",
+    r"\b(?:compute|gpu|tpu)\s+hours?\s+per\s+month\b",
+    r"\bcredits?\s+per\s+month\b",
+    r"\btrial\s+credits?\b",
+)
+
+
+def _has_specific_compute_offer_evidence(title: str, text: str) -> bool:
+    """Reject generic AI/product pages unless they describe a compute service and its offer."""
+    searchable = f"{title} {text}".casefold()
+    has_compute_service = any(
+        re.search(pattern, searchable, flags=re.IGNORECASE)
+        for pattern in _SPECIFIC_COMPUTE_SERVICE_PATTERNS
+    )
+    has_specific_offer = any(
+        re.search(pattern, searchable, flags=re.IGNORECASE)
+        for pattern in _SPECIFIC_COMPUTE_OFFER_PATTERNS
+    )
+    return has_compute_service and has_specific_offer
+
+
 def _resource_signals(title: str, text: str) -> list[str]:
     searchable = f"{title} {text}".casefold()
     rules = {
@@ -303,10 +339,13 @@ def _resource_signals(title: str, text: str) -> list[str]:
         "storage_mentioned": ("storage", "disk", "persistent volume"),
     }
     padded = f" {searchable} "
-    return sorted(
+    signals = {
         signal for signal, phrases in rules.items()
         if any(phrase in padded for phrase in phrases)
-    )
+    }
+    if _has_specific_compute_offer_evidence(title, text):
+        signals.add("specific_compute_offer_pattern_matched")
+    return sorted(signals)
 
 
 _COMPUTE_EVIDENCE_SIGNALS = frozenset({
@@ -323,17 +362,17 @@ _OFFER_EVIDENCE_SIGNALS = frozenset({
 
 
 def _has_cloud_compute_relevance(signals: Any) -> bool:
-    """Require both a compute environment and offer/limit evidence.
+    """Require technical compute and offer signals plus specific service/offer wording.
 
-    A single generic word such as "free" is not enough to turn an arbitrary
-    public page into a cloud-resource candidate. Keep this check on reads too
-    so low-quality candidates saved by older versions are not shown or planned.
+    The specific-pattern marker is deliberately persisted with the candidate so
+    listing also hides broad-signal false positives saved by older versions.
     """
     if not isinstance(signals, (list, tuple, set)):
         return False
     observed = set(signals)
     return bool(
-        observed.intersection(_COMPUTE_EVIDENCE_SIGNALS)
+        "specific_compute_offer_pattern_matched" in observed
+        and observed.intersection(_COMPUTE_EVIDENCE_SIGNALS)
         and observed.intersection(_OFFER_EVIDENCE_SIGNALS)
     )
 
