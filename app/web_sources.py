@@ -50,6 +50,32 @@ class SourceDocument:
     text: str
 
 
+class SearchResultList(list[tuple[str, str]]):
+    """Search results with bounded diagnostics for each engine attempted."""
+
+    def __init__(
+        self,
+        values=(),
+        *,
+        provider_diagnostics: list[dict[str, object]] | None = None,
+    ) -> None:
+        super().__init__(values)
+        self.provider_diagnostics = provider_diagnostics or []
+
+
+class SourceDocumentList(list[SourceDocument]):
+    """Fetched pages plus diagnostics for the search-engine calls that found them."""
+
+    def __init__(
+        self,
+        values=(),
+        *,
+        search_provider_diagnostics: list[dict[str, object]] | None = None,
+    ) -> None:
+        super().__init__(values)
+        self.search_provider_diagnostics = search_provider_diagnostics or []
+
+
 def _validate_public_url(url: str) -> urllib.parse.ParseResult:
     if not isinstance(url, str) or len(url) > 2048:
         raise SourceFetchError("URL is invalid or too long.")
@@ -377,50 +403,104 @@ def _normalize_search_results(
     return unique
 
 
-def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
-    """Collect results across configured search engines and deduplicate source URLs."""
+def _search_results(query: str, limit: int) -> SearchResultList:
+    """Collect deduplicated results fairly across search engines with diagnostics."""
     providers = (
         ("DuckDuckGo", SEARCH_ENDPOINT, _SearchResultParser, ("duckduckgo.com",)),
         ("Bing", BING_SEARCH_ENDPOINT, _BingSearchResultParser, ("bing.com",)),
         ("Google", GOOGLE_SEARCH_ENDPOINT, _GoogleSearchResultParser, ("google.com",)),
     )
+    provider_diagnostics: list[dict[str, object]] = [
+        {
+            "provider": name,
+            "attempts": [],
+            "parsed_result_count": 0,
+            "accepted_result_count": 0,
+            "unique_result_count": 0,
+            "duplicate_result_count": 0,
+        }
+        for name, _, _, _ in providers
+    ]
     failures: list[str] = []
     max_results = max(1, min(30, limit * len(providers) * 3))
     query_variants = (query,) + SEARCH_QUERY_ALTERNATES.get(query.strip().casefold(), ())
     for variant_index, search_query in enumerate(query_variants):
         variant_label = "primary" if variant_index == 0 else f"alternate_{variant_index}"
-        combined: list[tuple[str, str]] = []
-        seen: set[str] = set()
-        for name, endpoint, parser_type, provider_hosts in providers:
+        results_by_provider: list[list[tuple[str, str]]] = [[] for _ in providers]
+        attempts_by_provider: list[dict[str, object]] = []
+        for provider_index, (name, endpoint, parser_type, provider_hosts) in enumerate(providers):
+            stats = provider_diagnostics[provider_index]
+            attempts = stats["attempts"]
+            assert isinstance(attempts, list)
+            attempt: dict[str, object] = {
+                "variant": variant_label,
+                "parsed_result_count": 0,
+                "accepted_result_count": 0,
+                "unique_result_count": 0,
+                "duplicate_result_count": 0,
+                "error": None,
+            }
+            attempts.append(attempt)
+            attempts_by_provider.append(attempt)
             search_url = endpoint + "?" + urllib.parse.urlencode({"q": search_query})
             try:
                 html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
                 parser = parser_type()
                 parser.feed(html)
+                attempt["parsed_result_count"] = len(parser.results)
+                stats["parsed_result_count"] = int(stats["parsed_result_count"]) + len(parser.results)
                 results = _normalize_search_results(
                     parser.results, limit=limit, provider_hosts=provider_hosts
                 )
+                attempt["accepted_result_count"] = len(results)
+                stats["accepted_result_count"] = int(stats["accepted_result_count"]) + len(results)
                 if not results:
+                    attempt["error"] = "no_parseable_results"
                     failures.append(f"{name}:no_parseable_results[{variant_label}]")
                     continue
-                for title, url in results:
-                    identity = result_url_identity(url)
-                    if identity in seen:
-                        continue
-                    seen.add(identity)
-                    combined.append((title, url))
-                    if len(combined) >= max_results:
-                        break
+                results_by_provider[provider_index] = results
             except SourceFetchError as exc:
+                attempt["error"] = type(exc).__name__
                 failures.append(f"{name}:{type(exc).__name__}[{variant_label}]")
+
+        # Round-robin results so a full page from DuckDuckGo cannot crowd out
+        # unique results from Bing or Google before source pages are fetched.
+        combined: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        max_provider_results = max((len(items) for items in results_by_provider), default=0)
+        for result_index in range(max_provider_results):
+            for provider_index, provider_results in enumerate(results_by_provider):
+                if result_index >= len(provider_results):
+                    continue
+                title, url = provider_results[result_index]
+                identity = result_url_identity(url)
+                stats = provider_diagnostics[provider_index]
+                attempt = attempts_by_provider[provider_index]
+                if identity in seen:
+                    attempt["duplicate_result_count"] = int(attempt["duplicate_result_count"]) + 1
+                    stats["duplicate_result_count"] = int(stats["duplicate_result_count"]) + 1
+                    continue
+                seen.add(identity)
+                combined.append((title, url))
+                attempt["unique_result_count"] = int(attempt["unique_result_count"]) + 1
+                stats["unique_result_count"] = int(stats["unique_result_count"]) + 1
+                if len(combined) >= max_results:
+                    break
+            if len(combined) >= max_results:
+                break
         if combined:
-            return combined[:max_results]
-    raise SourceFetchError(
+            return SearchResultList(
+                combined[:max_results],
+                provider_diagnostics=provider_diagnostics,
+            )
+    error = SourceFetchError(
         "All configured search providers and bounded query variants failed or returned "
         "no parseable results ("
         + ", ".join(failures)
         + ")."
     )
+    error.provider_diagnostics = provider_diagnostics
+    raise error
 
 def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> SourceDocument:
     content, content_type = _open(url, max_bytes=MAX_RESPONSE_BYTES)
@@ -450,9 +530,11 @@ def fetch_public_document(
 def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
     """Search and fetch public pages; raise when search providers cannot return results."""
     if not isinstance(query, str) or not query.strip():
-        return []
+        return SourceDocumentList()
     candidates = _search_results(query.strip()[:300], max(1, min(5, limit)))
-    documents: list[SourceDocument] = []
+    documents = SourceDocumentList(
+        search_provider_diagnostics=getattr(candidates, "provider_diagnostics", []),
+    )
     for title, url in candidates:
         try:
             document = _fetch_document(url, title)

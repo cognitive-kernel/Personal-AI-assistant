@@ -24,13 +24,15 @@ from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
 
 CLOUD_DISCOVERY_TASK_TYPE = "cloud.discover_resources"
-MAX_RESULTS_PER_QUERY = 3
-MAX_CANDIDATES_PER_RUN = 12
+MAX_RESULTS_PER_QUERY = 5
+MAX_CANDIDATES_PER_RUN = 25
 MAX_EVIDENCE_EXCERPT = 600
 
 DISCOVERY_QUERIES = (
+    "free cloud hosting compute resources free plan quotas official",
     "official free cloud GPU compute notebook free tier terms",
     "official free cloud CPU virtual machine compute credits free tier",
+    "official always free cloud virtual machine monthly compute quota",
     "official free developer sandbox container compute limits",
 )
 
@@ -467,14 +469,26 @@ def discover_resources(
             except Exception as exc:
                 reason = " ".join(str(exc).split())[:180]
                 errors.append(f"query_{index + 1}:{type(exc).__name__}:{reason}")
-                query_results.append({
+                failed_query_result: dict[str, Any] = {
                     "query": query,
                     "result_count": 0,
                     "error": f"{type(exc).__name__}: {reason}",
-                })
+                }
+                provider_diagnostics = getattr(exc, "provider_diagnostics", None)
+                if isinstance(provider_diagnostics, list):
+                    failed_query_result["provider_diagnostics"] = provider_diagnostics
+                query_results.append(failed_query_result)
                 continue
 
-            query_results.append({"query": query, "result_count": len(documents), "error": None})
+            query_result: dict[str, Any] = {
+                "query": query,
+                "result_count": len(documents),
+                "error": None,
+            }
+            provider_diagnostics = getattr(documents, "search_provider_diagnostics", None)
+            if isinstance(provider_diagnostics, list):
+                query_result["provider_diagnostics"] = provider_diagnostics
+            query_results.append(query_result)
             sources_seen += len(documents)
             for document in documents:
                 if len(unique) >= MAX_CANDIDATES_PER_RUN:

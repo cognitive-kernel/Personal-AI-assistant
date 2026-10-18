@@ -35,6 +35,50 @@ def _document(url="https://compute.example.org/free-tier", title="Free GPU compu
     )
 
 
+def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    diagnostics = [
+        {
+            "provider": "Google",
+            "attempts": [{
+                "variant": "primary",
+                "parsed_result_count": 3,
+                "accepted_result_count": 3,
+                "unique_result_count": 2,
+                "duplicate_result_count": 1,
+                "error": None,
+            }],
+            "parsed_result_count": 3,
+            "accepted_result_count": 3,
+            "unique_result_count": 2,
+            "duplicate_result_count": 1,
+        }
+    ]
+    documents = web_sources.SourceDocumentList(
+        [document], search_provider_diagnostics=diagnostics
+    )
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: documents
+    )
+
+    report = cloud_resources.discover_resources()
+    latest = cloud_resources.latest_discovery_run()
+
+    assert report["status"] == "completed"
+    assert latest["query_results"][0]["provider_diagnostics"] == diagnostics
+
+
+def test_discovery_scope_is_broader_but_has_explicit_bounds():
+    assert len(cloud_resources.DISCOVERY_QUERIES) == 5
+    assert any("cloud hosting" in query for query in cloud_resources.DISCOVERY_QUERIES)
+    assert cloud_resources.MAX_RESULTS_PER_QUERY == 5
+    assert cloud_resources.MAX_CANDIDATES_PER_RUN == (
+        len(cloud_resources.DISCOVERY_QUERIES)
+        * cloud_resources.MAX_RESULTS_PER_QUERY
+    )
+
+
 def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
