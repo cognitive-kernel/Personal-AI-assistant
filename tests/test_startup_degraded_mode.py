@@ -20,6 +20,9 @@ def test_untracked_schema_keeps_dashboard_and_health_available(monkeypatch):
 
         assert dashboard.status_code == 200
         assert "دستیار هوش مصنوعی شخصی" in dashboard.text
+        assert 'id="storage-degraded-banner"' in dashboard.text
+        assert 'role="alert" aria-live="assertive"' in dashboard.text
+        assert "inspect_sqlite_schema.py" in dashboard.text
         assert health.status_code == 200
         assert health.json()["status"] == "degraded"
         assert health.json()["reason"] == "untracked_storage_schema"
