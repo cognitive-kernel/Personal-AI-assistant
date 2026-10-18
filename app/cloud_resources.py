@@ -24,13 +24,15 @@ from .schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 from . import task_manager, web_sources
 
 CLOUD_DISCOVERY_TASK_TYPE = "cloud.discover_resources"
-MAX_RESULTS_PER_QUERY = 3
-MAX_CANDIDATES_PER_RUN = 12
+MAX_RESULTS_PER_QUERY = 5
+MAX_CANDIDATES_PER_RUN = 25
 MAX_EVIDENCE_EXCERPT = 600
 
 DISCOVERY_QUERIES = (
+    "free cloud hosting compute resources free plan quotas official",
     "official free cloud GPU compute notebook free tier terms",
     "official free cloud CPU virtual machine compute credits free tier",
+    "official always free cloud virtual machine monthly compute quota",
     "official free developer sandbox container compute limits",
 )
 
