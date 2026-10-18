@@ -17,6 +17,14 @@ import urllib.request
 
 SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
 BING_SEARCH_ENDPOINT = "https://www.bing.com/search"
+# The general sandbox/container query is prone to search-engine no-result or
+# challenge pages. Try short, bounded synonyms before giving up on that topic.
+SEARCH_QUERY_ALTERNATES = {
+    "official free developer sandbox container compute limits": (
+        "free cloud development environment sandbox runtime limits official",
+        "developer container sandbox free quota usage terms",
+    ),
+}
 MAX_RESPONSE_BYTES = 1_000_000
 DEFAULT_TIMEOUT_SECONDS = 6
 # Kaggle's current Terms of Use prohibit automated crawling/scraping of its services.
@@ -285,22 +293,26 @@ def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
         ),
     )
     failures: list[str] = []
-    for name, endpoint, parser_type, provider_hosts in providers:
-        search_url = endpoint + "?" + urllib.parse.urlencode({"q": query})
-        try:
-            html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
-            parser = parser_type()
-            parser.feed(html)
-            results = _normalize_search_results(
-                parser.results, limit=limit, provider_hosts=provider_hosts
-            )
-            if results:
-                return results
-            failures.append(f"{name}:no_parseable_results")
-        except SourceFetchError as exc:
-            failures.append(f"{name}:{type(exc).__name__}")
+    query_variants = (query,) + SEARCH_QUERY_ALTERNATES.get(query.strip().casefold(), ())
+    for variant_index, search_query in enumerate(query_variants):
+        variant_label = "primary" if variant_index == 0 else f"alternate_{variant_index}"
+        for name, endpoint, parser_type, provider_hosts in providers:
+            search_url = endpoint + "?" + urllib.parse.urlencode({"q": search_query})
+            try:
+                html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
+                parser = parser_type()
+                parser.feed(html)
+                results = _normalize_search_results(
+                    parser.results, limit=limit, provider_hosts=provider_hosts
+                )
+                if results:
+                    return results
+                failures.append(f"{name}[{variant_label}]:no_parseable_results")
+            except SourceFetchError as exc:
+                failures.append(f"{name}[{variant_label}]:{type(exc).__name__}")
     raise SourceFetchError(
-        "All configured search providers failed or returned no parseable results ("
+        "All configured search providers and bounded query variants failed or returned "
+        "no parseable results ("
         + ", ".join(failures)
         + ")."
     )
