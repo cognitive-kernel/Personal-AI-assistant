@@ -427,7 +427,218 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_self_improvement_events_proposal ON self_improvement_events(proposal_id, id)",
         ),
     ),
+
+    Migration(
+        14,
+        "preserve-legacy-research-feedback-data",
+        (
+            """CREATE TABLE chat_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                query TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                rating TEXT NOT NULL CHECK(rating IN ('helpful','unhelpful')),
+                correction TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE knowledge_sources (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                license_note TEXT NOT NULL DEFAULT 'Reuse terms not independently reviewed; retain source attribution.',
+                status TEXT NOT NULL DEFAULT 'indexed',
+                fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE knowledge_chunks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+                chunk_index INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                embedding_json TEXT,
+                embedding_model TEXT,
+                UNIQUE(source_id, chunk_index)
+            )""",
+            "CREATE VIRTUAL TABLE knowledge_chunks_fts USING fts5(content)",
+            "CREATE INDEX idx_chat_feedback_rating ON chat_feedback(rating, id DESC)",
+            "CREATE INDEX idx_knowledge_chunks_source ON knowledge_chunks(source_id, chunk_index)",
+        ),
+    ),
 )
+
+
+# This exact fingerprint was captured by the read-only target-host diagnostic on
+# 2026-10-18. It is accepted only as a migration source, never as an already
+# current schema. The fixture and row-preserving conversion are regression-tested.
+LEGACY_LEARNING_SCHEMA_FINGERPRINT = "8932fae6e02d89dfb8230f4dc9becce3cc0e86c53d4b6b90c49652b1c6b9b83b"
+_LEGACY_LEARNING_DATA_TABLES = (
+    "assessment_attempts",
+    "chat_feedback",
+    "knowledge_chunks",
+    "knowledge_items",
+    "knowledge_sources",
+    "learning_evidence",
+    "learning_experience_versions",
+    "learning_experiences",
+    "learning_jobs",
+    "learning_path_topics",
+    "learning_paths",
+    "learning_source_text",
+    "lesson_reviews",
+)
+_LEGACY_COPY_ORDER = (
+    "learning_paths",
+    "learning_path_topics",
+    "learning_jobs",
+    "learning_experiences",
+    "learning_experience_versions",
+    "learning_evidence",
+    "learning_source_text",
+    "knowledge_items",
+    "assessment_attempts",
+    "lesson_reviews",
+    "chat_feedback",
+    "knowledge_sources",
+    "knowledge_chunks",
+)
+
+
+def _quote_identifier(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _migrate_recognized_legacy_learning_database(
+    target: Path,
+    migrations: tuple[Migration, ...],
+    *,
+    verified_backup: Path,
+) -> int:
+    """Convert one reviewed legacy fingerprint using a fresh DB and verified backup."""
+    if not verified_backup.is_file() or verified_backup.stat().st_size == 0:
+        raise RuntimeError("Verified pre-migration backup is missing; refusing legacy conversion.")
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{target.name}.legacy-migration-", suffix=".tmp", dir=target.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        source_uri = target.resolve().as_uri() + "?mode=ro"
+        with closing(sqlite3.connect(source_uri, uri=True, timeout=10)) as source:
+            source.execute("PRAGMA query_only = ON")
+            if source.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+            ).fetchone():
+                raise UntrackedSchemaError(
+                    "Reviewed legacy fingerprint is only eligible without migration history."
+                )
+            if schema_fingerprint(source) != LEGACY_LEARNING_SCHEMA_FINGERPRINT:
+                raise UntrackedSchemaError(
+                    "Legacy learning schema changed since review; refusing conversion."
+                )
+            table_rows = source.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name NOT LIKE 'sqlite_%' "
+                "AND name NOT LIKE 'knowledge_chunks_fts_%' "
+                "AND name != 'knowledge_chunks_fts' ORDER BY name"
+            ).fetchall()
+            actual_tables = {row[0] for row in table_rows}
+            if actual_tables != set(_LEGACY_LEARNING_DATA_TABLES):
+                raise UntrackedSchemaError(
+                    "Reviewed legacy learning table set changed; refusing conversion."
+                )
+            source_counts = {
+                table: int(source.execute(
+                    f"SELECT COUNT(*) FROM {_quote_identifier(table)}"
+                ).fetchone()[0])
+                for table in _LEGACY_LEARNING_DATA_TABLES
+            }
+
+            with closing(sqlite3.connect(str(temporary), timeout=10)) as destination:
+                destination.execute("PRAGMA foreign_keys = ON")
+                destination.execute("PRAGMA busy_timeout = 10000")
+                MigrationRunner(migrations).apply(destination)
+                destination.execute("BEGIN IMMEDIATE")
+                for table in _LEGACY_COPY_ORDER:
+                    source_columns = {
+                        row[1] for row in source.execute(
+                            f"PRAGMA table_info({_quote_identifier(table)})"
+                        ).fetchall()
+                    }
+                    destination_columns = {
+                        row[1] for row in destination.execute(
+                            f"PRAGMA table_info({_quote_identifier(table)})"
+                        ).fetchall()
+                    }
+                    columns = [
+                        row[1] for row in source.execute(
+                            f"PRAGMA table_info({_quote_identifier(table)})"
+                        ).fetchall()
+                        if row[1] in destination_columns
+                    ]
+                    if not columns or not set(columns) <= source_columns:
+                        raise RuntimeError(f"No compatible columns found while migrating {table}.")
+                    quoted_columns = ", ".join(_quote_identifier(column) for column in columns)
+                    select_sql = (
+                        f"SELECT {quoted_columns} FROM {_quote_identifier(table)} ORDER BY rowid"
+                    )
+                    insert_sql = (
+                        f"INSERT INTO {_quote_identifier(table)} ({quoted_columns}) "
+                        f"VALUES ({', '.join('?' for _ in columns)})"
+                    )
+                    cursor = source.execute(select_sql)
+                    while True:
+                        batch = cursor.fetchmany(500)
+                        if not batch:
+                            break
+                        destination.executemany(insert_sql, batch)
+
+                destination.execute(
+                    "INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts) VALUES ('rebuild')"
+                )
+                for table, expected_count in source_counts.items():
+                    actual_count = int(destination.execute(
+                        f"SELECT COUNT(*) FROM {_quote_identifier(table)}"
+                    ).fetchone()[0])
+                    if actual_count != expected_count:
+                        raise RuntimeError(
+                            f"Row-count validation failed for {table}: "
+                            f"expected {expected_count}, got {actual_count}."
+                        )
+                fts_count = int(destination.execute(
+                    "SELECT COUNT(*) FROM knowledge_chunks_fts"
+                ).fetchone()[0])
+                if fts_count != source_counts["knowledge_chunks"]:
+                    raise RuntimeError("FTS rebuild row-count validation failed.")
+                integrity = destination.execute("PRAGMA integrity_check").fetchall()
+                violations = destination.execute("PRAGMA foreign_key_check").fetchall()
+                if [row[0] for row in integrity] != ["ok"] or violations:
+                    raise RuntimeError(
+                        "Migrated learning database failed integrity or foreign-key validation."
+                    )
+                expected_fingerprint = fingerprint_for_version(
+                    migrations, migrations[-1].version
+                )
+                if schema_fingerprint(destination) != expected_fingerprint:
+                    raise RuntimeError("Migrated learning schema does not match the registered current schema.")
+                destination.commit()
+
+        # All SQLite handles are closed before replacement (required on Windows).
+        os.replace(temporary, target)
+        return migrations[-1].version
+    except Exception:
+        try:
+            with closing(sqlite3.connect(str(temporary), timeout=2)) as connection:
+                connection.rollback()
+        except sqlite3.Error:
+            pass
+        raise
+    finally:
+        if temporary.exists():
+            try:
+                temporary.unlink()
+            except OSError:
+                pass
 
 
 CLOUD_RESOURCE_MIGRATIONS = (
@@ -733,10 +944,17 @@ def _create_pre_migration_backup(path: Path) -> Path:
     with closing(sqlite3.connect(str(path))) as source, closing(
         sqlite3.connect(str(candidate))
     ) as destination:
+        source_integrity = source.execute("PRAGMA integrity_check").fetchall()
+        source_violations = source.execute("PRAGMA foreign_key_check").fetchall()
+        if [row[0] for row in source_integrity] != ["ok"] or source_violations:
+            raise RuntimeError(f"Source database failed pre-migration validation: {path}")
         source.backup(destination)
-        result = destination.execute("PRAGMA integrity_check").fetchone()
-        if result is None or result[0] != "ok":
+        result = destination.execute("PRAGMA integrity_check").fetchall()
+        violations = destination.execute("PRAGMA foreign_key_check").fetchall()
+        if [row[0] for row in result] != ["ok"] or violations:
             raise RuntimeError(f"Pre-migration backup failed integrity validation: {candidate}")
+        if schema_fingerprint(source) != schema_fingerprint(destination):
+            raise RuntimeError(f"Pre-migration backup schema verification failed: {candidate}")
     return candidate
 
 
@@ -748,8 +966,22 @@ def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) 
     if not migration_list:
         raise ValueError("At least one migration must be registered.")
 
+    verified_backup: Path | None = None
     if _needs_schema_backup(target, migration_list):
-        _create_pre_migration_backup(target)
+        verified_backup = _create_pre_migration_backup(target)
+
+    if target.is_file() and migration_list == LEARNING_MIGRATIONS:
+        with closing(sqlite3.connect(target.resolve().as_uri() + "?mode=ro", uri=True)) as probe:
+            has_history = probe.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+            ).fetchone() is not None
+            observed_fingerprint = schema_fingerprint(probe)
+        if not has_history and observed_fingerprint == LEGACY_LEARNING_SCHEMA_FINGERPRINT:
+            if verified_backup is None:
+                verified_backup = _create_pre_migration_backup(target)
+            return _migrate_recognized_legacy_learning_database(
+                target, migration_list, verified_backup=verified_backup
+            )
 
     with closing(sqlite3.connect(str(target), timeout=10)) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
