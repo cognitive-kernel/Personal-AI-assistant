@@ -657,6 +657,12 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert page.locator("#main-content").get_attribute("tabindex") == "-1"
         navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
         assert navigation.is_visible()
+        shell = page.locator(".dashboard-shell")
+        assert shell.count() == 1
+        assert navigation.evaluate("node => getComputedStyle(node).flexDirection") == "column"
+        assert shell.evaluate(
+            "node => getComputedStyle(node).gridTemplateColumns.split(' ').length"
+        ) == 2
         for target in (
             "storage-health-section", "chat-section", "learning-section",
             "task-manager-section", "experience-memory-section",
@@ -681,6 +687,8 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         for width in (360, 768, 1280):
             page.set_viewport_size({"width": width, "height": 900})
             page.wait_for_timeout(50)
+            nav_direction = navigation.evaluate("node => getComputedStyle(node).flexDirection")
+            assert nav_direction == ("column" if width > 1000 else "row")
             dimensions = page.evaluate("""() => ({
                 viewport: document.documentElement.clientWidth,
                 document: document.documentElement.scrollWidth
