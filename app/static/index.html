@@ -154,7 +154,19 @@ document.querySelectorAll('textarea, input[type="text"], input:not([type])').for
  field.setAttribute("dir", ltrFieldIds.has(field.id) ? "ltr" : "auto");
 });
 async function api(path, options = {}) {
- const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
+ let response;
+ try {
+  response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
+ } catch(error) {
+  if (error && error.name === "AbortError") throw error;
+  if (error instanceof TypeError) {
+   throw new Error(
+    "ارتباط با API برقرار نشد. احتمالاً سرور هنگام راه‌اندازی متوقف شده یا در دسترس نیست؛ " +
+    "پنجرهٔ PowerShell را برای خطای شروع بررسی کنید و پس از رفع آن سرور را دوباره اجرا کنید."
+   );
+  }
+  throw error;
+ }
  const data = await response.json().catch(() => ({}));
  if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
  return data;
