@@ -165,6 +165,58 @@ def test_search_results_fall_back_to_bing_when_duckduckgo_has_no_parseable_resul
     ]
 
 
+def test_google_parser_extracts_h3_result_and_decodes_redirect():
+    parser = web_sources._GoogleSearchResultParser()
+    parser.feed(
+        '<a href="/url?q=https%3A%2F%2Fexample.org%2Fdocs%3Futm_source%3Dgoogle">'
+        '<h3>Official Compute Docs</h3></a>'
+    )
+
+    assert parser.results == [
+        ("Official Compute Docs", "https://example.org/docs?utm_source=google")
+    ]
+
+
+def test_search_results_aggregate_google_bing_and_duckduckgo_with_dedup(monkeypatch):
+    pages = {
+        "html.duckduckgo.com": (
+            '<a class="result__a" href="https://example.org/docs?utm_source=ddg#part">'
+            "Official Compute Docs</a>"
+            '<a class="result__a" href="https://ddg.example.org/guide">DDG Guide</a>'
+        ),
+        "www.bing.com": (
+            '<ol><li class="b_algo"><h2><a href="https://www.example.org/docs#top">'
+            "Duplicate Compute Docs</a></h2></li>"
+            '<li class="b_algo"><h2><a href="https://bing.example.org/guide">'
+            "Bing Guide</a></h2></li></ol>'
+        ),
+        "www.google.com": (
+            '<a href="/url?q=https%3A%2F%2Fexample.org%2Fdocs%3Fved%3D123">'
+            "<h3>Duplicate Compute Docs from Google</h3></a>"
+            '<a href="https://google.example.org/guide"><h3>Google Guide</h3></a>'
+        ),
+    }
+
+    def fake_open(url, **kwargs):
+        host = urllib.parse.urlparse(url).hostname
+        return pages[host], "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    results = web_sources._search_results("cloud compute terms", 3)
+
+    assert results == [
+        ("Official Compute Docs", "https://example.org/docs"),
+        ("DDG Guide", "https://ddg.example.org/guide"),
+        ("Bing Guide", "https://bing.example.org/guide"),
+        ("Google Guide", "https://google.example.org/guide"),
+    ]
+    assert len({web_sources.result_url_identity(url) for _, url in results}) == len(results)
+
+
 def test_bing_parser_decodes_organic_result_redirect_urls():
     destination = "https://example.org/docs?section=compute"
     encoded = base64.urlsafe_b64encode(destination.encode()).decode().rstrip("=")
@@ -219,12 +271,14 @@ def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseab
     )
 
     assert result == [("Official Sandbox Compute Limits", "https://example.org/sandbox-docs")]
-    assert requested_queries[:2] == [
+    assert requested_queries[:3] == [
+        "official free developer sandbox container compute limits",
         "official free developer sandbox container compute limits",
         "official free developer sandbox container compute limits",
     ]
-    assert requested_queries[2:] == [
+    assert requested_queries[3:] == [
+        "free cloud development environment sandbox runtime limits official",
         "free cloud development environment sandbox runtime limits official",
         "free cloud development environment sandbox runtime limits official",
     ]
-    assert len(requested_queries) == 4
+    assert len(requested_queries) == 6
