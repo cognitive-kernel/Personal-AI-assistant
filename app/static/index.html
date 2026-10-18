@@ -74,7 +74,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <div id="experience-list"></div></section>
 <section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
 <p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. این فهرست فقط نامزدها و شواهد است؛ هیچ منبعی صرفاً با دیده‌شدن در این صفحه برای اجرای کار مجاز نمی‌شود.</p>
-<div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button></div>
+<div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button><label for="cloud-candidate-limit">تعداد نامزدهای نمایشی <select id="cloud-candidate-limit"><option value="10" selected>۱۰ مورد اخیر</option><option value="25">۲۵ مورد اخیر</option><option value="50">۵۰ مورد اخیر</option><option value="100">۱۰۰ مورد اخیر</option></select></label></div>
 <pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
 <div id="cloud-candidates"></div></section>
 <section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
@@ -404,7 +404,10 @@ async function refreshCloudResources() {
  const output=el("cloud-output");
  output.textContent="در حال بارگذاری نامزدهای منابع…";
  try {
-  const result=await api("/api/cloud-resources?limit=100");
+  const limitControl=el("cloud-candidate-limit");
+  const requestedLimit=Number(limitControl?.value||10);
+  const candidateLimit=[10,25,50,100].includes(requestedLimit)?requestedLimit:10;
+  const result=await api("/api/cloud-resources?limit="+candidateLimit);
   const run=result.latest_run;
   const runSummary=run
    ? "آخرین اجرا: "+run.status+" | زمان: "+(run.finished_at||run.started_at)+" | منابع دیده‌شده: "+run.sources_seen+" | نامزدهای ذخیره‌شده: "+run.candidates_upserted
@@ -477,14 +480,18 @@ function renderCloudCandidates(candidates) {
   const assessment=candidate.eligibility_assessment||{status:"needs_review",execution_authorized:false,blockers:["پیش‌ارزیابی در دسترس نیست."],review_needed:[]};
   const assessmentLabels={blocked:"مسدود",needs_review:"نیازمند بازبینی",ready_for_provider_adapter:"آماده برای adapter ارائه‌دهنده"};
   appendText(card,"p","پیش‌ارزیابی: "+(assessmentLabels[assessment.status]||assessment.status)+" | اجرای راه دور مجاز: "+(assessment.execution_authorized?"بله":"خیر"),"cloud-status");
-  (assessment.blockers||[]).forEach(reason=>appendText(card,"p","مانع: "+reason,"muted"));
-  (assessment.review_needed||[]).forEach(reason=>appendText(card,"p","نیاز بعدی: "+reason,"muted"));
-  appendText(card,"p","سیگنال‌های متنی: "+((candidate.resource_signals||[]).join("، ")||"موردی شناسایی نشد"));
-  appendText(card,"p","آخرین مشاهده: "+candidate.last_seen_at);
-  appendText(card,"p",candidate.evidence_excerpt||"خلاصه شواهد موجود نیست.","cloud-evidence");
-  appendText(card,"h4","ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)");
+  const details=document.createElement("details");
+  const summary=document.createElement("summary");
+  summary.textContent="جزئیات شواهد و ادعاها ("+(candidate.observed_claims||[]).length+")";
+  details.append(summary);
+  (assessment.blockers||[]).forEach(reason=>appendText(details,"p","مانع: "+reason,"muted"));
+  (assessment.review_needed||[]).forEach(reason=>appendText(details,"p","نیاز بعدی: "+reason,"muted"));
+  appendText(details,"p","سیگنال‌های متنی: "+((candidate.resource_signals||[]).join("، ")||"موردی شناسایی نشد"));
+  appendText(details,"p","آخرین مشاهده: "+candidate.last_seen_at);
+  appendText(details,"p",candidate.evidence_excerpt||"خلاصه شواهد موجود نیست.","cloud-evidence");
+  appendText(details,"h4","ادعاهای استخراج‌شده از متن (هنوز تأییدنشده)");
   const claims=candidate.observed_claims||[];
-  if(!claims.length) appendText(card,"p","ادعای ساختاریافته‌ای با الگوهای فعلی پیدا نشد.","muted");
+  if(!claims.length) appendText(details,"p","ادعای ساختاریافته‌ای با الگوهای فعلی پیدا نشد.","muted");
   else {
    const claimList=document.createElement("ul");
    claims.forEach(claim=>{
@@ -518,10 +525,10 @@ function renderCloudCandidates(candidates) {
     reject.addEventListener("click",()=>sendClaimReview("rejected"));
     controls.append(accept,reject,claimFeedback); item.append(controls); claimList.append(item);
    });
-   card.append(claimList);
+   details.append(claimList);
   }
   if(candidate.freshness_status==="stale") {
-   appendText(card,"p","شواهد قدیمی است؛ پیش از بازبینی باید منبع دوباره کشف شود.","muted");
+   appendText(details,"p","شواهد قدیمی است؛ پیش از بازبینی باید منبع دوباره کشف شود.","muted");
   }
   const form=document.createElement("form");
   const grid=document.createElement("div"); grid.className="cloud-form-grid";
@@ -575,10 +582,11 @@ function renderCloudCandidates(candidates) {
     submit.disabled=candidate.freshness_status==="stale";
    }
   });
-  card.append(form); container.append(card);
+  details.append(form); card.append(details); container.append(card);
  });
 }
 el("cloud-refresh").addEventListener("click",refreshCloudResources);
+el("cloud-candidate-limit").addEventListener("change",refreshCloudResources);
 el("cloud-discover").addEventListener("click",async()=>{
  const output=el("cloud-output"); output.textContent="در حال صف‌بندی جست‌وجوی جدید…";
  try {
