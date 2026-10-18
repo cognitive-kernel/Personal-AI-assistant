@@ -79,6 +79,26 @@ def test_discovery_scope_is_broader_but_has_explicit_bounds():
     )
 
 
+def test_free_cloud_hosting_offer_is_accepted_as_a_compute_candidate():
+    document = web_sources.SourceDocument(
+        url="https://hosting.example.org/free-cloud",
+        title="Free Cloud Hosting Plan",
+        text=(
+            "Our free cloud hosting plan provides a Linux cloud server with 2 vCPU. "
+            "The free plan has monthly usage quotas and runtime limits. "
+            "See the service terms for restrictions. "
+        ) * 5,
+    )
+
+    candidate = cloud_resources._candidate_record(document, "free cloud hosting")
+
+    assert candidate is not None
+    assert "cloud_hosting_mentioned" in json.loads(candidate["resource_signals_json"])
+    assert "specific_compute_offer_pattern_matched" in json.loads(
+        candidate["resource_signals_json"]
+    )
+
+
 def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
@@ -227,6 +247,9 @@ def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
     assert report["candidates_upserted"] == 0
     assert "No relevant valid public HTTPS cloud-compute" in report["error_summary"]
     assert cloud_resources.list_candidates() == []
+    latest = cloud_resources.latest_discovery_run()
+    assert latest["query_results"][0]["candidate_filter"]["documents_checked"] == 1
+    assert latest["query_results"][0]["candidate_filter"]["rejected_as_irrelevant"] == 1
 
 
 def test_list_candidates_deduplicates_urls_with_tracking_and_www_variants(
