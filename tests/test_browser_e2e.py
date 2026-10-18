@@ -709,3 +709,25 @@ def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
         assert page.locator("#self-improvement-patch").get_attribute("dir") == "ltr"
         browser.close()
 
+
+
+
+def test_dashboard_explains_api_connection_failure_in_persian():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("**/api/health", lambda route: route.abort("failed"))
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#health');
+                return node && node.textContent.includes('ارتباط با API برقرار نشد');
+            }""",
+            timeout=10000,
+        )
+        assert "پنجرهٔ PowerShell" in page.locator("#health").inner_text()
+        browser.close()
