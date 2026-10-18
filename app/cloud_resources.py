@@ -883,9 +883,9 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
         seen_source_identities: set[str] = set()
         for row in rows:
             item = _serialize_candidate(row)
-            # Recheck older rows with the stricter contextual relevance rule;
-            # hide broad-catalog false positives without deleting their records.
-            stored_text = item.get("normalized_text") or item.get("evidence_excerpt") or ""
+            # Recheck older rows with the stored evidence excerpt; broad-catalog
+            # false positives are hidden without deleting their records.
+            stored_text = item.get("evidence_excerpt") or ""
             current_signals = _resource_signals(
                 str(item.get("title") or ""), str(stored_text)
             )
