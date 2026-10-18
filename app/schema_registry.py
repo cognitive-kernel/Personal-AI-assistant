@@ -959,6 +959,20 @@ def _create_pre_migration_backup(path: Path) -> Path:
             raise RuntimeError(f"Pre-migration backup failed integrity validation: {candidate}")
         if schema_fingerprint(source) != schema_fingerprint(destination):
             raise RuntimeError(f"Pre-migration backup schema verification failed: {candidate}")
+        table_names = [
+            row[0] for row in source.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            ).fetchall()
+        ]
+        for table in table_names:
+            quoted = _quote_identifier(table)
+            source_count = int(source.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0])
+            backup_count = int(destination.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0])
+            if source_count != backup_count:
+                raise RuntimeError(
+                    f"Pre-migration backup row-count verification failed for table {table}: "
+                    f"source={source_count}, backup={backup_count}."
+                )
     return candidate
 
 
