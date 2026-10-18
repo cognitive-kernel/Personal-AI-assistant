@@ -682,7 +682,10 @@ def _migrate_recognized_legacy_learning_database(
                     raise RuntimeError("Migrated learning schema does not match the registered current schema.")
                 destination.commit()
 
-        # All SQLite handles are closed before replacement (required on Windows).
+        # The destination handle is closed above. Close the read-only source
+        # connection explicitly as well: Windows may refuse replacement while
+        # any handle to the original database remains open.
+        source.close()
         os.replace(temporary, target)
         return migrations[-1].version
     except Exception:
