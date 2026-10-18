@@ -836,9 +836,33 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
     initialize_store()
     with closing(_connect()) as connection:
         _mark_stale_candidates(connection, max_age_days=30)
+        # Bound the scan while ranking official provider references in SQL. This
+        # avoids loading and parsing the entire historical candidate table on each
+        # dashboard refresh.
+        official_domain_conditions = []
+        official_domain_params: list[str] = []
+        for root in _RECOGNIZED_PROVIDER_DOMAIN_ROOTS:
+            official_domain_conditions.append(
+                "(lower(provider_domain)=? OR lower(provider_domain) LIKE ?)"
+            )
+            official_domain_params.extend((root, f"%.{root}"))
+        official_domain_clause = " OR ".join(official_domain_conditions)
+        reference_path_clause = " OR ".join(
+            "lower(source_url) LIKE ?" for _ in _OFFICIAL_REFERENCE_PATH_MARKERS
+        )
+        reference_path_params = [
+            f"%{marker.casefold()}%" for marker in _OFFICIAL_REFERENCE_PATH_MARKERS
+        ]
+        scan_limit = min(5000, max(limit * 20, 200))
         rows = connection.execute(
-            """SELECT * FROM cloud_resource_candidates
-               ORDER BY last_seen_at DESC, id DESC"""
+            f"""SELECT * FROM cloud_resource_candidates
+                ORDER BY CASE
+                    WHEN ({official_domain_clause}) THEN
+                        CASE WHEN ({reference_path_clause}) THEN 0 ELSE 1 END
+                    ELSE 2
+                END ASC, last_seen_at DESC, id DESC
+                LIMIT ?""",
+            (*official_domain_params, *reference_path_params, scan_limit),
         ).fetchall()
         eligible: list[dict[str, Any]] = []
         seen_source_identities: set[str] = set()
