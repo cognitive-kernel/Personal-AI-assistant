@@ -188,7 +188,7 @@ def test_search_results_aggregate_google_bing_and_duckduckgo_with_dedup(monkeypa
             '<ol><li class="b_algo"><h2><a href="https://www.example.org/docs#top">'
             "Duplicate Compute Docs</a></h2></li>"
             '<li class="b_algo"><h2><a href="https://bing.example.org/guide">'
-            "Bing Guide</a></h2></li></ol>'
+            "Bing Guide</a></h2></li></ol>"
         ),
         "www.google.com": (
             '<a href="/url?q=https%3A%2F%2Fexample.org%2Fdocs%3Fved%3D123">'
