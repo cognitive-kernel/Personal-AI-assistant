@@ -155,6 +155,56 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
                for content_hash, current in history if current == 1)
 
 
+def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    lyric_page = web_sources.SourceDocument(
+        url="https://www.lyricsfreak.com/example/song_123.html",
+        title="They Don't Care About Us lyrics",
+        text=(
+            "Lyrics and music information for the song. The word free appears here, "
+            "but this page documents no cloud service, compute environment, limits, "
+            "or provider terms. "
+        ) * 5,
+    )
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [lyric_page]
+    )
+
+    report = cloud_resources.discover_resources()
+
+    assert report["status"] == "failed"
+    assert report["sources_seen"] == len(cloud_resources.DISCOVERY_QUERIES)
+    assert report["candidates_upserted"] == 0
+    assert "No relevant valid public HTTPS cloud-compute" in report["error_summary"]
+    assert cloud_resources.list_candidates() == []
+
+
+def test_list_candidates_hides_irrelevant_rows_saved_by_older_versions(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET title=?, resource_signals_json=?
+               WHERE source_url=?""",
+            (
+                "Michael Jackson - song lyrics",
+                json.dumps(["free_tier_or_credits_mentioned"]),
+                document.url,
+            ),
+        )
+        connection.commit()
+
+    assert cloud_resources.list_candidates() == []
+
+
 def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
     monkeypatch.setattr(
@@ -170,7 +220,7 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
     assert report["status"] == "failed"
     assert report["candidates_upserted"] == 0
-    assert "No valid public HTTPS" in report["error_summary"]
+    assert "No relevant valid public HTTPS cloud-compute" in report["error_summary"]
     assert cloud_resources.list_candidates() == []
 
 
