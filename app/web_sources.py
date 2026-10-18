@@ -153,6 +153,7 @@ class _BingSearchResultParser(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.results: list[tuple[str, str]] = []
         self._in_result = False
+        self._result_tag: str | None = None
         self._in_heading = False
         self._active_href: str | None = None
         self._active_text: list[str] = []
@@ -160,8 +161,9 @@ class _BingSearchResultParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs) -> None:
         values = dict(attrs)
         classes = values.get("class", "").split()
-        if tag in {"li", "div"} and "b_algo" in classes:
+        if tag == "li" and "b_algo" in classes:
             self._in_result = True
+            self._result_tag = tag
         elif self._in_result and tag == "h2":
             self._in_heading = True
         elif self._in_result and self._in_heading and tag == "a" and values.get("href"):
@@ -181,8 +183,9 @@ class _BingSearchResultParser(HTMLParser):
             self._active_text = []
         elif tag == "h2":
             self._in_heading = False
-        elif tag in {"li", "div"} and self._in_result:
+        elif tag == self._result_tag and self._in_result:
             self._in_result = False
+            self._result_tag = None
 
 
 class _PageTextParser(HTMLParser):
