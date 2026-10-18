@@ -122,3 +122,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* Explicit, accessible recovery state when storage initialization is safely blocked. */
+.storage-alert{border:1px solid #b45309;border-inline-start:5px solid #b45309;border-radius:14px;background:#fff7ed;color:#7c2d12;padding:16px;margin:14px 0}
+.storage-alert h2{margin-top:0}
+.storage-alert p{margin-bottom:8px}
+.storage-alert code{direction:ltr;unicode-bidi:embed;display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#ffedd5;padding:5px 8px;border-radius:6px}
+.storage-alert[hidden]{display:none}
