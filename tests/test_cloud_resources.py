@@ -79,6 +79,85 @@ def test_discovery_scope_is_broader_but_has_explicit_bounds():
     )
 
 
+def test_free_service_catalog_without_a_concrete_compute_offer_is_rejected():
+    document = web_sources.SourceDocument(
+        url="https://azure.microsoft.com/en-us/pricing/free-services/",
+        title="Explore Free Azure Services",
+        text=(
+            "These services are free up to the specified monthly amounts.\\n"
+            "Linux virtual machines are available in Azure.\\n"
+            "Get access to free developer tools and a USD 100 credit.\\n"
+            "What is a container? See the terms of use."
+        ) * 4,
+    )
+
+    signals = cloud_resources._resource_signals(document.title, document.text)
+
+    assert "vm_or_container_mentioned" in signals
+    assert "free_tier_or_credits_mentioned" in signals
+    assert "specific_compute_offer_pattern_matched" not in signals
+    assert cloud_resources._candidate_record(document, "free Azure services") is None
+
+
+def test_official_always_free_compute_document_is_still_a_candidate():
+    document = web_sources.SourceDocument(
+        url="https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm",
+        title="Always Free Resources",
+        text=(
+            "All tenancies get a set of Always Free resources in the Compute service "
+            "for creating compute virtual machine instances.\\n"
+            "All tenancies get the first 1,500 OCPU hours and 9,000 GB hours per month "
+            "for free for VM instances using the VM.Standard.A1.Flex shape."
+        ) * 3,
+    )
+
+    assert cloud_resources._candidate_record(document, "official always free virtual machine") is not None
+
+
+def test_legacy_free_service_catalog_is_hidden_after_contextual_recheck(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+
+    legacy_title = "Explore Free Azure Services"
+    legacy_text = (
+        "These services are free up to the specified monthly amounts. "
+        "Linux virtual machines are available in Azure. "
+        "Get access to free developer tools and a USD 100 credit. "
+        "What is a container? See the terms of use. "
+    ) * 4
+    legacy_signals = [
+        "free_tier_or_credits_mentioned",
+        "vm_or_container_mentioned",
+        "terms_or_policy_mentioned",
+        "specific_compute_offer_pattern_matched",
+    ]
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET source_url=?, provider_domain=?, title=?,
+                   normalized_text=?, evidence_excerpt=?, resource_signals_json=?
+               WHERE source_url=?""",
+            (
+                "https://azure.microsoft.com/en-us/pricing/free-services/",
+                "azure.microsoft.com",
+                legacy_title,
+                legacy_text,
+                legacy_text[:2000],
+                json.dumps(legacy_signals),
+                document.url,
+            ),
+        )
+        connection.commit()
+
+    assert cloud_resources.list_candidates() == []
+
+
 def test_free_cloud_hosting_offer_is_accepted_as_a_compute_candidate():
     document = web_sources.SourceDocument(
         url="https://hosting.example.org/free-cloud",
