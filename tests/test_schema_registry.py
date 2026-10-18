@@ -333,11 +333,15 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
         connection.execute("CREATE TABLE unknown_table (id INTEGER PRIMARY KEY)")
         connection.execute("INSERT INTO unknown_table(id) VALUES (42)")
 
-    with pytest.raises(UntrackedSchemaError, match="does not match"):
+    with pytest.raises(UntrackedSchemaError, match="does not match") as error:
         initialize_database_file(path, LEARNING_MIGRATIONS)
 
+    assert f"Database path: {path.resolve()}" in str(error.value)
+    assert "The existing database was not migrated or modified." in str(error.value)
+    assert "Verified pre-migration backup:" in str(error.value)
     backups = list(tmp_path.glob("unknown.db.pre-migration-*.bak"))
     assert len(backups) == 1
+    assert str(backups[0].resolve()) in str(error.value)
     with sqlite3.connect(path) as connection:
         assert connection.execute("SELECT id FROM unknown_table").fetchone() == (42,)
         assert connection.execute(
