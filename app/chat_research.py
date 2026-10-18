@@ -297,8 +297,8 @@ def answer(
             "error": (
                 f"source_discovery_failed:{source_discovery_error_type}"
                 if source_discovery_error_type
-                else "no_usable_sources",
-            )[0],
+                else "no_usable_sources"
+            ),
             "reviewer": "local_ollama_model_assisted_not_independent",
         }
         _record_audit(message, reply, sources, "no_sources", no_source_review, memory, started_at)
