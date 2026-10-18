@@ -1,7 +1,7 @@
-"""Small, bounded web-search adapter for automatic learning-source discovery.
+"""Bounded multi-engine web search and public-source retrieval.
 
-The first provider is DuckDuckGo's public HTML results page. All page fetches
-are bounded and reject non-public destinations to reduce SSRF risk.
+Search results from DuckDuckGo, Bing, and Google are normalized and deduplicated.
+All page fetches reject non-public destinations to reduce SSRF risk.
 """
 from __future__ import annotations
 
@@ -17,6 +17,13 @@ import urllib.request
 
 SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
 BING_SEARCH_ENDPOINT = "https://www.bing.com/search"
+GOOGLE_SEARCH_ENDPOINT = "https://www.google.com/search"
+SEARCH_PROVIDER_HOSTS = ("duckduckgo.com", "bing.com", "google.com")
+_TRACKING_QUERY_PARAMS = frozenset({
+    "gclid", "dclid", "fbclid", "msclkid", "gbraid", "wbraid",
+    "ved", "usg", "ei", "sa", "sclient", "oq", "opi", "sca_esv",
+    "iflsig", "gws_rd", "uact", "ref_src",
+})
 # The general sandbox/container query is prone to search-engine no-result or
 # challenge pages. Try short, bounded synonyms before giving up on that topic.
 SEARCH_QUERY_ALTERNATES = {
@@ -219,6 +226,55 @@ class _BingSearchResultParser(HTMLParser):
             self._result_tag = None
 
 
+class _GoogleSearchResultParser(HTMLParser):
+    """Extract organic Google links by anchors containing a result heading."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[tuple[str, str]] = []
+        self._active_href: str | None = None
+        self._in_heading = 0
+        self._heading_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        values = dict(attrs)
+        if tag == "a" and values.get("href") and self._active_href is None:
+            self._active_href = values["href"]
+            self._heading_text = []
+        elif tag == "h3" and self._active_href is not None:
+            self._in_heading += 1
+
+    def handle_data(self, data: str) -> None:
+        if self._active_href is not None and self._in_heading:
+            self._heading_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "h3" and self._in_heading:
+            self._in_heading -= 1
+        elif tag == "a" and self._active_href is not None:
+            title = " ".join("".join(self._heading_text).split())
+            href = urllib.parse.urljoin(GOOGLE_SEARCH_ENDPOINT, self._active_href)
+            parsed = urllib.parse.urlparse(href)
+            if (
+                parsed.hostname
+                and (
+                    parsed.hostname.casefold().rstrip(".") == "google.com"
+                    or parsed.hostname.casefold().rstrip(".").endswith(".google.com")
+                )
+                and parsed.path.rstrip("/") == "/url"
+            ):
+                params = urllib.parse.parse_qs(parsed.query)
+                destination = (params.get("q") or params.get("url") or [""])[0]
+                if destination:
+                    # parse_qs has already decoded the wrapper's outer encoding.
+                    # A second unquote could corrupt percent-encoded target queries.
+                    href = destination
+            if title and href:
+                self.results.append((title, href))
+            self._active_href = None
+            self._heading_text = []
+
+
 class _PageTextParser(HTMLParser):
     _IGNORED = {"script", "style", "svg", "nav", "footer", "header", "form", "noscript"}
 
@@ -254,6 +310,50 @@ class _PageTextParser(HTMLParser):
                 self.text_parts.append(cleaned)
 
 
+def _clean_search_result_url(url: str) -> str:
+    """Drop fragments/tracking parameters and normalize harmless URL variation."""
+    parsed = urllib.parse.urlsplit(url)
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    port = parsed.port
+    netloc = hostname
+    if port is not None and not (
+        (parsed.scheme.casefold() == "https" and port == 443)
+        or (parsed.scheme.casefold() == "http" and port == 80)
+    ):
+        netloc = f"{hostname}:{port}"
+    query_items = [
+        (key, value)
+        for key, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        if key.casefold() not in _TRACKING_QUERY_PARAMS
+        and not key.casefold().startswith("utm_")
+    ]
+    query_items.sort()
+    return urllib.parse.urlunsplit(
+        (
+            parsed.scheme.casefold(),
+            netloc,
+            parsed.path or "/",
+            urllib.parse.urlencode(query_items, doseq=True),
+            "",
+        )
+    )
+
+
+def result_url_identity(url: str) -> str:
+    """Return a stable identity used to suppress duplicate results across engines/runs."""
+    cleaned = _clean_search_result_url(url)
+    parsed = urllib.parse.urlsplit(cleaned)
+    hostname = (parsed.hostname or "").casefold().rstrip(".")
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    netloc = hostname
+    if parsed.port is not None:
+        netloc = f"{hostname}:{parsed.port}"
+    return urllib.parse.urlunsplit(
+        (parsed.scheme, netloc, parsed.path or "/", parsed.query, "")
+    )
+
+
 def _normalize_search_results(
     results: list[tuple[str, str]], *, limit: int, provider_hosts: tuple[str, ...]
 ) -> list[tuple[str, str]]:
@@ -267,35 +367,30 @@ def _normalize_search_results(
         hostname = (parsed.hostname or "").lower().rstrip(".")
         if any(hostname == host or hostname.endswith("." + host) for host in provider_hosts):
             continue
-        normalized = urllib.parse.urlunparse(parsed._replace(fragment=""))
-        if title.strip() and normalized not in seen:
-            seen.add(normalized)
+        normalized = _clean_search_result_url(urllib.parse.urlunparse(parsed._replace(fragment="")))
+        identity = result_url_identity(normalized)
+        if title.strip() and identity not in seen:
+            seen.add(identity)
             unique.append((" ".join(title.split())[:300], normalized))
-        if len(unique) >= max(1, min(10, limit * 3)):
+        if len(unique) >= max(1, min(10, limit)):
             break
     return unique
 
 
 def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
-    """Search with a fallback provider and fail visibly if neither yields results."""
+    """Collect results across configured search engines and deduplicate source URLs."""
     providers = (
-        (
-            "DuckDuckGo",
-            SEARCH_ENDPOINT,
-            _SearchResultParser,
-            ("duckduckgo.com",),
-        ),
-        (
-            "Bing",
-            BING_SEARCH_ENDPOINT,
-            _BingSearchResultParser,
-            ("bing.com",),
-        ),
+        ("DuckDuckGo", SEARCH_ENDPOINT, _SearchResultParser, ("duckduckgo.com",)),
+        ("Bing", BING_SEARCH_ENDPOINT, _BingSearchResultParser, ("bing.com",)),
+        ("Google", GOOGLE_SEARCH_ENDPOINT, _GoogleSearchResultParser, ("google.com",)),
     )
     failures: list[str] = []
+    max_results = max(1, min(30, limit * len(providers) * 3))
     query_variants = (query,) + SEARCH_QUERY_ALTERNATES.get(query.strip().casefold(), ())
     for variant_index, search_query in enumerate(query_variants):
         variant_label = "primary" if variant_index == 0 else f"alternate_{variant_index}"
+        combined: list[tuple[str, str]] = []
+        seen: set[str] = set()
         for name, endpoint, parser_type, provider_hosts in providers:
             search_url = endpoint + "?" + urllib.parse.urlencode({"q": search_query})
             try:
@@ -305,11 +400,21 @@ def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
                 results = _normalize_search_results(
                     parser.results, limit=limit, provider_hosts=provider_hosts
                 )
-                if results:
-                    return results
-                failures.append(f"{name}:no_parseable_results[{variant_label}]")
+                if not results:
+                    failures.append(f"{name}:no_parseable_results[{variant_label}]")
+                    continue
+                for title, url in results:
+                    identity = result_url_identity(url)
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    combined.append((title, url))
+                    if len(combined) >= max_results:
+                        break
             except SourceFetchError as exc:
                 failures.append(f"{name}:{type(exc).__name__}[{variant_label}]")
+        if combined:
+            return combined[:max_results]
     raise SourceFetchError(
         "All configured search providers and bounded query variants failed or returned "
         "no parseable results ("
