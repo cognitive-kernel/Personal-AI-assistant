@@ -291,6 +291,35 @@ def _resource_signals(title: str, text: str) -> list[str]:
     )
 
 
+_COMPUTE_EVIDENCE_SIGNALS = frozenset({
+    "gpu_or_accelerator_mentioned",
+    "cpu_compute_mentioned",
+    "notebook_environment_mentioned",
+    "vm_or_container_mentioned",
+})
+_OFFER_EVIDENCE_SIGNALS = frozenset({
+    "free_tier_or_credits_mentioned",
+    "quota_or_limit_mentioned",
+    "terms_or_policy_mentioned",
+})
+
+
+def _has_cloud_compute_relevance(signals: Any) -> bool:
+    """Require both a compute environment and offer/limit evidence.
+
+    A single generic word such as "free" is not enough to turn an arbitrary
+    public page into a cloud-resource candidate. Keep this check on reads too
+    so low-quality candidates saved by older versions are not shown or planned.
+    """
+    if not isinstance(signals, (list, tuple, set)):
+        return False
+    observed = set(signals)
+    return bool(
+        observed.intersection(_COMPUTE_EVIDENCE_SIGNALS)
+        and observed.intersection(_OFFER_EVIDENCE_SIGNALS)
+    )
+
+
 def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[str, Any] | None:
     try:
         url, domain = _normalize_source_url(document.url)
@@ -300,6 +329,9 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
     text = " ".join(str(document.text).split())[:12000]
     if not title or len(text) < 80:
         return None
+    signals = _resource_signals(title, text)
+    if not _has_cloud_compute_relevance(signals):
+        return None
     excerpt = text[:MAX_EVIDENCE_EXCERPT]
     return {
         "source_url": url,
@@ -307,7 +339,7 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
         "title": title,
         "content_sha256": hashlib.sha256(f"{title}\n{text}".encode("utf-8")).hexdigest(),
         "resource_signals_json": json.dumps(
-            _resource_signals(title, text), ensure_ascii=False, separators=(",", ":")
+            signals, ensure_ascii=False, separators=(",", ":")
         ),
         "evidence_excerpt": excerpt,
         "normalized_text": text,
@@ -504,7 +536,9 @@ def discover_resources(
         else:
             status = "failed"
             if not errors:
-                errors.append("No valid public HTTPS source documents were returned.")
+                errors.append(
+                    "No relevant valid public HTTPS cloud-compute source documents were returned."
+                )
     except Exception as exc:
         errors.append(f"discovery_aborted:{type(exc).__name__}")
         _update_run(
@@ -581,6 +615,8 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
         results = []
         for row in rows:
             item = _serialize_candidate(row)
+            if not _has_cloud_compute_relevance(item.get("resource_signals")):
+                continue
             claim_rows = connection.execute(
                 """SELECT id, source_content_sha256, claim_type, value_json, unit,
                           evidence_quote, adapter_id, review_status, is_current, extracted_at,
