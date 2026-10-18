@@ -141,14 +141,13 @@ def test_legacy_free_service_catalog_is_hidden_after_contextual_recheck(
         connection.execute(
             """UPDATE cloud_resource_candidates
                SET source_url=?, provider_domain=?, title=?,
-                   normalized_text=?, evidence_excerpt=?, resource_signals_json=?
+                   evidence_excerpt=?, resource_signals_json=?
                WHERE source_url=?""",
             (
                 "https://azure.microsoft.com/en-us/pricing/free-services/",
                 "azure.microsoft.com",
                 legacy_title,
                 legacy_text,
-                legacy_text[:2000],
                 json.dumps(legacy_signals),
                 document.url,
             ),
@@ -459,12 +458,14 @@ def test_list_candidates_hides_legacy_ai_product_page_with_only_broad_signals(
     with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
         connection.execute(
             """UPDATE cloud_resource_candidates
-               SET source_url=?, provider_domain=?, title=?, resource_signals_json=?
+               SET source_url=?, provider_domain=?, title=?, evidence_excerpt=?,
+                   resource_signals_json=?
                WHERE source_url=?""",
             (
                 "https://openai.com/index/chatgpt/",
                 "openai.com",
                 generic_title,
+                generic_text,
                 json.dumps(signals),
                 document.url,
             ),
@@ -487,10 +488,11 @@ def test_list_candidates_hides_irrelevant_rows_saved_by_older_versions(
     with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
         connection.execute(
             """UPDATE cloud_resource_candidates
-               SET title=?, resource_signals_json=?
+               SET title=?, evidence_excerpt=?, resource_signals_json=?
                WHERE source_url=?""",
             (
                 "Michael Jackson - song lyrics",
+                "Song lyrics and music information, not cloud-compute documentation.",
                 json.dumps(["free_tier_or_credits_mentioned"]),
                 document.url,
             ),
