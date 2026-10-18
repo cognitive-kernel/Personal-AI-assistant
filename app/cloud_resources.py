@@ -45,8 +45,8 @@ OFFICIAL_REFERENCE_SOURCES = (
         "Google Colaboratory FAQ",
     ),
     (
-        "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm",
-        "Oracle Cloud Infrastructure Always Free Resources",
+        "https://www.oracle.com/cloud/free/faq/",
+        "Oracle Cloud Free Tier FAQ",
     ),
     (
         "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces",
@@ -295,6 +295,10 @@ def _normalize_source_url(url: str) -> tuple[str, str]:
 _SPECIFIC_COMPUTE_SERVICE_PATTERNS = (
     # Require product/infra language, not an incidental mention of hardware.
     r"\b(?:cloud|hosted)\s+(?:jupyter\s+)?notebooks?\b",
+    r"\bcloud\s+hosting\b",
+    r"\bcloud\s+servers?\b",
+    r"\b(?:cloud\s+vps|virtual private servers?)\b",
+    r"\b(?:compute|cloud)\s+(?:virtual )?machines?\b",
     r"\b(?:virtual machines?|vm instances?|compute instances?|codespaces?|container runtimes?|developer sandboxes?)\b",
     r"\b(?:gpu|tpu|cpu)\s+(?:compute|resources?|instances?|hours?|credits?|quotas?|runtime|access)\b",
     r"\bcompute\s+(?:resources?|instances?|hours?|credits?|quotas?|runtime)\b",
@@ -305,6 +309,8 @@ _SPECIFIC_COMPUTE_OFFER_PATTERNS = (
     r"\bfree\s+tier\b",
     r"\bfree\s+of\s+charge\b",
     r"\bfree\s+(?:compute|gpu|tpu|cpu|credits?|resources?|runtime|notebooks?)\b",
+    r"\bfree\s+(?:cloud\s+)?hosting\b",
+    r"\bfree\s+(?:plan|account|instance|vm|server|container)\b",
     r"\bmonthly\s+(?:usage\s+)?quotas?\b",
     r"\busage\s+quotas?\s+included\b",
     r"\b(?:runtime|compute)\s+limits?\b",
@@ -338,6 +344,7 @@ def _resource_signals(title: str, text: str) -> list[str]:
         "terms_or_policy_mentioned": ("terms", "acceptable use", "policy", "conditions"),
         "notebook_environment_mentioned": ("notebook", "jupyter", "colab"),
         "vm_or_container_mentioned": ("virtual machine", " vm ", "container", "sandbox"),
+        "cloud_hosting_mentioned": ("cloud hosting", "cloud server", "cloud vps", "virtual private server", "container hosting"),
         "storage_mentioned": ("storage", "disk", "persistent volume"),
     }
     padded = f" {searchable} "
@@ -355,6 +362,7 @@ _COMPUTE_EVIDENCE_SIGNALS = frozenset({
     "cpu_compute_mentioned",
     "notebook_environment_mentioned",
     "vm_or_container_mentioned",
+    "cloud_hosting_mentioned",
 })
 _OFFER_EVIDENCE_SIGNALS = frozenset({
     "free_tier_or_credits_mentioned",
@@ -488,18 +496,37 @@ def discover_resources(
             provider_diagnostics = getattr(documents, "search_provider_diagnostics", None)
             if isinstance(provider_diagnostics, list):
                 query_result["provider_diagnostics"] = provider_diagnostics
-            query_results.append(query_result)
             sources_seen += len(documents)
+            checked_documents = 0
+            relevant_documents = 0
+            irrelevant_documents = 0
+            duplicate_candidates = 0
+            skipped_due_to_candidate_cap = 0
             for document in documents:
-                if len(unique) >= MAX_CANDIDATES_PER_RUN:
-                    break
                 if not isinstance(document, web_sources.SourceDocument):
                     continue
+                if len(unique) >= MAX_CANDIDATES_PER_RUN:
+                    skipped_due_to_candidate_cap += 1
+                    continue
+                checked_documents += 1
                 candidate = _candidate_record(document, query)
-                if candidate is not None:
-                    unique.setdefault(
-                        web_sources.result_url_identity(candidate["source_url"]), candidate
-                    )
+                if candidate is None:
+                    irrelevant_documents += 1
+                    continue
+                relevant_documents += 1
+                identity = web_sources.result_url_identity(candidate["source_url"])
+                if identity in unique:
+                    duplicate_candidates += 1
+                    continue
+                unique[identity] = candidate
+            query_result["candidate_filter"] = {
+                "documents_checked": checked_documents,
+                "relevant_documents": relevant_documents,
+                "rejected_as_irrelevant": irrelevant_documents,
+                "duplicate_candidates_suppressed": duplicate_candidates,
+                "not_checked_due_to_candidate_cap": skipped_due_to_candidate_cap,
+            }
+            query_results.append(query_result)
 
         # A public search engine can return technically valid but irrelevant
         # pages (for example lyrics pages for a cloud-compute query). Do not
@@ -511,6 +538,9 @@ def discover_resources(
             fallback_query = "official_reference_fallback"
             queries_attempted += 1
             fallback_documents = 0
+            fallback_relevant = 0
+            fallback_irrelevant = 0
+            fallback_duplicates = 0
             fallback_errors: list[str] = []
             for source_url, title_hint in OFFICIAL_REFERENCE_SOURCES:
                 try:
@@ -518,9 +548,7 @@ def discover_resources(
                 except Exception as exc:
                     reason = " ".join(str(exc).split())[:140]
                     host = urlparse(source_url).hostname or "unknown"
-                    fallback_errors.append(
-                        f"{host}:{type(exc).__name__}:{reason}"
-                    )
+                    fallback_errors.append(f"{host}:{type(exc).__name__}:{reason}")
                     continue
                 if not isinstance(document, web_sources.SourceDocument):
                     fallback_errors.append("invalid_source_document")
@@ -528,14 +556,25 @@ def discover_resources(
                 fallback_documents += 1
                 sources_seen += 1
                 candidate = _candidate_record(document, fallback_query)
-                if candidate is not None:
-                    unique.setdefault(
-                        web_sources.result_url_identity(candidate["source_url"]), candidate
-                    )
+                if candidate is None:
+                    fallback_irrelevant += 1
+                    continue
+                fallback_relevant += 1
+                identity = web_sources.result_url_identity(candidate["source_url"])
+                if identity in unique:
+                    fallback_duplicates += 1
+                    continue
+                unique[identity] = candidate
             query_results.append({
                 "query": fallback_query,
                 "result_count": fallback_documents,
                 "error": "; ".join(fallback_errors)[:500] if fallback_errors else None,
+                "candidate_filter": {
+                    "documents_checked": fallback_documents,
+                    "relevant_documents": fallback_relevant,
+                    "rejected_as_irrelevant": fallback_irrelevant,
+                    "duplicate_candidates_suppressed": fallback_duplicates,
+                },
             })
             if fallback_errors:
                 errors.append(
