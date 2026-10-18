@@ -185,6 +185,36 @@ def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
     assert cloud_resources.list_candidates() == []
 
 
+def test_list_candidates_deduplicates_urls_with_tracking_and_www_variants(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+
+    duplicate_url = "https://www.compute.example.org/free-tier?utm_source=duplicate#section"
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """INSERT INTO cloud_resource_candidates(
+                   source_url, provider_domain, title, content_sha256,
+                   resource_signals_json, evidence_excerpt, discovery_query
+               )
+               SELECT ?, provider_domain, title, content_sha256,
+                      resource_signals_json, evidence_excerpt, discovery_query
+               FROM cloud_resource_candidates WHERE source_url=?""",
+            (duplicate_url, document.url),
+        )
+        connection.commit()
+
+    candidates = cloud_resources.list_candidates()
+
+    assert len(candidates) == 1
+    assert candidates[0]["provider_domain"] == "compute.example.org"
+
+
 def test_list_candidates_hides_irrelevant_rows_saved_by_older_versions(
     tmp_path, monkeypatch
 ):
