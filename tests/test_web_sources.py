@@ -195,9 +195,13 @@ def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseab
     requested_queries = []
 
     def fake_open(url, **kwargs):
-        query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["q"][0]
+        parsed = urllib.parse.urlparse(url)
+        query = urllib.parse.parse_qs(parsed.query)["q"][0]
         requested_queries.append(query)
-        if query == "free cloud development environment sandbox runtime limits official":
+        if (
+            parsed.hostname == "www.bing.com"
+            and query == "free cloud development environment sandbox runtime limits official"
+        ):
             return (
                 '<ol><li class="b_algo"><h2><a href="https://example.org/sandbox-docs">'
                 "Official Sandbox Compute Limits</a></h2></li></ol>",
@@ -219,7 +223,8 @@ def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseab
         "official free developer sandbox container compute limits",
         "official free developer sandbox container compute limits",
     ]
-    assert requested_queries[2] == (
-        "free cloud development environment sandbox runtime limits official"
-    )
-    assert len(requested_queries) == 3
+    assert requested_queries[2:] == [
+        "free cloud development environment sandbox runtime limits official",
+        "free cloud development environment sandbox runtime limits official",
+    ]
+    assert len(requested_queries) == 4
