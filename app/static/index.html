@@ -413,10 +413,16 @@ async function refreshCloudResources() {
   (run?.query_results||[]).forEach(queryResult=>{
    providerLines.push("پرس‌وجو: "+queryResult.query+" | صفحات قابل‌دریافت: "+queryResult.result_count
     +(queryResult.error?" | خطا: "+queryResult.error:""));
+   const filter=queryResult.candidate_filter;
+   if(filter) providerLines.push("  فیلتر محتوا: بررسی="+filter.documents_checked
+    +", مرتبط="+filter.relevant_documents
+    +", نامرتبط="+filter.rejected_as_irrelevant
+    +", تکراری نامزدها="+filter.duplicate_candidates_suppressed
+    +(filter.not_checked_due_to_candidate_cap?", به‌دلیل سقف بررسی‌نشده="+filter.not_checked_due_to_candidate_cap:""));
    (queryResult.provider_diagnostics||[]).forEach(provider=>{
     const attempts=(provider.attempts||[]).map(attempt=>{
      const outcome=attempt.error?"خطا="+attempt.error:"بدون خطا";
-     return attempt.variant+": parse="+attempt.parsed_result_count
+     return attempt.variant+(attempt.endpoint_variant?"/"+attempt.endpoint_variant:"")+": parse="+attempt.parsed_result_count
       +", پذیرفته="+attempt.accepted_result_count
       +", یکتا="+attempt.unique_result_count
       +", تکراری="+attempt.duplicate_result_count
