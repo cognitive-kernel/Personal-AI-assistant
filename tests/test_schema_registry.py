@@ -530,6 +530,10 @@ def _seed_observed_legacy_learning_data(path):
         connection.execute(
             "INSERT INTO chat_feedback(query, answer, rating, correction) VALUES ('q', 'a', 'unhelpful', 'corrected')"
         )
+        # Simulate deleted tail rows so migration must preserve the sequence high-water mark.
+        connection.execute(
+            "UPDATE sqlite_sequence SET seq = 80 WHERE name = 'chat_feedback'"
+        )
         source_id = connection.execute(
             "INSERT INTO knowledge_sources(url, title, content_hash) VALUES ('https://example.test/knowledge', 'Legacy source', 'sha256-test')"
         ).lastrowid
@@ -565,6 +569,9 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
         assert connection.execute("SELECT content FROM knowledge_items").fetchone() == ("legacy lesson",)
         assert connection.execute("SELECT correction FROM chat_feedback").fetchone() == ("corrected",)
+        assert connection.execute(
+            "SELECT seq FROM sqlite_sequence WHERE name = 'chat_feedback'"
+        ).fetchone() == (80,)
         assert connection.execute("SELECT content FROM knowledge_chunks").fetchone() == ("legacychunk searchable text",)
         assert connection.execute(
             "SELECT content FROM knowledge_chunks_fts WHERE knowledge_chunks_fts MATCH 'legacychunk'"
