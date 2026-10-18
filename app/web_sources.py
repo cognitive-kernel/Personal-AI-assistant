@@ -16,6 +16,7 @@ import urllib.request
 
 
 SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
+DUCKDUCKGO_LITE_SEARCH_ENDPOINT = "https://lite.duckduckgo.com/lite/"
 BING_SEARCH_ENDPOINT = "https://www.bing.com/search"
 GOOGLE_SEARCH_ENDPOINT = "https://www.google.com/search"
 SEARCH_PROVIDER_HOSTS = ("duckduckgo.com", "bing.com", "google.com")
@@ -154,8 +155,9 @@ def _open(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_bytes: int 
 class _SearchResultParser(HTMLParser):
     """Parse DuckDuckGo HTML result links, including its redirect wrapper."""
 
-    def __init__(self) -> None:
+    def __init__(self, base_url: str = SEARCH_ENDPOINT) -> None:
         super().__init__(convert_charrefs=True)
+        self.base_url = base_url
         self.results: list[tuple[str, str]] = []
         self._active_href: str | None = None
         self._active_text: list[str] = []
@@ -176,7 +178,7 @@ class _SearchResultParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self._active_href is not None:
             title = " ".join("".join(self._active_text).split())
-            href = urllib.parse.urljoin(SEARCH_ENDPOINT, self._active_href)
+            href = urllib.parse.urljoin(self.base_url, self._active_href)
             parsed = urllib.parse.urlparse(href)
             if parsed.hostname and parsed.hostname.lower().endswith("duckduckgo.com"):
                 redirected = urllib.parse.parse_qs(parsed.query).get("uddg", [])
@@ -253,7 +255,7 @@ class _BingSearchResultParser(HTMLParser):
 
 
 class _GoogleSearchResultParser(HTMLParser):
-    """Extract organic Google links by anchors containing a result heading."""
+    """Extract result links from Google classic and standard HTML markup."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -261,24 +263,36 @@ class _GoogleSearchResultParser(HTMLParser):
         self._active_href: str | None = None
         self._in_heading = 0
         self._heading_text: list[str] = []
+        self._active_title_attrs: dict[str, str] = {}
+        self._heading_tag_stack: list[str] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:
         values = dict(attrs)
         if tag == "a" and values.get("href") and self._active_href is None:
             self._active_href = values["href"]
             self._heading_text = []
+            self._active_title_attrs = {
+                key: values[key] for key in ("aria-label", "title") if values.get(key)
+            }
         elif tag == "h3" and self._active_href is not None:
             self._in_heading += 1
+            self._heading_tag_stack.append("h3")
+        elif tag == "div" and self._active_href is not None and values.get("role") == "heading":
+            self._in_heading += 1
+            self._heading_tag_stack.append("div")
 
     def handle_data(self, data: str) -> None:
         if self._active_href is not None and self._in_heading:
             self._heading_text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "h3" and self._in_heading:
-            self._in_heading -= 1
+        if self._heading_tag_stack and tag == self._heading_tag_stack[-1]:
+            self._heading_tag_stack.pop()
+            self._in_heading = max(0, self._in_heading - 1)
         elif tag == "a" and self._active_href is not None:
-            title = " ".join("".join(self._heading_text).split())
+            heading_title = " ".join("".join(self._heading_text).split())
+            title = heading_title or self._active_title_attrs.get("aria-label", "").strip()
+            title = title or self._active_title_attrs.get("title", "").strip()
             href = urllib.parse.urljoin(GOOGLE_SEARCH_ENDPOINT, self._active_href)
             parsed = urllib.parse.urlparse(href)
             if (
@@ -299,6 +313,9 @@ class _GoogleSearchResultParser(HTMLParser):
                 self.results.append((title, href))
             self._active_href = None
             self._heading_text = []
+            self._active_title_attrs = {}
+            self._heading_tag_stack = []
+            self._in_heading = 0
 
 
 class _PageTextParser(HTMLParser):
@@ -403,12 +420,60 @@ def _normalize_search_results(
     return unique
 
 
+def _search_page_failure_reason(html: str, provider: str) -> str:
+    """Classify common consent/challenge pages without attempting to bypass them."""
+    normalized = html.casefold()
+    if provider == "Google" and any(
+        marker in normalized
+        for marker in (
+            "our systems have detected unusual traffic",
+            "before you continue to google",
+            "consent.google.com",
+            "/sorry/",
+            "recaptcha",
+        )
+    ):
+        return "challenge_or_consent_page"
+    if provider == "DuckDuckGo" and any(
+        marker in normalized
+        for marker in (
+            "verify you are human",
+            "automated requests",
+            "captcha",
+            "anomaly-modal",
+        )
+    ):
+        return "challenge_page"
+    return "no_parseable_results"
+
+
 def _search_results(query: str, limit: int) -> SearchResultList:
-    """Collect deduplicated results fairly across search engines with diagnostics."""
+    """Collect deduplicated results fairly, using one bounded alternate endpoint per engine."""
     providers = (
-        ("DuckDuckGo", SEARCH_ENDPOINT, _SearchResultParser, ("duckduckgo.com",)),
-        ("Bing", BING_SEARCH_ENDPOINT, _BingSearchResultParser, ("bing.com",)),
-        ("Google", GOOGLE_SEARCH_ENDPOINT, _GoogleSearchResultParser, ("google.com",)),
+        (
+            "DuckDuckGo",
+            (
+                ("html", SEARCH_ENDPOINT, {}),
+                ("lite", DUCKDUCKGO_LITE_SEARCH_ENDPOINT, {"kl": "us-en"}),
+            ),
+            _SearchResultParser,
+            ("duckduckgo.com",),
+        ),
+        (
+            "Bing",
+            (("standard", BING_SEARCH_ENDPOINT, {}),),
+            _BingSearchResultParser,
+            ("bing.com",),
+        ),
+        (
+            "Google",
+            (
+                ("standard", GOOGLE_SEARCH_ENDPOINT, {}),
+                ("basic_html", GOOGLE_SEARCH_ENDPOINT, {"gbv": "1", "hl": "en", "num": "10"}),
+            ),
+            _GoogleSearchResultParser,
+            ("google.com",),
+        ),
     )
     provider_diagnostics: list[dict[str, object]] = [
         {
@@ -427,44 +492,54 @@ def _search_results(query: str, limit: int) -> SearchResultList:
     for variant_index, search_query in enumerate(query_variants):
         variant_label = "primary" if variant_index == 0 else f"alternate_{variant_index}"
         results_by_provider: list[list[tuple[str, str]]] = [[] for _ in providers]
-        attempts_by_provider: list[dict[str, object]] = []
-        for provider_index, (name, endpoint, parser_type, provider_hosts) in enumerate(providers):
+        successful_attempt_by_provider: list[dict[str, object] | None] = [None] * len(providers)
+        for provider_index, (name, endpoints, parser_type, provider_hosts) in enumerate(providers):
             stats = provider_diagnostics[provider_index]
             attempts = stats["attempts"]
             assert isinstance(attempts, list)
-            attempt: dict[str, object] = {
-                "variant": variant_label,
-                "parsed_result_count": 0,
-                "accepted_result_count": 0,
-                "unique_result_count": 0,
-                "duplicate_result_count": 0,
-                "error": None,
-            }
-            attempts.append(attempt)
-            attempts_by_provider.append(attempt)
-            search_url = endpoint + "?" + urllib.parse.urlencode({"q": search_query})
-            try:
-                html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
-                parser = parser_type()
-                parser.feed(html)
-                attempt["parsed_result_count"] = len(parser.results)
-                stats["parsed_result_count"] = int(stats["parsed_result_count"]) + len(parser.results)
-                results = _normalize_search_results(
-                    parser.results, limit=limit, provider_hosts=provider_hosts
+            # Use the secondary public HTML endpoint only when the primary yields
+            # no parseable organic results. Do not attempt to solve CAPTCHAs or consent walls.
+            for endpoint_variant, endpoint, extra_params in endpoints:
+                attempt: dict[str, object] = {
+                    "variant": variant_label,
+                    "endpoint_variant": endpoint_variant,
+                    "parsed_result_count": 0,
+                    "accepted_result_count": 0,
+                    "unique_result_count": 0,
+                    "duplicate_result_count": 0,
+                    "error": None,
+                }
+                attempts.append(attempt)
+                search_url = endpoint + "?" + urllib.parse.urlencode(
+                    {"q": search_query, **extra_params}
                 )
-                attempt["accepted_result_count"] = len(results)
-                stats["accepted_result_count"] = int(stats["accepted_result_count"]) + len(results)
-                if not results:
-                    attempt["error"] = "no_parseable_results"
-                    failures.append(f"{name}:no_parseable_results[{variant_label}]")
-                    continue
-                results_by_provider[provider_index] = results
-            except SourceFetchError as exc:
-                attempt["error"] = type(exc).__name__
-                failures.append(f"{name}:{type(exc).__name__}[{variant_label}]")
+                try:
+                    html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
+                    parser = parser_type(base_url=endpoint) if parser_type is _SearchResultParser else parser_type()
+                    parser.feed(html)
+                    parsed_count = len(parser.results)
+                    attempt["parsed_result_count"] = parsed_count
+                    stats["parsed_result_count"] = int(stats["parsed_result_count"]) + parsed_count
+                    results = _normalize_search_results(
+                        parser.results, limit=limit, provider_hosts=provider_hosts
+                    )
+                    accepted_count = len(results)
+                    attempt["accepted_result_count"] = accepted_count
+                    stats["accepted_result_count"] = int(stats["accepted_result_count"]) + accepted_count
+                    if not results:
+                        reason = _search_page_failure_reason(html, name)
+                        attempt["error"] = reason
+                        failures.append(f"{name}:{reason}[{variant_label}:{endpoint_variant}]")
+                        continue
+                    results_by_provider[provider_index] = results
+                    successful_attempt_by_provider[provider_index] = attempt
+                    break
+                except SourceFetchError as exc:
+                    attempt["error"] = type(exc).__name__
+                    failures.append(f"{name}:{type(exc).__name__}[{variant_label}:{endpoint_variant}]")
 
-        # Round-robin results so a full page from DuckDuckGo cannot crowd out
-        # unique results from Bing or Google before source pages are fetched.
+        # Round-robin results so a full result set from one engine cannot crowd out
+        # unique links from other engines before public source pages are fetched.
         combined: list[tuple[str, str]] = []
         seen: set[str] = set()
         max_provider_results = max((len(items) for items in results_by_provider), default=0)
@@ -475,7 +550,9 @@ def _search_results(query: str, limit: int) -> SearchResultList:
                 title, url = provider_results[result_index]
                 identity = result_url_identity(url)
                 stats = provider_diagnostics[provider_index]
-                attempt = attempts_by_provider[provider_index]
+                attempt = successful_attempt_by_provider[provider_index]
+                if attempt is None:
+                    continue
                 if identity in seen:
                     attempt["duplicate_result_count"] = int(attempt["duplicate_result_count"]) + 1
                     stats["duplicate_result_count"] = int(stats["duplicate_result_count"]) + 1
@@ -489,15 +566,11 @@ def _search_results(query: str, limit: int) -> SearchResultList:
             if len(combined) >= max_results:
                 break
         if combined:
-            return SearchResultList(
-                combined[:max_results],
-                provider_diagnostics=provider_diagnostics,
-            )
+            return SearchResultList(combined[:max_results], provider_diagnostics=provider_diagnostics)
+
     error = SourceFetchError(
         "All configured search providers and bounded query variants failed or returned "
-        "no parseable results ("
-        + ", ".join(failures)
-        + ")."
+        "no parseable results (" + ", ".join(failures) + ")."
     )
     error.provider_diagnostics = provider_diagnostics
     raise error
