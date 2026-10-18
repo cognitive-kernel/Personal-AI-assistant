@@ -252,10 +252,16 @@ def answer(
     memory = _memory_context(message)
     _checkpoint(checkpoint, "memory_lookup_completed")
     _checkpoint(checkpoint, "source_discovery_started")
+    source_discovery_error_type: str | None = None
     try:
         documents = web_sources.discover_sources(message, limit=3)
-    except Exception:
+    except Exception as exc:
+        # Do not leak URLs, network details, or source text. Preserve only the
+        # exception type so offline/provider failures can be distinguished from
+        # a successful search that returned no usable documents.
+        source_discovery_error_type = type(exc).__name__
         documents = []
+        logger.warning("Research source discovery failed (%s)", source_discovery_error_type)
     sources = _source_payload(documents)
     _checkpoint(checkpoint, "source_discovery_completed", source_count=len(sources))
     payload = {
@@ -284,8 +290,24 @@ def answer(
             if re.search(r"[\u0600-\u06FF]", message)
             else "No usable external source was found; this answer is based on model knowledge and was not independently reviewed.",
         )
-        _record_audit(message, reply, sources, "no_sources", None, memory, started_at)
-        _checkpoint(checkpoint, "research_answer_completed", source_count=0)
+        no_source_review = {
+            "passed": False,
+            "overall": "insufficient_evidence",
+            "claims": [],
+            "error": (
+                f"source_discovery_failed:{source_discovery_error_type}"
+                if source_discovery_error_type
+                else "no_usable_sources",
+            )[0],
+            "reviewer": "local_ollama_model_assisted_not_independent",
+        }
+        _record_audit(message, reply, sources, "no_sources", no_source_review, memory, started_at)
+        _checkpoint(
+            checkpoint,
+            "research_answer_completed",
+            source_count=0,
+            source_discovery_status="failed" if source_discovery_error_type else "no_usable_sources",
+        )
         return reply
 
     _checkpoint(checkpoint, "claim_review_started")
