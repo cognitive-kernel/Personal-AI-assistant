@@ -58,6 +58,31 @@ async def log_http_error_explanation(request, call_next):
 
 
 @app.middleware("http")
+async def report_storage_schema_block(request, call_next):
+    """Keep the local dashboard available when a legacy DB needs reviewed recovery."""
+    if _startup_storage_error and request.url.path not in {
+        "/", "/api/health", "/openapi.json", "/docs", "/redoc"
+    } and not request.url.path.startswith("/static/"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "راه‌اندازی پایگاه داده متوقف شد، چون ساختار دیتابیس موجود با نسخه‌های "
+                    "ثبت‌شده سازگار نیست. هیچ مهاجرت یا تعمیری انجام نشده است. "
+                    "گزارش فقط‌خواندنی scripts/inspect_sqlite_schema.py را اجرا کنید؛ "
+                    "دیتابیس را حذف یا بازنشانی نکنید."
+                ),
+                "code": "untracked_storage_schema",
+                "recovery_command": (
+                    "python scripts/inspect_sqlite_schema.py <database-path> "
+                    "--kind learning --output <report-path>"
+                ),
+            },
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def enforce_loopback_only(request, call_next):
     """Block unauthenticated dashboard and API access from non-loopback peers."""
     client = request.client
@@ -90,31 +115,6 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _task_runtime: TaskRuntime | None = None
 _startup_storage_error: str | None = None
-
-
-@app.middleware("http")
-async def report_storage_schema_block(request, call_next):
-    """Keep the local dashboard available when a legacy DB needs reviewed recovery."""
-    if _startup_storage_error and request.url.path not in {
-        "/", "/api/health", "/openapi.json", "/docs", "/redoc"
-    } and not request.url.path.startswith("/static/"):
-        return JSONResponse(
-            status_code=503,
-            content={
-                "detail": (
-                    "راه‌اندازی پایگاه داده متوقف شد، چون ساختار دیتابیس موجود با نسخه‌های "
-                    "ثبت‌شده سازگار نیست. هیچ مهاجرت یا تعمیری انجام نشده است. "
-                    "گزارش فقط‌خواندنی scripts/inspect_sqlite_schema.py را اجرا کنید؛ "
-                    "دیتابیس را حذف یا بازنشانی نکنید."
-                ),
-                "code": "untracked_storage_schema",
-                "recovery_command": (
-                    "python scripts/inspect_sqlite_schema.py <database-path> "
-                    "--kind learning --output <report-path>"
-                ),
-            },
-        )
-    return await call_next(request)
 
 
 @app.on_event("startup")
