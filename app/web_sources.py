@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import re
 import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -350,6 +351,8 @@ class _PageTextParser(HTMLParser):
         if not self._ignored_depth:
             cleaned = " ".join(data.split())
             if cleaned:
+                if self.text_parts and not self.text_parts[-1].endswith("\n"):
+                    self.text_parts.append(" ")
                 self.text_parts.append(cleaned)
 
 
@@ -584,7 +587,12 @@ def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> Sour
         parser = _PageTextParser()
         parser.feed(content)
         title = " ".join("".join(parser.title_parts).split()) or title_hint
-        text = " ".join("".join(parser.text_parts).split())
+        raw_text = "".join(parser.text_parts)
+        # Keep paragraph/list boundaries for contextual relevance checks, while
+        # normalizing spaces within each block for compact storage and search.
+        raw_text = re.sub(r"[ \t\f\v]+", " ", raw_text)
+        raw_text = re.sub(r" *\n *", "\n", raw_text)
+        text = re.sub(r"\n{2,}", "\n", raw_text)
     text = text.strip()[:max_chars]
     if len(text) < 100:
         raise SourceFetchError("Source page did not contain enough readable text.")
