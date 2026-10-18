@@ -683,7 +683,13 @@ def initialize_connection(connection: sqlite3.Connection, migrations: Iterable[M
             return runner.apply(connection)
     raise UntrackedSchemaError(
         "Existing database schema does not match any registered migration version; "
-        "no history was written and no schema changes were applied."
+        "no history was written and no schema changes were applied. "
+        f"Observed schema fingerprint: {actual}. "
+        "Run the read-only diagnostic from the repository root: "
+        "python scripts/inspect_sqlite_schema.py "
+        "<database-path> --kind learning --output <report-path>. "
+        "Do not reset, manually stamp, or migrate this database until the "
+        "schema has been reviewed and a verified backup exists."
     )
 
 
