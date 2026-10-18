@@ -5,6 +5,7 @@ matching a reviewed canonical fingerprint; unknown schemas fail closed.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 import tempfile
@@ -507,6 +508,28 @@ def _quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
 
 
+def _table_data_fingerprint(connection: sqlite3.Connection, table: str) -> str:
+    """Hash one table's ordered values without exposing user data in logs."""
+    digest = hashlib.sha256()
+    cursor = connection.execute(
+        f"SELECT * FROM {_quote_identifier(table)} ORDER BY rowid"
+    )
+    while True:
+        rows = cursor.fetchmany(500)
+        if not rows:
+            break
+        for row in rows:
+            canonical = tuple(
+                ("bytes", value.hex()) if isinstance(value, bytes)
+                else (type(value).__name__, value)
+                for value in row
+            )
+            encoded = repr(canonical).encode("utf-8", errors="surrogatepass")
+            digest.update(len(encoded).to_bytes(8, "big"))
+            digest.update(encoded)
+    return digest.hexdigest()
+
+
 def _migrate_recognized_legacy_learning_database(
     target: Path,
     migrations: tuple[Migration, ...],
@@ -571,6 +594,19 @@ def _migrate_recognized_legacy_learning_database(
                     raise RuntimeError(
                         "Source row counts changed after the pre-migration backup; "
                         "refusing conversion to avoid an inconsistent snapshot."
+                    )
+                source_digests = {
+                    table: _table_data_fingerprint(source, table)
+                    for table in _LEGACY_LEARNING_DATA_TABLES
+                }
+                backup_digests = {
+                    table: _table_data_fingerprint(backup, table)
+                    for table in _LEGACY_LEARNING_DATA_TABLES
+                }
+                if backup_digests != source_digests:
+                    raise RuntimeError(
+                        "Source data changed after the pre-migration backup; "
+                        "refusing conversion to avoid migrating an unbacked snapshot."
                     )
 
             with closing(sqlite3.connect(str(temporary), timeout=10)) as destination:
