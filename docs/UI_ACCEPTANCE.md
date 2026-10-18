@@ -46,6 +46,7 @@ The following repository-level checks passed on code/test commit `62b6767828775d
 
 - [x] Local stylesheet is served from the app; no remote font/CDN dependency is introduced.
 - [x] Navigation links resolve to all dashboard workflow sections; skip-to-content is the first keyboard stop.
+- [x] When `/api/health` reports `untracked_storage_schema`, an accessible degraded-storage alert explains that data is not reset and provides a read-only diagnostic command; the browser E2E test covers this state. CI evidence is pending for the current head.
 - [x] Focus-visible and reduced-motion CSS rules are present.
 - [x] Text entry follows typed-script direction for English/Persian; code and patch fields remain left-to-right.
 - [x] Chromium viewport checks cover 360px, 768px, and 1280px without page-level horizontal overflow.
