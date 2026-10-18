@@ -983,9 +983,18 @@ def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) 
         if not has_history and observed_fingerprint == LEGACY_LEARNING_SCHEMA_FINGERPRINT:
             if verified_backup is None:
                 verified_backup = _create_pre_migration_backup(target)
-            return _migrate_recognized_legacy_learning_database(
-                target, migration_list, verified_backup=verified_backup
-            )
+            try:
+                return _migrate_recognized_legacy_learning_database(
+                    target, migration_list, verified_backup=verified_backup
+                )
+            except Exception as exc:
+                # Keep startup's fail-closed recovery path actionable without exposing
+                # row values or replacing the original file after a failed conversion.
+                raise UntrackedSchemaError(
+                    "Recognized legacy learning database could not be migrated safely. "
+                    f"Original database remains at {target}; verified backup: {verified_backup}. "
+                    "No replacement was installed. Review the migration failure before retrying."
+                ) from exc
 
     with closing(sqlite3.connect(str(target), timeout=10)) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
