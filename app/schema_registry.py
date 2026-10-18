@@ -748,13 +748,30 @@ def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) 
     if not migration_list:
         raise ValueError("At least one migration must be registered.")
 
+    backup_path: Path | None = None
     if _needs_schema_backup(target, migration_list):
-        _create_pre_migration_backup(target)
+        backup_path = _create_pre_migration_backup(target)
 
-    with closing(sqlite3.connect(str(target), timeout=10)) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return initialize_connection(connection, migration_list)
+    try:
+        with closing(sqlite3.connect(str(target), timeout=10)) as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 10000")
+            return initialize_connection(connection, migration_list)
+    except UntrackedSchemaError as exc:
+        # Preserve the fail-closed behavior, but make startup failures actionable
+        # without logging database row contents or suggesting destructive repair.
+        details = [
+            str(exc),
+            f"Database path: {target.resolve()}",
+            "The existing database was not migrated or modified.",
+        ]
+        if backup_path is not None:
+            details.append(f"Verified pre-migration backup: {backup_path.resolve()}")
+        details.append(
+            "Inspect the schema and use a reviewed migration for this exact schema; "
+            "do not delete the database or manually write migration history."
+        )
+        raise UntrackedSchemaError(" ".join(details)) from exc
 
 
 
