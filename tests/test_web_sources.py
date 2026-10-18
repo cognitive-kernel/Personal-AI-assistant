@@ -52,6 +52,30 @@ def test_page_text_parser_ignores_script_navigation_and_styles():
     assert "Guide" in "".join(parser.title_parts)
 
 
+def test_fetch_document_preserves_block_boundaries_for_relevance_filter(monkeypatch):
+    html = (
+        "<html><head><title>Explore Free Azure Services</title></head><body>"
+        "<main><h1>Explore Free Azure Services</h1>"
+        "<p>These services are free up to the specified monthly amounts.</p>"
+        "<p>Linux virtual machines are available in Azure.</p>"
+        "<p>Get access to free developer tools and a USD 100 credit.</p>"
+        "</main></body></html>"
+    )
+    monkeypatch.setattr(
+        web_sources, "_open", lambda _url, max_bytes: (html, "text/html")
+    )
+
+    document = web_sources._fetch_document(
+        "https://azure.microsoft.com/en-us/pricing/free-services/",
+        "Explore Free Azure Services",
+    )
+
+    lines = document.text.splitlines()
+    assert any("free up to the specified monthly amounts" in line for line in lines)
+    assert any("Linux virtual machines are available" in line for line in lines)
+    assert any("free developer tools" in line for line in lines)
+
+
 def test_discovery_skips_unavailable_pages_and_returns_available_source(monkeypatch):
     expected = web_sources.SourceDocument(
         url="https://example.org/guide",
