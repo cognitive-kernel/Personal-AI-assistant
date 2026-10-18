@@ -62,6 +62,39 @@ def _audit_sources(question: str) -> list[dict[str, Any]]:
     return sources if isinstance(sources, list) else []
 
 
+def _audit_diagnostics(question: str) -> dict[str, Any]:
+    """Read bounded source-discovery/review status for the exact question hash."""
+    query_hash = _sha256_bytes(question[:12000].encode("utf-8"))
+    with learning_connection() as connection:
+        row = connection.execute(
+            """SELECT source_count, review_status, review_summary_json
+               FROM chat_research_runs
+               WHERE query_sha256=? ORDER BY id DESC LIMIT 1""",
+            (query_hash,),
+        ).fetchone()
+    if row is None:
+        return {"research_review_status": "missing"}
+    result: dict[str, Any] = {
+        "research_review_status": str(row["review_status"]),
+        "audited_source_count": int(row["source_count"]),
+    }
+    try:
+        review = json.loads(row["review_summary_json"] or "{}")
+    except (TypeError, ValueError):
+        review = {}
+    error = review.get("error") if isinstance(review, dict) else None
+    if isinstance(error, str) and error.startswith("source_discovery_failed:"):
+        result["source_discovery_status"] = "failed"
+        result["source_discovery_error_type"] = error.split(":", 1)[1][:80]
+    elif isinstance(error, str) and error == "no_usable_sources":
+        result["source_discovery_status"] = "no_usable_sources"
+    elif int(row["source_count"]) > 0:
+        result["source_discovery_status"] = "sources_found"
+    else:
+        result["source_discovery_status"] = "no_sources"
+    return result
+
+
 def run_evaluation(
     *,
     cases: list[dict[str, Any]],
@@ -101,6 +134,11 @@ def run_evaluation(
         else:
             entry["source_audit_status"] = "completed"
         sources_by_case_id[case["id"]] = sources
+        try:
+            entry.update(_audit_diagnostics(case["prompt"]))
+        except Exception as exc:
+            entry["research_audit_status"] = "unavailable"
+            entry["research_audit_error_type"] = type(exc).__name__
 
         try:
             entry.update(evaluate_answer_surface(case, answer, sources))
