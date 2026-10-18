@@ -541,7 +541,7 @@ function renderCloudCandidates(candidates) {
   availability.value=candidate.availability_status||"unknown";
   availabilityLabel.append(availability); grid.append(availabilityLabel);
   const termsLabel=document.createElement("label"); termsLabel.textContent="نشانی HTTPS شرایط استفاده (برای تأیید الزامی)";
-  const terms=document.createElement("input"); terms.type="url"; terms.placeholder="https://…"; terms.value=candidate.terms_url||"";
+  const terms=document.createElement("input"); terms.type="url"; terms.placeholder="https://…"; terms.setAttribute("aria-label","نشانی HTTPS شرایط استفاده"); terms.value=candidate.terms_url||"";
   termsLabel.append(terms); grid.append(termsLabel);
   const quotaLabel=document.createElement("label"); quotaLabel.textContent="سهمیه‌های تأییدشده به‌شکل JSON";
   const quota=document.createElement("textarea"); quota.rows=3; quota.value=JSON.stringify(candidate.quota||{},null,2);
@@ -1078,10 +1078,10 @@ function renderExperienceItems(items) {
    testLabel.append(testSelect); runnerForm.append(testLabel);
    const sourceLabel=document.createElement("label"); sourceLabel.textContent="کد Python آزمون";
    const sourceInput=document.createElement("textarea"); sourceInput.rows=8; sourceInput.maxLength=65536; sourceInput.required=true;
-   sourceInput.placeholder="assert actual_value == expected_value";
+   sourceInput.placeholder="assert actual_value == expected_value"; sourceInput.setAttribute("aria-label","کد Python آزمون پیشنهادی");
    sourceLabel.append(sourceInput); runnerForm.append(sourceLabel);
    const consentLabel=document.createElement("label");
-   const confirmInput=document.createElement("input"); confirmInput.type="checkbox"; confirmInput.required=true; confirmInput.style.width="auto";
+   const confirmInput=document.createElement("input"); confirmInput.type="checkbox"; confirmInput.required=true; confirmInput.setAttribute("aria-label","تأیید بررسی کد و اجرای آن در Sandbox محلی"); confirmInput.style.width="auto";
    consentLabel.append(confirmInput,document.createTextNode(" من کد را بررسی کرده‌ام و اجرای آن را در Sandbox محلی تأیید می‌کنم."));
    runnerForm.append(consentLabel);
    const runButton=document.createElement("button"); runButton.type="submit"; runButton.textContent="صف‌بندی آزمون";
