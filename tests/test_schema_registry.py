@@ -603,3 +603,27 @@ def test_legacy_learning_migration_failure_preserves_original_database_bytes(tmp
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
         ).fetchone() is None
+
+
+def test_application_database_initializer_migrates_observed_legacy_learning_store(tmp_path, monkeypatch):
+    """Exercise the exact db.init_databases() startup path with a disposable legacy DB."""
+    settings_path = tmp_path / "settings.db"
+    learning_path = _create_observed_legacy_learning_database(tmp_path / "learning.db")
+    _seed_observed_legacy_learning_data(learning_path)
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(settings_path))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(learning_path))
+
+    db.init_databases()
+
+    with sqlite3.connect(learning_path) as connection:
+        assert connection.execute(
+            "SELECT MAX(version) FROM schema_migrations"
+        ).fetchone()[0] == 14
+        assert connection.execute(
+            "SELECT content FROM knowledge_items"
+        ).fetchone() == ("legacy lesson",)
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+    assert list(tmp_path.glob("learning.db.pre-migration-*.bak"))
+    assert db.get_settings()
