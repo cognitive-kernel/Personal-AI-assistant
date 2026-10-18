@@ -579,9 +579,10 @@ def test_legacy_learning_migration_failure_preserves_original_database_bytes(tmp
     )
     before = path.read_bytes()
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(UntrackedSchemaError, match="verified backup") as error:
         initialize_database_file(path, LEARNING_MIGRATIONS)
 
+    assert str(path) in str(error.value)
     assert path.read_bytes() == before
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
