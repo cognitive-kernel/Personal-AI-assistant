@@ -30,8 +30,10 @@ jobs:
           python-version: "3.11"
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Test SQLite restore and staging cleanup on Windows
+      - name: Test SQLite migration, restore, and staging cleanup on Windows
         run: >-
           python -m pytest -q
+          tests/test_schema_registry.py::test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservation
+          tests/test_schema_registry.py::test_legacy_learning_migration_failure_preserves_original_database_bytes
           tests/test_schema_registry.py::test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file
           tests/test_storage_routes.py::test_restore_staging_cleanup_previews_and_deletes_only_old_verified_snapshots
