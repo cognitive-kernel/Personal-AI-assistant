@@ -554,6 +554,25 @@ def _migrate_recognized_legacy_learning_database(
                 for table in _LEGACY_LEARNING_DATA_TABLES
             }
 
+            # Recheck the backup immediately before conversion. This catches a
+            # second application process changing rows after the backup was made.
+            backup_uri = verified_backup.resolve().as_uri() + "?mode=ro"
+            with closing(sqlite3.connect(backup_uri, uri=True, timeout=10)) as backup:
+                backup.execute("PRAGMA query_only = ON")
+                if schema_fingerprint(backup) != LEGACY_LEARNING_SCHEMA_FINGERPRINT:
+                    raise RuntimeError("Verified backup no longer matches the reviewed legacy schema.")
+                backup_counts = {
+                    table: int(backup.execute(
+                        f"SELECT COUNT(*) FROM {_quote_identifier(table)}"
+                    ).fetchone()[0])
+                    for table in _LEGACY_LEARNING_DATA_TABLES
+                }
+                if backup_counts != source_counts:
+                    raise RuntimeError(
+                        "Source row counts changed after the pre-migration backup; "
+                        "refusing conversion to avoid an inconsistent snapshot."
+                    )
+
             with closing(sqlite3.connect(str(temporary), timeout=10)) as destination:
                 destination.execute("PRAGMA foreign_keys = ON")
                 destination.execute("PRAGMA busy_timeout = 10000")
