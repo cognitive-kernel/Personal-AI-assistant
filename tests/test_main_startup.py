@@ -1,9 +1,6 @@
 import sqlite3
 
-import pytest
-
 from app import cloud_resources, db, main
-from app.schema_migrations import UntrackedSchemaError
 
 
 def test_startup_rejects_unknown_settings_schema_before_starting_workers(tmp_path, monkeypatch):
@@ -29,9 +26,9 @@ def test_startup_rejects_unknown_settings_schema_before_starting_workers(tmp_pat
         connection.execute("CREATE TABLE unrecognized_settings (value TEXT)")
         connection.execute("INSERT INTO unrecognized_settings(value) VALUES ('preserve')")
 
-    with pytest.raises(UntrackedSchemaError, match="does not match"):
-        main.startup()
+    main.startup()
 
+    assert main._startup_storage_error == "untracked_storage_schema"
     assert constructed == []
     backups = list(tmp_path.glob("settings.db.pre-migration-*.bak"))
     assert len(backups) == 1
