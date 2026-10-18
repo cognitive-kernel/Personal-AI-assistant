@@ -268,6 +268,60 @@ def test_search_results_round_robin_unique_results_across_engines(monkeypatch):
     ]
 
 
+def test_duckduckgo_lite_fallback_is_used_when_primary_has_no_results(monkeypatch):
+    def fake_open(url, **kwargs):
+        parsed = urllib.parse.urlparse(url)
+        if parsed.hostname == "html.duckduckgo.com":
+            return "<html>no organic links</html>", "text/html"
+        if parsed.hostname == "lite.duckduckgo.com":
+            return (
+                '<a class="result-link" href="https://lite.example.org/free-vm">'
+                "Free VM Compute</a>",
+                "text/html",
+            )
+        return "<html>no organic links</html>", "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    results = web_sources._search_results("free cloud hosting", 3)
+    diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
+    assert ("Free VM Compute", "https://lite.example.org/free-vm") in results
+    assert diagnostics["DuckDuckGo"]["attempts"][0]["error"] == "no_parseable_results"
+    assert diagnostics["DuckDuckGo"]["attempts"][1]["endpoint_variant"] == "lite"
+    assert diagnostics["DuckDuckGo"]["attempts"][1]["accepted_result_count"] == 1
+
+
+def test_google_basic_html_fallback_is_used_when_standard_markup_has_no_results(monkeypatch):
+    def fake_open(url, **kwargs):
+        parsed = urllib.parse.urlparse(url)
+        params = urllib.parse.parse_qs(parsed.query)
+        if parsed.hostname == "www.google.com" and params.get("gbv") == ["1"]:
+            return (
+                '<a href="/url?q=https%3A%2F%2Fgoogle.example.org%2Fcompute">'
+                "<h3>Google Free Compute</h3></a>",
+                "text/html",
+            )
+        if parsed.hostname == "www.google.com":
+            return "<html><body>Before you continue to Google</body></html>", "text/html"
+        return "<html><body>no organic links</body></html>", "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    results = web_sources._search_results("free cloud hosting", 3)
+    diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
+    google = diagnostics["Google"]
+    assert ("Google Free Compute", "https://google.example.org/compute") in results
+    assert google["attempts"][0]["error"] == "challenge_or_consent_page"
+    assert google["attempts"][1]["endpoint_variant"] == "basic_html"
+    assert google["attempts"][1]["accepted_result_count"] == 1
+
+
 def test_search_results_include_per_engine_counts_and_duplicate_counts(monkeypatch):
     pages = {
         "html.duckduckgo.com": (
@@ -347,12 +401,13 @@ def test_search_results_raise_diagnostic_when_all_providers_return_no_results(mo
 
 
 def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseable(monkeypatch):
-    requested_queries = []
+    requested = []
 
     def fake_open(url, **kwargs):
         parsed = urllib.parse.urlparse(url)
-        query = urllib.parse.parse_qs(parsed.query)["q"][0]
-        requested_queries.append(query)
+        query_params = urllib.parse.parse_qs(parsed.query)
+        query = query_params["q"][0]
+        requested.append((parsed.hostname, query_params, query))
         if (
             parsed.hostname == "www.bing.com"
             and query == "free cloud development environment sandbox runtime limits official"
@@ -374,14 +429,16 @@ def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseab
     )
 
     assert result == [("Official Sandbox Compute Limits", "https://example.org/sandbox-docs")]
-    assert requested_queries[:3] == [
-        "official free developer sandbox container compute limits",
-        "official free developer sandbox container compute limits",
-        "official free developer sandbox container compute limits",
-    ]
-    assert requested_queries[3:] == [
-        "free cloud development environment sandbox runtime limits official",
-        "free cloud development environment sandbox runtime limits official",
-        "free cloud development environment sandbox runtime limits official",
-    ]
-    assert len(requested_queries) == 6
+    primary_query = "official free developer sandbox container compute limits"
+    alternate_query = "free cloud development environment sandbox runtime limits official"
+    assert [q for _, _, q in requested].count(primary_query) == 5
+    assert [q for _, _, q in requested].count(alternate_query) == 5
+    assert any(
+        host == "lite.duckduckgo.com" and query_params.get("kl") == ["us-en"]
+        for host, query_params, _ in requested
+    )
+    assert any(
+        host == "www.google.com" and query_params.get("gbv") == ["1"]
+        for host, query_params, _ in requested
+    )
+    assert len(requested) == 10
