@@ -204,8 +204,62 @@ def test_list_candidates_hides_irrelevant_rows_saved_by_older_versions(
     assert cloud_resources.list_candidates() == []
 
 
+def test_discovery_falls_back_to_official_references_when_search_is_irrelevant(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    lyric_page = web_sources.SourceDocument(
+        url="https://www.lyricsfreak.com/example/song_123.html",
+        title="They Don't Care About Us lyrics",
+        text=(
+            "Lyrics and music information. The word free appears here, "
+            "but this is not technical documentation about hosted infrastructure. "
+        ) * 5,
+    )
+    official_documents = {
+        url: _document(
+            url=url,
+            title=title,
+            text=(
+                "Free compute resources include GPU or CPU environments. "
+                "Review the current quota limits and usage terms. "
+                "Availability depends on the account and may change. "
+            ) * 4,
+        )
+        for url, title in cloud_resources.OFFICIAL_REFERENCE_SOURCES
+    }
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [lyric_page]
+    )
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda url, title_hint: official_documents[url],
+    )
+
+    report = cloud_resources.discover_resources()
+
+    assert report["status"] == "partial"
+    assert report["queries_attempted"] == len(cloud_resources.DISCOVERY_QUERIES) + 1
+    assert report["candidates_upserted"] == len(cloud_resources.OFFICIAL_REFERENCE_SOURCES)
+    assert "search_results_filtered_as_irrelevant" in report["error_summary"]
+    assert {item["source_url"] for item in cloud_resources.list_candidates()} == set(
+        official_documents
+    )
+    assert cloud_resources.latest_discovery_run()["query_results"][-1]["query"] == (
+        "official_reference_fallback"
+    )
+
+
 def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            web_sources.SourceFetchError("official fallback disabled in this test")
+        ),
+    )
     monkeypatch.setattr(
         web_sources,
         "discover_sources",
@@ -227,6 +281,13 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
 def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            web_sources.SourceFetchError("official fallback disabled in this test")
+        ),
+    )
 
     def failed_search(_query, *, limit):
         raise web_sources.SourceFetchError(
