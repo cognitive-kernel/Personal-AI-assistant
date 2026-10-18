@@ -5,6 +5,7 @@ are bounded and reject non-public destinations to reduce SSRF risk.
 """
 from __future__ import annotations
 
+import base64
 import ipaddress
 import socket
 from dataclasses import dataclass
@@ -177,8 +178,30 @@ class _BingSearchResultParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self._active_href is not None:
             title = " ".join("".join(self._active_text).split())
+            href = self._active_href
+            # Bing commonly wraps organic destinations in /ck/a links. Its
+            # `u=a1...` parameter contains a URL-safe base64 destination;
+            # normalize that destination before public-URL validation, or the
+            # search provider's own hostname will be rejected as a result.
+            parsed_href = urllib.parse.urlparse(href)
+            if (
+                parsed_href.hostname
+                and parsed_href.hostname.lower().rstrip(".") in {"bing.com", "www.bing.com"}
+                and parsed_href.path.rstrip("/") == "/ck/a"
+            ):
+                encoded = urllib.parse.parse_qs(parsed_href.query).get("u", [""])[0]
+                if encoded.startswith("a1") and len(encoded) > 2:
+                    try:
+                        payload = encoded[2:]
+                        payload += "=" * (-len(payload) % 4)
+                        decoded = base64.urlsafe_b64decode(payload).decode("utf-8")
+                        decoded_url = urllib.parse.urlparse(decoded)
+                        if decoded_url.scheme in {"http", "https"} and decoded_url.hostname:
+                            href = decoded
+                    except (ValueError, UnicodeDecodeError):
+                        pass
             if title:
-                self.results.append((title, self._active_href))
+                self.results.append((title, href))
             self._active_href = None
             self._active_text = []
         elif tag == "h2":
