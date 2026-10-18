@@ -1010,10 +1010,24 @@ def initialize_database_file(path: str | Path, migrations: Iterable[Migration]) 
                     "No replacement was installed. Review the migration failure before retrying."
                 ) from exc
 
-    with closing(sqlite3.connect(str(target), timeout=10)) as connection:
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 10000")
-        return initialize_connection(connection, migration_list)
+    try:
+        with closing(sqlite3.connect(str(target), timeout=10)) as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 10000")
+            return initialize_connection(connection, migration_list)
+    except UntrackedSchemaError as exc:
+        details = [
+            str(exc),
+            f"Database path: {target.resolve()}",
+            "The existing database was not migrated or modified.",
+        ]
+        if verified_backup is not None:
+            details.append(f"Verified pre-migration backup: {verified_backup.resolve()}")
+        details.append(
+            "Inspect the schema and use a reviewed migration for this exact schema; "
+            "do not delete the database or manually write migration history."
+        )
+        raise UntrackedSchemaError(" ".join(details)) from exc
 
 
 
