@@ -188,3 +188,38 @@ def test_search_results_raise_diagnostic_when_all_providers_return_no_results(mo
 
     with pytest.raises(web_sources.SourceFetchError, match="DuckDuckGo:no_parseable_results"):
         web_sources._search_results("cloud compute free tier", 3)
+
+
+
+def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseable(monkeypatch):
+    requested_queries = []
+
+    def fake_open(url, **kwargs):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)["q"][0]
+        requested_queries.append(query)
+        if query == "free cloud development environment sandbox runtime limits official":
+            return (
+                '<ol><li class="b_algo"><h2><a href="https://example.org/sandbox-docs">'
+                "Official Sandbox Compute Limits</a></h2></li></ol>",
+                "text/html",
+            )
+        return "<html><body>Search challenge page</body></html>", "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    result = web_sources._search_results(
+        "official free developer sandbox container compute limits", 3
+    )
+
+    assert result == [("Official Sandbox Compute Limits", "https://example.org/sandbox-docs")]
+    assert requested_queries[:2] == [
+        "official free developer sandbox container compute limits",
+        "official free developer sandbox container compute limits",
+    ]
+    assert requested_queries[2] == (
+        "free cloud development environment sandbox runtime limits official"
+    )
+    assert len(requested_queries) == 3
