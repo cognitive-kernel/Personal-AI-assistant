@@ -11,6 +11,7 @@ from . import backup_scheduler, assessment_review, learning_recommendations, spa
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
+from .schema_migrations import UntrackedSchemaError
 from .hardware import detect_hardware, runtime_limits
 from .task_routes import require_loopback_client, router as task_router
 from .cloud_resource_routes import router as cloud_resource_router
@@ -81,6 +82,26 @@ async def enforce_loopback_only(request, call_next):
                 status_code=403,
                 content={"detail": "This application is available from localhost only."},
             )
+    # Keep the local dashboard and read-only health endpoints available when a
+    # legacy database prevents initialization. All data-mutating/runtime APIs
+    # remain blocked until the schema is reviewed and safely migrated.
+    if (
+        _startup_blocker is not None
+        and request.url.path.startswith("/api/")
+        and request.url.path not in {"/api/health", "/api/health/storage"}
+    ):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Application data services are unavailable because database initialization was blocked.",
+                "code": "storage_schema_untracked",
+                "diagnostic": _startup_blocker,
+                "recovery": (
+                    "Run scripts/inspect_sqlite_schema.py in read-only mode, "
+                    "verify a backup, and use a reviewed migration. Do not reset or stamp the database."
+                ),
+            },
+        )
     return await call_next(request)
 
 
@@ -88,12 +109,21 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _task_runtime: TaskRuntime | None = None
+_startup_blocker: str | None = None
 
 
 @app.on_event("startup")
 def startup() -> None:
-    global _task_runtime
-    db.init_databases()
+    global _task_runtime, _startup_blocker
+    _startup_blocker = None
+    try:
+        db.init_databases()
+    except UntrackedSchemaError as exc:
+        # A schema mismatch must not make the local diagnostic UI unreachable.
+        # Do not attempt to repair or stamp unknown schemas automatically.
+        _startup_blocker = str(exc)
+        logger.error("Application entered storage-degraded mode: %s", exc)
+        return
     try:
         cloud_resources.initialize_store()
         cloud_resources.ensure_daily_discovery_scheduled()
@@ -186,14 +216,18 @@ class PathTopicProgress(BaseModel):
 @app.get("/api/health")
 def api_health() -> dict[str, Any]:
     hardware = detect_hardware()
-    settings = db.get_settings()
+    if _startup_blocker is not None:
+        settings: dict[str, Any] = {}
+    else:
+        settings = db.get_settings()
     configured_paths = (
         defaults.settings_db_path,
         defaults.learning_db_path,
         defaults.cloud_resources_db_path,
     )
     return {
-        "status": "ok",
+        "status": "degraded" if _startup_blocker is not None else "ok",
+        "startup_blocker": _startup_blocker,
         "ollama": ollama.health(),
         "hardware": hardware,
         "runtime_limits": runtime_limits(settings, hardware),
