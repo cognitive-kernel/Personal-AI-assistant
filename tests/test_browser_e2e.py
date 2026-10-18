@@ -731,3 +731,34 @@ def test_dashboard_explains_api_connection_failure_in_persian():
         )
         assert "پنجرهٔ PowerShell" in page.locator("#health").inner_text()
         browser.close()
+
+
+def test_dashboard_explains_degraded_storage_without_enabling_mutations():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route(
+            "**/api/health",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "status": "degraded",
+                    "reason": "untracked_storage_schema",
+                    "storage": {"status": "blocked", "mutations_enabled": False},
+                    "message": "An existing SQLite schema needs reviewed recovery.",
+                    "recovery_command": "python scripts/inspect_sqlite_schema.py <database-path> --kind learning --output <report-path>",
+                }),
+            ),
+        )
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        banner = page.locator("#storage-degraded-banner")
+        assert banner.is_visible(timeout=10000)
+        assert "ساختار پایگاه داده" in banner.inner_text() or "reviewed recovery" in banner.inner_text()
+        assert "inspect_sqlite_schema.py" in banner.inner_text()
+        assert "دیتابیس را حذف نکنید" in banner.inner_text()
+        browser.close()
