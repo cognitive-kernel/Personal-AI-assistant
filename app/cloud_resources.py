@@ -476,7 +476,9 @@ def discover_resources(
                 sources_seen += 1
                 candidate = _candidate_record(document, fallback_query)
                 if candidate is not None:
-                    unique.setdefault(candidate["source_url"], candidate)
+                    unique.setdefault(
+                        web_sources.result_url_identity(candidate["source_url"]), candidate
+                    )
             query_results.append({
                 "query": fallback_query,
                 "result_count": fallback_documents,
