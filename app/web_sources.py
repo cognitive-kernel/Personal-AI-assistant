@@ -1,7 +1,7 @@
-"""Small, bounded web-search adapter for automatic learning-source discovery.
+"""Bounded multi-engine web search and public-source retrieval.
 
-The first provider is DuckDuckGo's public HTML results page. All page fetches
-are bounded and reject non-public destinations to reduce SSRF risk.
+Search results from DuckDuckGo, Bing, and Google are normalized and deduplicated.
+All page fetches reject non-public destinations to reduce SSRF risk.
 """
 from __future__ import annotations
 
@@ -257,13 +257,18 @@ class _GoogleSearchResultParser(HTMLParser):
             parsed = urllib.parse.urlparse(href)
             if (
                 parsed.hostname
-                and parsed.hostname.casefold().rstrip(".").endswith("google.com")
+                and (
+                    parsed.hostname.casefold().rstrip(".") == "google.com"
+                    or parsed.hostname.casefold().rstrip(".").endswith(".google.com")
+                )
                 and parsed.path.rstrip("/") == "/url"
             ):
                 params = urllib.parse.parse_qs(parsed.query)
                 destination = (params.get("q") or params.get("url") or [""])[0]
                 if destination:
-                    href = urllib.parse.unquote(destination)
+                    # parse_qs has already decoded the wrapper's outer encoding.
+                    # A second unquote could corrupt percent-encoded target queries.
+                    href = destination
             if title and href:
                 self.results.append((title, href))
             self._active_href = None
