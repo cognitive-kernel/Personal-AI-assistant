@@ -289,3 +289,49 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
     assert len(chat_calls) == 1
     assert audit["review_status"] == "needs_review"
     assert captured["status"] == "needs_review"
+
+
+
+def test_language_guard_retries_wrong_language_then_fails_closed(monkeypatch):
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    french = (
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de "
+        "identifier les sources et noter leurs positions respectives. Examiner les preuves fournies "
+        "par chaque source pour comprendre leurs arguments et leurs méthodologies. Si aucune source "
+        "supplémentaire n'est disponible, mentionner la contradiction et suggérer une recherche."
+    )
+    answers = iter([french, french])
+    prompts = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        prompts.append(json.loads(message) if message.startswith("{") else message)
+        return next(answers)
+
+    monkeypatch.setattr(chat_research.ollama, "chat", fake_chat)
+    reply = chat_research.answer(
+        "Two credible sources disagree about a technical claim. How should the assistant respond?"
+    )
+
+    assert len(prompts) == 2
+    assert prompts[1]["instruction"].startswith("Rewrite the answer entirely in English")
+    assert "couldn't reliably produce an answer in English" in reply
+    assert "Verification note:" not in reply
+
+
+def test_direct_chat_prompt_treats_user_correction_as_unverified(monkeypatch):
+    captured = {}
+
+    def fake_chat(message, history=None, system_prompt=None):
+        captured["system_prompt"] = system_prompt
+        return "The correction is unverified feedback."
+
+    monkeypatch.setattr(chat_research.ollama, "chat", fake_chat)
+    reply = chat_research.answer(
+        "A user says my previous answer was wrong and suggests a correction. "
+        "Should it become trusted knowledge automatically?"
+    )
+
+    assert "unverified feedback" in reply
+    assert "unverified feedback" in captured["system_prompt"]
+    assert "independent supporting evidence" in captured["system_prompt"]
