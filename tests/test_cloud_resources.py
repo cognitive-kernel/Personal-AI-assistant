@@ -69,6 +69,16 @@ def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatc
     assert latest["query_results"][0]["provider_diagnostics"] == diagnostics
 
 
+def test_discovery_scope_is_broader_but_has_explicit_bounds():
+    assert len(cloud_resources.DISCOVERY_QUERIES) == 5
+    assert any("cloud hosting" in query for query in cloud_resources.DISCOVERY_QUERIES)
+    assert cloud_resources.MAX_RESULTS_PER_QUERY == 5
+    assert cloud_resources.MAX_CANDIDATES_PER_RUN == (
+        len(cloud_resources.DISCOVERY_QUERIES)
+        * cloud_resources.MAX_RESULTS_PER_QUERY
+    )
+
+
 def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
