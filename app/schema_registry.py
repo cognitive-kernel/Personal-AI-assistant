@@ -593,8 +593,12 @@ def _migrate_recognized_legacy_learning_database(
                             break
                         destination.executemany(insert_sql, batch)
 
+                # This is a standalone FTS5 table, not an external-content index.
+                # Populate it from canonical chunks instead of issuing the external-content
+                # 'rebuild' command, which would rebuild from its currently empty content table.
                 destination.execute(
-                    "INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts) VALUES ('rebuild')"
+                    "INSERT INTO knowledge_chunks_fts(content) "
+                    "SELECT content FROM knowledge_chunks ORDER BY id"
                 )
                 for table, expected_count in source_counts.items():
                     actual_count = int(destination.execute(
