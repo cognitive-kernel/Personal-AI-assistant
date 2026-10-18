@@ -952,13 +952,33 @@ def _create_pre_migration_backup(path: Path) -> Path:
         source_violations = source.execute("PRAGMA foreign_key_check").fetchall()
         if [row[0] for row in source_integrity] != ["ok"] or source_violations:
             raise RuntimeError(f"Source database failed pre-migration validation: {path}")
+
+        def row_counts(connection: sqlite3.Connection) -> dict[str, int]:
+            tables = connection.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            ).fetchall()
+            return {
+                row[0]: int(connection.execute(
+                    f"SELECT COUNT(*) FROM {_quote_identifier(row[0])}"
+                ).fetchone()[0])
+                for row in tables
+            }
+
+        source_counts = row_counts(source)
+        source_fingerprint = schema_fingerprint(source)
         source.backup(destination)
         result = destination.execute("PRAGMA integrity_check").fetchall()
         violations = destination.execute("PRAGMA foreign_key_check").fetchall()
         if [row[0] for row in result] != ["ok"] or violations:
             raise RuntimeError(f"Pre-migration backup failed integrity validation: {candidate}")
-        if schema_fingerprint(source) != schema_fingerprint(destination):
+        if schema_fingerprint(destination) != source_fingerprint:
             raise RuntimeError(f"Pre-migration backup schema verification failed: {candidate}")
+        backup_counts = row_counts(destination)
+        if backup_counts != source_counts:
+            raise RuntimeError(
+                f"Pre-migration backup row-count verification failed: {candidate}"
+            )
         table_names = [
             row[0] for row in source.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
