@@ -1,3 +1,5 @@
+import urllib.parse
+
 import pytest
 
 from app import db, learning, web_sources
@@ -139,3 +141,36 @@ def test_official_kaggle_cli_docs_are_not_blocked_by_kaggle_page_fetch_policy(mo
         "https://github.com/Kaggle/kaggle-cli/blob/main/docs/kernels.md"
     )
     assert parsed.hostname == "github.com"
+
+
+
+def test_search_results_fall_back_to_bing_when_duckduckgo_has_no_parseable_results(monkeypatch):
+    def fake_open(url, **kwargs):
+        if "duckduckgo.com" in url:
+            return "<html><body>Search is unavailable</body></html>", "text/html"
+        return (
+            '<ol><li class="b_algo"><h2><a href="https://example.org/docs">'
+            "Official Compute Docs</a></h2></li></ol>",
+            "text/html",
+        )
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    assert web_sources._search_results("cloud compute free tier", 3) == [
+        ("Official Compute Docs", "https://example.org/docs")
+    ]
+
+
+def test_search_results_raise_diagnostic_when_all_providers_return_no_results(monkeypatch):
+    monkeypatch.setattr(
+        web_sources, "_open", lambda _url, **_kwargs: ("<html>blocked</html>", "text/html")
+    )
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    with pytest.raises(web_sources.SourceFetchError, match="DuckDuckGo:no_parseable_results"):
+        web_sources._search_results("cloud compute free tier", 3)
