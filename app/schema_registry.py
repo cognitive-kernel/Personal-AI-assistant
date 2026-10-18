@@ -648,6 +648,31 @@ def _migrate_recognized_legacy_learning_database(
                             break
                         destination.executemany(insert_sql, batch)
 
+                # Preserve AUTOINCREMENT high-water marks, including IDs deleted
+                # before migration. Copying only live rows would otherwise allow old IDs
+                # to be reused after the migration.
+                sequence_rows = source.execute(
+                    "SELECT name, seq FROM sqlite_sequence WHERE name IN ("
+                    + ", ".join("?" for _ in _LEGACY_COPY_ORDER)
+                    + ")",
+                    _LEGACY_COPY_ORDER,
+                ).fetchall()
+                for sequence_name, sequence_value in sequence_rows:
+                    current_sequence = destination.execute(
+                        "SELECT seq FROM sqlite_sequence WHERE name = ?",
+                        (sequence_name,),
+                    ).fetchone()
+                    if current_sequence is None:
+                        destination.execute(
+                            "INSERT INTO sqlite_sequence(name, seq) VALUES (?, ?)",
+                            (sequence_name, sequence_value),
+                        )
+                    elif int(current_sequence[0]) < int(sequence_value):
+                        destination.execute(
+                            "UPDATE sqlite_sequence SET seq = ? WHERE name = ?",
+                            (sequence_value, sequence_name),
+                        )
+
                 # This is a standalone FTS5 table, not an external-content index.
                 # Populate it from canonical chunks instead of issuing the external-content
                 # 'rebuild' command, which would rebuild from its currently empty content table.
