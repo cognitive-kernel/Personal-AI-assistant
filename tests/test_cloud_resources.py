@@ -35,30 +35,6 @@ def _document(url="https://compute.example.org/free-tier", title="Free GPU compu
     )
 
 
-def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypatch):
-    _configure_paths(tmp_path, monkeypatch)
-
-    assert db.defaults.cloud_resources_db_path != db.defaults.learning_db_path
-    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
-        tables = {
-            row[0] for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
-        }
-        assert {
-            "schema_migrations",
-            "cloud_resource_candidates",
-            "cloud_resource_discovery_runs",
-            "cloud_resource_claims",
-            "cloud_resource_selection_plans",
-            "cloud_resource_selection_decisions",
-        } <= tables
-        assert connection.execute(
-            "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 7
-        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-
-
 def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
     document = _document()
@@ -91,43 +67,6 @@ def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatc
 
     assert report["status"] == "completed"
     assert latest["query_results"][0]["provider_diagnostics"] == diagnostics
-
-
-from __future__ import annotations
-
-import hashlib
-import json
-import sqlite3
-from datetime import datetime
-
-import pytest
-
-from app import cloud_resources, db, task_manager, web_sources
-from app.cloud_resources import CloudResourceError
-from app.schema_migrations import MigrationRunner
-from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
-
-
-def _configure_paths(tmp_path, monkeypatch):
-    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
-    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
-    monkeypatch.setattr(
-        db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
-    )
-    db.init_databases()
-    task_manager.initialize_task_store()
-    cloud_resources.initialize_store()
-
-
-def _document(url="https://compute.example.org/free-tier", title="Free GPU compute", text=None):
-    return web_sources.SourceDocument(
-        url=url,
-        title=title,
-        text=text or (
-            "Free tier GPU compute credits and quota limits. Read the official terms "
-            "and usage policy before choosing a provider. " * 4
-        ),
-    )
 
 
 def test_cloud_resource_store_uses_its_own_versioned_database(tmp_path, monkeypatch):
