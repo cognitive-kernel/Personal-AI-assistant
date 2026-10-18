@@ -157,12 +157,13 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v10 = fingerprint_for_version(LEARNING_MIGRATIONS, 10)
     learning_v11 = fingerprint_for_version(LEARNING_MIGRATIONS, 11)
     learning_v12 = fingerprint_for_version(LEARNING_MIGRATIONS, 12)
-    learning_v13 = fingerprint_for_version(LEARNING_MIGRATIONS, 14)
+    learning_v13 = fingerprint_for_version(LEARNING_MIGRATIONS, 13)
+    learning_v14 = fingerprint_for_version(LEARNING_MIGRATIONS, 14)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3}) == 3
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13}) == 14
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14}) == 14
 
 
 
@@ -187,7 +188,7 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        assert [row[0] for row in history] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
         assert len(history[0][1]) == 64
         assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
