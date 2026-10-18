@@ -307,9 +307,9 @@ def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
                 )
                 if results:
                     return results
-                failures.append(f"{name}[{variant_label}]:no_parseable_results")
+                failures.append(f"{name}:no_parseable_results[{variant_label}]")
             except SourceFetchError as exc:
-                failures.append(f"{name}[{variant_label}]:{type(exc).__name__}")
+                failures.append(f"{name}:{type(exc).__name__}[{variant_label}]")
     raise SourceFetchError(
         "All configured search providers and bounded query variants failed or returned "
         "no parseable results ("
