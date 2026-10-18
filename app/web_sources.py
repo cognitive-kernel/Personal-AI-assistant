@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import re
 import socket
 from dataclasses import dataclass
 from html.parser import HTMLParser
