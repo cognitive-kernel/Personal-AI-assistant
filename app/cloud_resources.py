@@ -301,7 +301,7 @@ _SPECIFIC_COMPUTE_SERVICE_PATTERNS = (
     r"\b(?:compute|cloud)\s+(?:virtual )?machines?\b",
     r"\b(?:virtual machines?|vm instances?|compute instances?|codespaces?|container runtimes?|developer sandboxes?)\b",
     r"\b(?:gpu|tpu|cpu)\s+(?:compute|resources?|instances?|hours?|credits?|quotas?|runtime|access)\b",
-    r"\bcompute\s+(?:resources?|instances?|hours?|credits?|quotas?|runtime)\b",
+    r"\bcompute\s+(?:services?|resources?|instances?|hours?|credits?|quotas?|runtime)\b",
     r"\b(?:ocpu|vcpu)\b",
 )
 _SPECIFIC_COMPUTE_OFFER_PATTERNS = (
@@ -321,17 +321,30 @@ _SPECIFIC_COMPUTE_OFFER_PATTERNS = (
 
 
 def _has_specific_compute_offer_evidence(title: str, text: str) -> bool:
-    """Reject generic AI/product pages unless they describe a compute service and its offer."""
-    searchable = f"{title} {text}".casefold()
-    has_compute_service = any(
-        re.search(pattern, searchable, flags=re.IGNORECASE)
-        for pattern in _SPECIFIC_COMPUTE_SERVICE_PATTERNS
+    """Require compute and offer wording in the same title, sentence, or page block.
+
+    Search-result pages and broad cloud catalogs can mention a VM somewhere in
+    navigation and a free trial somewhere else. Those unrelated fragments must
+    not be combined into a claim that the page offers free compute.
+    """
+    def matches_any(patterns: tuple[str, ...], segment: str) -> bool:
+        return any(re.search(pattern, segment, flags=re.IGNORECASE) for pattern in patterns)
+
+    title_segment = " ".join(title.split())
+    if (
+        matches_any(_SPECIFIC_COMPUTE_SERVICE_PATTERNS, title_segment)
+        and matches_any(_SPECIFIC_COMPUTE_OFFER_PATTERNS, title_segment)
+    ):
+        return True
+
+    # Keep HTML block boundaries and split plain-text at sentence boundaries.
+    segments = re.split(r"[\r\n]+|(?<=[.!?;])\s+", text)
+    return any(
+        matches_any(_SPECIFIC_COMPUTE_SERVICE_PATTERNS, segment)
+        and matches_any(_SPECIFIC_COMPUTE_OFFER_PATTERNS, segment)
+        for segment in segments
+        if segment.strip()
     )
-    has_specific_offer = any(
-        re.search(pattern, searchable, flags=re.IGNORECASE)
-        for pattern in _SPECIFIC_COMPUTE_OFFER_PATTERNS
-    )
-    return has_compute_service and has_specific_offer
 
 
 def _resource_signals(title: str, text: str) -> list[str]:
@@ -393,10 +406,12 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
     except (CloudResourceError, ValueError):
         return None
     title = " ".join(str(document.title).split())[:300]
-    text = " ".join(str(document.text).split())[:12000]
+    raw_text = str(document.text)[:12000]
+    text = " ".join(raw_text.split())
     if not title or len(text) < 80:
         return None
-    signals = _resource_signals(title, text)
+    # Evaluate on unflattened text so unrelated HTML blocks do not combine.
+    signals = _resource_signals(title, raw_text)
     if not _has_cloud_compute_relevance(signals):
         return None
     excerpt = text[:MAX_EVIDENCE_EXCERPT]
@@ -868,8 +883,15 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
         seen_source_identities: set[str] = set()
         for row in rows:
             item = _serialize_candidate(row)
-            if not _has_cloud_compute_relevance(item.get("resource_signals")):
+            # Recheck older rows with the stricter contextual relevance rule;
+            # hide broad-catalog false positives without deleting their records.
+            stored_text = item.get("normalized_text") or item.get("evidence_excerpt") or ""
+            current_signals = _resource_signals(
+                str(item.get("title") or ""), str(stored_text)
+            )
+            if not _has_cloud_compute_relevance(current_signals):
                 continue
+            item["resource_signals"] = current_signals
             source_identity = web_sources.result_url_identity(item["source_url"])
             if source_identity in seen_source_identities:
                 continue
