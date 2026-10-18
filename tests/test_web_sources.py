@@ -230,6 +230,44 @@ def test_bing_parser_decodes_organic_result_redirect_urls():
     assert parser.results == [("Official Compute Docs", destination)]
 
 
+def test_search_results_round_robin_unique_results_across_engines(monkeypatch):
+    pages = {
+        "html.duckduckgo.com": "".join(
+            f'<a class="result__a" href="https://ddg.example.org/item-{i}">DDG {i}</a>'
+            for i in range(1, 4)
+        ),
+        "www.bing.com": (
+            "<ol>"+"".join(
+                f'<li class="b_algo"><h2><a href="https://bing.example.org/item-{i}">Bing {i}</a></h2></li>'
+                for i in range(1, 4)
+            )+"</ol>"
+        ),
+        "www.google.com": "".join(
+            f'<a href="https://google.example.org/item-{i}"><h3>Google {i}</h3></a>'
+            for i in range(1, 4)
+        ),
+    }
+
+    def fake_open(url, **kwargs):
+        return pages[urllib.parse.urlparse(url).hostname], "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    results = web_sources._search_results("free cloud hosting", 3)
+
+    assert [url for _, url in results[:6]] == [
+        "https://ddg.example.org/item-1",
+        "https://bing.example.org/item-1",
+        "https://google.example.org/item-1",
+        "https://ddg.example.org/item-2",
+        "https://bing.example.org/item-2",
+        "https://google.example.org/item-2",
+    ]
+
+
 def test_search_results_include_per_engine_counts_and_duplicate_counts(monkeypatch):
     pages = {
         "html.duckduckgo.com": (
