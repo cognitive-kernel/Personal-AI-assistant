@@ -84,9 +84,9 @@ def test_free_service_catalog_without_a_concrete_compute_offer_is_rejected():
         url="https://azure.microsoft.com/en-us/pricing/free-services/",
         title="Explore Free Azure Services",
         text=(
-            "These services are free up to the specified monthly amounts.\\n"
-            "Linux virtual machines are available in Azure.\\n"
-            "Get access to free developer tools and a USD 100 credit.\\n"
+            "These services are free up to the specified monthly amounts.\n"
+            "Linux virtual machines are available in Azure.\n"
+            "Get access to free developer tools and a USD 100 credit.\n"
             "What is a container? See the terms of use."
         ) * 4,
     )
@@ -105,7 +105,7 @@ def test_official_always_free_compute_document_is_still_a_candidate():
         title="Always Free Resources",
         text=(
             "All tenancies get a set of Always Free resources in the Compute service "
-            "for creating compute virtual machine instances.\\n"
+            "for creating compute virtual machine instances.\n"
             "All tenancies get the first 1,500 OCPU hours and 9,000 GB hours per month "
             "for free for VM instances using the VM.Standard.A1.Flex shape."
         ) * 3,
