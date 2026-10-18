@@ -51,6 +51,31 @@ def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(m
     assert "Treat source titles" in captured["system_prompt"]
 
 
+def test_source_discovery_failure_is_audited_without_exposing_network_details(monkeypatch, caplog):
+    _disable_memory(monkeypatch)
+
+    def fail_discovery(*_args, **_kwargs):
+        raise web_sources.SourceFetchError("sensitive network detail and URL")
+
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", fail_discovery)
+    monkeypatch.setattr(chat_research.ollama, "chat", lambda *_args, **_kwargs: "Cautious answer")
+    audit = {}
+    monkeypatch.setattr(
+        chat_research.chat_audit,
+        "record_research_run",
+        lambda **kwargs: audit.update(kwargs) or 1,
+    )
+
+    reply = chat_research.answer("How do SQL Server query plans work?")
+
+    assert "No usable external source" in reply
+    assert audit["review_status"] == "no_sources"
+    assert audit["review"]["error"] == "source_discovery_failed:SourceFetchError"
+    assert "SourceFetchError" in caplog.text
+    assert "sensitive network detail" not in caplog.text
+    assert "https://" not in caplog.text
+
+
 def test_technical_query_uses_sources_memory_and_returns_reviewed_answer(monkeypatch):
     source = _source()
     monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
