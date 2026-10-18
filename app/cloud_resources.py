@@ -467,14 +467,26 @@ def discover_resources(
             except Exception as exc:
                 reason = " ".join(str(exc).split())[:180]
                 errors.append(f"query_{index + 1}:{type(exc).__name__}:{reason}")
-                query_results.append({
+                failed_query_result: dict[str, Any] = {
                     "query": query,
                     "result_count": 0,
                     "error": f"{type(exc).__name__}: {reason}",
-                })
+                }
+                provider_diagnostics = getattr(exc, "provider_diagnostics", None)
+                if isinstance(provider_diagnostics, list):
+                    failed_query_result["provider_diagnostics"] = provider_diagnostics
+                query_results.append(failed_query_result)
                 continue
 
-            query_results.append({"query": query, "result_count": len(documents), "error": None})
+            query_result: dict[str, Any] = {
+                "query": query,
+                "result_count": len(documents),
+                "error": None,
+            }
+            provider_diagnostics = getattr(documents, "search_provider_diagnostics", None)
+            if isinstance(provider_diagnostics, list):
+                query_result["provider_diagnostics"] = provider_diagnostics
+            query_results.append(query_result)
             sources_seen += len(documents)
             for document in documents:
                 if len(unique) >= MAX_CANDIDATES_PER_RUN:
