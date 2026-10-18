@@ -376,8 +376,13 @@ def discover_resources(
                 if not isinstance(documents, list):
                     raise CloudResourceError("Source discovery returned an invalid result list.")
             except Exception as exc:
-                errors.append(f"query_{index + 1}:{type(exc).__name__}")
-                query_results.append({"query": query, "result_count": 0, "error": type(exc).__name__})
+                reason = " ".join(str(exc).split())[:180]
+                errors.append(f"query_{index + 1}:{type(exc).__name__}:{reason}")
+                query_results.append({
+                    "query": query,
+                    "result_count": 0,
+                    "error": f"{type(exc).__name__}: {reason}",
+                })
                 continue
 
             query_results.append({"query": query, "result_count": len(documents), "error": None})

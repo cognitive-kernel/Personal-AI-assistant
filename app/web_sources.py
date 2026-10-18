@@ -15,6 +15,7 @@ import urllib.request
 
 
 SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
+BING_SEARCH_ENDPOINT = "https://www.bing.com/search"
 MAX_RESPONSE_BYTES = 1_000_000
 DEFAULT_TIMEOUT_SECONDS = 6
 # Kaggle's current Terms of Use prohibit automated crawling/scraping of its services.
@@ -109,6 +110,8 @@ def _open(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_bytes: int 
 
 
 class _SearchResultParser(HTMLParser):
+    """Parse DuckDuckGo HTML result links, including its redirect wrapper."""
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.results: list[tuple[str, str]] = []
@@ -120,7 +123,7 @@ class _SearchResultParser(HTMLParser):
             return
         values = dict(attrs)
         classes = values.get("class", "").split()
-        if "result__a" in classes and values.get("href"):
+        if ({"result__a", "result-link"} & set(classes)) and values.get("href"):
             self._active_href = values["href"]
             self._active_text = []
 
@@ -141,6 +144,48 @@ class _SearchResultParser(HTMLParser):
                 self.results.append((title, href))
             self._active_href = None
             self._active_text = []
+
+
+class _BingSearchResultParser(HTMLParser):
+    """Extract only title links from Bing's organic-result containers."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[tuple[str, str]] = []
+        self._in_result = False
+        self._result_tag: str | None = None
+        self._in_heading = False
+        self._active_href: str | None = None
+        self._active_text: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        values = dict(attrs)
+        classes = values.get("class", "").split()
+        if tag == "li" and "b_algo" in classes:
+            self._in_result = True
+            self._result_tag = tag
+        elif self._in_result and tag == "h2":
+            self._in_heading = True
+        elif self._in_result and self._in_heading and tag == "a" and values.get("href"):
+            self._active_href = values["href"]
+            self._active_text = []
+
+    def handle_data(self, data: str) -> None:
+        if self._active_href is not None:
+            self._active_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self._active_href is not None:
+            title = " ".join("".join(self._active_text).split())
+            if title:
+                self.results.append((title, self._active_href))
+            self._active_href = None
+            self._active_text = []
+        elif tag == "h2":
+            self._in_heading = False
+        elif tag == self._result_tag and self._in_result:
+            self._in_result = False
+            self._result_tag = None
 
 
 class _PageTextParser(HTMLParser):
@@ -178,26 +223,64 @@ class _PageTextParser(HTMLParser):
                 self.text_parts.append(cleaned)
 
 
-def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
-    search_url = SEARCH_ENDPOINT + "?" + urllib.parse.urlencode({"q": query})
-    html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
-    parser = _SearchResultParser()
-    parser.feed(html)
+def _normalize_search_results(
+    results: list[tuple[str, str]], *, limit: int, provider_hosts: tuple[str, ...]
+) -> list[tuple[str, str]]:
     unique: list[tuple[str, str]] = []
     seen: set[str] = set()
-    for title, url in parser.results:
+    for title, url in results:
         try:
             parsed = _validate_public_url(url)
         except SourceFetchError:
             continue
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        if any(hostname == host or hostname.endswith("." + host) for host in provider_hosts):
+            continue
         normalized = urllib.parse.urlunparse(parsed._replace(fragment=""))
-        if normalized not in seen and parsed.hostname and not parsed.hostname.lower().endswith("duckduckgo.com"):
+        if title.strip() and normalized not in seen:
             seen.add(normalized)
-            unique.append((title, normalized))
+            unique.append((" ".join(title.split())[:300], normalized))
         if len(unique) >= max(1, min(10, limit * 3)):
             break
     return unique
 
+
+def _search_results(query: str, limit: int) -> list[tuple[str, str]]:
+    """Search with a fallback provider and fail visibly if neither yields results."""
+    providers = (
+        (
+            "DuckDuckGo",
+            SEARCH_ENDPOINT,
+            _SearchResultParser,
+            ("duckduckgo.com",),
+        ),
+        (
+            "Bing",
+            BING_SEARCH_ENDPOINT,
+            _BingSearchResultParser,
+            ("bing.com",),
+        ),
+    )
+    failures: list[str] = []
+    for name, endpoint, parser_type, provider_hosts in providers:
+        search_url = endpoint + "?" + urllib.parse.urlencode({"q": query})
+        try:
+            html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
+            parser = parser_type()
+            parser.feed(html)
+            results = _normalize_search_results(
+                parser.results, limit=limit, provider_hosts=provider_hosts
+            )
+            if results:
+                return results
+            failures.append(f"{name}:no_parseable_results")
+        except SourceFetchError as exc:
+            failures.append(f"{name}:{type(exc).__name__}")
+    raise SourceFetchError(
+        "All configured search providers failed or returned no parseable results ("
+        + ", ".join(failures)
+        + ")."
+    )
 
 def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> SourceDocument:
     content, content_type = _open(url, max_bytes=MAX_RESPONSE_BYTES)
@@ -216,13 +299,10 @@ def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> Sour
 
 
 def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
-    """Search and fetch a few public web pages; unavailable sources return an empty list."""
+    """Search and fetch public pages; raise when search providers cannot return results."""
     if not isinstance(query, str) or not query.strip():
         return []
-    try:
-        candidates = _search_results(query.strip()[:300], max(1, min(5, limit)))
-    except SourceFetchError:
-        return []
+    candidates = _search_results(query.strip()[:300], max(1, min(5, limit)))
     documents: list[SourceDocument] = []
     for title, url in candidates:
         try:

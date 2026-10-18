@@ -174,6 +174,30 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
     assert cloud_resources.list_candidates() == []
 
 
+
+
+def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+
+    def failed_search(_query, *, limit):
+        raise web_sources.SourceFetchError(
+            "All configured search providers failed or returned no parseable results "
+            "(DuckDuckGo:no_parseable_results, Bing:no_parseable_results)."
+        )
+
+    monkeypatch.setattr(web_sources, "discover_sources", failed_search)
+
+    report = cloud_resources.discover_resources()
+
+    assert report["status"] == "failed"
+    assert report["sources_seen"] == 0
+    assert report["candidates_upserted"] == 0
+    assert "DuckDuckGo:no_parseable_results" in report["error_summary"]
+    latest = cloud_resources.latest_discovery_run()
+    assert "Bing:no_parseable_results" in latest["query_results"][0]["error"]
+
+
+
 def test_daily_discovery_enqueue_is_idempotent(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
 
