@@ -155,8 +155,118 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
                for content_hash, current in history if current == 1)
 
 
+def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
+    _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            web_sources.SourceFetchError("official fallback disabled in this test")
+        ),
+    )
+    lyric_page = web_sources.SourceDocument(
+        url="https://www.lyricsfreak.com/example/song_123.html",
+        title="They Don't Care About Us lyrics",
+        text=(
+            "Lyrics and music information for the song. The word free appears here, "
+            "but this is not technical documentation about hosted infrastructure. "
+        ) * 5,
+    )
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [lyric_page]
+    )
+
+    report = cloud_resources.discover_resources()
+
+    assert report["status"] == "failed"
+    assert report["sources_seen"] == len(cloud_resources.DISCOVERY_QUERIES)
+    assert report["candidates_upserted"] == 0
+    assert "No relevant valid public HTTPS cloud-compute" in report["error_summary"]
+    assert cloud_resources.list_candidates() == []
+
+
+def test_list_candidates_hides_irrelevant_rows_saved_by_older_versions(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET title=?, resource_signals_json=?
+               WHERE source_url=?""",
+            (
+                "Michael Jackson - song lyrics",
+                json.dumps(["free_tier_or_credits_mentioned"]),
+                document.url,
+            ),
+        )
+        connection.commit()
+
+    assert cloud_resources.list_candidates() == []
+
+
+def test_discovery_falls_back_to_official_references_when_search_is_irrelevant(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    lyric_page = web_sources.SourceDocument(
+        url="https://www.lyricsfreak.com/example/song_123.html",
+        title="They Don't Care About Us lyrics",
+        text=(
+            "Lyrics and music information. The word free appears here, "
+            "but this is not technical documentation about hosted infrastructure. "
+        ) * 5,
+    )
+    official_documents = {
+        url: _document(
+            url=url,
+            title=title,
+            text=(
+                "Free compute resources include GPU or CPU environments. "
+                "Review the current quota limits and usage terms. "
+                "Availability depends on the account and may change. "
+            ) * 4,
+        )
+        for url, title in cloud_resources.OFFICIAL_REFERENCE_SOURCES
+    }
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [lyric_page]
+    )
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda url, title_hint: official_documents[url],
+    )
+
+    report = cloud_resources.discover_resources()
+
+    assert report["status"] == "partial"
+    assert report["queries_attempted"] == len(cloud_resources.DISCOVERY_QUERIES) + 1
+    assert report["candidates_upserted"] == len(cloud_resources.OFFICIAL_REFERENCE_SOURCES)
+    assert "search_results_filtered_as_irrelevant" in report["error_summary"]
+    assert {item["source_url"] for item in cloud_resources.list_candidates()} == set(
+        official_documents
+    )
+    assert cloud_resources.latest_discovery_run()["query_results"][-1]["query"] == (
+        "official_reference_fallback"
+    )
+
+
 def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            web_sources.SourceFetchError("official fallback disabled in this test")
+        ),
+    )
     monkeypatch.setattr(
         web_sources,
         "discover_sources",
@@ -170,7 +280,7 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
     assert report["status"] == "failed"
     assert report["candidates_upserted"] == 0
-    assert "No valid public HTTPS" in report["error_summary"]
+    assert "No relevant valid public HTTPS cloud-compute" in report["error_summary"]
     assert cloud_resources.list_candidates() == []
 
 
@@ -178,6 +288,13 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
 def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            web_sources.SourceFetchError("official fallback disabled in this test")
+        ),
+    )
 
     def failed_search(_query, *, limit):
         raise web_sources.SourceFetchError(

@@ -321,6 +321,15 @@ def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> Sour
     return SourceDocument(url=url, title=title[:300], text=text)
 
 
+def fetch_public_document(
+    url: str, title_hint: str, *, max_chars: int = 6000
+) -> SourceDocument:
+    """Fetch a known public HTTPS source with the same safety checks as search results."""
+    if not isinstance(title_hint, str) or not title_hint.strip():
+        raise SourceFetchError("A non-empty source title hint is required.")
+    return _fetch_document(url, title_hint, max_chars=max_chars)
+
+
 def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
     """Search and fetch public pages; raise when search providers cannot return results."""
     if not isinstance(query, str) or not query.strip():

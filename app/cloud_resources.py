@@ -34,6 +34,24 @@ DISCOVERY_QUERIES = (
     "official free developer sandbox container compute limits",
 )
 
+# Used only when general search returns no relevant compute-resource evidence.
+# These are public provider/product documentation pages, not proof of account
+# eligibility, live capacity, or permission to execute remote work.
+OFFICIAL_REFERENCE_SOURCES = (
+    (
+        "https://research.google.com/colaboratory/faq.html",
+        "Google Colaboratory FAQ",
+    ),
+    (
+        "https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm",
+        "Oracle Cloud Infrastructure Always Free Resources",
+    ),
+    (
+        "https://docs.github.com/en/billing/concepts/product-billing/github-codespaces",
+        "GitHub Codespaces billing and included usage",
+    ),
+)
+
 
 class CloudResourceError(RuntimeError):
     """Raised when cloud-resource discovery storage or input is invalid."""
@@ -291,6 +309,35 @@ def _resource_signals(title: str, text: str) -> list[str]:
     )
 
 
+_COMPUTE_EVIDENCE_SIGNALS = frozenset({
+    "gpu_or_accelerator_mentioned",
+    "cpu_compute_mentioned",
+    "notebook_environment_mentioned",
+    "vm_or_container_mentioned",
+})
+_OFFER_EVIDENCE_SIGNALS = frozenset({
+    "free_tier_or_credits_mentioned",
+    "quota_or_limit_mentioned",
+    "terms_or_policy_mentioned",
+})
+
+
+def _has_cloud_compute_relevance(signals: Any) -> bool:
+    """Require both a compute environment and offer/limit evidence.
+
+    A single generic word such as "free" is not enough to turn an arbitrary
+    public page into a cloud-resource candidate. Keep this check on reads too
+    so low-quality candidates saved by older versions are not shown or planned.
+    """
+    if not isinstance(signals, (list, tuple, set)):
+        return False
+    observed = set(signals)
+    return bool(
+        observed.intersection(_COMPUTE_EVIDENCE_SIGNALS)
+        and observed.intersection(_OFFER_EVIDENCE_SIGNALS)
+    )
+
+
 def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[str, Any] | None:
     try:
         url, domain = _normalize_source_url(document.url)
@@ -300,6 +347,9 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
     text = " ".join(str(document.text).split())[:12000]
     if not title or len(text) < 80:
         return None
+    signals = _resource_signals(title, text)
+    if not _has_cloud_compute_relevance(signals):
+        return None
     excerpt = text[:MAX_EVIDENCE_EXCERPT]
     return {
         "source_url": url,
@@ -307,7 +357,7 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
         "title": title,
         "content_sha256": hashlib.sha256(f"{title}\n{text}".encode("utf-8")).hexdigest(),
         "resource_signals_json": json.dumps(
-            _resource_signals(title, text), ensure_ascii=False, separators=(",", ":")
+            signals, ensure_ascii=False, separators=(",", ":")
         ),
         "evidence_excerpt": excerpt,
         "normalized_text": text,
@@ -395,6 +445,45 @@ def discover_resources(
                 candidate = _candidate_record(document, query)
                 if candidate is not None:
                     unique.setdefault(candidate["source_url"], candidate)
+
+        # A public search engine can return technically valid but irrelevant
+        # pages (for example lyrics pages for a cloud-compute query). Do not
+        # persist those results. If none qualify, try a tiny set of official
+        # references through the same URL/redirect/content safety checks.
+        if not unique:
+            if sources_seen:
+                errors.append("search_results_filtered_as_irrelevant")
+            fallback_query = "official_reference_fallback"
+            queries_attempted += 1
+            fallback_documents = 0
+            fallback_errors: list[str] = []
+            for source_url, title_hint in OFFICIAL_REFERENCE_SOURCES:
+                try:
+                    document = web_sources.fetch_public_document(source_url, title_hint)
+                except Exception as exc:
+                    reason = " ".join(str(exc).split())[:140]
+                    host = urlparse(source_url).hostname or "unknown"
+                    fallback_errors.append(
+                        f"{host}:{type(exc).__name__}:{reason}"
+                    )
+                    continue
+                if not isinstance(document, web_sources.SourceDocument):
+                    fallback_errors.append("invalid_source_document")
+                    continue
+                fallback_documents += 1
+                sources_seen += 1
+                candidate = _candidate_record(document, fallback_query)
+                if candidate is not None:
+                    unique.setdefault(candidate["source_url"], candidate)
+            query_results.append({
+                "query": fallback_query,
+                "result_count": fallback_documents,
+                "error": "; ".join(fallback_errors)[:500] if fallback_errors else None,
+            })
+            if fallback_errors:
+                errors.append(
+                    "official_reference_fallback:" + "; ".join(fallback_errors)
+                )
 
         with closing(_connect()) as connection:
             for candidate in unique.values():
@@ -503,8 +592,9 @@ def discover_resources(
             status = "completed"
         else:
             status = "failed"
-            if not errors:
-                errors.append("No valid public HTTPS source documents were returned.")
+            errors.append(
+                "No relevant valid public HTTPS cloud-compute source documents were returned."
+            )
     except Exception as exc:
         errors.append(f"discovery_aborted:{type(exc).__name__}")
         _update_run(
@@ -581,6 +671,8 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
         results = []
         for row in rows:
             item = _serialize_candidate(row)
+            if not _has_cloud_compute_relevance(item.get("resource_signals")):
+                continue
             claim_rows = connection.execute(
                 """SELECT id, source_content_sha256, claim_type, value_json, unit,
                           evidence_quote, adapter_id, review_status, is_current, extracted_at,
