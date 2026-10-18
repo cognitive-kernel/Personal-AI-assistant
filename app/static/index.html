@@ -237,8 +237,8 @@ async function pruneRestoreStaging() {
    output.textContent="بازیابی آزمایشی واجد شرایط حذف وجود ندارد. حداقل یک نسخهٔ اخیر و نسخه‌های کمتر از ۷ روز حفظ می‌شوند.";
    return;
   }
-  const ids=(preview.candidates||[]).map(item=>item.id).join("\\n");
-  if(!window.confirm("فقط بازیابی‌های آزمایشی معتبر که بیش از ۷ روز عمر دارند و جزو آخرین نسخه نیستند حذف می‌شوند. پشتیبان‌های اصلی و دیتابیس‌های زنده تغییر نمی‌کنند. ادامه؟\\n\\n"+ids+"\\n\\nاین حذف قابل بازگشت نیست.")) {
+  const ids=(preview.candidates||[]).map(item=>item.id).join("\n");
+  if(!window.confirm("فقط بازیابی‌های آزمایشی معتبر که بیش از ۷ روز عمر دارند و جزو آخرین نسخه نیستند حذف می‌شوند. پشتیبان‌های اصلی و دیتابیس‌های زنده تغییر نمی‌کنند. ادامه؟\n\n"+ids+"\n\nاین حذف قابل بازگشت نیست.")) {
    output.textContent="پاک‌سازی بازیابی‌های آزمایشی لغو شد؛ چیزی حذف نشد.";
    return;
   }
@@ -429,7 +429,7 @@ async function refreshCloudResources() {
    });
   });
   output.textContent=runSummary+(providerLines.length
-   ? "\\n\\nجزئیات موتورهای جست‌وجو:\\n"+providerLines.join("\\n")
+   ? "\n\nجزئیات موتورهای جست‌وجو:\n"+providerLines.join("\n")
    : "");
   renderCloudCandidates(result.candidates||[]);
  } catch(error) {
