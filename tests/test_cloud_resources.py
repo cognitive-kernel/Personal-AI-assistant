@@ -215,6 +215,67 @@ def test_list_candidates_deduplicates_urls_with_tracking_and_www_variants(
     assert candidates[0]["provider_domain"] == "compute.example.org"
 
 
+
+def test_generic_ai_product_page_with_broad_signals_is_not_a_compute_candidate():
+    chatgpt_page = web_sources.SourceDocument(
+        url="https://openai.com/index/chatgpt/",
+        title="Introducing ChatGPT | OpenAI",
+        text=(
+            "This article describes a conversational AI model. GPU systems may be used "
+            "by AI providers. Some product features are free. Terms and policy pages "
+            "describe usage limits and credits. " * 4
+        ),
+    )
+
+    signals = cloud_resources._resource_signals(chatgpt_page.title, chatgpt_page.text)
+    assert {
+        "gpu_or_accelerator_mentioned",
+        "free_tier_or_credits_mentioned",
+        "quota_or_limit_mentioned",
+        "terms_or_policy_mentioned",
+    } <= set(signals)
+    assert "specific_compute_offer_pattern_matched" not in signals
+    assert cloud_resources._candidate_record(
+        chatgpt_page, "official free cloud CPU virtual machine compute credits free tier"
+    ) is None
+
+
+def test_list_candidates_hides_legacy_ai_product_page_with_only_broad_signals(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    document = _document()
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+
+    generic_title = "Introducing ChatGPT | OpenAI"
+    generic_text = (
+        "This article describes a conversational AI model. GPU systems may be used "
+        "by AI providers. Some product features are free. Terms and policy pages "
+        "describe usage limits and credits. " * 4
+    )
+    signals = cloud_resources._resource_signals(generic_title, generic_text)
+    # Store a row from an older version that accepted broad word-level matches.
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET source_url=?, provider_domain=?, title=?, resource_signals_json=?
+               WHERE source_url=?""",
+            (
+                "https://openai.com/index/chatgpt/",
+                "openai.com",
+                generic_title,
+                json.dumps(signals),
+                document.url,
+            ),
+        )
+        connection.commit()
+
+    assert cloud_resources.list_candidates() == []
+
+
 def test_list_candidates_hides_irrelevant_rows_saved_by_older_versions(
     tmp_path, monkeypatch
 ):
