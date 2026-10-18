@@ -746,6 +746,83 @@ def mark_stale_candidates(*, max_age_days: int = 30) -> int:
     return changed
 
 
+# Domains are intentionally specific. Hosting platforms such as github.io are
+# excluded so a user-published article is not mistaken for provider documentation.
+_RECOGNIZED_PROVIDER_DOMAIN_ROOTS = (
+    "aws.amazon.com",
+    "azure.microsoft.com",
+    "learn.microsoft.com",
+    "cloud.google.com",
+    "research.google.com",
+    "oracle.com",
+    "docs.oracle.com",
+    "cloud.oracle.com",
+    "docs.github.com",
+    "developer.nvidia.com",
+    "docs.nvidia.com",
+    "modal.com",
+    "runpod.io",
+    "nebius.com",
+    "paperspace.com",
+    "lambda.ai",
+    "digitalocean.com",
+    "developers.cloudflare.com",
+    "cloudflare.com",
+    "cloud.ibm.com",
+    "docs.vultr.com",
+    "vultr.com",
+    "linode.com",
+    "docs.hetzner.com",
+    "hetzner.com",
+    "ovhcloud.com",
+    "alibabacloud.com",
+)
+_OFFICIAL_REFERENCE_PATH_MARKERS = (
+    "/docs/",
+    "/documentation",
+    "/pricing",
+    "/billing",
+    "/terms",
+    "/policy",
+    "/policies",
+    "/faq",
+    "/free/",
+    "/free-",
+    "/free_",
+    "freetier",
+    "free-tier",
+    "/quota",
+    "/usage",
+)
+
+
+def _is_recognized_provider_domain(domain: Any) -> bool:
+    """Return whether a host matches a known provider-owned documentation/product domain.
+
+    This is a display and ordering heuristic only; it does not verify page contents,
+    account eligibility, current capacity, or whether any usage is free.
+    """
+    if not isinstance(domain, str) or not domain.strip():
+        return False
+    host = domain.rstrip(".").lower()
+    return any(
+        host == root or host.endswith("." + root)
+        for root in _RECOGNIZED_PROVIDER_DOMAIN_ROOTS
+    )
+
+
+def _candidate_source_rank(item: dict[str, Any]) -> int:
+    """Prefer known official reference pages, then other known provider pages, then others."""
+    source_url = str(item.get("source_url") or "")
+    parsed = urlparse(source_url)
+    if not _is_recognized_provider_domain(parsed.hostname):
+        return 2
+    path = parsed.path.casefold()
+    if any(marker in path for marker in _OFFICIAL_REFERENCE_PATH_MARKERS):
+        return 0
+    return 1
+
+
 def _serialize_candidate(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
     item = dict(row)
     item["resource_signals"] = json.loads(item.pop("resource_signals_json"))
@@ -761,10 +838,9 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
         _mark_stale_candidates(connection, max_age_days=30)
         rows = connection.execute(
             """SELECT * FROM cloud_resource_candidates
-               ORDER BY last_seen_at DESC, id DESC LIMIT ?""",
-            (limit,),
+               ORDER BY last_seen_at DESC, id DESC"""
         ).fetchall()
-        results = []
+        eligible: list[dict[str, Any]] = []
         seen_source_identities: set[str] = set()
         for row in rows:
             item = _serialize_candidate(row)
@@ -774,6 +850,24 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
             if source_identity in seen_source_identities:
                 continue
             seen_source_identities.add(source_identity)
+            parsed_host = urlparse(str(item.get("source_url") or "")).hostname
+            item["source_authority"] = (
+                "recognized_official_domain"
+                if _is_recognized_provider_domain(parsed_host)
+                else "unverified_domain"
+            )
+            eligible.append(item)
+
+        # Stable two-pass ordering: newest items first within each authority tier,
+        # but never let a newer third-party article displace a known official source.
+        eligible.sort(
+            key=lambda item: (str(item.get("last_seen_at") or ""), int(item.get("id") or 0)),
+            reverse=True,
+        )
+        eligible.sort(key=_candidate_source_rank)
+        results = eligible[:limit]
+
+        for item in results:
             claim_rows = connection.execute(
                 """SELECT id, source_content_sha256, claim_type, value_json, unit,
                           evidence_quote, adapter_id, review_status, is_current, extracted_at,
@@ -781,7 +875,7 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
                    FROM cloud_resource_claims
                    WHERE candidate_id=? AND is_current=1
                    ORDER BY claim_type, id""",
-                (row["id"],),
+                (item["id"],),
             ).fetchall()
             item["observed_claims"] = []
             for claim in claim_rows:
@@ -789,7 +883,6 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
                 claim_item["value"] = json.loads(claim_item.pop("value_json"))
                 item["observed_claims"].append(claim_item)
             item["eligibility_assessment"] = assess_candidate(item, item["observed_claims"])
-            results.append(item)
         connection.commit()
     return results
 

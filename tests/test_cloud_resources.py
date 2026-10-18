@@ -252,6 +252,58 @@ def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
     assert latest["query_results"][0]["candidate_filter"]["rejected_as_irrelevant"] == 1
 
 
+def test_provider_domain_recognition_uses_safe_host_boundaries():
+    assert cloud_resources._is_recognized_provider_domain("docs.oracle.com")
+    assert cloud_resources._is_recognized_provider_domain("www.oracle.com")
+    assert not cloud_resources._is_recognized_provider_domain("shicheng-guo.github.io")
+    assert not cloud_resources._is_recognized_provider_domain("oracle.com.attacker.example")
+
+
+def test_list_candidates_prioritizes_official_references_before_newer_articles(
+    tmp_path, monkeypatch
+):
+    _configure_paths(tmp_path, monkeypatch)
+    secondary_article = _document(
+        url="https://agentdeals.dev/free-cloud-compute-guide",
+        title="Free cloud compute guide",
+    )
+    official_reference = _document(
+        url="https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm",
+        title="Always Free Resources",
+    )
+    monkeypatch.setattr(
+        web_sources,
+        "discover_sources",
+        lambda query, limit=3: [secondary_article, official_reference],
+    )
+    cloud_resources.discover_resources()
+
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET last_seen_at=datetime('now')
+               WHERE source_url=?""",
+            (secondary_article.url,),
+        )
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET last_seen_at=datetime('now', '-3 days')
+               WHERE source_url=?""",
+            (official_reference.url,),
+        )
+        connection.commit()
+
+    candidates = cloud_resources.list_candidates(limit=2)
+
+    assert [candidate["provider_domain"] for candidate in candidates] == [
+        "docs.oracle.com",
+        "agentdeals.dev",
+    ]
+    assert candidates[0]["source_authority"] == "recognized_official_domain"
+    assert candidates[1]["source_authority"] == "unverified_domain"
+    assert cloud_resources.list_candidates(limit=1)[0]["provider_domain"] == "docs.oracle.com"
+
+
 def test_list_candidates_deduplicates_urls_with_tracking_and_www_variants(
     tmp_path, monkeypatch
 ):
