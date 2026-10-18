@@ -1,3 +1,4 @@
+import base64
 import urllib.parse
 
 import pytest
@@ -162,6 +163,19 @@ def test_search_results_fall_back_to_bing_when_duckduckgo_has_no_parseable_resul
     assert web_sources._search_results("cloud compute free tier", 3) == [
         ("Official Compute Docs", "https://example.org/docs")
     ]
+
+
+def test_bing_parser_decodes_organic_result_redirect_urls():
+    destination = "https://example.org/docs?section=compute"
+    encoded = base64.urlsafe_b64encode(destination.encode()).decode().rstrip("=")
+    redirect = f"https://www.bing.com/ck/a?u=a1{encoded}&ntb=1"
+    parser = web_sources._BingSearchResultParser()
+    parser.feed(
+        f'<ol><li class="b_algo"><h2><a href="{redirect}">'
+        "Official Compute Docs</a></h2></li></ol>"
+    )
+
+    assert parser.results == [("Official Compute Docs", destination)]
 
 
 def test_search_results_raise_diagnostic_when_all_providers_return_no_results(monkeypatch):
