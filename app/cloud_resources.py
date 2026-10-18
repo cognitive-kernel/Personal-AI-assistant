@@ -444,7 +444,9 @@ def discover_resources(
                     continue
                 candidate = _candidate_record(document, query)
                 if candidate is not None:
-                    unique.setdefault(candidate["source_url"], candidate)
+                    unique.setdefault(
+                        web_sources.result_url_identity(candidate["source_url"]), candidate
+                    )
 
         # A public search engine can return technically valid but irrelevant
         # pages (for example lyrics pages for a cloud-compute query). Do not
@@ -669,10 +671,15 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
             (limit,),
         ).fetchall()
         results = []
+        seen_source_identities: set[str] = set()
         for row in rows:
             item = _serialize_candidate(row)
             if not _has_cloud_compute_relevance(item.get("resource_signals")):
                 continue
+            source_identity = web_sources.result_url_identity(item["source_url"])
+            if source_identity in seen_source_identities:
+                continue
+            seen_source_identities.add(source_identity)
             claim_rows = connection.execute(
                 """SELECT id, source_content_sha256, claim_type, value_json, unit,
                           evidence_quote, adapter_id, review_status, is_current, extracted_at,
