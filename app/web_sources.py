@@ -404,7 +404,7 @@ def _normalize_search_results(
 
 
 def _search_results(query: str, limit: int) -> SearchResultList:
-    """Collect deduplicated results and retain per-engine/variant diagnostics."""
+    """Collect deduplicated results fairly across search engines with diagnostics."""
     providers = (
         ("DuckDuckGo", SEARCH_ENDPOINT, _SearchResultParser, ("duckduckgo.com",)),
         ("Bing", BING_SEARCH_ENDPOINT, _BingSearchResultParser, ("bing.com",)),
@@ -426,8 +426,8 @@ def _search_results(query: str, limit: int) -> SearchResultList:
     query_variants = (query,) + SEARCH_QUERY_ALTERNATES.get(query.strip().casefold(), ())
     for variant_index, search_query in enumerate(query_variants):
         variant_label = "primary" if variant_index == 0 else f"alternate_{variant_index}"
-        combined: list[tuple[str, str]] = []
-        seen: set[str] = set()
+        results_by_provider: list[list[tuple[str, str]]] = [[] for _ in providers]
+        attempts_by_provider: list[dict[str, object]] = []
         for provider_index, (name, endpoint, parser_type, provider_hosts) in enumerate(providers):
             stats = provider_diagnostics[provider_index]
             attempts = stats["attempts"]
@@ -441,6 +441,7 @@ def _search_results(query: str, limit: int) -> SearchResultList:
                 "error": None,
             }
             attempts.append(attempt)
+            attempts_by_provider.append(attempt)
             search_url = endpoint + "?" + urllib.parse.urlencode({"q": search_query})
             try:
                 html, _ = _open(search_url, max_bytes=MAX_RESPONSE_BYTES)
@@ -457,21 +458,36 @@ def _search_results(query: str, limit: int) -> SearchResultList:
                     attempt["error"] = "no_parseable_results"
                     failures.append(f"{name}:no_parseable_results[{variant_label}]")
                     continue
-                for title, url in results:
-                    identity = result_url_identity(url)
-                    if identity in seen:
-                        attempt["duplicate_result_count"] = int(attempt["duplicate_result_count"]) + 1
-                        stats["duplicate_result_count"] = int(stats["duplicate_result_count"]) + 1
-                        continue
-                    seen.add(identity)
-                    combined.append((title, url))
-                    attempt["unique_result_count"] = int(attempt["unique_result_count"]) + 1
-                    stats["unique_result_count"] = int(stats["unique_result_count"]) + 1
-                    if len(combined) >= max_results:
-                        break
+                results_by_provider[provider_index] = results
             except SourceFetchError as exc:
                 attempt["error"] = type(exc).__name__
                 failures.append(f"{name}:{type(exc).__name__}[{variant_label}]")
+
+        # Round-robin results so a full page from DuckDuckGo cannot crowd out
+        # unique results from Bing or Google before source pages are fetched.
+        combined: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        max_provider_results = max((len(items) for items in results_by_provider), default=0)
+        for result_index in range(max_provider_results):
+            for provider_index, provider_results in enumerate(results_by_provider):
+                if result_index >= len(provider_results):
+                    continue
+                title, url = provider_results[result_index]
+                identity = result_url_identity(url)
+                stats = provider_diagnostics[provider_index]
+                attempt = attempts_by_provider[provider_index]
+                if identity in seen:
+                    attempt["duplicate_result_count"] = int(attempt["duplicate_result_count"]) + 1
+                    stats["duplicate_result_count"] = int(stats["duplicate_result_count"]) + 1
+                    continue
+                seen.add(identity)
+                combined.append((title, url))
+                attempt["unique_result_count"] = int(attempt["unique_result_count"]) + 1
+                stats["unique_result_count"] = int(stats["unique_result_count"]) + 1
+                if len(combined) >= max_results:
+                    break
+            if len(combined) >= max_results:
+                break
         if combined:
             return SearchResultList(
                 combined[:max_results],
