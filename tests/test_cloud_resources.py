@@ -157,6 +157,13 @@ def test_refresh_preserves_review_only_when_source_content_is_unchanged(
 
 def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            web_sources.SourceFetchError("official fallback disabled in this test")
+        ),
+    )
     lyric_page = web_sources.SourceDocument(
         url="https://www.lyricsfreak.com/example/song_123.html",
         title="They Don't Care About Us lyrics",
