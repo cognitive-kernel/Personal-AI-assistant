@@ -33,6 +33,7 @@ def test_untracked_learning_schema_keeps_dashboard_and_diagnostics_available(mon
 
 def test_normal_startup_does_not_report_storage_degraded_mode(monkeypatch):
     monkeypatch.setattr(main.db, "init_databases", lambda: None)
+    monkeypatch.setattr(main.db, "get_settings", lambda: {})
     monkeypatch.setattr(main.ollama, "health", lambda: {"status": "unavailable"})
     monkeypatch.setattr(main, "detect_hardware", lambda: {})
     monkeypatch.setattr(main, "runtime_limits", lambda settings, hardware: {})
