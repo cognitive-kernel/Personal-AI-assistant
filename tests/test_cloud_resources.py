@@ -162,8 +162,7 @@ def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
         title="They Don't Care About Us lyrics",
         text=(
             "Lyrics and music information for the song. The word free appears here, "
-            "but this page documents no cloud service, compute environment, limits, "
-            "or provider terms. "
+            "but this is not technical documentation about hosted infrastructure. "
         ) * 5,
     )
     monkeypatch.setattr(
