@@ -230,6 +230,71 @@ def test_bing_parser_decodes_organic_result_redirect_urls():
     assert parser.results == [("Official Compute Docs", destination)]
 
 
+def test_search_results_include_per_engine_counts_and_duplicate_counts(monkeypatch):
+    pages = {
+        "html.duckduckgo.com": (
+            '<a class="result__a" href="https://example.org/docs">Official Docs</a>'
+            '<a class="result__a" href="https://ddg.example.org/guide">DDG Guide</a>'
+        ),
+        "www.bing.com": (
+            '<ol><li class="b_algo"><h2><a href="https://www.example.org/docs">'
+            "Duplicate Official Docs</a></h2></li>"
+            '<li class="b_algo"><h2><a href="https://bing.example.org/guide">'
+            "Bing Guide</a></h2></li></ol>"
+        ),
+        "www.google.com": (
+            '<a href="/url?q=https%3A%2F%2Fexample.org%2Fdocs">'
+            "<h3>Duplicate Official Docs</h3></a>"
+            '<a href="https://google.example.org/guide"><h3>Google Guide</h3></a>'
+        ),
+    }
+
+    def fake_open(url, **kwargs):
+        host = urllib.parse.urlparse(url).hostname
+        return pages[host], "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    results = web_sources._search_results("cloud compute terms", 3)
+
+    assert len(results) == 4
+    diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
+    assert diagnostics["DuckDuckGo"]["parsed_result_count"] == 2
+    assert diagnostics["Bing"]["accepted_result_count"] == 2
+    assert diagnostics["Bing"]["duplicate_result_count"] == 1
+    assert diagnostics["Google"]["accepted_result_count"] == 2
+    assert diagnostics["Google"]["duplicate_result_count"] == 1
+    assert diagnostics["Google"]["unique_result_count"] == 1
+
+
+def test_successful_search_keeps_diagnostics_when_one_provider_fails(monkeypatch):
+    def fake_open(url, **kwargs):
+        host = urllib.parse.urlparse(url).hostname
+        if host == "www.google.com":
+            raise web_sources.SourceFetchError("Google temporarily unavailable")
+        if host == "www.bing.com":
+            return "<html><body>challenge page</body></html>", "text/html"
+        return (
+            '<a class="result__a" href="https://example.org/compute">'
+            "Official Compute Resource</a>",
+            "text/html",
+        )
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    results = web_sources._search_results("cloud compute terms", 3)
+    diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
+    assert diagnostics["DuckDuckGo"]["unique_result_count"] == 1
+    assert diagnostics["Bing"]["attempts"][0]["error"] == "no_parseable_results"
+    assert diagnostics["Google"]["attempts"][0]["error"] == "SourceFetchError"
+
+
 def test_search_results_raise_diagnostic_when_all_providers_return_no_results(monkeypatch):
     monkeypatch.setattr(
         web_sources, "_open", lambda _url, **_kwargs: ("<html>blocked</html>", "text/html")
