@@ -592,10 +592,9 @@ def discover_resources(
             status = "completed"
         else:
             status = "failed"
-            if not errors:
-                errors.append(
-                    "No relevant valid public HTTPS cloud-compute source documents were returned."
-                )
+            errors.append(
+                "No relevant valid public HTTPS cloud-compute source documents were returned."
+            )
     except Exception as exc:
         errors.append(f"discovery_aborted:{type(exc).__name__}")
         _update_run(
