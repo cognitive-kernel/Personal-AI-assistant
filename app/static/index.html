@@ -3,27 +3,29 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>دستیار هوش مصنوعی شخصی</title>
-<style>
-:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{max-width:980px;margin:0 auto;padding:24px;line-height:1.65}
-header,section{border:1px solid #8886;border-radius:12px;padding:16px;margin:14px 0}
-textarea,input,button{font:inherit;padding:9px;border-radius:7px}textarea,input{box-sizing:border-box;width:100%;margin:6px 0}button{cursor:pointer;margin:4px 0}
-pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-template-columns:minmax(160px,2fr) minmax(130px,1fr) minmax(100px,.7fr) auto;gap:8px;align-items:center;border-bottom:1px solid #8884;padding:8px 0}.path-topic label{margin:0}.path-topic select,.path-topic input{width:100%;min-width:0;box-sizing:border-box}.muted{opacity:.75;font-size:.92rem}.row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.cloud-candidate{border:1px solid #8886;border-radius:10px;padding:14px;margin:12px 0}
-.cloud-candidate h3{margin-top:0}.cloud-status{font-weight:600}.cloud-evidence{border-inline-start:3px solid #8888;padding:8px 12px}
-.cloud-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.cloud-form-grid label{min-width:0}.cloud-form-grid select,.cloud-form-grid input,.cloud-form-grid textarea{width:100%;box-sizing:border-box}
-.cloud-actions{display:flex;gap:8px;flex-wrap:wrap}.cloud-actions button{width:auto}
-@media(max-width:700px){.row{grid-template-columns:1fr}.cloud-form-grid{grid-template-columns:1fr}}
-
-.storage-alert{border:1px solid #b45309;border-inline-start:5px solid #b45309;border-radius:12px;background:#fff7ed;color:#7c2d12;padding:16px;margin:14px 0}
-.storage-alert h2{margin-top:0}
-.storage-alert p{margin-bottom:8px}
-.storage-alert code{direction:ltr;unicode-bidi:embed;display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#ffedd5;padding:5px 8px;border-radius:6px}
-.storage-alert[hidden]{display:none}
-</style></head>
+<link rel="stylesheet" href="/static/dashboard.css"></head>
 <body>
+<div class="dashboard-shell">
+<a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
+<nav class="dashboard-nav" aria-label="ناوبری بخش‌های داشبورد">
+  <a href="#storage-health-section">سلامت و پشتیبان</a>
+  <a href="#chat-section">گفتگو و پژوهش</a>
+  <a href="#learning-section">یادگیری</a>
+  <a href="#learning-paths-section">مسیرهای آموزشی</a>
+  <a href="#knowledge-section">دانش ذخیره‌شده</a>
+  <a href="#task-manager-section">وظایف</a>
+  <a href="#experience-memory-section">حافظهٔ تجربه</a>
+  <a href="#cloud-resources-section">منابع پردازشی</a>
+  <a href="#cloud-plan-section">برنامه‌ریزی منابع</a>
+  <a href="#kaggle-quota-section">سهمیهٔ Kaggle</a>
+  <a href="#oci-limits-section">محدودیت‌های OCI</a>
+  <a href="#sandbox-section">محیط ایزوله</a>
+  <a href="#self-improvement-section">بهبود کد</a>
+  <a href="#settings-section">تنظیمات</a>
+</nav>
+<main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
-<button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
+<button id="refresh">بررسی وضعیت سیستم</button><pre id="health" role="status" aria-live="polite" aria-atomic="true">وضعیت هنوز بررسی نشده است.</pre></header>
 <section id="storage-degraded-banner" class="storage-alert" role="alert" aria-live="assertive" hidden>
 <h2>ذخیره‌سازی در حالت محدود</h2>
 <p id="storage-degraded-message">ساختار یکی از پایگاه‌های داده نیازمند بررسی است. داده‌ها حذف یا بازنشانی نشده‌اند و عملیات وابسته به دیتابیس تا بررسی ایمن غیرفعال است.</p>
@@ -34,7 +36,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <section id="storage-health-section"><h2>سلامت ذخیره‌سازی</h2>
 <p class="muted">این بررسی فقط‌خواندنی است؛ دیتابیس را ایجاد، مهاجرت یا تعمیر نمی‌کند. برای رفع خرابی ابتدا از پشتیبان معتبر استفاده کنید.</p>
 <button id="refresh-storage-health" type="button">بررسی سلامت دیتابیس‌ها</button>
-<pre id="storage-health-output">وضعیت ذخیره‌سازی هنوز بررسی نشده است.</pre>
+<pre id="storage-health-output" role="status" aria-live="polite" aria-atomic="true">وضعیت ذخیره‌سازی هنوز بررسی نشده است.</pre>
 <hr>
 <h3>پشتیبان‌گیری کامل</h3>
 <p class="muted">با تأیید شما، از هر سه دیتابیس یک پشتیبان بررسی‌شده ساخته می‌شود. فایل‌ها در پوشهٔ پشتیبان محلی ذخیره می‌شوند؛ این عملیات دیتابیس زنده را تغییر نمی‌دهد.</p>
@@ -43,16 +45,16 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
-<section><h2>گفتگو</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
-<section><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری">
-<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
+<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
+<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
 <pre id="tasks-output">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
-<section><h2>مسیرهای آموزشی</h2>
+<section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
 <p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
 <label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
 <button id="enroll-curriculum" type="button">ثبت‌نام در دوره</button>
@@ -62,7 +64,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <pre id="learning-recommendations-output"></pre>
 <pre id="due-reviews-output"></pre>
 <pre id="paths-output"></pre><div id="paths-container"></div></section>
-<section><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
+<section id="knowledge-section"><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
 <section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
 <p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
 <form id="experience-create-form">
@@ -75,7 +77,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 </form>
 <div class="cloud-actions"><button id="experience-refresh" type="button">بارگذاری تجربه‌ها</button></div>
 <form id="experience-search-form">
-<label>جست‌وجو در حافظه<input id="experience-query" maxlength="3000" required placeholder="موضوع یا مسئله را وارد کنید"></label>
+<label>جست‌وجو در حافظه<input id="experience-query" maxlength="3000" required placeholder="موضوع یا مسئله را وارد کنید" aria-label="موضوع یا مسئله را وارد کنید"></label>
 <button type="submit">جست‌وجو</button>
 </form>
 <section id="experience-auto-capture-section"><h3>ذخیرهٔ خودکار پژوهش (اختیاری)</h3>
@@ -96,15 +98,15 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <label>حداقل تعداد CPU<input id="plan-min-cpu" type="number" min="0" max="256" step="1" value="1"></label>
 <label>حداقل حافظه (GiB)<input id="plan-min-memory" type="number" min="0" max="1048576" step="0.5" value="0"></label>
 <label><input id="plan-require-gpu" type="checkbox" style="width:auto"> نیاز به GPU دارم</label>
-<label>مدل‌های GPU مجاز (با ویرگول جدا کنید)<input id="plan-gpu-models" type="text" maxlength="1000" placeholder="NVIDIA A10, NVIDIA T4"></label>
-<label>دامنه‌های ارائه‌دهندهٔ مجاز (با ویرگول جدا کنید)<input id="plan-provider-domains" type="text" maxlength="2000" placeholder="compute.example.org"></label>
+<label>مدل‌های GPU مجاز (با ویرگول جدا کنید)<input id="plan-gpu-models" type="text" maxlength="1000" placeholder="NVIDIA A10, NVIDIA T4" aria-label="NVIDIA A10, NVIDIA T4"></label>
+<label>دامنه‌های ارائه‌دهندهٔ مجاز (با ویرگول جدا کنید)<input id="plan-provider-domains" type="text" maxlength="2000" placeholder="compute.example.org" aria-label="compute.example.org"></label>
 </div>
 <div class="cloud-actions"><button id="cloud-plan-run" type="button">ساخت برنامهٔ انتخاب</button></div>
 <pre id="cloud-plan-output">برای ساخت برنامه، نیازهای منابع را وارد کنید.</pre>
 </section>
 <section id="kaggle-quota-section"><h2>سهمیهٔ حساب Kaggle (اختیاری)</h2>
 <p class="muted">به‌طور پیش‌فرض غیرفعال است. فقط با فعال‌سازی صریح، برنامه از CLI رسمی Kaggle استفاده می‌کند تا سهمیهٔ GPU/TPU حساب فعلی را بخواند. هیچ notebook ارسال یا اجرا نمی‌شود؛ توکن‌ها ذخیره نمی‌شوند. شرایط استفادهٔ Kaggle و محدودیت یک حساب فعال را رعایت کنید.</p>
-<label>مسیر کامل فایل اجرایی Kaggle CLI<input id="kaggle-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه"></label>
+<label>مسیر کامل فایل اجرایی Kaggle CLI<input id="kaggle-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه" aria-label="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه"></label>
 <label><input id="kaggle-quota-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه با اعتبارنامهٔ از قبل تنظیم‌شدهٔ حساب فعلی، سهمیهٔ GPU/TPU را فقط هنگام درخواست من بخواند.</label>
 <div class="cloud-actions"><button id="kaggle-quota-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="kaggle-quota-revoke" type="button">لغو رضایت</button><button id="kaggle-quota-refresh" type="button">خواندن سهمیه اکنون</button></div>
 <pre id="kaggle-quota-status">سهمیهٔ Kaggle غیرفعال است.</pre>
@@ -112,11 +114,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <section id="oci-limits-section"><h2>محدودیت‌های حساب Oracle Cloud (فقط‌خواندنی، اختیاری)</h2>
 <p class="muted">به‌صورت پیش‌فرض غیرفعال است. با رضایت صریح، فقط فرمان رسمی و خواندنیِ فهرست محدودیت‌های Compute اجرا می‌شود. مسیرها، profile، region و شناسهٔ compartment در پایگاه محلی ذخیره می‌شوند؛ کلید خصوصی یا خروجی خام CLI ذخیره نمی‌شود. این داده‌ها اثبات‌کنندهٔ رایگان‌بودن یا ظرفیت فعلی نیستند. هیچ ماشین ساخته یا کدی در ابر اجرا نمی‌شود و مجوز اجرای remote همیشه false است.</p>
 <div class="cloud-form-grid">
-<label>مسیر کامل OCI CLI<input id="oci-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل oci یا oci.exe"></label>
-<label>مسیر فایل config محلی OCI<input id="oci-config-path" type="text" maxlength="2048" placeholder="مسیر کامل فایل ~/.oci/config"></label>
+<label>مسیر کامل OCI CLI<input id="oci-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل oci یا oci.exe" aria-label="مسیر کامل oci یا oci.exe"></label>
+<label>مسیر فایل config محلی OCI<input id="oci-config-path" type="text" maxlength="2048" placeholder="مسیر کامل فایل ~/.oci/config" aria-label="مسیر کامل فایل ~/.oci/config"></label>
 <label>Profile<input id="oci-profile" type="text" maxlength="64" value="DEFAULT"></label>
-<label>Region<input id="oci-region" type="text" maxlength="80" placeholder="مثلاً us-ashburn-1"></label>
-<label>Compartment یا Tenancy OCID<input id="oci-compartment-id" type="text" maxlength="512" placeholder="ocid1.compartment..."></label>
+<label>Region<input id="oci-region" type="text" maxlength="80" placeholder="مثلاً us-ashburn-1" aria-label="مثلاً us-ashburn-1"></label>
+<label>Compartment یا Tenancy OCID<input id="oci-compartment-id" type="text" maxlength="512" placeholder="ocid1.compartment..." aria-label="ocid1.compartment..."></label>
 </div>
 <label><input id="oci-limits-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه فقط با درخواست دستی من، از CLI رسمی و config محلی فعلی برای خواندن محدودیت‌های Compute حساب Oracle استفاده کند.</label>
 <div class="cloud-actions"><button id="oci-limits-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="oci-limits-revoke" type="button">لغو رضایت و حذف snapshotها</button><button id="oci-limits-refresh" type="button">خواندن محدودیت‌ها اکنون</button></div>
@@ -128,23 +130,23 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 <label><input id="sandbox-consent-confirm" type="checkbox" style="width:auto"> ریسک اجرای کد را می‌پذیرم و رضایت می‌دهم کد واردشده در محیط ایزولهٔ محلی اجرا شود.</label>
 <div class="cloud-actions"><button id="sandbox-consent-grant" type="button">ثبت رضایت</button><button id="sandbox-consent-revoke" type="button">لغو رضایت</button><button id="sandbox-refresh" type="button">به‌روزرسانی وضعیت</button><button id="sandbox-cancel" type="button" disabled>لغو اجرای فعال</button></div>
 <form id="sandbox-run-form">
-<label>کد Python<textarea id="sandbox-source" rows="7" maxlength="65536" required placeholder="print('Hello')"></textarea></label>
+<label>کد Python<textarea id="sandbox-source" dir="ltr" rows="7" maxlength="65536" required placeholder="print('Hello')" aria-label="print('Hello')"></textarea></label>
 <div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
 <button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
 <pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
 <p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
 <form id="self-improvement-form">
-<input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر">
-<textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر"></textarea>
-<textarea id="self-improvement-patch" required maxlength="262144" rows="8" placeholder="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md"></textarea>
+<input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر" aria-label="عنوان تغییر">
+<textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر" aria-label="دلیل و هدف تغییر"></textarea>
+<textarea id="self-improvement-patch" dir="ltr" required maxlength="262144" rows="8" placeholder="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md" aria-label="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md"></textarea>
 <button type="submit">ثبت پیشنهاد</button>
 </form>
 <p id="self-improvement-output" role="status"></p>
 <button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
 <div id="self-improvement-list"></div>
 </section>
-<section><h2>تنظیمات محلی</h2><form id="settings-form">
+<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
 <label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
 <label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
@@ -1429,4 +1431,4 @@ el("self-improvement-form").addEventListener("submit",async event=>{
 });
 el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
 refreshTasks();
-</script><script src="/static/learning.js"></script></body></html>
+</script><script src="/static/learning.js"></script></main></div></body></html>
