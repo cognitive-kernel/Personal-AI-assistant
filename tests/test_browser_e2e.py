@@ -466,6 +466,69 @@ def test_browser_task_filter_and_cursor_pagination_preserve_cards():
 
 
 
+
+def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    tasks = [
+        {"id": 6001, "task_type": "e2e.research", "status": "queued", "priority": 1,
+         "attempts": 1, "max_attempts": 2, "created_at": "2026-10-20T12:00:00+00:00",
+         "updated_at": "2026-10-20T12:00:00+00:00", "error": None, "result": None},
+        {"id": 6002, "task_type": "e2e.learning", "status": "failed", "priority": 0,
+         "attempts": 2, "max_attempts": 2, "created_at": "2026-10-20T12:01:00+00:00",
+         "updated_at": "2026-10-20T12:01:00+00:00", "error": "redacted test error", "result": None},
+        {"id": 6003, "task_type": "e2e.backup", "status": "succeeded", "priority": 0,
+         "attempts": 1, "max_attempts": 1, "created_at": "2026-10-20T12:02:00+00:00",
+         "updated_at": "2026-10-20T12:02:00+00:00", "error": None, "result": None},
+    ]
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            if route.request.method == "GET" and "/api/tasks?" in route.request.url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"tasks": tasks, "next_cursor": None, "has_more": False}),
+                )
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        cards = page.locator("#tasks-container article")
+        page.get_by_text("#6001 — e2e.research", exact=True).wait_for(timeout=5000)
+        assert cards.count() == 3
+        summary = page.locator("#task-summary")
+        assert "بارگذاری‌شده" in summary.inner_text()
+        assert "3" in summary.inner_text()
+        assert "ناموفق" in summary.inner_text()
+
+        search = page.get_by_role("searchbox", name="جست‌وجو در وظایف بارگذاری‌شده")
+        search.fill("6002")
+        assert cards.count() == 3
+        assert cards.nth(0).is_hidden()
+        assert cards.nth(1).is_visible()
+        assert cards.nth(2).is_hidden()
+        assert "نمایش مطابق جست‌وجو" in summary.inner_text()
+        assert "1" in summary.inner_text()
+
+        search.fill("not-present")
+        assert cards.nth(0).is_hidden()
+        assert cards.nth(1).is_hidden()
+        assert cards.nth(2).is_hidden()
+        search.fill("e2e.backup")
+        assert cards.nth(2).is_visible()
+        assert cards.nth(1).is_hidden()
+        browser.close()
+
+
+
 def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
