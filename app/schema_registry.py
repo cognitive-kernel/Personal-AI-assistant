@@ -465,6 +465,56 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_knowledge_chunks_source ON knowledge_chunks(source_id, chunk_index)",
         ),
     ),
+    Migration(
+        15,
+        "durable-task-status-audit-events",
+        (
+            """CREATE TABLE task_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL REFERENCES task_queue(id) ON DELETE CASCADE,
+                event_type TEXT NOT NULL CHECK(event_type IN ('created','status_changed','priority_changed','scheduled')),
+                old_status TEXT,
+                new_status TEXT NOT NULL,
+                old_priority INTEGER,
+                new_priority INTEGER NOT NULL,
+                old_scheduled_at TEXT,
+                new_scheduled_at TEXT NOT NULL,
+                occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_task_events_task_id_id ON task_events(task_id, id DESC)",
+            """CREATE TRIGGER task_events_after_insert
+               AFTER INSERT ON task_queue
+               BEGIN
+                 INSERT INTO task_events(
+                   task_id, event_type, old_status, new_status,
+                   old_priority, new_priority, old_scheduled_at, new_scheduled_at
+                 ) VALUES (
+                   NEW.id, 'created', NULL, NEW.status,
+                   NULL, NEW.priority, NULL, NEW.scheduled_at
+                 );
+               END""",
+            """CREATE TRIGGER task_events_after_update
+               AFTER UPDATE ON task_queue
+               WHEN OLD.status IS NOT NEW.status
+                 OR OLD.priority IS NOT NEW.priority
+                 OR OLD.scheduled_at IS NOT NEW.scheduled_at
+               BEGIN
+                 INSERT INTO task_events(
+                   task_id, event_type, old_status, new_status,
+                   old_priority, new_priority, old_scheduled_at, new_scheduled_at
+                 ) VALUES (
+                   NEW.id,
+                   CASE
+                     WHEN OLD.status IS NOT NEW.status THEN 'status_changed'
+                     WHEN OLD.priority IS NOT NEW.priority THEN 'priority_changed'
+                     ELSE 'scheduled'
+                   END,
+                   OLD.status, NEW.status, OLD.priority, NEW.priority,
+                   OLD.scheduled_at, NEW.scheduled_at
+                 );
+               END""",
+        ),
+    ),
 )
 
 
