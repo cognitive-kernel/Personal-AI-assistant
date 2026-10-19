@@ -51,8 +51,18 @@
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
-<button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
+<div class="cloud-actions">
+ <label for="task-status-filter">فیلتر وضعیت وظایف
+  <select id="task-status-filter">
+   <option value="">همهٔ وضعیت‌ها</option><option value="queued">در صف</option>
+   <option value="running">در حال اجرا</option><option value="pause_requested">درخواست توقف</option>
+   <option value="paused">متوقف</option><option value="cancel_requested">درخواست لغو</option>
+   <option value="cancelled">لغوشده</option><option value="succeeded">موفق</option><option value="failed">ناموفق</option>
+  </select>
+ </label>
+ <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
  <button id="load-more-tasks" type="button" hidden>بارگذاری وظایف بیشتر</button>
+</div>
 <pre id="tasks-output">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
 <section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
@@ -299,10 +309,11 @@ async function createStorageBackup() {
 el("create-storage-backup").addEventListener("click",createStorageBackup);
 el("refresh-storage-backups").addEventListener("click",refreshStorageBackups);
 let taskPollScheduled=false;
-function renderTasks(tasks) {
+function renderTasks(tasks,{append=false}={}) {
  const container=el("tasks-container");
- container.replaceChildren();
- if(!tasks.length) { appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted"); return; }
+ if(!append) container.replaceChildren();
+ if(!tasks.length && !append) { appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted"); return; }
+ if(!tasks.length) return;
  tasks.forEach(task=>{
   const card=document.createElement("article"); card.className="cloud-candidate";
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
@@ -391,13 +402,15 @@ async function refreshTasks({append=false}={}) {
   const loadMore=el("load-more-tasks");
   try {
    const query=new URLSearchParams({limit:"50"});
+   const statusFilter=el("task-status-filter").value;
+   if(statusFilter) query.set("statuses",statusFilter);
    if(append&&taskNextCursor) query.set("cursor",taskNextCursor);
    const result=await api("/api/tasks?"+query.toString());
    const tasks=result.tasks||[];
    renderTasks(tasks,{append});
    taskNextCursor=result.next_cursor||null;
    loadMore.hidden=!taskNextCursor;
-   el("tasks-output").textContent="وظایف بارگذاری‌شده: "+el("tasks-container").childElementCount+(result.has_more?" — موارد بیشتری موجود است.":"");
+   el("tasks-output").textContent="وظایف نمایش‌داده‌شده: "+el("tasks-container").querySelectorAll("article").length+(result.has_more?" — موارد بیشتری موجود است.":"");
    const active=tasks.some(task=>["queued","running","pause_requested","cancel_requested"].includes(task.status));
    if(active&&!taskPollScheduled) {
     taskPollScheduled=true;
@@ -408,6 +421,7 @@ async function refreshTasks({append=false}={}) {
   }
  }
  el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
+el("task-status-filter").addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
 el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
 refreshStorageHealth();
 refreshStorageBackups();

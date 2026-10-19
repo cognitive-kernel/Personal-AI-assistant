@@ -409,6 +409,62 @@ def test_browser_task_audit_history_loads_older_cursor_pages():
         browser.close()
 
 
+
+def test_browser_task_filter_and_cursor_pagination_preserve_cards():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    def task(task_id, name, status):
+        return {
+            "id": task_id,
+            "task_type": name,
+            "status": status,
+            "priority": 0,
+            "attempts": 1,
+            "max_attempts": 1,
+            "created_at": "2026-10-19T12:00:00+00:00",
+            "updated_at": "2026-10-19T12:00:00+00:00",
+            "error": None,
+            "result": None,
+        }
+
+    requests = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            url = route.request.url
+            if "/api/tasks?" in url:
+                requests.append(url)
+                if "statuses=failed" in url:
+                    payload = {"tasks": [task(303, "e2e.failed", "failed")], "next_cursor": None, "has_more": False}
+                elif "cursor=page-two" in url:
+                    payload = {"tasks": [task(202, "e2e.second-page", "queued")], "next_cursor": None, "has_more": False}
+                else:
+                    payload = {"tasks": [task(101, "e2e.first-page", "queued")], "next_cursor": "page-two", "has_more": True}
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        page.get_by_text("#101 — e2e.first-page", exact=True).wait_for(timeout=5000)
+        page.locator("#load-more-tasks").click()
+        page.get_by_text("#202 — e2e.second-page", exact=True).wait_for(timeout=5000)
+        assert page.locator("#tasks-container article").count() == 2
+        assert "cursor=page-two" in requests[-1]
+
+        page.locator("#task-status-filter").select_option("failed")
+        page.get_by_text("#303 — e2e.failed", exact=True).wait_for(timeout=5000)
+        assert page.locator("#tasks-container article").count() == 1
+        assert page.get_by_text("#101 — e2e.first-page", exact=True).count() == 0
+        assert "statuses=failed" in requests[-1]
+        browser.close()
+
+
 def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
