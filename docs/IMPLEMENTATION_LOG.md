@@ -1828,10 +1828,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 ## 154 — تکمیل موارد غیرمحلی و بازبینی چک‌باکس‌ها (2026-10-19)
 
 - **وضعیت:** [x] بررسی مجدد چک‌باکس‌های تاریخی انجام شد؛ مواردی که وضعیت «هنوز پیاده‌سازی نشده/در انتظار CI» داشتند اما بعداً در main تکمیل شده‌اند، به‌روزرسانی و با ارجاع به بخش/شواهد بعدی تیک خوردند.
-- **تغییرات مستندات:** وضعیت API و runtime صف، heartbeat و انتقال یادگیری به صف، schema registry/migration runner، CI روی PRها و بسته‌شدن issue #56 / PR #16 اصلاح شد. چک‌باکس‌های مربوط به تست محلی، دیتابیس واقعی، مدل زنده، benchmark/soak، بازیابی staging و بررسی مستقل امنیتی عمداً تیک نخورده‌اند.
+- **تغییرات مستندات:** وضعیت API و runtime صف، heartbeat و انتقال یادگیری به صف، schema registry/migration runner، API رضایت و audit sandbox در بخش‌های 72–74، CI روی PRها و بسته‌شدن issue #56 / PR #16 اصلاح شد. چک‌باکس‌های مربوط به تست محلی، دیتابیس واقعی، مدل زنده، benchmark/soak، بازیابی staging و بررسی مستقل امنیتی عمداً تیک نخورده‌اند.
 - **مبنای کد:** `app/main.py`, `app/task_runtime.py`, `app/task_worker.py`, `app/learning_tasks.py`, `app/schema_registry.py` و تست‌های مربوطه در main. این مرحله فقط مستندات را اصلاح می‌کند؛ هیچ DB واقعی یا تنظیمات میزبان تغییر نکرد.
 - **CI روی main:** هر سه workflow روی commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق شدند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). CI این PR باید روی آخرین head موفق شود؛ نتیجهٔ نهایی پیش از ادغام دوباره بررسی می‌شود.
 - **تست محلی:** اجرا نشده است؛ [ ] این گیت باز می‌ماند.
+- **کارهای توسعه‌ای که هنوز بازند:** UI مدیریتی کامل صف، احراز هویت در صورت گسترش فراتر از loopback، pagination/cursor و audit log تغییر وضعیت وظایف؛ اتصال quota parser به provider runtime. این موارد در بخش‌های تاریخی مربوطه عمداً تیک نخورده‌اند چون در وضعیت فعلی main تکمیل‌شدنشان اثبات نشد.
 
 ### باقی‌مانده‌های واقعی که از راه دور قابل علامت‌گذاری نیستند
 
