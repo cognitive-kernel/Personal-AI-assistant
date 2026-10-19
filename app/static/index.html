@@ -481,6 +481,12 @@ function renderCloudCandidates(candidates) {
    ? "دامنهٔ رسمی شناخته‌شده"
    : "دامنهٔ رسمی در فهرست شناخته‌شده نیست";
   appendText(card,"p","شناخت دامنه: "+authorityLabel,"cloud-status");
+  const sourceClassificationLabels={
+   recognized_provider_domain:"صفحه روی دامنهٔ رسمی شناخته‌شده (تشخیص دامنه‌ای؛ نه تأیید محتوا)",
+   likely_intermediary_article:"مقاله/مقایسهٔ واسطهٔ احتمالی — ادعاها را در سایت ارائه‌دهنده بررسی کنید",
+   unclassified_unverified_domain:"نوع منبع نامشخص؛ دامنهٔ رسمی تأیید نشده"
+  };
+  appendText(card,"p","نوع منبع: "+(sourceClassificationLabels[candidate.source_classification]||sourceClassificationLabels.unclassified_unverified_domain),"cloud-status");
   const assessment=candidate.eligibility_assessment||{status:"needs_review",execution_authorized:false,blockers:["پیش‌ارزیابی در دسترس نیست."],review_needed:[]};
   const assessmentLabels={blocked:"مسدود",needs_review:"نیازمند بازبینی",ready_for_provider_adapter:"آماده برای adapter ارائه‌دهنده"};
   appendText(card,"p","پیش‌ارزیابی: "+(assessmentLabels[assessment.status]||assessment.status)+" | اجرای راه دور مجاز: "+(assessment.execution_authorized?"بله":"خیر"),"cloud-status");
