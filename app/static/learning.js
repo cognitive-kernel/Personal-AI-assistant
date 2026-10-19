@@ -184,6 +184,7 @@ function renderLessonResult(output, job, path, topic) {
   takeaway.style.width = "100%";
   takeaway.value = previous ? (previous.takeaway || "") : "";
   takeaway.placeholder = "با زبان خودت بنویس چه چیزی یاد گرفتی یا حالا چه کاری می‌توانی انجام بدهی.";
+  takeaway.setAttribute("aria-label", "مهم‌ترین چیزی که از این درس یاد گرفتم");
   takeawayLabel.append(takeaway);
   reviewForm.append(takeawayLabel);
 
@@ -197,6 +198,7 @@ function renderLessonResult(output, job, path, topic) {
   issues.style.width = "100%";
   issues.value = previous ? (previous.issues || "") : "";
   issues.placeholder = "مثلاً تعریف نادرست، مثال ناکافی، عبارت نامفهوم یا موضوع جاافتاده.";
+  issues.setAttribute("aria-label", "اشکال‌ها، بخش‌های مبهم یا چیزهایی که باید بهتر آموزش داده شوند");
   issuesLabel.append(issues);
   reviewForm.append(issuesLabel);
 
@@ -251,6 +253,7 @@ function renderLessonResult(output, job, path, topic) {
   const label = document.createElement("label");
   label.textContent = (index + 1) + ". " + question;
   const answer = document.createElement("textarea");
+  answer.setAttribute("aria-label", "پاسخ سؤال " + (index + 1) + ": " + question);
   answer.required = true;
   answer.maxLength = 2000;
   answer.rows = 2;

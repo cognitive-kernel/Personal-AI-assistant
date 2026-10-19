@@ -1772,3 +1772,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون افزوده‌شده:** ۸ پرسش فارسی/انگلیسی باید should_use_research را فعال کنند؛ آزمون موجود حفاظت از اصلاح کاربر نیز در CI اولیه ناسازگاری را پیدا کرد و prompt اصلاح شد.
 - **تست محلی:** اجرا نشده؛ فقط نتیجهٔ CI دقیق head برای تکمیل این بخش ملاک خواهد بود.
 - **گیت‌های مستقل/محلی همچنان باز:** اجرای مدل زنده و داوری انسانی، baseline و benchmark/soak روی میزبان هدف، تمرین staging/rollback و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
+
+## 150 — ناوبری واکنش‌گرا و دسترس‌پذیری داشبورد
+
+- **وضعیت:** [x] تکمیل کد و آزمون‌های مخزن در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326)؛ CI روی head کد موفق شد. برای علامت‌گذاری نهایی، CI روی commit مستندات نیز باید موفق بماند.
+- **تغییر:** stylesheet محلی، ناوبری ثابت در دسکتاپ و افقی در موبایل، پیوند پرش به محتوای اصلی، focus-visible، کاهش حرکت، نام‌های قابل‌دسترسی کنترل‌ها و جهت متن متناسب با زبان اضافه شد. هیچ CDN یا فونت دوردستی اضافه نشده است.
+- **آزمون افزوده‌شده:** Chromium مسیرهای ناوبری، CSS، نام‌گذاری کنترل‌ها و نبود overflow در عرض‌های 360/768/1280 را بررسی می‌کند.
+- **محدودیت:** CI مرورگر به‌تنهایی تست دستی صفحه‌خوان/کیبورد یا پذیرش روی میزبان هدف نیست؛ این گیت‌ها باز می‌مانند.
+- **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058789)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058712). تست محلی اجرا نشده است.
