@@ -1756,9 +1756,19 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 147 — تشخیص URLهای پاسخ فاقد provenance بازیابی
 
-- **وضعیت:** پیاده‌سازی و آزمون رگرسیون در شاخهٔ `fix/answer-url-provenance-and-acceptance-log`؛ در انتظار CI و ادغام.
+- **وضعیت:** تکمیل و ادغام‌شده در [PR #322](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/322). CI دقیق head موفق شد؛ تست محلی اجرا نشده است.
 - **تغییر:** ارزیابی سطح پاسخ اکنون URLهای HTTPS داخل متن تولیدشده را جدا از URLهای metadata ساختاریافتهٔ بازیابی ثبت می‌کند و URLهایی را که تطبیق دقیق ندارند در `unattributed_answer_urls` علامت می‌زند. خلاصهٔ هر زبان تعداد موارد و تعداد URLهای فاقد انتساب را نشان می‌دهد.
 - **تفسیر ایمن:** این شاخص فقط سیگنال بررسی است؛ به‌تنهایی جعلی‌بودن URL را ثابت نمی‌کند و canonicalization، redirect و گزارش‌های بازیابی ممکن است نیازمند بررسی دستی باشند. وجود لینک در متن مدل به‌خودی‌خود شاهد بازیابی یا بررسی منبع نیست.
 - **آزمون‌های افزوده‌شده:** URL تطبیق‌داده‌شده، URL بدون انتساب، حذف علائم پایانی رایج، و شمارش خلاصهٔ زبان.
-- **تست محلی:** اجرا نشده. نتیجه فقط پس از دریافت CI دقیق head ثبت خواهد شد.
+- **CI دقیق head:** موفق؛ [اجرای تست‌ها](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39266430032)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39266430246)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39266430275). تست محلی اجرا نشده است.
 - **گیت‌های محلی/ماشین هدف:** baseline کامل، اجرای مدل زنده و داوری انسانی، benchmark/soak، تمرین staging/rollback و بازبینی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان باز هستند.
+
+
+
+## 148 — پوشش مسیر پژوهش برای پرسش‌های شواهد، اصلاح و حافظه
+
+- **وضعیت:** پیاده‌سازی و تست رگرسیون در [PR #323](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/323)؛ CI اولیه یک شکست واقعی در آزمون prompt اصلاح کاربر آشکار کرد و اصلاح شد؛ اجرای CI روی head اصلاح‌شده در انتظار است.
+- **تغییر:** markerهای فارسی/انگلیسی برای ادعا، شواهد، متن بازیابی‌شده، provenance، تعارض منابع، حافظه و اصلاح کاربر گسترش یافتند تا پرسش‌های ارزیابی به مسیر پژوهش و سیاست منبع هدایت شوند. prompt پژوهش نیز اکنون صریحاً اصلاح کاربر را بازخورد تأییدنشده می‌داند تا ورود به مسیر پژوهش این حفاظت را حذف نکند.
+- **آزمون افزوده‌شده:** ۸ پرسش فارسی/انگلیسی باید should_use_research را فعال کنند؛ آزمون موجود حفاظت از اصلاح کاربر نیز در CI اولیه ناسازگاری را پیدا کرد و prompt اصلاح شد.
+- **تست محلی:** اجرا نشده؛ فقط نتیجهٔ CI دقیق head برای تکمیل این بخش ملاک خواهد بود.
+- **گیت‌های مستقل/محلی همچنان باز:** اجرای مدل زنده و داوری انسانی، baseline و benchmark/soak روی میزبان هدف، تمرین staging/rollback و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).

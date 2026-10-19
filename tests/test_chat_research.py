@@ -360,3 +360,21 @@ def test_direct_chat_prompt_treats_user_correction_as_unverified(monkeypatch):
     assert "unverified feedback" in reply
     assert "unverified feedback" in captured["system_prompt"]
     assert "independent supporting evidence" in captured["system_prompt"]
+
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "آیا این ادعا را می‌توان فقط بر اساس یک متن بازیابی‌شده تأییدشده دانست؟",
+        "دو منبع معتبر درباره یک موضوع فنی نتایج متناقض دارند؛ چگونه پاسخ بدهی؟",
+        "کاربر می‌گوید پاسخ قبلی اشتباه است و یک اصلاح پیشنهاد می‌کند؛ آیا آن را به حافظه دانشی معتبر تبدیل می‌کنی؟",
+        "پرسش فارسی است اما بهترین منبع موجود انگلیسی است؛ چه باید کرد؟",
+        "Can a retrieved passage alone justify marking a claim as verified?",
+        "Two credible sources disagree about a technical claim. How should the assistant respond?",
+        "A user supplies a correction. Should it become trusted knowledge automatically?",
+        "The user asks in English, but the strongest source is written in Persian.",
+    ],
+)
+def test_answer_quality_cases_use_research_policy(prompt):
+    assert chat_research.should_use_research(prompt), prompt
