@@ -286,7 +286,8 @@
 - [x] PR این گام بعداً در main ادغام شد؛ CI دقیق head موفق بود (بخش 10).
 - CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI نهایی در run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) روی head `abf594032517ff664ea4d8e262cb3a4b11f5e675` موفق شد.
 - [x] محدودیت تاریخی برطرف شده است: `TaskRuntime` و `TaskWorker` اکنون در startup برنامه با handlerهای allow-listed اجرا می‌شوند؛ وظایف ثبت‌شدهٔ بدون handler عمداً fail می‌شوند، نه اینکه کد دلخواه اجرا شود. شواهد: `app/main.py`, `app/task_worker.py`, `tests/test_task_runtime.py` و CI بخش 151.
-- [ ] UI مدیریتی، احراز هویت شبکه‌ای (در صورت بیرون‌بردن از localhost)، pagination/cursor و ثبت رویدادهای تغییر وضعیت باقی مانده‌اند.
+- [ ] UI مدیریتی کامل و احراز هویت شبکه‌ای در صورت بیرون‌بردن API از loopback باقی مانده‌اند؛ دسترسی remote همچنان مسدود است.
+- [x] pagination/cursor پایدار برای `GET /api/tasks` و API تاریخچهٔ رویدادهای وضعیت در `GET /api/tasks/{task_id}/events` اضافه شد؛ migration نسخهٔ 15 با triggerهای ثبت تغییر وضعیت و آزمون‌های cursor/filter در PR جدید پوشش داده شده است.
 
 
 ## 10. 2026-10-15 — ادغام API مدیریت صف
@@ -1838,3 +1839,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **موارد توسعه‌ای که هنوز بازند:** UI مدیریتی کامل صف، pagination/cursor و audit log تغییر وضعیت وظایف؛ احراز هویت اگر API از loopback فراتر برود؛ اتصال quota parser به provider runtime. این موارد عمداً تیک نخورده‌اند چون پیاده‌سازی‌شدنشان در main اثبات نشد.
 - **مواردی که حتماً به محیط/بازبینی واقعی نیاز دارند:** تست محلی؛ بررسی schema دیتابیس واقعی Windows و backup/migration؛ benchmark و soak صف؛ fault-injection/restart؛ staging restore، clean-start و rollback؛ اجرای مدل زنده و داوری انسانی؛ مرور دستی صفحه‌خوان/کیبورد؛ بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52). این گیت‌ها عمداً بازند.
 - **اقدام انجام‌نشده:** هیچ تست محلی اجرا نشده، هیچ دیتابیس واقعی تغییر نکرده و هیچ نتیجه‌ای دربارهٔ کیفیت مدل زنده یا پذیرش تولیدی ادعا نمی‌شود.
+
+## 156 — صفحه‌بندی صف و تاریخچهٔ تغییر وضعیت وظایف (2026-10-19)
+
+- **تغییر کد:** `GET /api/tasks` اکنون صفحه‌بندی cursor-based با ترتیب پایدار بر اساس شناسه و فیلتر وضعیت ارائه می‌کند؛ پاسخ شامل `next_cursor` و `has_more` است.
+- **Audit وضعیت:** migration نسخهٔ 15 جدول `task_status_events` و triggerهای SQLite برای ثبت وضعیت اولیه و هر انتقال وضعیت اضافه می‌کند؛ endpoint محلی `GET /api/tasks/{task_id}/events` تاریخچه را با cursor برمی‌گرداند. ثبت رویداد در خود دیتابیس انجام می‌شود تا تغییر وضعیت از مسیر API یا worker جا نیفتد.
+- **آزمون‌های افزوده‌شده:** صفحه‌بندی چندصفحه‌ای بدون تکرار/جاافتادگی، فیلتر وضعیت، ترتیب و cursor رویدادها، ثبت وضعیت اولیه/لغو، و رد cursor/limit نامعتبر.
+- **تست محلی:** اجرا نشده؛ CI روی PR این تغییر باید موفق شود. هیچ دیتابیس واقعی تغییر داده نشده؛ migration فقط در fixtureهای CI/هنگام startup طبق registry نسخه‌دار اجرا می‌شود.
+- **محدودیت باقی‌مانده:** UI مدیریتی برای مرور/فیلتر رویدادها و احراز هویت در صورت نیاز به دسترسی غیر-loopback هنوز جداگانه لازم است؛ API همچنان loopback-only است.
