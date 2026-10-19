@@ -223,8 +223,6 @@ class PathTopicProgress(BaseModel):
 
 @app.get("/api/health")
 def api_health() -> dict[str, Any]:
-@app.get("/api/health")
-def api_health() -> dict[str, Any]:
     if _startup_storage_error:
         return {
             "status": "degraded",
