@@ -1844,5 +1844,5 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت پیاده‌سازی:** [x] endpoint فهرست وظایف اکنون صفحه‌بندی keyset دارد؛ ترتیب پایدار `priority DESC, id ASC` حفظ می‌شود و پاسخ `next_cursor` و `has_more` می‌دهد. cursor نامعتبر رد می‌شود و اندازهٔ صفحه به ۱ تا ۱۰۰ محدود است.
 - **رابط کاربری:** دکمهٔ «بارگذاری وظایف بیشتر» اضافه شد تا فهرست بزرگ یک‌باره به مرورگر ارسال نشود؛ متن payload همچنان در کارت‌های فهرست نمایش داده نمی‌شود.
 - **آزمون افزوده‌شده:** چند صفحه با اولویت‌های تکراری، ترتیب ثابت، `has_more`، پایان cursor، cursor نامعتبر و حد بالای صفحه پوشش داده می‌شوند.
-- **اعتبارسنجی:** CI روی head این PR باید موفق شود؛ تست محلی اجرا نشده است. تا پایان CI، تکمیل پذیرش این بخش نهایی محسوب نمی‌شود.
+- **اعتبارسنجی:** CI روی head کد `5455f3c0abdae6d5218f6f1f471b338db447cbf8` موفق شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383884)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383831)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383853). تست محلی اجرا نشده است؛ پذیرش روی میزبان هدف جداگانه است.
 - **باقی‌مانده:** audit log پایدار برای تغییر وضعیت وظایف و تکمیل بیشتر ابزارهای مدیریتی هنوز انجام نشده‌اند؛ API همچنان loopback-only است و remote auth فعال نشده است.
