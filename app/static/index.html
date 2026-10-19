@@ -63,7 +63,14 @@
  <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
  <button id="load-more-tasks" type="button" hidden>بارگذاری وظایف بیشتر</button>
 </div>
-<pre id="tasks-output">فهرست وظایف هنوز بارگذاری نشده است.</pre>
+<div class="task-search-row">
+ <label for="task-search">جست‌وجو در وظایف بارگذاری‌شده
+  <input id="task-search" type="search" maxlength="120" autocomplete="off" placeholder="شناسه، نوع وظیفه یا وضعیت…">
+ </label>
+ <p class="muted">جست‌وجو فقط میان صفحات بارگذاری‌شده انجام می‌شود؛ برای بررسی کل صف از فیلتر وضعیت و بارگذاری صفحات بیشتر استفاده کنید.</p>
+</div>
+<div id="task-summary" class="task-summary" aria-live="polite" aria-atomic="true"></div>
+<pre id="tasks-output" role="status" aria-live="polite">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
 <section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
 <p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
