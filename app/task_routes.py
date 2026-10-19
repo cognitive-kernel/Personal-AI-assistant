@@ -83,6 +83,23 @@ def list_tasks(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/{task_id}/events")
+def list_task_events(
+    task_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    before_id: int | None = Query(default=None, ge=1),
+) -> dict[str, Any]:
+    """Read durable status-transition events for one task."""
+    try:
+        return task_manager.list_task_status_events(
+            task_id,
+            limit=limit,
+            before_id=before_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/{task_id}")
 def get_task(task_id: int) -> dict[str, Any]:
     task = task_manager.get_task(task_id)
