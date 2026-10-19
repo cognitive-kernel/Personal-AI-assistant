@@ -327,6 +327,21 @@ function renderTasks(tasks) {
   if(["queued","running"].includes(task.status)) addAction("توقف","/api/tasks/"+task.id+"/pause");
   if(task.status==="paused") addAction("ادامه","/api/tasks/"+task.id+"/resume");
   if(["queued","running","pause_requested","paused"].includes(task.status)) addAction("لغو","/api/tasks/"+task.id+"/cancel");
+  const historyButton=document.createElement("button"); historyButton.type="button"; historyButton.textContent="سابقهٔ وضعیت";
+  historyButton.addEventListener("click",async()=>{
+   historyButton.disabled=true;
+   try {
+    const audit=await api("/api/tasks/"+task.id+"/events?limit=100");
+    let history=card.querySelector(".task-status-history");
+    if(!history) { history=document.createElement("pre"); history.className="task-status-history"; card.append(history); }
+    history.textContent=(audit.events||[]).map(event=>(event.from_status||"شروع")+" → "+event.to_status+" ("+event.created_at+")").join("\\n")||"رویدادی ثبت نشده است.";
+   } catch(error) {
+    el("tasks-output").textContent="تاریخچهٔ وضعیت دریافت نشد: "+error.message;
+   } finally {
+    historyButton.disabled=false;
+   }
+  });
+  actions.append(historyButton);
   if(actions.childElementCount) card.append(actions);
   container.append(card);
  });
