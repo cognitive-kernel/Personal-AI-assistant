@@ -465,6 +465,114 @@ def test_browser_task_filter_and_cursor_pagination_preserve_cards():
         browser.close()
 
 
+
+def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    requests = []
+    task = {
+        "id": 5151,
+        "task_type": "e2e.manage-task",
+        "status": "queued",
+        "priority": 2,
+        "attempts": 1,
+        "max_attempts": 3,
+        "scheduled_at": "2030-01-01T12:00:00+00:00",
+        "created_at": "2026-10-20T12:00:00+00:00",
+        "updated_at": "2026-10-20T12:00:00+00:00",
+        "error": None,
+        "result": None,
+    }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            request = route.request
+            url = request.url
+            if request.method == "GET" and "/api/tasks?" in url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"tasks": [task], "next_cursor": None, "has_more": False}),
+                )
+                return
+            if request.method == "PATCH" and url.endswith("/priority"):
+                body = request.post_data_json
+                requests.append(("priority", body))
+                task["priority"] = body["priority"]
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(task))
+                return
+            if request.method == "PATCH" and url.endswith("/schedule"):
+                body = request.post_data_json
+                requests.append(("schedule", body))
+                task["scheduled_at"] = body["scheduled_at"]
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(task))
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        card = page.locator("#tasks-container article").filter(has_text="#5151 — e2e.manage-task")
+        card.wait_for(timeout=5000)
+        card.get_by_role("spinbutton", name="اولویت وظیفه 5151").fill("17")
+        card.get_by_role("button", name="ذخیره اولویت وظیفه 5151").click()
+        page.wait_for_function("document.querySelector('#tasks-output').textContent.includes('ذخیره شد')")
+        card = page.locator("#tasks-container article").filter(has_text="#5151 — e2e.manage-task")
+        card.locator('input[type="datetime-local"][aria-label="زمان اجرای وظیفه 5151"]').fill("2030-01-02T12:30")
+        card.get_by_role("button", name="ذخیره زمان اجرای وظیفه 5151").click()
+        page.wait_for_function("document.querySelector('#tasks-output').textContent.includes('ذخیره شد')")
+        assert requests[0] == ("priority", {"priority": 17})
+        assert requests[1][0] == "schedule"
+        assert requests[1][1]["scheduled_at"].startswith("2030-01-02T")
+        browser.close()
+
+
+def test_browser_task_priority_and_schedule_controls_hidden_for_running_task():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    task = {
+        "id": 5152,
+        "task_type": "e2e.running-task",
+        "status": "running",
+        "priority": 2,
+        "attempts": 1,
+        "max_attempts": 1,
+        "created_at": "2026-10-20T12:00:00+00:00",
+        "updated_at": "2026-10-20T12:00:00+00:00",
+        "error": None,
+        "result": None,
+    }
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            if route.request.method == "GET" and "/api/tasks?" in route.request.url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"tasks": [task], "next_cursor": None, "has_more": False}),
+                )
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        card = page.locator("#tasks-container article").filter(has_text="#5152 — e2e.running-task")
+        card.wait_for(timeout=5000)
+        assert card.get_by_role("button", name="ذخیره اولویت وظیفه 5152").count() == 0
+        assert card.get_by_role("button", name="ذخیره زمان اجرای وظیفه 5152").count() == 0
+        browser.close()
+
+
 def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:

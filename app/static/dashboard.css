@@ -171,3 +171,23 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   }
   .dashboard-shell > .dashboard-nav a { width: auto; white-space: nowrap; }
 }
+
+
+/* Compact task controls: predictable labels, responsive grid, no horizontal overflow. */
+.task-edit-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px 14px;
+  margin-block: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.task-edit-controls label { margin: 0; min-width: 0; }
+.task-edit-controls button { align-self: end; width: 100%; margin: 0; }
+.task-edit-controls input { min-width: 0; }
+@media (max-width: 600px) {
+  .task-edit-controls { grid-template-columns: minmax(0, 1fr); }
+}
