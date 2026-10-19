@@ -393,3 +393,57 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
     assert recovered["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
     with pytest.raises(TaskManagerError, match="not owned by this worker"):
         task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"})
+
+
+def test_task_list_cursor_pages_are_stable_and_complete(task_store):
+    created = [
+        task_manager.create_task("page-test", {"index": index})
+        for index in range(5)
+    ]
+
+    first = task_manager.list_tasks_page(limit=2)
+    assert [task["id"] for task in first["tasks"]] == [
+        created[4]["id"], created[3]["id"]
+    ]
+    assert first["has_more"] is True
+    assert first["next_cursor"] == created[3]["id"]
+
+    second = task_manager.list_tasks_page(limit=2, cursor_id=first["next_cursor"])
+    assert [task["id"] for task in second["tasks"]] == [
+        created[2]["id"], created[1]["id"]
+    ]
+    assert second["has_more"] is True
+
+    third = task_manager.list_tasks_page(limit=2, cursor_id=second["next_cursor"])
+    assert [task["id"] for task in third["tasks"]] == [created[0]["id"]]
+    assert third["has_more"] is False
+    assert third["next_cursor"] is None
+
+
+def test_task_status_events_are_audited_and_cursor_paginated(task_store):
+    task = task_manager.create_task("audit-test", {"safe": True})
+    task_manager.request_pause(task["id"])
+    task_manager.resume_task(task["id"])
+    task_manager.request_cancel(task["id"])
+
+    first = task_manager.list_task_status_events(task["id"], limit=2)
+    assert [event["to_status"] for event in first["events"]] == ["cancelled", "queued"]
+    assert first["has_more"] is True
+    assert first["next_cursor"] == first["events"][-1]["id"]
+
+    second = task_manager.list_task_status_events(
+        task["id"], limit=2, before_id=first["next_cursor"]
+    )
+    assert [event["to_status"] for event in second["events"]] == ["paused", "queued"]
+    assert [event["from_status"] for event in second["events"]] == ["queued", None]
+    assert second["has_more"] is False
+    assert second["next_cursor"] is None
+
+
+def test_task_page_rejects_invalid_cursor_and_status_event_limits(task_store):
+    with pytest.raises(ValueError, match="cursor_id"):
+        task_manager.list_tasks_page(cursor_id=0)
+    with pytest.raises(ValueError, match="before_id"):
+        task_manager.list_task_status_events(1, before_id=0)
+    with pytest.raises(ValueError, match="limit"):
+        task_manager.list_task_status_events(1, limit=501)
