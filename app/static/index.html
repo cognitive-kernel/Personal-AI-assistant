@@ -70,6 +70,13 @@
  <p class="muted">جست‌وجو فقط میان صفحات بارگذاری‌شده انجام می‌شود؛ برای بررسی کل صف از فیلتر وضعیت و بارگذاری صفحات بیشتر استفاده کنید.</p>
 </div>
 <div id="task-summary" class="task-summary" aria-live="polite" aria-atomic="true"></div>
+<div class="task-bulk-toolbar" role="group" aria-label="عملیات گروهی روی وظایف">
+ <label class="task-select-all-label" for="task-select-all"><input id="task-select-all" type="checkbox"> انتخاب همهٔ وظایف بارگذاری‌شده</label>
+ <span id="task-selected-count" class="task-selected-count" aria-live="polite">انتخاب‌شده: ۰</span>
+ <button id="bulk-pause-tasks" type="button" disabled>توقف انتخاب‌شده‌ها</button>
+ <button id="bulk-resume-tasks" type="button" disabled>ادامهٔ انتخاب‌شده‌ها</button>
+ <button id="bulk-cancel-tasks" type="button" disabled>لغو انتخاب‌شده‌ها</button>
+</div>
 <pre id="tasks-output" role="status" aria-live="polite">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
 <section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
@@ -347,6 +354,58 @@ function updateTaskDashboard() {
   const text=document.createElement("span"); text.textContent=label;
   item.append(strong,text); summary.append(item);
  });
+ updateTaskBulkControls();
+}
+function updateTaskBulkControls() {
+ const cards=Array.from(el("tasks-container").querySelectorAll("article[data-task-status]"));
+ const selected=cards.filter(card=>card.querySelector(".task-select")?.checked);
+ const count=selected.length;
+ el("task-selected-count").textContent="انتخاب‌شده: "+new Intl.NumberFormat("fa-IR").format(count);
+ const eligible={
+  pause:selected.filter(card=>["queued","running"].includes(card.dataset.taskStatus)).length,
+  resume:selected.filter(card=>card.dataset.taskStatus==="paused").length,
+  cancel:selected.filter(card=>["queued","running","pause_requested","paused"].includes(card.dataset.taskStatus)).length
+ };
+ el("bulk-pause-tasks").disabled=eligible.pause===0;
+ el("bulk-resume-tasks").disabled=eligible.resume===0;
+ el("bulk-cancel-tasks").disabled=eligible.cancel===0;
+ const selectAll=el("task-select-all");
+ selectAll.checked=cards.length>0&&selected.length===cards.length;
+ selectAll.indeterminate=selected.length>0&&selected.length<cards.length;
+}
+async function runBulkTaskAction(action) {
+ const cards=Array.from(el("tasks-container").querySelectorAll("article[data-task-status]"));
+ const selected=cards.filter(card=>card.querySelector(".task-select")?.checked);
+ const allowed={
+  pause:new Set(["queued","running"]),
+  resume:new Set(["paused"]),
+  cancel:new Set(["queued","running","pause_requested","paused"])
+ };
+ const eligible=selected.filter(card=>allowed[action].has(card.dataset.taskStatus));
+ if(!eligible.length) {
+  el("tasks-output").textContent="برای این عملیات، وظیفهٔ انتخاب‌شدهٔ واجد شرایط وجود ندارد.";
+  return;
+ }
+ if(action==="cancel"&&!window.confirm("لغو "+eligible.length+" وظیفهٔ واجد شرایط انجام شود؟ این عملیات ممکن است قابل بازگشت نباشد.")) return;
+ const buttons=["bulk-pause-tasks","bulk-resume-tasks","bulk-cancel-tasks"].map(id=>el(id));
+ buttons.forEach(button=>button.disabled=true);
+ let succeeded=0;
+ const failures=[];
+ for(const card of eligible) {
+  const taskId=card.dataset.taskId;
+  try {
+   await api("/api/tasks/"+encodeURIComponent(taskId)+"/"+action,{method:"POST"});
+   succeeded++;
+  } catch(error) {
+   failures.push("#"+taskId+": "+error.message);
+  }
+ }
+ taskNextCursor=null;
+ await refreshTasks();
+ const actionLabel={pause:"توقف",resume:"ادامه",cancel:"لغو"}[action];
+ el("tasks-output").textContent=actionLabel+" گروهی پایان یافت؛ موفق: "+succeeded+"، ناموفق: "+failures.length+
+  (failures.length?" — "+failures.slice(0,3).join("؛ "):"");
+ updateTaskBulkControls();
 }
 function renderTasks(tasks,{append=false}={}) {
  const container=el("tasks-container");
@@ -362,6 +421,11 @@ function renderTasks(tasks,{append=false}={}) {
   card.dataset.taskId=String(task.id);
   card.dataset.taskStatus=String(task.status||"");
   card.dataset.taskSearch=("#"+task.id+" "+task.task_type+" "+task.status).toLocaleLowerCase();
+  const selectLabel=document.createElement("label"); selectLabel.className="task-select-label";
+  const selectInput=document.createElement("input"); selectInput.type="checkbox"; selectInput.className="task-select";
+  selectInput.setAttribute("aria-label","انتخاب وظیفه "+task.id);
+  selectInput.addEventListener("change",updateTaskDashboard);
+  selectLabel.append(selectInput,document.createTextNode(" انتخاب")); card.append(selectLabel);
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
   appendText(card,"p","وضعیت: "+task.status+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status");
   if(task.created_at) appendText(card,"p","ایجاد: "+task.created_at,"muted");
@@ -519,6 +583,14 @@ async function refreshTasks({append=false}={}) {
  el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
 el("task-status-filter").addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
 el("task-search").addEventListener("input",updateTaskDashboard);
+el("task-select-all").addEventListener("change",()=>{
+ const checked=el("task-select-all").checked;
+ el("tasks-container").querySelectorAll(".task-select").forEach(input=>{input.checked=checked;});
+ updateTaskDashboard();
+});
+el("bulk-pause-tasks").addEventListener("click",()=>runBulkTaskAction("pause"));
+el("bulk-resume-tasks").addEventListener("click",()=>runBulkTaskAction("resume"));
+el("bulk-cancel-tasks").addEventListener("click",()=>runBulkTaskAction("cancel"));
 el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
 refreshStorageHealth();
 refreshStorageBackups();
