@@ -99,6 +99,46 @@ def test_free_service_catalog_without_a_concrete_compute_offer_is_rejected():
     assert cloud_resources._candidate_record(document, "free Azure services") is None
 
 
+def test_generic_free_compute_services_title_is_not_specific_offer_evidence():
+    document = web_sources.SourceDocument(
+        url="https://aws.amazon.com/free/compute/",
+        title="Free Compute Services on AWS",
+        text=(
+            "AWS Free Tier Overview\n"
+            "More Compute Solutions for Free on AWS\n"
+            "Instances, containers, and serverless computing for Free on AWS\n"
+            "Compute is used to reference processing power, memory, networking, "
+            "storage, and other resources required for computational success."
+        ),
+    )
+
+    signals = cloud_resources._resource_signals(document.title, document.text)
+
+    assert "specific_compute_offer_pattern_matched" not in signals
+    assert cloud_resources._candidate_record(document, "free cloud compute") is None
+
+
+def test_candidate_evidence_excerpt_prefers_matching_offer_block():
+    document = web_sources.SourceDocument(
+        url="https://hosting.example.org/free-cloud",
+        title="Free Cloud Hosting Plan",
+        text=(
+            "Skip to main content\n"
+            "Documentation Pricing Account Menu\n"
+            "Free cloud services overview\n"
+            "Our free cloud hosting plan provides a Linux cloud server with 2 vCPU.\n"
+            "The free plan has monthly usage quotas and runtime limits.\n"
+            "Read our service terms for restrictions."
+        ) * 3,
+    )
+
+    candidate = cloud_resources._candidate_record(document, "free cloud hosting")
+
+    assert candidate is not None
+    assert "Our free cloud hosting plan provides" in candidate["evidence_excerpt"]
+    assert "Skip to main content" not in candidate["evidence_excerpt"]
+
+
 def test_official_always_free_compute_document_is_still_a_candidate():
     document = web_sources.SourceDocument(
         url="https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm",

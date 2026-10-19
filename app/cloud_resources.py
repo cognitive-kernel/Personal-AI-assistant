@@ -301,7 +301,8 @@ _SPECIFIC_COMPUTE_SERVICE_PATTERNS = (
     r"\b(?:compute|cloud)\s+(?:virtual )?machines?\b",
     r"\b(?:virtual machines?|vm instances?|compute instances?|codespaces?|container runtimes?|developer sandboxes?)\b",
     r"\b(?:gpu|tpu|cpu)\s+(?:compute|resources?|instances?|hours?|credits?|quotas?|runtime|access)\b",
-    r"\bcompute\s+(?:services?|resources?|instances?|hours?|credits?|quotas?|runtime)\b",
+    # "compute services" alone is a broad catalog phrase, not a concrete offer.
+    r"\bcompute\s+(?:resources?|instances?|hours?|credits?|quotas?|runtime)\b",
     r"\b(?:ocpu|vcpu)\b",
 )
 _SPECIFIC_COMPUTE_OFFER_PATTERNS = (
@@ -320,30 +321,35 @@ _SPECIFIC_COMPUTE_OFFER_PATTERNS = (
 )
 
 
-def _has_specific_compute_offer_evidence(title: str, text: str) -> bool:
-    """Require compute and offer wording in the same title, sentence, or page block.
+def _segment_matches_specific_compute_offer(segment: str) -> bool:
+    """Check that one title/sentence/block mentions both a compute service and its offer."""
+    return bool(
+        any(re.search(pattern, segment, flags=re.IGNORECASE) for pattern in _SPECIFIC_COMPUTE_SERVICE_PATTERNS)
+        and any(re.search(pattern, segment, flags=re.IGNORECASE) for pattern in _SPECIFIC_COMPUTE_OFFER_PATTERNS)
+    )
 
-    Search-result pages and broad cloud catalogs can mention a VM somewhere in
-    navigation and a free trial somewhere else. Those unrelated fragments must
-    not be combined into a claim that the page offers free compute.
-    """
-    def matches_any(patterns: tuple[str, ...], segment: str) -> bool:
-        return any(re.search(pattern, segment, flags=re.IGNORECASE) for pattern in patterns)
 
-    title_segment = " ".join(title.split())
-    if (
-        matches_any(_SPECIFIC_COMPUTE_SERVICE_PATTERNS, title_segment)
-        and matches_any(_SPECIFIC_COMPUTE_OFFER_PATTERNS, title_segment)
-    ):
-        return True
-
-    # Keep HTML block boundaries and split plain-text at sentence boundaries.
+def _specific_compute_offer_segments(text: str) -> list[str]:
+    """Return only page blocks/sentences that independently support compute-offer relevance."""
     segments = re.split(r"[\r\n]+|(?<=[.!?;])\s+", text)
-    return any(
-        matches_any(_SPECIFIC_COMPUTE_SERVICE_PATTERNS, segment)
-        and matches_any(_SPECIFIC_COMPUTE_OFFER_PATTERNS, segment)
+    return [
+        " ".join(segment.split())
         for segment in segments
-        if segment.strip()
+        if segment.strip() and _segment_matches_specific_compute_offer(segment)
+    ]
+
+
+def _has_specific_compute_offer_evidence(title: str, text: str) -> bool:
+    """Require compute and offer wording in one specific title, sentence, or page block.
+
+    Broad catalog phrases such as "Free Compute Services" are insufficient by
+    themselves. A page must identify a more concrete compute service in its
+    title or have a matching sentence/block in its body.
+    """
+    title_segment = " ".join(title.split())
+    return (
+        _segment_matches_specific_compute_offer(title_segment)
+        or bool(_specific_compute_offer_segments(text))
     )
 
 
@@ -414,7 +420,15 @@ def _candidate_record(document: web_sources.SourceDocument, query: str) -> dict[
     signals = _resource_signals(title, raw_text)
     if not _has_cloud_compute_relevance(signals):
         return None
-    excerpt = text[:MAX_EVIDENCE_EXCERPT]
+    matching_evidence = _specific_compute_offer_segments(raw_text)
+    if matching_evidence:
+        excerpt = "\n".join(matching_evidence)[:MAX_EVIDENCE_EXCERPT]
+    elif _segment_matches_specific_compute_offer(title):
+        # Make title-only matching explicit instead of implying the body confirmed it.
+        title_note = f"Title-only relevance match: {title}\nPage text follows:\n"
+        excerpt = (title_note + text)[:MAX_EVIDENCE_EXCERPT]
+    else:
+        excerpt = text[:MAX_EVIDENCE_EXCERPT]
     return {
         "source_url": url,
         "provider_domain": domain,
