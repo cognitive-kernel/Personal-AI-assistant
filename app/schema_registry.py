@@ -465,6 +465,40 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_knowledge_chunks_source ON knowledge_chunks(source_id, chunk_index)",
         ),
     ),
+
+    Migration(
+        15,
+        "task-status-event-audit",
+        (
+            """CREATE TABLE task_status_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL,
+                task_type TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT NOT NULL CHECK(to_status IN (
+                    'queued','running','pause_requested','paused','cancel_requested',
+                    'cancelled','succeeded','failed'
+                )),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_task_status_events_task ON task_status_events(task_id, id DESC)",
+            """CREATE TRIGGER trg_task_queue_status_insert
+               AFTER INSERT ON task_queue
+               BEGIN
+                   INSERT INTO task_status_events(
+                       task_id, task_type, from_status, to_status, created_at
+                   ) VALUES (NEW.id, NEW.task_type, NULL, NEW.status, NEW.updated_at);
+               END""",
+            """CREATE TRIGGER trg_task_queue_status_update
+               AFTER UPDATE OF status ON task_queue
+               WHEN OLD.status != NEW.status
+               BEGIN
+                   INSERT INTO task_status_events(
+                       task_id, task_type, from_status, to_status, created_at
+                   ) VALUES (NEW.id, NEW.task_type, OLD.status, NEW.status, NEW.updated_at);
+               END""",
+        ),
+    ),
 )
 
 
