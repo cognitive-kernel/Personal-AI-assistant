@@ -483,6 +483,7 @@ def _create_observed_legacy_learning_database(path, *, invalid_experience_status
                 ("legacy status fixture", "test migration rollback", invalid_experience_status),
             )
         connection.commit()
+    connection.close()
     return path
 
 
@@ -546,6 +547,7 @@ def _seed_observed_legacy_learning_data(path):
             (source_id,),
         )
         connection.commit()
+    connection.close()
 
 
 def test_observed_legacy_learning_fixture_matches_reviewed_fingerprint(tmp_path):
