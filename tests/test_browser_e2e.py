@@ -763,7 +763,7 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert page.locator("html").get_attribute("dir") == "rtl"
         assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
         missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
-            "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.id || node.tagName)"
+            "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
         )
         assert missing_names == [], f"Controls missing accessible names: {missing_names}"
         for width in (360, 768, 1280):
