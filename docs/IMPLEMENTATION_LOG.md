@@ -1775,8 +1775,8 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 150 — ناوبری واکنش‌گرا و دسترس‌پذیری داشبورد
 
-- **وضعیت:** پیاده‌سازی و آزمون مرورگر در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326)؛ در انتظار CI دقیق.
+- **وضعیت:** [x] تکمیل کد و آزمون‌های مخزن در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326)؛ CI روی head کد موفق شد. برای علامت‌گذاری نهایی، CI روی commit مستندات نیز باید موفق بماند.
 - **تغییر:** stylesheet محلی، ناوبری ثابت در دسکتاپ و افقی در موبایل، پیوند پرش به محتوای اصلی، focus-visible، کاهش حرکت، نام‌های قابل‌دسترسی کنترل‌ها و جهت متن متناسب با زبان اضافه شد. هیچ CDN یا فونت دوردستی اضافه نشده است.
 - **آزمون افزوده‌شده:** Chromium مسیرهای ناوبری، CSS، نام‌گذاری کنترل‌ها و نبود overflow در عرض‌های 360/768/1280 را بررسی می‌کند.
 - **محدودیت:** CI مرورگر به‌تنهایی تست دستی صفحه‌خوان/کیبورد یا پذیرش روی میزبان هدف نیست؛ این گیت‌ها باز می‌مانند.
-- **تست محلی:** اجرا نشده؛ وضعیت تکمیل فقط پس از CI دقیق head ثبت خواهد شد.
+- **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058789)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058712). تست محلی اجرا نشده است.
