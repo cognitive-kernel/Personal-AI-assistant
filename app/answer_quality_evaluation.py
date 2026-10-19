@@ -39,7 +39,7 @@ def evaluate_answer_surface(case: dict[str, Any], answer: str, sources: list[dic
     # Model-written links are not retrieval evidence unless they match the structured
     # source metadata exactly. This is a triage signal, not proof of fabrication.
     answer_urls = []
-    for match in re.findall(r"https://\\S+", answer):
+    for match in re.findall(r"https://\S+", answer):
         url = match.rstrip(".,;:!?)]}")
         if url and url not in answer_urls:
             answer_urls.append(url)
