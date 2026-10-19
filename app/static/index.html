@@ -298,10 +298,27 @@ async function createStorageBackup() {
 el("create-storage-backup").addEventListener("click",createStorageBackup);
 el("refresh-storage-backups").addEventListener("click",refreshStorageBackups);
 let taskPollScheduled=false;
+let taskPageCursors=[null];
+let taskPageIndex=0;
+let taskNextCursor=null;
+function renderTaskPagination(container) {
+ const controls=document.createElement("div"); controls.className="cloud-actions";
+ if(taskPageIndex>0) {
+  const previous=document.createElement("button"); previous.type="button"; previous.textContent="صفحهٔ قبل";
+  previous.addEventListener("click",()=>{taskPageIndex=Math.max(0,taskPageIndex-1);refreshTasks();});
+  controls.append(previous);
+ }
+ if(taskNextCursor) {
+  const next=document.createElement("button"); next.type="button"; next.textContent="صفحهٔ بعد";
+  next.addEventListener("click",()=>{taskPageCursors=taskPageCursors.slice(0,taskPageIndex+1);taskPageCursors.push(taskNextCursor);taskPageIndex++;refreshTasks();});
+  controls.append(next);
+ }
+ if(controls.childElementCount) container.append(controls);
+}
 function renderTasks(tasks) {
  const container=el("tasks-container");
  container.replaceChildren();
- if(!tasks.length) { appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted"); return; }
+ if(!tasks.length) { appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted"); renderTaskPagination(container); return; }
  tasks.forEach(task=>{
   const card=document.createElement("article"); card.className="cloud-candidate";
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
@@ -329,12 +346,18 @@ function renderTasks(tasks) {
   if(actions.childElementCount) card.append(actions);
   container.append(card);
  });
+ renderTaskPagination(container);
 }
-async function refreshTasks() {
+async function refreshTasks(options={}) {
  try {
-  const result=await api("/api/tasks?limit=100");
+  if(options.reset) { taskPageCursors=[null]; taskPageIndex=0; }
+  const params=new URLSearchParams({limit:"100"});
+  const cursor=taskPageCursors[taskPageIndex];
+  if(cursor) params.set("cursor",cursor);
+  const result=await api("/api/tasks?"+params.toString());
   const tasks=result.tasks||[];
-  el("tasks-output").textContent="تعداد وظایف: "+tasks.length;
+  taskNextCursor=result.next_cursor||null;
+  el("tasks-output").textContent="تعداد وظایف در این صفحه: "+tasks.length+" | صفحه: "+(taskPageIndex+1);
   renderTasks(tasks);
   const active=tasks.some(task=>["queued","running","pause_requested","cancel_requested"].includes(task.status));
   if(active&&!taskPollScheduled) {
@@ -345,7 +368,7 @@ async function refreshTasks() {
   el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
  }
 }
-el("refresh-tasks").addEventListener("click",refreshTasks);
+el("refresh-tasks").addEventListener("click",()=>refreshTasks({reset:true}));
 refreshStorageHealth();
 refreshStorageBackups();
 el("refresh").addEventListener("click", refresh);
