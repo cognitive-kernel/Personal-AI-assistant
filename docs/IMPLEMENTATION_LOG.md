@@ -1773,10 +1773,19 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **CI دقیق head:** موفق؛ [تست‌ها](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39267211354)، [dashboard smoke](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39267211360)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39267211422). تست محلی اجرا نشده است.
 - **گیت‌های مستقل/محلی همچنان باز:** اجرای مدل زنده و داوری انسانی، baseline و benchmark/soak روی میزبان هدف، تمرین staging/rollback و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
 
+## 150 — ناوبری واکنش‌گرا و دسترس‌پذیری داشبورد
+
+- **وضعیت:** [x] تکمیل کد و آزمون‌های مخزن در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326)؛ CI روی head کد موفق شد. برای علامت‌گذاری نهایی، CI روی commit مستندات نیز باید موفق بماند.
+- **تغییر:** stylesheet محلی، ناوبری ثابت در دسکتاپ و افقی در موبایل، پیوند پرش به محتوای اصلی، focus-visible، کاهش حرکت، نام‌های قابل‌دسترسی کنترل‌ها و جهت متن متناسب با زبان اضافه شد. هیچ CDN یا فونت دوردستی اضافه نشده است.
+- **آزمون افزوده‌شده:** Chromium مسیرهای ناوبری، CSS، نام‌گذاری کنترل‌ها و نبود overflow در عرض‌های 360/768/1280 را بررسی می‌کند.
+- **محدودیت:** CI مرورگر به‌تنهایی تست دستی صفحه‌خوان/کیبورد یا پذیرش روی میزبان هدف نیست؛ این گیت‌ها باز می‌مانند.
+- **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058789)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058712). تست محلی اجرا نشده است.
+
 ## 149 — تشخیص فقط‌خواندنی ساختار SQLite ناشناخته
 
-- **وضعیت:** پیاده‌سازی در [PR #325](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/325)؛ در انتظار CI دقیق و ادغام.
+- **وضعیت:** [x] کد تشخیصی، راهنمای بازیابی و تست‌های رگرسیون در [PR #325](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/325) آماده‌اند؛ CI روی head کد موفق شد.
 - **تغییر:** ابزار `scripts/inspect_sqlite_schema.py` ساختار جدول‌ها، ستون‌ها، کلیدهای خارجی، اثرانگشت schema، تاریخچهٔ migration و بررسی integrity را فقط با SQLite URI در حالت `mode=ro` می‌خواند؛ هیچ محتوای سطرها را چاپ نمی‌کند و migration یا repair اجرا نمی‌کند.
 - **راهنمای بازیابی:** `docs/LOCAL_DATABASE_RECOVERY.md` اضافه شد؛ خطای schema ناشناخته اکنون fingerprint و فرمان تشخیصی read-only را نمایش می‌دهد و صریحاً reset/stamp/migration بدون backup بررسی‌شده را منع می‌کند.
-- **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، و عدم درج تاریخچه برای schema ناشناخته پوشش داده شده‌اند.
-- **تست محلی:** اجرا نشده؛ تکمیل این بخش منوط به CI دقیق head است. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی schema همچنان محلی/میزبان‌محور است و انجام‌شده فرض نمی‌شود.
+- **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، و عدم درج تاریخچه برای schema ناشناخته پوشش داده شده‌اند؛ fixtureهای SQLite برای جلوگیری از قفل فایل روی Windows صریحاً بسته می‌شوند.
+- **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268854886)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268854900)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268854864). تست محلی اجرا نشده است.
+- **گیت‌های میزبان واقعی:** اجرای ابزار روی دیتابیس واقعی و بررسی انسانی گزارش همچنان نیازمند دسترسی محلی است؛ این کار انجام‌شده فرض نمی‌شود.
