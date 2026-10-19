@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 
 from app.schema_registry import LEARNING_MIGRATIONS
 from scripts.inspect_sqlite_schema import inspect_database
@@ -7,7 +8,7 @@ from scripts.inspect_sqlite_schema import inspect_database
 
 def test_inspection_is_read_only_and_identifies_registered_legacy_schema(tmp_path):
     database = tmp_path / "learning.db"
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         for statement in LEARNING_MIGRATIONS[0].statements:
             connection.execute(statement)
         connection.execute(
