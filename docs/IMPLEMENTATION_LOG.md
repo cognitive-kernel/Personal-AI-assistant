@@ -351,8 +351,8 @@
 - [x] معماری مالکیت داده، مرز دیتابیس و موتور فیزیکی را جدا می‌کند؛ تعداد دیتابیس‌ها ثابت نیست و چند دیتابیس می‌توانند روی یک موتور/سرور مشترک اجرا شوند.
 - [x] اصول نسخه‌بندی schema، مهاجرت expand/migrate/contract، پشتیبان و آزمون بازیابی، شناسه‌های پایدار، idempotency، outbox/reconciliation و بازسازی ایندکس مشتق‌شده مستند شد.
 - [ ] این تغییر مستنداتی است؛ هیچ پایگاه داده‌ای در این PR تفکیک یا مهاجرت نمی‌شود و هیچ داده‌ای تغییر نکرده است.
-- [ ] گام اجرایی بعدی: ممیزی کامل schemaها و تمام مسیرهای خواندن/نوشتن فعلی، سپس طراحی migration runner و repository contracts با fixtureهای واقعی؛ پیش از آن مهاجرت مخرب انجام نشود.
-- [ ] تست نرم‌افزاری اجرا نشده؛ CI دقیق head باید بررسی شود.
+- [x] این گام بعداً در بخش‌های 33–39 انجام شد: schema registry و migration runner نسخه‌دار همراه با fixtureهای آزمون اضافه شدند؛ بررسی دیتابیس واقعی همچنان گیت محیط هدف است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 
 
 ### نتیجهٔ نهایی ADR-004
@@ -380,8 +380,8 @@
 - [x] مسیر قدیمی یادگیری هنوز از `ThreadPoolExecutor` استفاده می‌کند؛ اتصال runtime جدید بدون هماهنگ‌سازی وضعیت‌ها، lease/heartbeat، لغو و بازیابی می‌تواند اجرای تکراری یا وضعیت گیرکرده ایجاد کند.
 - [x] مسیرهای احتمالی conversation archive، retrieval index و graph به‌عنوان دیتابیس‌های مستقل فرض نشده‌اند؛ نیاز آن‌ها باید با جریان داده و الگوی دسترسی واقعی سنجیده شود.
 - [ ] این ممیزی از خواندن استاتیک فایل‌های منتخب GitHub انجام شده است؛ checkout کامل، پیمایش همه مسیرهای خواندن/نوشتن و اجرای تست‌ها هنوز انجام نشده‌اند.
-- [ ] هیچ داده یا schemaای منتقل نشده و migration runner عمومی هنوز پیاده‌سازی نشده است.
-- [ ] گام بعدی: انتقال آزمایش‌شدهٔ یک نوع وظیفهٔ واقعی به صف پایدار، شامل recovery، idempotency، heartbeat و کنترل‌های تعاونی؛ سپس اتصال runtime به FastAPI startup/shutdown.
+- [x] در این گام تاریخی داده/schema منتقل نشد؛ migration runner عمومی بعداً در بخش‌های 33–39 پیاده‌سازی و آزمون شد.
+- [x] این گام بعداً در بخش‌های 18 و 21–27 تکمیل شد: صف پایدار، lease/heartbeat، idempotency، handler یادگیری و اتصال runtime به startup/shutdown. crash-windowهای میزبان واقعی همچنان گیت جداگانه‌اند.
 
 
 ## 18. 2026-10-15 — تمدید خودکار lease هنگام اجرای handler طولانی
@@ -389,8 +389,8 @@
 - [x] `TaskWorker` هنگام اجرای handler یک heartbeat پس‌زمینه شروع می‌کند و lease را تقریباً هر یک‌سوم مدت lease تمدید می‌کند.
 - [x] heartbeat پس از درخواست pause/cancel تمدید را متوقف می‌کند؛ اگر handler به checkpoint نرسد، انقضای lease اجازه می‌دهد صف وضعیت را بازیابی کند.
 - [x] تست رگرسیون اضافه شد که handler بیش از مدت lease اجرا می‌شود و باید بدون تلاش مجدد با نتیجه موفق پایان یابد.
-- [ ] نتیجه تست هنوز فقط پس از اجرای CI روی head دقیق قابل اعلام است؛ تست محلی در این نشست اجرا نشده است.
-- [ ] این تغییر به‌تنهایی یکپارچه‌سازی یادگیری با صف یا اتصال runtime به FastAPI را انجام نمی‌دهد.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است؛ شواهد در بخش 154 ثبت شده‌اند. تست محلی اجرا نشده است.
+- [x] این محدودیت تاریخی در بخش 23 برطرف شد؛ مسیر یادگیری به صف پایدار و runtime وصل شد. تست محلی آن مرحله اجرا نشده بود.
 
 
 ## 19. 2026-10-15 — الزام کشف خودکار منابع پردازشی رایگان
@@ -400,7 +400,7 @@
 - [x] روشن شد که ساخت حساب برای دورزدن سقف حساب، سهمیه یا کنترل‌های ضدسوءاستفاده مجاز نیست؛ موانع واقعی مانند MFA یا اعتبارنامه ضروری باید به‌طور مشخص گزارش شوند.
 - [x] الزام شد داده‌های پایدار یادگیری، تجربه‌ها، صف و checkpoint مرجع روی سیستم اصلی محلی باقی بمانند و داده ابری فقط در حد لازم برای محاسبه و به‌صورت موقت استفاده شود.
 - [ ] این تغییر فقط مستنداتی است؛ کشف‌گر منابع، provider adapterها، اتصال خودکار و زمان‌بند چندمنبعی هنوز پیاده‌سازی نشده‌اند.
-- [ ] تست نرم‌افزاری برای تغییر مستندات اجرا نشده؛ نتیجه CI باید روی head دقیق PR بررسی شود. تست محلی در این نشست اجرا نشده است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است؛ این تغییر مستنداتی در main موجود است. تست محلی اجرا نشده است.
 - **گام اجرایی بعدی پروژه:** انتقال کنترل‌شدهٔ یک نوع وظیفهٔ واقعی یادگیری به صف پایدار با recovery و idempotency؛ سپس اتصال runtime به lifecycle برنامه. بعد از تثبیت آن، ساخت زیرسامانهٔ کشف و مدیریت منابع ابری به‌صورت مرحله‌ای.
 
 
@@ -409,7 +409,7 @@
 - [x] `learning.run_job()` پس از ثبت وضعیت و خطای `failed`، اکنون شکست را با `LearningError` دوباره پرتاب می‌کند تا worker صف نتواند شکست یادگیری را به‌اشتباه موفقیت وظیفه ثبت کند.
 - [x] آزمون رگرسیون در `tests/test_core.py` بررسی می‌کند که خطای مدل هم در رکورد یادگیری ذخیره شود و هم به فراخواننده منتقل شود.
 - [x] این محدودیت تاریخی با انتقال نقاط ارسال یادگیری به صف و اتصال runtime در بخش 23 رفع شده است.
-- [ ] تست محلی در این نشست اجرا نشده است؛ نتیجه باید از CI روی head دقیق PR گرفته شود.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است؛ شواهد در بخش 154 ثبت شده‌اند. تست محلی اجرا نشده است.
 
 
 ## 20. 2026-10-15 — آشکارسازی شکست واقعی اجرای یادگیری
@@ -417,7 +417,7 @@
 - [x] `learning.run_job()` پس از ثبت وضعیت و خطای `failed`، اکنون شکست را با `LearningError` دوباره پرتاب می‌کند تا worker صف نتواند شکست یادگیری را به‌اشتباه موفقیت وظیفه ثبت کند.
 - [x] آزمون رگرسیون در `tests/test_core.py` بررسی می‌کند که خطای مدل هم در رکورد یادگیری ذخیره شود و هم به فراخواننده منتقل شود.
 - [x] این محدودیت تاریخی با انتقال نقاط ارسال یادگیری به صف و اتصال runtime در بخش 23 رفع شده است.
-- [ ] تست محلی در این نشست اجرا نشده است؛ نتیجه باید از CI روی head دقیق PR گرفته شود.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است؛ شواهد در بخش 154 ثبت شده‌اند. تست محلی اجرا نشده است.
 
 
 ## 21. 2026-10-15 — آداپتر وظیفهٔ یادگیری پایدار
@@ -438,7 +438,7 @@
 - [x] `initialize_task_store()` ستون و ایندکس یکتای جزئی را به schema موجود به‌صورت افزایشی اضافه می‌کند و وظایف قدیمی را حفظ می‌کند.
 - [x] آزمون‌های idempotency، تعارض کلید، ورودی خالی و مهاجرت schema قدیمی اضافه شدند.
 - [x] بعداً برای dedupe وظایف یادگیری و reconciliation در startup استفاده شد؛ `app/learning_tasks.py` و `tests/test_main_startup.py`.
-- [ ] تست محلی در این نشست اجرا نشده؛ CI روی head دقیق PR باید بررسی شود.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است؛ شواهد در بخش 154 ثبت شده‌اند. تست محلی اجرا نشده است.
 
 
 ## 23. 2026-10-15 — انتقال ارسال وظایف یادگیری به صف پایدار و فعال‌سازی runtime
@@ -471,7 +471,7 @@
 - [x] تست‌های مسیر API برای لغو jobهای queued و running اضافه شدند.
 - [x] **PR #87** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/87)، commit ادغام `1af59866763c1b5942a6d9e09f21c9a6ea66d53e`.
 - [x] CI روی head دقیق `bf509c7de34547c530b83b1769ee34d8394a2c1d` موفق بود؛ run [#38783943998](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38783943998)، شامل نصب وابستگی‌ها و `pytest`.
-- [ ] **گام بعدی:** آزمون‌های یکپارچگی startup/shutdown و crash recovery؛ سپس ممیزی کامل schemaها و طراحی migration runner نسخه‌دار.
+- [x] آزمون‌های یکپارچگی startup/shutdown در بخش 26 و schema registry/migration runner در بخش‌های 33–39 تکمیل شدند. crash recovery روی میزبان واقعی همچنان گیت پذیرش جداگانه است.
 
 
 
@@ -502,7 +502,7 @@
 - [x] تست قرارداد schema برای جدول‌ها، ستون‌های مهم، ایندکس‌های صف و `PRAGMA foreign_key_check` افزوده شد.
 - [x] تست cascade برای داده‌های وابسته به learning job اضافه شد تا حذف job ناخواسته ردیف یتیم باقی نگذارد.
 - [x] تست تکرارپذیری initialization بررسی می‌کند که مقدار تنظیم‌شده توسط کاربر با startup دوباره بازنویسی نشود و `PRAGMA integrity_check` موفق باشد.
-- [ ] نتیجهٔ CI باید روی head دقیق PR بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** fixture مهاجرت schema قدیمی و سپس ابزار backup/restore SQLite با آزمون بازیابی.
 
 
@@ -546,7 +546,7 @@
 - [x] CI در PR قبلی نشان داد وظیفهٔ آزمایشی با نوع غیرمجاز برای runtime در لحظهٔ ایجاد آمادهٔ اجرا بود و worker می‌توانست آن را پیش از درخواست pause claim کند.
 - [x] fixture تست اکنون زمان اجرای آینده را از لحظهٔ ایجاد تنظیم می‌کند؛ بنابراین تست تغییر اولویت/زمان‌بندی/توقف، رقابت تصادفی با worker پس‌زمینه ندارد و معنای واقعی زمان‌بندی را هم می‌آزماید.
 - [x] CI روی head دقیق `e1add004fa5fa32ef304ced088e0c50482cc53b0` موفق بود؛ run [#38786413404](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38786413404). این head به‌علت تغییر هم‌زمان main ادغام نشد؛ همین تغییر روی latest main دوباره ارائه شده است.
-- [ ] CI باید روی head دقیق PR فعلی بررسی شود؛ تست محلی در این نشست اجرا نشده است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** پس از merge، تعریف migrationهای واقعی برای settings/learning را روی runner عمومی اضافه کن؛ schema ناشناخته نباید خودکار adopt شود.
 
 
@@ -625,7 +625,7 @@
 - [x] تست ارتقای schema یادگیری از v1 به v3 اکنون شناسه‌ها و مقادیر مرتبط را بررسی می‌کند: learning job، source_ref/content_hash، متن منبع، knowledge item، ارزیابی، review، مسیر/موضوع یادگیری و task صف.
 - [x] ممیزی حوزه‌های داده به‌روز شد: migration/backup/restore و اتصال startup ثبت شده‌اند؛ صف فعلاً در learning باقی می‌ماند چون reconciliation و مالکیت عملیاتی به آن وابسته‌اند.
 - [x] هیچ DB تازه‌ای برای conversation/archive, audit, retrieval یا graph ساخته نشد، چون مسیر canonical و نیاز مستقل هنوز اثبات نشده‌اند.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** fault-injection برای مرزهای commit بین learning job و task، تکمیل ماتریس مالکیت/retention و آزمون pause/cancel پس از restart.
 
 
@@ -716,7 +716,7 @@
 - [x] پس از اصلاح دو assertion قدیمی نسخهٔ schema، **PR #118** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/118)، commit `461fc4f58bfd7852d831510c648babe990bd623c`.
 - [x] CI روی head دقیق `50cdbb14845144fd336b8b7a6fac7450e8042d2a` موفق بود؛ run [#38839076248](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38839076248)، شامل نصب وابستگی‌ها و `pytest`.
 - [x] migration نسخهٔ 6 برای cache بردارهای embedding، API محلی Ollama برای `/api/embed` و بازیابی ترکیبی BM25-style + vector/RRF در شاخهٔ بعدی افزوده شده‌اند.
-- [ ] CI روی head این PR بازیابی ترکیبی باید بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است؛ بنچمارک retrieval با embedding واقعی و تست محلی همچنان اجرا نشده است.
 - **گام بعدی:** ادغام retrieval پس از CI موفق؛ سپس انتقال دقیق citation/claim review و مرزبندی feedback غیرقابل‌اعتماد در PRهای مستقل.
 
 
@@ -918,7 +918,7 @@
 - [x] نسخهٔ policy به `cloud-resource-preflight-v2` ارتقا یافت؛ `execution_authorized` همچنان همیشه false است.
 - [x] تست‌های جدید برای فیلدهای مفقود، احراز هویت نامجاز، region خارج از allowlist، مقدارهای غیرمتناهی و ورودی‌های malformed اضافه شدند.
 - [x] CI روی head عملکردی `de3ecf8e531ff44cf2f117fb479edddedf2f09e2` موفق بود؛ run [#38847087564](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38847087564)، شامل کل `pytest` و benchmark واژگانی.
-- [ ] تست محلی اجرا نشده است؛ پس از ثبت نتیجه در log، CI دوباره روی head نهایی PR بررسی می‌شود.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** provider-specific adapter فقط پس از مستندشدن رسمی API/terms هر سرویس، قرارداد authentication و quota و تست mock/contract ایجاد شود؛ remote execution همچنان غیرفعال بماند.
 
 
@@ -943,7 +943,7 @@
 - [x] مستندات رسمی مرجع و محدودیت‌ها در `docs/architecture/CLOUD_RESOURCE_DISCOVERY.md` ثبت شد.
 - [x] **PR #137** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/137)، commit ادغام `5e8089a6bb720130b48171d7eb40091be11909dd`.
 - [x] CI روی head نهایی `3fc3939a134b46731c02d2f760adb6c60449007e` موفق بود؛ run [#38851168554](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38851168554). اجرای remote و فراخوانی Kaggle CLI اضافه نشد.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR جدید بررسی شود.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** اجرای contract tests برای آداپتر استخراج، سپس بررسی رسمی سهمیه/محدودیت Kaggle و سیاست استفاده قبل از طراحی آداپتر اجرای remote. اجرای remote تا آن زمان خاموش بماند.
 
 
@@ -956,7 +956,7 @@
 - [x] **PR #138** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/138)، commit ادغام `729ac48bdde9ae658da9d62478f373d577e8858e`.
 - [x] CI روی head دقیق `d77205828dca74bd17f2324b3e67058ca65a5e1b` موفق بود؛ run [#38851414970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38851414970).
 - [ ] quota parser هنوز به provider runtime وصل نیست؛ هر اتصال آینده نیازمند رضایت کاربر برای استفاده از حساب فعلی، بررسی تازهٔ quota و fail-closed خواهد بود.
-- [ ] تست محلی اجرا نشده است؛ CI باید روی head دقیق PR جدید بررسی شود.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** provider adapter فقط با consent صریح و از طریق API/CLI رسمی؛ پیش از ارسال job، policy باید snapshot تازهٔ سهمیه، حد زمانی اجرا و منع هزینه را اجباری کند. هیچ remote execution تا آن زمان فعال نشود.
 
 
@@ -1024,7 +1024,7 @@
 - [x] کنترل pause/cancel/lease به sandbox منتقل می‌شود؛ اجرای واقعی همچنان فقط در container محدودشده و بدون شبکه انجام می‌شود.
 - [x] `app/main.py` handler را تنها پس از opt-in و اعتبارسنجی پیکربندی به registry اضافه می‌کند؛ در حالت پیش‌فرض sandbox فعال نیست.
 - [x] تست‌های opt-in، پیکربندی نامعتبر، schema ورودی، عدم امکان override کردن image، hash و شواهد checkpoint اضافه شدند.
-- [ ] API اختصاصی loopback برای صف‌کردن اجرای sandbox و ثبت رضایت/رویداد audit هنوز وجود ندارد؛ فعلاً handler از طریق task registry محدودشده است.
+- [x] این محدودیت تاریخی در بخش‌های 72–74 رفع شد: `/api/sandbox/consent`، `POST /api/sandbox/run`، ثبت رویدادهای grant/revoke و کنترل loopback/رضایت اضافه و با CI تأیید شدند؛ پذیرش crash/restart روی میزبان واقعی همچنان گیت جداگانه است.
 - [x] **PR #146** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/146)، commit ادغام `ac36ec7babe34d340ca9b3f1d58cd83ad46774f2`.
 - [x] CI روی head دقیق `58172f50eb45f6d4e6f2cb13c354f2e448e420c5` موفق بود؛ run [#38855242680](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855242680) شامل نصب وابستگی‌ها، کل مجموعه تست و benchmark بازیابی واژگانی.
 - [ ] تست محلی اجرا نشده است؛ CI اجرا شده است.
@@ -1253,7 +1253,7 @@
 - [x] فقط نیازمندی‌ها، شناسه/دامنه/hash منبع، ظرفیت نرمال‌شده، دلایل و وضعیت preflight ذخیره می‌شوند؛ متن خام منبع و credentialها ذخیره نمی‌شوند.
 - [x] schema و ذخیره‌سازی `execution_authorized=0` و `remote_execution_enabled=0` را با قید دیتابیس enforce می‌کنند؛ ذخیره‌سازی هر plan مدعی مجوز اجرا رد می‌شود.
 - [x] تست‌های migration، حفظ تصمیم‌ها، فهرست/جزئیات plan، 404 و رد هرگونه مجوز اجرا اضافه شدند.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI روی main در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). تست محلی در این نشست اجرا نشده است.
 - **گام بعدی:** CI/ادغام؛ سپس ارزیابی مجدد زمان‌دار برای freshness و سهمیه و ثبت دلایل انتخاب/رد، بدون فعال‌کردن اجرای remote.
 
 ## 91. Opt-in automatic capture of source-backed research experiences
@@ -1830,3 +1830,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت:** [x] موارد تاریخی که هنوز به‌اشتباه «اتصال انجام نشده» یا «CI باید اجرا شود» نشان می‌دادند، با وضعیت فعلی `main` تطبیق داده شدند. متن هر مورد مشخص می‌کند که تکمیل در بخش‌های بعدی رخ داده؛ تاریخچهٔ فنی پاک نشده است.
 - **CI مبنا:** `main` در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb`؛ [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717) همگی موفق‌اند.
 - **موارد باز و عمداً تیک‌نخورده:** تست محلی؛ اجرای دیتابیس واقعی Windows؛ مدل زنده و داوری انسانی؛ benchmark/soak و fault injection روی میزبان هدف؛ staging/rollback و clean-start؛ مرور دستی صفحه‌خوان/کیبورد؛ بازبینی امنیتی مستقل issue #52.
+
+## 155 — گزارش تکمیل موارد قابل‌اثبات بدون اجرای تست محلی (2026-10-19)
+
+- **وضعیت:** [x] چک‌لیست‌های تاریخی مربوط به صف/worker/runtime، صف‌کردن کارهای یادگیری، heartbeat/idempotency، schema registry/migration runner، CI شاخه‌های PR و API رضایت/audit sandbox با وضعیت بعدی کد تطبیق داده شدند. تیک‌ها به معنی تکمیل در مراحل بعدی‌اند، نه اینکه در تاریخ اولیه انجام شده باشند.
+- **CI آخرین نسخهٔ کد:** `main` در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` از هر سه کنترل عبور کرده است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). commitهای بعدی تا این ثبت مستنداتی بوده‌اند؛ CI روی PR جاری نیز باید سبز شود.
+- **موارد توسعه‌ای که هنوز بازند:** UI مدیریتی کامل صف، pagination/cursor و audit log تغییر وضعیت وظایف؛ احراز هویت اگر API از loopback فراتر برود؛ اتصال quota parser به provider runtime. این موارد عمداً تیک نخورده‌اند چون پیاده‌سازی‌شدنشان در main اثبات نشد.
+- **مواردی که حتماً به محیط/بازبینی واقعی نیاز دارند:** تست محلی؛ بررسی schema دیتابیس واقعی Windows و backup/migration؛ benchmark و soak صف؛ fault-injection/restart؛ staging restore، clean-start و rollback؛ اجرای مدل زنده و داوری انسانی؛ مرور دستی صفحه‌خوان/کیبورد؛ بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52). این گیت‌ها عمداً بازند.
+- **اقدام انجام‌نشده:** هیچ تست محلی اجرا نشده، هیچ دیتابیس واقعی تغییر نکرده و هیچ نتیجه‌ای دربارهٔ کیفیت مدل زنده یا پذیرش تولیدی ادعا نمی‌شود.
