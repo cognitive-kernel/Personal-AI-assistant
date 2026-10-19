@@ -1846,3 +1846,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون افزوده‌شده:** چند صفحه با اولویت‌های تکراری، ترتیب ثابت، `has_more`، پایان cursor، cursor نامعتبر و حد بالای صفحه پوشش داده می‌شوند.
 - **اعتبارسنجی:** CI روی head کد `5455f3c0abdae6d5218f6f1f471b338db447cbf8` موفق شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383884)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383831)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383853). تست محلی اجرا نشده است؛ پذیرش روی میزبان هدف جداگانه است.
 - **باقی‌مانده:** audit log پایدار برای تغییر وضعیت وظایف و تکمیل بیشتر ابزارهای مدیریتی هنوز انجام نشده‌اند؛ API همچنان loopback-only است و remote auth فعال نشده است.
+
+
+## 157 — ثبت پایدار و نمایش تاریخچهٔ تغییر وضعیت وظایف (2026-10-19)
+
+- **تغییر کد:** migration نسخهٔ 15 جدول `task_status_events` و triggerهای SQLite را اضافه می‌کند؛ ایجاد وظیفه و هر انتقال وضعیت در همان دیتابیس ثبت می‌شود، مستقل از اینکه تغییر از API یا worker آمده باشد.
+- **API:** `GET /api/tasks/{task_id}/events` تاریخچه را با `limit` و `before_id` صفحه‌بندی می‌کند. endpoint از همان مرز loopback-only مدیریت وظایف محافظت می‌شود.
+- **رابط کاربری:** هر کارت وظیفه دکمهٔ «سابقهٔ وضعیت» دارد؛ داده با `textContent` نمایش داده می‌شود و متن خام payload یا HTML اجرا نمی‌شود.
+- **آزمون‌ها:** ارتقای schema v14→v15، حفظ داده در مهاجرت legacy، ثبت وضعیت اولیه و تغییرات queued/paused/cancelled، cursor تاریخچه، رد cursor/limit نامعتبر و قرارداد UI پوشش داده شدند.
+- **تست محلی:** اجرا نشده است؛ CI روی PR این تغییر باید موفق شود. دیتابیس واقعی کاربر تغییر داده نشده است.
+- **باقی‌مانده:** UI مدیریتی کامل‌تر و احراز هویت در صورت نیاز به دسترسی غیر-loopback هنوز بازند؛ remote access همچنان مسدود است.
