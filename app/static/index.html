@@ -52,6 +52,7 @@
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
+ <button id="load-more-tasks" type="button" hidden>بارگذاری وظایف بیشتر</button>
 <pre id="tasks-output">فهرست وظایف هنوز بارگذاری نشده است.</pre>
 <div id="tasks-container"></div></section>
 <section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
@@ -330,22 +331,29 @@ function renderTasks(tasks) {
   container.append(card);
  });
 }
-async function refreshTasks() {
- try {
-  const result=await api("/api/tasks?limit=100");
-  const tasks=result.tasks||[];
-  el("tasks-output").textContent="تعداد وظایف: "+tasks.length;
-  renderTasks(tasks);
-  const active=tasks.some(task=>["queued","running","pause_requested","cancel_requested"].includes(task.status));
-  if(active&&!taskPollScheduled) {
-   taskPollScheduled=true;
-   setTimeout(()=>{taskPollScheduled=false;refreshTasks();},2000);
+let taskNextCursor=null;
+async function refreshTasks({append=false}={}) {
+  const loadMore=el("load-more-tasks");
+  try {
+   const query=new URLSearchParams({limit:"50"});
+   if(append&&taskNextCursor) query.set("cursor",taskNextCursor);
+   const result=await api("/api/tasks?"+query.toString());
+   const tasks=result.tasks||[];
+   renderTasks(tasks,{append});
+   taskNextCursor=result.next_cursor||null;
+   loadMore.hidden=!taskNextCursor;
+   el("tasks-output").textContent="وظایف بارگذاری‌شده: "+el("tasks-container").childElementCount+(result.has_more?" — موارد بیشتری موجود است.":"");
+   const active=tasks.some(task=>["queued","running","pause_requested","cancel_requested"].includes(task.status));
+   if(active&&!taskPollScheduled) {
+    taskPollScheduled=true;
+    setTimeout(()=>{taskPollScheduled=false;refreshTasks();},2000);
+   }
+  } catch(error) {
+   el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
   }
- } catch(error) {
-  el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
  }
-}
-el("refresh-tasks").addEventListener("click",refreshTasks);
+ el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
+el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
 refreshStorageHealth();
 refreshStorageBackups();
 el("refresh").addEventListener("click", refresh);
