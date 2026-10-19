@@ -1756,9 +1756,18 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 147 — تشخیص URLهای پاسخ فاقد provenance بازیابی
 
-- **وضعیت:** پیاده‌سازی و آزمون رگرسیون در شاخهٔ `fix/answer-url-provenance-and-acceptance-log`؛ در انتظار CI و ادغام.
+- **وضعیت:** تکمیل و ادغام‌شده در [PR #322](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/322). CI روی head نهایی سبز شد: test، windows-storage-regressions، dashboard-smoke و pip-audit؛ اجرای محلی انجام نشده است.
 - **تغییر:** ارزیابی سطح پاسخ اکنون URLهای HTTPS داخل متن تولیدشده را جدا از URLهای metadata ساختاریافتهٔ بازیابی ثبت می‌کند و URLهایی را که تطبیق دقیق ندارند در `unattributed_answer_urls` علامت می‌زند. خلاصهٔ هر زبان تعداد موارد و تعداد URLهای فاقد انتساب را نشان می‌دهد.
 - **تفسیر ایمن:** این شاخص فقط سیگنال بررسی است؛ به‌تنهایی جعلی‌بودن URL را ثابت نمی‌کند و canonicalization، redirect و گزارش‌های بازیابی ممکن است نیازمند بررسی دستی باشند. وجود لینک در متن مدل به‌خودی‌خود شاهد بازیابی یا بررسی منبع نیست.
 - **آزمون‌های افزوده‌شده:** URL تطبیق‌داده‌شده، URL بدون انتساب، حذف علائم پایانی رایج، و شمارش خلاصهٔ زبان.
-- **تست محلی:** اجرا نشده. نتیجه فقط پس از دریافت CI دقیق head ثبت خواهد شد.
+- **CI دقیق head:** موفق؛ [اجرای تست‌ها](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39266430032)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39266430246)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39266430275). تست محلی اجرا نشده است.
 - **گیت‌های محلی/ماشین هدف:** baseline کامل، اجرای مدل زنده و داوری انسانی، benchmark/soak، تمرین staging/rollback و بازبینی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان باز هستند.
+
+
+## 148 — پوشش مسیر پژوهش برای پرسش‌های شواهد، اصلاح و حافظه
+
+- **وضعیت:** تغییر کد و تست رگرسیون در شاخهٔ `fix/research-policy-marker-coverage`؛ در انتظار CI.
+- **تغییر:** markerهای فارسی/انگلیسی برای ادعا، شواهد، متن بازیابی‌شده، provenance، تعارض منابع، حافظه و اصلاح کاربر گسترش یافتند تا پرسش‌های ارزیابی به مسیر پژوهش و سیاست منبع هدایت شوند، نه پاسخ مستقیم.
+- **آزمون افزوده‌شده:** هر ۸ پرسش فارسی/انگلیسی از مجموعهٔ پذیرش باید `should_use_research` را فعال کند.
+- **حاکمیت:** این تغییر به‌تنهایی کیفیت یا صحت پاسخ را اثبات نمی‌کند؛ آزمون مدل زنده و داوری انسانی همچنان لازم است.
+- **تست محلی:** اجرا نشده؛ نتیجهٔ CI دقیق head پس از تکمیل ثبت می‌شود.
