@@ -1780,3 +1780,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون افزوده‌شده:** Chromium مسیرهای ناوبری، CSS، نام‌گذاری کنترل‌ها و نبود overflow در عرض‌های 360/768/1280 را بررسی می‌کند.
 - **محدودیت:** CI مرورگر به‌تنهایی تست دستی صفحه‌خوان/کیبورد یا پذیرش روی میزبان هدف نیست؛ این گیت‌ها باز می‌مانند.
 - **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058789)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058712). تست محلی اجرا نشده است.
+
+## 149 — تشخیص فقط‌خواندنی ساختار SQLite ناشناخته
+
+- **وضعیت:** [ ] پیاده‌سازی و تست‌ها در [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327)؛ در انتظار CI دقیق روی مبنای فعلی.
+- **تغییر:** ابزار `scripts/inspect_sqlite_schema.py` ساختار جدول‌ها، ستون‌ها، کلیدهای خارجی، اثرانگشت schema، تاریخچهٔ migration و بررسی integrity را فقط با SQLite URI در حالت `mode=ro` می‌خواند؛ هیچ محتوای سطرها را چاپ نمی‌کند و migration یا repair اجرا نمی‌کند.
+- **راهنمای بازیابی:** `docs/LOCAL_DATABASE_RECOVERY.md` اضافه شد؛ خطای schema ناشناخته اکنون fingerprint و فرمان تشخیصی read-only را نمایش می‌دهد و صریحاً reset/stamp/migration بدون backup بررسی‌شده را منع می‌کند.
+- **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، عدم درج تاریخچه برای schema ناشناخته، و بستن صریح fixtureهای SQLite برای جلوگیری از قفل فایل در Windows پوشش داده شده‌اند.
+- **تست محلی:** اجرا نشده. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی گزارش همچنان نیازمند دسترسی محلی است و انجام‌شده فرض نمی‌شود.
