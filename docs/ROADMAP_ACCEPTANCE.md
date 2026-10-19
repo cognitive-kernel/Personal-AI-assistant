@@ -28,6 +28,12 @@ This document records repository-level evidence and the remaining acceptance gat
 5. **Recovery and load evidence:** run `scripts/benchmark_task_queue.py` on the target host using disposable SQLite stores and archive the JSON report; exercise process crash/restart and multi-process contention on disposable data; measure latency, memory, CPU, disk growth, queue recovery, and backup/restore behavior. The benchmark is diagnostic and has no universal throughput pass threshold.
 6. **Deployment policy:** local install/update/rollback and backup procedures are documented in `docs/operations/INSTALL_UPDATE_ROLLBACK.md`; the target-host rehearsal, including staging restore and rollback, remains outstanding. Keep remote execution/cloud provisioning disabled until a separate security and cost review approves them.
 
+## Additional release gate
+
+
+
+7. **Final clean-start and test-data isolation:** all current learning content is disposable and must never be promoted as trusted release knowledge. After all implementation and evaluation gates pass, rehearse initialization using fresh disposable stores, verify the registered schema/migration history, confirm test learning content is absent, and rerun target-host smoke tests. Do not truncate or replace development/live stores to bypass schema errors. Follow [Final clean-start and learning-data acceptance](operations/FINAL_CLEAN_START_ACCEPTANCE.md). This gate remains outstanding until its evidence is attached to the exact release commit.
+
 ## Non-goals without a separate approval gate
 
 - Do not auto-apply arbitrary generated patches to the running application.
