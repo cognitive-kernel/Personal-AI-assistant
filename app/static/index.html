@@ -341,8 +341,8 @@ function renderTasks(tasks,{append=false}={}) {
     prioritySave.disabled=true;
     try {
      await api("/api/tasks/"+task.id+"/priority",{method:"PATCH",body:JSON.stringify({priority:value})});
-     el("tasks-output").textContent="اولویت وظیفه #"+task.id+" ذخیره شد.";
      await refreshTasks();
+     el("tasks-output").textContent="اولویت وظیفه #"+task.id+" ذخیره شد.";
     } catch(error) { el("tasks-output").textContent="ذخیره اولویت ناموفق بود: "+error.message; }
     finally { prioritySave.disabled=false; }
    });
@@ -367,8 +367,8 @@ function renderTasks(tasks,{append=false}={}) {
     scheduleSave.disabled=true;
     try {
      await api("/api/tasks/"+task.id+"/schedule",{method:"PATCH",body:JSON.stringify({scheduled_at:scheduledAt.toISOString()})});
-     el("tasks-output").textContent="زمان اجرای وظیفه #"+task.id+" ذخیره شد.";
      await refreshTasks();
+     el("tasks-output").textContent="زمان اجرای وظیفه #"+task.id+" ذخیره شد.";
     } catch(error) { el("tasks-output").textContent="ذخیره زمان‌بندی ناموفق بود: "+error.message; }
     finally { scheduleSave.disabled=false; }
    });
