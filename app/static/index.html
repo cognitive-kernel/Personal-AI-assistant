@@ -326,6 +326,55 @@ function renderTasks(tasks,{append=false}={}) {
    card.append(result);
   }
   const actions=document.createElement("div"); actions.className="cloud-actions";
+  if(["queued","paused"].includes(task.status)) {
+   const editControls=document.createElement("div"); editControls.className="task-edit-controls";
+   const priorityLabel=document.createElement("label");
+   priorityLabel.textContent="اولویت";
+   const priorityInput=document.createElement("input"); priorityInput.type="number"; priorityInput.min="-100000"; priorityInput.max="100000"; priorityInput.step="1"; priorityInput.value=String(task.priority??0);
+   priorityInput.setAttribute("aria-label","اولویت وظیفه "+task.id);
+   const prioritySave=document.createElement("button"); prioritySave.type="button"; prioritySave.textContent="ذخیره اولویت"; prioritySave.setAttribute("aria-label","ذخیره اولویت وظیفه "+task.id);
+   prioritySave.addEventListener("click",async()=>{
+    const value=Number(priorityInput.value);
+    if(!Number.isInteger(value)||value < -100000||value > 100000) {
+     el("tasks-output").textContent="اولویت باید عدد صحیح بین ۱۰۰۰۰۰- و ۱۰۰۰۰۰ باشد."; priorityInput.focus(); return;
+    }
+    prioritySave.disabled=true;
+    try {
+     await api("/api/tasks/"+task.id+"/priority",{method:"PATCH",body:JSON.stringify({priority:value})});
+     el("tasks-output").textContent="اولویت وظیفه #"+task.id+" ذخیره شد.";
+     await refreshTasks();
+    } catch(error) { el("tasks-output").textContent="ذخیره اولویت ناموفق بود: "+error.message; }
+    finally { prioritySave.disabled=false; }
+   });
+   priorityLabel.append(priorityInput); editControls.append(priorityLabel,prioritySave);
+
+   const scheduleLabel=document.createElement("label");
+   scheduleLabel.textContent="زمان اجرای برنامه‌ریزی‌شده";
+   const scheduleInput=document.createElement("input"); scheduleInput.type="datetime-local";
+   scheduleInput.setAttribute("aria-label","زمان اجرای وظیفه "+task.id);
+   const currentSchedule=task.scheduled_at?new Date(task.scheduled_at):null;
+   const dateForInput=currentSchedule&&!Number.isNaN(currentSchedule.getTime())?currentSchedule:new Date(Date.now()+5*60*1000);
+   const localOffset=dateForInput.getTimezoneOffset()*60000;
+   scheduleInput.value=new Date(dateForInput.getTime()-localOffset).toISOString().slice(0,16);
+   const nowOffset=new Date().getTimezoneOffset()*60000;
+   scheduleInput.min=new Date(Date.now()-nowOffset).toISOString().slice(0,16);
+   const scheduleSave=document.createElement("button"); scheduleSave.type="button"; scheduleSave.textContent="ذخیره زمان"; scheduleSave.setAttribute("aria-label","ذخیره زمان اجرای وظیفه "+task.id);
+   scheduleSave.addEventListener("click",async()=>{
+    if(!scheduleInput.value) { el("tasks-output").textContent="زمان اجرای وظیفه را مشخص کنید."; scheduleInput.focus(); return; }
+    const scheduledAt=new Date(scheduleInput.value);
+    if(Number.isNaN(scheduledAt.getTime())) { el("tasks-output").textContent="زمان واردشده معتبر نیست."; scheduleInput.focus(); return; }
+    if(scheduledAt.getTime()<=Date.now()) { el("tasks-output").textContent="زمان اجرا باید در آینده باشد."; scheduleInput.focus(); return; }
+    scheduleSave.disabled=true;
+    try {
+     await api("/api/tasks/"+task.id+"/schedule",{method:"PATCH",body:JSON.stringify({scheduled_at:scheduledAt.toISOString()})});
+     el("tasks-output").textContent="زمان اجرای وظیفه #"+task.id+" ذخیره شد.";
+     await refreshTasks();
+    } catch(error) { el("tasks-output").textContent="ذخیره زمان‌بندی ناموفق بود: "+error.message; }
+    finally { scheduleSave.disabled=false; }
+   });
+   scheduleLabel.append(scheduleInput); editControls.append(scheduleLabel,scheduleSave);
+   card.append(editControls);
+  }
   const historyButton=document.createElement("button"); historyButton.type="button"; historyButton.textContent="تاریخچه رویدادها";
   historyButton.setAttribute("aria-label","نمایش تاریخچه رویدادهای وظیفه "+task.id);
   let historyEvents=[];
