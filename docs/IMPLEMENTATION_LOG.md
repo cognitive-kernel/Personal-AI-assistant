@@ -1835,7 +1835,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - **وضعیت:** [x] چک‌لیست‌های تاریخی مربوط به صف/worker/runtime، صف‌کردن کارهای یادگیری، heartbeat/idempotency، schema registry/migration runner، CI شاخه‌های PR و API رضایت/audit sandbox با وضعیت بعدی کد تطبیق داده شدند. تیک‌ها به معنی تکمیل در مراحل بعدی‌اند، نه اینکه در تاریخ اولیه انجام شده باشند.
 - **CI آخرین نسخهٔ کد:** `main` در commit `f9404d2c9e04a61d9fd0e8e87f846ef8e12348bb` از هر سه کنترل عبور کرده است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425595)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425772)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39273425717). commitهای بعدی تا این ثبت مستنداتی بوده‌اند؛ CI روی PR جاری نیز باید سبز شود.
-- **موارد توسعه‌ای که هنوز بازند:** UI مدیریتی کامل صف و audit log تغییر وضعیت وظایف؛ cursor pagination در بخش 156 در حال تکمیل و آزمون است؛ احراز هویت شبکه‌ای فقط اگر API از loopback فراتر برود؛ اتصال quota parser به provider runtime. این موارد به‌صورت یک‌جا تیک نخورده‌اند چون همهٔ آن‌ها تکمیل نشده‌اند.
+- **موارد توسعه‌ای که هنوز بازند:** UI مدیریتی کامل صف و اتصال quota parser به provider runtime؛ cursor pagination در بخش 156 تکمیل شده و ثبت رویدادهای وضعیت در بخش 157 در حال اعتبارسنجی است. احراز هویت شبکه‌ای فقط اگر API از loopback فراتر برود.
 - **مواردی که حتماً به محیط/بازبینی واقعی نیاز دارند:** تست محلی؛ بررسی schema دیتابیس واقعی Windows و backup/migration؛ benchmark و soak صف؛ fault-injection/restart؛ staging restore، clean-start و rollback؛ اجرای مدل زنده و داوری انسانی؛ مرور دستی صفحه‌خوان/کیبورد؛ بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52). این گیت‌ها عمداً بازند.
 - **اقدام انجام‌نشده:** هیچ تست محلی اجرا نشده، هیچ دیتابیس واقعی تغییر نکرده و هیچ نتیجه‌ای دربارهٔ کیفیت مدل زنده یا پذیرش تولیدی ادعا نمی‌شود.
 
@@ -1846,3 +1846,12 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون افزوده‌شده:** چند صفحه با اولویت‌های تکراری، ترتیب ثابت، `has_more`، پایان cursor، cursor نامعتبر و حد بالای صفحه پوشش داده می‌شوند.
 - **اعتبارسنجی:** CI روی head کد `5455f3c0abdae6d5218f6f1f471b338db447cbf8` موفق شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383884)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383831)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39275383853). تست محلی اجرا نشده است؛ پذیرش روی میزبان هدف جداگانه است.
 - **باقی‌مانده:** audit log پایدار برای تغییر وضعیت وظایف و تکمیل بیشتر ابزارهای مدیریتی هنوز انجام نشده‌اند؛ API همچنان loopback-only است و remote auth فعال نشده است.
+
+## 157 — ثبت پایدار رخدادهای وضعیت وظایف (2026-10-19)
+
+- **وضعیت پیاده‌سازی:** [x] migration نسخهٔ 15 جدول `task_events`، ایندکس و triggerهای SQLite را اضافه می‌کند. ایجاد task و تغییر status/priority/schedule در همان تراکنش رویداد ثبت می‌کند.
+- **حریم خصوصی و قرارداد API:** `GET /api/tasks/{task_id}/events` فقط فیلدهای وضعیت/اولویت/زمان‌بندی را برمی‌گرداند؛ payload، متن ورودی و نتیجهٔ task در رویدادها ذخیره یا افشا نمی‌شوند. دسترسی همچنان loopback-only است.
+- **رابط کاربری:** کارت هر وظیفه دکمهٔ «تاریخچه رویدادها» دارد؛ خروجی با `textContent` نمایش داده می‌شود و امکان اجرای HTML از محتوای رویداد وجود ندارد.
+- **آزمون افزوده‌شده:** migration version/fingerprint، رخدادهای ایجاد/تغییر اولویت/وضعیت، صفحه‌بندی رویدادها، 404 و نبود payload در audit پوشش داده می‌شوند.
+- **اعتبارسنجی:** CI روی head دقیق PR باید موفق شود؛ تست محلی اجرا نشده است. دیتابیس واقعی کاربر تغییر نکرده است.
+- **گیت‌های باقی‌مانده:** تکمیل بیشتر UI مدیریتی، auth فقط در صورت خروج از loopback، اتصال quota parser به provider runtime، و تمام گیت‌های میزبان واقعی/امنیت مستقل همچنان بازند.
