@@ -228,3 +228,63 @@ def test_startup_recovers_running_learning_record_without_task(tmp_path, monkeyp
         assert task is not None
         assert task["status"] == "succeeded"
         assert learning.get_job(job["id"])["status"] == "completed"
+
+
+def test_task_api_cursor_pagination_and_status_event_audit(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = []
+        for index in range(3):
+            response = client.post(
+                "/api/tasks",
+                json={
+                    "task_type": "page-audit-test",
+                    "payload": {"index": index},
+                    "scheduled_at": future.isoformat(),
+                },
+            )
+            assert response.status_code == 202
+            created.append(response.json())
+
+        first = client.get("/api/tasks", params={"limit": 2})
+        assert first.status_code == 200
+        first_data = first.json()
+        assert [task["id"] for task in first_data["tasks"]] == [
+            created[2]["id"], created[1]["id"]
+        ]
+        assert first_data["has_more"] is True
+        assert first_data["next_cursor"] == created[1]["id"]
+
+        second = client.get(
+            "/api/tasks",
+            params={"limit": 2, "cursor": first_data["next_cursor"]},
+        )
+        assert second.status_code == 200
+        assert [task["id"] for task in second.json()["tasks"]] == [created[0]["id"]]
+        assert second.json()["has_more"] is False
+
+        cancelled = client.post(f"/api/tasks/{created[0]['id']}/cancel")
+        assert cancelled.status_code == 200
+        events = client.get(f"/api/tasks/{created[0]['id']}/events", params={"limit": 1})
+        assert events.status_code == 200
+        assert events.json()["events"][0]["to_status"] == "cancelled"
+        assert events.json()["has_more"] is True
+        older = client.get(
+            f"/api/tasks/{created[0]['id']}/events",
+            params={"limit": 1, "before_id": events.json()["next_cursor"]},
+        )
+        assert older.status_code == 200
+        assert older.json()["events"][0]["to_status"] == "queued"
+        assert older.json()["events"][0]["from_status"] is None
+
+
+def test_task_api_rejects_invalid_pagination_cursor(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        assert client.get("/api/tasks", params={"cursor": 0}).status_code == 422
+        assert client.get("/api/tasks/1/events", params={"before_id": 0}).status_code == 422
