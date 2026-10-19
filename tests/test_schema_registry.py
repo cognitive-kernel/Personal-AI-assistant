@@ -565,7 +565,7 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
 
     version = initialize_database_file(path, LEARNING_MIGRATIONS)
 
-    assert version == 14
+    assert version == 15
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as backup:
@@ -625,7 +625,7 @@ def test_application_database_initializer_migrates_observed_legacy_learning_stor
     with sqlite3.connect(learning_path) as connection:
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 14
+        ).fetchone()[0] == 15
         assert connection.execute(
             "SELECT content FROM knowledge_items"
         ).fetchone() == ("legacy lesson",)
