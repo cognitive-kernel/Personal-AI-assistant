@@ -1,6 +1,6 @@
 # گزارش پیاده‌سازی و وضعیت پروژه
 
- > آخرین به‌روزرسانی: 2026-10-19  
+ > آخرین به‌روزرسانی: 2026-10-20  
 > این فایل گزارش وضعیت واقعی کارهاست. «بررسی‌شده» به‌معنای «تست‌شده» نیست. فقط تست‌هایی که واقعاً اجرا شده‌اند باید با فرمان، محیط و نتیجه ثبت شوند.
 
 ## وضعیت کلی فعلی
@@ -1886,7 +1886,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت پیاده‌سازی:** [x] [PR #353](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/353) ادغام شد (`10d81c0ef3d24467f4a8d6d7653317045b53c662`). داشبورد اکنون فهرست وظایف را بر اساس وضعیت فیلتر می‌کند و هنگام دریافت صفحهٔ بعدی، کارت‌های قبلی را نگه می‌دارد؛ پیش از این، renderer نتایج صفحهٔ جدید را جایگزین می‌کرد.
 - **آزمون افزوده‌شده:** browser E2E فیلتر `failed`، ارسال پارامتر وضعیت، درخواست cursor بعدی و باقی‌ماندن هر دو کارت صفحهٔ اول و دوم را بررسی می‌کند.
 - **CI روی head دقیق PR #353:** همهٔ کنترل‌ها موفق شدند: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39338960273)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39338960036)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39338960335).
-- **CI پس از ادغام:** روی main commit `10d81c0ef3d24467f4a8d6d7653317045b53c662` اجراهای جدید [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39339163402)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39339163468) و [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39339163740) در زمان ثبت گزارش هنوز در حال اجرا بودند؛ موفقیت آن‌ها از پیش فرض نشده است.
+- **CI پس از ادغام:** پس از ادغام PR #354، روی main commit `3871acb956ef53a92c5a97b59d5db1f99a9832aa` هر سه کنترل سبز شدند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39339500953)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39339500903) و [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39339500904).
 - **تست محلی:** اجرا نشده است. این تیک فقط تکمیل کد و CI روی PR را نشان می‌دهد، نه پذیرش محلی/تولیدی.
 - **موارد باز مرتبط:** تکمیل همهٔ ابزارهای مدیریتی، مرور دستی کیبورد/صفحه‌خوان، اجرای میزبان هدف، benchmark/soak و fault-injection، restore/rollback در staging، اجرای مدل زنده و داوری انسانی و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant) همچنان بازند. اتصال quota parser به provider runtime و اجرای remote عمداً غیرفعال‌اند.
 
