@@ -826,16 +826,54 @@ def _is_recognized_provider_domain(domain: Any) -> bool:
     )
 
 
-def _candidate_source_rank(item: dict[str, Any]) -> int:
-    """Prefer known official reference pages, then other known provider pages, then others."""
+# Heuristics for separating likely editorial/roundup pages from provider-owned pages.
+# These labels are navigation hints only; they do not prove page ownership.
+_INTERMEDIARY_PATH_MARKERS = (
+    "/blog", "/article", "/tutorial", "/guide", "/comparison",
+    "/compare", "/buyingguides", "/posts", "/news",
+)
+_INTERMEDIARY_TITLE_PATTERNS = (
+    r"\\bhow\\s+to\\b",
+    r"\\bguide\\b",
+    r"\\btutorial\\b",
+    r"\\bcompar(?:e|ison|ing)\\b",
+    r"\\bvs\\.?\\b",
+    r"\\bbest\\s+\\d+\\b",
+    r"\\btop\\s+\\d+\\b",
+    r"\\bplatforms?\\s+compared\\b",
+    r"\\breview\\b",
+)
+
+
+def _candidate_source_classification(item: dict[str, Any]) -> str:
+    """Classify source shape conservatively for display and ordering only."""
     source_url = str(item.get("source_url") or "")
     parsed = urlparse(source_url)
-    if not _is_recognized_provider_domain(parsed.hostname):
-        return 2
+    if _is_recognized_provider_domain(parsed.hostname):
+        return "recognized_provider_domain"
+
     path = parsed.path.casefold()
-    if any(marker in path for marker in _OFFICIAL_REFERENCE_PATH_MARKERS):
-        return 0
-    return 1
+    title = str(item.get("title") or "").casefold()
+    if (
+        any(marker in path for marker in _INTERMEDIARY_PATH_MARKERS)
+        or any(re.search(pattern, title, flags=re.IGNORECASE) for pattern in _INTERMEDIARY_TITLE_PATTERNS)
+    ):
+        return "likely_intermediary_article"
+    return "unclassified_unverified_domain"
+
+
+def _candidate_source_rank(item: dict[str, Any]) -> int:
+    """Prefer official references, other recognized domains, unknown pages, then likely articles."""
+    source_url = str(item.get("source_url") or "")
+    parsed = urlparse(source_url)
+    if _is_recognized_provider_domain(parsed.hostname):
+        path = parsed.path.casefold()
+        if any(marker in path for marker in _OFFICIAL_REFERENCE_PATH_MARKERS):
+            return 0
+        return 1
+    if _candidate_source_classification(item) == "likely_intermediary_article":
+        return 3
+    return 2
 
 
 def _serialize_candidate(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
@@ -902,6 +940,7 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
                 if _is_recognized_provider_domain(parsed_host)
                 else "unverified_domain"
             )
+            item["source_classification"] = _candidate_source_classification(item)
             eligible.append(item)
 
         # Stable two-pass ordering: newest items first within each authority tier,
