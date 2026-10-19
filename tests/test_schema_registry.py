@@ -341,6 +341,10 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
     assert f"Database path: {path.resolve()}" in str(error.value)
     assert "The existing database was not migrated or modified." in str(error.value)
     assert "Verified pre-migration backup:" in str(error.value)
+    assert "Observed schema fingerprint:" in str(error.value)
+    assert "scripts/inspect_sqlite_schema.py" in str(error.value)
+    assert "--kind learning" in str(error.value)
+    assert "Do not reset" in str(error.value)
     backups = list(tmp_path.glob("unknown.db.pre-migration-*.bak"))
     assert len(backups) == 1
     assert str(backups[0].resolve()) in str(error.value)
@@ -351,24 +355,6 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
         ).fetchone() is None
 
 
-
-def test_untracked_schema_error_includes_fingerprint_and_read_only_recovery_command(tmp_path):
-    path = tmp_path / "legacy-learning.db"
-    with sqlite3.connect(path) as connection:
-        connection.execute("CREATE TABLE legacy_data (id INTEGER PRIMARY KEY, value TEXT)")
-        connection.execute("INSERT INTO legacy_data(value) VALUES ('preserve me')")
-
-    with pytest.raises(UntrackedSchemaError) as error:
-        initialize_database_file(path, LEARNING_MIGRATIONS)
-
-    message = str(error.value)
-    assert "Observed schema fingerprint:" in message
-    assert "scripts/inspect_sqlite_schema.py" in message
-    assert "--kind learning" in message
-    assert "Do not reset" in message
-    with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT value FROM legacy_data").fetchone() == ("preserve me",)
-        assert connection.execute("SELECT 1 FROM sqlite_master WHERE name='schema_migrations'").fetchone() is None
 
 def test_migration_runner_rejects_out_of_band_schema_drift():
     with sqlite3.connect(":memory:") as connection:
