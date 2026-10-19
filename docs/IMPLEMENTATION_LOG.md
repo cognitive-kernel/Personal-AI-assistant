@@ -1762,3 +1762,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون‌های افزوده‌شده:** URL تطبیق‌داده‌شده، URL بدون انتساب، حذف علائم پایانی رایج، و شمارش خلاصهٔ زبان.
 - **تست محلی:** اجرا نشده. نتیجه فقط پس از دریافت CI دقیق head ثبت خواهد شد.
 - **گیت‌های محلی/ماشین هدف:** baseline کامل، اجرای مدل زنده و داوری انسانی، benchmark/soak، تمرین staging/rollback و بازبینی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان باز هستند.
+
+## 149 — تشخیص فقط‌خواندنی ساختار SQLite ناشناخته
+
+- **وضعیت:** پیاده‌سازی در شاخهٔ `feat/read-only-sqlite-schema-diagnostics`؛ در انتظار CI دقیق و ادغام.
+- **تغییر:** ابزار `scripts/inspect_sqlite_schema.py` ساختار جدول‌ها، ستون‌ها، کلیدهای خارجی، اثرانگشت schema، تاریخچهٔ migration و بررسی integrity را فقط با SQLite URI در حالت `mode=ro` می‌خواند؛ هیچ محتوای سطرها را چاپ نمی‌کند و migration یا repair اجرا نمی‌کند.
+- **راهنمای بازیابی:** `docs/LOCAL_DATABASE_RECOVERY.md` اضافه شد؛ خطای schema ناشناخته اکنون fingerprint و فرمان تشخیصی read-only را نمایش می‌دهد و صریحاً reset/stamp/migration بدون backup بررسی‌شده را منع می‌کند.
+- **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، و عدم درج تاریخچه برای schema ناشناخته پوشش داده شده‌اند.
+- **تست محلی:** اجرا نشده؛ تکمیل این بخش منوط به CI دقیق head است. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی schema همچنان محلی/میزبان‌محور است و انجام‌شده فرض نمی‌شود.
