@@ -1841,7 +1841,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 156 — صفحه‌بندی cursor-based برای API صف وظایف (2026-10-19)
 
-- **وضعیت:** [ ] پیاده‌سازی در [PR #342](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/342)؛ تیک نهایی پس از موفقیت CI دقیق head زده می‌شود.
+- **وضعیت:** [ ] API و رابط صفحه‌بندی قبلی/بعدی در [PR #342](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/342) پیاده‌سازی شده‌اند؛ تیک نهایی پس از موفقیت CI دقیق head زده می‌شود.
 - **تغییر:** `GET /api/tasks` اکنون از cursor مبهم و اعتبارسنجی‌شده برای صفحه‌بندی keyset با ترتیب `priority DESC, id ASC` استفاده می‌کند؛ پاسخ قدیمی `tasks` حفظ شده و `next_cursor` برای صفحهٔ بعد اضافه شده است.
-- **آزمون‌ها:** چندصفحه‌ای بودن، ترتیب ثابت، نبود شناسهٔ تکراری، cursor نامعتبر و فیلتر وضعیت در `tests/test_task_routes.py` پوشش داده شده‌اند.
+- **آزمون‌ها:** چندصفحه‌ای بودن، ترتیب ثابت، نبود شناسهٔ تکراری، cursor نامعتبر و فیلتر وضعیت در `tests/test_task_routes.py`؛ نمایش دکمه‌های صفحهٔ قبل/بعد در `tests/test_task_ui.py` پوشش داده شده‌اند.
 - **تست محلی:** اجرا نشده است؛ نتیجهٔ CI روی head دقیق PR ملاک خواهد بود.
