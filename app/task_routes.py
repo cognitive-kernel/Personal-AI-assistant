@@ -75,9 +75,32 @@ def create_task(request: TaskCreateRequest) -> dict[str, Any]:
 def list_tasks(
     statuses: list[str] | None = Query(default=None),
     limit: int = Query(default=100, ge=1, le=1000),
+    cursor: int | None = Query(default=None, ge=1),
 ) -> dict[str, Any]:
+    """List a stable page of tasks; pass next_cursor as cursor for the next page."""
     try:
-        return {"tasks": task_manager.list_tasks(statuses=statuses, limit=limit)}
+        return task_manager.list_tasks_page(
+            statuses=statuses,
+            limit=limit,
+            cursor_id=cursor,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/{task_id}/events")
+def list_task_events(
+    task_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    before_id: int | None = Query(default=None, ge=1),
+) -> dict[str, Any]:
+    """Read durable status-transition events for one task."""
+    try:
+        return task_manager.list_task_status_events(
+            task_id,
+            limit=limit,
+            before_id=before_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
