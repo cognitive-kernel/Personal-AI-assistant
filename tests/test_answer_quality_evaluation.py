@@ -189,3 +189,34 @@ def test_runner_reports_source_discovery_failure_type_from_private_audit_metadat
     assert result["source_discovery_status"] == "failed"
     assert result["source_discovery_error_type"] == "SourceFetchError"
     assert "sensitive network detail" not in json.dumps(report)
+
+
+
+def test_surface_evaluation_flags_answer_urls_without_structured_source_attribution():
+    result = evaluate_answer_surface(
+        _case("en"),
+        "Guide: https://docs.example.org/guide. Claimed source: https://example.invalid/not-retrieved).",
+        [{"url": "https://docs.example.org/guide", "title": "Official Guide"}],
+    )
+
+    assert result["answer_urls"] == [
+        "https://docs.example.org/guide",
+        "https://example.invalid/not-retrieved",
+    ]
+    assert result["source_urls"] == ["https://docs.example.org/guide"]
+    assert result["unattributed_answer_urls"] == ["https://example.invalid/not-retrieved"]
+    assert result["unattributed_answer_url_count"] == 1
+
+    summary = summarize_surface_results([result])
+    assert summary["languages"]["en"]["cases_with_unattributed_answer_urls"] == 1
+    assert summary["languages"]["en"]["unattributed_answer_url_count"] == 1
+
+
+def test_surface_evaluation_accepts_only_exact_structured_source_url_matches():
+    result = evaluate_answer_surface(
+        _case("en"),
+        "See https://docs.example.org/guide for details.",
+        [{"url": "https://docs.example.org/guide", "title": "Official Guide"}],
+    )
+    assert result["unattributed_answer_urls"] == []
+    assert result["unattributed_answer_url_count"] == 0
