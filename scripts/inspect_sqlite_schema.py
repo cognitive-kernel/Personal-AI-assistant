@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from urllib.parse import quote
 
@@ -43,7 +44,7 @@ def inspect_database(path: Path, kind: str) -> dict:
 
     # Use an absolute URI and URL-encode special characters (including spaces).
     uri = "file:" + quote(str(path.resolve()).replace("\\", "/"), safe="/:") + "?mode=ro"
-    with sqlite3.connect(uri, uri=True, timeout=5) as connection:
+    with closing(sqlite3.connect(uri, uri=True, timeout=5)) as connection:
         connection.row_factory = sqlite3.Row
         fingerprint = schema_fingerprint(connection)
         migrations = REGISTRIES[kind]
