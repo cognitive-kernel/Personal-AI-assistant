@@ -261,3 +261,40 @@ def test_task_cursor_pagination_is_stable_and_validated(tmp_path, monkeypatch):
         assert invalid.status_code == 422
         too_large = client.get("/api/tasks", params={"limit": 101})
         assert too_large.status_code == 422
+
+
+def test_task_status_event_endpoint_exposes_cursor_history(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/tasks",
+            json={
+                "task_type": "status-audit-endpoint",
+                "payload": {},
+                "scheduled_at": future.isoformat(),
+            },
+        )
+        assert created.status_code == 202
+        task_id = created.json()["id"]
+
+        cancelled = client.post(f"/api/tasks/{task_id}/cancel")
+        assert cancelled.status_code == 200
+
+        first = client.get(f"/api/tasks/{task_id}/events", params={"limit": 1})
+        assert first.status_code == 200
+        assert first.json()["events"][0]["to_status"] == "cancelled"
+        assert first.json()["has_more"] is True
+
+        second = client.get(
+            f"/api/tasks/{task_id}/events",
+            params={"limit": 1, "before_id": first.json()["next_cursor"]},
+        )
+        assert second.status_code == 200
+        assert second.json()["events"][0]["to_status"] == "queued"
+        assert second.json()["events"][0]["from_status"] is None
+
+        invalid = client.get(f"/api/tasks/{task_id}/events", params={"before_id": 0})
+        assert invalid.status_code == 422
