@@ -156,6 +156,81 @@ def list_tasks(*, statuses: list[str] | None = None, limit: int = 100) -> list[d
     return [_task(row) for row in rows]  # type: ignore[misc]
 
 
+def _encode_task_cursor(priority: int, task_id: int) -> str:
+    """Encode the stable ordering tuple for opaque keyset pagination."""
+    import base64
+
+    payload = json.dumps(
+        {"priority": priority, "id": task_id},
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("ascii")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_task_cursor(cursor: str) -> tuple[int, int]:
+    import base64
+    import binascii
+
+    if not isinstance(cursor, str) or not cursor or len(cursor) > 256:
+        raise ValueError("cursor must be a non-empty task cursor.")
+    try:
+        padding = "=" * (-len(cursor) % 4)
+        payload = base64.urlsafe_b64decode(cursor + padding)
+        value = json.loads(payload.decode("ascii"))
+    except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
+        raise ValueError("cursor is invalid.") from exc
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"priority", "id"}
+        or isinstance(value["priority"], bool)
+        or not isinstance(value["priority"], int)
+        or isinstance(value["id"], bool)
+        or not isinstance(value["id"], int)
+        or value["id"] < 1
+    ):
+        raise ValueError("cursor is invalid.")
+    return value["priority"], value["id"]
+
+
+def list_tasks_page(
+    *, statuses: list[str] | None = None, limit: int = 100, cursor: str | None = None
+) -> dict[str, Any]:
+    """List tasks with stable keyset pagination ordered by priority DESC, id ASC."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
+        raise ValueError("limit must be between 1 and 1000.")
+    clauses: list[str] = []
+    params: list[Any] = []
+    if statuses is not None:
+        allowed = {
+            "queued", "running", "pause_requested", "paused", "cancel_requested",
+            "cancelled", "succeeded", "failed",
+        }
+        if not statuses or any(status not in allowed for status in statuses):
+            raise ValueError("statuses contains an unsupported status.")
+        placeholders = ",".join("?" for _ in statuses)
+        clauses.append(f"status IN ({placeholders})")
+        params.extend(statuses)
+    if cursor is not None:
+        priority, task_id = _decode_task_cursor(cursor)
+        clauses.append("(priority < ? OR (priority = ? AND id > ?))")
+        params.extend((priority, priority, task_id))
+    where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM task_queue{where} ORDER BY priority DESC, id ASC LIMIT ?",
+            (*params, limit + 1),
+        ).fetchall()
+    has_more = len(rows) > limit
+    visible = rows[:limit]
+    tasks = [_task(row) for row in visible]
+    next_cursor = None
+    if has_more and visible:
+        last = visible[-1]
+        next_cursor = _encode_task_cursor(int(last["priority"]), int(last["id"]))
+    return {"tasks": tasks, "next_cursor": next_cursor}
+
+
 def list_terminal_task_ids(
     *, limit: int = 1000, min_terminal_age_seconds: int = 60
 ) -> list[int]:
