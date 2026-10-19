@@ -529,6 +529,62 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
 
 
 
+
+def test_browser_task_bulk_controls_only_submit_actions_for_eligible_selected_tasks():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    tasks = [
+        {"id": 6101, "task_type": "e2e.queued", "status": "queued", "priority": 1,
+         "attempts": 1, "max_attempts": 2, "created_at": "2026-10-20T12:00:00+00:00",
+         "updated_at": "2026-10-20T12:00:00+00:00", "error": None, "result": None},
+        {"id": 6102, "task_type": "e2e.paused", "status": "paused", "priority": 0,
+         "attempts": 1, "max_attempts": 2, "created_at": "2026-10-20T12:01:00+00:00",
+         "updated_at": "2026-10-20T12:01:00+00:00", "error": None, "result": None},
+        {"id": 6103, "task_type": "e2e.failed", "status": "failed", "priority": 0,
+         "attempts": 2, "max_attempts": 2, "created_at": "2026-10-20T12:02:00+00:00",
+         "updated_at": "2026-10-20T12:02:00+00:00", "error": "redacted test error", "result": None},
+    ]
+    requests = []
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            request = route.request
+            if request.method == "GET" and "/api/tasks?" in request.url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"tasks": tasks, "next_cursor": None, "has_more": False}),
+                )
+                return
+            if request.method == "POST" and "/api/tasks/" in request.url:
+                requests.append(request.url)
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({"ok": True}))
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        page.get_by_text("#6101 — e2e.queued", exact=True).wait_for(timeout=5000)
+        page.locator("#task-select-all").check()
+        assert page.locator("#task-selected-count").inner_text().startswith("انتخاب‌شده:")
+        assert page.locator("#bulk-pause-tasks").is_enabled()
+        assert page.locator("#bulk-resume-tasks").is_enabled()
+        assert page.locator("#bulk-cancel-tasks").is_enabled()
+
+        page.locator("#bulk-pause-tasks").click()
+        page.get_by_text("توقف گروهی پایان یافت", exact=False).wait_for(timeout=5000)
+        assert len(requests) == 1
+        assert requests[0].endswith("/api/tasks/6101/pause")
+        assert not any("/6102/pause" in url or "/6103/pause" in url for url in requests)
+        browser.close()
+
+
 def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
