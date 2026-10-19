@@ -20,10 +20,15 @@ _TECHNICAL_MARKERS = (
     "python", "javascript", "typescript", "sql", "api", "http", "server",
     "database", "configuration", "configure", "install", "deploy", "security",
     "performance", "latest", "current version", "documentation", "docs", "research",
-    "source", "cite", "compare", "how to fix", "why does", "خطا", "ارور", "باگ",
-    "دیباگ", "کد", "پایتون", "جاوااسکریپت", "دیتابیس", "پایگاه داده", "سرور",
-    "تنظیم", "نصب", "استقرار", "امنیت", "کارایی", "جدیدترین", "نسخه فعلی",
-    "مستندات", "منبع", "جستجو", "مقایسه", "چطور درست", "چرا کار نمی",
+    "source", "sources", "cite", "compare", "how to fix", "why does",
+    "claim", "verified", "retrieved", "passage", "evidence", "trusted knowledge",
+    "feedback", "correction", "memory", "credible", "disagree", "reliable",
+    "conflict", "provenance", "خطا", "ارور", "باگ", "دیباگ", "کد", "پایتون",
+    "جاوااسکریپت", "دیتابیس", "پایگاه داده", "سرور", "تنظیم", "نصب", "استقرار",
+    "امنیت", "کارایی", "جدیدترین", "نسخه فعلی", "مستندات", "منبع", "منابع",
+    "جستجو", "مقایسه", "چطور درست", "چرا کار نمی", "ادعا", "تأیید", "تایید",
+    "بازیابی", "حافظه", "دانش", "بازخورد", "اصلاح", "راستی‌آزمایی", "تعارض",
+    "متناقض", "معتبر", "شواهد",
 )
 logger = logging.getLogger(__name__)
 
