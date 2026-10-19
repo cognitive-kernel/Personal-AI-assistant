@@ -1,6 +1,6 @@
 # Roadmap acceptance status
 
-Last reviewed: 2026-10-17
+Last reviewed: 2026-10-18
 
 This document records repository-level evidence and the remaining acceptance gates. A merged implementation or passing CI suite does not by itself establish production readiness on a user's machine.
 
@@ -21,7 +21,7 @@ This document records repository-level evidence and the remaining acceptance gat
 
 ## Required acceptance gates before calling the project complete
 
-1. **Target-host baseline:** run the complete test suite, schema/storage health checks, and app startup on a clean target-machine checkout; archive redacted outputs and exact commit/dependency versions.
+1. **Target-host baseline and legacy migration:** the reviewed exact-fingerprint, backup-first migration for the reported `learning.db` schema is merged in [PR #306](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/306); its fixture and data-preservation checks passed in CI. Run the complete test suite, schema/storage health checks, and app startup on the actual Windows target after pulling `main`; verify the generated `learning.db.pre-migration-*.bak`, `/api/health`, and a second restart. Archive redacted outputs and exact commit/dependency versions. Windows-specific migration and rollback CI coverage is added by [PR #310](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/310) and must pass before treating that extra gate as complete.
 2. **Independent security review:** complete Issue #52, including threat model, reachable network boundaries, DNS/loopback behavior, request validation, and regression tests. Do not self-close this gate.
 3. **Live-model quality evaluation:** run the versioned Persian/English evaluation dataset against the intended local model; capture model digest where available; obtain human review for factual correctness, source support, source conflicts, and prompt-injection resistance.
 4. **Operational UI acceptance:** run browser-level end-to-end scenarios for research, task cancellation/recovery, consent revocation, experience review, backup preview/restore staging, and self-improvement draft workflows.
