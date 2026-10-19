@@ -1775,11 +1775,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 150 — ناوبری واکنش‌گرا و دسترس‌پذیری داشبورد
 
-- **وضعیت:** [x] تکمیل کد و آزمون‌های مخزن در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326)؛ CI روی head کد موفق شد. برای علامت‌گذاری نهایی، CI روی commit مستندات نیز باید موفق بماند.
+- **وضعیت:** [ ] پیاده‌سازی اصلی در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326) ادغام شد؛ CI پس از ادغام چهار کنترل پویا با نام دسترس‌پذیری ناقص پیدا کرد. برچسب‌ها و تشخیص دقیق در [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327) اصلاح شده‌اند؛ تا سبزشدن CI اصلاحیه تیک نهایی برداشته شده است.
 - **تغییر:** stylesheet محلی، ناوبری ثابت در دسکتاپ و افقی در موبایل، پیوند پرش به محتوای اصلی، focus-visible، کاهش حرکت، نام‌های قابل‌دسترسی کنترل‌ها و جهت متن متناسب با زبان اضافه شد. هیچ CDN یا فونت دوردستی اضافه نشده است.
 - **آزمون افزوده‌شده:** Chromium مسیرهای ناوبری، CSS، نام‌گذاری کنترل‌ها و نبود overflow در عرض‌های 360/768/1280 را بررسی می‌کند.
 - **محدودیت:** CI مرورگر به‌تنهایی تست دستی صفحه‌خوان/کیبورد یا پذیرش روی میزبان هدف نیست؛ این گیت‌ها باز می‌مانند.
-- **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058789)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058712). تست محلی اجرا نشده است.
+- **CI پیش از ادغام:** تست‌ها و رگرسیون ویندوز موفق بودند؛ [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767) نیز روی head PR موفق بود. **پس از ادغام:** [run #39269057905](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269057905) یافتن چهار نام دسترس‌پذیری ناقص را نشان داد؛ اصلاح در PR #327 در انتظار CI دقیق است. تست محلی اجرا نشده است.
 
 ## 149 — تشخیص فقط‌خواندنی ساختار SQLite ناشناخته
 
