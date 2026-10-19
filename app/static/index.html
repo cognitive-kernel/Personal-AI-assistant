@@ -316,18 +316,58 @@ function renderTasks(tasks) {
   }
   const actions=document.createElement("div"); actions.className="cloud-actions";
   const historyButton=document.createElement("button"); historyButton.type="button"; historyButton.textContent="تاریخچه رویدادها";
-  historyButton.addEventListener("click",async()=>{
+  historyButton.setAttribute("aria-label","نمایش تاریخچه رویدادهای وظیفه "+task.id);
+  let historyEvents=[];
+  let historyCursor=null;
+  let historyOutput=null;
+  let historyLoadMore=null;
+  async function loadTaskHistory({append=false}={}) {
    historyButton.disabled=true;
+   if(historyLoadMore) historyLoadMore.disabled=true;
    try {
-    const history=await api("/api/tasks/"+task.id+"/events?limit=20");
-    let historyOutput=card.querySelector(".task-events-output");
-    if(!historyOutput) { historyOutput=document.createElement("pre"); historyOutput.className="task-events-output"; card.append(historyOutput); }
-    historyOutput.textContent=JSON.stringify(history.events||[],null,2);
-   } catch(error) {
-    let historyOutput=card.querySelector(".task-events-output");
-    if(!historyOutput) { historyOutput=document.createElement("pre"); historyOutput.className="task-events-output"; card.append(historyOutput); }
+    const query=new URLSearchParams({limit:"20"});
+    if(append&&historyCursor) query.set("before_id",String(historyCursor));
+    const history=await api("/api/tasks/"+task.id+"/events?"+query.toString());
+    const page=Array.isArray(history.events)?history.events:[];
+    historyEvents=append?historyEvents.concat(page):page;
+    historyCursor=history.next_before_id||null;
+    if(!historyOutput) {
+     historyOutput=document.createElement("pre");
+     historyOutput.className="task-events-output";
+     historyOutput.setAttribute("aria-label","تاریخچه رویدادهای وظیفه "+task.id);
+     card.append(historyOutput);
+    }
+    historyOutput.textContent=JSON.stringify(historyEvents,null,2);
+    if(history.has_more) {
+     if(!historyLoadMore) {
+      historyLoadMore=document.createElement("button");
+      historyLoadMore.type="button";
+      historyLoadMore.textContent="رویدادهای قدیمی‌تر";
+      historyLoadMore.setAttribute("aria-label","بارگذاری رویدادهای قدیمی‌تر وظیفه "+task.id);
+      historyLoadMore.addEventListener("click",async()=>{
+       try { await loadTaskHistory({append:true}); }
+       catch(error) { if(historyOutput) historyOutput.textContent="تاریخچه قابل دریافت نیست: "+error.message; }
+      });
+     }
+     if(!historyLoadMore.isConnected) card.append(historyLoadMore);
+    } else if(historyLoadMore) {
+     historyLoadMore.remove();
+    }
+   } finally {
+    historyButton.disabled=false;
+    if(historyLoadMore) historyLoadMore.disabled=false;
+   }
+  }
+  historyButton.addEventListener("click",async()=>{
+   try { await loadTaskHistory(); }
+   catch(error) {
+    if(!historyOutput) {
+     historyOutput=document.createElement("pre");
+     historyOutput.className="task-events-output";
+     card.append(historyOutput);
+    }
     historyOutput.textContent="تاریخچه قابل دریافت نیست: "+error.message;
-   } finally { historyButton.disabled=false; }
+   }
   });
   actions.append(historyButton);
   const addAction=(label,path)=>{

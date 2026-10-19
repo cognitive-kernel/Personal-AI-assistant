@@ -331,6 +331,84 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
         browser.close()
 
 
+
+def test_browser_task_audit_history_loads_older_cursor_pages():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    task = {
+        "id": 424242,
+        "task_type": "e2e.audit-history",
+        "status": "paused",
+        "priority": 3,
+        "attempts": 1,
+        "max_attempts": 3,
+        "created_at": "2026-10-19T12:00:00+00:00",
+        "updated_at": "2026-10-19T12:01:00+00:00",
+        "error": None,
+        "result": None,
+    }
+    event_requests = []
+
+    def event_page(start, end):
+        return [
+            {
+                "id": event_id,
+                "task_id": 424242,
+                "event_type": "status_changed",
+                "old_status": "queued",
+                "new_status": "paused",
+                "old_priority": 3,
+                "new_priority": 3,
+                "old_scheduled_at": None,
+                "new_scheduled_at": None,
+                "occurred_at": "2026-10-19T12:00:00+00:00",
+            }
+            for event_id in range(start, end, -1)
+        ]
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            url = route.request.url
+            if "/api/tasks/424242/events" in url:
+                event_requests.append(url)
+                if "before_id=81" in url:
+                    payload = {"events": event_page(80, 60), "has_more": False, "next_before_id": None}
+                else:
+                    payload = {"events": event_page(100, 80), "has_more": True, "next_before_id": 81}
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+                return
+            if "/api/tasks?limit=50" in url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"tasks": [task], "next_cursor": None, "has_more": False}),
+                )
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        card = page.locator("#tasks-container article").filter(has_text="#424242 — e2e.audit-history")
+        card.wait_for(timeout=5000)
+        card.get_by_role("button", name="نمایش تاریخچه رویدادهای وظیفه 424242").click()
+        output = card.locator(".task-events-output")
+        output.get_by_text("100", exact=False).wait_for(timeout=5000)
+        assert "81" in output.inner_text()
+        card.get_by_role("button", name="بارگذاری رویدادهای قدیمی‌تر وظیفه 424242").click()
+        output.get_by_text("61", exact=False).wait_for(timeout=5000)
+        assert len(event_requests) == 2
+        assert "before_id=81" in event_requests[1]
+        assert "100" in output.inner_text() and "61" in output.inner_text()
+        assert card.get_by_role("button", name="بارگذاری رویدادهای قدیمی‌تر وظیفه 424242").count() == 0
+        browser.close()
+
+
 def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
