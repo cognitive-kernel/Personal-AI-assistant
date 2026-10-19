@@ -1861,5 +1861,12 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت:** [x] ثبت پایدار رخدادهای ایجاد/تغییر وضعیت وظایف، API تاریخچهٔ محدود و صفحه‌بندی‌شونده، و کنترل تاریخچه در داشبورد در [PR #347](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/347) ادغام شد.
 - **CI روی head دقیق:** tests و رگرسیون Windows، browser E2E و dependency audit همگی موفق شدند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39277330769)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39277330808)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39277330560). اجرای اول شش assertion قدیمیِ schema را یافت؛ تست‌ها اصلاح شدند و اجرای مجدد سبز شد.
 - **گزارش تست:** CI موفق است؛ تست محلی اجرا نشده. migration نسخهٔ ۱۵ روی دیتابیس واقعی کاربر اجرا نشده و هیچ دادهٔ واقعی تغییر نکرده است.
-- **موارد قابل انجام در مخزن که هنوز بازند:** ادامهٔ ابزارهای مدیریتی UI و pagination تعاملی تاریخچه؛ اتصال quota parser به provider runtime عمداً تا زمان رضایت صریح، کنترل سهمیهٔ تازه و سیاست fail-closed خاموش می‌ماند؛ اجرای کد دلخواه و provisioning راه‌دور نیز طبق سیاست امنیتی غیرفعال‌اند.
+- **موارد قابل انجام در مخزن که هنوز بازند:** ادامهٔ ابزارهای مدیریتی UI؛ اتصال quota parser به provider runtime عمداً تا زمان رضایت صریح، کنترل سهمیهٔ تازه و سیاست fail-closed خاموش می‌ماند؛ اجرای کد دلخواه و provisioning راه‌دور نیز طبق سیاست امنیتی غیرفعال‌اند.
 - **گیت‌های وابسته به محیط/انسان:** baseline و migration روی Windows واقعی، benchmark/soak و fault-injection روی میزبان هدف، بازیابی staging و rollback، اجرای مدل زنده و داوری انسانی، مرور دستی صفحه‌خوان/کیبورد و بازبینی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) همچنان تیک نخورده‌اند.
+
+## 159 — صفحه‌بندی تعاملی تاریخچهٔ audit در داشبورد (2026-10-19)
+
+- **پیاده‌سازی:** [x] دکمهٔ «رویدادهای قدیمی‌تر» به تاریخچهٔ هر task اضافه شد. صفحهٔ اول ۲۰ رویداد می‌گیرد و صفحات بعدی را با `before_id` بارگذاری می‌کند؛ رویدادهای جدیدتر حفظ می‌شوند و نتایج قدیمی‌تر به انتها افزوده می‌شوند.
+- **دسترس‌پذیری و نمایش امن:** دکمه‌ها و خروجی تاریخچه نام دسترس‌پذیر وابسته به شناسهٔ وظیفه دارند؛ دادهٔ API فقط با `textContent` نمایش داده می‌شود.
+- **اعتبارسنجی:** منتظر CI روی head دقیق این تغییر هستیم؛ تست محلی اجرا نشده است. آزمون‌های API برای cursor رویدادها در بخش 157 وجود دارند.
+- **گیت‌های باقی‌مانده:** UI مدیریتی کامل و مرور دستی صفحه‌خوان/کیبورد و usability روی میزبان هدف همچنان بازند.
