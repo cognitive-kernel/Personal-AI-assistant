@@ -316,13 +316,52 @@ async function createStorageBackup() {
 el("create-storage-backup").addEventListener("click",createStorageBackup);
 el("refresh-storage-backups").addEventListener("click",refreshStorageBackups);
 let taskPollScheduled=false;
+function updateTaskDashboard() {
+ const container=el("tasks-container");
+ const cards=Array.from(container.querySelectorAll("article[data-task-status]"));
+ const query=(el("task-search")?.value||"").trim().toLocaleLowerCase();
+ const counts={queued:0,running:0,paused:0,failed:0,succeeded:0,cancelled:0};
+ let visible=0;
+ cards.forEach(card=>{
+  const status=card.dataset.taskStatus||"";
+  if(Object.hasOwn(counts,status)) counts[status]+=1;
+  const haystack=(card.dataset.taskSearch||card.textContent).toLocaleLowerCase();
+  const matches=!query||haystack.includes(query);
+  card.hidden=!matches;
+  if(matches) visible+=1;
+ });
+ const summary=el("task-summary");
+ summary.replaceChildren();
+ const items=[
+  ["بارگذاری‌شده",cards.length],
+  ["نمایش مطابق جست‌وجو",visible],
+  ["در صف",counts.queued],
+  ["در حال اجرا",counts.running],
+  ["ناموفق",counts.failed],
+  ["موفق",counts.succeeded]
+ ];
+ items.forEach(([label,value])=>{
+  const item=document.createElement("span");
+  item.className="task-summary-item";
+  const strong=document.createElement("strong"); strong.textContent=String(value);
+  const text=document.createElement("span"); text.textContent=label;
+  item.append(strong,text); summary.append(item);
+ });
+}
 function renderTasks(tasks,{append=false}={}) {
  const container=el("tasks-container");
  if(!append) container.replaceChildren();
- if(!tasks.length && !append) { appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted"); return; }
- if(!tasks.length) return;
+ if(!tasks.length && !append) {
+  appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted");
+  updateTaskDashboard();
+  return;
+ }
+ if(!tasks.length) { updateTaskDashboard(); return; }
  tasks.forEach(task=>{
   const card=document.createElement("article"); card.className="cloud-candidate";
+  card.dataset.taskId=String(task.id);
+  card.dataset.taskStatus=String(task.status||"");
+  card.dataset.taskSearch=("#"+task.id+" "+task.task_type+" "+task.status).toLocaleLowerCase();
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
   appendText(card,"p","وضعیت: "+task.status+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status");
   if(task.created_at) appendText(card,"p","ایجاد: "+task.created_at,"muted");
@@ -452,6 +491,7 @@ function renderTasks(tasks,{append=false}={}) {
   if(actions.childElementCount) card.append(actions);
   container.append(card);
  });
+ updateTaskDashboard();
 }
 let taskNextCursor=null;
 async function refreshTasks({append=false}={}) {
@@ -478,6 +518,7 @@ async function refreshTasks({append=false}={}) {
  }
  el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
 el("task-status-filter").addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
+el("task-search").addEventListener("input",updateTaskDashboard);
 el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
 refreshStorageHealth();
 refreshStorageBackups();
