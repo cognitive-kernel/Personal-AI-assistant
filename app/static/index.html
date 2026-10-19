@@ -334,7 +334,7 @@ function renderTasks(tasks) {
     const audit=await api("/api/tasks/"+task.id+"/events?limit=100");
     let history=card.querySelector(".task-status-history");
     if(!history) { history=document.createElement("pre"); history.className="task-status-history"; card.append(history); }
-    history.textContent=(audit.events||[]).map(event=>(event.from_status||"شروع")+" → "+event.to_status+" ("+event.created_at+")").join("\\n")||"رویدادی ثبت نشده است.";
+    history.textContent=(audit.events||[]).map(event=>(event.from_status||"شروع")+" → "+event.to_status+" ("+event.created_at+")").join("\n")||"رویدادی ثبت نشده است.";
    } catch(error) {
     el("tasks-output").textContent="تاریخچهٔ وضعیت دریافت نشد: "+error.message;
    } finally {
