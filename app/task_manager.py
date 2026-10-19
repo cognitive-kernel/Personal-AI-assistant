@@ -227,6 +227,39 @@ def list_tasks_page(
     return {"tasks": tasks, "next_cursor": next_cursor, "has_more": has_more}
 
 
+
+def list_task_status_events(
+    task_id: int,
+    *,
+    limit: int = 100,
+    before_id: int | None = None,
+) -> dict[str, Any]:
+    """Read status transition audit events in descending event-ID order."""
+    if isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1:
+        raise ValueError("task_id must be a positive integer.")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        raise ValueError("limit must be between 1 and 500.")
+    if before_id is not None and (
+        isinstance(before_id, bool) or not isinstance(before_id, int) or before_id < 1
+    ):
+        raise ValueError("before_id must be a positive integer.")
+    query = (
+        "SELECT id, task_id, task_type, from_status, to_status, created_at "
+        "FROM task_status_events WHERE task_id = ?"
+    )
+    params: list[Any] = [task_id]
+    if before_id is not None:
+        query += " AND id < ?"
+        params.append(before_id)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit + 1)
+    with db.learning_connection() as conn:
+        rows = conn.execute(query, tuple(params)).fetchall()
+    has_more = len(rows) > limit
+    events = [dict(row) for row in rows[:limit]]
+    next_cursor = int(events[-1]["id"]) if has_more and events else None
+    return {"events": events, "next_cursor": next_cursor, "has_more": has_more}
+
 def list_terminal_task_ids(
     *, limit: int = 1000, min_terminal_age_seconds: int = 60
 ) -> list[int]:
