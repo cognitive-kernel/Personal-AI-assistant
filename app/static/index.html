@@ -598,21 +598,59 @@ function renderCloudCandidates(candidates) {
 el("cloud-refresh").addEventListener("click",refreshCloudResources);
 el("cloud-candidate-limit").addEventListener("change",refreshCloudResources);
 el("cloud-discover").addEventListener("click",async()=>{
- const output=el("cloud-output"); output.textContent="در حال صف‌بندی جست‌وجوی جدید…";
+ const output=el("cloud-output");
+ const button=el("cloud-discover");
+ button.disabled=true;
+ output.textContent="در حال صف‌بندی جست‌وجوی جدید…";
  try {
   const response=await api("/api/cloud-resources/discover",{method:"POST"});
   const task=response.task;
+  let pollFailures=0;
   output.textContent="وظیفهٔ جست‌وجو در صف قرار گرفت: #"+task.id+" ("+task.status+").";
   const poll=async()=>{
    try {
     const current=await api("/api/tasks/"+task.id);
-    output.textContent="وظیفهٔ جست‌وجو: #"+current.id+" — "+current.status;
-    if(["queued","running","pause_requested"].includes(current.status)) setTimeout(poll,2000);
-    else await refreshCloudResources();
-   } catch(error) { output.textContent="وضعیت وظیفه قابل دریافت نیست: "+error.message; }
+    pollFailures=0;
+    const status=current.status||"unknown";
+    const checkpoint=current.checkpoint&&typeof current.checkpoint==="object"
+     ? current.checkpoint : {};
+    let progress="";
+    if(checkpoint.phase==="cloud_discovery_query"&&Number.isInteger(checkpoint.query_index)){
+     const queryNumber=Math.max(1,Math.min(5,checkpoint.query_index+1));
+     progress=" — پرس‌وجوی "+queryNumber+" از 5";
+    } else if(status==="running") {
+     progress=" — در حال آماده‌سازی یا پردازش نتیجه‌ها";
+    }
+    const updated=current.updated_at?"\nآخرین تغییر ثبت‌شده: "+current.updated_at:"";
+    const savedCandidatesNote=["queued","running","pause_requested","cancel_requested"].includes(status)
+     ?"\nنامزدهای نمایش‌داده‌شده تا پایان کار، آخرین داده‌های ذخیره‌شده هستند.":"";
+    output.textContent="وظیفهٔ جست‌وجو: #"+current.id+" — "+status+progress+updated+savedCandidatesNote;
+    if(["queued","running","pause_requested","cancel_requested"].includes(status)){
+     setTimeout(poll,2000);
+    } else {
+     button.disabled=false;
+     await refreshCloudResources();
+     const resultSummary=current.result&&typeof current.result==="object"
+      ? "\nنتیجهٔ وظیفه: "+(current.result.status||status)
+        +(Number.isInteger(current.result.sources_seen)?" | منابع دیده‌شده: "+current.result.sources_seen:"")
+        +(Number.isInteger(current.result.candidates_upserted)?" | نامزدهای ذخیره‌شده: "+current.result.candidates_upserted:"")
+      : "";
+     const errorSummary=current.error?"\nخطا: "+current.error:"";
+     output.textContent+="\n\nپایان وظیفهٔ #"+current.id+" — "+status+resultSummary+errorSummary;
+    }
+   } catch(error) {
+    pollFailures+=1;
+    output.textContent="وضعیت وظیفهٔ #"+task.id+" فعلاً دریافت نشد: "+error.message
+     +(pollFailures<5?"\nتلاش مجدد خودکار تا زمان بازیابی ارتباط انجام می‌شود.":"\nتلاش خودکار متوقف شد؛ برای بررسی دوباره، «بارگذاری منابع» را بزنید.");
+    if(pollFailures<5) setTimeout(poll,5000);
+    else button.disabled=false;
+   }
   };
   setTimeout(poll,1000);
- } catch(error) { output.textContent="جست‌وجو صف‌بندی نشد: "+error.message; }
+ } catch(error) {
+  button.disabled=false;
+  output.textContent="جست‌وجو صف‌بندی نشد: "+error.message;
+ }
 });
 
 el("cloud-plan-run").addEventListener("click",async()=>{
