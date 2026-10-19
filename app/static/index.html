@@ -14,10 +14,23 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}.path-topic{display:grid;grid-te
 .cloud-form-grid label{min-width:0}.cloud-form-grid select,.cloud-form-grid input,.cloud-form-grid textarea{width:100%;box-sizing:border-box}
 .cloud-actions{display:flex;gap:8px;flex-wrap:wrap}.cloud-actions button{width:auto}
 @media(max-width:700px){.row{grid-template-columns:1fr}.cloud-form-grid{grid-template-columns:1fr}}
+
+.storage-alert{border:1px solid #b45309;border-inline-start:5px solid #b45309;border-radius:12px;background:#fff7ed;color:#7c2d12;padding:16px;margin:14px 0}
+.storage-alert h2{margin-top:0}
+.storage-alert p{margin-bottom:8px}
+.storage-alert code{direction:ltr;unicode-bidi:embed;display:inline-block;max-width:100%;overflow-wrap:anywhere;background:#ffedd5;padding:5px 8px;border-radius:6px}
+.storage-alert[hidden]{display:none}
 </style></head>
 <body>
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
 <button id="refresh">بررسی وضعیت سیستم</button><pre id="health">وضعیت هنوز بررسی نشده است.</pre></header>
+<section id="storage-degraded-banner" class="storage-alert" role="alert" aria-live="assertive" hidden>
+<h2>ذخیره‌سازی در حالت محدود</h2>
+<p id="storage-degraded-message">ساختار یکی از پایگاه‌های داده نیازمند بررسی است. داده‌ها حذف یا بازنشانی نشده‌اند و عملیات وابسته به دیتابیس تا بررسی ایمن غیرفعال است.</p>
+<p>گزارش فقط‌خواندنی را ابتدا اجرا کنید؛ دیتابیس را حذف نکنید و تاریخچهٔ مهاجرت را دستی نسازید.</p>
+<code>python scripts/inspect_sqlite_schema.py .\data\learning.db --kind learning --output C:\Temp\learning-schema-report.json</code>
+</section>
+
 <section id="storage-health-section"><h2>سلامت ذخیره‌سازی</h2>
 <p class="muted">این بررسی فقط‌خواندنی است؛ دیتابیس را ایجاد، مهاجرت یا تعمیر نمی‌کند. برای رفع خرابی ابتدا از پشتیبان معتبر استفاده کنید.</p>
 <button id="refresh-storage-health" type="button">بررسی سلامت دیتابیس‌ها</button>
@@ -144,7 +157,20 @@ async function api(path, options = {}) {
  return data;
 }
 async function refresh() {
- try { el("health").textContent = JSON.stringify(await api("/api/health"), null, 2); } catch(error) { el("health").textContent = error.message; }
+ try {
+  const health = await api("/api/health");
+  el("health").textContent = JSON.stringify(health, null, 2);
+  const degraded = health.status === "degraded" && health.reason === "untracked_storage_schema";
+  const banner = el("storage-degraded-banner");
+  if (banner) banner.hidden = !degraded;
+  if (degraded) {
+   el("storage-degraded-message").textContent = health.message || "ساختار پایگاه داده نیازمند بررسی است؛ عملیات دیتابیسی مسدود است و هیچ مهاجرت یا تعمیری انجام نشده است.";
+  }
+ } catch(error) {
+  el("health").textContent = error.message;
+  const banner = el("storage-degraded-banner");
+  if (banner) banner.hidden = true;
+ }
  try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
 }
 async function refreshStorageHealth() {
