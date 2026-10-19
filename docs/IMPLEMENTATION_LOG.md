@@ -1788,3 +1788,22 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **راهنمای بازیابی:** `docs/LOCAL_DATABASE_RECOVERY.md` اضافه شد؛ خطای schema ناشناخته اکنون fingerprint و فرمان تشخیصی read-only را نمایش می‌دهد و صریحاً reset/stamp/migration بدون backup بررسی‌شده را منع می‌کند.
 - **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، عدم درج تاریخچه برای schema ناشناخته، و بستن صریح fixtureهای SQLite برای جلوگیری از قفل فایل در Windows پوشش داده شده‌اند.
 - **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269528936)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269529028)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269528966). تست محلی اجرا نشده است. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی گزارش همچنان نیازمند دسترسی محلی است و انجام‌شده فرض نمی‌شود.
+
+## 151 — گزارش اجرای باقی‌مانده‌های قابل‌تکمیل بدون دسترسی به میزبان هدف (2026-10-19)
+
+- **بررسی مبنا:** نقشهٔ راه و بخش‌های وضعیت فعلی `docs/ROADMAP_ACCEPTANCE.md` با `docs/IMPLEMENTATION_LOG.md` تطبیق داده شد. PR باز دیگری هنگام بررسی وجود نداشت؛ تغییر مستندات نقشهٔ راه در [PR #329](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/329) ادغام شد.
+- **تکمیل‌های مخزن در این چرخه:** [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327) ابزار تشخیص فقط‌خواندنی schema و راهنمای بازیابی امن را اضافه کرد و چهار نام دسترس‌پذیری کنترل‌های پویا را اصلاح کرد؛ [PR #329](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/329) شواهد نقشهٔ راه را برای UI واکنش‌گرا، CI مرورگر و تشخیص SQLite تازه کرد. موارد پیاده‌سازی‌شده در بخش‌های 149 و 150 تیک خورده‌اند.
+- **CI روی head تغییرات:** همهٔ کنترل‌های PR #327 و PR #329 موفق شدند: تست‌های مخزن، رگرسیون‌های Windows، browser E2E و ممیزی وابستگی‌ها. [تست‌های PR #329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39270572069)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39270572145)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39270572041).
+- **وضعیت CI پس از ادغام در main:** commit مبنا `5b423b8ba7e1b54e765ce4ef6fc5e1ec746dfe78` است. در زمان ثبت این گزارش، workflowهای پس از ادغام هنوز در حال اجرا هستند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271331135)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271330785)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271330763). تا پایان آن‌ها ادعای سبز بودن CI روی commit ادغام‌شده ثبت نمی‌شود.
+- **تست محلی:** در این چرخه اجرا نشده است؛ این موضوع عمداً به‌عنوان انجام‌شده علامت نخورده است.
+
+### گیت‌هایی که عمداً باز مانده‌اند
+
+- [ ] **Windows میزبان واقعی:** اجرای suite کامل، baseline redacted، بررسی schema دیتابیس‌های واقعی، backup قبل از migration، راه‌اندازی برنامه، `/api/health` و restart دوم. ابزار تشخیص فقط‌خواندنی آماده است اما روی فایل‌های واقعی کاربر اجرا نشده است.
+- [ ] **مدل زنده و کیفیت پاسخ:** اجرای ارزیابی فارسی/انگلیسی روی مدل محلی هدف، ثبت نسخه/digest مدل و داوری انسانی صحت، پشتیبانی منبع، تعارض منابع و مقاومت در برابر prompt injection.
+- [ ] **صف و پایداری:** اجرای benchmark صف روی میزبان هدف، تست crash/restart و contention چندفرآیندی روی دیتابیس‌های disposable، soak و ثبت مصرف CPU/RAM/disk و latency.
+- [ ] **بازیابی و انتشار:** تمرین واقعی backup-to-staging restore، update/rollback و clean-start با دادهٔ آزمایشی جدا از دادهٔ واقعی.
+- [ ] **دسترس‌پذیری دستی:** مرور کیبورد و screen reader و usability روی میزبان هدف؛ تست Chromium در CI جایگزین این بررسی نیست.
+- [ ] **بازبینی امنیت مستقل:** issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) باید توسط بازبینی‌کننده‌ای مستقل از پیاده‌ساز ارزیابی و نتیجه/اصلاحات ثبت شود.
+
+این موارد به‌دلیل نیاز به ماشین/دادهٔ هدف، مدل زنده، داوری انسانی یا بازبین مستقل تیک نخورده‌اند. چک‌باکس‌های بخش‌های قدیمی تاریخچه، سابقهٔ وضعیت در زمان ثبت هستند؛ به‌صورت دسته‌جمعی تغییر داده نمی‌شوند، چون ممکن است ادعای نادرست دربارهٔ اجرای محلی یا پذیرش تولیدی ایجاد کنند.
