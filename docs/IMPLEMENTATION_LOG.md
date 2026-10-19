@@ -1838,3 +1838,10 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **موارد توسعه‌ای که هنوز بازند:** UI مدیریتی کامل صف، pagination/cursor و audit log تغییر وضعیت وظایف؛ احراز هویت اگر API از loopback فراتر برود؛ اتصال quota parser به provider runtime. این موارد عمداً تیک نخورده‌اند چون پیاده‌سازی‌شدنشان در main اثبات نشد.
 - **مواردی که حتماً به محیط/بازبینی واقعی نیاز دارند:** تست محلی؛ بررسی schema دیتابیس واقعی Windows و backup/migration؛ benchmark و soak صف؛ fault-injection/restart؛ staging restore، clean-start و rollback؛ اجرای مدل زنده و داوری انسانی؛ مرور دستی صفحه‌خوان/کیبورد؛ بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52). این گیت‌ها عمداً بازند.
 - **اقدام انجام‌نشده:** هیچ تست محلی اجرا نشده، هیچ دیتابیس واقعی تغییر نکرده و هیچ نتیجه‌ای دربارهٔ کیفیت مدل زنده یا پذیرش تولیدی ادعا نمی‌شود.
+
+## 156 — صفحه‌بندی cursor-based برای API صف وظایف (2026-10-19)
+
+- **وضعیت:** [ ] پیاده‌سازی در [PR #342](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/342)؛ تیک نهایی پس از موفقیت CI دقیق head زده می‌شود.
+- **تغییر:** `GET /api/tasks` اکنون از cursor مبهم و اعتبارسنجی‌شده برای صفحه‌بندی keyset با ترتیب `priority DESC, id ASC` استفاده می‌کند؛ پاسخ قدیمی `tasks` حفظ شده و `next_cursor` برای صفحهٔ بعد اضافه شده است.
+- **آزمون‌ها:** چندصفحه‌ای بودن، ترتیب ثابت، نبود شناسهٔ تکراری، cursor نامعتبر و فیلتر وضعیت در `tests/test_task_routes.py` پوشش داده شده‌اند.
+- **تست محلی:** اجرا نشده است؛ نتیجهٔ CI روی head دقیق PR ملاک خواهد بود.
