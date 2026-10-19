@@ -18,6 +18,7 @@ from .sandbox_routes import router as sandbox_router
 from .experience_routes import router as experience_router
 from .research_routes import router as research_router
 from .self_improvement_routes import router as self_improvement_router
+from .schema_migrations import UntrackedSchemaError
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
@@ -57,6 +58,31 @@ async def log_http_error_explanation(request, call_next):
 
 
 @app.middleware("http")
+async def report_storage_schema_block(request, call_next):
+    """Keep the local dashboard available when a legacy DB needs reviewed recovery."""
+    if _startup_storage_error and request.url.path not in {
+        "/", "/api/health", "/openapi.json", "/docs", "/redoc"
+    } and not request.url.path.startswith("/static/"):
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "راه‌اندازی پایگاه داده متوقف شد، چون ساختار دیتابیس موجود با نسخه‌های "
+                    "ثبت‌شده سازگار نیست. هیچ مهاجرت یا تعمیری انجام نشده است. "
+                    "گزارش فقط‌خواندنی scripts/inspect_sqlite_schema.py را اجرا کنید؛ "
+                    "دیتابیس را حذف یا بازنشانی نکنید."
+                ),
+                "code": "untracked_storage_schema",
+                "recovery_command": (
+                    "python scripts/inspect_sqlite_schema.py <database-path> "
+                    "--kind learning --output <report-path>"
+                ),
+            },
+        )
+    return await call_next(request)
+
+
+@app.middleware("http")
 async def enforce_loopback_only(request, call_next):
     """Block unauthenticated dashboard and API access from non-loopback peers."""
     client = request.client
@@ -88,12 +114,24 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _task_runtime: TaskRuntime | None = None
+_startup_storage_error: str | None = None
 
 
 @app.on_event("startup")
 def startup() -> None:
-    global _task_runtime
-    db.init_databases()
+    global _task_runtime, _startup_storage_error
+    _startup_storage_error = None
+    try:
+        db.init_databases()
+    except UntrackedSchemaError:
+        # Fail closed for data mutations, but keep the local UI and health endpoint
+        # available so the operator gets a useful recovery instruction instead of
+        # a browser-level "Failed to fetch". No migration or repair is attempted.
+        _startup_storage_error = "untracked_storage_schema"
+        logger.exception(
+            "Startup blocked by an unrecognized SQLite schema; databases were not repaired."
+        )
+        return
     try:
         cloud_resources.initialize_store()
         cloud_resources.ensure_daily_discovery_scheduled()
@@ -185,6 +223,20 @@ class PathTopicProgress(BaseModel):
 
 @app.get("/api/health")
 def api_health() -> dict[str, Any]:
+    if _startup_storage_error:
+        return {
+            "status": "degraded",
+            "reason": _startup_storage_error,
+            "storage": {"status": "blocked", "mutations_enabled": False},
+            "message": (
+                "An existing SQLite schema needs a reviewed recovery path. "
+                "No migration or repair was attempted."
+            ),
+            "recovery_command": (
+                "python scripts/inspect_sqlite_schema.py <database-path> "
+                "--kind learning --output <report-path>"
+            ),
+        }
     hardware = detect_hardware()
     settings = db.get_settings()
     configured_paths = (
