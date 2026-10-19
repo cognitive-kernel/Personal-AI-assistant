@@ -286,7 +286,7 @@
 - [x] PR این گام بعداً در main ادغام شد؛ CI دقیق head موفق بود (بخش 10).
 - CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI نهایی در run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) روی head `abf594032517ff664ea4d8e262cb3a4b11f5e675` موفق شد.
 - [x] محدودیت تاریخی برطرف شده است: `TaskRuntime` و `TaskWorker` اکنون در startup برنامه با handlerهای allow-listed اجرا می‌شوند؛ وظایف ثبت‌شدهٔ بدون handler عمداً fail می‌شوند، نه اینکه کد دلخواه اجرا شود. شواهد: `app/main.py`, `app/task_worker.py`, `tests/test_task_runtime.py` و CI بخش 151.
-- [ ] تکمیل همهٔ ابزارهای UI مدیریتی صف هنوز باقی است؛ cursor pagination در بخش 156 و ثبت audit پایدار تغییر وضعیت در بخش 157 تکمیل و CI آن تأیید شده‌اند. احراز هویت شبکه‌ای تا وقتی API عمداً از loopback فراتر نرود، پیش‌نیاز انتشار نیست.
+- [ ] تکمیل همهٔ ابزارهای UI مدیریتی صف هنوز باقی است؛ cursor pagination (بخش 156)، audit پایدار (بخش 157)، تاریخچهٔ تعاملی (بخش 159)، فیلتر و کنترل اولویت/زمان (بخش‌های 161–162)، خلاصه و جست‌وجو (بخش 163) و عملیات گروهی امن (بخش 164، PR #357) پیاده‌سازی شده‌اند. موارد باقی‌مانده باید جداگانه مشخص و با آزمون پذیرفته شوند. API مدیریت صف همچنان loopback-only است.
 
 
 ## 10. 2026-10-15 — ادغام API مدیریت صف
@@ -450,7 +450,7 @@
 - [x] آزمون‌های idempotency صف یادگیری و reconciliation رکوردهای orphan اضافه شدند.
 - [x] **PR #84** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/84)، commit ادغام `f88feda125879face5d1fea921ff6d60674614aa`.
 - [x] CI روی head دقیق `aac7feabbb5691b31ae0962f05241dfd24529d50` موفق بود؛ run [#38783162223](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38783162223)، شامل نصب وابستگی‌ها و `pytest`.
-- [ ] محدودیت باقی‌مانده: درخواست HTTP فعال Ollama الزاماً فوراً متوقف نمی‌شود؛ نتیجهٔ یادگیری پس از ثبت درخواست توقف ذخیره نمی‌شود. همگام‌سازی کامل لغو وظیفه و دامنه در گام بعدی دنبال می‌شود.
+- [x] این محدودیت تاریخی در بخش‌های 24–25 رفع شد: لغو از API عمومی با وضعیت job یادگیری همگام می‌شود و نتیجهٔ پس از لغو ذخیره نمی‌شود. درخواست HTTP فعال Ollama ممکن است تا checkpoint/پایان درخواست جاری ادامه یابد؛ توقف فوری transport همچنان محدودیت جداگانه است و به‌عنوان تکمیل‌شده ادعا نمی‌شود.
 
 
 
@@ -1919,5 +1919,14 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **ایمنی و خطاپذیری:** وظایف نامرتبط از عملیات کنار گذاشته می‌شوند؛ خطاهای هر وظیفه جداگانه جمع می‌شوند؛ بعد از عملیات فهرست دوباره بارگذاری می‌شود. هیچ endpoint راه‌دور، اجرای کد دلخواه یا provisioning فعال نشده است.
 - **UI و دسترس‌پذیری:** انتخاب همهٔ وظایف بارگذاری‌شده، شمارندهٔ انتخاب، وضعیت غیرفعال بودن عملیات نامعتبر و چیدمان واکنش‌گرا افزوده شد؛ کنترل‌ها نام مشخص و focus استاندارد دارند.
 - **آزمون افزوده‌شده:** browser E2E انتخاب همه، واجد شرایط بودن دکمه‌ها و این را بررسی می‌کند که توقف گروهی فقط به وظیفهٔ queued درخواست می‌فرستد و وظایف paused/failed را اشتباهاً متوقف نمی‌کند.
-- **وضعیت:** [x] CI روی head دقیق `fb562d190a6d2dbf2bf135f69ac1a7b19a423d8f` موفق شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344393333)، [browser E2E و dashboard smoke](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344393269)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344393352). تغییرات در [PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357) برای ادغام آماده‌اند. تست محلی اجرا نشده است.
+- **وضعیت:** [x] [PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357) ادغام شد (`6bceb3c1f3bb0d9d4a4497001a68440022682dd6`). CI روی head دقیق پیش از ادغام سبز بود: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344585853)، [browser E2E و dashboard smoke](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344585809)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344585886). پس از ادغام، CI روی main در حال اجراست؛ تست محلی اجرا نشده است.
 - **گیت‌های جداگانه:** مرور دستی کیبورد/صفحه‌خوان، بررسی کنتراست و usability روی میزبان هدف همچنان باز می‌مانند.
+
+## 165 — گزارش نهایی پیشرفت قابل‌انجام بدون تست محلی (2026-10-20)
+
+- **مبنای مخزن:** `main` در commit `6bceb3c1f3bb0d9d4a4497001a68440022682dd6` پس از ادغام PR #357.
+- **تکمیل کد/UI:** [PR #356](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/356) خلاصه و جست‌وجوی وظایف؛ [PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357) انتخاب و عملیات گروهی امن وظایف. هر دو در main ادغام شدند و CI دقیق head پیش از ادغام موفق بود.
+- **تکمیل مستندات:** وضعیت UI، نقشهٔ راه و گزارش پیاده‌سازی همگام شد؛ چک‌باکس خلاصه/جست‌وجو و عملیات گروهی تیک خورد. چک‌باکس قدیمی توقف/لغو یادگیری نیز با ارجاع به پیاده‌سازی‌های بعدی بخش‌های 24–25 اصلاح شد.
+- **CI پس از ادغام:** در زمان ثبت این گزارش، workflowهای main برای commit بالا هنوز در صف بودند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344761897)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344761877)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344761904). موفقیت آن‌ها از پیش فرض نشده است.
+- **موارد عمداً باز:** اجرای محلی و روی Windows واقعی، baseline و بررسی دیتابیس واقعی، benchmark/soak و crash recovery روی میزبان، تمرین restore/rollback در staging، اجرای مدل زنده و داوری انسانی، مرور دستی صفحه‌خوان/کیبورد و کنتراست، و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant). اتصال quota parser به provider runtime و cloud/remote provisioning نیز به‌علت گیت‌های رضایت/امنیت/هزینه عمداً فعال نشده‌اند.
+- **قاعدهٔ گزارش‌دهی:** تیک‌ها فقط تکمیل مخزن و CI مشخص را نشان می‌دهند؛ هیچ ادعای تست محلی، پذیرش میزبان واقعی یا آمادگی تولیدی ثبت نشده است.
