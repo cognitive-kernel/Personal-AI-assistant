@@ -188,6 +188,96 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
 
 
 
+def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    task_reads = {"count": 0}
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            url = route.request.url
+            if url.endswith("/api/cloud-resources/discover"):
+                route.fulfill(
+                    status=202,
+                    content_type="application/json",
+                    body=json.dumps({
+                        "task": {"id": 987654, "status": "queued"},
+                        "message": "queued",
+                    }),
+                )
+                return
+            if "/api/tasks/987654" in url:
+                task_reads["count"] += 1
+                if task_reads["count"] <= 2:
+                    task = {
+                        "id": 987654,
+                        "status": "running",
+                        "checkpoint": {
+                            "phase": "cloud_discovery_query",
+                            "query_index": 2,
+                        },
+                        "updated_at": "2026-10-19T13:00:00+00:00",
+                        "error": None,
+                        "result": None,
+                    }
+                else:
+                    task = {
+                        "id": 987654,
+                        "status": "succeeded",
+                        "checkpoint": {
+                            "phase": "cloud_discovery_query",
+                            "query_index": 4,
+                        },
+                        "updated_at": "2026-10-19T13:01:00+00:00",
+                        "error": None,
+                        "result": {
+                            "status": "completed",
+                            "sources_seen": 7,
+                            "candidates_upserted": 2,
+                        },
+                    }
+                route.fulfill(
+                    status=200, content_type="application/json",
+                    body=json.dumps(task),
+                )
+                return
+            if url.startswith(base_url.rstrip("/") + "/api/cloud-resources?limit="):
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({
+                        "latest_run": {
+                            "status": "completed",
+                            "finished_at": "2026-10-19T13:01:00+00:00",
+                            "sources_seen": 7,
+                            "candidates_upserted": 2,
+                            "query_results": [],
+                        },
+                        "candidates": [],
+                    }),
+                )
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        button = page.locator("#cloud-discover")
+        button.click()
+
+        page.get_by_text("پرس‌وجوی 3 از 5", exact=False).wait_for(timeout=5000)
+        assert button.is_disabled()
+        page.get_by_text("پایان وظیفهٔ #987654 — succeeded", exact=False).wait_for(
+            timeout=10000
+        )
+        assert not button.is_disabled()
+        assert "نتیجهٔ وظیفه: completed" in page.locator("#cloud-output").inner_text()
+        browser.close()
+
+
 def test_browser_can_cancel_a_persisted_scheduled_task():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
