@@ -208,8 +208,8 @@
 - [x] claim اتمیک با `BEGIN IMMEDIATE`، بازیابی lease منقضی‌شده، retry limit، تمدید lease، checkpoint، pause/resume و درخواست لغو پیاده‌سازی شد.
 - [x] آزمون‌های واحد برای چرخه وظیفه، اولویت و زمان‌بندی، retry، checkpoint، pause/resume، لغو، بازیابی lease و JSON نامعتبر اضافه شدند.
 - [x] تصمیم معماری در `docs/architecture/ADR-001-durable-task-manager.md` ثبت شد.
-- [ ] اتصال مدیر وظایف به FastAPI یا worker یادگیری عمداً انجام نشده؛ این مرحله فقط هسته قابل‌آزمون است.
-- [ ] اجرای واقعی pytest و CI روی head نهایی هنوز لازم است. ایجاد فایل آزمون به‌معنای گذراندن آزمون نیست.
+- [x] این محدودیت تاریخی superseded شده است؛ اتصال API/worker و runtime در بخش‌های 9–13 و به‌ویژه بخش 23 تکمیل و در main ادغام شده است.
+- [x] CI نسخهٔ جاری صف و runtime در بخش 23 و CI فعلی main تأیید شده است؛ تست محلی آن مرحله اجرا نشده بود.
 
 ### وضعیت تست و محدودیت‌ها
 - تست محلی: **اجرا نشده**؛ در این نشست checkout اجرایی در دسترس نیست.
@@ -283,7 +283,7 @@
 - [x] مسیرهای مدیریت وظیفه فقط درخواست‌های loopback را می‌پذیرند تا پیش از طراحی احراز هویت، کنترل صف روی شبکه محلی افشا نشود؛ تست 403 برای کلاینت غیرمحلی اضافه شد.
 - [x] `tests/test_task_routes.py` برای چرخه API، فیلتر، اعتبارسنجی و محدودیت تغییرات هنگام اجرای وظیفه اضافه شد.
 - [x] آزمون هم‌زمانی دو worker برای اثبات اینکه یک وظیفه به دو worker واگذار نمی‌شود اضافه شد.
-- [ ] این تغییر هنوز روی شاخه کاری است؛ اجرای CI دقیق head و بازبینی آن لازم است.
+- [x] PR این گام بعداً در main ادغام شد؛ CI دقیق head موفق بود (بخش 10).
 - CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI نهایی در run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) روی head `abf594032517ff664ea4d8e262cb3a4b11f5e675` موفق شد.
 - [x] محدودیت تاریخی برطرف شده است: `TaskRuntime` و `TaskWorker` اکنون در startup برنامه با handlerهای allow-listed اجرا می‌شوند؛ وظایف ثبت‌شدهٔ بدون handler عمداً fail می‌شوند، نه اینکه کد دلخواه اجرا شود. شواهد: `app/main.py`, `app/task_worker.py`, `tests/test_task_runtime.py` و CI بخش 151.
 - [ ] UI مدیریتی، احراز هویت شبکه‌ای (در صورت بیرون‌بردن از localhost)، pagination/cursor و ثبت رویدادهای تغییر وضعیت باقی مانده‌اند.
@@ -310,7 +310,7 @@
 - [x] آزمون‌های موفقیت، handler ناشناخته، retry، نتیجه نامعتبر و توقف/لغو تعاونی اضافه شدند.
 - [x] مرز معماری در `docs/architecture/ADR-002-allowlisted-task-dispatch.md` ثبت شد.
 - [x] تکمیل شد: startup، polling loop، shutdown با deadline، تعداد worker محدودشده و handler واقعی یادگیری پیاده‌سازی شده‌اند؛ `app/main.py` و `app/task_runtime.py`.
-- [ ] CI روی head دقیق این شاخه هنوز باید اجرا شود؛ هیچ تست محلی اجرا نشده است.
+- [x] CI نسخه‌های نهایی روی headهای ادغام‌شده تأیید شد؛ تست محلی آن مرحله اجرا نشده بود.
 - [ ] اجرای کد دلخواه/ناشناس ممنوع می‌ماند تا backend آزمایشگاه ایزوله با محدودیت‌های منابع و شبکه ساخته و تست شود.
 
 
@@ -331,7 +331,7 @@
 - [x] آزمون‌های پردازش وظیفه، start تکراری، توقف در حالت idle و اعتبارسنجی تنظیمات اضافه شدند.
 - [x] قرارداد چرخه عمر در `docs/architecture/ADR-003-managed-task-runtime.md` ثبت شد.
 - [x] اتصال runtime به startup/shutdown تکمیل شد و handlerهای ثبت‌شده به allowlist محدودند؛ recovery/retry و checkpointها پوشش تستی دارند. گیت‌های fault-injection روی میزبان هدف همچنان باز هستند.
-- [ ] CI روی head دقیق این شاخه باید سبز شود؛ تست محلی اجرا نشده است.
+- [x] CI نسخه‌های نهایی صف/runtime در main سبز شده است؛ تست محلی آن مرحله اجرا نشده بود.
 
 
 ## 14. 2026-10-15 — ادغام runtime مدیریت‌شده
@@ -408,7 +408,7 @@
 
 - [x] `learning.run_job()` پس از ثبت وضعیت و خطای `failed`، اکنون شکست را با `LearningError` دوباره پرتاب می‌کند تا worker صف نتواند شکست یادگیری را به‌اشتباه موفقیت وظیفه ثبت کند.
 - [x] آزمون رگرسیون در `tests/test_core.py` بررسی می‌کند که خطای مدل هم در رکورد یادگیری ذخیره شود و هم به فراخواننده منتقل شود.
-- [ ] این تغییر پیش‌نیاز اتصال صف پایدار است؛ به‌تنهایی `submit_job()` را به صف منتقل نمی‌کند و runtime را به FastAPI متصل نمی‌کند.
+- [x] این محدودیت تاریخی با انتقال نقاط ارسال یادگیری به صف و اتصال runtime در بخش 23 رفع شده است.
 - [ ] تست محلی در این نشست اجرا نشده است؛ نتیجه باید از CI روی head دقیق PR گرفته شود.
 
 
@@ -416,7 +416,7 @@
 
 - [x] `learning.run_job()` پس از ثبت وضعیت و خطای `failed`، اکنون شکست را با `LearningError` دوباره پرتاب می‌کند تا worker صف نتواند شکست یادگیری را به‌اشتباه موفقیت وظیفه ثبت کند.
 - [x] آزمون رگرسیون در `tests/test_core.py` بررسی می‌کند که خطای مدل هم در رکورد یادگیری ذخیره شود و هم به فراخواننده منتقل شود.
-- [ ] این تغییر پیش‌نیاز اتصال صف پایدار است؛ به‌تنهایی `submit_job()` را به صف منتقل نمی‌کند و runtime را به FastAPI متصل نمی‌کند.
+- [x] این محدودیت تاریخی با انتقال نقاط ارسال یادگیری به صف و اتصال runtime در بخش 23 رفع شده است.
 - [ ] تست محلی در این نشست اجرا نشده است؛ نتیجه باید از CI روی head دقیق PR گرفته شود.
 
 
@@ -633,8 +633,8 @@
 
 - [x] فیلتر `pull_request.branches: [main]` حذف شد تا PRهایی که به شاخه‌های feature/stacked هدف می‌گیرند نیز همان workflow تست را اجرا کنند؛ فیلتر push همچنان فقط `main` است.
 - [x] این تغییر issue #56 را هدف می‌گیرد و از نیاز به تغییر دستی workflow برای هر شاخه جلوگیری می‌کند.
-- [ ] CI باید روی SHA دقیق PR جدید موفق شود؛ تست محلی اجرا نشده است.
-- [ ] پس از موفقیت CI، issue #56 و PR قدیمیِ صرفاً workflow (#16) تعیین تکلیف می‌شوند.
+- [x] CI workflow روی شاخه‌های PR تأیید شد؛ شواهد در بخش 40 و وضعیت بسته‌شدن issue #56/PR #16 ثبت شده است. تست محلی آن مرحله اجرا نشده بود.
+- [x] issue [#56](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/56) و PR [#16](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/16) بسته شده‌اند؛ workflow تست برای PRها فعال است.
 
 
 ## 41. 2026-10-15 — یکپارچه‌سازی benchmark کیفیت پاسخ فارسی/انگلیسی
@@ -1815,3 +1815,14 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **شواهد:** CI روی `main` در commit `65b959be2394901bdcbafe94ae4bfb85a388f158` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271785980)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786146)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786065).
 - **محدودیت:** این تطبیق مستندات و کد مخزن است؛ تست محلی، اجرای مدل زنده، benchmark/soak، بازیابی staging، migration دیتابیس واقعی و بازبینی مستقل امنیتی انجام‌شده فرض نمی‌شوند.
 - **گیت‌های باز:** baseline و migration روی میزبان Windows واقعی؛ اجرای benchmark صف و soak؛ fault injection/restart برای انواع task روی محیط هدف؛ تمرین staging/rollback و clean-start؛ داوری انسانی مدل زنده؛ مرور دستی صفحه‌خوان/کیبورد؛ issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
+
+## 153 — گزارش تکمیل موارد قابل‌حسم بدون تست روی میزبان محلی (2026-10-19)
+
+- **مبنای بررسی:** `main` در commit `2332e45022ab77e6f12c7dd30cdaee7f8423f47d`؛ وضعیت PRهای باز و workflowهای جاری بازبینی شد.
+- **موارد تکمیل‌شده در این به‌روزرسانی:** چک‌لیست‌های تاریخیِ مربوط به اتصال Task Manager به API/runtime، worker و handler یادگیری، انتقال وظایف به صف پایدار، reconciliation/idempotency هنگام startup، schema registry/migration runner و workflow مربوط به issue #56 با وضعیت فعلی مخزن تطبیق داده شدند. هر مورد فقط وقتی تیک خورد که پیاده‌سازی/ادغام بعدی در بخش‌های مشخص‌شده یا وضعیت GitHub آن را پشتیبانی می‌کند.
+- **CI روی main:** تست‌ها [run #39272639237](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639237)، browser E2E [run #39272639532](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639532) و ممیزی وابستگی [run #39272639453](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639453) همگی موفق‌اند.
+- **تست محلی:** اجرا نشده؛ مواردی که صراحتاً نیازمند checkout محلی، ماشین Windows واقعی، دادهٔ واقعی یا مدل زنده‌اند تیک نخورده‌اند.
+- **گیت‌های باز:** checkout/baseline روی میزبان هدف، بررسی schema و migration دیتابیس واقعی، benchmark و soak روی سخت‌افزار هدف، fault injection/restart در محیط هدف، تمرین staging/rollback، ارزیابی مدل زنده با داوری انسانی، مرور دستی دسترس‌پذیری و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
+- **محدودیت غیرمحلی باقی‌مانده:** UI مدیریتی کامل، احراز هویت شبکه‌ای در صورت گسترش از loopback، pagination/cursor و ثبت رویدادهای تغییر وضعیت در بخش صف همچنان کارهای توسعه‌اند؛ این موارد را به‌اشتباه به‌عنوان تکمیل‌شده علامت نزدم. اجرای کد ناشناس نیز تا ایجاد و ارزیابی sandbox ایزوله ممنوع باقی می‌ماند.
+
+این گزارش فقط تکمیل‌های قابل‌اثبات در مخزن را تیک می‌زند؛ سبز بودن CI مخزن جایگزین پذیرش روی سیستم واقعی نیست.
