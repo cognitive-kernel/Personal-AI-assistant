@@ -393,3 +393,30 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
     assert recovered["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
     with pytest.raises(TaskManagerError, match="not owned by this worker"):
         task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"})
+
+
+def test_task_status_events_are_audited_and_cursor_paginated(task_store):
+    task = task_manager.create_task("audit-test", {"safe": True})
+    task_manager.request_pause(task["id"])
+    task_manager.resume_task(task["id"])
+    task_manager.request_cancel(task["id"])
+
+    first = task_manager.list_task_status_events(task["id"], limit=2)
+    assert [event["to_status"] for event in first["events"]] == ["cancelled", "queued"]
+    assert first["has_more"] is True
+    assert first["next_cursor"] == first["events"][-1]["id"]
+
+    second = task_manager.list_task_status_events(
+        task["id"], limit=2, before_id=first["next_cursor"]
+    )
+    assert [event["to_status"] for event in second["events"]] == ["paused", "queued"]
+    assert [event["from_status"] for event in second["events"]] == ["queued", None]
+    assert second["has_more"] is False
+    assert second["next_cursor"] is None
+
+
+def test_task_status_event_query_rejects_invalid_cursor_and_limits(task_store):
+    with pytest.raises(ValueError, match="before_id"):
+        task_manager.list_task_status_events(1, before_id=0)
+    with pytest.raises(ValueError, match="limit"):
+        task_manager.list_task_status_events(1, limit=501)
