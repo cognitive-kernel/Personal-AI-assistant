@@ -74,6 +74,55 @@ def test_task_api_lifecycle_and_filtering(tmp_path, monkeypatch):
         assert detail.json()["status"] == "cancelled"
 
 
+
+def test_task_api_cursor_pagination_is_stable_and_rejects_invalid_cursor(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+
+    future = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = []
+        for priority in (5, 5, 2):
+            response = client.post(
+                "/api/tasks",
+                json={
+                    "task_type": "pagination.fixture",
+                    "payload": {"index": len(created)},
+                    "priority": priority,
+                    "scheduled_at": future,
+                },
+            )
+            assert response.status_code == 202
+            created.append(response.json())
+
+        first = client.get("/api/tasks", params={"limit": 2})
+        assert first.status_code == 200
+        page_one = first.json()
+        assert len(page_one["tasks"]) == 2
+        assert page_one["next_cursor"]
+
+        second = client.get(
+            "/api/tasks",
+            params={"limit": 2, "cursor": page_one["next_cursor"]},
+        )
+        assert second.status_code == 200
+        page_two = second.json()
+        assert len(page_two["tasks"]) == 1
+        assert page_two["next_cursor"] is None
+
+        ids = [task["id"] for task in page_one["tasks"] + page_two["tasks"]]
+        assert ids == [task["id"] for task in sorted(created, key=lambda task: (-task["priority"], task["id"]))]
+        assert len(ids) == len(set(ids))
+
+        invalid = client.get("/api/tasks", params={"cursor": "not-a-cursor"})
+        assert invalid.status_code == 422
+
+        invalid_filter = client.get(
+            "/api/tasks", params=[("statuses", "queued"), ("limit", "2"), ("cursor", page_one["next_cursor"])]
+        )
+        assert invalid_filter.status_code == 200
+        assert all(task["status"] == "queued" for task in invalid_filter.json()["tasks"])
+
 def test_task_api_validation_and_missing_task(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
