@@ -261,3 +261,41 @@ def test_task_cursor_pagination_is_stable_and_validated(tmp_path, monkeypatch):
         assert invalid.status_code == 422
         too_large = client.get("/api/tasks", params={"limit": 101})
         assert too_large.status_code == 422
+
+
+def test_task_status_audit_events_are_durable_and_payload_free(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        due = (datetime.now(timezone.utc) + timedelta(hours=4)).isoformat()
+        created = client.post(
+            "/api/tasks",
+            json={"task_type": "audit-test", "payload": {"secret": "must-not-be-logged"}, "priority": 2, "scheduled_at": due},
+        )
+        assert created.status_code == 202
+        task_id = created.json()["id"]
+        changed = client.patch(f"/api/tasks/{task_id}/priority", json={"priority": 7})
+        assert changed.status_code == 200
+        paused = client.post(f"/api/tasks/{task_id}/pause")
+        assert paused.status_code == 200
+        response = client.get(f"/api/tasks/{task_id}/events")
+        assert response.status_code == 200
+        events = response.json()["events"]
+        event_types = [event["event_type"] for event in events]
+        assert "created" in event_types
+        assert "priority_changed" in event_types
+        assert "status_changed" in event_types
+        assert all("payload" not in event and "secret" not in str(event) for event in events)
+        assert all(event["task_id"] == task_id for event in events)
+        paged = client.get(f"/api/tasks/{task_id}/events", params={"limit": 1})
+        assert paged.status_code == 200
+        assert len(paged.json()["events"]) == 1
+        if paged.json()["has_more"]:
+            older = client.get(
+                f"/api/tasks/{task_id}/events",
+                params={"limit": 1, "before_id": paged.json()["next_before_id"]},
+            )
+            assert older.status_code == 200
+            assert older.json()["events"][0]["id"] < paged.json()["events"][0]["id"]
+        missing = client.get("/api/tasks/999999/events")
+        assert missing.status_code == 404

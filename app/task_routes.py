@@ -83,6 +83,21 @@ def list_tasks(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/{task_id}/events")
+def get_task_events(
+    task_id: int,
+    limit: int = Query(default=50, ge=1, le=100),
+    before_id: int | None = Query(default=None, ge=1),
+) -> dict[str, Any]:
+    task = task_manager.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    try:
+        return task_manager.list_task_events(task_id, limit=limit, before_id=before_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/{task_id}")
 def get_task(task_id: int) -> dict[str, Any]:
     task = task_manager.get_task(task_id)

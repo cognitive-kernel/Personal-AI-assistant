@@ -315,6 +315,21 @@ function renderTasks(tasks) {
    card.append(result);
   }
   const actions=document.createElement("div"); actions.className="cloud-actions";
+  const historyButton=document.createElement("button"); historyButton.type="button"; historyButton.textContent="تاریخچه رویدادها";
+  historyButton.addEventListener("click",async()=>{
+   historyButton.disabled=true;
+   try {
+    const history=await api("/api/tasks/"+task.id+"/events?limit=20");
+    let historyOutput=card.querySelector(".task-events-output");
+    if(!historyOutput) { historyOutput=document.createElement("pre"); historyOutput.className="task-events-output"; card.append(historyOutput); }
+    historyOutput.textContent=JSON.stringify(history.events||[],null,2);
+   } catch(error) {
+    let historyOutput=card.querySelector(".task-events-output");
+    if(!historyOutput) { historyOutput=document.createElement("pre"); historyOutput.className="task-events-output"; card.append(historyOutput); }
+    historyOutput.textContent="تاریخچه قابل دریافت نیست: "+error.message;
+   } finally { historyButton.disabled=false; }
+  });
+  actions.append(historyButton);
   const addAction=(label,path)=>{
    const button=document.createElement("button"); button.type="button"; button.textContent=label;
    button.addEventListener("click",async()=>{
