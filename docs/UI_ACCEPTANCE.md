@@ -12,6 +12,7 @@
 - [ ] Contrast audit and target-host usability acceptance.
 - [ ] Broader functional parity and operational E2E matrix.
 - [x] Task priority and scheduled-time controls for queued/paused tasks; exact-head CI passed in [PR #355](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/355).
+- [ ] Task queue live summary and client-side search over already-loaded task pages; exact-head CI pending.
 
 ## Evidence policy
 
