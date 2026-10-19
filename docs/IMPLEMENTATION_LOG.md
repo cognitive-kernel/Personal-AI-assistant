@@ -1,6 +1,6 @@
 # گزارش پیاده‌سازی و وضعیت پروژه
 
-> آخرین به‌روزرسانی: 2026-10-19  
+ > آخرین به‌روزرسانی: 2026-10-19  
 > این فایل گزارش وضعیت واقعی کارهاست. «بررسی‌شده» به‌معنای «تست‌شده» نیست. فقط تست‌هایی که واقعاً اجرا شده‌اند باید با فرمان، محیط و نتیجه ثبت شوند.
 
 ## وضعیت کلی فعلی
@@ -8,7 +8,7 @@
 - مرحلهٔ کاری اصلی: **سخت‌سازی و تکمیل پذیرش؛ مرحلهٔ ۹ منابع ابری همچنان در جریان است**
 - مرحلهٔ ۹: **کشف منابع، استخراج ادعاهای دارای provenance، سهمیه و طرح انتخاب پیاده‌سازی شده‌اند؛ provisioning و اجرای remote عمداً غیرفعال‌اند تا مجوز، هزینه و بازبینی امنیتی صریح فراهم شود.**
 - اجرای محلی در این نشست: **انجام نشده**؛ هیچ ادعایی دربارهٔ اجرای pytest روی ماشین توسعه‌دهنده مطرح نمی‌شود.
-- CI: **آزمون‌های مخزن، مرورگر و ممیزی وابستگی‌ها روی PRهای اخیر و commitهای پس از ادغام موفق بوده‌اند؛ شواهد دقیق در بخش‌های 143 تا 145 ثبت شده است.**
+- CI: **تست‌ها، browser E2E و ممیزی وابستگی‌ها روی main فعلی موفق‌اند؛ commit `65b959be2394901bdcbafe94ae4bfb85a388f158`، [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271785980)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786146)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786065).**
 - آخرین تغییر ثبت‌شده: مهاجرت محافظت‌شدهٔ learning.db ادغام شد؛ بخش 146. آزمون مستقل مهاجرت روی Windows به PR #310 افزوده شده است.
 - محدودیت‌های پذیرش باز: checkout و ممیزی کامل محلی، اجرای baseline و benchmark روی ماشین هدف، تمرین staging/rollback، آزمون‌های طولانی‌مدت و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
 - مرجع الزامات: [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md)
@@ -171,8 +171,8 @@
 - [x] claim اتمیک با `BEGIN IMMEDIATE`، بازیابی lease منقضی‌شده، retry limit، تمدید lease، checkpoint، pause/resume و درخواست لغو پیاده‌سازی شد.
 - [x] آزمون‌های واحد برای چرخه وظیفه، اولویت و زمان‌بندی، retry، checkpoint، pause/resume، لغو، بازیابی lease و JSON نامعتبر اضافه شدند.
 - [x] تصمیم معماری در `docs/architecture/ADR-001-durable-task-manager.md` ثبت شد.
-- [ ] اتصال مدیر وظایف به FastAPI یا worker یادگیری عمداً انجام نشده؛ این مرحله فقط هسته قابل‌آزمون است.
-- [ ] اجرای واقعی pytest و CI روی head نهایی هنوز لازم است. ایجاد فایل آزمون به‌معنای گذراندن آزمون نیست.
+- [x] وضعیت تاریخی این مورد بعداً تکمیل شد: `TaskRuntime` در `app/main.py` در startup راه‌اندازی و در shutdown متوقف می‌شود؛ handlerهای allow-listed در startup ثبت می‌شوند. آزمون‌های startup و runtime در `tests/test_main_startup.py` و `tests/test_task_runtime.py` هستند؛ شواهد CI فعلی در بخش 151.
+- [x] این گیت تاریخی با اجرای CI روی headهای بعدی تکمیل شد؛ نتیجهٔ main فعلی در بخش 151 ثبت شده است. این تیک ادعای اجرای تست محلی نیست.
 
 ### وضعیت تست و محدودیت‌ها
 - تست محلی: **اجرا نشده**؛ در این نشست checkout اجرایی در دسترس نیست.
@@ -285,7 +285,7 @@
 - [x] آزمون هم‌زمانی دو worker برای اثبات اینکه یک وظیفه به دو worker واگذار نمی‌شود اضافه شد.
 - [ ] این تغییر هنوز روی شاخه کاری است؛ اجرای CI دقیق head و بازبینی آن لازم است.
 - CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI نهایی در run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) روی head `abf594032517ff664ea4d8e262cb3a4b11f5e675` موفق شد.
-- [ ] API در این مرحله وظیفه را صف می‌کند اما worker عمومی هنوز وجود ندارد؛ وظایف در حالت queued می‌مانند تا dispatcher امن در گام بعدی پیاده‌سازی شود.
+- [x] محدودیت تاریخی برطرف شده است: `TaskRuntime` و `TaskWorker` اکنون در startup برنامه با handlerهای allow-listed اجرا می‌شوند؛ وظایف ثبت‌شدهٔ بدون handler عمداً fail می‌شوند، نه اینکه کد دلخواه اجرا شود. شواهد: `app/main.py`, `app/task_worker.py`, `tests/test_task_runtime.py` و CI بخش 151.
 - [ ] UI مدیریتی، احراز هویت شبکه‌ای (در صورت بیرون‌بردن از localhost)، pagination/cursor و ثبت رویدادهای تغییر وضعیت باقی مانده‌اند.
 
 
@@ -309,7 +309,7 @@
 - [x] نتیجه غیرشیء JSON پذیرفته نمی‌شود؛ خطای handler ثبت می‌شود و retry فقط در محدوده تعداد تلاش باقی‌مانده انجام می‌شود.
 - [x] آزمون‌های موفقیت، handler ناشناخته، retry، نتیجه نامعتبر و توقف/لغو تعاونی اضافه شدند.
 - [x] مرز معماری در `docs/architecture/ADR-002-allowlisted-task-dispatch.md` ثبت شد.
-- [ ] worker هنوز در startup به‌صورت خودکار اجرا نمی‌شود؛ polling loop، shutdown، محدودیت هم‌زمانی و handler واقعی یادگیری باقی است.
+- [x] تکمیل شد: startup، polling loop، shutdown با deadline، تعداد worker محدودشده و handler واقعی یادگیری پیاده‌سازی شده‌اند؛ `app/main.py` و `app/task_runtime.py`.
 - [ ] CI روی head دقیق این شاخه هنوز باید اجرا شود؛ هیچ تست محلی اجرا نشده است.
 - [ ] اجرای کد دلخواه/ناشناس ممنوع می‌ماند تا backend آزمایشگاه ایزوله با محدودیت‌های منابع و شبکه ساخته و تست شود.
 
@@ -330,7 +330,7 @@
 - [x] شروع مجدد idempotent است؛ توقف با event مشترک و deadline محدود انجام می‌شود و اگر handler فعال از مهلت توقف عبور کند، runtime موفقیت توقف را ادعا نمی‌کند.
 - [x] آزمون‌های پردازش وظیفه، start تکراری، توقف در حالت idle و اعتبارسنجی تنظیمات اضافه شدند.
 - [x] قرارداد چرخه عمر در `docs/architecture/ADR-003-managed-task-runtime.md` ثبت شد.
-- [ ] runtime عمداً به startup برنامه وصل نشده؛ تا زمان ثبت handler واقعی و بازبینی مسیرهای crash/retry، شروع خودکار می‌تواند وظایف را با رفتار ناقص اجرا کند.
+- [x] اتصال runtime به startup/shutdown تکمیل شد و handlerهای ثبت‌شده به allowlist محدودند؛ recovery/retry و checkpointها پوشش تستی دارند. گیت‌های fault-injection روی میزبان هدف همچنان باز هستند.
 - [ ] CI روی head دقیق این شاخه باید سبز شود؛ تست محلی اجرا نشده است.
 
 
@@ -426,8 +426,8 @@
 - [x] handler وضعیت واقعی یادگیری را به نتیجهٔ وظیفه نگاشت می‌کند؛ شکست `run_job` باید به worker منتقل شود و نتیجهٔ ردشدهٔ کیفیت از شکست اجرایی جدا می‌ماند.
 - [x] برای retry صف، وضعیت‌های ماندهٔ `failed` یا `running` پس از بررسی مالکیت lease به `queued` بازمی‌گردند؛ وضعیت‌های نهایی دوباره اجرا نمی‌شوند.
 - [x] آزمون‌های handler برای نتیجهٔ واقعی، بازیابی job شکست‌خورده، جلوگیری از اجرای دوبارهٔ job نهایی و اعتبارسنجی payload اضافه شدند.
-- [ ] handler هنوز در runtime ثبت نشده و مسیرهای `submit_job()` و یادگیری مسیرهای آموزشی هنوز از `ThreadPoolExecutor` استفاده می‌کنند.
-- [ ] اتصال به startup باید پس از انتقال همهٔ نقاط ارسال به صف، reconciliation وظایف قدیمی و آزمون idempotency/restart انجام شود؛ این PR به‌تنهایی runtime را فعال نمی‌کند.
+- [x] وضعیت تاریخی handler برطرف شده: handler یادگیری در `app/main.py` ثبت و مسیرهای یادگیری با صف پایدار/idempotent enqueue و startup reconciliation یکپارچه شده‌اند؛ `app/learning_tasks.py` و `tests/test_main_startup.py`.
+- [x] اتصال startup، reconciliation و idempotent enqueue در تغییرات بعدی تکمیل شد؛ CI پوشش دارد. بازیابی واقعی روی میزبان و آزمون طولانی‌مدت همچنان gate جداگانه‌اند.
 - [ ] تست محلی در این نشست اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
 
 
@@ -437,7 +437,7 @@
 - [x] استفادهٔ مجدد از کلید برای نوع وظیفه، payload یا سقف تلاش متفاوت رد می‌شود تا یک کلید به دو عملیات معنایی متفاوت اشاره نکند.
 - [x] `initialize_task_store()` ستون و ایندکس یکتای جزئی را به schema موجود به‌صورت افزایشی اضافه می‌کند و وظایف قدیمی را حفظ می‌کند.
 - [x] آزمون‌های idempotency، تعارض کلید، ورودی خالی و مهاجرت schema قدیمی اضافه شدند.
-- [ ] این قابلیت زیرساختی است؛ هنوز برای ثبت یکتای وظایف یادگیری و reconciliation در startup استفاده نشده است.
+- [x] بعداً برای dedupe وظایف یادگیری و reconciliation در startup استفاده شد؛ `app/learning_tasks.py` و `tests/test_main_startup.py`.
 - [ ] تست محلی در این نشست اجرا نشده؛ CI روی head دقیق PR باید بررسی شود.
 
 
@@ -527,7 +527,7 @@
 - [x] راهنمای دامنه و محدودیت‌ها در `docs/architecture/SCHEMA_MIGRATION_RUNNER.md` ثبت شد.
 - [x] **PR #96** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/96)، commit ادغام `188a65a5e268f66c506fa71446cba88b05d0eccd`.
 - [x] CI روی head دقیق `34fecfc6540518be2a197199be4fc8baa3156267` موفق بود؛ run [#38785883899](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38785883899)، شامل نصب وابستگی‌ها و `pytest`.
-- [ ] runner هنوز به startup متصل نشده و registry واقعی migration برای schemaهای settings/learning تعریف نشده است؛ هیچ دیتابیس کاربر تغییر نکرده است.
+- [x] وضعیت تاریخی تکمیل شد: registry نسخه‌دار schema و startup validation برای دیتابیس‌های برنامه پیاده‌سازی شده‌اند؛ هیچ دیتابیس واقعی کاربر در این چرخه تغییر نکرده است. گیت پذیرش روی میزبان واقعی باز می‌ماند.
 - **گام بعدی:** تعریف migrationهای واقعی برای نصب تازه و fixtureهای legacy، تطبیق دقیق schema/constraint/index، سپس اتصال runner به startup در تغییر مستقل.
 
 
@@ -555,7 +555,7 @@
 - [x] `app/schema_registry.py` migrationهای versioned برای settings و learning تعریف می‌کند؛ schema یادگیری در سه نسخه از جدول‌های پایه تا quality/provenance و idempotency تکامل می‌یابد.
 - [x] `fingerprint_for_version()` برای ساخت fingerprint مرجع از migrationهای ثبت‌شده روی SQLite حافظه‌ای اضافه شد.
 - [x] تست‌ها نصب تازه، اجرای تکراری، ارتقای fixture از v1 به v3، حفظ job/task، FKها، indexها و integrity را پوشش می‌دهند.
-- [ ] registry هنوز به startup وصل نشده است؛ پیش از اتصال باید CI و آزمون‌های baseline نسخه‌های شناخته‌شده روی head دقیق PR بررسی شوند.
+- [x] registry به startup متصل شده و CI شامل تست‌های schema/startup و رگرسیون Windows است؛ اجرای baseline روی دیتابیس واقعی همچنان جداگانه لازم است.
 - [x] **PR #102** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/102)، commit ادغام `cc3ead5e151c2cce0818d7a8e389159b60741d91`.
 - [x] CI روی head دقیق `ad4d6f3b80996e7295b61c4bbdd46a7366c38993` موفق بود؛ run [#38787011266](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38787011266)، شامل نصب وابستگی‌ها و `pytest`.
 - [ ] تست محلی اجرا نشده است.
@@ -570,7 +570,7 @@
 - [x] تست‌های baseline از نسخهٔ قدیمی و نسخهٔ جاری، عدم تغییر schema ناشناخته و اثر قیدها/ترتیب ستون‌ها بر fingerprint اضافه شدند.
 - [x] **PR #104** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/104)، commit ادغام `26a510518e94d494863b69a0add7924fffd98b13`.
 - [x] CI روی head دقیق `b92fca9c6c7dca956a40f5baa7e108bc48d00aca` موفق بود؛ run [#38787834647](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38787834647)، شامل نصب وابستگی‌ها و `pytest`.
-- [ ] این قابلیت هنوز به startup متصل نشده است؛ آزمون تطبیق schema فعلی با fingerprintهای ثبت‌شده باید پیش از اتصال startup موفق شود.
+- [x] schema fingerprint validation در مسیر startup فعال است؛ schema ناشناخته fail-closed می‌ماند و دستور تشخیص فقط‌خواندنی ارائه می‌شود. پذیرش دیتابیس واقعی هنوز انجام نشده است.
 - [ ] تست محلی اجرا نشده است.
 
 
@@ -1794,7 +1794,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **بررسی مبنا:** نقشهٔ راه و بخش‌های وضعیت فعلی `docs/ROADMAP_ACCEPTANCE.md` با `docs/IMPLEMENTATION_LOG.md` تطبیق داده شد. PR باز دیگری هنگام بررسی وجود نداشت؛ تغییر مستندات نقشهٔ راه در [PR #329](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/329) ادغام شد.
 - **تکمیل‌های مخزن در این چرخه:** [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327) ابزار تشخیص فقط‌خواندنی schema و راهنمای بازیابی امن را اضافه کرد و چهار نام دسترس‌پذیری کنترل‌های پویا را اصلاح کرد؛ [PR #329](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/329) شواهد نقشهٔ راه را برای UI واکنش‌گرا، CI مرورگر و تشخیص SQLite تازه کرد. موارد پیاده‌سازی‌شده در بخش‌های 149 و 150 تیک خورده‌اند.
 - **CI روی head تغییرات:** همهٔ کنترل‌های PR #327 و PR #329 موفق شدند: تست‌های مخزن، رگرسیون‌های Windows، browser E2E و ممیزی وابستگی‌ها. [تست‌های PR #329](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39270572069)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39270572145)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39270572041).
-- **وضعیت CI پس از ادغام در main:** commit مبنا `5b423b8ba7e1b54e765ce4ef6fc5e1ec746dfe78` است. در زمان ثبت این گزارش، workflowهای پس از ادغام هنوز در حال اجرا هستند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271331135)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271330785)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271330763). تا پایان آن‌ها ادعای سبز بودن CI روی commit ادغام‌شده ثبت نمی‌شود.
+- **وضعیت CI پس از ادغام در main:** commit گزارش اولیه `5b423b8ba7e1b54e765ce4ef6fc5e1ec746dfe78` و commit جاری پس از ادغام گزارش `65b959be2394901bdcbafe94ae4bfb85a388f158` است؛ تمام workflowها روی commit جاری موفق شدند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271785980)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786146)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786065).
 - **تست محلی:** در این چرخه اجرا نشده است؛ این موضوع عمداً به‌عنوان انجام‌شده علامت نخورده است.
 
 ### گیت‌هایی که عمداً باز مانده‌اند
@@ -1807,3 +1807,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - [ ] **بازبینی امنیت مستقل:** issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) باید توسط بازبینی‌کننده‌ای مستقل از پیاده‌ساز ارزیابی و نتیجه/اصلاحات ثبت شود.
 
 این موارد به‌دلیل نیاز به ماشین/دادهٔ هدف، مدل زنده، داوری انسانی یا بازبین مستقل تیک نخورده‌اند. چک‌باکس‌های بخش‌های قدیمی تاریخچه، سابقهٔ وضعیت در زمان ثبت هستند؛ به‌صورت دسته‌جمعی تغییر داده نمی‌شوند، چون ممکن است ادعای نادرست دربارهٔ اجرای محلی یا پذیرش تولیدی ایجاد کنند.
+
+## 152 — تطبیق چک‌لیست تاریخی با وضعیت واقعی مخزن (2026-10-19)
+
+- **وضعیت:** [x] تکمیل؛ موارد قدیمی مربوط به «نبود worker»، «وصل نبودن runtime به startup»، «ثبت‌نشدن handler یادگیری» و «وصل نبودن schema registry به startup» با وضعیت فعلی کد تطبیق داده شدند. چک‌باکس‌های مربوط به پیاده‌سازی‌هایی که بعداً انجام شده‌اند تیک خوردند و توضیح/مرجع فعلی اضافه شد.
+- **مبنای بررسی:** `app/main.py`, `app/task_runtime.py`, `app/task_worker.py`, `app/learning_tasks.py`, `app/schema_registry.py`, `tests/test_main_startup.py`, `tests/test_task_runtime.py` و `tests/test_task_worker.py` از `main` بررسی شدند.
+- **شواهد:** CI روی `main` در commit `65b959be2394901bdcbafe94ae4bfb85a388f158` موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271785980)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786146)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39271786065).
+- **محدودیت:** این تطبیق مستندات و کد مخزن است؛ تست محلی، اجرای مدل زنده، benchmark/soak، بازیابی staging، migration دیتابیس واقعی و بازبینی مستقل امنیتی انجام‌شده فرض نمی‌شوند.
+- **گیت‌های باز:** baseline و migration روی میزبان Windows واقعی؛ اجرای benchmark صف و soak؛ fault injection/restart برای انواع task روی محیط هدف؛ تمرین staging/rollback و clean-start؛ داوری انسانی مدل زنده؛ مرور دستی صفحه‌خوان/کیبورد؛ issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
