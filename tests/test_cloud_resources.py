@@ -350,6 +350,13 @@ def test_candidate_source_classification_marks_likely_articles_without_claiming_
         "source_url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/",
         "title": "How to use the free tier",
     }) == "recognized_provider_domain"
+    assert cloud_resources._candidate_source_rank({
+        "source_url": "https://compute.example.org/pricing",
+        "title": "Compute pricing",
+    }) < cloud_resources._candidate_source_rank({
+        "source_url": "https://snapdeploy.dev/blog/free-cloud-compute-guide",
+        "title": "Free cloud compute guide",
+    })
 
 
 def test_list_candidates_prioritizes_official_references_before_newer_articles(
