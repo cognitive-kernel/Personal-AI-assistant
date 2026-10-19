@@ -833,15 +833,15 @@ _INTERMEDIARY_PATH_MARKERS = (
     "/compare", "/buyingguides", "/posts", "/news",
 )
 _INTERMEDIARY_TITLE_PATTERNS = (
-    r"\\bhow\\s+to\\b",
-    r"\\bguide\\b",
-    r"\\btutorial\\b",
-    r"\\bcompar(?:e|ison|ing)\\b",
-    r"\\bvs\\.?\\b",
-    r"\\bbest\\s+\\d+\\b",
-    r"\\btop\\s+\\d+\\b",
-    r"\\bplatforms?\\s+compared\\b",
-    r"\\breview\\b",
+    r"\bhow\s+to\b",
+    r"\bguide\b",
+    r"\btutorial\b",
+    r"\bcompar(?:e|ison|ing)\b",
+    r"\bvs\.?\b",
+    r"\bbest\s+\d+\b",
+    r"\btop\s+\d+\b",
+    r"\bplatforms?\s+compared\b",
+    r"\breview\b",
 )
 
 
