@@ -337,6 +337,21 @@ def test_provider_domain_recognition_uses_safe_host_boundaries():
     assert not cloud_resources._is_recognized_provider_domain("oracle.com.attacker.example")
 
 
+def test_candidate_source_classification_marks_likely_articles_without_claiming_verification():
+    assert cloud_resources._candidate_source_classification({
+        "source_url": "https://snapdeploy.dev/blog/free-cloud-deployment-platforms-2026-comparison",
+        "title": "Free Cloud Hosting Platforms Compared",
+    }) == "likely_intermediary_article"
+    assert cloud_resources._candidate_source_classification({
+        "source_url": "https://compute.example.org/pricing",
+        "title": "Compute pricing",
+    }) == "unclassified_unverified_domain"
+    assert cloud_resources._candidate_source_classification({
+        "source_url": "https://docs.oracle.com/en-us/iaas/Content/FreeTier/",
+        "title": "How to use the free tier",
+    }) == "recognized_provider_domain"
+
+
 def test_list_candidates_prioritizes_official_references_before_newer_articles(
     tmp_path, monkeypatch
 ):
@@ -378,7 +393,9 @@ def test_list_candidates_prioritizes_official_references_before_newer_articles(
         "agentdeals.dev",
     ]
     assert candidates[0]["source_authority"] == "recognized_official_domain"
+    assert candidates[0]["source_classification"] == "recognized_provider_domain"
     assert candidates[1]["source_authority"] == "unverified_domain"
+    assert candidates[1]["source_classification"] == "likely_intermediary_article"
     assert cloud_resources.list_candidates(limit=1)[0]["provider_domain"] == "docs.oracle.com"
 
 
