@@ -227,6 +227,38 @@ def list_tasks_page(
     return {"tasks": tasks, "next_cursor": next_cursor, "has_more": has_more}
 
 
+def list_task_events(
+    task_id: int, *, limit: int = 100, before_id: int | None = None
+) -> dict[str, Any]:
+    """List durable task lifecycle events without exposing task payloads."""
+    if isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1:
+        raise ValueError("task_id must be a positive integer.")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ValueError("limit must be between 1 and 100.")
+    if before_id is not None and (
+        isinstance(before_id, bool) or not isinstance(before_id, int) or before_id < 1
+    ):
+        raise ValueError("before_id must be a positive integer.")
+    params: list[Any] = [task_id]
+    where = "task_id = ?"
+    if before_id is not None:
+        where += " AND id < ?"
+        params.append(before_id)
+    params.append(limit + 1)
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            f"""SELECT id, task_id, event_type, old_status, new_status,
+                       old_priority, new_priority, old_scheduled_at, new_scheduled_at,
+                       occurred_at
+                FROM task_events WHERE {where} ORDER BY id DESC LIMIT ?""",
+            tuple(params),
+        ).fetchall()
+    has_more = len(rows) > limit
+    events = [dict(row) for row in rows[:limit]]
+    next_before_id = events[-1]["id"] if has_more and events else None
+    return {"events": events, "has_more": has_more, "next_before_id": next_before_id}
+
+
 def list_terminal_task_ids(
     *, limit: int = 1000, min_terminal_age_seconds: int = 60
 ) -> list[int]:
