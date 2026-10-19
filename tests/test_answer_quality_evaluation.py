@@ -5,7 +5,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app import db, ollama
+from app import chat_audit, db, ollama
 from app.answer_quality_evaluation import evaluate_answer_surface, summarize_surface_results
 from app.db import learning_connection
 import scripts.run_answer_quality_eval as answer_quality_runner
@@ -148,3 +148,44 @@ def test_cli_summary_distinguishes_generation_from_quality_status(tmp_path, monk
     assert summary["generation_failed_count"] == 0
     assert summary["quality_assessment_status"] == "not_scored"
     assert saved_report["quality_assessment_status"] == "not_scored"
+
+
+def test_runner_reports_source_discovery_failure_type_from_private_audit_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    dataset = tmp_path / "cases.jsonl"
+    dataset.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(ollama, "list_models", lambda: [{
+        "name": "default-model", "size": 123, "modified_at": "2026-10-16T00:00:00Z",
+        "digest": "sha256:" + "c" * 64,
+    }])
+    db.update_settings({"ollama_model": "default-model"})
+
+    def answer(prompt):
+        chat_audit.record_research_run(
+            question=prompt,
+            answer="Cautious answer",
+            sources=[],
+            review_status="no_sources",
+            review={
+                "passed": False,
+                "overall": "insufficient_evidence",
+                "claims": [],
+                "error": "source_discovery_failed:SourceFetchError",
+            },
+        )
+        return "source provenance and state uncertainty"
+
+    report = run_evaluation(
+        cases=[_case("en")],
+        answer_fn=answer,
+        dataset_path=dataset,
+    )
+
+    result = report["results"][0]
+    assert result["source_count"] == 0
+    assert result["research_review_status"] == "no_sources"
+    assert result["source_discovery_status"] == "failed"
+    assert result["source_discovery_error_type"] == "SourceFetchError"
+    assert "sensitive network detail" not in json.dumps(report)

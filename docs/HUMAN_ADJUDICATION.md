@@ -10,7 +10,7 @@ Run this in the intended local environment with the configured Ollama service an
 python scripts/run_answer_quality_eval.py --output reports/answer-quality-report.json
 ```
 
-The command calls the live research pipeline and can access external sources. It is not run by the ordinary CI suite. Review the report's exact commit, dataset hash, model manifest digest, failed-case count, and source snapshots. If the model digest is missing or generation failures exist, record that limitation rather than treating the run as complete.
+The command calls the live research pipeline and can access external sources. It is not run by the ordinary CI suite. Review the report's exact commit, dataset hash, model manifest digest, failed-case count, and source snapshots. If the model digest is missing or generation failures exist, record that limitation rather than treating the run as complete. Each completed case also records the research audit status and whether source discovery failed, found no usable documents, or returned sources. When `source_discovery_error_type` is present, it contains only the exception class—not raw network details—so you can distinguish an offline/provider failure from an answer-generation or adjudication issue.
 
 ## Create the review worksheet
 
