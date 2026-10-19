@@ -1024,7 +1024,7 @@
 - [x] کنترل pause/cancel/lease به sandbox منتقل می‌شود؛ اجرای واقعی همچنان فقط در container محدودشده و بدون شبکه انجام می‌شود.
 - [x] `app/main.py` handler را تنها پس از opt-in و اعتبارسنجی پیکربندی به registry اضافه می‌کند؛ در حالت پیش‌فرض sandbox فعال نیست.
 - [x] تست‌های opt-in، پیکربندی نامعتبر، schema ورودی، عدم امکان override کردن image، hash و شواهد checkpoint اضافه شدند.
-- [ ] API اختصاصی loopback برای صف‌کردن اجرای sandbox و ثبت رضایت/رویداد audit هنوز وجود ندارد؛ فعلاً handler از طریق task registry محدودشده است.
+- [x] این محدودیت تاریخی در بخش‌های 72–74 رفع شد: `/api/sandbox/consent`، `POST /api/sandbox/run`، ثبت رویدادهای grant/revoke و کنترل loopback/رضایت اضافه و با CI تأیید شدند؛ پذیرش crash/restart روی میزبان واقعی همچنان گیت جداگانه است.
 - [x] **PR #146** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/146)، commit ادغام `ac36ec7babe34d340ca9b3f1d58cd83ad46774f2`.
 - [x] CI روی head دقیق `58172f50eb45f6d4e6f2cb13c354f2e448e420c5` موفق بود؛ run [#38855242680](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38855242680) شامل نصب وابستگی‌ها، کل مجموعه تست و benchmark بازیابی واژگانی.
 - [ ] تست محلی اجرا نشده است؛ CI اجرا شده است.
