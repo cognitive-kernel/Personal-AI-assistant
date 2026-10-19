@@ -228,3 +228,36 @@ def test_startup_recovers_running_learning_record_without_task(tmp_path, monkeyp
         assert task is not None
         assert task["status"] == "succeeded"
         assert learning.get_job(job["id"])["status"] == "completed"
+
+
+def test_task_cursor_pagination_is_stable_and_validated(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = []
+        for priority in (5, 5, 4, 3, 2):
+            response = client.post(
+                "/api/tasks", json={"task_type": "pagination-test", "payload": {}, "priority": priority}
+            )
+            assert response.status_code == 202
+            created.append(response.json())
+        first = client.get("/api/tasks", params={"limit": 2})
+        assert first.status_code == 200
+        first_data = first.json()
+        assert [task["priority"] for task in first_data["tasks"]] == [5, 5]
+        assert first_data["has_more"] is True
+        assert first_data["next_cursor"]
+        second = client.get("/api/tasks", params={"limit": 2, "cursor": first_data["next_cursor"]})
+        assert second.status_code == 200
+        second_data = second.json()
+        assert [task["priority"] for task in second_data["tasks"]] == [4, 3]
+        assert second_data["has_more"] is True
+        third = client.get("/api/tasks", params={"limit": 2, "cursor": second_data["next_cursor"]})
+        assert third.status_code == 200
+        assert [task["priority"] for task in third.json()["tasks"]] == [2]
+        assert third.json()["next_cursor"] is None
+        assert third.json()["has_more"] is False
+        invalid = client.get("/api/tasks", params={"cursor": "not-a-cursor"})
+        assert invalid.status_code == 422
+        too_large = client.get("/api/tasks", params={"limit": 101})
+        assert too_large.status_code == 422

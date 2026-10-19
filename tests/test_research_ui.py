@@ -11,7 +11,9 @@ def test_chat_ui_uses_persistent_research_queue_and_polls_task_result():
     assert 'در حال صف‌بندی پژوهش' in page
     assert 'متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود' in page
     assert 'id="task-manager-section"' in page
-    assert 'api("/api/tasks?limit=100")' in page
+    assert 'new URLSearchParams({limit:"50"})' in page
+    assert 'query.set("cursor",taskNextCursor)' in page
+    assert 'id="load-more-tasks"' in page
     assert '"/api/tasks/"+task.id+"/pause"' in page
     assert '"/api/tasks/"+task.id+"/resume"' in page
     assert '"/api/tasks/"+task.id+"/cancel"' in page

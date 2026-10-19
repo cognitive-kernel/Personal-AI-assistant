@@ -74,10 +74,11 @@ def create_task(request: TaskCreateRequest) -> dict[str, Any]:
 @router.get("")
 def list_tasks(
     statuses: list[str] | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=1000),
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=256),
 ) -> dict[str, Any]:
     try:
-        return {"tasks": task_manager.list_tasks(statuses=statuses, limit=limit)}
+        return task_manager.list_tasks_page(statuses=statuses, limit=limit, cursor=cursor)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

@@ -5,6 +5,8 @@ initialize_task_store() after app.db.init_databases() before using the queue.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -154,6 +156,75 @@ def list_tasks(*, statuses: list[str] | None = None, limit: int = 100) -> list[d
     with db.learning_connection() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_task(row) for row in rows]  # type: ignore[misc]
+
+
+def _encode_task_cursor(priority: int, task_id: int) -> str:
+    payload = json.dumps({"v": 1, "p": priority, "i": task_id}, separators=(",", ":")).encode("ascii")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def _decode_task_cursor(cursor: str | None) -> tuple[int, int] | None:
+    if cursor is None:
+        return None
+    if not isinstance(cursor, str) or not cursor or len(cursor) > 256:
+        raise ValueError("cursor is invalid.")
+    try:
+        raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        payload = json.loads(raw.decode("ascii"))
+    except (ValueError, UnicodeError, binascii.Error, json.JSONDecodeError) as exc:
+        raise ValueError("cursor is invalid.") from exc
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"v", "p", "i"}
+        or payload.get("v") != 1
+        or isinstance(payload.get("p"), bool)
+        or not isinstance(payload.get("p"), int)
+        or isinstance(payload.get("i"), bool)
+        or not isinstance(payload.get("i"), int)
+        or payload["i"] < 1
+    ):
+        raise ValueError("cursor is invalid.")
+    return payload["p"], payload["i"]
+
+
+def list_tasks_page(
+    *, statuses: list[str] | None = None, limit: int = 50, cursor: str | None = None
+) -> dict[str, Any]:
+    """Return a bounded keyset-paginated task page in stable priority/id order."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ValueError("limit must be between 1 and 100.")
+    allowed = {
+        "queued", "running", "pause_requested", "paused", "cancel_requested",
+        "cancelled", "succeeded", "failed",
+    }
+    if statuses is not None and (not statuses or any(status not in allowed for status in statuses)):
+        raise ValueError("statuses contains an unsupported status.")
+    decoded = _decode_task_cursor(cursor)
+    clauses: list[str] = []
+    params: list[Any] = []
+    if statuses is not None:
+        placeholders = ",".join("?" for _ in statuses)
+        clauses.append(f"status IN ({placeholders})")
+        params.extend(statuses)
+    if decoded is not None:
+        priority, task_id = decoded
+        clauses.append("(priority < ? OR (priority = ? AND id > ?))")
+        params.extend((priority, priority, task_id))
+    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    params.append(limit + 1)
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM task_queue{where} ORDER BY priority DESC, id ASC LIMIT ?",
+            tuple(params),
+        ).fetchall()
+    has_more = len(rows) > limit
+    selected = rows[:limit]
+    tasks = [_task(row) for row in selected]
+    next_cursor = None
+    if has_more and selected:
+        last = selected[-1]
+        next_cursor = _encode_task_cursor(int(last["priority"]), int(last["id"]))
+    return {"tasks": tasks, "next_cursor": next_cursor, "has_more": has_more}
 
 
 def list_terminal_task_ids(
