@@ -351,7 +351,7 @@
 - [x] معماری مالکیت داده، مرز دیتابیس و موتور فیزیکی را جدا می‌کند؛ تعداد دیتابیس‌ها ثابت نیست و چند دیتابیس می‌توانند روی یک موتور/سرور مشترک اجرا شوند.
 - [x] اصول نسخه‌بندی schema، مهاجرت expand/migrate/contract، پشتیبان و آزمون بازیابی، شناسه‌های پایدار، idempotency، outbox/reconciliation و بازسازی ایندکس مشتق‌شده مستند شد.
 - [ ] این تغییر مستنداتی است؛ هیچ پایگاه داده‌ای در این PR تفکیک یا مهاجرت نمی‌شود و هیچ داده‌ای تغییر نکرده است.
-- [ ] گام اجرایی بعدی: ممیزی کامل schemaها و تمام مسیرهای خواندن/نوشتن فعلی، سپس طراحی migration runner و repository contracts با fixtureهای واقعی؛ پیش از آن مهاجرت مخرب انجام نشود.
+- [x] گام اجرایی بعدیِ این یادداشت تاریخی در بخش‌های 33–39 پیاده‌سازی شد: schema registry، migration runner نسخه‌دار و تست fixtureها اضافه شدند؛ بررسی/مهاجرت دیتابیس واقعی همچنان گیت محیط هدف است.
 - [ ] تست نرم‌افزاری اجرا نشده؛ CI دقیق head باید بررسی شود.
 
 
@@ -381,7 +381,7 @@
 - [x] مسیرهای احتمالی conversation archive، retrieval index و graph به‌عنوان دیتابیس‌های مستقل فرض نشده‌اند؛ نیاز آن‌ها باید با جریان داده و الگوی دسترسی واقعی سنجیده شود.
 - [ ] این ممیزی از خواندن استاتیک فایل‌های منتخب GitHub انجام شده است؛ checkout کامل، پیمایش همه مسیرهای خواندن/نوشتن و اجرای تست‌ها هنوز انجام نشده‌اند.
 - [ ] هیچ داده یا schemaای منتقل نشده و migration runner عمومی هنوز پیاده‌سازی نشده است.
-- [ ] گام بعدی: انتقال آزمایش‌شدهٔ یک نوع وظیفهٔ واقعی به صف پایدار، شامل recovery، idempotency، heartbeat و کنترل‌های تعاونی؛ سپس اتصال runtime به FastAPI startup/shutdown.
+- [x] این گام بعداً در بخش‌های 18 و 21–27 تکمیل شد: صف پایدار، lease/heartbeat، idempotency، handler یادگیری و اتصال runtime به startup/shutdown. crash-windowهای میزبان واقعی همچنان گیت پذیرش جداگانه‌اند.
 
 
 ## 18. 2026-10-15 — تمدید خودکار lease هنگام اجرای handler طولانی
@@ -389,8 +389,8 @@
 - [x] `TaskWorker` هنگام اجرای handler یک heartbeat پس‌زمینه شروع می‌کند و lease را تقریباً هر یک‌سوم مدت lease تمدید می‌کند.
 - [x] heartbeat پس از درخواست pause/cancel تمدید را متوقف می‌کند؛ اگر handler به checkpoint نرسد، انقضای lease اجازه می‌دهد صف وضعیت را بازیابی کند.
 - [x] تست رگرسیون اضافه شد که handler بیش از مدت lease اجرا می‌شود و باید بدون تلاش مجدد با نتیجه موفق پایان یابد.
-- [ ] نتیجه تست هنوز فقط پس از اجرای CI روی head دقیق قابل اعلام است؛ تست محلی در این نشست اجرا نشده است.
-- [ ] این تغییر به‌تنهایی یکپارچه‌سازی یادگیری با صف یا اتصال runtime به FastAPI را انجام نمی‌دهد.
+- [x] CI روی main جاری موفق است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639237)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639532)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639453). تست محلی اجرا نشده است.
+- [x] این محدودیت تاریخی در بخش 23 برطرف شد؛ مسیر یادگیری به صف پایدار و runtime وصل شد. تست محلی آن مرحله اجرا نشده بود.
 
 
 ## 19. 2026-10-15 — الزام کشف خودکار منابع پردازشی رایگان
@@ -471,7 +471,7 @@
 - [x] تست‌های مسیر API برای لغو jobهای queued و running اضافه شدند.
 - [x] **PR #87** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/87)، commit ادغام `1af59866763c1b5942a6d9e09f21c9a6ea66d53e`.
 - [x] CI روی head دقیق `bf509c7de34547c530b83b1769ee34d8394a2c1d` موفق بود؛ run [#38783943998](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38783943998)، شامل نصب وابستگی‌ها و `pytest`.
-- [ ] **گام بعدی:** آزمون‌های یکپارچگی startup/shutdown و crash recovery؛ سپس ممیزی کامل schemaها و طراحی migration runner نسخه‌دار.
+- [x] آزمون‌های یکپارچگی startup/shutdown در بخش 26 و schema registry/migration runner در بخش‌های 33–39 تکمیل شدند. crash recovery روی میزبان واقعی همچنان در گیت پذیرش محلی باز است.
 
 
 
@@ -625,7 +625,7 @@
 - [x] تست ارتقای schema یادگیری از v1 به v3 اکنون شناسه‌ها و مقادیر مرتبط را بررسی می‌کند: learning job، source_ref/content_hash، متن منبع، knowledge item، ارزیابی، review، مسیر/موضوع یادگیری و task صف.
 - [x] ممیزی حوزه‌های داده به‌روز شد: migration/backup/restore و اتصال startup ثبت شده‌اند؛ صف فعلاً در learning باقی می‌ماند چون reconciliation و مالکیت عملیاتی به آن وابسته‌اند.
 - [x] هیچ DB تازه‌ای برای conversation/archive, audit, retrieval یا graph ساخته نشد، چون مسیر canonical و نیاز مستقل هنوز اثبات نشده‌اند.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI نسخهٔ جاری main سبز است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639237)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639532)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639453). این نتیجه جایگزین تست محلی نیست.
 - **گام بعدی:** fault-injection برای مرزهای commit بین learning job و task، تکمیل ماتریس مالکیت/retention و آزمون pause/cancel پس از restart.
 
 
@@ -1253,7 +1253,7 @@
 - [x] فقط نیازمندی‌ها، شناسه/دامنه/hash منبع، ظرفیت نرمال‌شده، دلایل و وضعیت preflight ذخیره می‌شوند؛ متن خام منبع و credentialها ذخیره نمی‌شوند.
 - [x] schema و ذخیره‌سازی `execution_authorized=0` و `remote_execution_enabled=0` را با قید دیتابیس enforce می‌کنند؛ ذخیره‌سازی هر plan مدعی مجوز اجرا رد می‌شود.
 - [x] تست‌های migration، حفظ تصمیم‌ها، فهرست/جزئیات plan، 404 و رد هرگونه مجوز اجرا اضافه شدند.
-- [ ] CI باید روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
+- [x] CI نسخهٔ جاری main سبز است: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639237)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639532)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39272639453). این نتیجه جایگزین تست محلی نیست.
 - **گام بعدی:** CI/ادغام؛ سپس ارزیابی مجدد زمان‌دار برای freshness و سهمیه و ثبت دلایل انتخاب/رد، بدون فعال‌کردن اجرای remote.
 
 ## 91. Opt-in automatic capture of source-backed research experiences
