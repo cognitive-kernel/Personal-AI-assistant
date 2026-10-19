@@ -235,3 +235,54 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   .task-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .task-summary-item { padding: 9px 10px; }
 }
+
+
+/* Safe, accessible bulk controls for the local task queue. */
+.task-bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-block: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.task-bulk-toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 600;
+}
+.task-bulk-toolbar input[type="checkbox"],
+.task-select-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  accent-color: var(--primary);
+}
+.task-selected-count {
+  margin-inline-start: auto;
+  color: var(--muted);
+  font-size: .9rem;
+  font-variant-numeric: tabular-nums;
+}
+.task-bulk-toolbar button { margin: 0; }
+.task-bulk-toolbar button:disabled { cursor: not-allowed; opacity: .52; }
+.task-select-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: .9rem;
+  font-weight: 600;
+}
+@media (max-width: 600px) {
+  .task-bulk-toolbar { align-items: stretch; }
+  .task-bulk-toolbar label, .task-bulk-toolbar button { width: 100%; }
+  .task-selected-count { width: 100%; margin-inline-start: 0; }
+}
