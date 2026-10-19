@@ -176,7 +176,7 @@ def _decode_task_cursor(cursor: str) -> tuple[int, int]:
         raise ValueError("cursor must be a non-empty task cursor.")
     try:
         padding = "=" * (-len(cursor) % 4)
-        payload = base64.urlsafe_b64decode(cursor + padding)
+        payload = base64.b64decode(cursor + padding, altchars=b"-_", validate=True)
         value = json.loads(payload.decode("ascii"))
     except (ValueError, UnicodeDecodeError, binascii.Error) as exc:
         raise ValueError("cursor is invalid.") from exc
