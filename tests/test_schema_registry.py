@@ -341,6 +341,10 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
     assert f"Database path: {path.resolve()}" in str(error.value)
     assert "The existing database was not migrated or modified." in str(error.value)
     assert "Verified pre-migration backup:" in str(error.value)
+    assert "Observed schema fingerprint:" in str(error.value)
+    assert "scripts/inspect_sqlite_schema.py" in str(error.value)
+    assert "--kind learning" in str(error.value)
+    assert "Do not reset" in str(error.value)
     backups = list(tmp_path.glob("unknown.db.pre-migration-*.bak"))
     assert len(backups) == 1
     assert str(backups[0].resolve()) in str(error.value)
@@ -479,6 +483,7 @@ def _create_observed_legacy_learning_database(path, *, invalid_experience_status
                 ("legacy status fixture", "test migration rollback", invalid_experience_status),
             )
         connection.commit()
+    connection.close()
     return path
 
 
@@ -542,6 +547,7 @@ def _seed_observed_legacy_learning_data(path):
             (source_id,),
         )
         connection.commit()
+    connection.close()
 
 
 def test_observed_legacy_learning_fixture_matches_reviewed_fingerprint(tmp_path):
