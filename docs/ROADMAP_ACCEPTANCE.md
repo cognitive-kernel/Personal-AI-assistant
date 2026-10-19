@@ -23,6 +23,8 @@ Repository status reconciled on 2026-10-19 at `main` commit `854ce596c6fa7f68cca
 
 
 
+The task dashboard now also has a live summary of currently loaded task statuses and client-side search by ID, task type, or status; search is explicitly scoped to loaded pages and does not imply a server-wide query. This addition is under exact-head CI validation in branch `feat/task-dashboard-search-summary`.
+
 Task audit history was made interactively cursor-paginated in [PR #351](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/351), merged at `6f2137e6b60a0cf34361ec733b4b3d64171f1bd9`. Exact-head tests, browser E2E, and dependency audit passed ([tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39278324069), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39278324023), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39278324165)). Post-merge tests and browser E2E on `main` were still running when recorded; do not interpret PR CI as local or target-host acceptance.
 
 ## Required acceptance gates before calling the project complete
