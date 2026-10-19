@@ -1775,16 +1775,16 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 150 — ناوبری واکنش‌گرا و دسترس‌پذیری داشبورد
 
-- **وضعیت:** [ ] پیاده‌سازی اصلی در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326) ادغام شد؛ CI پس از ادغام چهار کنترل پویا با نام دسترس‌پذیری ناقص پیدا کرد. برچسب‌ها و تشخیص دقیق در [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327) اصلاح شده‌اند؛ تا سبزشدن CI اصلاحیه تیک نهایی برداشته شده است.
+- **وضعیت:** [x] ناوبری واکنش‌گرا و دسترس‌پذیری در [PR #326](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/326) ادغام شد؛ CI پس از ادغام چهار کنترل پویای بدون نام را کشف کرد و اصلاح آن‌ها در [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327) با CI سبز تأیید شد.
 - **تغییر:** stylesheet محلی، ناوبری ثابت در دسکتاپ و افقی در موبایل، پیوند پرش به محتوای اصلی، focus-visible، کاهش حرکت، نام‌های قابل‌دسترسی کنترل‌ها و جهت متن متناسب با زبان اضافه شد. هیچ CDN یا فونت دوردستی اضافه نشده است.
 - **آزمون افزوده‌شده:** Chromium مسیرهای ناوبری، CSS، نام‌گذاری کنترل‌ها و نبود overflow در عرض‌های 360/768/1280 را بررسی می‌کند.
 - **محدودیت:** CI مرورگر به‌تنهایی تست دستی صفحه‌خوان/کیبورد یا پذیرش روی میزبان هدف نیست؛ این گیت‌ها باز می‌مانند.
-- **CI پیش از ادغام:** تست‌ها و رگرسیون ویندوز موفق بودند؛ [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39268058767) نیز روی head PR موفق بود. **پس از ادغام:** [run #39269057905](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269057905) یافتن چهار نام دسترس‌پذیری ناقص را نشان داد؛ اصلاح در PR #327 در انتظار CI دقیق است. تست محلی اجرا نشده است.
+- **CI اصلاحیه:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269528936)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269529028)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269528966). تست محلی اجرا نشده است.
 
 ## 149 — تشخیص فقط‌خواندنی ساختار SQLite ناشناخته
 
-- **وضعیت:** [ ] پیاده‌سازی و تست‌ها در [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327)؛ در انتظار CI دقیق روی مبنای فعلی.
+- **وضعیت:** [x] پیاده‌سازی و تست‌ها در [PR #327](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/327)؛ تمام CI روی head کد موفق شد.
 - **تغییر:** ابزار `scripts/inspect_sqlite_schema.py` ساختار جدول‌ها، ستون‌ها، کلیدهای خارجی، اثرانگشت schema، تاریخچهٔ migration و بررسی integrity را فقط با SQLite URI در حالت `mode=ro` می‌خواند؛ هیچ محتوای سطرها را چاپ نمی‌کند و migration یا repair اجرا نمی‌کند.
 - **راهنمای بازیابی:** `docs/LOCAL_DATABASE_RECOVERY.md` اضافه شد؛ خطای schema ناشناخته اکنون fingerprint و فرمان تشخیصی read-only را نمایش می‌دهد و صریحاً reset/stamp/migration بدون backup بررسی‌شده را منع می‌کند.
 - **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، عدم درج تاریخچه برای schema ناشناخته، و بستن صریح fixtureهای SQLite برای جلوگیری از قفل فایل در Windows پوشش داده شده‌اند.
-- **تست محلی:** اجرا نشده. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی گزارش همچنان نیازمند دسترسی محلی است و انجام‌شده فرض نمی‌شود.
+- **CI روی head کد:** موفق؛ [تست‌ها و رگرسیون ویندوز](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269528936)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269529028)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39269528966). تست محلی اجرا نشده است. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی گزارش همچنان نیازمند دسترسی محلی است و انجام‌شده فرض نمی‌شود.
