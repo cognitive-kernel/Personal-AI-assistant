@@ -1772,3 +1772,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **آزمون افزوده‌شده:** ۸ پرسش فارسی/انگلیسی باید should_use_research را فعال کنند؛ آزمون موجود حفاظت از اصلاح کاربر نیز در CI اولیه ناسازگاری را پیدا کرد و prompt اصلاح شد.
 - **تست محلی:** اجرا نشده؛ فقط نتیجهٔ CI دقیق head برای تکمیل این بخش ملاک خواهد بود.
 - **گیت‌های مستقل/محلی همچنان باز:** اجرای مدل زنده و داوری انسانی، baseline و benchmark/soak روی میزبان هدف، تمرین staging/rollback و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
+
+## 149 — تشخیص فقط‌خواندنی ساختار SQLite ناشناخته
+
+- **وضعیت:** پیاده‌سازی در [PR #325](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/325)؛ در انتظار CI دقیق و ادغام.
+- **تغییر:** ابزار `scripts/inspect_sqlite_schema.py` ساختار جدول‌ها، ستون‌ها، کلیدهای خارجی، اثرانگشت schema، تاریخچهٔ migration و بررسی integrity را فقط با SQLite URI در حالت `mode=ro` می‌خواند؛ هیچ محتوای سطرها را چاپ نمی‌کند و migration یا repair اجرا نمی‌کند.
+- **راهنمای بازیابی:** `docs/LOCAL_DATABASE_RECOVERY.md` اضافه شد؛ خطای schema ناشناخته اکنون fingerprint و فرمان تشخیصی read-only را نمایش می‌دهد و صریحاً reset/stamp/migration بدون backup بررسی‌شده را منع می‌کند.
+- **آزمون‌ها:** گزارش روی schema ثبت‌شده، عدم تغییر بایت‌های فایل، عدم افشای دادهٔ آزمایشی، و عدم درج تاریخچه برای schema ناشناخته پوشش داده شده‌اند.
+- **تست محلی:** اجرا نشده؛ تکمیل این بخش منوط به CI دقیق head است. اجرای ابزار روی دیتابیس واقعی و بررسی انسانی schema همچنان محلی/میزبان‌محور است و انجام‌شده فرض نمی‌شود.
