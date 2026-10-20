@@ -100,3 +100,9 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 - Direct chat and research answers now share the bounded Persian/English mismatch policy. The assistant attempts one language repair when the high-confidence script heuristic detects a mismatch and falls back to a localized safe message if the repair also fails.
 - Claim-review repair output is checked again before it can be returned, so the final generated response does not bypass the language guard.
 - Deterministic tests cover both repair and fail-closed paths. This heuristic cannot reliably distinguish every language or dialect and does not close the excluded live-model/human-adjudication gate.
+
+
+### Research citation URL hardening (PR #369, 2026-10-20)
+
+- Source payload construction now rejects non-HTTPS links, missing hosts, malformed ports, and embedded username/password URL components that can make the citation destination ambiguous.
+- Deterministic tests cover valid HTTPS and representative malformed/deceptive URLs. This validates URL shape only; it does not establish source trustworthiness or close the independent security review gate.
