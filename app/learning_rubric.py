@@ -51,6 +51,30 @@ def validate_rubric(rubric: Any, question_count: int) -> bool:
     return True
 
 
+
+
+def _phrase_occurrences(padded_answer: str, padded_phrase: str) -> list[int]:
+    """Return starts of whole-phrase occurrences in normalized answer text."""
+    starts: list[int] = []
+    start = 0
+    while True:
+        found = padded_answer.find(padded_phrase, start)
+        if found < 0:
+            return starts
+        starts.append(found)
+        start = found + 1
+
+
+def _is_negated_occurrence(padded_answer: str, padded_phrase: str, phrase_start: int) -> bool:
+    """Conservatively reject a concept phrase immediately preceded by common negation."""
+    prefix = padded_answer[:phrase_start].rstrip()
+    return bool(re.search(
+        r"(?:^|\\s)(?:not|no|never|without|false|incorrect|isn't|doesn't|cannot|"
+        r"نیست|نبود|بدون|نه|هرگز|عدم)\\s*$",
+        prefix,
+        flags=re.IGNORECASE,
+    ))
+
 def score_with_rubric(answers: list[str], rubric: list[dict[str, Any]]) -> dict[str, Any]:
     """Score required concepts by weighted accepted-phrase coverage, deterministically."""
     if not isinstance(answers, list) or len(answers) != len(rubric):
@@ -73,7 +97,14 @@ def score_with_rubric(answers: list[str], rubric: list[dict[str, Any]]) -> dict[
             total_weight += weight
             variants = [normalize_concept_text(value) for value in criterion["accepted_phrases"]]
             padded_answer = f" {normalized_answer} "
-            matched = any(variant and f" {variant} " in padded_answer for variant in variants)
+            matched = any(
+                variant
+                and any(
+                    not _is_negated_occurrence(padded_answer, variant, match_start)
+                    for match_start in _phrase_occurrences(padded_answer, f" {variant} ")
+                )
+                for variant in variants
+            )
             if matched:
                 question_earned += weight
                 earned_weight += weight
