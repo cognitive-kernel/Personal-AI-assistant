@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, StrictInt
 
 from . import learning_practical, sandbox_consent, sandbox_tasks, task_manager
@@ -30,9 +30,19 @@ def _sandbox_available() -> bool:
 
 
 @router.get("/exercises")
-def list_practical_exercises() -> dict[str, Any]:
+def list_practical_exercises(job_id: int | None = Query(default=None, ge=1)) -> dict[str, Any]:
+    exercises = learning_practical.list_exercises()
+    if job_id is not None:
+        eligible = []
+        for exercise in exercises:
+            try:
+                learning_practical.validate_practical_job(job_id, exercise["id"])
+            except (KeyError, ValueError):
+                continue
+            eligible.append(exercise)
+        exercises = eligible
     return {
-        "exercises": learning_practical.list_exercises(),
+        "exercises": exercises,
         "execution_requires_explicit_sandbox_consent": True,
         "grading_is_deterministic": True,
     }
