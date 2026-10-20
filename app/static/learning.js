@@ -91,6 +91,84 @@ function addRegenerateButton(output, path, topic) {
  output.append(button);
 }
 
+function addPracticalExerciseForm(output, job) {
+ const topicText = String(job.topic || "").toLowerCase();
+ if (!topicText.includes("python") && !topicText.includes("پایتون")) return;
+ const section = document.createElement("section");
+ section.className = "learning-practical-exercise";
+ const heading = document.createElement("h4");
+ heading.textContent = "تمرین عملی با اجرای واقعی کد";
+ section.append(heading);
+ const description = document.createElement("p");
+ description.textContent = "این تمرین برنامه را در Docker sandbox بدون شبکه اجرا می‌کند و نتیجه را با آزمون‌های ورودی/خروجی نسخه‌بندی‌شده می‌سنجد. برای اجرا، رضایت صریح sandbox و Docker پیکربندی‌شده لازم است.";
+ section.append(description);
+ const exerciseInfo = document.createElement("p");
+ exerciseInfo.textContent = "درخواست تمرین…";
+ section.append(exerciseInfo);
+ const form = document.createElement("form");
+ const source = document.createElement("textarea");
+ source.rows = 8;
+ source.maxLength = 32768;
+ source.required = true;
+ source.style.display = "block";
+ source.style.width = "100%";
+ source.setAttribute("aria-label", "کد پایتون برای تمرین عملی");
+ source.value = "import json\nimport sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data[\"values\"])))";
+ form.append(source);
+ const submit = document.createElement("button");
+ submit.type = "submit";
+ submit.textContent = "اجرای آزمون عملی";
+ form.append(submit);
+ const status = document.createElement("p");
+ status.setAttribute("role", "status");
+ form.append(status);
+ form.addEventListener("submit", async event => {
+  event.preventDefault();
+  submit.disabled = true;
+  status.textContent = "در حال ثبت تمرین…";
+  try {
+   const queued = await learningApi("/api/learning/practical/exercises/python-json-sum-v1/submit", {
+    method: "POST",
+    body: JSON.stringify({job_id: job.id, source_code: source.value})
+   });
+   const taskId = queued.task && queued.task.id;
+   if (!taskId) throw new Error("شناسه کار اجرایی برنگشت.");
+   status.textContent = "تمرین در صف اجراست؛ شناسه کار: " + taskId;
+   let finished = false;
+   for (let attempt = 0; attempt < 120; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const task = await learningApi("/api/tasks/" + taskId);
+    if (["succeeded", "failed", "cancelled"].includes(task.status)) {
+     finished = true;
+     if (task.status !== "succeeded") {
+      status.textContent = "اجرای تمرین موفق نبود: " + (task.error || task.status);
+      break;
+     }
+     const grade = task.result && task.result.practical_assessment;
+     if (!grade) {
+      status.textContent = "کد اجرا شد اما گزارش نمره معتبر در دسترس نیست. وضعیت اجرا: " +
+       ((task.result && task.result.execution_status) || "نامشخص");
+      break;
+     }
+     status.textContent = "نتیجه آزمون عملی: " + grade.score + " از 100؛ " +
+      grade.passed_tests + " آزمون از " + grade.total_tests + " موفق. " +
+      (grade.mastery_achieved
+       ? "تسلط عملی ثبت شد و سرفصل تکمیل شد."
+       : "این نتیجه فقط همین تمرین را می‌سنجد؛ برای تکمیل سرفصل، آستانه و پیش‌نیازهای مسیر باید برقرار باشند.");
+     break;
+    }
+   }
+   if (!finished) status.textContent = "تمرین هنوز در حال اجراست. شناسه کار برای پیگیری: " + taskId;
+  } catch (error) {
+   status.textContent = "تمرین عملی در دسترس نیست: " + error.message;
+  } finally {
+   submit.disabled = false;
+  }
+ });
+ section.append(form);
+ output.append(section);
+}
+ 
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
  if (job.quality && topic.row) {
@@ -376,6 +454,7 @@ function renderLessonResult(output, job, path, topic) {
   }
  });
  output.append(form);
+ addPracticalExerciseForm(output, job);
  const caveat = document.createElement("p");
  caveat.textContent = "آزمون درس‌های جدید بر اساس پوشش واژه‌ای مفاهیم rubric نمره می‌دهد؛ این روش پاسخ‌های هم‌معنا را بهتر می‌پذیرد، اما به‌تنهایی فهم معنایی مستقل یا صحت علمی را اثبات نمی‌کند."
  output.append(caveat);
