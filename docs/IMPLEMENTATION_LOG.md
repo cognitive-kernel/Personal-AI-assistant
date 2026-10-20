@@ -772,7 +772,7 @@
 - [x] **PR #122** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/122)، commit `c7c8d9ad68d3e0b0c9a2767f73443bfa346f7cf8`.
 - [x] CI روی head دقیق `93e11572e0a44b060fc7096ff767974d61eb7bf6` موفق بود؛ run [#38840184548](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840184548)، شامل نصب وابستگی‌ها و `pytest`؛ نتیجه: 235 passed.
 - [ ] تست محلی اجرا نشده است.
-- **گام بعدی:** ثبت audit پایدار برای پاسخ‌های پژوهشی و منابع استفاده‌شده، سپس ساخت مجموعهٔ ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR.
+- **وضعیت گام بعدی:** audit پایدار در همین بخش و dataset/سنجه‌های دوزبانه در بخش‌های 52–55 تکمیل شده‌اند. **گام باز:** تهیهٔ dataset واقعی با adjudication انسانی و اجرای benchmark embedding محلی؛ این‌ها بدون محیط/مدل هدف قابل ادعای تکمیل نیستند.
 
 
 ## 51. 2026-10-16 — audit محلی و حریم‌خصوصی برای پاسخ‌های پژوهشی
@@ -782,8 +782,8 @@
 - [x] مسیر research chat برای موفقیت، نبود منبع، عدم دسترسی به reviewer، نیاز به بررسی بیشتر و شکست تولید، رویداد audit ثبت می‌کند؛ خطای ذخیرهٔ audit پاسخ کاربر را از کار نمی‌اندازد.
 - [x] تست‌ها نبود دادهٔ خام در audit، hashهای صحیح، حذف مقصد HTTP نامعتبر، محدودیت status، ثبت memory refs و اتصال مسیر chat به audit را بررسی می‌کنند.
 - [x] راهنمای research-aware chat و migration runner به‌روز شد.
-- [ ] CI روی head دقیق PR بررسی شود؛ تست محلی اجرا نشده است.
-- **گام بعدی:** پس از ادغام، ساخت dataset ارزیابی فارسی/انگلیسی و محاسبهٔ Recall@5/MRR، سپس بهبود index و ذخیره‌سازی conversation archive بر اساس نیازهای حریم خصوصی.
+- [x] CI روی head دقیق [PR #123](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/123) موفق بود: [test](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840504920/job/116779254941). تست محلی اجرا نشده است.
+- **وضعیت گام بعدی:** dataset مصنوعی دوزبانه و سنجه‌های Recall@k/MRR در بخش‌های 52–55 اضافه شدند. dataset واقعیِ بازبینی‌شده و benchmark با embedding مدل محلی همچنان گیت‌های مستقل‌اند؛ بهبود index/archive باید بر اساس شواهد کیفیت و نیازهای حریم خصوصی برنامه‌ریزی شود.
 
 
 ## 52. 2026-10-16 — dataset و سنجه‌های قابل‌بازتولید برای کیفیت بازیابی
@@ -793,7 +793,7 @@
 - [x] `scripts/evaluate_experience_retrieval.py` روی دیتابیس SQLite موقت seed می‌کند؛ دیتابیس کاربر را تغییر نمی‌دهد و در صورت نبود embedding model از fallback واژگانی استفاده می‌کند.
 - [x] خروجی گزارش شامل Recall@5، MRR، ranking هر query، مدل embedding و تعداد بردارهای cache‌شده است؛ مستندات تأکید می‌کنند که benchmark مصنوعی، اثبات کیفیت عمومی نیست.
 - [x] runner اکنون `--lexical-only` دارد تا baseline واژگانی بدون وابستگی به مدل محلی قابل تکرار باشد؛ CI این runner را جداگانه اجرا می‌کند و گزارش Recall@5/MRR را در log چاپ می‌کند.
-- [ ] CI روی head دقیق PR باید بررسی شود؛ benchmark با embedding واقعی هنوز در محیط محلی اجرا نشده و هیچ مقدار عملکرد hybrid واقعی ادعا نمی‌شود.
+- [x] CI روی head دقیق [PR #124](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/124) موفق بود: [test](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840705038/job/116779883719). [ ] benchmark با embedding واقعی هنوز در محیط محلی اجرا نشده و هیچ مقدار عملکرد hybrid واقعی ادعا نمی‌شود.
 - **گام بعدی:** ثبت baseline lexical واقعی از خروجی CI، اجرای benchmark با مدل embedding محلی و مقایسهٔ دو حالت؛ سپس گسترش dataset با نمونه‌های واقعیِ بازبینی‌شده.
 
 
@@ -820,7 +820,7 @@
 - [x] CI روی head دقیق `aab9e2a5d3d045b1480615ddaafd02bbb1e9600c` موفق بود: [run #38842263942](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38842263942)، 250 تست موفق؛ benchmark: Recall@5=1.000، Precision@5=0.225، MRR=1.000.
 - [x] **PR #127** با squash در [main ادغام شد](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/127)، commit ادغام `d66b619fd9f864dda10b1d4e0aa7eb96963efde0`.
 - [ ] تست محلی اجرا نشده است.
-- **گام بعدی:** افزودن regression gate برای baseline مصنوعی و آماده‌سازی dataset واقعی با بازبینی حریم خصوصی و adjudication انسانی.
+- **وضعیت گام بعدی:** regression gate baseline مصنوعی در بخش 55 تکمیل شد. dataset واقعی با بازبینی حریم خصوصی و adjudication انسانی همچنان باز است.
 
 
 ## 55. 2026-10-16 — تثبیت baseline واژگانی و دروازهٔ رگرسیون
@@ -2053,3 +2053,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **شواهد کد:** کشف bounded/read-only، ذخیرهٔ شواهد به‌عنوان candidate بازبینی‌نشده، ثبت اجرای discovery، enqueue یکتا، زمان‌بندی روزانه و ادامهٔ زنجیره پس از شکست در `app/cloud_resources.py` پیاده‌سازی شده‌اند؛ آداپترهای منبع‌محور در `app/cloud_provider_adapters.py` قرار دارند.
 - **گیت امنیتی باز:** اتصال حساب‌ها، provisioning و اجرای راه‌دور عمداً تکمیل/فعال نشده‌اند؛ صرفاً discovery و CI اجازهٔ ادعای مجوز اجرا نمی‌دهد. `execution_authorized=false` باید حفظ شود.
 - **تست محلی:** اجرا نشده است؛ این تغییر فقط مستندات وضعیت را اصلاح می‌کند.
+
+
+## 179 — تطبیق شواهد CI و گام‌های بعدی ارزیابی بازیابی (2026-10-20)
+
+- **وضعیت:** [x] چک‌باکس‌های CI برای PRهای ادغام‌شدهٔ audit پژوهش و dataset بازیابی با check-runهای دقیق همان head تطبیق داده شدند؛ شواهد مستقیم در بخش‌های 51 و 52 درج شد.
+- **وضعیت ارزیابی:** audit محلی و سنجه‌های مصنوعی Recall@k/Precision@k/MRR و دروازهٔ رگرسیون lexical در بخش‌های 51–55 تکمیل شده‌اند.
+- **گیت‌های باز:** dataset واقعی با relevance انسانی، benchmark با embedding مدل محلی، و ارزیابی کیفیت پاسخ با مدل زنده باقی مانده‌اند؛ نتایج مصنوعی یا CI به‌عنوان کیفیت واقعی مدل گزارش نمی‌شوند.
+- **تست محلی:** اجرا نشده است.
