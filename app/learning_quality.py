@@ -6,7 +6,10 @@ from typing import Any
 def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any]) -> dict[str, Any]:
     """Deterministic content-shape filter; never an independent factual review."""
     text = lesson.strip()
-    normalized = re.sub(r"\s+", " ", text.lower())
+    # Citation titles and URLs are provenance, not instructional word count.
+    body_match = re.search(r"(?im)^\s*(?:#{1,6}\s*)?(?:sources|منابع)\s*:?\s*$", text)
+    body_text = text[:body_match.start()].strip() if body_match else text
+    normalized = re.sub(r"\s+", " ", body_text.lower())
     words = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
     unique_ratio = len(set(words)) / max(1, len(words))
     # Apply language-aware heuristics: English technical lessons are valid inputs too.
@@ -28,7 +31,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     ]
     matched = [signal for signal in signals if signal in normalized]
     # These are conservative warning heuristics for obvious mixed-script or malformed output.
-    mixed_script_tokens = re.findall(r"(?u)\b\w*[А-Яа-яЁё]+\w*\b", text)
+    mixed_script_tokens = re.findall(r"(?u)\b\w*[А-Яа-яЁё]+\w*\b", body_text)
     malformed_phrases = [
         phrase for phrase in (
             "معمایی سیستم مدیریتی",
@@ -104,7 +107,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     elif matched:
         score -= 20
         reasons.append("نشانه‌ای از گزارش خطا یا وضعیت اجرایی در متن وجود دارد.")
-    if not text:
+    if not body_text:
         score = 0
         reasons.append("محتوای درس خالی است.")
 
@@ -113,7 +116,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
         score >= 75 and len(words) >= target_words and len(words) <= maximum_words and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example and has_explanation
         and valid_questions and valid_answers and not mixed_script_tokens
-        and not malformed_phrases and len(matched) < 2 and bool(text)
+        and not malformed_phrases and len(matched) < 2 and bool(body_text)
     )
     return {
         "score": score,
