@@ -178,6 +178,17 @@
 <label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
 <script>
 const el = id => document.getElementById(id);
+function safeHttpsUrl(value) {
+ try {
+  const source = new URL(value);
+  if (source.protocol !== "https:" || !source.hostname || source.username || source.password) return null;
+  // Reading port forces URL implementations to reject malformed port values.
+  void source.port;
+  return source.href;
+ } catch (_) {
+  return null;
+ }
+}
 async function api(path, options = {}) {
  const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
  const data = await response.json().catch(() => ({}));
