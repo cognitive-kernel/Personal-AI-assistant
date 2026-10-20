@@ -1,7 +1,7 @@
 # موجودی حوزه‌های داده و مسیرهای دسترسی
 
-- تاریخ بازبینی: 2026-10-16
-- مبنای کد: main پس از PR #128 و مرحلهٔ اول cloud resource discovery در PR جاری
+- تاریخ بازبینی: 2026-10-20
+- مبنای کد: بازبینی استاتیک مخزن در 2026-10-20؛ شواهد CI و محدودیت‌های پذیرش در `docs/ROADMAP_ACCEPTANCE.md`
 - دامنه: بازبینی استاتیک کد و تست‌ها؛ checkout محلی و بررسی فایل‌های دادهٔ کاربر انجام نشده است.
 - ممیزی دقیق schema و خطرهای مهاجرت: [SCHEMA_MIGRATION_AUDIT.md](SCHEMA_MIGRATION_AUDIT.md)
 
@@ -9,7 +9,7 @@
 
 | حوزه | محل/مسیر فعلی | وضعیت مشاهده‌شده | نتیجه برای طراحی |
 |---|---|---|---|
-| تنظیمات | `app/db.py`; `settings_connection()` | فایل SQLite مستقل؛ جدول `settings` با مقدار JSON و seedهای idempotent | مرز فعلی مستقل بماند؛ schema version و migration runner لازم است. |
+| تنظیمات | `app/db.py`; `settings_connection()` | فایل SQLite مستقل؛ جدول `settings` با مقدار JSON و seedهای idempotent | مرز فعلی مستقل بماند؛ schema version و migration runner نسخه‌بندی‌شده موجود است؛ پذیرش روی دیتابیس واقعی خارج از ممیزی ایستا است. |
 | یادگیری و دانش | `app/learning.py`, `app/learning_tasks.py` | `learning_jobs`, متن منبع، شواهد، درس‌ها، ارزیابی‌ها، بازخورد و مسیرهای یادگیری در فایل learning | فعلاً مالکیت مرتبط است؛ تفکیک نیازمند ماتریس دسترسی/حریم خصوصی و migration آزموده‌شده است. |
 | صف وظایف | `app/task_manager.py` | `task_queue` در همان فایل learning؛ lease، checkpoint، retry و dedupe پایدار | از نظر کد ماژول جداست ولی از نظر فایل مستقل نیست؛ جداکردن فیزیکی فقط پس از تحلیل تراکنش‌ها و بازیابی. |
 | کشف منابع ابری | `app/cloud_resources.py`, `app/cloud_resource_routes.py`, `cloud_resources.db` | نامزدهای مبتنی بر منابع عمومی و تاریخچهٔ discovery در فایل مستقل با migration نسخه‌بندی‌شده؛ وضعیت پیش‌فرض unreviewed/unknown | مرز مستقل به‌دلیل چرخهٔ عمر عملیاتی، تازگی داده، بررسی شرایط استفاده و سیاست مجوزدهی توجیه دارد؛ این DB ظرفیت واقعی یا مجوز اجرای کار را اثبات نمی‌کند. |
@@ -23,7 +23,7 @@
 ## یافته‌های schema و مسیرهای داده
 
 - `settings.db` فقط تنظیمات را نگه می‌دارد؛ `learning.db` داده‌های یادگیری و صف را نگه می‌دارد.
-- schemaها در `app/schema_registry.py` به‌صورت migrationهای نسخه‌بندی‌شده تعریف شده‌اند و `db.init_databases()` و `task_manager.initialize_task_store()` از همان registry استفاده می‌کنند. قبل از baseline/ارتقا backup اعتبارسنجی‌شده تهیه می‌شود؛ schema ناشناخته و drift بیرونی خودکار پذیرفته یا تعمیر نمی‌شود.
+- schemaها در `app/schema_registry.py` به‌صورت migrationهای نسخه‌بندی‌شده تعریف شده‌اند و `db.init_databases()` و `task_manager.initialize_task_store()` از registry استفاده می‌کنند. مسیر ارتقا backup-first است؛ schema ناشناخته و drift بیرونی خودکار پذیرفته یا تعمیر نمی‌شود. آزمون‌های fixture و Windows CI وجود دارند، اما پذیرش دیتابیس واقعی هدف جداگانه است.
 - `learning.submit_job()` و شروع/تولید مجدد درس‌ها به task پایدار `learning.run_job` ارسال می‌شوند؛ payload صف فقط `job_id` دارد و متن منبع را کپی نمی‌کند.
 - `learning_tasks.reconcile_queued_learning_tasks()` در startup برای رکوردهای queued/running، task متناظر را به‌صورت idempotent تضمین می‌کند.
 - `task_manager.get_task_by_dedupe_key()` و آداپتر یادگیری، توقف از API عمومی صف را با وضعیت رکورد دامنه هماهنگ می‌کنند.
@@ -32,7 +32,7 @@
 ## ریسک‌های باقی‌مانده
 
 1. ایجاد learning job و task دو عملیات جداست؛ startup reconciliation پنجرهٔ قطع فرایند را پوشش می‌دهد، اما fault-injection در همهٔ مرزهای commit هنوز لازم است.
-2. migration runner، schema version metadata و ابزار backup/restore با آزمون بازیابی پیاده‌سازی و در CI پوشش داده شده‌اند؛ هنوز روی فایل‌های واقعی دیتابیس کاربر اجرا/اعتبارسنجی نشده‌اند.
+2. migration runner، schema version metadata و ابزار backup/restore با آزمون بازیابی پیاده‌سازی و در CI پوشش داده شده‌اند؛ روی فایل‌های واقعی دیتابیس کاربر اجرا/اعتبارسنجی نشده‌اند.
 3. وضعیت واقعی schema در فایل‌های DB کاربر بررسی نشده است؛ پیش از مهاجرت باید fingerprint و integrity check انجام شود.
 4. توقف یک task در حال اجرای مدل الزاماً پردازش مدل را فوراً قطع نمی‌کند؛ نتیجهٔ لغوشده نباید در دانش canonical ذخیره شود.
 
