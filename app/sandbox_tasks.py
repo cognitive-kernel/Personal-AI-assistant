@@ -22,7 +22,7 @@ SANDBOX_TASK_TYPE = "sandbox.run_python"
 _IMAGE_REF = re.compile(
     r"^(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$"
 )
-_ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes"}
+_ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes", "learning_practical"}
 
 
 def handler_from_environment() -> Callable[
@@ -60,6 +60,24 @@ def handler_from_environment() -> Callable[
         if len(source_code.encode("utf-8")) > 64 * 1024 or "\x00" in source_code:
             raise ValueError("source_code exceeds the allowed size or contains NUL characters.")
 
+        practical_metadata = payload.get("learning_practical")
+        learner_source_code = source_code
+        if practical_metadata is not None:
+            if (
+                not isinstance(practical_metadata, dict)
+                or set(practical_metadata) != {"exercise_id", "job_id"}
+                or not isinstance(practical_metadata.get("exercise_id"), str)
+                or isinstance(practical_metadata.get("job_id"), bool)
+                or not isinstance(practical_metadata.get("job_id"), int)
+                or practical_metadata["job_id"] < 1
+            ):
+                raise ValueError("Learning practical metadata is invalid.")
+            from .learning_practical import build_grader_source
+
+            source_code = build_grader_source(practical_metadata["exercise_id"], learner_source_code)
+            if len(source_code.encode("utf-8")) > 64 * 1024:
+                raise ValueError("Generated practical grader exceeds the sandbox source limit.")
+
         timeout_seconds = payload.get("timeout_seconds", 10)
         max_output_bytes = payload.get("max_output_bytes", 32 * 1024)
         if (
@@ -78,7 +96,7 @@ def handler_from_environment() -> Callable[
         if not sandbox_consent.is_enabled():
             raise ValueError("Sandbox execution requires explicit, current user consent.")
 
-        source_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
+        source_hash = hashlib.sha256(learner_source_code.encode("utf-8")).hexdigest()
         context.checkpoint(
             {
                 "phase": "sandbox_started",
@@ -122,11 +140,26 @@ def handler_from_environment() -> Callable[
         context.checkpoint(evidence)
         if consent_revoked:
             raise RuntimeError("Sandbox execution stopped because user consent was revoked.")
+        practical_assessment = None
+        if practical_metadata is not None and result.status == "completed" and result.exit_code == 0:
+            try:
+                grading_report = json.loads(result.stdout)
+                from .learning_practical import record_practical_attempt
+
+                practical_assessment = record_practical_attempt(
+                    practical_metadata["job_id"],
+                    practical_metadata["exercise_id"],
+                    grading_report,
+                    learner_source_code,
+                )
+            except (KeyError, TypeError, ValueError, OSError) as exc:
+                raise RuntimeError("Practical grading output could not be validated or recorded.") from exc
         return {
             **evidence,
             "stdout": result.stdout,
             "stderr": result.stderr,
             "reason": result.reason,
+            **({"practical_assessment": practical_assessment} if practical_assessment is not None else {}),
         }
 
     return handle
