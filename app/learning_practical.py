@@ -44,6 +44,20 @@ EXERCISES = {
         "topic_keywords": ("python", "پایتون"),
         "test_count": 4,
         "grading_version": "python-json-unique-grader-v1",
+    },
+    "python-json-word-count-v1": {
+        "id": "python-json-word-count-v1",
+        "title": "شمارش واژه‌های متن با پایتون",
+        "description": (
+            "برنامه‌ای بنویسید که یک شیء JSON با فیلد text را از ورودی استاندارد بخواند "
+            "و تعداد بخش‌های جداشده با فاصله (text.split()) را به‌صورت عدد JSON چاپ کند."
+        ),
+        "input_example": {"text": "Hello, world! Hello"},
+        "output_example": 3,
+        "language": "python",
+        "topic_keywords": ("python", "پایتون"),
+        "test_count": 4,
+        "grading_version": "python-json-word-count-grader-v1",
     }
 }
 
@@ -60,6 +74,12 @@ _TEST_CASES = {
         {"id": "empty-list", "input": {"values": []}, "expected": []},
         {"id": "negative-values", "input": {"values": [-1, 0, -1, 2]}, "expected": [-1, 0, 2]},
         {"id": "fractional-values", "input": {"values": [2.5, 1.5, 2.5]}, "expected": [1.5, 2.5]},
+    ],
+    "python-json-word-count-v1": [
+        {"id": "ordinary-text", "input": {"text": "Hello, world! Hello"}, "expected": 3},
+        {"id": "empty-text", "input": {"text": ""}, "expected": 0},
+        {"id": "multiple-whitespace", "input": {"text": "one\\t two  three\\n"}, "expected": 3},
+        {"id": "punctuation-tokens", "input": {"text": "red,blue !!!"}, "expected": 2},
     ]
 }
 
