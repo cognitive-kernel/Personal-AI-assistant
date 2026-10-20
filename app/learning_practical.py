@@ -76,57 +76,59 @@ def validate_practical_job(job_id: int, exercise_id: str) -> dict[str, Any]:
     return {"id": int(job["id"]), "topic": str(job["topic"]), "path_topic_id": job["path_topic_id"], "curriculum_slug": curriculum_slug}
 
 
-def build_grader_source(exercise_id: str, learner_source: str) -> str:
-    """Build a bounded wrapper that executes each learner submission in a child process."""
+def get_test_cases(exercise_id: str) -> list[dict[str, Any]]:
+    """Return the server-side grading cases to the trusted task handler only."""
+    if exercise_id not in _TEST_CASES:
+        raise KeyError(exercise_id)
+    return [
+        {"id": item["id"], "input": item["input"], "expected": item["expected"]}
+        for item in _TEST_CASES[exercise_id]
+    ]
+
+
+def grade_case_output(exercise_id: str, case_id: str, status: str, exit_code: int | None, stdout: str) -> bool:
+    """Grade one child-process output in the trusted host process."""
+    cases = _TEST_CASES.get(exercise_id)
+    case = next((item for item in cases or [] if item["id"] == case_id), None)
+    if case is None or status != "succeeded" or exit_code != 0 or not isinstance(stdout, str):
+        return False
+    if len(stdout.encode("utf-8", errors="replace")) > 4096:
+        return False
+    try:
+        actual = json.loads(stdout)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    expected = case["expected"]
+    if (
+        isinstance(actual, (int, float)) and not isinstance(actual, bool)
+        and isinstance(expected, (int, float)) and not isinstance(expected, bool)
+    ):
+        return math.isclose(float(actual), float(expected), rel_tol=1e-9, abs_tol=1e-9)
+    return type(actual) is type(expected) and actual == expected
+
+
+def build_grade_report(exercise_id: str, results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Create a validated, output-free grading report from server-side case outcomes."""
     exercise = EXERCISES.get(exercise_id)
     if exercise is None:
         raise KeyError(exercise_id)
-    if not isinstance(learner_source, str) or not learner_source.strip():
-        raise ValueError("Submission source must be non-empty text.")
-    if "\x00" in learner_source or len(learner_source.encode("utf-8")) > 32 * 1024:
-        raise ValueError("Submission source must not contain NUL and must be at most 32 KiB.")
-    cases_json = json.dumps(_TEST_CASES[exercise_id], ensure_ascii=False, separators=(",", ":"))
-    source_literal = repr(learner_source)
-    return f'''import json, math, os, subprocess, sys, tempfile
-EXERCISE_ID = {exercise_id!r}
-LEARNER_SOURCE = {source_literal}
-CASES = json.loads({cases_json!r})
-results = []
-with tempfile.TemporaryDirectory(prefix="learning-practical-") as directory:
-    learner_path = os.path.join(directory, "submission.py")
-    with open(learner_path, "w", encoding="utf-8") as handle:
-        handle.write(LEARNER_SOURCE)
-    safe_env = {{"PATH": os.environ.get("PATH", ""), "PYTHONDONTWRITEBYTECODE": "1"}}
-    for case in CASES:
-        passed = False
-        try:
-            process = subprocess.run(
-                [sys.executable, "-I", "-S", learner_path],
-                input=json.dumps(case["input"], ensure_ascii=False),
-                capture_output=True, text=True, timeout=2, cwd=directory,
-                env=safe_env, check=False,
-            )
-            if process.returncode == 0 and len(process.stdout.encode("utf-8")) <= 4096:
-                actual = json.loads(process.stdout)
-                expected = case["expected"]
-                if (isinstance(actual, (int, float)) and not isinstance(actual, bool)
-                    and isinstance(expected, (int, float)) and not isinstance(expected, bool)):
-                    passed = math.isclose(float(actual), float(expected), rel_tol=1e-9, abs_tol=1e-9)
-                else:
-                    passed = type(actual) is type(expected) and actual == expected
-        except (OSError, ValueError, subprocess.TimeoutExpired, UnicodeError):
-            passed = False
-        results.append({{"case_id": case["id"], "passed": passed}})
-report = {{
-    "schema_version": 1,
-    "exercise_id": EXERCISE_ID,
-    "grading_version": {exercise["grading_version"]!r},
-    "total": len(results),
-    "passed": sum(1 for item in results if item["passed"]),
-    "results": results,
-}}
-print(json.dumps(report, separators=(",", ":")))
-'''
+    expected_ids = {item["id"] for item in _TEST_CASES[exercise_id]}
+    if (
+        not isinstance(results, list) or len(results) != len(expected_ids)
+        or any(not isinstance(item, dict) or set(item) != {"case_id", "passed"}
+               or not isinstance(item.get("case_id"), str) or not isinstance(item.get("passed"), bool)
+               for item in results)
+        or {item["case_id"] for item in results} != expected_ids
+    ):
+        raise ValueError("Practical case results failed validation.")
+    return {
+        "schema_version": 1,
+        "exercise_id": exercise_id,
+        "grading_version": exercise["grading_version"],
+        "total": len(results),
+        "passed": sum(1 for item in results if item["passed"]),
+        "results": results,
+    }
 
 
 def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, Any], source_code: str) -> dict[str, Any]:
