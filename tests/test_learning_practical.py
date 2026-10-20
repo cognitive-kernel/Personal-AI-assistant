@@ -145,9 +145,10 @@ def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch
             return "running"
 
     handler = sandbox_tasks.handler_from_environment()
+    source = "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data['values'])))"
     result = handler(
         {
-            "source_code": "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data['values'])))",
+            "source_code": source,
             "learning_practical": {"exercise_id": learning_practical.EXERCISE_ID, "job_id": 7},
         },
         None,
@@ -158,7 +159,7 @@ def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch
     assert result["practical_assessment"]["score"] == 100.0
     assert result["practical_assessment"]["received_report"] is True
     assert len(calls) == 4
-    assert all(source == "import json, sys\\ndata = json.load(sys.stdin)\\nprint(json.dumps(sum(data['values'])))" for source, _input in calls)
+    assert all(code == source for code, _input in calls)
     assert all(isinstance(json.loads(stdin)["values"], list) for _source, stdin in calls)
 
 
