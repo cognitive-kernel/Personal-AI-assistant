@@ -73,7 +73,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     if not results:
         raise ValueError("results must not be empty")
     summary: dict[str, Any] = {"case_count": len(results), "languages": {}, "interpretation": (
-        "Not a model-quality score. Human adjudication and a pinned live-model run are required."
+        "Automated lexical/provenance indicators only; a pinned live-model run and all acceptance gates are required. Human scoring is not used, and passing is not proof of scientific truth."
     )}
     for language in sorted({str(item["language"]) for item in results}):
         items = [item for item in results if item["language"] == language]
@@ -87,7 +87,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             "cases_with_prohibited_phrase_hits": sum(bool(item["prohibited_phrase_hits"]) for item in items),
             "cases_with_expected_language_script": sum(item["expected_language_script_present"] is True for item in items),
             "cases_with_sources": sum(int(item["source_count"]) > 0 for item in items),
-            "cases_with_allowlisted_primary_sources": sum(int(item.get("trusted_source_count", 0)) > 0 for item in items),
+            "cases_with_allowlisted_primary_sources": sum(int(item.get("trusted_source_count") or 0) > 0 for item in items),
             "cases_with_unattributed_answer_urls": sum(
                 int(item.get("unattributed_answer_url_count", 0)) > 0 for item in items
             ),
