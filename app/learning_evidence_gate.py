@@ -75,7 +75,7 @@ def evaluate_lesson_evidence(
     )
     gates = {
         "at_least_two_distinct_https_sources": len(cited) >= 2 and len(hosts) >= 2,
-        "every_used_source_cited_exactly": len(cited) >= 2,
+        "at_least_two_source_urls_cited_exactly": len(cited) >= 2,
         "claim_review_passed": review.get("passed") is True and review.get("overall") == "supported",
         "all_claims_supported_by_known_sources": all_claims_supported,
         "no_reported_source_conflicts": isinstance(conflicts, list) and len(conflicts) == 0,
