@@ -150,6 +150,8 @@ def test_target_host_performance_benchmark_reports_metrics_without_raw_output(mo
 
     assert report["status"] == "passed"
     assert report["claim_and_complete_tasks_per_second"] == 120.0
+    assert report["minimum_claim_and_complete_tasks_per_second"] == 10.0
+    assert report["performance_threshold_passed"] is True
     assert report["sqlite_integrity"] == "ok"
     assert report["raw_output_included"] is False
     assert "private detail" not in json.dumps(report)
@@ -165,3 +167,26 @@ def test_target_host_performance_benchmark_fails_closed_on_invalid_report(monkey
     )
     report = baseline._run_performance_benchmark(10)
     assert report["status"] == "invalid_report"
+
+
+def test_target_host_performance_benchmark_fails_when_throughput_misses_floor(monkeypatch):
+    payload = {
+        "result": "passed",
+        "benchmark": "sqlite-task-queue-throughput",
+        "task_count_requested": 100,
+        "task_count_succeeded": 100,
+        "enqueue_tasks_per_second": 50.0,
+        "claim_and_complete_tasks_per_second": 4.0,
+        "database_bytes": 4096,
+        "sqlite_integrity": "ok",
+    }
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout=json.dumps(payload), stderr=""
+        ),
+    )
+    report = baseline._run_performance_benchmark(100, min_queue_tps=10.0)
+    assert report["status"] == "below_threshold"
+    assert report["performance_threshold_passed"] is False
