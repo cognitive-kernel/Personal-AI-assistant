@@ -91,9 +91,15 @@ function addRegenerateButton(output, path, topic) {
  output.append(button);
 }
 
-function addPracticalExerciseForm(output, job) {
- const topicText = String(job.topic || "").toLowerCase();
- if (!topicText.includes("python") && !topicText.includes("پایتون")) return;
+async function addPracticalExerciseForm(output, job) {
+ let exercise;
+ try {
+  const catalog = await learningApi("/api/learning/practical/exercises?job_id=" + encodeURIComponent(job.id));
+  exercise = (catalog.exercises || [])[0];
+ } catch (_error) {
+  return;
+ }
+ if (!exercise || output.dataset.learningJobId !== String(job.id)) return;
  const section = document.createElement("section");
  section.className = "learning-practical-exercise";
  const heading = document.createElement("h4");
@@ -127,7 +133,7 @@ function addPracticalExerciseForm(output, job) {
   submit.disabled = true;
   status.textContent = "در حال ثبت تمرین…";
   try {
-   const queued = await learningApi("/api/learning/practical/exercises/python-json-sum-v1/submit", {
+   const queued = await learningApi("/api/learning/practical/exercises/" + encodeURIComponent(exercise.id) + "/submit", {
     method: "POST",
     body: JSON.stringify({job_id: job.id, source_code: source.value})
    });
@@ -171,6 +177,7 @@ function addPracticalExerciseForm(output, job) {
  
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
+ output.dataset.learningJobId = String(job.id);
  if (job.quality && topic.row) {
   const scoreField = topic.row.querySelector(".path-topic-score");
   if (scoreField) scoreField.textContent = "امتیاز کیفیت درس: " + job.quality.score + " از 100 (خودکار)";
