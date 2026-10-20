@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "learning-transfer-prompt-v1",
+  "description": "Versioned lexical regression cases for the transfer-question marker gate; not a semantic-understanding benchmark.",
+  "cases": [
+    {
+      "id": "fa-suppose",
+      "text": "فرض کنید ورودی تازه‌ای دریافت شود؛ چه اقدامی انجام می‌دهید؟",
+      "expected_transfer": true
+    },
+    {
+      "id": "fa-if",
+      "text": "اگر ورودی خالی باشد، چه اقدامی انجام می‌دهید؟",
+      "expected_transfer": true
+    },
+    {
+      "id": "fa-scenario",
+      "text": "در سناریو جدید، این روش را چگونه به کار می‌برید؟",
+      "expected_transfer": true
+    },
+    {
+      "id": "fa-apply",
+      "text": "این قاعده را در عمل برای داده‌های جدید به کار ببرید.",
+      "expected_transfer": true
+    },
+    {
+      "id": "en-new-scenario",
+      "text": "In a new scenario, how would you apply this rule?",
+      "expected_transfer": true
+    },
+    {
+      "id": "en-suppose",
+      "text": "Suppose the input is empty; what would you change?",
+      "expected_transfer": true
+    },
+    {
+      "id": "en-how-could",
+      "text": "How could you apply this rule to another dataset?",
+      "expected_transfer": true
+    },
+    {
+      "id": "en-design",
+      "text": "Design a solution for a new workload.",
+      "expected_transfer": true
+    },
+    {
+      "id": "en-debug",
+      "text": "Debug this code when the input is empty.",
+      "expected_transfer": true
+    },
+    {
+      "id": "en-difference",
+      "text": "What is the difference between a table scan and an index seek?",
+      "expected_transfer": false
+    },
+    {
+      "id": "en-design-explanation",
+      "text": "Explain the design of a query plan.",
+      "expected_transfer": false
+    },
+    {
+      "id": "en-scenario-definition",
+      "text": "Define the term scenario.",
+      "expected_transfer": false
+    },
+    {
+      "id": "en-application-definition",
+      "text": "Describe an application of the rule.",
+      "expected_transfer": false
+    },
+    {
+      "id": "fa-difference",
+      "text": "تفاوت دو روش را توضیح دهید.",
+      "expected_transfer": false
+    },
+    {
+      "id": "en-different-output",
+      "text": "The output differs from the expected result.",
+      "expected_transfer": false
+    },
+    {
+      "id": "en-debug-definition",
+      "text": "What does debug mean in this context?",
+      "expected_transfer": false
+    }
+  ]
+}
