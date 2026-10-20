@@ -1938,5 +1938,5 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **تغییر کد/UI:** کارت‌های وظیفه کلاس اختصاصی دریافت کردند؛ وضعیت‌های صف، اجرا، توقف، لغو، موفقیت و شکست با نشانگر بصری دارای رنگ با کنتراست بالا و نقطهٔ وضعیت مشخص می‌شوند. متن وضعیت اصلی حفظ شده است تا رنگ تنها حامل معنا نباشد. حالت focus-within، hover و reduced-motion نیز رعایت شده‌اند.
 - **آزمون افزوده‌شده:** browser E2E کلاس معنایی و شناسهٔ خام وضعیت، برچسب فارسی برای queued/failed/succeeded و نام دسترس‌پذیر وضعیت را بررسی می‌کند.
 - **ایمنی:** فقط کلاس‌های ثابت از allow-list وضعیت‌ها اعمال می‌شوند؛ مقدار وضعیت سرور مستقیماً به نام کلاس تبدیل نمی‌شود. API و داده‌های وظایف تغییر نمی‌کنند.
-- **وضعیت:** [ ] منتظر CI روی head دقیق این تغییر است. تست محلی اجرا نشده است.
+- **وضعیت:** [x] همهٔ کنترل‌های CI روی head دقیق `b379942460539fabbb78bee29624595c1cef14ea` موفق شدند: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39364490380)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39364490415)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39364490478). تست محلی اجرا نشده است.
 - **گیت‌های جداگانه:** بررسی دستی کنتراست، کیبورد/صفحه‌خوان و usability روی میزبان هدف همچنان باز هستند.
