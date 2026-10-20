@@ -35,7 +35,7 @@ def _tokens(css: str, selector: str) -> dict[str, str]:
     pattern = re.compile(re.escape(selector) + r"\s*\{([^}]*)\}", re.DOTALL)
     match = pattern.search(css)
     assert match, f"Missing theme token block: {selector}"
-    return dict(re.findall(r"--([a-z-]+)\s*:\s*(#[0-9a-fA-F]{6})\s*;", match.group(1)))
+    return dict(re.findall(r"--([a-z-]+)\s*:\s*(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)\s*;", match.group(1)))
 
 
 def test_core_theme_tokens_meet_wcag_text_contrast():
