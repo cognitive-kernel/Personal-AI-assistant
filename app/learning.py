@@ -421,7 +421,7 @@ def run_job(job_id: int) -> None:
                 conn.execute(
                     """INSERT INTO temporary_knowledge_candidates(
                            job_id, topic, content, source_kind, source_urls_json,
-                           source_sha256, quality_report_json, status
+                           content_sha256, quality_report_json, status
                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_test')""",
                     (job_id, topic, lesson_text, source_kind,
                      json.dumps(source_urls, ensure_ascii=False), lesson_digest,
@@ -531,7 +531,7 @@ def record_candidate_test_results(
                 """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                    VALUES (?, 'candidate_test_results', ?, ?, ?)""",
                 (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
-                 candidate["source_sha256"],
+                 candidate["content_sha256"],
                  "تمام آزمون‌های ثبت‌شده با runner خودکار مجاز موفق شدند؛ ارتقا فقط در محدوده همین آزمون‌هاست، نه اثبات همگانی صحت علمی."),
             )
         else:
@@ -559,7 +559,7 @@ def record_candidate_test_results(
                 """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                    VALUES (?, 'candidate_test_failure', ?, ?, ?)""",
                 (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
-                 candidate["source_sha256"], takeaway[:1000]),
+                 candidate["content_sha256"], takeaway[:1000]),
             )
         final = conn.execute(
             "SELECT * FROM temporary_knowledge_candidates WHERE id=?",
