@@ -2119,3 +2119,11 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - PR #369 head `e7ae4d5661d12b05b1a405a15d94574d17c0e411` passed the required tests including Windows storage regressions (run [#39384776230](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230)), Chromium browser E2E (run [#39384776350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350)), and dependency audit (run [#39384776221](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221)).
 - PR remains open and unmerged. CI does not satisfy target-host, live-model/human, operational recovery/restore, independent security, or manual accessibility acceptance.
+
+
+## 2026-10-20 — search provider diagnostic accuracy
+
+- Search diagnostics now report `no_acceptable_results` when a provider parser extracted links but every link failed destination acceptance, instead of reporting `no_parseable_results`.
+- Challenge and consent classifications retain precedence. No challenge bypass was added.
+- Added a deterministic regression test for a parsed Google search-page URL rejected because it points back to the search provider.
+- This improves diagnosis of the reported discovery run (Google parse count greater than zero, accepted count zero); it does not by itself improve live provider responses or prove why each real-world URL was rejected.
