@@ -483,10 +483,26 @@ def record_candidate_test_results(
     if not isinstance(test_results, list) or len(test_results) != len(test_plan):
         raise ValueError("test_results must contain one result for every planned test.")
     plan_names = []
+    allowed_oracles = {"curated_reference", "source_example", "regression_fixture"}
+    expected_oracle_digests: dict[str, str] = {}
     for item in test_plan:
         if not isinstance(item, dict) or not isinstance(item.get("test"), str) or not item["test"].strip():
             raise ValueError("Every test plan item must name a test.")
-        plan_names.append(item["test"].strip())
+        name = item["test"].strip()
+        plan_names.append(name)
+        if item.get("oracle_kind") not in allowed_oracles:
+            raise ValueError("Every promotion test must identify a trusted oracle kind.")
+        oracle_ref = item.get("oracle_ref")
+        if not isinstance(oracle_ref, str) or not oracle_ref.strip() or len(oracle_ref) > 2048:
+            raise ValueError("Every promotion test must cite its oracle reference.")
+        if "expected" not in item:
+            raise ValueError("Every promotion test must preserve its oracle expected output.")
+        expected_digest = hashlib.sha256(
+            json.dumps(item["expected"], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        ).hexdigest()
+        if item.get("oracle_sha256") != expected_digest:
+            raise ValueError("Oracle digest must match the canonical expected output.")
+        expected_oracle_digests[name] = expected_digest
     if len(set(plan_names)) != len(plan_names):
         raise ValueError("Test plan names must be unique.")
     result_names = []
@@ -503,6 +519,8 @@ def record_candidate_test_results(
             raise ValueError("Every test result must identify an approved automated runner.")
         if "expected" not in item or "actual" not in item:
             raise ValueError("Every test result must preserve expected and actual outputs.")
+        if item.get("oracle_sha256") != expected_oracle_digests.get(name.strip()):
+            raise ValueError("Test result oracle digest does not match its plan.")
         result_names.append(name.strip())
     if result_names != plan_names:
         raise ValueError("Test results must match the planned test names and order.")
