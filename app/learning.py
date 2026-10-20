@@ -383,7 +383,7 @@ def _has_transfer_question(value: str) -> bool:
         "فرض کنید", "اگر", "در سناریو", "در این وضعیت", "در عمل", "طراحی کنید",
         "به کار ببرید", "چه اقدامی", "چه تغییری", "چگونه در", "چطور می توان",
         "what if", "suppose", "scenario", "in practice", "how would", "how could",
-        "apply", "design", "debug",
+        "apply this", "apply the", "design a", "design an", "debug this", "debug the",
     )
     for marker in markers:
         normalized_marker = re.sub(r"\\W+", " ", marker.casefold(), flags=re.UNICODE).strip()
@@ -712,7 +712,7 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
                 or float(latest_attempt["score"]) < MASTERY_SCORE_THRESHOLD
             ):
                 raise ValueError(
-                    f"Topic completion requires a latest rubric or sandbox-practical assessment score of at least {MASTERY_SCORE_THRESHOLD:.0f}."
+                    f"Topic completion requires a latest rubric-based assessment or sandbox-practical assessment score of at least {MASTERY_SCORE_THRESHOLD:.0f}."
                 )
             latest_score = float(latest_attempt["score"])
         conn.execute(
