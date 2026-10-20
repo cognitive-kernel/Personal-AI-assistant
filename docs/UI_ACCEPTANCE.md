@@ -8,6 +8,7 @@
 - [x] RTL page direction, text-direction handling for Persian/English, and LTR code/patch fields.
 - [x] Reduced-motion support and accessible names for controls, including dynamically generated learning review fields.
 - [x] Chromium checks at 360px, 768px, and 1280px for horizontal overflow.
+- [ ] Learning-path progress is rendered as a native accessible progress bar derived from completed/total topics; exact-head browser E2E pending.
 - [ ] Full manual keyboard and screen-reader review.
 - [ ] Contrast audit and target-host usability acceptance.
 - [ ] Broader functional parity and operational E2E matrix.
