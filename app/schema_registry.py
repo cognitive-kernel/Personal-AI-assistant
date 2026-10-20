@@ -515,6 +515,15 @@ LEARNING_MIGRATIONS = (
                END""",
         ),
     ),
+    Migration(
+        16,
+        "separate-learning-content-quality-from-learner-score",
+        (
+            "ALTER TABLE learning_path_topics ADD COLUMN latest_content_quality_score REAL",
+            """ALTER TABLE learning_path_topics ADD COLUMN latest_score_kind TEXT NOT NULL DEFAULT 'legacy_unknown'
+               CHECK(latest_score_kind IN ('legacy_unknown','learner_rubric','legacy_exact_match','manual_override'))""",
+        ),
+    ),
 )
 
 
