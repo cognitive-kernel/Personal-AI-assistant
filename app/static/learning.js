@@ -261,9 +261,15 @@ function renderLessonResult(output, job, path, topic) {
  heading.textContent = "آزمون درس";
  form.append(heading);
  const fields = [];
+ const questionTypeLabels = {
+  recall: "بازیابی",
+  explanation: "توضیح علت‌ومعلول",
+  transfer: "کاربرد و انتقال آموخته‌ها"
+ };
  assessment.questions.forEach((question, index) => {
   const label = document.createElement("label");
-  label.textContent = (index + 1) + ". " + question;
+  const questionType = Array.isArray(assessment.question_types) ? assessment.question_types[index] : null;
+  label.textContent = (index + 1) + (questionType && questionTypeLabels[questionType] ? " [" + questionTypeLabels[questionType] + "] " : ". ") + question;
   const answer = document.createElement("textarea");
   answer.setAttribute("aria-label", "پاسخ سؤال " + (index + 1) + ": " + question);
   answer.required = true;
