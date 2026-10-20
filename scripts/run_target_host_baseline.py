@@ -212,10 +212,54 @@ def _run_tests(timeout_seconds: int) -> dict[str, Any]:
         }
 
 
-def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dict[str, Any]:
+def _run_performance_benchmark(task_count: int, timeout_seconds: int = 300) -> dict[str, Any]:
+    """Run the disposable SQLite queue benchmark and keep the report redacted."""
+    if isinstance(task_count, bool) or not isinstance(task_count, int) or not 1 <= task_count <= 100000:
+        raise ValueError("benchmark task count must be between 1 and 100000")
+    command = [
+        sys.executable, str(ROOT / "scripts" / "benchmark_task_queue.py"),
+        "--tasks", str(task_count), "--producers", "4", "--workers", "4",
+    ]
+    try:
+        result = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True,
+            timeout=timeout_seconds, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "timeout_seconds": timeout_seconds, "task_count": task_count}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__, "task_count": task_count}
+    try:
+        report = json.loads(result.stdout)
+    except (TypeError, ValueError):
+        return {
+            "status": "invalid_report",
+            "return_code": result.returncode,
+            "task_count": task_count,
+        }
+    if not isinstance(report, dict):
+        return {"status": "invalid_report", "return_code": result.returncode, "task_count": task_count}
+    passed = result.returncode == 0 and report.get("result") == "passed"
+    return {
+        "status": "passed" if passed else "failed",
+        "return_code": result.returncode,
+        "benchmark": report.get("benchmark"),
+        "task_count_requested": report.get("task_count_requested"),
+        "task_count_succeeded": report.get("task_count_succeeded"),
+        "enqueue_tasks_per_second": report.get("enqueue_tasks_per_second"),
+        "claim_and_complete_tasks_per_second": report.get("claim_and_complete_tasks_per_second"),
+        "database_bytes": report.get("database_bytes"),
+        "sqlite_integrity": report.get("sqlite_integrity"),
+        "timed_out": False,
+        "raw_output_included": False,
+    }
+
+
+def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_performance_benchmark: bool = False, benchmark_tasks: int = 1000) -> dict[str, Any]:
     storage = _storage_summary()
     network_boundary = _network_boundary_summary()
     tests = _run_tests(timeout_seconds) if run_tests else {"status": "not_run"}
+    performance = _run_performance_benchmark(benchmark_tasks) if run_performance_benchmark else {"status": "not_run"}
     dirty = _git_value("status", "--porcelain")
     return {
         "report_version": 1,
@@ -235,12 +279,14 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dic
         "storage": storage,
         "network_boundary": network_boundary,
         "tests": tests,
+        "performance_benchmark": performance,
         "scope": {
             "storage_check_is_read_only": True,
             "database_initialization_performed": False,
             "database_migration_performed": False,
             "database_repair_performed": False,
             "live_model_evaluation_performed": False,
+            "performance_benchmark_performed": run_performance_benchmark,
             "remote_execution_performed": False,
         },
     }
@@ -249,6 +295,8 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dic
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-tests", action="store_true", help="run the full pytest suite")
+    parser.add_argument("--run-performance-benchmark", action="store_true", help="benchmark disposable SQLite task queue on this host")
+    parser.add_argument("--benchmark-tasks", type=int, default=1000, help="disposable benchmark task count (1..100000)")
     parser.add_argument(
         "--timeout-seconds", type=int, default=1800,
         help="pytest timeout when --run-tests is used (default: 1800)",
@@ -257,8 +305,15 @@ def main() -> int:
     args = parser.parse_args()
     if args.timeout_seconds < 1:
         parser.error("--timeout-seconds must be positive")
+    if not 1 <= args.benchmark_tasks <= 100000:
+        parser.error("--benchmark-tasks must be between 1 and 100000")
 
-    report = build_report(run_tests=args.run_tests, timeout_seconds=args.timeout_seconds)
+    report = build_report(
+        run_tests=args.run_tests,
+        timeout_seconds=args.timeout_seconds,
+        run_performance_benchmark=args.run_performance_benchmark,
+        benchmark_tasks=args.benchmark_tasks,
+    )
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         try:
@@ -271,7 +326,8 @@ def main() -> int:
     storage_ok = report["storage"].get("status") == "ok"
     network_ok = report["network_boundary"].get("status") == "ok"
     tests_ok = report["tests"].get("status") in {"not_run", "passed"}
-    return 0 if storage_ok and network_ok and tests_ok else 1
+    performance_ok = report["performance_benchmark"].get("status") in ({"passed"} if args.run_performance_benchmark else {"not_run"})
+    return 0 if storage_ok and network_ok and tests_ok and performance_ok else 1
 
 
 if __name__ == "__main__":
