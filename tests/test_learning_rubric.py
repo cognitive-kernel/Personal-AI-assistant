@@ -248,3 +248,16 @@ def test_learning_ui_sends_stable_idempotency_key_for_retried_answers():
     assert "pendingSubmissionAnswers !== answerFingerprint" in page
     assert "idempotency_key: pendingSubmissionKey" in page
     assert "تکمیل سرفصل فقط با rubric معتبر" in page
+
+
+def test_fixed_rubric_calibration_set_has_no_false_passes_or_false_fails():
+    import json
+    from pathlib import Path
+    from scripts.evaluate_learning_rubric import evaluate_fixture
+
+    fixture_path = Path(__file__).parent / "fixtures" / "learning_rubric_calibration.json"
+    report = evaluate_fixture(json.loads(fixture_path.read_text(encoding="utf-8")))
+    assert report["passed"] is True
+    assert report["false_passes"] == []
+    assert report["false_fails"] == []
+    assert report["case_count"] >= 5
