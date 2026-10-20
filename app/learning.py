@@ -375,15 +375,21 @@ def get_job(job_id: int) -> dict[str, Any]:
 
 
 def _has_transfer_question(value: str) -> bool:
-    """Conservative language-marker check for an application/transfer prompt."""
-    normalized = _normalize_answer(value)
+    """Conservative word-boundary check for an application/transfer prompt."""
+    import re
+
+    normalized = re.sub(r"\\W+", " ", value.casefold(), flags=re.UNICODE).strip()
     markers = (
         "فرض کنید", "اگر", "در سناریو", "در این وضعیت", "در عمل", "طراحی کنید",
         "به کار ببرید", "چه اقدامی", "چه تغییری", "چگونه در", "چطور می توان",
         "what if", "suppose", "scenario", "in practice", "how would", "how could",
         "apply", "design", "debug",
     )
-    return any(_normalize_answer(marker) in normalized for marker in markers)
+    for marker in markers:
+        normalized_marker = re.sub(r"\\W+", " ", marker.casefold(), flags=re.UNICODE).strip()
+        if re.search(r"(?<!\\w)" + re.escape(normalized_marker) + r"(?!\\w)", normalized):
+            return True
+    return False
 
 
 def _normalize_answer(value: str) -> str:
