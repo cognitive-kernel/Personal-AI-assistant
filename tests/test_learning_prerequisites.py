@@ -55,8 +55,17 @@ def test_regeneration_cannot_bypass_prerequisite_locks(tmp_path, monkeypatch):
 def test_assessment_endpoint_cannot_complete_a_locked_topic(tmp_path, monkeypatch):
     import json
 
-    path_id, _first_id, second_id = _setup(tmp_path, monkeypatch)
+    path_id, first_id, second_id = _setup(tmp_path, monkeypatch)
+    # Create a pre-existing job while prerequisites are satisfied, then simulate
+    # a prerequisite being reset before a stale job's assessment is submitted.
+    with learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_path_topics SET status='completed', latest_score=100, latest_score_kind='learner_rubric' WHERE id=?",
+            (first_id,),
+        )
     job = learning.create_job("Locked topic assessment", path_topic_id=second_id)
+    with learning_connection() as connection:
+        connection.execute("UPDATE learning_path_topics SET status='pending' WHERE id=?", (first_id,))
     assessment = {
         "questions": ["Q1", "Q2"],
         "answer_key": ["faster lookup", "dirty read"],
