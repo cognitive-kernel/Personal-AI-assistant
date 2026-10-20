@@ -241,6 +241,7 @@ def test_automated_acceptance_gate_passes_only_when_all_case_checks_pass():
             "expected_language_script_present": True,
             "source_audit_status": "completed",
             "source_count": 2,
+            "trusted_source_count": 1,
             "research_review_status": "passed_model_assisted",
             "unattributed_answer_url_count": 0,
         })
@@ -262,6 +263,7 @@ def test_automated_acceptance_gate_fails_closed_on_missing_sources_and_unsupport
         "expected_language_script_present": True,
         "source_audit_status": "completed",
         "source_count": 0,
+        "trusted_source_count": 0,
         "research_review_status": "needs_review",
         "unattributed_answer_url_count": 0,
     }])
