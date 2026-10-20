@@ -137,3 +137,10 @@ This is exact-head CI evidence only. PR #369 remains open and unmerged; it does 
 - Proposed numeric thresholds are explicitly targets to calibrate against a versioned reference set, not measured results. No absolute factual correctness guarantee is claimed.
 - Acceptance must remain local-first and resource-bounded; no assumption of discrete GPU/VRAM, cloud API, or remote execution is permitted.
 
+
+
+## افزوده‌شده در 2026-10-20 — گیت علمی و ارزیابی rubric
+
+- وجود منبع یا قبولی مدل به‌تنهایی به معنی تأیید علمی نیست؛ دروازهٔ جداگانه باید منشأ، تنوع میزبان منبع، ارزیابی ادعاها، ارجاع دقیق و نبود تعارض را بررسی کند.
+- نمرهٔ آزمون برای درس‌های دارای rubric معتبر از پوشش وزن‌دار معیارها محاسبه می‌شود؛ درس‌های قدیمی fallback سازگار دارند. این نمره معیار پوشش است، نه اثبات مستقل تسلط.
+- تست‌های جدید در CI باید سبز باشند؛ اجرای محلی روی میزبان هدف و benchmark زنده هنوز گیت پذیرش جداگانه‌اند.
