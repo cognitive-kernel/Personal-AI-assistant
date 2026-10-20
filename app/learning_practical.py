@@ -138,7 +138,7 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
         raise KeyError(exercise_id)
     if (
         not isinstance(source_code, str) or not source_code.strip()
-        or "\\x00" in source_code or len(source_code.encode("utf-8")) > 32 * 1024
+        or "\x00" in source_code or len(source_code.encode("utf-8")) > 32 * 1024
     ):
         raise ValueError("Practical source must be non-empty, NUL-free, and at most 32 KiB.")
     if not isinstance(report, dict) or report.get("schema_version") != 1 or report.get("exercise_id") != exercise_id:
