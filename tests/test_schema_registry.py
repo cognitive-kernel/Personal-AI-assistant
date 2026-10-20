@@ -107,6 +107,12 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
             "test_results_json", "failure_reason", "promoted_knowledge_id",
         } <= candidate_columns
         assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_review_evidence'"
+        ).fetchone() is not None
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='knowledge_peer_consultations'"
+        ).fetchone() is not None
+        assert connection.execute(
             "SELECT topic, status, source_kind FROM learning_jobs WHERE id=?", (job_id,)
         ).fetchone() == ("retained", "queued", "user_text")
         assert connection.execute(
