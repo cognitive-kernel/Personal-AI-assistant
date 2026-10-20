@@ -71,3 +71,22 @@ def test_evidence_gate_does_not_trust_unknown_claim_evidence_urls():
 
     assert result["accepted"] is False
     assert "all_claims_supported_by_known_sources" in result["failed_gates"]
+
+
+def test_evidence_gate_does_not_accept_url_substrings_as_exact_citations():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    lesson = "Citation with a forged suffix: " + urls[0] + "/unrelated and exact citation: " + urls[1]
+    result = evaluate_lesson_evidence(lesson, [_source(url) for url in urls], _review(urls))
+
+    assert result["accepted"] is False
+    assert result["cited_source_count"] == 1
+    assert "at_least_two_source_urls_cited_exactly" in result["failed_gates"]
+
+
+def test_every_claim_must_reference_sources_actually_cited_in_lesson():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    lesson = "Lesson cites only one source: " + urls[0]
+    result = evaluate_lesson_evidence(lesson, [_source(url) for url in urls], _review(urls))
+
+    assert result["accepted"] is False
+    assert "all_claims_supported_by_known_sources" in result["failed_gates"]
