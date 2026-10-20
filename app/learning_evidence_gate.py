@@ -65,7 +65,7 @@ def _exact_cited_urls(lesson: str) -> set[str]:
     if not isinstance(lesson, str):
         return set()
     found: set[str] = set()
-    for match in re.finditer(r"https?://[^\\s<>\\\"']+", lesson):
+    for match in re.finditer(r"https?://\\S+", lesson):
         token = match.group(0).rstrip(".,;:!?)]}")
         if token:
             found.add(token)
