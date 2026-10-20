@@ -418,6 +418,9 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     assert payloads[0]["options"]["num_predict"] >= 1000
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["scientific_acceptance"]["accepted"] is False
+    assert finished["quality"]["scientific_acceptance"]["lesson_available_for_learning"] is True
+    assert finished["quality"]["scientific_acceptance"]["knowledge_verification_status"] == "unverified"
 
 
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
