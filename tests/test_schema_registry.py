@@ -164,8 +164,13 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3}) == 3
-    assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15}) == 16
+    learning_fingerprints = [
+        learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6,
+        learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12,
+        learning_v13, learning_v14, learning_v15, learning_v16,
+    ]
+    assert all(len(fingerprint) == 64 for fingerprint in learning_fingerprints)
+    assert len(set(learning_fingerprints)) == 16
 
 
 
