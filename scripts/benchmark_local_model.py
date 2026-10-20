@@ -117,7 +117,7 @@ def run_benchmark(
     rates = [item["generation_tokens_per_second"] for item in samples]
     median_latency = statistics.median(latencies)
     median_rate = statistics.median(rates)
-    threshold_passed = median_latency <= max_latency_seconds and median_rate >= min_tokens_per_second
+    threshold_passed = max(latencies) <= max_latency_seconds and median_rate >= min_tokens_per_second
     return {
         "schema_version": 1,
         "benchmark": "local-ollama-generation",
