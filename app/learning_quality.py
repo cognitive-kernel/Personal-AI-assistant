@@ -65,11 +65,13 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     minimum_words = 80 if is_english else 120
     target_words = 120 if is_english else 160
     if len(words) < minimum_words:
-        score -= 35
-        reasons.append(f"درس کوتاه‌تر از حداقل {minimum_words} واژه آموزشی است.")
+        # Length is diagnostic only: a concise, correct explanation must not be
+        # rejected before any content-specific or practical validation can run.
+        reasons.append(
+            f"درس کوتاه است ({len(words)} واژه)؛ طول به‌تنهایی دلیل رد نیست و باید با آزمون مرتبط ارزیابی شود."
+        )
     elif len(words) < target_words:
-        score -= 10
-        reasons.append(f"درس از بازه هدف {target_words} تا {target_words + 60} واژه کوتاه‌تر است.")
+        reasons.append(f"درس از طول پیشنهادی {target_words} واژه کوتاه‌تر است؛ طول به‌تنهایی معیار رد نیست.")
     if unique_ratio < 0.48:
         score -= 20
         reasons.append("تکرار متن زیاد است و اطلاعات تازه کمی دارد.")
@@ -106,7 +108,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = max(0, min(100, score))
     accepted = (
-        score >= 75 and len(words) >= minimum_words and unique_ratio >= 0.48
+        score >= 75 and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example and has_explanation
         and valid_questions and valid_answers and not mixed_script_tokens
         and not malformed_phrases and len(matched) < 2 and bool(text)
