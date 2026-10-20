@@ -544,6 +544,7 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
         search.fill("e2e.backup")
         assert cards.nth(2).is_visible()
         assert cards.nth(1).is_hidden()
+        search.fill("")
         tasks.clear()
         page.locator("#refresh-tasks").click()
         page.get_by_text("هنوز وظیفه‌ای ثبت نشده است.", exact=True).wait_for(timeout=5000)
