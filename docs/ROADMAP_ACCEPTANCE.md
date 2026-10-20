@@ -4,7 +4,7 @@ Last reviewed: 2026-10-20
 
 This document records repository-level evidence and the remaining acceptance gates. A merged implementation or passing CI suite does not by itself establish production readiness on a user's machine.
 
-Repository status last reconciled on 2026-10-20 at `bd4267f069c0b469541ddc0e16303fa83a9bc597`. Task dashboard summary/search ([PR #356](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/356)), safe bulk operations ([PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357)), semantic task status styling ([PR #358](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/358)), current-section navigation ([PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360)), accessible learning-path progress ([PR #362](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/362)), and contextual task empty states ([PR #363](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/363)) are merged. Post-merge main CI passed on `bd4267f069c0b469541ddc0e16303fa83a9bc597`: [tests and Windows storage regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408060), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408011), and [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408061). Target-host, live-model, manual accessibility, staging/rollback, and independent security acceptance remain open.
+Main status last reconciled on 2026-10-20 at `379a65610de007e33affe353b745e8f2d258fe17`; proposed repository-level hardening is tracked separately in [PR #369](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/369). Task dashboard summary/search ([PR #356](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/356)), safe bulk operations ([PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357)), semantic task status styling ([PR #358](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/358)), current-section navigation ([PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360)), accessible learning-path progress ([PR #362](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/362)), and contextual task empty states ([PR #363](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/363)) are merged. Post-merge main CI passed on `bd4267f069c0b469541ddc0e16303fa83a9bc597`: [tests and Windows storage regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408060), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408011), and [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408061). Target-host, live-model, manual accessibility, staging/rollback, and independent security acceptance remain open.
 
 ## Current status
 
@@ -77,9 +77,9 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 
 ## Automated acceptance hardening (2026-10-20)
 
-- CI now treats eager module-time import cycles as a failure rather than a non-blocking report.
-- A fresh-store regression test verifies both SQLite stores have migration history, integrity and foreign-key checks pass, consent defaults remain disabled, and learning/task/self-improvement content tables start empty.
-- This is repository-level evidence only. It does not replace the excluded target-host clean-start rehearsal, live model review, operational recovery/restore exercises, independent security review, or manual accessibility review.
+- PR #369 changes CI to treat eager module-time import cycles as a failure rather than a non-blocking report; merge status is separate from branch CI.
+- PR #369 adds a fresh-store regression test for migration history, SQLite integrity/foreign keys, disabled consent defaults, and empty learning/task/self-improvement content tables.
+- Repository-level checks do not replace the excluded target-host clean-start rehearsal, live model review, operational recovery/restore exercises, independent security review, or manual accessibility review.
 
 
 ### Repository documentation integrity (2026-10-20)
