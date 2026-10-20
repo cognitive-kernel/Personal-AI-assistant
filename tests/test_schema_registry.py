@@ -590,7 +590,7 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
         ).fetchone() == ("verified", "keep")
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(version,) for version in range(1, 16)]
+        ).fetchall() == [(version,) for version in range(1, 18)]
 
 
 def test_legacy_learning_migration_failure_preserves_original_database_bytes(tmp_path):
