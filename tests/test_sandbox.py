@@ -466,7 +466,7 @@ def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch)
     def fake_popen(args, **kwargs):
         captured["kwargs"] = kwargs
         captured["pipe"] = pipe
-        return FakeProcess(args, stdout=b"5\\n", stdin=pipe)
+        return FakeProcess(args, stdout=b"5\n", stdin=pipe)
 
     monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
     result = sandbox.run_python(
@@ -482,7 +482,7 @@ def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch)
     assert pipe.closed
 
 
-@pytest.mark.parametrize("stdin_text", ["x" * 4097, "bad\\x00input"])
+@pytest.mark.parametrize("stdin_text", ["x" * 4097, "bad\x00input"])
 def test_sandbox_rejects_invalid_or_oversized_stdin(stdin_text):
     with pytest.raises(ValueError, match="stdin_text"):
         sandbox.run_python(
