@@ -793,7 +793,8 @@
 - [x] `scripts/evaluate_experience_retrieval.py` روی دیتابیس SQLite موقت seed می‌کند؛ دیتابیس کاربر را تغییر نمی‌دهد و در صورت نبود embedding model از fallback واژگانی استفاده می‌کند.
 - [x] خروجی گزارش شامل Recall@5، MRR، ranking هر query، مدل embedding و تعداد بردارهای cache‌شده است؛ مستندات تأکید می‌کنند که benchmark مصنوعی، اثبات کیفیت عمومی نیست.
 - [x] runner اکنون `--lexical-only` دارد تا baseline واژگانی بدون وابستگی به مدل محلی قابل تکرار باشد؛ CI این runner را جداگانه اجرا می‌کند و گزارش Recall@5/MRR را در log چاپ می‌کند.
-- [x] CI روی head دقیق [PR #124](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/124) موفق بود: [test](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840705038/job/116779883719). [ ] benchmark با embedding واقعی هنوز در محیط محلی اجرا نشده و هیچ مقدار عملکرد hybrid واقعی ادعا نمی‌شود.
+- [x] CI روی head دقیق [PR #124](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/124) موفق بود: [test](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38840705038/job/116779883719).
+- [ ] benchmark با embedding واقعی هنوز در محیط محلی اجرا نشده و هیچ مقدار عملکرد hybrid واقعی ادعا نمی‌شود.
 - **گام بعدی:** ثبت baseline lexical واقعی از خروجی CI، اجرای benchmark با مدل embedding محلی و مقایسهٔ دو حالت؛ سپس گسترش dataset با نمونه‌های واقعیِ بازبینی‌شده.
 
 
