@@ -417,11 +417,18 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
                    WHERE id=?""",
                 (score, topic_status_sql, int(path_topic_id)),
             )
+    mastery_achieved = (
+        path_topic_id is not None
+        and scoring_method == "rubric_concept_coverage_v1"
+        and score >= MASTERY_SCORE_THRESHOLD
+    )
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
         "scoring_method": scoring_method,
         "question_results": question_results,
+        "mastery_achieved": mastery_achieved,
+        "mastery_threshold": MASTERY_SCORE_THRESHOLD,
         "independent_verification": False,
         "note": (
             "امتیاز rubric بر پوشش واژه‌ای مفاهیم ضروری و عبارت‌های پذیرفته‌شده تکیه دارد؛ "
