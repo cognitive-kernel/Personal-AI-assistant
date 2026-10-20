@@ -10,6 +10,7 @@ from . import curricula
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 from .learning_evidence_gate import evaluate_lesson_evidence
+from .assessment_rubric import normalize_rubric, score_answers
 
 class LearningError(RuntimeError):
     pass
@@ -147,7 +148,7 @@ def run_job(job_id: int) -> None:
     prompt = {
         "topic": topic,
         "source_text": source_text,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
+        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings), answer_rubric (array of exactly 3 objects). Each answer_rubric object must contain required_concepts with 2–4 objects; each concept object has concept (short, essential idea) and accepted_phrases (2–5 concise equivalent phrases, including common paraphrases). Make every answer key directly answer its corresponding question and ensure each rubric covers only essential concepts required by that answer. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
     }
     if lesson_review:
         prompt["learner_review"] = lesson_review
@@ -172,8 +173,13 @@ def run_job(job_id: int) -> None:
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
-        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        rubric = normalize_rubric(result.get("answer_rubric"), min(3, len(result["questions"])))
+        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "answer_rubric": rubric, "scoring_mode": "rubric_concept_coverage_v1" if rubric else "legacy_exact_match", "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
+        quality["assessment_rubric_valid"] = rubric is not None
+        if rubric is None:
+            quality["accepted"] = False
+            quality.setdefault("reasons", []).append("برای هر سؤال rubric ساخت‌یافته با مفاهیم ضروری و عبارت‌های هم‌معنا لازم است.")
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
@@ -191,6 +197,8 @@ def run_job(job_id: int) -> None:
                 "صرفاً نام ابزارها یا اجزا را فهرست نکن. "
                 "گزارش وضعیت، متن عذرخواهی، توضیح عمومی یا جمله‌های تکراری ننویس. "
                 "دقیقاً 3 سؤال مرتبط و برای هرکدام یک پاسخ مستقیم و توضیحی در answer_key بده. "
+                "کلید answer_rubric باید دقیقاً سه شیء داشته باشد؛ هر شیء required_concepts با 2 تا 4 مفهوم ضروری و هر مفهوم دارای concept و accepted_phrases شامل 2 تا 5 عبارت هم‌معنا باشد. "
+                "rubric باید پاسخ درست با عبارت‌بندی متفاوت را بپذیرد و مفهوم غیرضروری را مطالبه نکند. "
                 "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند. "
                 "از حروف سیریلیک و واژه‌های نامربوط استفاده نکن. "
                 "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. اگر source_text شامل URL است، انتهای lesson یک بخش منابع با URL دقیق منبع‌های استفاده‌شده اضافه کن؛ URL نساز یا تغییر نده. پاسخ فقط JSON باشد."
@@ -214,15 +222,22 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("questions"), list)
                 and isinstance(retry_result.get("answer_key"), list)
             ):
+                retry_rubric = normalize_rubric(retry_result.get("answer_rubric"), min(3, len(retry_result["questions"])))
                 retry_assessment = {
                     "learning_outcomes": retry_result.get("learning_outcomes", retry_result["questions"])[:3],
                     "questions": retry_result["questions"][:3],
                     "answer_key": retry_result["answer_key"][:3],
+                    "answer_rubric": retry_rubric,
+                    "scoring_mode": "rubric_concept_coverage_v1" if retry_rubric else "legacy_exact_match",
                     "independently_verified": False,
                 }
                 retry_quality = evaluate_learning_value(
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
+                retry_quality["assessment_rubric_valid"] = retry_rubric is not None
+                if retry_rubric is None:
+                    retry_quality["accepted"] = False
+                    retry_quality.setdefault("reasons", []).append("برای هر سؤال rubric ساخت‌یافته با مفاهیم ضروری و عبارت‌های هم‌معنا لازم است.")
                 retry_quality["user_provided_source_available"] = user_provided_source_available
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
@@ -365,22 +380,38 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         answer_key = assessment.get("answer_key", [])
         if len(answers) != len(questions) or len(answer_key) != len(questions):
             raise ValueError("Answer count must match the assessment question count.")
-        normalized_key = [_normalize_answer(str(item)) for item in answer_key]
-        normalized_answers = [_normalize_answer(item) for item in answers]
-        correct_count = sum(1 for answer, expected in zip(normalized_answers, normalized_key) if answer and answer == expected)
-        score = round(100 * correct_count / len(questions), 2) if questions else 0.0
+        rubric = normalize_rubric(assessment.get("answer_rubric"), len(questions))
+        if rubric is not None:
+            scored = score_answers(answers, rubric)
+            score = float(scored["score"])
+            correct_count = int(scored["correct_count"])
+            scoring_method = str(scored["scoring_method"])
+            question_results = scored["question_results"]
+        else:
+            normalized_key = [_normalize_answer(str(item)) for item in answer_key]
+            normalized_answers = [_normalize_answer(item) for item in answers]
+            correct_count = sum(1 for answer, expected in zip(normalized_answers, normalized_key) if answer and answer == expected)
+            score = round(100 * correct_count / len(questions), 2) if questions else 0.0
+            scoring_method = "normalized_exact_match"
+            question_results = []
         cursor = conn.execute(
             """INSERT INTO assessment_attempts(job_id, answers_json, score, correct_count, question_count, scoring_method)
-               VALUES (?, ?, ?, ?, ?, 'normalized_exact_match')""",
-            (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions)),
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions), scoring_method),
         )
         attempt_id = int(cursor.lastrowid)
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
-        "scoring_method": "normalized_exact_match",
+        "scoring_method": scoring_method,
+        "question_results": question_results,
         "independent_verification": False,
-        "note": "نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و تأیید علمی یا فهم معنایی را اثبات نمی‌کند.",
+        "note": (
+            "امتیاز rubric بر پوشش واژه‌ای مفاهیم ضروری و عبارت‌های پذیرفته‌شده تکیه دارد؛ "
+            "پاسخ‌های هم‌معنا را بهتر از تطبیق دقیق می‌سنجد، اما اثبات معنایی مستقل یا تسلط قطعی نیست."
+            if scoring_method == "rubric_concept_coverage_v1"
+            else "نمرهٔ تلاش قدیمی با تطبیق متنی دقیق محاسبه شد و فهم معنایی را اثبات نمی‌کند."
+        ),
     }
 
 def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, takeaway: str = "", issues: str = "") -> dict[str, Any]:
