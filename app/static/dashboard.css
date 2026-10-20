@@ -468,3 +468,34 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 @media (prefers-reduced-motion: reduce) {
   .path-progress-bar::-webkit-progress-value { transition: none; }
 }
+
+
+/* Task queue empty states distinguish a truly empty queue from zero search matches. */
+.task-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 7px;
+  margin-block: 12px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px dashed #b8c4d6;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--surface), var(--surface-muted));
+  color: var(--text);
+}
+.task-empty-state[hidden] { display: none !important; }
+.task-empty-state h3 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.task-empty-state p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+.task-empty-state .task-empty-clear { margin-block-start: 4px; }
+.task-empty-state .task-empty-clear:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}

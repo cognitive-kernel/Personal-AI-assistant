@@ -1981,6 +1981,25 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - **ناوبری داشبورد:** [PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360) ادغام شد. CI دقیق روی commit `098854d7d447318c107b98c42c0ebd37f5de68a5` سبز بود. در جریان اعتبارسنجی بعدی، وابستگی الگوریتم ناوبری به ترتیب لینک‌ها کشف و در PR #362 اصلاح شد.
 - **پیشرفت مسیرهای یادگیری:** [PR #362](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/362) شامل progress bar بومی و قابل‌دسترس، درصد محاسبه‌شده از شمارش سرفصل‌ها، CSS واکنش‌گرا و browser E2E است. مقدار ناسازگار API دیگر درصد نمایشی را تعیین نمی‌کند.
-- **شواهد کد:** روی code head `83bee038ab9af43f89bcadd4809bd3e210a84b01` موفقیت ثبت شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284712)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284798)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284734). تغییرات مستندات این گزارش و تیک‌ها پس از این code head اضافه شده‌اند؛ CI نهایی PR پیش از ادغام باید روی head مستندات هم موفق باشد.
+- **شواهد کد و ادغام:** روی code head `83bee038ab9af43f89bcadd4809bd3e210a84b01`، [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284712)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284798) و [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284734) موفق شدند. PR #362 در `da77bab5647b47359fb8bd9eaa2ddc026de61be2` ادغام شد؛ CI پس از ادغام main نیز سبز بود: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367620382)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367620162)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367620125).
 - **تست محلی:** اجرا نشده است؛ CI خودکار با تست محلی یا پذیرش میزبان واقعی یکسان فرض نشده است.
 - **موارد عمداً باز:** baseline و migration روی Windows واقعی، ارزیابی مدل زنده و داوری انسانی، benchmark/soak و fault injection روی میزبان هدف، restore/rollback در staging، مرور دستی صفحه‌کلید/صفحه‌خوان و کنتراست، و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant). همچنین quota/provider runtime و remote provisioning بدون گیت رضایت/امنیت فعال نشده‌اند.
+
+
+## 171 — حالت‌های خالی و بازیابی فیلتر در داشبورد وظایف (2026-10-20)
+
+- **هدف نقشهٔ راه:** حذف ابهام بین صف واقعاً خالی و جست‌وجویی که نتیجه ندارد؛ بهبود تجربهٔ کاربر بدون endpoint جدید یا تغییر قرارداد API.
+- **پیاده‌سازی:** وضعیت خالی به‌صورت یک جزء قابل‌دسترس و پویا در داشبورد ساخته می‌شود. صف بدون وظیفه پیام راهنما دارد؛ نتیجهٔ صفر ناشی از جست‌وجو/فیلتر، پیام جداگانه و دکمهٔ پاک‌کردن فیلترها دارد.
+- **ایمنی و UI:** متن‌های پویا با `textContent` درج می‌شوند؛ دادهٔ task یا payload وارد HTML نمی‌شود. چیدمان با CSS محلی واکنش‌گرا و focus قابل مشاهده است. صفحه‌بندی و فیلتر سمت سرور حفظ می‌شوند.
+- **آزمون افزوده‌شده:** browser E2E حالت عدم تطابق جست‌وجو، پاک‌کردن فیلترها و صف واقعاً خالی را پوشش می‌دهد.
+- **وضعیت:** [x] کد و آزمون روی code head `134168220519480a480a60ebafff2bb60dba7f85` با CI دقیق تأیید شدند: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001558)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001660)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001638). تست محلی اجرا نشده است.
+- **گیت‌های باقی‌مانده:** مرور دستی صفحه‌کلید/صفحه‌خوان، بررسی کنتراست و usability روی میزبان هدف.
+
+
+## 172 — گزارش تکمیل حالت‌های خالی داشبورد وظایف (2026-10-20)
+
+- **پیاده‌سازی:** صف خالی، فیلتر بدون نتیجه و بازیابی با پاک‌کردن فیلترها از هم تفکیک شدند؛ متن‌های پویا با `textContent` ساخته می‌شوند و قرارداد API تغییر نکرد.
+- **آزمون:** browser E2E هم جست‌وجوی بدون نتیجه و بازگشت فهرست، هم صف واقعاً خالی را بررسی می‌کند. یک ایراد در خود تست (باقی‌ماندن عبارت جست‌وجو هنگام بررسی صف خالی) اصلاح شد؛ آزمون نهایی روی code head `134168220519480a480a60ebafff2bb60dba7f85` سبز است: [tests/Windows regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001558)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001660)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001638).
+- **تست محلی:** اجرا نشده؛ این مورد به‌عنوان تست محلی علامت نخورده است.
+- **وضعیت انتشار:** [PR #363](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/363) آمادهٔ ادغام است؛ CI روی head مستندات باید قبل از ادغام هم سبز بماند.
+- **گیت‌های باز:** مرور دستی کیبورد/صفحه‌خوان، کنتراست و usability روی میزبان هدف.

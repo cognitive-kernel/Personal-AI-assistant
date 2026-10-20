@@ -354,6 +354,44 @@ function updateTaskDashboard() {
   const text=document.createElement("span"); text.textContent=label;
   item.append(strong,text); summary.append(item);
  });
+
+ const statusFilter=el("task-status-filter")?.value||"";
+ let emptyState=container.querySelector(".task-empty-state");
+ if(!emptyState) {
+  emptyState=document.createElement("div");
+  emptyState.className="task-empty-state";
+  emptyState.setAttribute("role","status");
+  container.append(emptyState);
+ }
+ if(visible===0) {
+  emptyState.hidden=false;
+  emptyState.replaceChildren();
+  const hasFilters=Boolean(query||statusFilter);
+  const heading=document.createElement("h3");
+  heading.textContent=cards.length===0&&!hasFilters
+   ? "هنوز وظیفه‌ای ثبت نشده است."
+   : "هیچ وظیفه‌ای با فیلترهای فعلی پیدا نشد.";
+  const description=document.createElement("p");
+  description.textContent=cards.length===0&&!hasFilters
+   ? "پس از ثبت یک درخواست یا شروع یک فرایند، وضعیت آن در این بخش نمایش داده می‌شود."
+   : "عبارت جست‌وجو یا فیلتر وضعیت را تغییر دهید، یا فیلترها را پاک کنید.";
+  emptyState.append(heading,description);
+  if(hasFilters) {
+   const clearFilters=document.createElement("button");
+   clearFilters.type="button";
+   clearFilters.className="task-empty-clear";
+   clearFilters.textContent="پاک کردن فیلترها";
+   clearFilters.addEventListener("click",()=>{
+    el("task-search").value="";
+    el("task-status-filter").value="";
+    taskNextCursor=null;
+    refreshTasks();
+   });
+   emptyState.append(clearFilters);
+  }
+ } else {
+  emptyState.hidden=true;
+ }
  updateTaskBulkControls();
 }
 function updateTaskBulkControls() {
@@ -411,7 +449,6 @@ function renderTasks(tasks,{append=false}={}) {
  const container=el("tasks-container");
  if(!append) container.replaceChildren();
  if(!tasks.length && !append) {
-  appendText(container,"p","وظیفه‌ای برای نمایش وجود ندارد.","muted");
   updateTaskDashboard();
   return;
  }
