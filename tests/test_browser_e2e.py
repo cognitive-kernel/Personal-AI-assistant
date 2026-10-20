@@ -1212,7 +1212,7 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
             safeHttpsUrl("https://docs.example.org/guide"),
             safeHttpsUrl("https://trusted.example@attacker.example/guide"),
             safeHttpsUrl("https://user:secret@docs.example.org/guide"),
-            safeHttpsUrl("https:///missing-host"),
+            safeHttpsUrl("https://"),
             safeHttpsUrl("https://docs.example.org:invalid/guide"),
             safeHttpsUrl("http://docs.example.org/guide"),
         ]""") == [
