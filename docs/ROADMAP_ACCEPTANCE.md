@@ -62,9 +62,14 @@ The persistent section navigation now exposes exactly one current destination us
 
 ### Learning-path progress visualization (2026-10-20)
 
-The learning dashboard derives a bounded progress percentage from completed and total topics and renders a native HTML progress bar with an accessible name, value text, and localized completed/total caption. The percentage is derived from counts rather than trusting a possibly inconsistent stored percentage. Responsive styling uses local CSS only. Exact-head browser CI is pending; manual keyboard/screen-reader and target-host usability acceptance remain separate gates.
+The learning dashboard derives a bounded progress percentage from completed and total topics and renders a native HTML progress bar with an accessible name, value text, and localized completed/total caption. The percentage is derived from counts rather than trusting a possibly inconsistent stored percentage. Responsive styling uses local CSS only. Exact-head browser CI passed and the feature is merged into current `main` ([tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368788776), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368789105), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368788829)); manual keyboard/screen-reader and target-host usability acceptance remain separate gates.
 
 
 ### Task dashboard empty states (2026-10-20)
 
-The task queue now distinguishes a genuinely empty queue from zero matches caused by search/status filters. Filtered empty states expose a clear-filters action; text is created with textContent, no task payload is exposed, and the layout uses local responsive CSS. Browser E2E covers no-match recovery and the truly empty queue. Exact-head CI is pending; manual accessibility and target-host usability remain separate gates.
+The task queue now distinguishes a genuinely empty queue from zero matches caused by search/status filters. Filtered empty states expose a clear-filters action; text is created with textContent, no task payload is exposed, and the layout uses local responsive CSS. Browser E2E covers no-match recovery and the truly empty queue. Exact-head CI passed and the feature is merged into current `main` ([tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368788776), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368789105), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368788829)); manual accessibility and target-host usability remain separate gates.
+
+
+### Dashboard theme preference (2026-10-20)
+
+A repository change is proposed in [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365): the dashboard can follow the OS dark preference, lets users switch themes, and persists an explicit choice locally. The change has browser E2E coverage for state switching and reload persistence. It remains pending until exact-head CI passes and the PR is merged. This does not close manual contrast, keyboard/screen-reader, or target-host acceptance.
