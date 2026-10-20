@@ -22,7 +22,7 @@ python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target
 - Read-only health of the configured settings, learning, and cloud-resource SQLite stores: integrity, foreign-key violations, migration history, schema fingerprint, and expected schema version.
 - Local-only network configuration: the application bind must be a loopback IP literal, and the effective Ollama endpoint must satisfy the same loopback-only URL policy as the client. The report records only classifications, never the configured host or URL.
 - When `--run-tests` is supplied, the full pytest suite's exit code and JUnit counts.
-- When `--run-performance-benchmark` is supplied, a disposable SQLite task-queue benchmark records enqueue and claim/complete throughput, database size, and integrity on this exact host. It uses temporary databases and does not benchmark or mutate the configured application stores. Use `--benchmark-tasks` to set the bounded workload.
+- When `--run-performance-benchmark` is supplied, a disposable SQLite task-queue benchmark records enqueue and claim/complete throughput, database size, and integrity on this exact host. It uses temporary databases and does not benchmark or mutate the configured application stores. Use `--benchmark-tasks` to set the bounded workload and `--min-queue-tps` to set the minimum claim/complete throughput; the default acceptance floor is 10 tasks/second. A benchmark that completes correctly but misses this floor fails the baseline.
 
 ## Safety and interpretation
 
