@@ -2100,3 +2100,10 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - Added a bounded repair attempt and localized safe fallback when the repair still fails the language check.
 - Rechecked the answer after claim-review repair to prevent a post-review language regression from reaching the user.
 - Added regression tests for direct chat and claim-repair drift. Live Ollama behavior and human-adjudicated bilingual quality remain unverified.
+
+
+## 2026-10-20 — research citation URL hardening
+
+- Source excerpts passed to the model now require an unambiguous HTTPS URL authority, a hostname, no embedded user-info credentials, and a parseable port.
+- Added regression coverage for insecure schemes, missing hosts, malformed ports, and misleading/credential-bearing authorities.
+- This is a narrow citation-integrity check, not an external URL reputation check or substitute for the independent security review.
