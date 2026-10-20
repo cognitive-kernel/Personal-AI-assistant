@@ -292,7 +292,7 @@ def _run_local_model_benchmark(runs: int, min_tokens_per_second: float, max_late
     if not isinstance(report, dict):
         return {"status": "invalid_report", "return_code": result.returncode, "runs_requested": runs}
     return {
-        "status": report.get("status") if result.returncode == 0 else "failed",
+        "status": report.get("status") if report.get("status") != "passed" or result.returncode == 0 else "failed",
         "benchmark": report.get("benchmark"),
         "model": report.get("model"),
         "model_digest": report.get("model_digest"),
@@ -317,7 +317,7 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_pe
     model_performance = _run_local_model_benchmark(model_benchmark_runs, min_model_tps, max_model_latency_seconds) if run_model_benchmark else {"status": "not_run"}
     dirty = _git_value("status", "--porcelain")
     return {
-        "report_version": 2,
+        "report_version": 3,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "repository": {
             "commit": _git_value("rev-parse", "HEAD"),
