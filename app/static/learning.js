@@ -482,7 +482,7 @@ async function loadLearningPaths() {
     const references = document.createElement("div");
     references.className = "path-reference-links";
     const referenceHeading = document.createElement("p");
-    referenceHeading.textContent = "منابع پیشنهادی (پیوندها مرجع‌اند؛ متن آن‌ها خودکار دریافت یا راستی‌آزمایی نمی‌شود):";
+    referenceHeading.textContent = "منابع پیشنهادی: دریافت خودکار صفحات عمومی برای سرفصل‌های کاتالوگ تلاش می‌شود؛ متن دریافت‌شده به‌تنهایی تأیید علمی مستقل نیست و اگر شواهد کافی نباشد انتشار درس مسدود می‌شود.";
     references.append(referenceHeading);
     path.reference_urls.forEach(reference => {
      const link = document.createElement("a");
