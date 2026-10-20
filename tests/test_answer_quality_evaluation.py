@@ -271,3 +271,10 @@ def test_automated_acceptance_gate_fails_closed_on_missing_sources_and_unsupport
     assert report["failed_case_count"] == 1
     assert "at_least_one_retrieved_source" in report["failed_cases"][0]["failed_gates"]
     assert "claim_review_passed" in report["failed_cases"][0]["failed_gates"]
+
+
+def test_automated_acceptance_rejects_non_finite_latency_budget():
+    import pytest
+
+    with pytest.raises(ValueError, match="maximum_generation_seconds"):
+        evaluate_automated_acceptance([{"case_id": "x"}], maximum_generation_seconds=float("inf"))
