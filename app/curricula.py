@@ -333,3 +333,22 @@ def get_curriculum(slug: str) -> dict[str, Any] | None:
             "topics": topics,
             "levels": _learning_levels(topics),
             "prerequisites": list(item.get("prerequisites", []))}
+
+
+def get_reference_urls_for_topic(topic: str) -> list[dict[str, str]]:
+    """Return curated course references for an exact catalog topic, not arbitrary user text."""
+    normalized = " ".join(topic.casefold().split()) if isinstance(topic, str) else ""
+    if not normalized:
+        return []
+    for item in CURRICULA.values():
+        if any(" ".join(str(candidate).casefold().split()) == normalized for candidate in item["topics"]):
+            references = item.get("reference_urls", [])
+            return [
+                {"title": str(ref["title"])[:250], "url": str(ref["url"])}
+                for ref in references
+                if isinstance(ref, dict)
+                and isinstance(ref.get("title"), str)
+                and isinstance(ref.get("url"), str)
+                and ref["url"].startswith("https://")
+            ]
+    return []
