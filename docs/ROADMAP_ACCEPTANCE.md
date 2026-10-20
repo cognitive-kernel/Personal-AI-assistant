@@ -129,3 +129,11 @@ This is exact-head CI evidence only. PR #369 remains open and unmerged; it does 
 - [x] Record a distinct diagnostic when search links were parsed but all rejected by destination validation.
 - [x] Deterministic regression covers a parsed search-provider self-link rejected by external-destination policy.
 - [ ] Live search-provider reliability and relevance remain environment-dependent. The supplied run shows DuckDuckGo HTML challenge pages, low Bing/Google accepted-result counts, and 5 relevant documents among 18 fetched pages.
+## Learning system completion plan (2026-10-20)
+
+- Added [docs/LEARNING_SYSTEM_COMPLETION_PLAN.md](LEARNING_SYSTEM_COMPLETION_PLAN.md) as the engineering plan for systemic scientific-quality gates, calibrated learning assessment, bilingual AI regression fixtures, and hardware-aware operational acceptance.
+- The documented hardware baseline is Windows, Intel Core i5-12400, 32 GB RAM, Intel integrated graphics (reported 128 MB), Python 3.11+, and local Ollama with qwen2.5:7b as the documented default. This is a repository baseline, not a live measurement; the target-host report must confirm actual values.
+- The plan does not mark these capabilities as implemented. Provenance-backed claim checks, fail-closed source conflict handling, calibrated semantic assessment, score-to-prerequisite coupling, practical sandbox assessment, and live target-host performance evidence remain work items.
+- Proposed numeric thresholds are explicitly targets to calibrate against a versioned reference set, not measured results. No absolute factual correctness guarantee is claimed.
+- Acceptance must remain local-first and resource-bounded; no assumption of discrete GPU/VRAM, cloud API, or remote execution is permitted.
+
