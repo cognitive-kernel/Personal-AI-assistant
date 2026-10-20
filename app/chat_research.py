@@ -205,9 +205,9 @@ def _source_conflict_reason(message: str, review: dict[str, Any]) -> str:
                     urls.append(url[:1000])
     sources_note = (" منابع متعارض: " if re.search(r"[\u0600-\u06FF]", message) else " Conflicting sources: ")
     prefix = (
-        "منابع بازیابی‌شده دربارهٔ یک نکتهٔ مهم با هم تعارض دارند؛ این پاسخ قطعی نیست و به بررسی انسانی نیاز دارد."
+        "منابع بازیابی‌شده دربارهٔ یک نکتهٔ مهم تعارض دارند؛ پاسخ منتشرشده به‌عنوان نتیجهٔ تأییدشده پذیرفته نمی‌شود و به شواهد ماشینیِ بیشتر نیاز است."
         if re.search(r"[\u0600-\u06FF]", message)
-        else "Retrieved sources materially disagree; this answer is not conclusive and requires human review."
+        else "Retrieved sources materially disagree; this answer is not accepted as verified and requires additional machine-retrieved evidence."
     )
     return prefix + (sources_note + "، ".join(urls) if urls else "")
 
