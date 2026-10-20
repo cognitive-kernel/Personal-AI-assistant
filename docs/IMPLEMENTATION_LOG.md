@@ -2113,3 +2113,9 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - Reused a single `safeHttpsUrl` helper for cloud-discovery and experience-evidence links. Both views now reject non-HTTPS, hostless, malformed-port, and user-info-bearing URLs before creating clickable anchors.
 - Added browser E2E assertions for valid and deceptive/malformed URLs. The check protects link presentation; it is not a destination reputation check and does not replace the independent security review.
+
+
+## 2026-10-20 — exact-head validation for repository hardening
+
+- PR #369 head `e7ae4d5661d12b05b1a405a15d94574d17c0e411` passed the required tests including Windows storage regressions (run [#39384776230](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230)), Chromium browser E2E (run [#39384776350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350)), and dependency audit (run [#39384776221](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221)).
+- PR remains open and unmerged. CI does not satisfy target-host, live-model/human, operational recovery/restore, independent security, or manual accessibility acceptance.
