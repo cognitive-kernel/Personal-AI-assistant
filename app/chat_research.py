@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -112,7 +113,21 @@ def _source_payload(documents: list[web_sources.SourceDocument]) -> list[dict[st
     for document in documents[:3]:
         url = document.url.strip()
         text = document.text.strip()[:2500]
-        if url.startswith("https://") and len(text) >= 40:
+        try:
+            parsed_url = urlsplit(url)
+            # Citations must point to an unambiguous HTTPS authority. Reject
+            # user-info URLs such as https://trusted.example@evil.example,
+            # which can disguise the actual destination in rendered citations.
+            valid_url = (
+                parsed_url.scheme.casefold() == "https"
+                and bool(parsed_url.hostname)
+                and parsed_url.username is None
+                and parsed_url.password is None
+                and parsed_url.port != 0
+            )
+        except ValueError:
+            valid_url = False
+        if valid_url and len(text) >= 40:
             result.append({
                 "title": document.title.strip()[:250],
                 "url": url[:1000],
