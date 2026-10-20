@@ -46,10 +46,11 @@ def find_broken_links(root: Path) -> list[str]:
         if not any(part in excluded for part in path.relative_to(root).parts)
     )
     for source in markdown_files:
+        source_name = source.relative_to(root).as_posix()
         try:
             content = _without_fenced_code(source.read_text(encoding="utf-8"))
         except (OSError, UnicodeError) as exc:
-            errors.append(f"{source.relative_to(root)}: cannot read Markdown: {exc}")
+            errors.append(f"{source_name}: cannot read Markdown: {exc}")
             continue
         for match in _LINK.finditer(content):
             destination = match.group(1)
@@ -63,13 +64,13 @@ def find_broken_links(root: Path) -> list[str]:
                 target.relative_to(root)
             except ValueError:
                 errors.append(
-                    f"{source.relative_to(root)}: link escapes repository root: {destination}"
+                    f"{source_name}: link escapes repository root: {destination}"
                 )
                 continue
             if not target.exists():
                 line = content.count("\n", 0, match.start()) + 1
                 errors.append(
-                    f"{source.relative_to(root)}:{line}: missing target {destination}"
+                    f"{source_name}:{line}: missing target {destination}"
                 )
     return errors
 
