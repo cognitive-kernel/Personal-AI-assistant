@@ -36,7 +36,15 @@ async function waitForLearningJob(jobId, output) {
   output.textContent = "درس در حال تولید است… وضعیت: " + job.status + " (شناسه کار: " + jobId + ")";
   await learningDelay(1500);
  }
- throw new Error("پس از ۱۵ دقیقه انتظار، هنوز نتیجه نهایی دریافت نشد؛ کار ممکن است در پس‌زمینه ادامه داشته باشد. شناسه کار: " + jobId);
+ const latest = await learningApi("/api/learning/jobs/" + jobId);
+ const task = latest.background_task || {};
+ const attempts = Number.isInteger(task.attempts) && Number.isInteger(task.max_attempts)
+  ? "؛ تلاش " + task.attempts + " از " + task.max_attempts : "";
+ const phase = task.phase ? "؛ مرحله: " + task.phase : "";
+ const taskError = task.error ? "؛ خطای صف: " + task.error : "";
+ throw new Error("پس از ۱۵ دقیقه نتیجه نهایی دریافت نشد. وضعیت درس: " + latest.status +
+  "؛ وضعیت وظیفه پس‌زمینه: " + (task.status || "نامشخص") + attempts + phase + taskError +
+  "؛ شناسه کار: " + jobId + ". برای تشخیص ادامه یا توقف، وضعیت بالا و گزارش سرور را بررسی کنید.");
 }
 
 async function refreshLearningRecommendations() {
