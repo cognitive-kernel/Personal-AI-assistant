@@ -540,3 +540,13 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 :root[data-theme="dark"] .path-progress-bar,:root[data-theme="dark"] .path-progress-bar::-webkit-progress-bar { background:#26364c; }
 :root[data-theme="dark"] .cloud-evidence { color:#dce7ff; background:#1b2941; }
 :root[data-theme="dark"] .storage-alert { color:#ffedd5; background:#38261a; border-color:#8a532b; }
+
+:root[data-theme="dark"] label { color:#d2deef; }
+:root[data-theme="dark"] .muted,
+:root[data-theme="dark"] .path-progress-caption,
+:root[data-theme="dark"] .path-progress-meta,
+:root[data-theme="dark"] .task-selected-count { color:#b4c1d4; }
+:root[data-theme="dark"] a { color:#a6c5ff; }
+:root[data-theme="dark"] .task-select-label { color:#b4c1d4; }
+:root[data-theme="dark"] .task-empty-state p { color:#b4c1d4; }
+:root[data-theme="dark"] .path-progress-bar { color:#a6baff; accent-color:#a6baff; }
