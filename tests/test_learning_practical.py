@@ -37,9 +37,11 @@ def _valid_report(passed=4):
 def test_practical_catalog_hides_grading_cases():
     exercises = learning_practical.list_exercises()
 
-    assert len(exercises) == 1
-    assert exercises[0]["id"] == learning_practical.EXERCISE_ID
-    assert "topic_keywords" not in exercises[0]
+    assert len(exercises) == 2
+    assert {item["id"] for item in exercises} == {
+        "python-json-sum-v1", "python-json-unique-v1"
+    }
+    assert all("topic_keywords" not in item for item in exercises)
     assert "expected" not in json.dumps(exercises)
 
 
