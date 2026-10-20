@@ -725,36 +725,31 @@ def sync_curriculum_path(path_id: int) -> dict[str, Any]:
 def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: float | None = None) -> dict[str, Any]:
     if status not in {"pending", "in_progress", "completed"}:
         raise ValueError("Status must be pending, in_progress, or completed.")
-    if latest_score is not None and not 0 <= latest_score <= 100:
-        raise ValueError("Score must be between 0 and 100.")
+    if latest_score is not None:
+        raise ValueError("Scores can only be recorded by submitting an assessment; manual score overrides are disabled.")
     with learning_connection() as conn:
         exists = conn.execute(
-            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?", (topic_id, path_id)
+            "SELECT status, latest_score, latest_score_kind FROM learning_path_topics WHERE id=? AND path_id=?",
+            (topic_id, path_id),
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
-        current_topic = conn.execute(
-            "SELECT latest_score, latest_score_kind FROM learning_path_topics WHERE id=? AND path_id=?",
-            (topic_id, path_id),
-        ).fetchone()
+        if status == "completed" and exists["status"] != "completed":
+            raise ValueError("A topic can only be completed automatically by a valid rubric assessment scoring at least 80%.")
         if status == "completed" and not (
-            current_topic["latest_score_kind"] == "learner_rubric"
-            and current_topic["latest_score"] is not None
-            and float(current_topic["latest_score"]) >= 80.0
+            exists["latest_score_kind"] == "learner_rubric"
+            and exists["latest_score"] is not None
+            and float(exists["latest_score"]) >= 80.0
         ):
-            raise ValueError("A topic can be completed only after a valid rubric assessment scores at least 80%.")
+            raise ValueError("A topic can remain completed only after a valid rubric assessment scores at least 80%.")
         conn.execute(
             """UPDATE learning_path_topics
-               SET status=?,
-                   latest_score=COALESCE(?, latest_score),
-                   latest_score_kind=CASE WHEN ? IS NOT NULL THEN 'manual_override' ELSE latest_score_kind END,
-                   updated_at=CURRENT_TIMESTAMP
+               SET status=?, updated_at=CURRENT_TIMESTAMP
                WHERE id=? AND path_id=?""",
-            (status, latest_score, latest_score, topic_id, path_id),
+            (status, topic_id, path_id),
         )
         conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
     return get_learning_path(path_id)
-
 
 def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
     """Return bounded feedback only from the newest completed lesson for this exact topic."""
