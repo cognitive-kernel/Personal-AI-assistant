@@ -708,11 +708,11 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
             ).fetchone()
             if (
                 latest_attempt is None
-                or latest_attempt["scoring_method"] != "rubric_concept_coverage_v1"
+                or latest_attempt["scoring_method"] not in {"rubric_concept_coverage_v1", "sandbox_practical_v1"}
                 or float(latest_attempt["score"]) < MASTERY_SCORE_THRESHOLD
             ):
                 raise ValueError(
-                    f"Topic completion requires a latest rubric-based assessment score of at least {MASTERY_SCORE_THRESHOLD:.0f}."
+                    f"Topic completion requires a latest rubric or sandbox-practical assessment score of at least {MASTERY_SCORE_THRESHOLD:.0f}."
                 )
             latest_score = float(latest_attempt["score"])
         conn.execute(
