@@ -150,7 +150,7 @@ def run_job(job_id: int) -> None:
     prompt = {
         "topic": topic,
         "source_text": source_text,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings), answer_rubric (array of exactly 3 objects). Each answer_rubric object must contain required_concepts with 2–4 objects; each concept object has concept (short, essential idea) and accepted_phrases (2–5 concise equivalent phrases, including common paraphrases). Make every answer key directly answer its corresponding question and ensure each rubric covers only essential concepts required by that answer. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
+        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings), answer_rubric (array of exactly 3 objects). Each answer_rubric object must contain required_concepts with 2–4 objects; each concept object has concept (short, essential idea) and accepted_phrases (2–5 concise equivalent phrases, including common paraphrases). The three questions must be ordered as: recall, explain a cause/effect, then apply the lesson in a novel scenario (the third question must require transfer to a new situation, not repeat lesson wording). Make every answer key directly answer its corresponding question and ensure each rubric covers only essential concepts required by that answer. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
     }
     if lesson_review:
         prompt["learner_review"] = lesson_review
@@ -176,9 +176,14 @@ def run_job(job_id: int) -> None:
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
         rubric = normalize_rubric(result.get("answer_rubric"), min(3, len(result["questions"])))
-        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "answer_rubric": rubric, "scoring_mode": "rubric_concept_coverage_v1" if rubric else "legacy_exact_match", "independently_verified": False}
+        transfer_question_valid = len(result["questions"]) >= 3 and _has_transfer_question(str(result["questions"][2]))
+        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "question_types": ["recall", "explanation", "transfer"], "answer_key": result["answer_key"][:3], "answer_rubric": rubric, "scoring_mode": "rubric_concept_coverage_v1" if rubric else "legacy_exact_match", "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
         quality["assessment_rubric_valid"] = rubric is not None
+        quality["transfer_question_valid"] = transfer_question_valid
+        if not transfer_question_valid:
+            quality["accepted"] = False
+            quality.setdefault("reasons", []).append("سؤال سوم باید یک سناریوی تازه برای کاربرد/انتقال آموخته‌ها باشد، نه سؤال حفظی.")
         if rubric is None:
             quality["accepted"] = False
             quality.setdefault("reasons", []).append("برای هر سؤال rubric ساخت‌یافته با مفاهیم ضروری و عبارت‌های هم‌معنا لازم است.")
@@ -201,6 +206,7 @@ def run_job(job_id: int) -> None:
                 "دقیقاً 3 سؤال مرتبط و برای هرکدام یک پاسخ مستقیم و توضیحی در answer_key بده. "
                 "کلید answer_rubric باید دقیقاً سه شیء داشته باشد؛ هر شیء required_concepts با 2 تا 4 مفهوم ضروری و هر مفهوم دارای concept و accepted_phrases شامل 2 تا 5 عبارت هم‌معنا باشد. "
                 "rubric باید پاسخ درست با عبارت‌بندی متفاوت را بپذیرد و مفهوم غیرضروری را مطالبه نکند. "
+                "سؤال اول بازیابی، سؤال دوم توضیح علت‌ومعلول، و سؤال سوم سناریوی تازه برای انتقال آموخته‌ها باشد؛ سؤال سوم نباید صرفاً متن درس را تکرار کند. "
                 "سه هدف یادگیری قابل سنجش هم با کلید learning_outcomes و دقیقاً سه رشته اضافه کن؛ هدف‌ها باید مهارت یا مفهوم مشخص همین درس باشند. "
                 "از حروف سیریلیک و واژه‌های نامربوط استفاده نکن. "
                 "اگر منبعی داده نشده، روشن بگو محتوا بر پایه دانش مدل است و نیاز به بررسی بیرونی دارد. اگر source_text شامل URL است، انتهای lesson یک بخش منابع با URL دقیق منبع‌های استفاده‌شده اضافه کن؛ URL نساز یا تغییر نده. پاسخ فقط JSON باشد."
@@ -225,9 +231,11 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("answer_key"), list)
             ):
                 retry_rubric = normalize_rubric(retry_result.get("answer_rubric"), min(3, len(retry_result["questions"])))
+                retry_transfer_valid = len(retry_result["questions"]) >= 3 and _has_transfer_question(str(retry_result["questions"][2]))
                 retry_assessment = {
                     "learning_outcomes": retry_result.get("learning_outcomes", retry_result["questions"])[:3],
                     "questions": retry_result["questions"][:3],
+                    "question_types": ["recall", "explanation", "transfer"],
                     "answer_key": retry_result["answer_key"][:3],
                     "answer_rubric": retry_rubric,
                     "scoring_mode": "rubric_concept_coverage_v1" if retry_rubric else "legacy_exact_match",
@@ -237,6 +245,10 @@ def run_job(job_id: int) -> None:
                     retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
                 )
                 retry_quality["assessment_rubric_valid"] = retry_rubric is not None
+                retry_quality["transfer_question_valid"] = retry_transfer_valid
+                if not retry_transfer_valid:
+                    retry_quality["accepted"] = False
+                    retry_quality.setdefault("reasons", []).append("سؤال سوم باید یک سناریوی تازه برای کاربرد/انتقال آموخته‌ها باشد، نه سؤال حفظی.")
                 if retry_rubric is None:
                     retry_quality["accepted"] = False
                     retry_quality.setdefault("reasons", []).append("برای هر سؤال rubric ساخت‌یافته با مفاهیم ضروری و عبارت‌های هم‌معنا لازم است.")
@@ -360,6 +372,18 @@ def get_job(job_id: int) -> dict[str, Any]:
             "SELECT evidence_type, source_ref, content_hash, note, created_at FROM learning_evidence WHERE job_id=? ORDER BY id", (job_id,)
         ).fetchall()]
         return result
+
+
+def _has_transfer_question(value: str) -> bool:
+    """Conservative language-marker check for an application/transfer prompt."""
+    normalized = _normalize_answer(value)
+    markers = (
+        "فرض کنید", "اگر", "در سناریو", "در این وضعیت", "در عمل", "طراحی کنید",
+        "به کار ببرید", "چه اقدامی", "چه تغییری", "چگونه در", "چطور می توان",
+        "what if", "suppose", "scenario", "in practice", "how would", "how could",
+        "apply", "design", "debug",
+    )
+    return any(_normalize_answer(marker) in normalized for marker in markers)
 
 
 def _normalize_answer(value: str) -> str:
