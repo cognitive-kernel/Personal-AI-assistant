@@ -427,7 +427,13 @@ function renderTasks(tasks,{append=false}={}) {
   selectInput.addEventListener("change",updateTaskDashboard);
   selectLabel.append(selectInput,document.createTextNode(" انتخاب")); card.append(selectLabel);
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
-  appendText(card,"p","وضعیت: "+task.status+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status");
+  const statusLine=appendText(card,"p","وضعیت: "+task.status+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status task-status-line");
+  const taskStatusClass={
+   queued:"is-queued",running:"is-running",pause_requested:"is-pause-requested",paused:"is-paused",
+   cancel_requested:"is-cancel-requested",cancelled:"is-cancelled",succeeded:"is-succeeded",failed:"is-failed"
+  }[task.status];
+  if(taskStatusClass) statusLine.classList.add(taskStatusClass);
+  statusLine.dataset.status=String(task.status||"");
   if(task.created_at) appendText(card,"p","ایجاد: "+task.created_at,"muted");
   if(task.error) appendText(card,"p","خطا: "+task.error);
   if(task.result) {
