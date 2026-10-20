@@ -1724,8 +1724,8 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
   const marker=Math.min(Math.max(window.innerHeight*0.28,120),240);
   let current=sections[0];
   for(const section of sections){
+   // Navigation order can differ from document order; inspect every section.
    if(section.getBoundingClientRect().top<=marker) current=section;
-   else break;
   }
   const currentHash="#"+current.id;
   for(const link of links){
