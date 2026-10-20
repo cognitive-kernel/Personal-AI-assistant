@@ -338,7 +338,7 @@ def cleanup_orphaned_containers(
                     "--format={{json .Config.Labels}}|{{.State.Status}}|{{.Created}}",
                     container_id,
                 ],
-                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL, capture_output=True, text=True, shell=False,
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, shell=False,
                 close_fds=True, env=env, timeout=5, check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -539,7 +539,7 @@ def run_python(
         try:
             process = subprocess.Popen(
                 command,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
