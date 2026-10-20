@@ -101,3 +101,13 @@ def test_learning_ui_explains_scientific_gate_is_not_independent_proof():
     assert "learning-scientific-status" in page
     assert "تأیید علمی مستقل محسوب نمی‌شود" in page
     assert "وضعیت علمی: تأیید نشده" in page
+
+
+def test_rubric_does_not_credit_an_explicitly_negated_concept():
+    result = score_with_rubric(
+        ["not faster lookup; maintenance cost.", "no isolation level; no dirty read"],
+        _rubric(),
+    )
+    assert result["per_question"][0]["criteria"][0]["matched"] is False
+    assert result["per_question"][0]["criteria"][1]["matched"] is True
+    assert result["per_question"][1]["criteria"][0]["matched"] is False
