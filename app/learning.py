@@ -3,7 +3,7 @@ import hashlib
 import json
 import re
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from .db import learning_connection, get_settings
 from .ollama import _request
 from . import curricula
@@ -24,11 +24,28 @@ def create_job(
     source_text: str | None = None,
     path_topic_id: int | None = None,
     lesson_review: dict[str, Any] | None = None,
+    source_url: str | None = None,
 ) -> dict[str, Any]:
     topic = topic.strip()
     if not topic or len(topic) > 300:
         raise ValueError("Topic must contain 1–300 characters.")
     source_text = (source_text or "").strip()
+    source_url = (source_url or "").strip()
+    if source_url:
+        if len(source_url) > 2048:
+            raise ValueError("Source URL is too long.")
+        try:
+            parsed_source_url = urlsplit(source_url)
+        except ValueError as exc:
+            raise ValueError("Source URL is invalid.") from exc
+        if (
+            parsed_source_url.scheme != "https"
+            or not parsed_source_url.hostname
+            or parsed_source_url.username
+            or parsed_source_url.password
+            or parsed_source_url.fragment
+        ):
+            raise ValueError("Source URL must be a public HTTPS URL without credentials or fragments.")
     source_limit = max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))
     if len(source_text) > source_limit:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
@@ -50,6 +67,10 @@ def create_job(
             conn.execute("INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)", (job_id, source_text))
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 VALUES (?, 'user_text', 'user-provided', ?, 'متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است.')""", (job_id, digest))
+        if source_url:
+            conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                VALUES (?, 'requested_url', ?, NULL, ?)""",
+                (job_id, source_url, "کاربر این URL را به‌عنوان منبع صریح معرفی کرده است؛ دریافت و اعتبارسنجی هنوز انجام نشده است."))
     return get_job(job_id)
 
 def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
@@ -144,8 +165,43 @@ def run_job(job_id: int) -> None:
             lesson_review = None
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
+        requested_url_row = conn.execute(
+            "SELECT source_ref FROM learning_evidence WHERE job_id=? AND evidence_type='requested_url' ORDER BY id DESC LIMIT 1",
+            (job_id,),
+        ).fetchone()
+        requested_url = str(requested_url_row["source_ref"]) if requested_url_row else ""
     user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
-    if not source_text and source_kind == "model_knowledge_no_external_source":
+    explicit_source_fetch_failed = False
+    if requested_url:
+        try:
+            from .web_sources import fetch_public_document
+            document = fetch_public_document(requested_url, topic, max_chars=max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000)))))
+            source_chunk = f"Source title: {document.title}\\nSource URL: {document.url}\\nContent:\\n{document.text}"
+            source_text = (source_text + "\\n\\n" + source_chunk).strip() if source_text else source_chunk
+            source_kind = "web_retrieved"
+            digest = hashlib.sha256(document.text.encode("utf-8")).hexdigest()
+            with learning_connection() as conn:
+                conn.execute(
+                    "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?) ON CONFLICT(job_id) DO UPDATE SET content=excluded.content",
+                    (job_id, source_text[:max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))]),
+                )
+                conn.execute("UPDATE learning_jobs SET source_kind='web_retrieved', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
+                conn.execute(
+                    "INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'web_page', ?, ?, ?)",
+                    (job_id, document.url, digest, f"Explicit user-provided public source fetched; title: {document.title}. Factual claims still require validation."),
+                )
+                conn.execute(
+                    "UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='requested_url' AND source_ref=?",
+                    ("URL fetched successfully; page content stored with a SHA-256 digest. This does not prove scientific correctness.", job_id, requested_url),
+                )
+        except Exception as exc:
+            explicit_source_fetch_failed = True
+            with learning_connection() as conn:
+                conn.execute(
+                    "UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='requested_url' AND source_ref=?",
+                    (f"Explicit URL fetch failed ({type(exc).__name__}); no content from this URL was used.", job_id, requested_url),
+                )
+    if not source_text and not requested_url and source_kind == "model_knowledge_no_external_source":
         source_text, source_kind = _discover_and_store_sources(job_id, topic)
     prompt = {
         "topic": topic,
@@ -545,8 +601,13 @@ def _cancel_learning_job_task(job_id: int) -> dict[str, Any] | None:
     return cancel_learning_task(job_id)
 
 
-def submit_job(topic: str, source_text: str | None = None, path_topic_id: int | None = None) -> dict[str, Any]:
-    job = create_job(topic, source_text, path_topic_id)
+def submit_job(
+    topic: str,
+    source_text: str | None = None,
+    path_topic_id: int | None = None,
+    source_url: str | None = None,
+) -> dict[str, Any]:
+    job = create_job(topic, source_text, path_topic_id, source_url=source_url)
     task = _enqueue_learning_job(int(job["id"]))
     job["task_id"] = task["id"]
     return job
