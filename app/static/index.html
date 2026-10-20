@@ -48,8 +48,9 @@
 <div class="row">
 <section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
-<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<input id="source-url" type="url" maxlength="2048" placeholder="نشانی HTTPS منبع (اختیاری)" aria-label="نشانی HTTPS منبع (اختیاری)">
+<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت واردکردن نشانی، متن صفحه هم دریافت می‌شود" aria-label="متن منبع اختیاری؛ در صورت واردکردن نشانی، متن صفحه هم دریافت می‌شود"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
+<p class="muted">نشانی HTTPS عمومی را می‌توان مستقیماً وارد کرد. دریافت صفحه و ثبت منشأ خودکار است؛ این کار به‌تنهایی صحت علمی را ثابت نمی‌کند. درس کوتاه یا ناقص باید ابتدا برای اصلاح/ارزیابی نگه داشته شود، نه اینکه با تأیید علمی اشتباه گرفته شود.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -736,7 +737,7 @@ el("learning-form").addEventListener("submit", async event => {
  event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
  el("assessment-form-container").replaceChildren();
  try {
-  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
+  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null,source_url:el("source-url").value.trim()||null})});
   const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
