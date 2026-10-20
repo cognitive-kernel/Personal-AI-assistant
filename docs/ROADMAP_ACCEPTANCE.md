@@ -80,3 +80,10 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 - CI now treats eager module-time import cycles as a failure rather than a non-blocking report.
 - A fresh-store regression test verifies both SQLite stores have migration history, integrity and foreign-key checks pass, consent defaults remain disabled, and learning/task/self-improvement content tables start empty.
 - This is repository-level evidence only. It does not replace the excluded target-host clean-start rehearsal, live model review, operational recovery/restore exercises, independent security review, or manual accessibility review.
+
+
+### Repository documentation integrity (2026-10-20)
+
+- Added `scripts/check_markdown_links.py` to validate repository-relative Markdown targets without network access.
+- Unit tests cover missing targets with line numbers, external URLs, fenced-code examples, encoded spaces, anchor-only links, and attempts to escape the repository root.
+- The required test workflow now runs this check. Exact-head CI is the acceptance evidence; external URL availability, semantic correctness, and manual documentation review are not inferred from this static check.
