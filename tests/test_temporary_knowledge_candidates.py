@@ -17,7 +17,7 @@ def _setup(tmp_path, monkeypatch):
         candidate_id = int(connection.execute(
             """INSERT INTO temporary_knowledge_candidates(
                    job_id, topic, content, source_kind, source_urls_json,
-                   source_sha256, quality_report_json
+                   content_sha256, quality_report_json
                ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (job["id"], job["topic"], lesson, "user_provided_text",
              json.dumps([]), digest, json.dumps({"accepted": True})),
