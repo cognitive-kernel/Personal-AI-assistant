@@ -91,7 +91,7 @@ function addRegenerateButton(output, path, topic) {
  output.append(button);
 }
 
-async function addPracticalExerciseForm(output, job) {
+async function addPracticalExerciseForm(output, job, path, topic) {
  let exercise;
  try {
   const catalog = await learningApi("/api/learning/practical/exercises?job_id=" + encodeURIComponent(job.id));
@@ -109,7 +109,7 @@ async function addPracticalExerciseForm(output, job) {
  description.textContent = "این تمرین برنامه را در Docker sandbox بدون شبکه اجرا می‌کند و نتیجه را با آزمون‌های ورودی/خروجی نسخه‌بندی‌شده می‌سنجد. برای اجرا، رضایت صریح sandbox و Docker پیکربندی‌شده لازم است.";
  section.append(description);
  const exerciseInfo = document.createElement("p");
- exerciseInfo.textContent = "درخواست تمرین…";
+ exerciseInfo.textContent = exercise.title + "؛ ورودی نمونه: " + JSON.stringify(exercise.input_example) + "؛ خروجی نمونه: " + JSON.stringify(exercise.output_example);
  section.append(exerciseInfo);
  const form = document.createElement("form");
  const source = document.createElement("textarea");
@@ -158,6 +158,16 @@ async function addPracticalExerciseForm(output, job) {
       (grade.mastery_achieved
        ? "تسلط عملی ثبت شد و سرفصل تکمیل شد."
        : "این نتیجه فقط همین تمرین را می‌سنجد؛ برای تکمیل سرفصل، آستانه و پیش‌نیازهای مسیر باید برقرار باشند.");
+     if (grade.mastery_achieved && path && topic && topic.statusSelect) {
+      topic.status = "completed";
+      topic.statusSelect.value = "completed";
+      (path.topics || []).forEach(candidate => {
+       candidate.blocked_by = (candidate.blocked_by || []).filter(item => item.id !== topic.id);
+       candidate.prerequisites_met = candidate.blocked_by.length === 0;
+       if (candidate.startButton) candidate.startButton.disabled = !candidate.prerequisites_met;
+       if (candidate.prerequisites_met && candidate.prerequisiteNote) candidate.prerequisiteNote.remove();
+      });
+     }
      break;
     }
    }
@@ -458,7 +468,7 @@ function renderLessonResult(output, job, path, topic) {
   }
  });
  output.append(form);
- addPracticalExerciseForm(output, job);
+ addPracticalExerciseForm(output, job, path, topic);
  const caveat = document.createElement("p");
  caveat.textContent = "آزمون درس‌های جدید بر اساس پوشش واژه‌ای مفاهیم rubric نمره می‌دهد؛ این روش پاسخ‌های هم‌معنا را بهتر می‌پذیرد، اما به‌تنهایی فهم معنایی مستقل یا صحت علمی را اثبات نمی‌کند."
  output.append(caveat);
