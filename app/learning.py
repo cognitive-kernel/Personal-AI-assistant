@@ -252,6 +252,10 @@ def run_job(job_id: int) -> None:
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        quality["assessment_rubric_status"] = (
+            "available" if isinstance(assessment.get("rubric"), list)
+            else "missing_or_invalid_legacy_fallback"
+        )
         claim_review_result: dict[str, Any] | None = None
         sources: list[dict[str, str]] = []
         if quality["accepted"] and source_kind == "web_retrieved" and source_text:
