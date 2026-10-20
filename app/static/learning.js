@@ -386,8 +386,12 @@ function renderLessonResult(output, job, path, topic) {
  const semanticReviewResult = document.createElement("p");
  semanticReviewResult.setAttribute("role", "status");
  form.append(semanticReviewButton, semanticReviewResult);
- let latestAttemptId = Array.isArray(job.assessment_attempts) && job.assessment_attempts.length
-  ? job.assessment_attempts[0].id : null;
+ const quizAttempts = Array.isArray(job.quiz_assessment_attempts)
+  ? job.quiz_assessment_attempts
+  : (Array.isArray(job.assessment_attempts) ? job.assessment_attempts : []).filter(
+   attempt => attempt.scoring_method !== "sandbox_practical_v1"
+  );
+ let latestAttemptId = quizAttempts.length ? quizAttempts[0].id : null;
  semanticReviewButton.hidden = !latestAttemptId;
  semanticReviewResult.textContent = latestAttemptId
   ? "برای آخرین تلاش آزمون می‌توانید بازبینی ذخیره‌شده را ببینید یا بازبینی کمکی تازه‌ای ایجاد کنید."
