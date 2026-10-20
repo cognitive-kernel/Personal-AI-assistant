@@ -2174,3 +2174,6 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - برای سرفصل معماری SQL Server، مرجع‌های موضوعی رسمی Microsoft Learn قبل از لینک‌های عمومی دوره دریافت می‌شوند تا شواهد مستقیم‌تر در اولویت باشد.
 - تعارض منبع با خطای `source_conflicts_unresolved_release_blocked` مسدود می‌ماند؛ دیگر متن یا خطای runtime کاربر را به تصمیم انسانی ارجاع نمی‌دهد.
+
+
+- prompt تولید و repair آزمون به‌روزرسانی شد تا سه سؤال شامل مفهوم، علت‌ومعلول و سناریوی کاربردی همراه با توجیه تصمیم/trade-off باشند؛ کالیبراسیون و اجرای sandbox هنوز باز هستند.
