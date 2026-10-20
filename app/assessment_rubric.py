@@ -81,7 +81,8 @@ def score_answers(answers: list[str], rubric: list[dict[str, Any]]) -> dict[str,
                 if isinstance(phrase, str) and normalize_answer_text(phrase)
             ]
             label = str(concept.get("concept", ""))[:120]
-            if any(phrase in normalized_answer for phrase in phrases):
+            padded_answer = f" {normalized_answer} "
+            if any(f" {phrase} " in padded_answer for phrase in phrases):
                 matched.append(label)
             else:
                 missing.append(label)
