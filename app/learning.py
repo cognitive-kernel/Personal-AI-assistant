@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import os
 import json
 import re
 from typing import Any
@@ -436,7 +437,11 @@ def run_job(job_id: int) -> None:
                 )
             # Preserve source text and evidence even when the generated output is unusable;
             # failed attempts are useful debugging/training data, not disposable noise.
-        if candidate_id is not None:
+        if (
+            candidate_id is not None
+            and os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower()
+            not in {"0", "false", "no", "off"}
+        ):
             # Public web corroboration is best-effort: network failure must not discard a lesson.
             try:
                 from .knowledge_review import (
