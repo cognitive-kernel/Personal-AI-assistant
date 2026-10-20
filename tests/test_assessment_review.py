@@ -93,7 +93,8 @@ def test_learning_ui_exposes_opt_in_advisory_semantic_review():
     assert "نمره آزمون را تغییر نمی‌دهد" in page
     assert 'const saved = await learningApi(reviewPath);' in page
     assert "if (error.status !== 404) throw error;" in page
-    assert "job.assessment_attempts[0].id" in page
+    assert "job.quiz_assessment_attempts" in page
+    assert 'attempt.scoring_method !== "sandbox_practical_v1"' in page
     assert '"/api/learning/jobs/" + job.id + "/assessment/" + latestAttemptId + "/semantic-review"' in page
 
 
