@@ -2074,3 +2074,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - Remaining implementation scope: expand practical exercises beyond Python/JSON, broaden versioned transfer/relevance datasets, and complete automated live-model acceptance criteria. Source-based checks and model-assisted claim review must not be described as proof of scientific correctness.
 
 - Follow-up hardening: lesson publication now fails closed when the deterministic evidence gate does not pass. Added fail-closed synthetic retrieval benchmark thresholds for recall@k, MRR, and zero-recall-query rate, with tests for low, malformed, and non-finite metrics.
+
+## 147 — جداسازی نامزد دانش از دانش اصلی و ثبت نتیجهٔ آزمون
+
+- **تغییر معماری:** مهاجرت ۱۶ جدول temporary_knowledge_candidates را برای نگهداری متن درس، منشأ، SHA-256، گزارش کیفیت، طرح آزمون، نتایج و علت شکست اضافه می‌کند.
+- **جلوگیری از رد زودهنگام:** خروجی غیرخالی حتی اگر هشدارهای واژگانی داشته باشد، به‌عنوان نامزد موقت ذخیره می‌شود؛ امتیاز طول، تعداد اصطلاحات یا کامل نبودن rubric به‌تنهایی دیگر موجب حذف درس نمی‌شود. اگر آزمون ارزیابی آماده نباشد، وضعیت نامزد awaiting_test می‌ماند.
+- **ارتقا کنترل‌شده:** learning.record_candidate_test_results() نتایج هر آزمون را با نام آزمون، runner خودکار، خروجی مورد انتظار و خروجی واقعی ثبت می‌کند. تنها وقتی تمام آزمون‌های اعلام‌شده موفق باشند، نامزد به knowledge_items منتقل می‌شود.
+- **ثبت شکست:** اگر یک یا چند آزمون شکست بخورند، نامزد در پایگاه موقت با وضعیت failed باقی می‌ماند و یک رکورد learning_experiences شامل برنامه، نتایج و علت شکست ایجاد می‌شود.
+- **مرز ادعا:** قبولی آزمون فقط در محدودهٔ همان آزمون‌هاست و اثبات عمومی صحت علمی نیست. اجرای خودکار آزمون‌های استخراج‌شده از محتوای دلخواه و اتصال کامل runner به چرخهٔ تولید هنوز باید تکمیل شود؛ تا آن زمان نامزدها به‌طور خودکار تأیید نمی‌شوند.
+- **آزمون‌های افزوده‌شده:** تست‌های ارتقای موفق، نگه‌داشتن نامزد ناموفق، ایجاد تجربهٔ شکست، تطبیق نام آزمون‌ها، و ممنوعیت runner نامعتبر؛ به‌علاوهٔ تست ذخیرهٔ درس به‌صورت نامزد تا قبل از ارتقا.
+- **وضعیت CI:** در انتظار اجرای CI روی head دقیق این تغییرات؛ آزمون محلی کاربر شروع نشده است.
