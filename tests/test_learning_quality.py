@@ -66,3 +66,12 @@ def test_sql_server_curriculum_has_curated_reference_links():
     assert refs["W3Schools — SQL Tutorial"] == "https://www.w3schools.com/sql/default.asp"
     assert refs["Microsoft Learn — SQL Server"] == "https://learn.microsoft.com/en-us/sql/sql-server/"
     assert len(course["topics"]) == 19
+
+
+def test_transfer_question_gate_requires_application_marker_as_a_word():
+    from app.learning import _has_transfer_question
+
+    assert _has_transfer_question("How would you apply this to a new scenario?")
+    assert _has_transfer_question("فرض کنید بار کاری تغییر کند؛ چه اقدامی انجام می‌دهید؟")
+    assert not _has_transfer_question("What is the difference between a table scan and an index seek?")
+    assert not _has_transfer_question("Explain the design of a query plan.")
