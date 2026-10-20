@@ -556,16 +556,6 @@ def run_python(
                 reason="Docker could not be started; no local execution fallback is permitted.",
             )
 
-        if stdin_text is not None and getattr(process, "stdin", None) is not None:
-            try:
-                process.stdin.write(stdin_text.encode("utf-8"))
-                process.stdin.close()
-            except (BrokenPipeError, OSError):
-                try:
-                    process.stdin.close()
-                except OSError:
-                    pass
-
         stdout_buffer = bytearray()
         stderr_buffer = bytearray()
         overflow = threading.Event()
@@ -583,6 +573,16 @@ def run_python(
         ]
         for reader in readers:
             reader.start()
+
+        if stdin_text is not None and getattr(process, "stdin", None) is not None:
+            try:
+                process.stdin.write(stdin_text.encode("utf-8"))
+                process.stdin.close()
+            except (BrokenPipeError, OSError):
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
 
         timed_out = False
         interrupted_status: str | None = None
