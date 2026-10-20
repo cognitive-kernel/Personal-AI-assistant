@@ -69,8 +69,8 @@ def _is_negated_occurrence(padded_answer: str, padded_phrase: str, phrase_start:
     """Conservatively reject a concept phrase immediately preceded by common negation."""
     prefix = padded_answer[:phrase_start].rstrip()
     return bool(re.search(
-        r"(?:^|\\s)(?:not|no|never|without|false|incorrect|isn't|doesn't|cannot|"
-        r"نیست|نبود|بدون|نه|هرگز|عدم)\\s*$",
+        r"(?:^|\s)(?:not|no|never|without|false|incorrect|isn't|doesn't|cannot|"
+        r"نیست|نبود|بدون|نه|هرگز|عدم)\s*$",
         prefix,
         flags=re.IGNORECASE,
     ))
