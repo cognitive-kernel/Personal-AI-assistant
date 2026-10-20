@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Unit tests mock public web retrieval; live integration is opt-in and tested separately.
+      LEARNING_AUTO_WEB_RESEARCH: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
