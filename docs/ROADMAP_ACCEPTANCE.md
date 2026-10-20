@@ -63,3 +63,8 @@ The persistent section navigation now exposes exactly one current destination us
 ### Learning-path progress visualization (2026-10-20)
 
 The learning dashboard derives a bounded progress percentage from completed and total topics and renders a native HTML progress bar with an accessible name, value text, and localized completed/total caption. The percentage is derived from counts rather than trusting a possibly inconsistent stored percentage. Responsive styling uses local CSS only. Exact-head browser CI is pending; manual keyboard/screen-reader and target-host usability acceptance remain separate gates.
+
+
+### Task dashboard empty states (2026-10-20)
+
+The task queue now distinguishes a genuinely empty queue from zero matches caused by search/status filters. Filtered empty states expose a clear-filters action; text is created with textContent, no task payload is exposed, and the layout uses local responsive CSS. Browser E2E covers no-match recovery and the truly empty queue. Exact-head CI is pending; manual accessibility and target-host usability remain separate gates.
