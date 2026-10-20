@@ -104,7 +104,7 @@ def run_benchmark(
             "model": model, "prompt": PROMPT, "stream": False,
             "options": {"temperature": 0, "num_predict": 128},
         })
-        elapsed = time.perf_counter() - started
+        elapsed = perf_counter() - started
         generated = response.get("response")
         if not isinstance(generated, str) or not generated.strip():
             raise ValueError("Ollama returned no generated text.")
