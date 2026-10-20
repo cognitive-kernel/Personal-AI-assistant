@@ -7,6 +7,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .learning_evidence_gate import is_allowlisted_primary_source
+
 
 def normalize_text(value: str) -> str:
     """Normalize common Persian/Arabic letter variants for transparent substring checks."""
@@ -56,6 +58,7 @@ def evaluate_answer_surface(case: dict[str, Any], answer: str, sources: list[dic
         "expected_language_script_present": expected_language_marker,
         "source_urls": source_urls,
         "source_count": len(source_urls),
+        "trusted_source_count": sum(1 for url in source_urls if is_allowlisted_primary_source(url)),
         "answer_urls": answer_urls,
         "unattributed_answer_urls": unattributed_answer_urls,
         "unattributed_answer_url_count": len(unattributed_answer_urls),
@@ -153,6 +156,11 @@ def evaluate_automated_acceptance(
                 and isinstance(item.get("source_count"), int)
                 and not isinstance(item.get("source_count"), bool)
                 and item["source_count"] >= 1
+            ),
+            "at_least_one_allowlisted_primary_source": (
+                isinstance(item.get("trusted_source_count"), int)
+                and not isinstance(item.get("trusted_source_count"), bool)
+                and item["trusted_source_count"] >= 1
             ),
             "claim_review_passed": item.get("research_review_status") in _ACCEPTED_REVIEW_STATUSES,
             "no_unattributed_answer_urls": (
