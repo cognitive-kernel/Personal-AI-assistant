@@ -1221,6 +1221,27 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         browser.close()
 
 
+def test_dashboard_theme_toggle_is_accessible_and_persists():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+        toggle = page.get_by_role("button", name="تغییر پوستهٔ داشبورد")
+        before = page.locator("html").get_attribute("data-theme")
+        toggle.click()
+        after = page.locator("html").get_attribute("data-theme")
+        assert after in ("light", "dark")
+        assert after != before
+        assert toggle.get_attribute("aria-pressed") == str(after == "dark").lower()
+        page.reload(wait_until="domcontentloaded")
+        assert page.locator("html").get_attribute("data-theme") == after
+        assert page.locator("#theme-toggle").get_attribute("aria-pressed") == str(after == "dark").lower()
+        browser.close()
+
+
 def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
