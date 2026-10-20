@@ -50,10 +50,10 @@ def test_practical_grader_uses_server_side_versioned_cases_and_json_outputs():
     assert cases[0]["id"] == "positive-integers"
     assert cases[0]["expected"] == 6
     assert learning_practical.grade_case_output(
-        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "6\\n"
+        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "6\n"
     )
     assert not learning_practical.grade_case_output(
-        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "5\\n"
+        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "5\n"
     )
     assert not learning_practical.grade_case_output(
         learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "not JSON"
