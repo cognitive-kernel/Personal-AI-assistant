@@ -2140,3 +2140,12 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - Numeric quality thresholds are proposals pending calibration against a versioned reference set. Existing exact-match scoring and same-model semantic review are not represented as independent scientific verification.
 - Documentation-only change. Tests, live-model evaluation, and target-host measurements were not run as part of this change.
 
+
+
+## 2026-10-20 — کد دروازهٔ علمی و rubric ارزیابی
+
+- افزودن `app/learning_scientific_gate.py` با سیاست fail-closed و وضعیت صریح `machine_reviewed_not_independently_verified`؛ نبود منبع، یک منبع، تعارض، citation نامعتبر یا ارزیابی ناقص مانع عبور می‌شود.
+- اتصال نتیجه به متادیتای کیفیت درس و نمایش وضعیت در رابط، بدون ارتقای `knowledge_items.status` از `unverified`.
+- افزودن `app/learning_rubric.py` برای امتیازدهی قطعی معیارهای مفهومی وزن‌دار و عبارت‌های پذیرفته‌شده، با حفظ سازگاری آزمون‌های ذخیره‌شدهٔ قدیمی.
+- افزودن تست‌های گیت، scoring، نمرهٔ جزئی، عبارت نفی‌شده و پنهان‌ماندن rubric قبل از ارسال پاسخ.
+- این ثبت، گزارش اجرای محلی یا benchmark زنده نیست. نتیجهٔ CI برای commit نهایی جداگانه بررسی می‌شود.
