@@ -115,6 +115,17 @@ function renderLessonResult(output, job, path, topic) {
  const qualityNote = document.createElement("p");
  qualityNote.textContent = "امتیاز کیفیت خودکار درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
  output.append(qualityNote);
+ const scientificGate = job.quality && job.quality.scientific_gate;
+ const scientificNote = document.createElement("p");
+ scientificNote.className = "learning-scientific-status";
+ if (scientificGate && scientificGate.passed === true) {
+  scientificNote.textContent = "دروازه شواهد خودکار عبور کرده است؛ این نتیجه بررسی ماشینی منابع و ارجاع‌هاست و تأیید علمی مستقل محسوب نمی‌شود.";
+ } else {
+  const reasons = scientificGate && Array.isArray(scientificGate.reasons) ? scientificGate.reasons.join("، ") : "";
+  scientificNote.textContent = "وضعیت علمی: تأیید نشده. درس از نظر ساختار تولید شده، اما شرایط دروازه شواهد علمی را ندارد." + (reasons ? " موارد مسدودکننده: " + reasons : "");
+ }
+ scientificNote.setAttribute("role", "note");
+ output.append(scientificNote);
  addRegenerateButton(output, path, topic);
  const lesson = document.createElement("p");
  lesson.textContent = job.lesson || "متن درس در پاسخ موجود نیست.";
