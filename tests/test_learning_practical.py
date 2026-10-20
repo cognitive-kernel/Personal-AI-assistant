@@ -103,3 +103,52 @@ def test_practical_exercise_requires_completed_relevant_lesson(tmp_path, monkeyp
         conn.execute("UPDATE learning_jobs SET topic='History' WHERE id=?", (job["id"],))
     with pytest.raises(ValueError, match="does not match"):
         learning_practical.validate_practical_job(job["id"], learning_practical.EXERCISE_ID)
+
+
+def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch, tmp_path):
+    from app import sandbox_tasks
+    from app.sandbox import SandboxResult
+
+    executable = tmp_path / "docker"
+    executable.write_text("fake executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(executable))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
+    calls = []
+    report = _valid_report()
+
+    def fake_run(source, **kwargs):
+        calls.append(source)
+        return SandboxResult("succeeded", 0, json.dumps(report), "", 25)
+
+    monkeypatch.setattr(sandbox_tasks.sandbox, "run_python", fake_run)
+    monkeypatch.setattr(
+        learning_practical, "record_practical_attempt",
+        lambda job_id, exercise_id, grading_report, source: {
+            "job_id": job_id, "exercise_id": exercise_id, "score": 100.0,
+            "received_report": grading_report == report, "source_sha256": "hash",
+        },
+    )
+
+    class Context:
+        task_id = 9
+        def checkpoint(self, _value):
+            return {"status": "running"}
+        def control_status(self):
+            return "running"
+
+    handler = sandbox_tasks.handler_from_environment()
+    result = handler(
+        {
+            "source_code": "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data['values'])))",
+            "learning_practical": {"exercise_id": learning_practical.EXERCISE_ID, "job_id": 7},
+        },
+        None,
+        Context(),
+    )
+
+    assert result["execution_status"] == "succeeded"
+    assert result["practical_assessment"]["score"] == 100.0
+    assert result["practical_assessment"]["received_report"] is True
+    assert "subprocess.run(" in calls[0]
