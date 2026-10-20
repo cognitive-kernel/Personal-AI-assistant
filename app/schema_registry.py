@@ -524,6 +524,14 @@ LEARNING_MIGRATIONS = (
                CHECK(latest_score_kind IN ('legacy_unknown','learner_rubric','legacy_exact_match','manual_override'))""",
         ),
     ),
+    Migration(
+        17,
+        "idempotent-learning-assessment-submissions",
+        (
+            "ALTER TABLE assessment_attempts ADD COLUMN idempotency_key TEXT",
+            "CREATE UNIQUE INDEX idx_assessment_attempts_idempotency ON assessment_attempts(job_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
+        ),
+    ),
 )
 
 
