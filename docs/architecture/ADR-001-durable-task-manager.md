@@ -1,6 +1,6 @@
 # ADR-001: Durable task manager boundary
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-15
 - Scope: First increment of the autonomous-system runtime
 
@@ -37,10 +37,10 @@ This module is a scheduler, not a sandbox. Any future code-execution task must r
 
 ## Compatibility and migration
 
-The first version creates its own task_queue table idempotently in the existing learning database through initialize_task_store(). Application startup integration is intentionally a separate change so queue behavior can be tested before it is connected to API routes or background workers. A versioned migration framework remains a follow-up; the initial table creation is not represented as a general migration system.
+The task queue is initialized idempotently through initialize_task_store() in the local learning database. FastAPI routes expose task lifecycle operations behind a loopback-only boundary, and the managed runtime is wired into application startup/shutdown with an explicit allow-listed handler registry. Startup reconciles learning jobs and enqueues them idempotently. Schema-version and fingerprint validation run before worker activation; the task table's idempotent initialization is not itself a claim that every database migration is generically reversible.
 
 ## Acceptance gates
 
 - Unit tests cover lifecycle, priority/scheduling, retry limits, checkpoints, pause/resume, cancellation, lease expiry/reclaim, and invalid JSON.
 - CI must pass on the exact pull-request head before merge.
-- Integration with FastAPI and real learning workers is not part of this increment and must be delivered separately with integration tests.
+- Integration with FastAPI and allow-listed learning handlers is implemented and covered by repository CI. Target-host crash/restart, sustained-load, full task-type fault injection, and local Windows database acceptance remain separate release gates.

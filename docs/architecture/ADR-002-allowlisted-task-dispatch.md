@@ -1,13 +1,13 @@
 # ADR-002: Allow-listed task dispatch
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-15
 
 ## Decision
 
 The worker executes only application-registered Python handlers keyed by a task_type. A task payload is data, not executable code. Unknown task types fail without attempting shell execution, dynamic imports, or network access.
 
-The first dispatcher exposes run_once() rather than starting an implicit background loop at application import/startup. This keeps worker lifecycle, concurrency limits, shutdown behavior, and resource accounting explicit until an application-owned handler and runtime configuration are available.
+The dispatcher exposes run_once() for deterministic tests and is hosted by the managed TaskRuntime, which owns bounded polling threads and shutdown. app/main.py supplies an explicit allow-listed registry for reviewed task types; unknown types fail closed. The runtime starts only after storage initialization/schema validation and learning-job reconciliation.
 
 ## Handler contract
 
@@ -26,4 +26,4 @@ This dispatcher is not a sandbox and must not register a handler that executes a
 
 - Tests cover allow-list enforcement, success, retry/exhaustion, invalid result shape, pause/cancel at checkpoints, and empty/invalid handler registries.
 - CI must pass on the exact pull request head.
-- A production polling loop, shutdown integration, CPU/RAM concurrency controls, and concrete learning handlers are follow-up work.
+- The managed polling loop, bounded shutdown, worker-count/poll interval validation, and learning handler integration are implemented. Target-host load/soak evidence and broader fault-injection coverage remain release gates. Arbitrary payload execution remains prohibited; isolated sandbox work is available only through reviewed handlers and explicit environment authorization.

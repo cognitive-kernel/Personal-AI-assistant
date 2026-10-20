@@ -286,7 +286,7 @@
 - [x] PR این گام بعداً در main ادغام شد؛ CI دقیق head موفق بود (بخش 10).
 - CI run [#38771511182](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771511182) روی head قبلی شکست خورد: 56 تست موفق و یک تست API ناموفق بود، چون چند مسیر نبودن وظیفه هنوز `TaskManagerError` می‌دادند و به 409 نگاشت می‌شدند. همه مسیرهای «وظیفه موجود نیست» اکنون به `TaskNotFoundError` تغییر کرده‌اند؛ run [#38771686476](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771686476) روی head `fe7af698c1c6583d2a9f18910b9ae8709c9b260f` موفق شد (57 تست موفق). پس از آن، اصلاح حفظ زمان‌بندی اصلی هنگام resume و آزمون متناظر اضافه شد؛ CI نهایی در run [#38771853848](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38771853848) روی head `abf594032517ff664ea4d8e262cb3a4b11f5e675` موفق شد.
 - [x] محدودیت تاریخی برطرف شده است: `TaskRuntime` و `TaskWorker` اکنون در startup برنامه با handlerهای allow-listed اجرا می‌شوند؛ وظایف ثبت‌شدهٔ بدون handler عمداً fail می‌شوند، نه اینکه کد دلخواه اجرا شود. شواهد: `app/main.py`, `app/task_worker.py`, `tests/test_task_runtime.py` و CI بخش 151.
-- [ ] تکمیل همهٔ ابزارهای UI مدیریتی صف هنوز باقی است؛ cursor pagination (بخش 156)، audit پایدار (بخش 157)، تاریخچهٔ تعاملی (بخش 159)، فیلتر و کنترل اولویت/زمان (بخش‌های 161–162)، خلاصه و جست‌وجو (بخش 163) و عملیات گروهی امن (بخش 164، PR #357) پیاده‌سازی شده‌اند. موارد باقی‌مانده باید جداگانه مشخص و با آزمون پذیرفته شوند. API مدیریت صف همچنان loopback-only است.
+- [x] ابزارهای UI مدیریت صف در سطح مخزن تکمیل شدند: صفحه‌بندی cursor (بخش 156)، audit پایدار (157)، تاریخچهٔ تعاملی (159)، فیلتر و کنترل اولویت/زمان (161–162)، خلاصه و جست‌وجو (163) و عملیات گروهی امن (164، PR #357). اصلاح بصری وضعیت‌های وظیفه و کارت‌ها در بخش 166 ثبت شده و تا موفقیت CI تیک نهایی نمی‌گیرد. گیت‌های جداگانهٔ مرور دستی دسترس‌پذیری، کنتراست و پذیرش میزبان همچنان بازند. API مدیریت صف همچنان loopback-only است.
 
 
 ## 10. 2026-10-15 — ادغام API مدیریت صف
@@ -1930,3 +1930,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **CI پس از ادغام:** در زمان ثبت این گزارش، workflowهای main برای commit ادغام کد هنوز در حال اجرا بودند: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344761897)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344761877)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39344761904). موفقیت آن‌ها از پیش فرض نشده است.
 - **موارد عمداً باز:** اجرای محلی و روی Windows واقعی، baseline و بررسی دیتابیس واقعی، benchmark/soak و crash recovery روی میزبان، تمرین restore/rollback در staging، اجرای مدل زنده و داوری انسانی، مرور دستی صفحه‌خوان/کیبورد و کنتراست، و بازبینی مستقل امنیتی issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant). اتصال quota parser به provider runtime و cloud/remote provisioning نیز به‌علت گیت‌های رضایت/امنیت/هزینه عمداً فعال نشده‌اند.
 - **قاعدهٔ گزارش‌دهی:** تیک‌ها فقط تکمیل مخزن و CI مشخص را نشان می‌دهند؛ هیچ ادعای تست محلی، پذیرش میزبان واقعی یا آمادگی تولیدی ثبت نشده است.
+
+
+## 166 — سلسله‌مراتب بصری وضعیت وظایف (2026-10-20)
+
+- **هدف:** وضعیت صف در داشبورد فارسی سریع‌تر قابل تشخیص باشد، بدون تغییر قرارداد API یا منطق چرخهٔ وظیفه.
+- **تغییر کد/UI:** کارت‌های وظیفه کلاس اختصاصی دریافت کردند؛ وضعیت‌های صف، اجرا، توقف، لغو، موفقیت و شکست با نشانگر بصری دارای رنگ با کنتراست بالا و نقطهٔ وضعیت مشخص می‌شوند. متن وضعیت اصلی حفظ شده است تا رنگ تنها حامل معنا نباشد. حالت focus-within، hover و reduced-motion نیز رعایت شده‌اند.
+- **آزمون افزوده‌شده:** browser E2E کلاس معنایی و شناسهٔ خام وضعیت، برچسب فارسی برای queued/failed/succeeded و نام دسترس‌پذیر وضعیت را بررسی می‌کند.
+- **ایمنی:** فقط کلاس‌های ثابت از allow-list وضعیت‌ها اعمال می‌شوند؛ مقدار وضعیت سرور مستقیماً به نام کلاس تبدیل نمی‌شود. API و داده‌های وظایف تغییر نمی‌کنند.
+- **وضعیت:** [x] همهٔ کنترل‌های CI روی head دقیق `b379942460539fabbb78bee29624595c1cef14ea` موفق شدند: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39364490380)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39364490415)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39364490478). تست محلی اجرا نشده است.
+- **گیت‌های جداگانه:** بررسی دستی کنتراست، کیبورد/صفحه‌خوان و usability روی میزبان هدف همچنان باز هستند.

@@ -323,7 +323,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
             """(taskId) => {
                 const card = Array.from(document.querySelectorAll('#tasks-container article'))
                     .find(node => node.textContent.includes('#' + taskId + ' — e2e.scheduled-cancellation'));
-                return card && card.textContent.includes('وضعیت: cancelled');
+                return card && card.textContent.includes('وضعیت: لغوشده');
             }""",
             arg=task_id,
             timeout=10000,
@@ -504,6 +504,19 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
         cards = page.locator("#tasks-container article")
         page.get_by_text("#6001 — e2e.research", exact=True).wait_for(timeout=5000)
         assert cards.count() == 3
+        queued_status = cards.nth(0).locator(".task-status-line")
+        failed_status = cards.nth(1).locator(".task-status-line")
+        succeeded_status = cards.nth(2).locator(".task-status-line")
+        assert "is-queued" in (queued_status.get_attribute("class") or "")
+        assert "is-failed" in (failed_status.get_attribute("class") or "")
+        assert "is-succeeded" in (succeeded_status.get_attribute("class") or "")
+        assert queued_status.get_attribute("data-status") == "queued"
+        assert failed_status.get_attribute("data-status") == "failed"
+        assert succeeded_status.get_attribute("data-status") == "succeeded"
+        assert "وضعیت: در صف" in queued_status.inner_text()
+        assert "وضعیت: ناموفق" in failed_status.inner_text()
+        assert "وضعیت: موفق" in succeeded_status.inner_text()
+        assert queued_status.get_attribute("aria-label") == "وضعیت وظیفه 6001: در صف"
         summary = page.locator("#task-summary")
         assert "بارگذاری‌شده" in summary.inner_text()
         assert "3" in summary.inner_text()
