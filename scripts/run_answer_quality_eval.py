@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -111,12 +112,14 @@ def run_evaluation(
     sources_by_case_id: dict[str, list[dict[str, Any]]] = {}
     for case in cases:
         entry: dict[str, Any] = {"case_id": case["id"], "language": case["language"]}
+        started = time.perf_counter()
         try:
             answer = answer_fn(case["prompt"])
             if not isinstance(answer, str) or not answer.strip():
                 raise ValueError("assistant returned an empty/non-string answer")
         except Exception as exc:  # Keep error details out of potentially shared reports.
             entry.update({
+                "generation_seconds": round(time.perf_counter() - started, 4),
                 "generation_status": "failed",
                 "generation_error_type": type(exc).__name__,
             })
@@ -124,6 +127,7 @@ def run_evaluation(
             continue
 
         # Generation success is independent of optional provenance and lexical diagnostics.
+        entry["generation_seconds"] = round(time.perf_counter() - started, 4)
         entry["generation_status"] = "completed"
         if not redact_answers:
             entry["answer"] = answer
@@ -218,6 +222,12 @@ def run_evaluation(
         "failed_count": len(cases) - len(completed),
         "generation_completed_count": len(completed),
         "generation_failed_count": len(cases) - len(completed),
+        "performance": {
+            "generation_seconds_total": round(sum(float(item.get("generation_seconds", 0)) for item in raw_results), 4),
+            "generation_seconds_max": round(max((float(item.get("generation_seconds", 0)) for item in raw_results), default=0.0), 4),
+            "configured_max_generation_seconds_per_case": automated_acceptance["maximum_generation_seconds"],
+            "interpretation": "Measured on the machine running this report; hardware and model dependent.",
+        },
         "quality_assessment_status": "automated_gate_passed" if automated_acceptance["passed"] else "automated_gate_failed",
         "automated_acceptance": automated_acceptance,
         "surface_diagnostics": summarize_surface_results([
@@ -247,9 +257,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, default=Path("answer-quality-report.json"))
+    parser.add_argument("--max-case-seconds", type=float, default=180.0,
+                        help="maximum permitted generation time per benchmark case (default: 180 seconds)")
     parser.add_argument("--redact-answers", action="store_true",
                         help="omit raw model answers from the report")
     args = parser.parse_args()
+    if args.max_case_seconds <= 0:
+        parser.error("--max-case-seconds must be positive")
     try:
         cases = load_cases(args.dataset)
     except ValueError as exc:
@@ -268,6 +282,13 @@ def main() -> int:
                 answer_fn=chat_research.answer,
                 dataset_path=args.dataset.resolve(),
                 redact_answers=args.redact_answers,
+            )
+            report["automated_acceptance"] = evaluate_automated_acceptance(
+                report["results"], maximum_generation_seconds=args.max_case_seconds
+            )
+            report["quality_assessment_status"] = (
+                "automated_gate_passed" if report["automated_acceptance"]["passed"] else "automated_gate_failed"
+            )
             )
     finally:
         db.defaults.settings_db_path = original_settings_path
