@@ -12,6 +12,8 @@ from .learning_quality import evaluate_learning_value
 from .learning_evidence_gate import evaluate_lesson_evidence
 from .assessment_rubric import normalize_rubric, score_answers
 
+MASTERY_SCORE_THRESHOLD = 80.0
+
 class LearningError(RuntimeError):
     pass
 
@@ -371,7 +373,7 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
         raise ValueError("Every answer must contain 1–2000 characters.")
     with learning_connection() as conn:
-        row = conn.execute("SELECT status, assessment_json FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute("SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise KeyError(job_id)
         if row["status"] != "completed" or not row["assessment_json"]:
@@ -401,6 +403,20 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
             (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions), scoring_method),
         )
         attempt_id = int(cursor.lastrowid)
+        path_topic_id = row["path_topic_id"]
+        if path_topic_id is not None:
+            if scoring_method == "rubric_concept_coverage_v1" and score >= MASTERY_SCORE_THRESHOLD:
+                topic_status_sql = "completed"
+            else:
+                topic_status_sql = "in_progress"
+            conn.execute(
+                """UPDATE learning_path_topics
+                   SET latest_score=?,
+                       status=CASE WHEN status='completed' THEN status ELSE ? END,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (score, topic_status_sql, int(path_topic_id)),
+            )
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
@@ -619,6 +635,24 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
+        if status == "completed":
+            latest_attempt = conn.execute(
+                """SELECT a.score, a.scoring_method
+                   FROM assessment_attempts AS a
+                   JOIN learning_jobs AS j ON j.id=a.job_id
+                   WHERE j.path_topic_id=?
+                   ORDER BY a.id DESC LIMIT 1""",
+                (topic_id,),
+            ).fetchone()
+            if (
+                latest_attempt is None
+                or latest_attempt["scoring_method"] != "rubric_concept_coverage_v1"
+                or float(latest_attempt["score"]) < MASTERY_SCORE_THRESHOLD
+            ):
+                raise ValueError(
+                    f"Topic completion requires a latest rubric-based assessment score of at least {MASTERY_SCORE_THRESHOLD:.0f}."
+                )
+            latest_score = float(latest_attempt["score"])
         conn.execute(
             "UPDATE learning_path_topics SET status=?, latest_score=COALESCE(?, latest_score), updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (status, latest_score, topic_id, path_id),
