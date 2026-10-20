@@ -9,7 +9,18 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlsplit
 
-GATE_VERSION = "lesson-evidence-v1"
+GATE_VERSION = "lesson-evidence-v2"
+# Curated primary/official domains only. This is deliberately conservative and
+# must be extended through reviewed code changes, not model-generated trust.
+_TRUSTED_DOMAIN_ROOTS = {
+    "python.org", "microsoft.com", "mozilla.org", "ietf.org", "rfc-editor.org",
+    "nist.gov", "cisa.gov", "owasp.org", "w3.org", "iso.org", "ncbi.nlm.nih.gov",
+    "who.int", "cdc.gov", "nature.com", "science.org", "acm.org", "ieee.org",
+    "arxiv.org", "gov.uk", "europa.eu", "sec.gov", "finra.org",
+    "federalreserve.gov", "cftc.gov", "esma.europa.eu", "mikrotik.com",
+    "vmware.com", "cisco.com", "ollama.com", "postgresql.org", "sqlite.org",
+    "kernel.org", "debian.org", "ubuntu.com", "docs.docker.com",
+}
 
 
 def _https_source(source: Any) -> tuple[str, str] | None:
@@ -58,6 +69,10 @@ def evaluate_lesson_evidence(
         if isinstance(lesson, str) and url in lesson
     }
     hosts = {host for url, host in usable if url in cited}
+    trusted_cited_hosts = {
+        host for url, host in usable
+        if url in cited and any(host == root or host.endswith("." + root) for root in _TRUSTED_DOMAIN_ROOTS)
+    }
     review = claim_review if isinstance(claim_review, dict) else {}
     claims = review.get("claims")
     conflicts = review.get("source_conflicts", [])
@@ -76,6 +91,7 @@ def evaluate_lesson_evidence(
     gates = {
         "at_least_two_distinct_https_sources": len(cited) >= 2 and len(hosts) >= 2,
         "at_least_two_source_urls_cited_exactly": len(cited) >= 2,
+        "at_least_one_allowlisted_primary_source": len(trusted_cited_hosts) >= 1,
         "claim_review_passed": review.get("passed") is True and review.get("overall") == "supported",
         "all_claims_supported_by_known_sources": all_claims_supported,
         "no_reported_source_conflicts": isinstance(conflicts, list) and len(conflicts) == 0,
@@ -89,10 +105,11 @@ def evaluate_lesson_evidence(
         "source_count": len(usable),
         "cited_source_count": len(cited),
         "distinct_cited_host_count": len(hosts),
+        "trusted_cited_host_count": len(trusted_cited_hosts),
         "gates": gates,
         "failed_gates": [name for name, value in gates.items() if not value],
         "limitations": [
-            "HTTPS and domain diversity do not establish source authority.",
+            "Only domains on a conservative, code-reviewed allowlist count as primary-source candidates; allowlisting does not prove relevance or truth.",
             "Claim review is model-assisted and is not an independent proof of truth.",
             "Passing this gate is not a substitute for reproducible domain-specific tests.",
         ],
