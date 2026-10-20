@@ -73,7 +73,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     if not results:
         raise ValueError("results must not be empty")
     summary: dict[str, Any] = {"case_count": len(results), "languages": {}, "interpretation": (
-        "Automated lexical/provenance indicators only; a pinned live-model run and all acceptance gates are required. Human scoring is not used, and passing is not proof of scientific truth."
+        "Not a model-quality score. Automated lexical/provenance indicators only; a pinned live-model run and all acceptance gates are required. Human scoring is not used, and passing is not proof of scientific truth."
     )}
     for language in sorted({str(item["language"]) for item in results}):
         items = [item for item in results if item["language"] == language]
