@@ -397,8 +397,11 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
     assert payloads[0]["options"]["num_predict"] >= 1000
-    assert finished["status"] == "completed"
+    assert finished["status"] == "rejected"
     assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["release_eligible"] is False
+    assert finished["quality"]["scientific_gate"]["passed"] is False
+    assert "external_retrieved_sources_required" in finished["quality"]["scientific_gate"]["reasons"]
 
 
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
