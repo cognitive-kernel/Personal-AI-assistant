@@ -107,7 +107,7 @@ def review_answer_claims(
                 "num_thread": limits["cpu_threads"],
                 "num_predict": 1000,
             },
-        })
+        }, timeout=min(180, max(5, int(settings.get("ollama_timeout_seconds", 300)))))
         raw = response.get("message", {}).get("content")
         parsed = json.loads(raw) if isinstance(raw, str) else None
     except (ollama.OllamaError, json.JSONDecodeError, TypeError, ValueError) as exc:
