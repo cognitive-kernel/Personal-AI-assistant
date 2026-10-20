@@ -361,8 +361,12 @@ def test_search_diagnostics_distinguish_parsed_but_rejected_provider_links(monke
         web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
     )
 
-    results = web_sources._search_results("cloud compute terms", 3)
-    diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
+    with pytest.raises(web_sources.SourceFetchError) as exc_info:
+        web_sources._search_results("cloud compute terms", 3)
+
+    diagnostics = {
+        item["provider"]: item for item in exc_info.value.provider_diagnostics
+    }
     google = diagnostics["Google"]
 
     assert google["attempts"][0]["parsed_result_count"] == 1
