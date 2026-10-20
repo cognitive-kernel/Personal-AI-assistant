@@ -734,14 +734,8 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
-        if status == "completed" and exists["status"] != "completed":
-            raise ValueError("A topic can only be completed automatically by a valid rubric assessment scoring at least 80%.")
-        if status == "completed" and not (
-            exists["latest_score_kind"] == "learner_rubric"
-            and exists["latest_score"] is not None
-            and float(exists["latest_score"]) >= 80.0
-        ):
-            raise ValueError("A topic can remain completed only after a valid rubric assessment scores at least 80%.")
+        if status == "completed":
+            raise ValueError("Manual completion is disabled; only assessment submission can complete a topic.")
         conn.execute(
             """UPDATE learning_path_topics
                SET status=?, updated_at=CURRENT_TIMESTAMP
