@@ -359,7 +359,17 @@ def _normalize_answer(value: str) -> str:
     return re.sub(r"\W+", "", value.casefold(), flags=re.UNICODE)
 
 
-def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
+def submit_assessment(
+    job_id: int,
+    answers: list[str],
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    if idempotency_key is not None and (
+        not isinstance(idempotency_key, str)
+        or not 16 <= len(idempotency_key) <= 128
+        or re.fullmatch(r"[A-Za-z0-9._:-]+", idempotency_key) is None
+    ):
+        raise ValueError("Idempotency key must be 16–128 safe ASCII characters.")
     if not isinstance(answers, list) or not answers or len(answers) > 3:
         raise ValueError("Submit between 1 and 3 answers.")
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
@@ -375,6 +385,25 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         answer_key = assessment.get("answer_key", [])
         if len(answers) != len(questions) or len(answer_key) != len(questions):
             raise ValueError("Answer count must match the assessment question count.")
+        serialized_answers = json.dumps(answers, ensure_ascii=False)
+        if idempotency_key is not None:
+            existing = conn.execute(
+                """SELECT id, answers_json, score, correct_count, question_count, scoring_method
+                   FROM assessment_attempts WHERE job_id=? AND idempotency_key=?""",
+                (job_id, idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                if existing["answers_json"] != serialized_answers:
+                    raise ValueError("Idempotency key was already used with different answers.")
+                return {
+                    "attempt_id": int(existing["id"]), "job_id": job_id,
+                    "score": float(existing["score"]), "correct_count": int(existing["correct_count"]),
+                    "question_count": int(existing["question_count"]),
+                    "scoring_method": str(existing["scoring_method"]),
+                    "independent_verification": False,
+                    "idempotent_replay": True,
+                    "note": "همان کلید ارسال و همان پاسخ‌ها قبلاً ثبت شده‌اند؛ نتیجهٔ قبلی بازگردانده شد.",
+                }
         if row["path_topic_id"] is not None:
             topic_state = conn.execute(
                 "SELECT path_id, position FROM learning_path_topics WHERE id=?",
@@ -413,10 +442,29 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
                 "note": "این آزمون rubric معتبر ندارد؛ نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و فهم معنایی را اثبات نمی‌کند."
             }
         cursor = conn.execute(
-            """INSERT INTO assessment_attempts(job_id, answers_json, score, correct_count, question_count, scoring_method)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions), scoring_method),
+            """INSERT INTO assessment_attempts(
+                   job_id, answers_json, score, correct_count, question_count, scoring_method, idempotency_key
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING""",
+            (job_id, serialized_answers, score, correct_count, len(questions), scoring_method, idempotency_key),
         )
+        if cursor.rowcount == 0 and idempotency_key is not None:
+            existing = conn.execute(
+                """SELECT id, answers_json, score, correct_count, question_count, scoring_method
+                   FROM assessment_attempts WHERE job_id=? AND idempotency_key=?""",
+                (job_id, idempotency_key),
+            ).fetchone()
+            if existing is None or existing["answers_json"] != serialized_answers:
+                raise ValueError("Assessment submission conflicted with an existing idempotency key.")
+            return {
+                "attempt_id": int(existing["id"]), "job_id": job_id,
+                "score": float(existing["score"]), "correct_count": int(existing["correct_count"]),
+                "question_count": int(existing["question_count"]),
+                "scoring_method": str(existing["scoring_method"]),
+                "independent_verification": False,
+                "idempotent_replay": True,
+                "note": "همان کلید ارسال و همان پاسخ‌ها قبلاً ثبت شده‌اند؛ نتیجهٔ قبلی بازگردانده شد.",
+            }
         attempt_id = int(cursor.lastrowid)
         path_topic_id = row["path_topic_id"]
         if path_topic_id is not None:
