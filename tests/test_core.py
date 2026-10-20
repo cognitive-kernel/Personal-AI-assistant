@@ -455,7 +455,7 @@ def test_path_topic_cannot_be_completed_or_scored_manually(tmp_path, monkeypatch
     topic = path["topics"][0]
     with pytest.raises(ValueError, match="manual score overrides are disabled"):
         learning.update_path_topic(path["id"], topic["id"], "completed", 100)
-    with pytest.raises(ValueError, match="only be completed automatically"):
+    with pytest.raises(ValueError, match="Manual completion is disabled"):
         learning.update_path_topic(path["id"], topic["id"], "completed")
     unchanged = learning.get_learning_path(path["id"])
     assert unchanged["topics"][0]["status"] == "pending"
