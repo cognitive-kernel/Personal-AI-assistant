@@ -64,6 +64,11 @@ def test_practical_attempt_is_persisted_but_not_promoted_without_course_path(tmp
     _setup(tmp_path, monkeypatch)
     job_id = _completed_python_job()
     source = "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data['values'])))"
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_jobs SET assessment_json=? WHERE id=?",
+            (json.dumps({"questions": ["question"], "answer_key": ["secret answer"], "answer_rubric": [{"required_concepts": []}]}), job_id),
+        )
 
     result = learning_practical.record_practical_attempt(
         job_id, learning_practical.EXERCISE_ID, _valid_report(), source
