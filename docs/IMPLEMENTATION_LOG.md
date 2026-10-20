@@ -428,7 +428,8 @@
 - [x] آزمون‌های handler برای نتیجهٔ واقعی، بازیابی job شکست‌خورده، جلوگیری از اجرای دوبارهٔ job نهایی و اعتبارسنجی payload اضافه شدند.
 - [x] وضعیت تاریخی handler برطرف شده: handler یادگیری در `app/main.py` ثبت و مسیرهای یادگیری با صف پایدار/idempotent enqueue و startup reconciliation یکپارچه شده‌اند؛ `app/learning_tasks.py` و `tests/test_main_startup.py`.
 - [x] اتصال startup، reconciliation و idempotent enqueue در تغییرات بعدی تکمیل شد؛ CI پوشش دارد. بازیابی واقعی روی میزبان و آزمون طولانی‌مدت همچنان gate جداگانه‌اند.
-- [ ] تست محلی در این نشست اجرا نشده است؛ CI باید روی head دقیق PR بررسی شود.
+- [x] CI مسیر handler/runtime یادگیری در [run #38784175717](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38784175717) موفق شد؛ آزمون یکپارچه در بخش 26 مسیر startup/reconciliation را نیز پوشش می‌دهد.
+- [ ] تست محلی در این نشست اجرا نشده است؛ اجرای روی میزبان واقعی همچنان گیت جداگانه است.
 
 
 ## 22. 2026-10-15 — کلید idempotency برای صف وظایف
