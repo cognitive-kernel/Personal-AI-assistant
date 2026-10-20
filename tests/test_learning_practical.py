@@ -37,9 +37,9 @@ def _valid_report(passed=4):
 def test_practical_catalog_hides_grading_cases():
     exercises = learning_practical.list_exercises()
 
-    assert len(exercises) == 2
+    assert len(exercises) == 3
     assert {item["id"] for item in exercises} == {
-        "python-json-sum-v1", "python-json-unique-v1"
+        "python-json-sum-v1", "python-json-unique-v1", "python-json-word-count-v1"
     }
     assert all("topic_keywords" not in item for item in exercises)
     assert "expected" not in json.dumps(exercises)
@@ -204,4 +204,17 @@ def test_unique_values_practical_grader_checks_sorted_unique_output():
     )
     assert not learning_practical.grade_case_output(
         exercise_id, case["id"], "succeeded", 0, "[3, 1, 2]\n"
+    )
+
+
+def test_word_count_practical_grader_counts_whitespace_separated_tokens():
+    exercise_id = "python-json-word-count-v1"
+    case = learning_practical.get_test_cases(exercise_id)[0]
+
+    assert case["expected"] == 3
+    assert learning_practical.grade_case_output(
+        exercise_id, case["id"], "succeeded", 0, "3\\n"
+    )
+    assert not learning_practical.grade_case_output(
+        exercise_id, case["id"], "succeeded", 0, "2\\n"
     )
