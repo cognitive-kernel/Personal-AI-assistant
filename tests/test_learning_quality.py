@@ -92,6 +92,8 @@ def test_curriculum_references_are_resolvable_for_exact_topic_only():
 
     refs = get_reference_urls_for_topic("معماری SQL Server، Database Engine و ابزارهای مدیریت")
     assert {item["url"] for item in refs} == {
+        "https://learn.microsoft.com/en-us/sql/sql-server/what-is-sql-server?view=sql-server-ver17",
+        "https://learn.microsoft.com/en-us/sql/relational-databases/query-processing-architecture-guide?view=sql-server-ver17",
         "https://www.w3schools.com/sql/default.asp",
         "https://learn.microsoft.com/en-us/sql/sql-server/",
     }
@@ -119,7 +121,7 @@ def test_curated_references_are_fetched_and_stored_as_job_evidence(tmp_path, mon
     text, source_kind = learning._discover_and_store_sources(job["id"], job["topic"])
 
     assert source_kind == "web_retrieved"
-    assert len(fetched) == 2
+    assert len(fetched) == 4
     assert all(url in text for url in fetched)
     with learning_connection() as connection:
         evidence = connection.execute(
