@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.db import get_settings
+from app.hardware import detect_hardware
 from app.ollama import OllamaError, _request
 
 
@@ -74,6 +75,7 @@ def run_benchmark(
     ):
         raise ValueError("max_latency_seconds must be finite and positive.")
 
+    hardware_before = detect_hardware()
     settings = get_settings()
     model = str(settings["ollama_model"])
     tags = _request("/api/tags")
@@ -89,6 +91,7 @@ def run_benchmark(
             "schema_version": 1, "benchmark": "local-ollama-generation",
             "status": "model_not_found", "model": model, "git_commit": _git_commit(),
             "runs_requested": runs, "runs_completed": 0,
+            "hardware_before": hardware_before,
             "performance_threshold_passed": False,
             "interpretation": "Configured model tag was not present in local Ollama model inventory.",
         }
@@ -113,6 +116,7 @@ def run_benchmark(
                 "generation_tokens_per_second": round(tokens_per_second, 3),
             })
 
+    hardware_after = detect_hardware()
     latencies = [item["latency_seconds"] for item in samples]
     rates = [item["generation_tokens_per_second"] for item in samples]
     median_latency = statistics.median(latencies)
@@ -127,6 +131,13 @@ def run_benchmark(
         "git_commit": _git_commit(),
         "python_version": platform.python_version(),
         "platform": platform.platform(),
+        "hardware_before": hardware_before,
+        "hardware_after": hardware_after,
+        "available_ram_delta_gb": (
+            round(hardware_after["available_ram_gb"] - hardware_before["available_ram_gb"], 2)
+            if isinstance(hardware_after.get("available_ram_gb"), (int, float))
+            and isinstance(hardware_before.get("available_ram_gb"), (int, float)) else None
+        ),
         "runs_requested": runs,
         "runs_completed": len(samples),
         "median_latency_seconds": round(median_latency, 4),
