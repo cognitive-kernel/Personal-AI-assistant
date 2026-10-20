@@ -51,7 +51,8 @@ def test_grader_wrapper_runs_learner_as_a_child_program():
     assert "subprocess.run(" in wrapper
     assert "timeout=2" in wrapper
     assert "positive-integers" in wrapper
-    assert source in wrapper
+    assert "LEARNER_SOURCE =" in wrapper
+    assert "data[" + chr(39) + "values" + chr(39) + "]" in wrapper
 
 
 def test_practical_attempt_is_persisted_but_not_promoted_without_course_path(tmp_path, monkeypatch):
