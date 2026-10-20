@@ -50,3 +50,36 @@ def test_regeneration_cannot_bypass_prerequisite_locks(tmp_path, monkeypatch):
     path_id, _first_id, second_id = _setup(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="before regenerating"):
         learning.regenerate_topic_learning(path_id, second_id)
+
+
+def test_assessment_endpoint_cannot_complete_a_locked_topic(tmp_path, monkeypatch):
+    import json
+
+    path_id, _first_id, second_id = _setup(tmp_path, monkeypatch)
+    job = learning.create_job("Locked topic assessment", path_topic_id=second_id)
+    assessment = {
+        "questions": ["Q1", "Q2"],
+        "answer_key": ["faster lookup", "dirty read"],
+        "rubric": [
+            {"criteria": [
+                {"id": "a", "weight": 1, "accepted_phrases": ["faster lookup"]},
+                {"id": "b", "weight": 1, "accepted_phrases": ["index cost"]},
+            ]},
+            {"criteria": [
+                {"id": "c", "weight": 1, "accepted_phrases": ["isolation level"]},
+                {"id": "d", "weight": 1, "accepted_phrases": ["dirty read"]},
+            ]},
+        ],
+    }
+    with learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+    with pytest.raises(ValueError, match="locked topic"):
+        learning.submit_assessment(job["id"], ["faster lookup and index cost", "isolation level and dirty read"])
+    with learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM assessment_attempts WHERE job_id=?", (job["id"],)
+        ).fetchone()[0]
+    assert count == 0
