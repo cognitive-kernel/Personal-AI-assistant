@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 
 import pytest
 
@@ -9,6 +10,7 @@ from app.knowledge_review import (
     record_peer_consultation,
     record_review_evidence,
     research_candidate_online,
+    consult_configured_peer_ais,
 )
 from app.web_sources import SourceDocument
 
@@ -130,3 +132,58 @@ def test_online_research_failure_keeps_candidate(tmp_path, monkeypatch):
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()[0]
     assert status == "awaiting_test"
+
+
+def test_configured_peer_ai_is_queried_and_response_is_persisted(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "independent-reviewer",
+        "base_url": "https://reviewer.example/v1",
+        "model": "review-model",
+        "api_key_env": "TEST_PEER_KEY",
+    }]))
+    monkeypatch.setenv("TEST_PEER_KEY", "not-persisted-secret")
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self, _limit):
+            return json.dumps({
+                "choices": [{"message": {"content": "The claim needs a boundary condition."}}]
+            }).encode()
+
+    def fake_urlopen(request, timeout):
+        assert request.full_url == "https://reviewer.example/v1/chat/completions"
+        assert request.get_header("Authorization") == "Bearer not-persisted-secret"
+        assert timeout == 15
+        return FakeResponse()
+
+    monkeypatch.setattr("app.knowledge_review.urllib.request.urlopen", fake_urlopen)
+    result = consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "completed"
+    assert result["consulted"] == 1
+    summary = get_candidate_review_summary(candidate_id)
+    assert summary["distinct_peer_providers"] == 1
+    assert summary["verification_status"] == "unverified"
+    with db.learning_connection() as conn:
+        saved = conn.execute(
+            "SELECT response, independence_note FROM knowledge_peer_consultations"
+        ).fetchone()
+    assert saved["response"] == "The claim needs a boundary condition."
+    assert "not been established" in saved["independence_note"]
+    assert "not-persisted-secret" not in saved["response"]
+
+
+def test_peer_ai_endpoint_rejects_non_https_remote_hosts(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "unsafe",
+        "base_url": "http://example.org/v1",
+        "model": "model",
+    }]))
+    result = consult_configured_peer_ais(candidate_id)
+    assert result["consulted"] == 0
+    assert result["errors"][0]["error"] == "endpoint_must_be_https_or_loopback_without_credentials"
