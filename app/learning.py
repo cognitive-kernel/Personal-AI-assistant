@@ -439,12 +439,16 @@ def run_job(job_id: int) -> None:
         if candidate_id is not None:
             # Public web corroboration is best-effort: network failure must not discard a lesson.
             try:
-                from .knowledge_review import research_candidate_online
+                from .knowledge_review import (
+                    consult_configured_peer_ais,
+                    research_candidate_online,
+                )
                 research_candidate_online(
                     candidate_id,
                     f"{topic} {result['lesson'][:300]}",
                     limit=3,
                 )
+                consult_configured_peer_ais(candidate_id, limit=3)
             except Exception:
                 pass
     except Exception as exc:
