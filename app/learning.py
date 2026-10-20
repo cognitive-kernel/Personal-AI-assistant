@@ -67,20 +67,40 @@ def create_job(
 
 def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
     """Fetch bounded public web evidence before generation, falling back safely when unavailable."""
-    from .web_sources import discover_sources
+    from urllib.parse import urlsplit
+    from .web_sources import discover_sources, fetch_public_document
 
     settings = get_settings()
     max_chars = max(1000, min(100000, int(settings.get("learning_source_max_chars", 12000))))
     search_ref = "https://html.duckduckgo.com/html/?" + urlencode({"q": topic})
+    documents = []
+    failures: list[str] = []
     try:
-        documents = discover_sources(topic, limit=3)
+        documents.extend(discover_sources(topic, limit=3))
     except Exception as exc:
-        documents = []
-        failure_note = f"Web discovery unavailable ({type(exc).__name__}); lesson will fall back to model knowledge."
-    else:
-        failure_note = "No accessible public pages were found; lesson will fall back to model knowledge."
+        failures.append(f"web search unavailable ({type(exc).__name__})")
+
+    # Curated curriculum links are real evidence inputs, not just UI decoration.
+    # Fetch them through the same SSRF-safe public-page reader, and keep their
+    # content/provenance with the job so the claim gate can inspect actual text.
+    for reference in curricula.get_reference_urls_for_topic(topic):
+        url = reference["url"]
+        if any(getattr(document, "url", None) == url for document in documents):
+            continue
+        try:
+            document = fetch_public_document(url, reference["title"], max_chars=6000)
+        except Exception as exc:
+            failures.append(f"reference fetch failed for {urlsplit(url).hostname}: {type(exc).__name__}")
+            continue
+        documents.append(document)
+        if len(documents) >= 5:
+            break
 
     if not documents:
+        failure_note = (
+            "No usable retrieved pages. " + "; ".join(failures[:5])
+            if failures else "No accessible public pages or usable curated references were found."
+        )
         with learning_connection() as conn:
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                 VALUES (?, 'web_search', ?, NULL, ?)""", (job_id, search_ref, failure_note))
@@ -345,9 +365,12 @@ def run_job(job_id: int) -> None:
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
                     (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
             else:
-                conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
+                # Preserve user-supplied source material for a safe regeneration/retry.
+                # Retrieved web text is transient and is removed when its lesson is rejected.
+                if source_kind == "web_retrieved":
+                    conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
-                    ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
+                    ("متن منبع کاربر در مخزن خصوصی نگه داشته شد؛ درس ردشده منتشر نشد.", job_id))
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
