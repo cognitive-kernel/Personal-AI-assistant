@@ -404,8 +404,16 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         )
         attempt_id = int(cursor.lastrowid)
         path_topic_id = row["path_topic_id"]
+        prerequisites_met = True
         if path_topic_id is not None:
-            if scoring_method == "rubric_concept_coverage_v1" and score >= MASTERY_SCORE_THRESHOLD:
+            blocker_count = conn.execute(
+                """SELECT COUNT(*) AS count FROM learning_path_topics AS prior
+                   JOIN learning_path_topics AS current ON current.path_id=prior.path_id
+                   WHERE current.id=? AND prior.position < current.position AND prior.status != 'completed'""",
+                (int(path_topic_id),),
+            ).fetchone()["count"]
+            prerequisites_met = int(blocker_count) == 0
+            if prerequisites_met and scoring_method == "rubric_concept_coverage_v1" and score >= MASTERY_SCORE_THRESHOLD:
                 topic_status_sql = "completed"
             else:
                 topic_status_sql = "in_progress"
@@ -421,6 +429,7 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         path_topic_id is not None
         and scoring_method == "rubric_concept_coverage_v1"
         and score >= MASTERY_SCORE_THRESHOLD
+        and prerequisites_met
     )
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
@@ -504,6 +513,14 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             "SELECT id, topic, position, status, latest_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
             (path_id,),
         ).fetchall()]
+    completed_before: list[dict[str, Any]] = []
+    for item in topics:
+        item["blocked_by"] = [
+            {"id": prior["id"], "topic": prior["topic"]}
+            for prior in completed_before if prior["status"] != "completed"
+        ]
+        item["prerequisites_met"] = not item["blocked_by"]
+        completed_before.append(item)
     total = len(topics)
     completed = sum(1 for item in topics if item["status"] == "completed")
     in_progress = sum(1 for item in topics if item["status"] == "in_progress")
@@ -643,6 +660,14 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         if exists is None:
             raise KeyError(topic_id)
         if status == "completed":
+            blockers = conn.execute(
+                """SELECT COUNT(*) AS count FROM learning_path_topics AS prior
+                   JOIN learning_path_topics AS current ON current.path_id=prior.path_id
+                   WHERE current.id=? AND prior.position < current.position AND prior.status != 'completed'""",
+                (topic_id,),
+            ).fetchone()["count"]
+            if int(blockers) > 0:
+                raise ValueError("Prerequisite topics must be completed before this topic can be completed.")
             latest_attempt = conn.execute(
                 """SELECT a.score, a.scoring_method
                    FROM assessment_attempts AS a
@@ -699,11 +724,17 @@ def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
 def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id, topic, position FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
+        blockers = conn.execute(
+            """SELECT topic FROM learning_path_topics WHERE path_id=? AND position < ? AND status != 'completed' ORDER BY position""",
+            (path_id, int(topic["position"])),
+        ).fetchall()
+        if blockers:
+            raise ValueError("Prerequisite topics must be completed first: " + ", ".join(str(row["topic"]) for row in blockers[:5]))
         latest = conn.execute(
             "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
             (topic_id,),
@@ -727,11 +758,17 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     """Always create a fresh lesson unless this topic already has an active job."""
     with learning_connection() as conn:
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id, topic, position FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
+        blockers = conn.execute(
+            """SELECT topic FROM learning_path_topics WHERE path_id=? AND position < ? AND status != 'completed' ORDER BY position""",
+            (path_id, int(topic["position"])),
+        ).fetchall()
+        if blockers:
+            raise ValueError("Prerequisite topics must be completed first: " + ", ".join(str(row["topic"]) for row in blockers[:5]))
         latest = conn.execute(
             "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
             (topic_id,),
@@ -780,9 +817,13 @@ def start_path_learning(path_id: int) -> dict[str, Any]:
     skipped_active = 0
     skipped_completed = 0
     skipped_existing_lesson = 0
+    skipped_prerequisite = 0
     for topic in path["topics"]:
         if topic["status"] == "completed":
             skipped_completed += 1
+            continue
+        if not topic.get("prerequisites_met", False):
+            skipped_prerequisite += 1
             continue
         with learning_connection() as conn:
             latest = conn.execute(
@@ -811,7 +852,8 @@ def start_path_learning(path_id: int) -> dict[str, Any]:
         "skipped_active_count": skipped_active,
         "skipped_completed_count": skipped_completed,
         "skipped_existing_lesson_count": skipped_existing_lesson,
-        "message": "یادگیری از درس‌های ناتمام ادامه پیدا می‌کند؛ درس‌های تولیدشده دوباره ساخته نمی‌شوند.",
+        "skipped_prerequisite_count": skipped_prerequisite,
+        "message": "فقط درس‌های مجاز از نظر پیش‌نیاز وارد صف می‌شوند؛ تکمیل درس بعدی به عبور از آزمون سرفصل‌های قبلی وابسته است.",
     }
 
 def stop_path_learning(path_id: int) -> dict[str, Any]:
