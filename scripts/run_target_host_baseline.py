@@ -212,10 +212,12 @@ def _run_tests(timeout_seconds: int) -> dict[str, Any]:
         }
 
 
-def _run_performance_benchmark(task_count: int, timeout_seconds: int = 300) -> dict[str, Any]:
+def _run_performance_benchmark(task_count: int, min_queue_tps: float = 10.0, timeout_seconds: int = 300) -> dict[str, Any]:
     """Run the disposable SQLite queue benchmark and keep the report redacted."""
     if isinstance(task_count, bool) or not isinstance(task_count, int) or not 1 <= task_count <= 100000:
         raise ValueError("benchmark task count must be between 1 and 100000")
+    if isinstance(min_queue_tps, bool) or not isinstance(min_queue_tps, (int, float)) or min_queue_tps <= 0:
+        raise ValueError("minimum queue throughput must be positive")
     command = [
         sys.executable, str(ROOT / "scripts" / "benchmark_task_queue.py"),
         "--tasks", str(task_count), "--producers", "4", "--workers", "4",
@@ -239,15 +241,23 @@ def _run_performance_benchmark(task_count: int, timeout_seconds: int = 300) -> d
         }
     if not isinstance(report, dict):
         return {"status": "invalid_report", "return_code": result.returncode, "task_count": task_count}
-    passed = result.returncode == 0 and report.get("result") == "passed"
+    throughput = report.get("claim_and_complete_tasks_per_second")
+    workload_passed = result.returncode == 0 and report.get("result") == "passed"
+    threshold_passed = (
+        isinstance(throughput, (int, float)) and not isinstance(throughput, bool)
+        and throughput >= min_queue_tps
+    )
+    passed = workload_passed and threshold_passed
     return {
-        "status": "passed" if passed else "failed",
+        "status": "passed" if passed else "below_threshold" if workload_passed and not threshold_passed else "failed",
         "return_code": result.returncode,
         "benchmark": report.get("benchmark"),
         "task_count_requested": report.get("task_count_requested"),
         "task_count_succeeded": report.get("task_count_succeeded"),
         "enqueue_tasks_per_second": report.get("enqueue_tasks_per_second"),
-        "claim_and_complete_tasks_per_second": report.get("claim_and_complete_tasks_per_second"),
+        "claim_and_complete_tasks_per_second": throughput,
+        "minimum_claim_and_complete_tasks_per_second": float(min_queue_tps),
+        "performance_threshold_passed": threshold_passed,
         "database_bytes": report.get("database_bytes"),
         "sqlite_integrity": report.get("sqlite_integrity"),
         "timed_out": False,
@@ -255,14 +265,14 @@ def _run_performance_benchmark(task_count: int, timeout_seconds: int = 300) -> d
     }
 
 
-def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_performance_benchmark: bool = False, benchmark_tasks: int = 1000) -> dict[str, Any]:
+def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_performance_benchmark: bool = False, benchmark_tasks: int = 1000, min_queue_tps: float = 10.0) -> dict[str, Any]:
     storage = _storage_summary()
     network_boundary = _network_boundary_summary()
     tests = _run_tests(timeout_seconds) if run_tests else {"status": "not_run"}
-    performance = _run_performance_benchmark(benchmark_tasks) if run_performance_benchmark else {"status": "not_run"}
+    performance = _run_performance_benchmark(benchmark_tasks, min_queue_tps) if run_performance_benchmark else {"status": "not_run"}
     dirty = _git_value("status", "--porcelain")
     return {
-        "report_version": 1,
+        "report_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "repository": {
             "commit": _git_value("rev-parse", "HEAD"),
@@ -297,6 +307,7 @@ def main() -> int:
     parser.add_argument("--run-tests", action="store_true", help="run the full pytest suite")
     parser.add_argument("--run-performance-benchmark", action="store_true", help="benchmark disposable SQLite task queue on this host")
     parser.add_argument("--benchmark-tasks", type=int, default=1000, help="disposable benchmark task count (1..100000)")
+    parser.add_argument("--min-queue-tps", type=float, default=10.0, help="minimum queue claim/complete throughput for acceptance (default: 10 tasks/s)")
     parser.add_argument(
         "--timeout-seconds", type=int, default=1800,
         help="pytest timeout when --run-tests is used (default: 1800)",
@@ -307,12 +318,15 @@ def main() -> int:
         parser.error("--timeout-seconds must be positive")
     if not 1 <= args.benchmark_tasks <= 100000:
         parser.error("--benchmark-tasks must be between 1 and 100000")
+    if args.min_queue_tps <= 0:
+        parser.error("--min-queue-tps must be positive")
 
     report = build_report(
         run_tests=args.run_tests,
         timeout_seconds=args.timeout_seconds,
         run_performance_benchmark=args.run_performance_benchmark,
         benchmark_tasks=args.benchmark_tasks,
+        min_queue_tps=args.min_queue_tps,
     )
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
