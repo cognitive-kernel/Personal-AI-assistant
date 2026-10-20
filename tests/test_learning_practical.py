@@ -192,3 +192,16 @@ def test_practical_mastery_completes_python_path_topic_automatically(tmp_path, m
     assert result["mastery_achieved"] is True
     assert refreshed["topics"][0]["status"] == "completed"
     assert refreshed["topics"][0]["latest_score"] == 100
+
+
+def test_unique_values_practical_grader_checks_sorted_unique_output():
+    exercise_id = "python-json-unique-v1"
+    case = learning_practical.get_test_cases(exercise_id)[0]
+
+    assert case["expected"] == [1, 2, 3]
+    assert learning_practical.grade_case_output(
+        exercise_id, case["id"], "succeeded", 0, "[1, 2, 3]\\n"
+    )
+    assert not learning_practical.grade_case_output(
+        exercise_id, case["id"], "succeeded", 0, "[3, 1, 2]\\n"
+    )
