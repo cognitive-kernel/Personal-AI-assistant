@@ -387,7 +387,7 @@ def _has_transfer_question(value: str) -> bool:
     markers = (
         "فرض کنید", "اگر", "در سناریو", "در این وضعیت", "در عمل", "طراحی کنید",
         "به کار ببرید", "چه اقدامی", "چه تغییری", "چگونه در", "چطور می توان",
-        "what if", "suppose", "scenario", "in practice", "how would", "how could",
+        "what if", "suppose", "in a new scenario", "scenario where", "scenario in which", "in practice", "how would", "how could",
         "apply this", "apply the", "design a", "design an", "debug this", "debug the",
     )
     for marker in markers:
