@@ -292,6 +292,16 @@ def run_job(job_id: int) -> None:
             "این دروازه فقط شواهد و منشأ را طبق قواعد قطعی بررسی می‌کند؛ "
             "تأیید مستقل صحت علمی محسوب نمی‌شود."
         )
+        if quality["scientific_acceptance"].get("accepted") is not True:
+            # Fail closed: a lesson cannot be published merely because its
+            # shape/length checks passed when its evidence gate failed.
+            quality["accepted"] = False
+            reasons = quality.get("reasons")
+            if not isinstance(reasons, list):
+                reasons = []
+                quality["reasons"] = reasons
+            if "scientific_evidence_gate_failed" not in reasons:
+                reasons.append("scientific_evidence_gate_failed")
 
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
