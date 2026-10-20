@@ -219,3 +219,42 @@ def test_reconciliation_does_not_requeue_a_cancelled_learning_task(learning_task
     assert reconcile_queued_learning_tasks() == 1
     result = learning.get_job(job["id"])
     assert result["status"] == "cancelled"
+
+
+def test_learning_job_status_exposes_bounded_queue_diagnostics_without_payload(monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main.learning, "get_job", lambda job_id: {
+        "id": job_id, "status": "running", "error": None,
+    })
+    monkeypatch.setattr(main.task_manager, "get_task_by_dedupe_key", lambda key: {
+        "id": 9,
+        "status": "running",
+        "attempts": 2,
+        "max_attempts": 3,
+        "updated_at": "2026-10-20T10:00:00Z",
+        "checkpoint": {"phase": "learning_queued"},
+        "error": None,
+        "payload": {"job_id": 42, "secret": "must not be returned"},
+    })
+
+    result = main.learning_job(42)
+
+    assert result["background_task"] == {
+        "status": "running",
+        "attempts": 2,
+        "max_attempts": 3,
+        "updated_at": "2026-10-20T10:00:00Z",
+        "phase": "learning_queued",
+        "error": None,
+    }
+    assert "payload" not in result["background_task"]
+
+
+def test_learning_wait_timeout_includes_task_diagnostics_for_recovery():
+    from pathlib import Path
+
+    source = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    assert 'latest.background_task || {}' in source
+    assert "وضعیت وظیفه پس‌زمینه" in source
+    assert "تلاش " in source
