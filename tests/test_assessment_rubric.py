@@ -46,3 +46,18 @@ def test_invalid_rubric_fails_closed(value):
 def test_rubric_rejects_wrong_question_count_and_malformed_phrases():
     assert normalize_rubric(_rubric(), 3) is None
     assert normalize_rubric([{"required_concepts": [{"concept": "valid", "accepted_phrases": [42]}]}], 1) is None
+
+
+def test_rubric_does_not_match_a_concept_only_as_a_substring():
+    rubric = normalize_rubric([{
+        "required_concepts": [
+            {"concept": "index", "accepted_phrases": ["index"]},
+            {"concept": "query plan", "accepted_phrases": ["query plan"]},
+        ]
+    }], 1)
+    assert rubric is not None
+
+    result = score_answers(["Indexing affects performance but the plan is absent."], rubric)
+
+    assert result["score"] == 0.0
+    assert result["question_results"][0]["missing_concepts"] == ["index", "query plan"]
