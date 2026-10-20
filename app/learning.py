@@ -29,6 +29,23 @@ def create_job(
     if len(source_text) > source_limit:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+    if path_topic_id is not None:
+        if not isinstance(path_topic_id, int) or isinstance(path_topic_id, bool) or path_topic_id < 1:
+            raise ValueError("path_topic_id must be a positive integer.")
+        with learning_connection() as conn:
+            topic_row = conn.execute(
+                "SELECT path_id, position FROM learning_path_topics WHERE id=?",
+                (path_topic_id,),
+            ).fetchone()
+            if topic_row is None:
+                raise ValueError("path_topic_id does not identify an existing learning topic.")
+            blocked = conn.execute(
+                """SELECT 1 FROM learning_path_topics
+                   WHERE path_id=? AND position<? AND status!='completed' LIMIT 1""",
+                (topic_row["path_id"], topic_row["position"]),
+            ).fetchone()
+            if blocked is not None:
+                raise ValueError("Complete prerequisite topics before creating a lesson for this topic.")
     with learning_connection() as conn:
         cursor = conn.execute(
             "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json) "
