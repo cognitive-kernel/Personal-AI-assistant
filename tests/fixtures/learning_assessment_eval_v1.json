@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "learning-rubric-lexical-v1",
+  "description": "Deterministic regression cases for token-boundary concept-coverage scoring; not a semantic-understanding benchmark.",
+  "mastery_threshold": 80,
+  "cases": [
+    {
+      "id": "canonical-complete",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "query plan",
+              "accepted_phrases": [
+                "query plan"
+              ]
+            },
+            {
+              "concept": "index maintenance",
+              "accepted_phrases": [
+                "index maintenance"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "The query plan shows execution and index maintenance has a cost."
+      ],
+      "expected_score": 100,
+      "expected_mastery": true
+    },
+    {
+      "id": "accepted-paraphrases",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "query plan",
+              "accepted_phrases": [
+                "execution plan"
+              ]
+            },
+            {
+              "concept": "index maintenance",
+              "accepted_phrases": [
+                "maintaining indexes"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "The execution plan shows the operations and maintaining indexes has a cost."
+      ],
+      "expected_score": 100,
+      "expected_mastery": true
+    },
+    {
+      "id": "partial-concepts",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "query plan",
+              "accepted_phrases": [
+                "execution plan"
+              ]
+            },
+            {
+              "concept": "index maintenance",
+              "accepted_phrases": [
+                "maintaining indexes"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "The execution plan shows the operations."
+      ],
+      "expected_score": 50,
+      "expected_mastery": false
+    },
+    {
+      "id": "unrelated-answer",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "query plan",
+              "accepted_phrases": [
+                "execution plan"
+              ]
+            },
+            {
+              "concept": "index maintenance",
+              "accepted_phrases": [
+                "maintaining indexes"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "The weather is sunny today."
+      ],
+      "expected_score": 0,
+      "expected_mastery": false
+    },
+    {
+      "id": "substring-attack",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "index",
+              "accepted_phrases": [
+                "index"
+              ]
+            },
+            {
+              "concept": "query plan",
+              "accepted_phrases": [
+                "query plan"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "Indexing changes performance but no plan is provided."
+      ],
+      "expected_score": 0,
+      "expected_mastery": false
+    },
+    {
+      "id": "punctuation-and-case",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "source provenance",
+              "accepted_phrases": [
+                "source provenance"
+              ]
+            },
+            {
+              "concept": "uncertainty",
+              "accepted_phrases": [
+                "state uncertainty"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "SOURCE provenance is retained; state uncertainty when evidence is missing."
+      ],
+      "expected_score": 100,
+      "expected_mastery": true
+    },
+    {
+      "id": "missing-second-concept",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "source provenance",
+              "accepted_phrases": [
+                "source provenance"
+              ]
+            },
+            {
+              "concept": "uncertainty",
+              "accepted_phrases": [
+                "state uncertainty"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "Keep source provenance for every claim."
+      ],
+      "expected_score": 50,
+      "expected_mastery": false
+    },
+    {
+      "id": "multiword-boundaries",
+      "rubric": [
+        {
+          "required_concepts": [
+            {
+              "concept": "local endpoint",
+              "accepted_phrases": [
+                "local endpoint"
+              ]
+            },
+            {
+              "concept": "network isolation",
+              "accepted_phrases": [
+                "network isolation"
+              ]
+            }
+          ]
+        }
+      ],
+      "answers": [
+        "A local endpoint uses network isolation for safe execution."
+      ],
+      "expected_score": 100,
+      "expected_mastery": true
+    }
+  ]
+}
