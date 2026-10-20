@@ -99,3 +99,16 @@ def test_primary_source_allowlist_rejects_host_suffix_and_credential_spoofing():
     assert not is_allowlisted_primary_source("https://python.org.attacker.example/")
     assert not is_allowlisted_primary_source("https://python.org@attacker.example/")
     assert not is_allowlisted_primary_source("http://docs.python.org/3/")
+
+
+def test_evidence_gate_fails_closed_on_unhashable_claim_evidence_url():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    review = _review(urls)
+    review["claims"][0]["evidence_urls"] = [{"url": urls[0]}]
+
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls), [_source(url) for url in urls], review
+    )
+
+    assert result["accepted"] is False
+    assert "all_claims_supported_by_known_sources" in result["failed_gates"]
