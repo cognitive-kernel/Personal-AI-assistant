@@ -92,3 +92,10 @@ The implementation log is the detailed record of merged changes and acceptance l
 - PR #368 proposes a higher-contrast light-theme focus token and WCAG token regression tests; it remains an open review until merged.
 - PR #369 proposes mandatory import-cycle CI enforcement, a fresh-store clean-start regression, and corrected self-improvement governance documentation; it remains an open review until exact-head CI completes and the PR is reviewed.
 - The target-host migration/startup, live-model human adjudication, operational recovery/load, real restore/rollback rehearsal, independent security review, and manual accessibility acceptance gates remain open by design and are not inferred from CI.
+
+
+## 2026-10-20 update — documentation integrity gate
+
+- PR #369 also adds a network-free Markdown link checker and unit coverage for broken local targets, fenced code examples, URL encoding, and root traversal.
+- The checker is added to required test CI. It does not validate external link availability or replace manual content review.
+- Exact-head tests, browser E2E, and dependency-audit results are recorded on the PR; do not claim merge until review and merge are complete.
