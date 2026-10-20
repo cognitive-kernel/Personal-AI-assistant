@@ -53,3 +53,8 @@ Task audit history was made interactively cursor-paginated in [PR #351](https://
 ## Evidence policy
 
 Every acceptance claim must link to the exact commit and CI run or target-host report. A skipped test, mock, static check, or successful CI run must not be described as proof of a different environment or of factual model quality.
+
+
+## Dashboard navigation refinement (2026-10-20)
+
+The persistent section navigation now exposes exactly one current destination using `aria-current="location"`, updates its active item on scroll, resize, and hash changes with a requestAnimationFrame-throttled handler, and uses a responsive active indicator. Browser E2E asserts the initial state and navigation to the task manager. This is repository-level behavior only; manual keyboard/screen-reader and target-host usability acceptance remain required.

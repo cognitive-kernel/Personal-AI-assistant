@@ -1172,6 +1172,14 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert page.locator(".skip-link").get_attribute("href") == "#main-content"
         navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
         assert navigation.is_visible()
+        current_links = navigation.locator('a[aria-current="location"]')
+        assert current_links.count() == 1, "Exactly one navigation item should identify the current section"
+        assert current_links.get_attribute("href") == "#storage-health-section"
+        navigation.get_by_role("link", name="وظایف").click()
+        page.wait_for_function(
+            "document.querySelector('.dashboard-nav a[aria-current=\\\"location\\\"]')?.getAttribute('href') === '#task-manager-section'",
+            timeout=5000,
+        )
         shell = page.locator(".dashboard-shell")
         assert shell.count() == 1
         for target in (

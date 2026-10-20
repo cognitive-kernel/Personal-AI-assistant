@@ -1711,5 +1711,52 @@ el("self-improvement-form").addEventListener("submit",async event=>{
  } catch(error) { output.textContent=error.message; }
 });
 el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
+// Keep the persistent section navigation synchronized with the user's reading position.
+(function initializeCurrentSectionNavigation(){
+ const navigation=document.querySelector('.dashboard-nav');
+ if(!navigation) return;
+ const links=Array.from(navigation.querySelectorAll('a[href^="#"]'));
+ const sections=links.map(link=>document.getElementById(link.hash.slice(1))).filter(Boolean);
+ if(!sections.length) return;
+ let scheduled=false;
+ function updateCurrentSection(){
+  scheduled=false;
+  const marker=Math.min(Math.max(window.innerHeight*0.28,120),240);
+  let current=sections[0];
+  for(const section of sections){
+   if(section.getBoundingClientRect().top<=marker) current=section;
+   else break;
+  }
+  const currentHash="#"+current.id;
+  for(const link of links){
+   if(link.getAttribute('href')===currentHash){
+    link.setAttribute('aria-current','location');
+    link.classList.add('is-current');
+   }else{
+    link.removeAttribute('aria-current');
+    link.classList.remove('is-current');
+   }
+  }
+ }
+ function scheduleUpdate(){
+  if(scheduled) return;
+  scheduled=true;
+  window.requestAnimationFrame(updateCurrentSection);
+ }
+ navigation.addEventListener('click',event=>{
+  const link=event.target.closest('a[href^="#"]');
+  if(link && navigation.contains(link)){
+   for(const item of links){
+    const active=item===link;
+    if(active){item.setAttribute('aria-current','location');item.classList.add('is-current');}
+    else{item.removeAttribute('aria-current');item.classList.remove('is-current');}
+   }
+  }
+ });
+ window.addEventListener('scroll',scheduleUpdate,{passive:true});
+ window.addEventListener('resize',scheduleUpdate,{passive:true});
+ window.addEventListener('hashchange',scheduleUpdate);
+ updateCurrentSection();
+})();
 refreshTasks();
 </script><script src="/static/learning.js"></script></main></div></body></html>
