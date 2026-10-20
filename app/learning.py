@@ -441,6 +441,164 @@ def run_job(job_id: int) -> None:
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
+
+def record_candidate_test_results(
+    candidate_id: int,
+    test_plan: list[dict[str, Any]],
+    test_results: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Record controlled test outcomes; promote only when every planned test passes.
+
+    Each result must name its runner and include expected/actual values so failures
+    become durable experiences rather than disappearing behind a quality score.
+    This function records declared-test success, not universal scientific truth.
+    """
+    from .db import init_databases
+
+    init_databases()
+    if not isinstance(test_plan, list) or not 1 <= len(test_plan) <= 50:
+        raise ValueError("test_plan must contain 1–50 tests.")
+    if not isinstance(test_results, list) or len(test_results) != len(test_plan):
+        raise ValueError("test_results must contain one result for every planned test.")
+    plan_names = []
+    for item in test_plan:
+        if not isinstance(item, dict) or not isinstance(item.get("test"), str) or not item["test"].strip():
+            raise ValueError("Every test plan item must name a test.")
+        plan_names.append(item["test"].strip())
+    if len(set(plan_names)) != len(plan_names):
+        raise ValueError("Test plan names must be unique.")
+    result_names = []
+    allowed_runners = {"sandbox", "deterministic_assertion", "reference_dataset"}
+    for item in test_results:
+        if not isinstance(item, dict):
+            raise ValueError("Every test result must be an object.")
+        name = item.get("test")
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("Every test result must name a test.")
+        if item.get("passed") not in (True, False) or not isinstance(item.get("passed"), bool):
+            raise ValueError("Every test result must contain a boolean passed field.")
+        if item.get("runner") not in allowed_runners:
+            raise ValueError("Every test result must identify an approved automated runner.")
+        if "expected" not in item or "actual" not in item:
+            raise ValueError("Every test result must preserve expected and actual outputs.")
+        result_names.append(name.strip())
+    if result_names != plan_names:
+        raise ValueError("Test results must match the planned test names and order.")
+    try:
+        plan_json = json.dumps(test_plan, ensure_ascii=False, allow_nan=False)
+        results_json = json.dumps(test_results, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Test plan/results must be finite JSON-compatible data.") from exc
+    if len(plan_json) > 20000 or len(results_json) > 20000:
+        raise ValueError("Test plan/results exceed the storage limit.")
+
+    passed = all(item["passed"] is True for item in test_results)
+    failed_names = [item["test"] for item in test_results if item["passed"] is False]
+    failure_reason = "Failed tests: " + ", ".join(failed_names) if failed_names else ""
+    with learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT * FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
+            raise KeyError(candidate_id)
+        if candidate["status"] != "awaiting_test":
+            raise ValueError("Only a candidate awaiting tests can receive its first test result.")
+        conn.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,
+                   updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            ("passed" if passed else "failed", plan_json, results_json, failure_reason, candidate_id),
+        )
+        if passed:
+            latest = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?",
+                (candidate["topic"],),
+            ).fetchone()
+            cur = conn.execute(
+                """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+                   VALUES (?, ?, ?, ?, 'verified', ?)""",
+                (candidate["topic"], candidate["content"], candidate["source_kind"],
+                 int(latest["version"]) + 1, candidate["job_id"]),
+            )
+            knowledge_id = int(cur.lastrowid)
+            conn.execute(
+                """UPDATE temporary_knowledge_candidates
+                   SET promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (knowledge_id, candidate_id),
+            )
+            conn.execute(
+                """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                   VALUES (?, 'candidate_test_results', ?, ?, ?)""",
+                (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
+                 candidate["source_sha256"],
+                 "تمام آزمون‌های ثبت‌شده با runner خودکار مجاز موفق شدند؛ ارتقا فقط در محدوده همین آزمون‌هاست، نه اثبات همگانی صحت علمی."),
+            )
+        else:
+            source_urls = json.loads(candidate["source_urls_json"])
+            source_evidence = [
+                {"url": url, "claim": f"منبع نامزد دانشی با شناسه {candidate_id}"}
+                for url in source_urls if isinstance(url, str) and url.startswith("https://")
+            ]
+            takeaway = (
+                "نامزد دانشی در آزمون خودکار شکست خورد. "
+                + failure_reason
+                + ". خروجی مورد انتظار، خروجی واقعی و برنامه آزمون در test_results_json و test_plan_json ثبت شده‌اند."
+            )
+            conn.execute(
+                """INSERT INTO learning_experiences(
+                       topic, problem, hypothesis, status, source_evidence_json,
+                       test_plan_json, test_results_json, takeaway
+                   ) VALUES (?, ?, ?, 'failed', ?, ?, ?, ?)""",
+                (candidate["topic"],
+                 f"آزمون نامزد دانشی {candidate_id} شکست خورد: {failure_reason}",
+                 "فرضیه آموزشی/فنی هنوز در آزمون‌های تعریف‌شده تأیید نشده است.",
+                 json.dumps(source_evidence, ensure_ascii=False), plan_json, results_json, takeaway),
+            )
+            conn.execute(
+                """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                   VALUES (?, 'candidate_test_failure', ?, ?, ?)""",
+                (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
+                 candidate["source_sha256"], takeaway[:1000]),
+            )
+        final = conn.execute(
+            "SELECT * FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        return dict(final)
+
+
+def list_temporary_knowledge_candidates(status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    """List candidate lessons without promoting or deleting any knowledge."""
+    from .db import init_databases
+
+    init_databases()
+    if status is not None and status not in {"awaiting_test", "passed", "failed"}:
+        raise ValueError("Unsupported candidate status.")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200.")
+    with learning_connection() as conn:
+        if status is None:
+            rows = conn.execute(
+                "SELECT * FROM temporary_knowledge_candidates ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM temporary_knowledge_candidates WHERE status=? ORDER BY id DESC LIMIT ?",
+                (status, limit),
+            ).fetchall()
+    items = []
+    for row in rows:
+        item = dict(row)
+        for field in ("source_urls_json", "quality_report_json", "test_plan_json", "test_results_json"):
+            try:
+                item[field.removesuffix("_json")] = json.loads(item.pop(field))
+            except (TypeError, json.JSONDecodeError):
+                item[field.removesuffix("_json")] = []
+        items.append(item)
+    return items
+
+
 def get_job(job_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
