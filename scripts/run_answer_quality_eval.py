@@ -289,7 +289,7 @@ def main() -> int:
             report["quality_assessment_status"] = (
                 "automated_gate_passed" if report["automated_acceptance"]["passed"] else "automated_gate_failed"
             )
-            )
+            report["performance"]["configured_max_generation_seconds_per_case"] = args.max_case_seconds
     finally:
         db.defaults.settings_db_path = original_settings_path
         db.defaults.learning_db_path = original_learning_path
