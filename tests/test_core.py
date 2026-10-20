@@ -465,3 +465,28 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     failed = learning.get_job(job["id"])
     assert failed["status"] == "failed"
     assert "model offline" in failed["error"]
+
+
+def test_learning_job_records_explicit_https_source_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    url = "https://docs.python.org/3/tutorial/"
+    job = learning.create_job("Python tutorial", source_url=url)
+    assert job["status"] == "queued"
+    assert any(
+        item["evidence_type"] == "requested_url" and item["source_ref"] == url
+        for item in job["evidence"]
+    )
+
+
+def test_learning_job_rejects_non_https_source_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    try:
+        learning.create_job("Unsafe source", source_url="http://example.org/guide")
+    except ValueError as exc:
+        assert "HTTPS" in str(exc)
+    else:
+        raise AssertionError("Non-HTTPS source URL should be rejected")
