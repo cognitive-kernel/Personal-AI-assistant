@@ -417,7 +417,7 @@ function renderTasks(tasks,{append=false}={}) {
  }
  if(!tasks.length) { updateTaskDashboard(); return; }
  tasks.forEach(task=>{
-  const card=document.createElement("article"); card.className="cloud-candidate";
+  const card=document.createElement("article"); card.className="cloud-candidate task-card";
   card.dataset.taskId=String(task.id);
   card.dataset.taskStatus=String(task.status||"");
   card.dataset.taskSearch=("#"+task.id+" "+task.task_type+" "+task.status).toLocaleLowerCase();
