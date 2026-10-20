@@ -236,6 +236,7 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
         "score": score,
         "passed_tests": passed,
         "total_tests": total,
+        "case_results": results,
         "scoring_method": "sandbox_practical_v1",
         "mastery_achieved": mastery,
         "mastery_threshold": MASTERY_SCORE_THRESHOLD,
