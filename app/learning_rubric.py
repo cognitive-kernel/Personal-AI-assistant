@@ -15,7 +15,7 @@ def normalize_concept_text(value: str) -> str:
     """Normalize common Persian/Arabic variants and punctuation for matching."""
     value = value.casefold().replace("ي", "ی").replace("ك", "ک")
     value = value.replace("\u200c", "").replace("\u200f", "").replace("\u200e", "")
-    return re.sub(r"[^\w]+", "", value, flags=re.UNICODE)
+    return re.sub(r"[^\w]+", " ", value, flags=re.UNICODE).strip()
 
 
 def validate_rubric(rubric: Any, question_count: int) -> bool:
@@ -72,7 +72,8 @@ def score_with_rubric(answers: list[str], rubric: list[dict[str, Any]]) -> dict[
             question_total += weight
             total_weight += weight
             variants = [normalize_concept_text(value) for value in criterion["accepted_phrases"]]
-            matched = any(variant and variant in normalized_answer for variant in variants)
+            padded_answer = f" {normalized_answer} "
+            matched = any(variant and f" {variant} " in padded_answer for variant in variants)
             if matched:
                 question_earned += weight
                 earned_weight += weight
