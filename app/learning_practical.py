@@ -51,6 +51,25 @@ def list_exercises() -> list[dict[str, Any]]:
     ]
 
 
+def validate_practical_job(job_id: int, exercise_id: str) -> dict[str, Any]:
+    """Ensure a completed, relevant lesson exists before consuming sandbox resources."""
+    exercise = EXERCISES.get(exercise_id)
+    if exercise is None:
+        raise KeyError(exercise_id)
+    with learning_connection() as conn:
+        job = conn.execute(
+            "SELECT id, status, topic, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
+        ).fetchone()
+    if job is None:
+        raise KeyError(job_id)
+    if job["status"] != "completed":
+        raise ValueError("Practical assessment requires a completed lesson.")
+    topic = str(job["topic"]).casefold()
+    if not any(keyword in topic for keyword in exercise["topic_keywords"]):
+        raise ValueError("This practical exercise does not match the lesson topic.")
+    return {"id": int(job["id"]), "topic": str(job["topic"]), "path_topic_id": job["path_topic_id"]}
+
+
 def build_grader_source(exercise_id: str, learner_source: str) -> str:
     """Build a bounded wrapper that executes each learner submission in a child process."""
     exercise = EXERCISES.get(exercise_id)
