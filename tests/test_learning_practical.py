@@ -110,7 +110,7 @@ def test_practical_exercise_requires_completed_relevant_lesson(tmp_path, monkeyp
         learning_practical.validate_practical_job(job["id"], learning_practical.EXERCISE_ID)
 
 
-def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch, tmp_path):
+def test_practical_sandbox_task_grades_cases_outside_learner_process(monkeypatch, tmp_path):
     from app import sandbox_tasks
     from app.sandbox import SandboxResult
 
