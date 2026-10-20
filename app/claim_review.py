@@ -75,7 +75,7 @@ def review_answer_claims(
             "excerpt directly conflicts; otherwise use insufficient_evidence. Compare the supplied sources "
             "against each other, not only against the answer. Explicitly list material disagreements between "
             "sources, including the exact URLs for both sides. Never silently choose one side of a conflict. "
-            "A material source conflict makes the overall review fail closed and requires human review. "
+            "A material source conflict makes the overall review fail closed; do not accept the lesson or ask a human to resolve the conflict as part of automated acceptance. "
             "Include one or more exact evidence URLs for supported/contradicted claims. If there are no material "
             "factual claims, return one insufficient_evidence claim explaining that. Return JSON only with this schema: "
             '{"overall":"supported|contradicted|insufficient_evidence","claims":'
