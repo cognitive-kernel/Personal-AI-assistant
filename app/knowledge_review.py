@@ -272,7 +272,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
                 if not isinstance(cited_url, str) or not cited_url.startswith(("https://", "http://")):
                     continue
                 try:
-                    document = fetch_public_document(cited_url, str(citation.get("claim", ""))[:200], max_chars=4000)
+                    document = fetch_public_document(cited_url, (str(citation.get("claim", "")).strip()[:200] or "Peer-cited source"), max_chars=4000)
                     record_review_evidence(
                         candidate_id,
                         evidence_kind="context",
