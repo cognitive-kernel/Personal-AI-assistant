@@ -516,7 +516,7 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
         assert "وضعیت: در صف" in queued_status.inner_text()
         assert "وضعیت: ناموفق" in failed_status.inner_text()
         assert "وضعیت: موفق" in succeeded_status.inner_text()
-        assert queued_status.get_attribute("aria-label") == "وضعیت وظیفه 9001: در صف"
+        assert queued_status.get_attribute("aria-label") == "وضعیت وظیفه 6001: در صف"
         summary = page.locator("#task-summary")
         assert "بارگذاری‌شده" in summary.inner_text()
         assert "3" in summary.inner_text()
