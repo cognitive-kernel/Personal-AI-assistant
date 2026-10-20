@@ -338,7 +338,13 @@ function renderLessonResult(output, job, path, topic) {
     outcome.correct_count + " پاسخ با پوشش کافی از " + outcome.question_count + "). " +
     outcome.note;
    if (outcome.mastery_achieved) {
+    topic.status = "completed";
     topic.statusSelect.value = "completed";
+    path.topics.forEach(candidate => {
+     candidate.blocked_by = (candidate.blocked_by || []).filter(item => item.id !== topic.id);
+     candidate.prerequisites_met = candidate.blocked_by.length === 0;
+     if (candidate.startButton) candidate.startButton.disabled = !candidate.prerequisites_met;
+    });
     result.textContent += " آستانه تسلط " + outcome.mastery_threshold + "٪ کسب شد؛ تکمیل سرفصل به‌صورت خودکار ثبت شد.";
    } else if (job.path_topic_id) {
     topic.statusSelect.value = "in_progress";
@@ -512,7 +518,7 @@ async function loadLearningPaths() {
    bulkControls.className = "path-bulk-controls";
    const startAll = document.createElement("button");
    startAll.type = "button";
-   startAll.textContent = "شروع یادگیری همه درس‌ها";
+   startAll.textContent = "شروع درس بعدیِ مجاز";
    const stopAll = document.createElement("button");
    stopAll.type = "button";
    stopAll.textContent = "توقف یادگیری همه درس‌ها";
@@ -528,9 +534,10 @@ async function loadLearningPaths() {
      bulkOutput.textContent = result.message + " تعداد افزوده‌شده: " + result.queued_count +
       "؛ از قبل فعال: " + result.skipped_active_count +
       "؛ درس‌های قبلاً تولیدشده و حفظ‌شده: " + result.skipped_existing_lesson_count +
-      "؛ مسیرهای تکمیل‌شده: " + result.skipped_completed_count + ".";
+      "؛ مسیرهای تکمیل‌شده: " + result.skipped_completed_count +
+      "؛ درس‌های مسدود به‌علت پیش‌نیاز: " + (result.skipped_prerequisite_count || 0) + ".";
      path.topics.forEach(topic => {
-      if (topic.status !== "completed") topic.statusSelect.value = "in_progress";
+      if (topic.prerequisites_met && topic.status !== "completed") topic.statusSelect.value = "in_progress";
      });
     } catch (error) {
      bulkOutput.textContent = "خطا در شروع گروهی: " + error.message;
@@ -569,6 +576,7 @@ async function loadLearningPaths() {
      const option = document.createElement("option");
      option.value = value;
      option.textContent = title;
+     if (value === "completed" && topic.status !== "completed") option.disabled = true;
      status.append(option);
     });
     status.value = topic.status;
@@ -597,6 +605,14 @@ async function loadLearningPaths() {
     const start = document.createElement("button");
     start.type = "button";
     start.textContent = "شروع / ادامه درس";
+    start.disabled = Array.isArray(topic.blocked_by) && topic.blocked_by.length > 0;
+    topic.startButton = start;
+    if (start.disabled) {
+     const prerequisiteNote = document.createElement("p");
+     prerequisiteNote.className = "path-topic-prerequisites";
+     prerequisiteNote.textContent = "ابتدا این سرفصل‌ها را تکمیل کنید: " + topic.blocked_by.map(item => item.topic).join("، ");
+     row.append(prerequisiteNote);
+    }
     const stop = document.createElement("button");
     stop.type = "button";
     stop.textContent = "توقف درس";
