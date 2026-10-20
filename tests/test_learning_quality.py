@@ -169,3 +169,12 @@ def test_rejected_lesson_keeps_user_supplied_source_for_regeneration(tmp_path, m
         ).fetchone()["status"]
     assert stored is not None and stored["content"] == source_text.strip()
     assert status == "rejected"
+
+
+def test_learning_ui_discloses_machine_gate_and_automatic_reference_fetch():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    assert "دریافت خودکار صفحات عمومی" in page
+    assert "تأیید علمی مستقل نیست" in page
+    assert "اگر شواهد کافی نباشد انتشار درس مسدود می‌شود" in page
