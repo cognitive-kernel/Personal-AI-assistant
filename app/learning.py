@@ -375,6 +375,20 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         answer_key = assessment.get("answer_key", [])
         if len(answers) != len(questions) or len(answer_key) != len(questions):
             raise ValueError("Answer count must match the assessment question count.")
+        if row["path_topic_id"] is not None:
+            topic_state = conn.execute(
+                "SELECT path_id, position FROM learning_path_topics WHERE id=?",
+                (row["path_topic_id"],),
+            ).fetchone()
+            if topic_state is None:
+                raise ValueError("The learning topic linked to this assessment no longer exists.")
+            blocked = conn.execute(
+                """SELECT 1 FROM learning_path_topics
+                   WHERE path_id=? AND position<? AND status!='completed' LIMIT 1""",
+                (topic_state["path_id"], topic_state["position"]),
+            ).fetchone()
+            if blocked is not None:
+                raise ValueError("Cannot submit an assessment for a locked topic; complete prerequisites first.")
         rubric = assessment.get("rubric")
         from .learning_rubric import score_with_rubric, validate_rubric
 
