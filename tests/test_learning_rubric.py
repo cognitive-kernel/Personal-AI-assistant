@@ -238,3 +238,13 @@ def test_assessment_idempotency_key_validation():
 
     with pytest.raises(ValueError, match="Idempotency key"):
         submit_assessment(1, ["answer"], "short")
+
+
+def test_learning_ui_sends_stable_idempotency_key_for_retried_answers():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    assert "pendingSubmissionKey" in page
+    assert "pendingSubmissionAnswers !== answerFingerprint" in page
+    assert "idempotency_key: pendingSubmissionKey" in page
+    assert "تکمیل سرفصل فقط با rubric معتبر" in page
