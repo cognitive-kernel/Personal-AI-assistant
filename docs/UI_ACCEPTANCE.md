@@ -32,3 +32,10 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 - [x] Recoverable learning-recommendation API failure: Chromium E2E forces a 503 response and verifies a localized Persian error message is rendered without an uncaught page exception. Exact-head CI evidence is required before merge.
 
 - [x] Dynamic chat and learning outputs use `dir="auto"` so Persian and English content is rendered in the appropriate direction without changing the dashboard's Persian-first RTL shell. The concise chat status uses a polite live region; the potentially long structured learning result is intentionally not announced as one large status update. Browser E2E asserts this contract; manual screen-reader and keyboard review remains open.
+
+
+### Source-link safety in dynamic cards
+
+- [x] Cloud-discovery and experience-evidence cards render only parseable HTTPS URLs with a hostname and without embedded username/password credentials; malformed ports and deceptive user-info authorities are shown as unavailable links instead of clickable anchors.
+- [x] Browser E2E covers valid HTTPS, non-HTTPS, missing hosts, malformed ports, and deceptive/credential-bearing URLs.
+- This is a client-side display guard and complements server-side research-source validation; it does not prove that an allowed HTTPS destination is trustworthy or close the independent security review gate.
