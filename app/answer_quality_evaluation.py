@@ -92,3 +92,83 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
         }
     return summary
+
+
+AUTOMATED_ACCEPTANCE_VERSION = "bilingual-answer-gate-v1"
+_ACCEPTED_REVIEW_STATUSES = {
+    "passed_model_assisted",
+    "passed_model_assisted_after_repair",
+}
+
+
+def evaluate_automated_acceptance(
+    results: list[dict[str, Any]],
+    *,
+    minimum_concept_coverage: float = 0.5,
+) -> dict[str, Any]:
+    """Apply fail-closed benchmark gates without human scoring.
+
+    This is an operational regression gate, not proof of factual truth. The
+    benchmark's expected concepts are curated reference data; lexical coverage
+    can miss paraphrases and source review remains model-assisted.
+    """
+    if not isinstance(results, list) or not results:
+        raise ValueError("results must be a non-empty list")
+    if (
+        isinstance(minimum_concept_coverage, bool)
+        or not isinstance(minimum_concept_coverage, (int, float))
+        or not 0 <= minimum_concept_coverage <= 1
+    ):
+        raise ValueError("minimum_concept_coverage must be between 0 and 1")
+
+    failed_cases = []
+    for item in results:
+        if not isinstance(item, dict):
+            failed_cases.append({"case_id": None, "failed_gates": ["result_is_object"]})
+            continue
+        gates = {
+            "generation_completed": item.get("generation_status") == "completed",
+            "surface_diagnostics_completed": item.get("surface_diagnostic_status") == "completed",
+            "minimum_reference_concept_coverage": (
+                isinstance(item.get("surface_concept_coverage"), (int, float))
+                and not isinstance(item.get("surface_concept_coverage"), bool)
+                and item["surface_concept_coverage"] >= minimum_concept_coverage
+            ),
+            "no_prohibited_claims": not bool(item.get("prohibited_phrase_hits")),
+            "requested_language_script_present": item.get("expected_language_script_present") is True,
+            "at_least_one_retrieved_source": (
+                item.get("source_audit_status") == "completed"
+                and isinstance(item.get("source_count"), int)
+                and not isinstance(item.get("source_count"), bool)
+                and item["source_count"] >= 1
+            ),
+            "claim_review_passed": item.get("research_review_status") in _ACCEPTED_REVIEW_STATUSES,
+            "no_unattributed_answer_urls": (
+                isinstance(item.get("unattributed_answer_url_count"), int)
+                and not isinstance(item.get("unattributed_answer_url_count"), bool)
+                and item["unattributed_answer_url_count"] == 0
+            ),
+        }
+        failed = [name for name, passed in gates.items() if not passed]
+        if failed:
+            failed_cases.append({
+                "case_id": item.get("case_id"),
+                "failed_gates": failed,
+            })
+
+    return {
+        "version": AUTOMATED_ACCEPTANCE_VERSION,
+        "status": "passed" if not failed_cases else "failed",
+        "passed": not failed_cases,
+        "case_count": len(results),
+        "failed_case_count": len(failed_cases),
+        "minimum_concept_coverage": float(minimum_concept_coverage),
+        "failed_cases": failed_cases,
+        "human_scoring_used": False,
+        "independent_scientific_verification": False,
+        "limitations": [
+            "Reference-concept matching is lexical and can miss valid paraphrases.",
+            "A passing benchmark does not prove every factual claim is true.",
+            "Claim review is model-assisted and must not be described as independent verification.",
+        ],
+    }
