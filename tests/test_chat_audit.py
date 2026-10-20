@@ -131,7 +131,7 @@ def test_review_summary_preserves_conflict_url_pairs_without_raw_conflict_text()
             "source_b_url": "https://docs.example.org/b",
             "description": "private explanatory text must not be persisted",
         }],
-        "error": "source_conflicts_require_human_review",
+        "error": "source_conflicts_unresolved_release_blocked",
     })
     assert summary["source_conflict_count"] == 1
     assert summary["source_conflict_pairs"] == [{
