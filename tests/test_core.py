@@ -1,3 +1,4 @@
+import json
 from app import db, hardware, learning, ollama
 
 def test_databases_are_separate(tmp_path, monkeypatch):
@@ -265,7 +266,24 @@ def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypa
     assert path["completed_count"] == 0
     assert path["progress_percent"] == 0
     first_topic = path["topics"][0]
-    updated = learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+    job = learning.create_job(first_topic["topic"], path_topic_id=first_topic["id"])
+    assessment = {
+        "questions": ["What does an index improve?"],
+        "answer_key": ["An index can improve lookup speed but has maintenance cost."],
+        "rubric": [{"criteria": [
+            {"id": "lookup", "weight": 1, "accepted_phrases": ["lookup speed"]},
+            {"id": "tradeoff", "weight": 1, "accepted_phrases": ["maintenance cost"]},
+        ]}],
+        "rubric_version": "concept-coverage-v1",
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+    attempt = learning.submit_assessment(job["id"], ["Lookup speed improves; maintenance cost remains."])
+    assert attempt["score"] == 100.0
+    updated = learning.get_learning_path(path["id"])
     assert updated["completed_count"] == 1
     assert updated["progress_percent"] > 0
     again = learning.enroll_curriculum("Python")
