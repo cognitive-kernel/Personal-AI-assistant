@@ -287,6 +287,14 @@ function renderLessonResult(output, job, path, topic) {
  const semanticReviewResult = document.createElement("p");
  semanticReviewResult.setAttribute("role", "status");
  form.append(semanticReviewButton, semanticReviewResult);
+ let pendingSubmissionKey = null;
+ let pendingSubmissionAnswers = null;
+ const createSubmissionKey = () => {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
+ };
  let latestAttemptId = Array.isArray(job.assessment_attempts) && job.assessment_attempts.length
   ? job.assessment_attempts[0].id : null;
  semanticReviewButton.hidden = !latestAttemptId;
@@ -338,16 +346,26 @@ function renderLessonResult(output, job, path, topic) {
   submit.disabled = true;
   result.textContent = "در حال ارزیابی پاسخ‌ها…";
   try {
+   const answers = fields.map(field => field.value);
+   const answerFingerprint = JSON.stringify(answers);
+   if (!pendingSubmissionKey || pendingSubmissionAnswers !== answerFingerprint) {
+    pendingSubmissionKey = createSubmissionKey();
+    pendingSubmissionAnswers = answerFingerprint;
+   }
    const outcome = await learningApi("/api/learning/jobs/" + job.id + "/assessment", {
     method: "POST",
-    body: JSON.stringify({answers: fields.map(field => field.value)})
+    body: JSON.stringify({answers, idempotency_key: pendingSubmissionKey})
    });
+   pendingSubmissionKey = null;
+   pendingSubmissionAnswers = null;
    latestAttemptId = outcome.attempt_id;
    semanticReviewButton.hidden = false;
    semanticReviewResult.textContent = "آزمون ثبت شد. بازبینی معنایی اختیاری است و نمره قطعی را تغییر نمی‌دهد.";
+   const scoreUnit = outcome.scoring_method === "rubric_concept_coverage_v1"
+    ? "سؤال با پوشش کامل معیارها" : "پاسخ منطبق";
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
-    outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
-    outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
+    outcome.correct_count + " " + scoreUnit + " از " + outcome.question_count + "). " +
+    outcome.note + " تکمیل سرفصل فقط با rubric معتبر و نمره حداقل ۸۰ به‌صورت خودکار انجام می‌شود.";
    result.textContent += " این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود.";
   } catch (error) {
    result.textContent = "خطا در ثبت آزمون: " + error.message;
@@ -356,7 +374,7 @@ function renderLessonResult(output, job, path, topic) {
  });
  output.append(form);
  const caveat = document.createElement("p");
- caveat.textContent = "این آزمون بر اساس تطبیق متنی پاسخ‌ها نمره می‌دهد و تأیید علمی مستقل یا فهم معنایی را اثبات نمی‌کند.";
+ caveat.textContent = "در صورت وجود rubric معتبر، نمره بر اساس پوشش قطعی معیارهای مفهومی محاسبه می‌شود؛ در آزمون قدیمی از تطبیق متنی استفاده می‌شود. هیچ‌کدام به‌تنهایی اثبات قطعی فهم یا تأیید علمی مستقل نیستند.";
  output.append(caveat);
 }
 
