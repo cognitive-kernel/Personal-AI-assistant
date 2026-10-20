@@ -258,6 +258,9 @@ def test_assessment_rejects_wrong_answer_count(tmp_path, monkeypatch):
 
 
 def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypatch):
+    import json
+    import pytest
+
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
@@ -266,7 +269,33 @@ def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypa
     assert path["completed_count"] == 0
     assert path["progress_percent"] == 0
     first_topic = path["topics"][0]
-    updated = learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+
+    with pytest.raises(ValueError, match="requires a latest rubric-based assessment"):
+        learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+
+    job = learning.create_job("Python", path_topic_id=first_topic["id"])
+    rubric = [
+        {"required_concepts": [
+            {"concept": "alpha", "accepted_phrases": ["alpha"]},
+            {"concept": "beta", "accepted_phrases": ["beta"]},
+        ]}
+        for _ in range(3)
+    ]
+    assessment = {
+        "questions": ["Q1", "Q2", "Q3"],
+        "answer_key": ["alpha beta", "alpha beta", "alpha beta"],
+        "answer_rubric": rubric,
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+    result = learning.submit_assessment(job["id"], ["alpha beta", "alpha beta", "alpha beta"])
+    assert result["scoring_method"] == "rubric_concept_coverage_v1"
+    assert result["score"] == 100.0
+
+    updated = learning.get_learning_path(path["id"])
     assert updated["completed_count"] == 1
     assert updated["progress_percent"] > 0
     again = learning.enroll_curriculum("Python")
