@@ -334,7 +334,14 @@ def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
             "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
             (path["id"], "Legacy topic with job", next_position + 2),
         ).lastrowid
-    job = learning.create_job("Legacy topic with job", path_topic_id=legacy_job_id)
+    # Preserve a historical linked job fixture without bypassing current runtime gates.
+    with db.learning_connection() as conn:
+        historical_job_id = conn.execute(
+            """INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id)
+               VALUES (?, 'queued', 'model_knowledge_no_external_source', ?)""",
+            ("Legacy topic with job", legacy_job_id),
+        ).lastrowid
+    job = learning.get_job(int(historical_job_id))
     result = learning.sync_curriculum_path(path["id"])
     topics = {item["topic"]: item for item in result["topics"]}
     assert "Legacy unstarted duplicate" not in topics
