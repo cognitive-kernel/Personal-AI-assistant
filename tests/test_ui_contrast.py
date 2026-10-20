@@ -5,13 +5,15 @@ from pathlib import Path
 
 
 CSS_PATH = Path(__file__).parents[1] / "app" / "static" / "dashboard.css"
-HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{6})$")
+HEX_COLOR = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
 def _rgb(value: str) -> tuple[float, float, float]:
     match = HEX_COLOR.fullmatch(value.strip())
     assert match, f"Expected a six-digit hex color, got {value!r}"
     raw = match.group(1)
+    if len(raw) == 3:
+        raw = "".join(character * 2 for character in raw)
     return tuple(int(raw[index:index + 2], 16) / 255 for index in (0, 2, 4))
 
 
