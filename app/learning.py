@@ -291,6 +291,16 @@ def run_job(job_id: int) -> None:
             claim_review=claim_review_result,
             lesson=result["lesson"] if quality["accepted"] else "",
         )
+        # Content-shape quality and scientific release eligibility are separate
+        # decisions. Never publish a lesson or assessment when the evidence gate
+        # cannot validate provenance, citations, claim review, and source conflicts.
+        quality["release_eligible"] = bool(
+            quality["accepted"] and quality["scientific_gate"].get("passed") is True
+        )
+        if quality["accepted"] and not quality["release_eligible"]:
+            quality.setdefault("reasons", []).append(
+                "Scientific release blocked: " + ", ".join(quality["scientific_gate"].get("reasons", []))
+            )
 
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
@@ -298,10 +308,15 @@ def run_job(job_id: int) -> None:
             if current is None or current["status"] != "running":
                 return
             conn.execute("UPDATE learning_jobs SET status=?, lesson=?, assessment_json=?, quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
-                 json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
+                ("completed" if quality["release_eligible"] else "rejected",
+                 result["lesson"] if quality["release_eligible"] else None,
+                 json.dumps(assessment, ensure_ascii=False) if quality["release_eligible"] else None,
                  json.dumps(quality, ensure_ascii=False),
-                 None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
+                 None if quality["release_eligible"] else (
+                     "Scientific release blocked: " + ", ".join(quality["scientific_gate"].get("reasons", []))
+                     if quality["accepted"] else
+                     "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", []))
+                 ) + " متن درس و متن منبع منتشر نشد.", job_id))
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -325,7 +340,7 @@ def run_job(job_id: int) -> None:
                        ) VALUES (?, 'claim_review', 'local_ollama_model_assisted', NULL, ?)""",
                     (job_id, claim_note),
                 )
-            if quality["accepted"]:
+            if quality["release_eligible"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
                     (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
