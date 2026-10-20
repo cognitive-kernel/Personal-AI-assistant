@@ -15,9 +15,10 @@ import statistics
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any
 
-ROOT = __import__("pathlib").Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.db import get_settings
@@ -149,7 +150,7 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=3, help="Measured generations, 1..10 (one warm-up is added).")
     parser.add_argument("--min-tokens-per-second", type=float, default=1.0)
     parser.add_argument("--max-latency-seconds", type=float, default=120.0)
-    parser.add_argument("--output", type=__import__("pathlib").Path)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
         report = run_benchmark(
