@@ -49,7 +49,7 @@ def test_evidence_gate_rejects_http_short_excerpt_and_missing_citation():
 
     assert result["accepted"] is False
     assert result["source_count"] == 0
-    assert "every_used_source_cited_exactly" in result["failed_gates"]
+    assert "at_least_two_source_urls_cited_exactly" in result["failed_gates"]
 
 
 def test_evidence_gate_rejects_conflicts_or_non_supported_claims():
