@@ -30,14 +30,44 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
 
 
 def reconcile_queued_learning_tasks() -> int:
-    """Ensure queued/running learning records have a durable task after a restart."""
+    """Reconcile domain jobs with durable queue state and recover orphaned work.
+
+    A queue task that exhausted retries must not leave its learning_jobs row
+    permanently marked as running after a worker crash.
+    """
     with learning_connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
+            "SELECT id, status FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
         ).fetchall()
+    reconciled = 0
     for row in rows:
-        enqueue_learning_task(int(row["id"]))
-    return len(rows)
+        job_id = int(row["id"])
+        task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
+        if task is not None and task["status"] == "failed":
+            detail = str(task.get("error") or "The background learning task exhausted its retry limit.")
+            with learning_connection() as conn:
+                conn.execute(
+                    """UPDATE learning_jobs
+                       SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND status IN ('queued', 'running')""",
+                    (("Background learning task failed after retries: " + detail)[:4000], job_id),
+                )
+            reconciled += 1
+            continue
+        if task is not None and task["status"] == "cancelled":
+            with learning_connection() as conn:
+                conn.execute(
+                    """UPDATE learning_jobs
+                       SET status='cancelled', error=COALESCE(error, 'Background learning task was cancelled.'),
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND status IN ('queued', 'running')""",
+                    (job_id,),
+                )
+            reconciled += 1
+            continue
+        enqueue_learning_task(job_id)
+        reconciled += 1
+    return reconciled
 
 
 def cancel_learning_task(job_id: int) -> dict[str, Any] | None:
