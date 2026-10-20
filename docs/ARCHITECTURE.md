@@ -47,3 +47,8 @@
 - provisioning منابع ابری و اجرای remote عمداً غیرفعال‌اند تا سیاست مجوز، هزینه و امنیت جداگانه تأیید شود.
 - پذیرش واقعی مهاجرت/راه‌اندازی Windows، ارزیابی زندهٔ مدل و داوری انسانی، آزمون‌های عملیاتی میزبان هدف، تمرین واقعی restore/rollback، بازبینی مستقل امنیتی و ارزیابی دستی دسترس‌پذیری جدا از CI باقی می‌مانند.
 - موفقیت آزمون یا بازبینی مدل به‌تنهایی تأیید مستقل علمی یا گواهی امنیتی نیست.
+
+
+### Citation URL validation
+
+Research source payloads accept only HTTPS URLs with a parseable host and no embedded user-info credentials. This prevents a citation such as `https://trusted.example@attacker.example/path` from visually disguising its actual authority. Malformed ports and missing hosts are rejected before source excerpts are passed to the model. This is URL-shape validation, not a claim that the destination is trustworthy or safe to fetch; network policy and independent security review remain separate.
