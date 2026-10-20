@@ -147,7 +147,7 @@ def test_claim_repair_language_drift_gets_bounded_language_repair(monkeypatch):
     _disable_memory(monkeypatch)
     monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
     answers = iter([
-        "هذه إجابة عربية وليست فارسية لكنها طويلة بما يكفي لتجاوز حد فحص اللغة الحالي في هذا الاختبار.",
+        "این پاسخ اولیه فارسی است اما ادعاهای آن هنوز از سوی بازبینی تأیید نشده‌اند.",
         "This is a long English response that drifts away from the requested Persian language and must be repaired before it is returned to the user.",
         "این پاسخ نهایی فارسی است و پس از اصلاح زبان به کاربر بازگردانده می‌شود.",
     ])
@@ -176,7 +176,7 @@ def test_claim_repair_language_drift_fails_closed_if_language_repair_also_mismat
     _disable_memory(monkeypatch)
     monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
     answers = iter([
-        "هذه إجابة عربية وليست فارسية لكنها طويلة بما يكفي لتجاوز حد فحص اللغة الحالي في هذا الاختبار.",
+        "این پاسخ اولیه فارسی است اما ادعاهای آن هنوز از سوی بازبینی تأیید نشده‌اند.",
         "This is a long English response that drifts away from the requested Persian language and must be repaired before it is returned to the user.",
         "This remains a long English answer despite the explicit request for Persian and should trigger the safe fallback response.",
     ])
