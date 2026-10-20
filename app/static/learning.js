@@ -120,9 +120,6 @@ async function addPracticalExerciseForm(output, job) {
  source.style.width = "100%";
  source.setAttribute("aria-label", "کد پایتون برای تمرین عملی");
  source.value = "import json\nimport sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data[\"values\"])))";
- form.append(source);
- const submit = document.createElement("button");
- submit.type = "submit";
  submit.textContent = "اجرای آزمون عملی";
  form.append(submit);
  const status = document.createElement("p");
