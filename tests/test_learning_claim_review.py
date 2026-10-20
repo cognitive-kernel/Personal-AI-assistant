@@ -137,7 +137,7 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
             "SELECT status FROM knowledge_items WHERE job_id=?", (job["id"],)
         ).fetchone()
         candidate = connection.execute(
-            "SELECT status, source_sha256 FROM temporary_knowledge_candidates WHERE job_id=?",
+            "SELECT status, content_sha256 FROM temporary_knowledge_candidates WHERE job_id=?",
             (job["id"],),
         ).fetchone()
         event = connection.execute(
@@ -146,6 +146,6 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
         ).fetchone()
     assert knowledge is None
     assert candidate["status"] == "awaiting_test"
-    assert len(candidate["source_sha256"]) == 64
+    assert len(candidate["content_sha256"]) == 64
     assert event is not None
     assert "not an independent verification" in event["note"]
