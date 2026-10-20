@@ -43,16 +43,21 @@ def test_practical_catalog_hides_grading_cases():
     assert "expected" not in json.dumps(exercises)
 
 
-def test_grader_wrapper_runs_learner_as_a_child_program():
-    source = "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data['values'])))"
+def test_practical_grader_uses_server_side_versioned_cases_and_json_outputs():
+    cases = learning_practical.get_test_cases(learning_practical.EXERCISE_ID)
 
-    wrapper = learning_practical.build_grader_source(learning_practical.EXERCISE_ID, source)
-
-    assert "subprocess.run(" in wrapper
-    assert "timeout=2" in wrapper
-    assert "positive-integers" in wrapper
-    assert "LEARNER_SOURCE =" in wrapper
-    assert "data[" + chr(39) + "values" + chr(39) + "]" in wrapper
+    assert len(cases) == 4
+    assert cases[0]["id"] == "positive-integers"
+    assert cases[0]["expected"] == 6
+    assert learning_practical.grade_case_output(
+        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "6\\n"
+    )
+    assert not learning_practical.grade_case_output(
+        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "5\\n"
+    )
+    assert not learning_practical.grade_case_output(
+        learning_practical.EXERCISE_ID, cases[0]["id"], "succeeded", 0, "not JSON"
+    )
 
 
 def test_practical_attempt_is_persisted_but_not_promoted_without_course_path(tmp_path, monkeypatch):
