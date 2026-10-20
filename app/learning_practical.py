@@ -182,7 +182,7 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
             ),
         )
         attempt_id = int(cursor.lastrowid)
-        mastery = score >= MASTERY_SCORE_THRESHOLD and int(blockers) == 0
+        mastery = path_topic_id is not None and score >= MASTERY_SCORE_THRESHOLD and int(blockers) == 0
         if path_topic_id is not None:
             conn.execute(
                 """UPDATE learning_path_topics SET latest_score=?,
@@ -202,6 +202,7 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
         "mastery_threshold": MASTERY_SCORE_THRESHOLD,
         "prerequisites_met": int(blockers) == 0,
         "source_sha256": source_hash,
-        "independent_verification": True,
+        "independent_execution": True,
+        "independent_scientific_verification": False,
         "note": "امتیاز از اجرای کد در sandbox و عبور آزمون‌های ورودی/خروجی نسخه‌بندی‌شده به دست آمده است؛ این نتیجه فقط مهارت همین تمرین را می‌سنجد.",
     }
