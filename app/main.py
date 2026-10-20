@@ -158,14 +158,19 @@ def startup() -> None:
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
         handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
+    def maintain_background_tasks() -> None:
+        # Keep the learning-domain state consistent with terminal queue outcomes,
+        # including a worker process dying while the model request was in flight.
+        reconcile_queued_learning_tasks()
+        if sandbox_handler is not None:
+            sandbox_tasks.cleanup_terminal_containers()
+
     _task_runtime = TaskRuntime(
         handlers,
         worker_count=worker_count,
         poll_interval=0.5,
         lease_seconds=300,
-        maintenance_callback=(
-            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None
-        ),
+        maintenance_callback=maintain_background_tasks,
         maintenance_interval=30.0,
     )
     _task_runtime.start()
