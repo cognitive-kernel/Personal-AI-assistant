@@ -1176,6 +1176,7 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.emulate_media(reduced_motion="reduce")
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         page.keyboard.press("Tab")
