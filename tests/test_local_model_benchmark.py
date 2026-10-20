@@ -54,3 +54,24 @@ def test_local_model_benchmark_fails_closed_when_configured_model_is_missing(mon
 def test_local_model_benchmark_rejects_invalid_run_counts(monkeypatch, runs):
     with pytest.raises(ValueError, match="runs"):
         benchmark.run_benchmark(runs=runs)
+
+
+def test_local_model_benchmark_fails_when_worst_latency_exceeds_limit(monkeypatch):
+    monkeypatch.setattr(benchmark, "get_settings", lambda: {"ollama_model": "model:latest"})
+    monkeypatch.setattr(
+        benchmark, "_request",
+        lambda path, payload=None: (
+            {"models": [{"name": "model:latest", "digest": "sha256:abc"}]}
+            if path == "/api/tags"
+            else {"response": "output", "eval_count": 100, "eval_duration": 1_000_000_000}
+        ),
+    )
+    times = iter([0.0, 1.0, 2.0, 20.0])
+    monkeypatch.setattr(benchmark.time, "perf_counter", lambda: next(times))
+    monkeypatch.setattr(benchmark, "_git_commit", lambda: "commit")
+
+    report = benchmark.run_benchmark(runs=1, min_tokens_per_second=1.0, max_latency_seconds=5.0)
+
+    assert report["max_latency_seconds_observed"] == 18.0
+    assert report["status"] == "below_threshold"
+    assert report["performance_threshold_passed"] is False
