@@ -366,6 +366,20 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
                 "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
                 "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
             ],
+            "answer_rubric": [
+                {"required_concepts": [
+                    {"concept": "execution plan", "accepted_phrases": ["execution plan", "query execution plan"]},
+                    {"concept": "operations", "accepted_phrases": ["operations", "operators", "execution steps"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "index maintenance costs", "accepted_phrases": ["maintenance costs", "cost of maintaining indexes"]},
+                    {"concept": "data distribution", "accepted_phrases": ["data distribution", "distribution of data"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "baseline comparison", "accepted_phrases": ["baseline", "before and after"]},
+                    {"concept": "logical reads", "accepted_phrases": ["logical reads", "read counts"]},
+                ]},
+            ],
         }, ensure_ascii=False)}}
     monkeypatch.setattr(learning, "_request", fake_request)
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
