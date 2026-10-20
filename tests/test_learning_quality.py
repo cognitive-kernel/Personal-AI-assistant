@@ -165,5 +165,5 @@ def test_rejected_lesson_keeps_user_supplied_source_for_regeneration(tmp_path, m
         status = connection.execute(
             "SELECT status FROM learning_jobs WHERE id=?", (job["id"],)
         ).fetchone()["status"]
-    assert stored is not None and stored["content"] == source_text
+    assert stored is not None and stored["content"] == source_text.strip()
     assert status == "rejected"
