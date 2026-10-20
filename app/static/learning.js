@@ -91,6 +91,39 @@ function addRegenerateButton(output, path, topic) {
  output.append(button);
 }
 
+function safeLearningSourceUrl(value) {
+ try {
+  const parsed = new URL(value);
+  if (parsed.protocol !== "https:" || !parsed.hostname || parsed.username || parsed.password) return null;
+  return parsed.href;
+ } catch (_) {
+  return null;
+ }
+}
+
+function renderLearningSourceManifest(output, quality) {
+ const gate = quality && quality.scientific_gate;
+ const sources = gate && Array.isArray(gate.source_manifest) ? gate.source_manifest : [];
+ const list = document.createElement("ul");
+ sources.forEach(source => {
+  const href = source && safeLearningSourceUrl(source.url);
+  if (!href) return;
+  const item = document.createElement("li");
+  const link = document.createElement("a");
+  link.href = href;
+  link.textContent = typeof source.title === "string" && source.title.trim()
+   ? source.title : href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  item.append(link);
+  list.append(item);
+ });
+ if (!list.children.length) return;
+ const heading = document.createElement("p");
+ heading.textContent = "منابع دریافت‌شده برای بررسی ماشینی؛ این فهرست به‌تنهایی تأیید علمی مستقل نیست:";
+ output.append(heading, list);
+}
+
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
  if (job.quality && topic.row) {
@@ -108,6 +141,7 @@ function renderLessonResult(output, job, path, topic) {
    ? "درس به دلیل کنترل کیفیت ذخیره نشد. می‌توانید نسخه تازه‌ای تولید کنید."
    : "تولید درس موفق نبود. وضعیت کار: " + job.status);
   output.append(errorNote);
+  renderLearningSourceManifest(output, job.quality);
   addRegenerateButton(output, path, topic);
   return;
  }
@@ -126,6 +160,7 @@ function renderLessonResult(output, job, path, topic) {
  }
  scientificNote.setAttribute("role", "note");
  output.append(scientificNote);
+ renderLearningSourceManifest(output, job.quality);
  addRegenerateButton(output, path, topic);
  const lesson = document.createElement("p");
  lesson.textContent = job.lesson || "متن درس در پاسخ موجود نیست.";
