@@ -106,6 +106,7 @@ def run_evaluation(
     answer_fn: Callable[[str], str],
     dataset_path: Path,
     redact_answers: bool = False,
+    max_case_seconds: float = 180.0,
 ) -> dict[str, Any]:
     """Execute each case once and produce a versioned diagnostic report."""
     raw_results: list[dict[str, Any]] = []
@@ -187,7 +188,9 @@ def run_evaluation(
         }
         for item in completed
     ]
-    automated_acceptance = evaluate_automated_acceptance(raw_results)
+    automated_acceptance = evaluate_automated_acceptance(
+        raw_results, maximum_generation_seconds=max_case_seconds
+    )
     report: dict[str, Any] = {
         "report_schema_version": 2,
         "benchmark": "bilingual-answer-quality",
@@ -282,14 +285,9 @@ def main() -> int:
                 answer_fn=chat_research.answer,
                 dataset_path=args.dataset.resolve(),
                 redact_answers=args.redact_answers,
+                max_case_seconds=args.max_case_seconds,
             )
-            report["automated_acceptance"] = evaluate_automated_acceptance(
-                report["results"], maximum_generation_seconds=args.max_case_seconds
-            )
-            report["quality_assessment_status"] = (
-                "automated_gate_passed" if report["automated_acceptance"]["passed"] else "automated_gate_failed"
-            )
-            report["performance"]["configured_max_generation_seconds_per_case"] = args.max_case_seconds
+            report.setdefault("performance", {})["configured_max_generation_seconds_per_case"] = args.max_case_seconds
     finally:
         db.defaults.settings_db_path = original_settings_path
         db.defaults.learning_db_path = original_learning_path
