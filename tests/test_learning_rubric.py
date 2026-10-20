@@ -50,3 +50,45 @@ def test_normalization_handles_persian_arabic_character_variants():
     from app.learning_rubric import normalize_concept_text
 
     assert normalize_concept_text("يک كليد") == normalize_concept_text("یک کلید")
+
+
+def test_learning_assessment_uses_rubric_and_hides_answer_cues_until_submission(tmp_path, monkeypatch):
+    import json
+
+    from app import db, learning
+    from app.db import learning_connection
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
+    db.init_databases()
+    job = learning.create_job("Rubric scoring contract")
+    assessment = {
+        "questions": ["What improves lookup speed?", "Why does isolation matter?"],
+        "answer_key": ["An index improves lookup speed but has maintenance cost.", "Isolation prevents dirty reads."],
+        "rubric": _rubric(),
+        "rubric_version": "concept-coverage-v1",
+        "independently_verified": False,
+    }
+    with learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+
+    before = learning.get_job(job["id"])["assessment"]
+    assert "rubric" not in before
+    assert "answer_key" not in before
+
+    attempt = learning.submit_assessment(
+        job["id"],
+        ["Faster lookup.", "Isolation level prevents a dirty read."],
+    )
+    assert attempt["scoring_method"] == "rubric_concept_coverage_v1"
+    assert attempt["score"] == 80.0
+    assert len(attempt["per_question"]) == 2
+    assert attempt["independent_verification"] is False
+
+    after = learning.get_job(job["id"])["assessment"]
+    assert "rubric" in after
+    assert "answer_key" in after
