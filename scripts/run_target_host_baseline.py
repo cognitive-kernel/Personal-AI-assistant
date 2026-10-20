@@ -329,6 +329,7 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_pe
             "system": platform.system(),
             "system_release": platform.release(),
             "machine": platform.machine(),
+            "hardware": detect_hardware(),
             "packages": _package_versions(),
         },
         "storage": storage,
