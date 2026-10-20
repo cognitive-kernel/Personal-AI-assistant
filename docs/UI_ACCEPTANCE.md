@@ -3,7 +3,7 @@
 ## Automated repository-level gates
 
 - [x] Local stylesheet and local-only dependencies (no CDN, remote fonts, or telemetry).
-- [x] Navigation anchors resolve to each primary dashboard workflow.
+- [x] Navigation anchors resolve to each primary dashboard workflow.\n- [x] Persistent navigation marks the current section with `aria-current=location`, updates on scroll/resize/hash navigation, and uses a responsive active indicator.
 - [x] Skip-to-content link and visible focus styling.
 - [x] RTL page direction, text-direction handling for Persian/English, and LTR code/patch fields.
 - [x] Reduced-motion support and accessible names for controls, including dynamically generated learning review fields.
