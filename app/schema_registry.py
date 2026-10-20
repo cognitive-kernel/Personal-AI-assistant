@@ -526,7 +526,7 @@ LEARNING_MIGRATIONS = (
                 content TEXT NOT NULL,
                 source_kind TEXT NOT NULL,
                 source_urls_json TEXT NOT NULL DEFAULT '[]',
-                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
                 quality_report_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL DEFAULT 'awaiting_test'
                     CHECK(status IN ('awaiting_test','passed','failed')),
