@@ -173,7 +173,10 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
         "Independently critique the candidate lesson below. Do not assume it is correct. "
         "Identify testable claims, counterexamples, missing conditions, practical uses, and "
         "limitations. Cite direct public URLs for factual claims, distinguish evidence from "
-        "guesswork, and state what would falsify the lesson. Respond with a concise analysis.\n\n"
+        "guesswork, and state what would falsify the lesson. Return one JSON object with keys "
+        "stance (supports, contradicts, mixed, or insufficient_evidence), claims (array of "
+        "objects), citations (array of objects with url and claim), limitations (array), "
+        "applications (array), and testable_tests (array). Do not invent URLs.\n\n"
         f"TOPIC: {candidate['topic']}\nLESSON:\n{candidate['content'][:12000]}"
     )
     consulted = 0
@@ -229,13 +232,31 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             answer = message.get("content") if isinstance(message, dict) else None
             if not isinstance(answer, str) or not answer.strip():
                 raise ValueError("peer_response_missing_content")
+            parsed_answer: dict[str, Any] = {}
+            try:
+                maybe_structured = json.loads(answer)
+                if isinstance(maybe_structured, dict):
+                    parsed_answer = maybe_structured
+            except json.JSONDecodeError:
+                pass
+            stance = parsed_answer.get("stance", "mixed")
+            if stance not in _ALLOWED_STANCES:
+                stance = "mixed"
+            claims = parsed_answer.get("claims", [])
+            citations = parsed_answer.get("citations", [])
+            if not isinstance(claims, list):
+                claims = []
+            if not isinstance(citations, list):
+                citations = []
             record_peer_consultation(
                 candidate_id,
                 provider=provider,
                 model_name=model,
                 prompt=prompt,
                 response=answer[:30000],
-                stance="mixed",
+                claims=claims[:100],
+                citations=citations[:100],
+                stance=stance,
                 independence_note=(
                     "Automatically consulted through a configured OpenAI-compatible endpoint. "
                     "Training-data and organizational independence have not been established."
