@@ -113,3 +113,9 @@ The implementation log is the detailed record of merged changes and acceptance l
 
 - Head `e7ae4d5661d12b05b1a405a15d94574d17c0e411`: required tests and Windows storage regressions passed ([run #39384776230](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230)); Chromium browser E2E passed ([run #39384776350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350)); dependency audit passed ([run #39384776221](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221)).
 - PR #369 remains open and unmerged. These results validate configured CI only; target-host startup/migration, live-model/human adjudication, operational recovery/load and restore/rollback, independent security review, and manual accessibility gates remain open.
+## 2026-10-20 — learning-system completion plan
+
+- Added [the systemic learning completion plan](LEARNING_SYSTEM_COMPLETION_PLAN.md) to define engineering phases and acceptance criteria for provenance-backed scientific checks, fail-closed behavior, calibrated learning assessment, bilingual AI regression datasets, and practical skill evaluation.
+- Hardware-aware design uses the documented Windows baseline (Intel Core i5-12400, 32 GB RAM, Intel integrated graphics reported as 128 MB) and local Ollama/qwen2.5:7b default. Actual model identity, resource use, latency, and target-host compatibility remain to be measured using the target-host baseline tool.
+- This is a roadmap/documentation commit, not implementation evidence. The existing exact-match score and same-model semantic review remain limited; proposed quality thresholds are targets, not measured results. No local tests or live Ollama evaluation were run for this documentation-only change.
+
