@@ -243,5 +243,5 @@ def test_target_host_model_benchmark_fails_closed_when_model_is_unavailable(monk
         ),
     )
     report = baseline._run_local_model_benchmark(3, 1.0, 120.0)
-    assert report["status"] == "failed"
+    assert report["status"] == "model_not_found"
     assert report["performance_threshold_passed"] is False
