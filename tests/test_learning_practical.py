@@ -218,3 +218,22 @@ def test_word_count_practical_grader_counts_whitespace_separated_tokens():
     assert not learning_practical.grade_case_output(
         exercise_id, case["id"], "succeeded", 0, "2\n"
     )
+
+
+def test_build_grader_source_validates_exercise_and_never_inlines_hidden_cases():
+    source = "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(len(data['text'].split())))"
+
+    assert learning_practical.build_grader_source("python-json-word-count-v1", source) == source
+    try:
+        learning_practical.build_grader_source("unknown-exercise", source)
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("Unknown practical exercises must fail closed")
+
+    try:
+        learning_practical.build_grader_source("python-json-word-count-v1", " ")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Empty learner source must fail closed")
