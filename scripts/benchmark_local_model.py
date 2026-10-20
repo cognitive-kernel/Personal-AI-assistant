@@ -11,6 +11,7 @@ import argparse
 import json
 import math
 import platform
+import re
 import statistics
 import subprocess
 import sys
@@ -95,6 +96,16 @@ def run_benchmark(
             "performance_threshold_passed": False,
             "interpretation": "Configured model tag was not present in local Ollama model inventory.",
         }
+    model_digest = match.get("digest")
+    if not isinstance(model_digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", model_digest):
+        return {
+            "schema_version": 1, "benchmark": "local-ollama-generation",
+            "status": "model_digest_unavailable", "model": model, "git_commit": _git_commit(),
+            "runs_requested": runs, "runs_completed": 0,
+            "hardware_before": hardware_before,
+            "performance_threshold_passed": False,
+            "interpretation": "Model digest is missing or malformed; reproducible performance acceptance is refused.",
+        }
 
     samples: list[dict[str, Any]] = []
     # Warm-up is deliberately excluded from measured samples.
@@ -127,7 +138,7 @@ def run_benchmark(
         "benchmark": "local-ollama-generation",
         "status": "passed" if threshold_passed else "below_threshold",
         "model": model,
-        "model_digest": match.get("digest") if isinstance(match.get("digest"), str) else None,
+        "model_digest": model_digest,
         "git_commit": _git_commit(),
         "python_version": platform.python_version(),
         "platform": platform.platform(),
