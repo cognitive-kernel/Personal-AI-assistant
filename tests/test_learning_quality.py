@@ -190,3 +190,13 @@ def test_sources_section_does_not_count_as_instructional_lesson_words():
     )
     assert result["word_count"] < 200
     assert result["accepted"] is False
+
+
+def test_learning_ui_renders_only_safe_https_source_manifest_links():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    assert "function safeLearningSourceUrl(value)" in page
+    assert 'parsed.protocol !== "https:"' in page
+    assert 'link.rel = "noopener noreferrer"' in page
+    assert "منابع دریافت‌شده برای بررسی ماشینی" in page
