@@ -23,7 +23,7 @@ class Defaults:
     ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
     ollama_timeout_seconds: int = _int_env("OLLAMA_TIMEOUT_SECONDS", 300)
-    ollama_num_ctx: int = _int_env("OLLAMA_NUM_CTX", 2048)
+    ollama_num_ctx: int = _int_env("OLLAMA_NUM_CTX", 8192)
     ollama_num_thread: int = _int_env("OLLAMA_NUM_THREAD", 0)
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
