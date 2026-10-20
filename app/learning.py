@@ -336,6 +336,9 @@ def get_job(job_id: int) -> dict[str, Any]:
                 assessment["answer_key"] = assessment.get("answer_key", [])
             else:
                 assessment.pop("answer_key", None)
+                # Rubric phrases can reveal the expected answer; keep them hidden until submission.
+                assessment.pop("rubric", None)
+                assessment.pop("rubric_version", None)
         result["assessment"] = assessment
         result["assessment_attempts"] = attempts
         latest_review = conn.execute(
