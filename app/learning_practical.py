@@ -6,6 +6,7 @@ records only case outcomes and never sends expected values into the sandbox.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -80,10 +81,7 @@ def get_test_cases(exercise_id: str) -> list[dict[str, Any]]:
     """Return the server-side grading cases to the trusted task handler only."""
     if exercise_id not in _TEST_CASES:
         raise KeyError(exercise_id)
-    return [
-        {"id": item["id"], "input": item["input"], "expected": item["expected"]}
-        for item in _TEST_CASES[exercise_id]
-    ]
+    return copy.deepcopy(_TEST_CASES[exercise_id])
 
 
 def grade_case_output(exercise_id: str, case_id: str, status: str, exit_code: int | None, stdout: str) -> bool:
@@ -133,9 +131,16 @@ def build_grade_report(exercise_id: str, results: list[dict[str, Any]]) -> dict[
 
 def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, Any], source_code: str) -> dict[str, Any]:
     """Persist a completed sandbox grade and apply mastery only after prerequisites pass."""
+    if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
+        raise ValueError("job_id must be a positive integer.")
     exercise = EXERCISES.get(exercise_id)
     if exercise is None:
         raise KeyError(exercise_id)
+    if (
+        not isinstance(source_code, str) or not source_code.strip()
+        or "\\x00" in source_code or len(source_code.encode("utf-8")) > 32 * 1024
+    ):
+        raise ValueError("Practical source must be non-empty, NUL-free, and at most 32 KiB.")
     if not isinstance(report, dict) or report.get("schema_version") != 1 or report.get("exercise_id") != exercise_id:
         raise ValueError("Practical grading report is invalid.")
     results = report.get("results")
