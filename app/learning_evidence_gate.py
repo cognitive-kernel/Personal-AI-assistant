@@ -6,6 +6,7 @@ be established by URL shape or a second call to the same model alone.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -59,6 +60,18 @@ def _https_source(source: Any) -> tuple[str, str] | None:
     return url, parsed.hostname.casefold().rstrip(".")
 
 
+def _exact_cited_urls(lesson: str) -> set[str]:
+    """Extract complete URL citation tokens, ignoring only trailing citation punctuation."""
+    if not isinstance(lesson, str):
+        return set()
+    found: set[str] = set()
+    for match in re.finditer(r"https?://[^\\s<>\\\"']+", lesson):
+        token = match.group(0).rstrip(".,;:!?)]}")
+        if token:
+            found.add(token)
+    return found
+
+
 def evaluate_lesson_evidence(
     lesson: str,
     sources: list[dict[str, Any]],
@@ -78,10 +91,8 @@ def evaluate_lesson_evidence(
             usable.append(parsed)
             seen_urls.add(parsed[0])
 
-    cited = {
-        url for url, _host in usable
-        if isinstance(lesson, str) and url in lesson
-    }
+    cited_tokens = _exact_cited_urls(lesson)
+    cited = {url for url, _host in usable if url in cited_tokens}
     hosts = {host for url, host in usable if url in cited}
     trusted_cited_hosts = {
         host for url, host in usable
@@ -98,7 +109,7 @@ def evaluate_lesson_evidence(
             and claim.get("verdict") == "supported"
             and isinstance(claim.get("evidence_urls"), list)
             and len(claim["evidence_urls"]) > 0
-            and all(url in seen_urls for url in claim["evidence_urls"])
+            and all(url in cited for url in claim["evidence_urls"])
             for claim in claims
         )
     )
