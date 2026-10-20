@@ -25,18 +25,25 @@ def _setup(tmp_path, monkeypatch):
     return job, candidate_id, lesson
 
 
+
+def _case(name, expected, actual, runner, *, passed=True):
+    digest = hashlib.sha256(
+        json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (
+        {"test": name, "purpose": "Fixed, versioned regression fixture.",
+         "oracle_kind": "regression_fixture", "oracle_ref": "tests/fixtures/learning/reference-v1.json",
+         "expected": expected, "oracle_sha256": digest},
+        {"test": name, "runner": runner, "passed": passed,
+         "expected": expected, "actual": actual, "oracle_sha256": digest},
+    )
+
 def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monkeypatch):
     job, candidate_id, lesson = _setup(tmp_path, monkeypatch)
-    plan = [
-        {"test": "output_matches_reference", "purpose": "Check the defined expected output."},
-        {"test": "edge_case", "purpose": "Check a boundary input."},
-    ]
-    results = [
-        {"test": "output_matches_reference", "runner": "deterministic_assertion",
-         "passed": True, "expected": "42", "actual": "42"},
-        {"test": "edge_case", "runner": "sandbox",
-         "passed": True, "expected": "[]", "actual": "[]"},
-    ]
+    case1 = _case("output_matches_reference", "42", "42", "deterministic_assertion")
+    case2 = _case("edge_case", [], [], "sandbox")
+    plan = [case1[0], case2[0]]
+    results = [case1[1], case2[1]]
 
     candidate = learning.record_candidate_test_results(candidate_id, plan, results)
 
@@ -57,11 +64,9 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
 
 def test_failed_candidate_stays_temporary_and_creates_failure_experience(tmp_path, monkeypatch):
     _job, candidate_id, _lesson = _setup(tmp_path, monkeypatch)
-    plan = [{"test": "expected_result", "purpose": "Compare against a fixed reference."}]
-    results = [{
-        "test": "expected_result", "runner": "reference_dataset",
-        "passed": False, "expected": "42", "actual": "41",
-    }]
+    case = _case("expected_result", "42", "41", "reference_dataset", passed=False)
+    plan = [case[0]]
+    results = [case[1]]
 
     candidate = learning.record_candidate_test_results(candidate_id, plan, results)
 
@@ -81,20 +86,19 @@ def test_failed_candidate_stays_temporary_and_creates_failure_experience(tmp_pat
 
 def test_candidate_test_results_must_match_plan_and_name_automated_runner(tmp_path, monkeypatch):
     _job, candidate_id, _lesson = _setup(tmp_path, monkeypatch)
+    valid_plan, valid_result = _case("fixed_reference", "x", "x", "sandbox")
+    mismatched = dict(valid_result, test="different_test")
     with pytest.raises(ValueError, match="match the planned test"):
-        learning.record_candidate_test_results(
-            candidate_id,
-            [{"test": "fixed_reference"}],
-            [{"test": "different_test", "runner": "sandbox", "passed": True,
-              "expected": "x", "actual": "x"}],
-        )
+        learning.record_candidate_test_results(candidate_id, [valid_plan], [mismatched])
+    invalid_runner = dict(valid_result, runner="model_opinion")
     with pytest.raises(ValueError, match="approved automated runner"):
-        learning.record_candidate_test_results(
-            candidate_id,
-            [{"test": "fixed_reference"}],
-            [{"test": "fixed_reference", "runner": "model_opinion", "passed": True,
-              "expected": "x", "actual": "x"}],
-        )
+        learning.record_candidate_test_results(candidate_id, [valid_plan], [invalid_runner])
+    untrusted_plan = {"test": "model_opinion_only", "purpose": "AI says so", "expected": "x"}
+    with pytest.raises(ValueError, match="trusted oracle kind"):
+        learning.record_candidate_test_results(candidate_id, [untrusted_plan], [valid_result])
+    bad_digest_plan = dict(valid_plan, oracle_sha256="0" * 64)
+    with pytest.raises(ValueError, match="Oracle digest"):
+        learning.record_candidate_test_results(candidate_id, [bad_digest_plan], [valid_result])
     with db.learning_connection() as connection:
         status = connection.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
