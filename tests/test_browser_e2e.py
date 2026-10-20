@@ -1253,6 +1253,11 @@ def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
         page.goto(base_url, wait_until="domcontentloaded")
         message = page.locator("#message")
         assert message.get_attribute("dir") == "auto"
+        for output_id in ("#chat-output", "#learning-output"):
+            output = page.locator(output_id)
+            assert output.get_attribute("dir") == "auto"
+            assert output.get_attribute("role") == "status"
+            assert output.get_attribute("aria-live") == "polite"
         message.fill("How do SQL execution plans work?")
         assert message.evaluate("node => getComputedStyle(node).direction") == "ltr"
         message.fill("چطور برنامه اجرای SQL کار می‌کند؟")
