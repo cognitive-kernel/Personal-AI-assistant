@@ -1,8 +1,8 @@
 """Deterministic practical exercises for code-capable lessons.
 
 Exercise grading runs in the existing consent-gated Docker sandbox. The learner
-program runs as a separate child process for each case; the grading wrapper
-records only case outcomes, never expected values or learner output.
+program runs as a separate child process for each case; the host-side grader
+records only case outcomes and never sends expected values into the sandbox.
 """
 from __future__ import annotations
 
