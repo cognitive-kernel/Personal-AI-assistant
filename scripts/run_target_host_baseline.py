@@ -265,11 +265,55 @@ def _run_performance_benchmark(task_count: int, min_queue_tps: float = 10.0, tim
     }
 
 
-def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_performance_benchmark: bool = False, benchmark_tasks: int = 1000, min_queue_tps: float = 10.0) -> dict[str, Any]:
+def _run_local_model_benchmark(runs: int, min_tokens_per_second: float, max_latency_seconds: float, timeout_seconds: int = 900) -> dict[str, Any]:
+    """Measure the configured loopback Ollama model without exposing generated text."""
+    if isinstance(runs, bool) or not isinstance(runs, int) or not 1 <= runs <= 10:
+        raise ValueError("model benchmark runs must be between 1 and 10")
+    if not isinstance(min_tokens_per_second, (int, float)) or isinstance(min_tokens_per_second, bool) or not math.isfinite(min_tokens_per_second) or min_tokens_per_second <= 0:
+        raise ValueError("minimum model throughput must be finite and positive")
+    if not isinstance(max_latency_seconds, (int, float)) or isinstance(max_latency_seconds, bool) or not math.isfinite(max_latency_seconds) or max_latency_seconds <= 0:
+        raise ValueError("maximum model latency must be finite and positive")
+    command = [
+        sys.executable, str(ROOT / "scripts" / "benchmark_local_model.py"),
+        "--runs", str(runs), "--min-tokens-per-second", str(min_tokens_per_second),
+        "--max-latency-seconds", str(max_latency_seconds),
+    ]
+    try:
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=timeout_seconds, check=False)
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "timeout_seconds": timeout_seconds, "runs_requested": runs}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__, "runs_requested": runs}
+    try:
+        report = json.loads(result.stdout)
+    except (TypeError, ValueError):
+        return {"status": "invalid_report", "return_code": result.returncode, "runs_requested": runs}
+    if not isinstance(report, dict):
+        return {"status": "invalid_report", "return_code": result.returncode, "runs_requested": runs}
+    return {
+        "status": report.get("status") if result.returncode == 0 else "failed",
+        "benchmark": report.get("benchmark"),
+        "model": report.get("model"),
+        "model_digest": report.get("model_digest"),
+        "runs_requested": report.get("runs_requested", runs),
+        "runs_completed": report.get("runs_completed", 0),
+        "median_latency_seconds": report.get("median_latency_seconds"),
+        "max_latency_seconds_observed": report.get("max_latency_seconds_observed"),
+        "median_generation_tokens_per_second": report.get("median_generation_tokens_per_second"),
+        "minimum_generation_tokens_per_second": report.get("minimum_generation_tokens_per_second", float(min_tokens_per_second)),
+        "maximum_allowed_latency_seconds": report.get("maximum_allowed_latency_seconds", float(max_latency_seconds)),
+        "performance_threshold_passed": report.get("performance_threshold_passed") is True and result.returncode == 0,
+        "error_type": report.get("error_type"),
+        "raw_output_included": False,
+    }
+
+
+def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_performance_benchmark: bool = False, benchmark_tasks: int = 1000, min_queue_tps: float = 10.0, run_model_benchmark: bool = False, model_benchmark_runs: int = 3, min_model_tps: float = 1.0, max_model_latency_seconds: float = 120.0) -> dict[str, Any]:
     storage = _storage_summary()
     network_boundary = _network_boundary_summary()
     tests = _run_tests(timeout_seconds) if run_tests else {"status": "not_run"}
     performance = _run_performance_benchmark(benchmark_tasks, min_queue_tps) if run_performance_benchmark else {"status": "not_run"}
+    model_performance = _run_local_model_benchmark(model_benchmark_runs, min_model_tps, max_model_latency_seconds) if run_model_benchmark else {"status": "not_run"}
     dirty = _git_value("status", "--porcelain")
     return {
         "report_version": 2,
@@ -290,6 +334,7 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_pe
         "network_boundary": network_boundary,
         "tests": tests,
         "performance_benchmark": performance,
+        "local_model_performance_benchmark": model_performance,
         "scope": {
             "storage_check_is_read_only": True,
             "database_initialization_performed": False,
@@ -297,6 +342,7 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_pe
             "database_repair_performed": False,
             "live_model_evaluation_performed": False,
             "performance_benchmark_performed": run_performance_benchmark,
+            "local_model_performance_benchmark_performed": run_model_benchmark,
             "remote_execution_performed": False,
         },
     }
@@ -308,6 +354,10 @@ def main() -> int:
     parser.add_argument("--run-performance-benchmark", action="store_true", help="benchmark disposable SQLite task queue on this host")
     parser.add_argument("--benchmark-tasks", type=int, default=1000, help="disposable benchmark task count (1..100000)")
     parser.add_argument("--min-queue-tps", type=float, default=10.0, help="minimum queue claim/complete throughput for acceptance (default: 10 tasks/s)")
+    parser.add_argument("--run-model-benchmark", action="store_true", help="measure configured local Ollama generation latency and throughput")
+    parser.add_argument("--model-benchmark-runs", type=int, default=3, help="measured local model generations (1..10; one warm-up added)")
+    parser.add_argument("--min-model-tps", type=float, default=1.0, help="minimum median local model generation tokens/s")
+    parser.add_argument("--max-model-latency-seconds", type=float, default=120.0, help="maximum median local model request latency")
     parser.add_argument(
         "--timeout-seconds", type=int, default=1800,
         help="pytest timeout when --run-tests is used (default: 1800)",
@@ -318,8 +368,14 @@ def main() -> int:
         parser.error("--timeout-seconds must be positive")
     if not 1 <= args.benchmark_tasks <= 100000:
         parser.error("--benchmark-tasks must be between 1 and 100000")
-    if args.min_queue_tps <= 0:
-        parser.error("--min-queue-tps must be positive")
+    if not math.isfinite(args.min_queue_tps) or args.min_queue_tps <= 0:
+        parser.error("--min-queue-tps must be finite and positive")
+    if not 1 <= args.model_benchmark_runs <= 10:
+        parser.error("--model-benchmark-runs must be between 1 and 10")
+    if not math.isfinite(args.min_model_tps) or args.min_model_tps <= 0:
+        parser.error("--min-model-tps must be finite and positive")
+    if not math.isfinite(args.max_model_latency_seconds) or args.max_model_latency_seconds <= 0:
+        parser.error("--max-model-latency-seconds must be finite and positive")
 
     report = build_report(
         run_tests=args.run_tests,
@@ -327,6 +383,10 @@ def main() -> int:
         run_performance_benchmark=args.run_performance_benchmark,
         benchmark_tasks=args.benchmark_tasks,
         min_queue_tps=args.min_queue_tps,
+        run_model_benchmark=args.run_model_benchmark,
+        model_benchmark_runs=args.model_benchmark_runs,
+        min_model_tps=args.min_model_tps,
+        max_model_latency_seconds=args.max_model_latency_seconds,
     )
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
@@ -341,7 +401,8 @@ def main() -> int:
     network_ok = report["network_boundary"].get("status") == "ok"
     tests_ok = report["tests"].get("status") in {"not_run", "passed"}
     performance_ok = report["performance_benchmark"].get("status") in ({"passed"} if args.run_performance_benchmark else {"not_run"})
-    return 0 if storage_ok and network_ok and tests_ok and performance_ok else 1
+    model_performance_ok = report["local_model_performance_benchmark"].get("status") in ({"passed"} if args.run_model_benchmark else {"not_run"})
+    return 0 if storage_ok and network_ok and tests_ok and performance_ok and model_performance_ok else 1
 
 
 if __name__ == "__main__":
