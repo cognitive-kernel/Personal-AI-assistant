@@ -198,8 +198,8 @@ def run_job(job_id: int) -> None:
         hardware_info = detect_hardware()
         limits = runtime_limits(settings, hardware_info)
         # Older installations persist the former 2048-token default in SQLite.
-        # On the documented 32 GB target, allow lesson generation to use the
-        # hardware-safe 8192 context unless the operator selected another value.
+        # Treat that legacy default as adaptive for lesson generation only; keep
+        # the context bounded by detected RAM. Other explicitly configured values remain intact.
         configured_context = int(settings.get("ollama_num_ctx", 2048) or 2048)
         total_ram_gb = hardware_info.get("total_ram_gb")
         if configured_context == 2048 and isinstance(total_ram_gb, (int, float)):
