@@ -21,7 +21,11 @@ sys.path.insert(0, str(ROOT))
 
 from app import chat_research, db, ollama
 from app.answer_quality_dataset import DEFAULT_DATASET, DATASET_VERSION, load_cases
-from app.answer_quality_evaluation import evaluate_answer_surface, summarize_surface_results
+from app.answer_quality_evaluation import (
+    evaluate_answer_surface,
+    evaluate_automated_acceptance,
+    summarize_surface_results,
+)
 from app.db import get_settings, learning_connection
 
 
@@ -179,8 +183,9 @@ def run_evaluation(
         }
         for item in completed
     ]
+    automated_acceptance = evaluate_automated_acceptance(raw_results)
     report: dict[str, Any] = {
-        "report_schema_version": 1,
+        "report_schema_version": 2,
         "benchmark": "bilingual-answer-quality",
         "dataset_version": DATASET_VERSION,
         "dataset_path": str(dataset_path.relative_to(ROOT)) if dataset_path.is_relative_to(ROOT) else dataset_path.name,
@@ -213,7 +218,8 @@ def run_evaluation(
         "failed_count": len(cases) - len(completed),
         "generation_completed_count": len(completed),
         "generation_failed_count": len(cases) - len(completed),
-        "quality_assessment_status": "not_scored",
+        "quality_assessment_status": "automated_gate_passed" if automated_acceptance["passed"] else "automated_gate_failed",
+        "automated_acceptance": automated_acceptance,
         "surface_diagnostics": summarize_surface_results([
             {key: value for key, value in item.items() if key in {
                 "case_id", "language", "answer_chars", "expected_concepts_count",
@@ -229,8 +235,9 @@ def run_evaluation(
         "source_snapshots": source_snapshots,
         "results": raw_results,
         "interpretation": (
-            "Surface diagnostics only. They do not establish factual correctness, source reliability, "
-            "or semantic equivalence. Review every output manually; do not present these metrics as a model-quality score."
+            "The automated gate uses versioned reference concepts, prohibited-claim checks, source provenance, "
+            "and model-assisted claim-review status. It does not use human scoring and is not proof of scientific truth. "
+            "Lexical checks can miss paraphrases; a passing result is a bounded regression signal only."
         ),
     }
     return report
@@ -274,10 +281,11 @@ def main() -> int:
         "completed_count": report["generation_completed_count"],
         "generation_failed_count": report["generation_failed_count"],
         "quality_assessment_status": report["quality_assessment_status"],
+        "automated_acceptance": report["automated_acceptance"],
         "surface_diagnostics": report["surface_diagnostics"],
         "warning": report["interpretation"],
     }, ensure_ascii=False, indent=2))
-    return 0 if report["run_status"] == "completed" else 1
+    return 0 if report["run_status"] == "completed" and report["automated_acceptance"]["passed"] else 1
 
 
 if __name__ == "__main__":
