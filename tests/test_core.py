@@ -227,6 +227,7 @@ def test_assessment_answers_are_persisted_and_answer_key_is_hidden_until_submiss
     before = learning.get_job(job["id"])
     assert before["assessment"]["questions"]
     assert "answer_key" not in before["assessment"]
+    assert "answer_rubric" not in before["assessment"]
     result = learning.submit_assessment(job["id"], ["A callable", "wrong", "Reusable behavior"])
     assert result["correct_count"] == 2
     assert result["score"] == 66.67
