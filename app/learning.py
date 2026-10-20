@@ -207,6 +207,9 @@ def run_job(job_id: int) -> None:
                 limits["num_ctx"] = 8192
             elif total_ram_gb >= 12:
                 limits["num_ctx"] = 4096
+        # Bound each generation phase so an initial draft plus a repair cannot
+        # silently hold a learning task for the full configured timeout twice.
+        generation_timeout = min(240, max(5, int(settings.get("ollama_timeout_seconds", 300))))
         response = _request("/api/chat", {
             "model": str(settings["ollama_model"]), "stream": False, "format": "json",
             "messages": [
@@ -214,7 +217,7 @@ def run_job(job_id: int) -> None:
                 {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
             ],
             "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 2400},
-        })
+        }, timeout=generation_timeout)
         raw = response.get("message", {}).get("content")
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
@@ -255,7 +258,7 @@ def run_job(job_id: int) -> None:
                     {"role": "user", "content": json.dumps(retry_prompt, ensure_ascii=False)},
                 ],
                 "options": {"num_ctx": min(limits["num_ctx"], 4096), "num_thread": limits["cpu_threads"], "num_predict": 3000},
-            })
+            }, timeout=min(generation_timeout, 240))
             retry_raw = retry_response.get("message", {}).get("content")
             try:
                 retry_result = json.loads(retry_raw) if isinstance(retry_raw, str) else None
