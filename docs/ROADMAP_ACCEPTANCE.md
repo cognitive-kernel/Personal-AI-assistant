@@ -187,3 +187,7 @@ This is exact-head CI evidence only. PR #369 remains open and unmerged; it does 
 - [x] محدودیت مهلت درخواست مدل: تولید/اصلاح حداکثر ۲۴۰ ثانیه و مرور ادعا حداکثر ۱۸۰ ثانیه، یا timeout کوچک‌تر پیکربندی‌شده.
 - [ ] آزمون واقعی kill/restart مدل، timeout روی سیستم مقصد، بازیابی worker و نمایش وضعیت خطای نهایی در UI.
 
+
+
+- [x] API وضعیت کار، اطلاعات محدود صف/checkpoint و خطای bounded را بدون payload صف در اختیار UI می‌گذارد.
+- [x] UI پس از timeout وضعیت تازه می‌گیرد و وضعیت درس/صف و تلاش‌ها را برای عیب‌یابی نشان می‌دهد.
