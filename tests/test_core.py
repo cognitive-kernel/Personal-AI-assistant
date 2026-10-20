@@ -357,6 +357,10 @@ def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
 def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     import json
 
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 12, "total_ram_gb": 32, "available_ram_gb": 24,
+        "gpu_policy": "disabled_by_default", "notes": [],
+    })
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
@@ -401,6 +405,7 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
     assert payloads[0]["options"]["num_predict"] >= 2400
+    assert payloads[0]["options"]["num_ctx"] == 8192
     assert finished["status"] == "rejected"
     assert finished["quality"]["accepted"] is True
     assert finished["quality"]["release_eligible"] is False
