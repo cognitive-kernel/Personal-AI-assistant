@@ -27,20 +27,19 @@ Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the pag
 - No account creation, credential handling, provisioning, job execution on remote hosts, quota bypass, or provider terms acceptance is implemented here.
 - Durable source metadata and discovery history remain local. The provider catalog is stored in its own versioned database because it has a distinct operational lifecycle and review policy; this is a data-domain boundary, not a separate server requirement.
 
-## Current limitations and next stage
+## Current limitations and remaining work
 
-This is autonomous **discovery**, not autonomous compute provisioning. The first version uses three bounded search templates and records candidate evidence; it does not reliably parse contractual free-tier limits, authenticate providers, reserve capacity, or dispatch jobs. It must not claim a resource is usable merely because a page mentions free compute.
+This is autonomous **discovery and local evidence review**, not autonomous compute provisioning. Discovery uses five bounded search queries, stores source-backed candidates, and applies conservative content filtering. Provider-specific extractors now cover documented Kaggle CLI options and Oracle Cloud Always Free claims; read-only, explicitly consented quota/service-limit clients and local review controls also exist. These features do not establish live capacity, account eligibility, guaranteed zero cost, or permission to run remote jobs.
 
-Next stages:
+Remaining work is evidence and operational validation, not merely adding the already implemented review UI:
 
-1. Parse provider terms, quotas, region, runtime limits, expiry, authentication, and costs into explicit evidence-backed fields.
-2. Add freshness checks and mark stale candidate metadata as unknown.
-3. Add provider-specific adapters only where the provider's public API and terms permit them.
-4. Compare local and provider capabilities, and schedule remote work only after a provider is explicitly reviewed/eligible and credentials/permissions are valid.
-5. Keep all durable learning records, queue state, and checkpoints local; send only minimal, approved job inputs to remote compute.
-6. Add UI controls for discovery history, candidate review, stale data, and provider eligibility.
+1. Improve provider search resilience and relevance based on repeated live runs; challenge pages and low accepted-result counts can still reduce coverage.
+2. Validate current provider terms, quota semantics, regions, expiry, authentication, and zero-spend assumptions against real accounts and human review.
+3. Complete provider-specific enforcement and independent security review before considering any remote execution adapter.
+4. Keep learning records, queue state, and checkpoints local; only a future explicitly approved adapter may transmit minimal job inputs, and it must enforce cost, quota, authorization, and region limits.
+5. Validate the read-only clients on the target Windows environment with real CLI installations and consent/revocation, without treating a successful quota read as execution permission.
 
-No resource is automatically selected for execution by this implementation.
+No resource is automatically selected for execution by this implementation, and no current assessment authorizes execution.
 
 
 ## Review and freshness workflow
