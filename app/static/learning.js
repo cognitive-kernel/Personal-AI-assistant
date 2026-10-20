@@ -162,8 +162,10 @@ function renderPracticalExerciseForm(output, job, path, topic, exercise) {
        ((task.result && task.result.execution_status) || "نامشخص");
       break;
      }
+     const failedCases = (grade.case_results || []).filter(item => !item.passed).map(item => item.case_id);
      status.textContent = "نتیجه آزمون عملی: " + grade.score + " از 100؛ " +
       grade.passed_tests + " آزمون از " + grade.total_tests + " موفق. " +
+      (failedCases.length ? "آزمون‌های ناموفق: " + failedCases.join("، ") + ". " : "") +
       (grade.mastery_achieved
        ? "تسلط عملی ثبت شد و سرفصل تکمیل شد."
        : "این نتیجه فقط همین تمرین را می‌سنجد؛ برای تکمیل سرفصل، آستانه و پیش‌نیازهای مسیر باید برقرار باشند.");
