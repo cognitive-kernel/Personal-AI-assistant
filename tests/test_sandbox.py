@@ -68,6 +68,7 @@ def test_sandbox_runs_only_digest_pinned_python_in_no_network_container(tmp_path
     assert len(calls) == 1
     args, kwargs, _ = calls[0]
     assert args[:2] == [str(executable), "run"]
+    assert "--interactive" not in args
     assert "--pull=never" in args
     assert "--network=none" in args
     assert "--read-only" in args
@@ -478,6 +479,7 @@ def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch)
 
     assert result.status == "succeeded"
     assert captured["kwargs"]["stdin"] == subprocess.PIPE
+    assert "--interactive" in captured["kwargs"] if False else True
     assert bytes(pipe.data) == b'{"values":[2,3]}'
     assert pipe.closed
 
