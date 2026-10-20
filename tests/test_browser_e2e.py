@@ -504,6 +504,9 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
         cards = page.locator("#tasks-container article")
         page.get_by_text("#6001 — e2e.research", exact=True).wait_for(timeout=5000)
         assert cards.count() == 3
+        assert "is-queued" in (cards.nth(0).locator(".task-status-line").get_attribute("class") or "")
+        assert "is-failed" in (cards.nth(1).locator(".task-status-line").get_attribute("class") or "")
+        assert "is-succeeded" in (cards.nth(2).locator(".task-status-line").get_attribute("class") or "")
         summary = page.locator("#task-summary")
         assert "بارگذاری‌شده" in summary.inner_text()
         assert "3" in summary.inner_text()
