@@ -25,7 +25,8 @@
 </nav>
 <main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
-<button id="refresh">بررسی وضعیت سیستم</button><pre id="health" role="status" aria-live="polite" aria-atomic="true">وضعیت هنوز بررسی نشده است.</pre></header>
+<button id="refresh">بررسی وضعیت سیستم</button>
+<button id="theme-toggle" type="button" aria-pressed="false" aria-label="تغییر پوستهٔ داشبورد">حالت تیره</button><pre id="health" role="status" aria-live="polite" aria-atomic="true">وضعیت هنوز بررسی نشده است.</pre></header>
 <section id="storage-degraded-banner" class="storage-alert" role="alert" aria-live="assertive" hidden>
 <h2>ذخیره‌سازی در حالت محدود</h2>
 <p id="storage-degraded-message">ساختار یکی از پایگاه‌های داده نیازمند بررسی است. داده‌ها حذف یا بازنشانی نشده‌اند و عملیات وابسته به دیتابیس تا بررسی ایمن غیرفعال است.</p>
@@ -1748,6 +1749,25 @@ el("self-improvement-form").addEventListener("submit",async event=>{
  } catch(error) { output.textContent=error.message; }
 });
 el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
+// Accessible local theme preference; no network requests or external assets.
+(function initializeDashboardTheme(){
+ const button=document.getElementById("theme-toggle");
+ if(!button) return;
+ const root=document.documentElement;
+ let saved=null;
+ try { saved=window.localStorage.getItem("dashboard-theme"); } catch (_) {}
+ const prefersDark=Boolean(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+ function applyTheme(dark, persist){
+  root.dataset.theme=dark ? "dark" : "light";
+  button.setAttribute("aria-pressed",String(dark));
+  button.textContent=dark ? "حالت روشن" : "حالت تیره";
+  button.setAttribute("aria-label",dark ? "پوستهٔ تیره فعال است؛ تغییر به پوستهٔ روشن" : "پوستهٔ روشن فعال است؛ تغییر به پوستهٔ تیره");
+  if(persist){ try { window.localStorage.setItem("dashboard-theme",dark ? "dark" : "light"); } catch (_) {} }
+ }
+ applyTheme(saved==="dark" || (saved===null && prefersDark),false);
+ button.addEventListener("click",()=>applyTheme(root.dataset.theme!=="dark",true));
+})();
+
 // Keep the persistent section navigation synchronized with the user's reading position.
 (function initializeCurrentSectionNavigation(){
  const navigation=document.querySelector('.dashboard-nav');
