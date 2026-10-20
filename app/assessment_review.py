@@ -80,7 +80,7 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
     init_databases()
     with learning_connection() as connection:
         row = connection.execute(
-            """SELECT j.status, j.assessment_json, a.answers_json, a.score,
+            """SELECT j.status, j.assessment_json, a.answers_json, a.score, a.scoring_method,
                       a.correct_count, a.question_count
                FROM learning_jobs AS j
                JOIN assessment_attempts AS a ON a.job_id=j.id
@@ -91,6 +91,8 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
         raise KeyError(attempt_id)
     if row["status"] != "completed" or not row["assessment_json"]:
         raise ValueError("The learning job has no completed assessment.")
+    if row["scoring_method"] not in {"rubric_concept_coverage_v1", "normalized_exact_match"}:
+        raise ValueError("Semantic review is available only for quiz assessment attempts.")
     try:
         assessment = json.loads(row["assessment_json"])
         answers = json.loads(row["answers_json"])
