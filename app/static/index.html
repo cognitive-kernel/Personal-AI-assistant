@@ -442,11 +442,33 @@ function renderTasks(tasks,{append=false}={}) {
   if(taskStatusClass) statusLine.classList.add(taskStatusClass);
   statusLine.dataset.status=String(task.status||"");
   if(task.created_at) appendText(card,"p","ایجاد: "+task.created_at,"muted");
-  if(task.error) appendText(card,"p","خطا: "+task.error);
-  if(task.result) {
-   const result=document.createElement("pre");
-   result.textContent=JSON.stringify(task.result,null,2).slice(0,3000);
-   card.append(result);
+  if(task.error || task.result) {
+   const diagnostics=document.createElement("details");
+   diagnostics.className="task-diagnostics";
+   const summary=document.createElement("summary");
+   summary.textContent=task.error ? (task.result ? "جزئیات خطا و نتیجه" : "مشاهدهٔ خطای وظیفه") : "مشاهدهٔ نتیجهٔ وظیفه";
+   diagnostics.append(summary);
+   if(task.error) {
+    const errorHeading=document.createElement("h4");
+    errorHeading.textContent="خطا";
+    const errorText=document.createElement("p");
+    errorText.className="task-error-detail";
+    errorText.textContent=String(task.error).slice(0,3000);
+    diagnostics.append(errorHeading,errorText);
+   }
+   if(task.result) {
+    const resultHeading=document.createElement("h4");
+    resultHeading.textContent="نتیجه";
+    const result=document.createElement("pre");
+    result.className="task-result-detail";
+    try {
+     result.textContent=JSON.stringify(task.result,null,2).slice(0,3000);
+    } catch {
+     result.textContent="نتیجه قابل نمایش نیست.";
+    }
+    diagnostics.append(resultHeading,result);
+   }
+   card.append(diagnostics);
   }
   const actions=document.createElement("div"); actions.className="cloud-actions";
   if(["queued","paused"].includes(task.status)) {
