@@ -94,8 +94,8 @@ function addRegenerateButton(output, path, topic) {
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
  if (job.quality && topic.row) {
-  const scoreField = topic.row.querySelector(".path-topic-score");
-  if (scoreField) scoreField.textContent = "امتیاز کیفیت درس: " + job.quality.score + " از 100 (خودکار)";
+  const scoreField = topic.row.querySelector(".path-topic-quality-score");
+  if (scoreField) scoreField.textContent = "کیفیت درس: " + job.quality.score + " از 100 (خودکار)";
  }
  if (job.status !== "completed") {
   if (job.quality) {
@@ -573,6 +573,10 @@ async function loadLearningPaths() {
      const option = document.createElement("option");
      option.value = value;
      option.textContent = title;
+     if (value === "completed" && !(topic.latest_score_kind === "learner_rubric" && Number(topic.latest_score) >= 80)) {
+      option.disabled = true;
+      option.title = "تکمیل فقط با نمره حداقل ۸۰ از آزمون دارای rubric معتبر ممکن است.";
+     }
      status.append(option);
     });
     status.value = topic.status;
@@ -581,8 +585,16 @@ async function loadLearningPaths() {
     const score = document.createElement("span");
     score.className = "path-topic-score";
     score.textContent = topic.latest_score == null
-     ? "امتیاز کیفیت درس: پس از تولید خودکار محاسبه می‌شود"
-     : "امتیاز کیفیت درس: " + topic.latest_score + " از 100 (خودکار)";
+     ? "امتیاز آزمون یادگیرنده: هنوز ثبت نشده"
+     : "امتیاز آزمون یادگیرنده: " + topic.latest_score + " از 100 (" +
+       (topic.latest_score_kind === "learner_rubric" ? "rubric مفهومی" :
+        topic.latest_score_kind === "legacy_exact_match" ? "تطبیق متنی قدیمی" :
+        topic.latest_score_kind === "manual_override" ? "ثبت دستی/قدیمی" : "داده قدیمی با منشأ نامشخص") + ")";
+    const qualityScore = document.createElement("span");
+    qualityScore.className = "path-topic-quality-score";
+    qualityScore.textContent = topic.latest_content_quality_score == null
+     ? "کیفیت درس: پس از تولید محاسبه می‌شود"
+     : "کیفیت درس: " + topic.latest_content_quality_score + " از 100 (خودکار)";
     const save = document.createElement("button");
     save.type = "button";
     save.textContent = "ذخیره وضعیت";
@@ -640,7 +652,7 @@ async function loadLearningPaths() {
     });
     start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
     stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
-    row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, output);
+    row.append(label, status, score, qualityScore, save, start, stop, reviewLabel, reviewButton, reviewOutput, output);
     details.append(row);
    });
    pathCard.append(progressGroup, details);
