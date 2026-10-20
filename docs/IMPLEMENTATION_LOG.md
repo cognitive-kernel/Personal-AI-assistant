@@ -2127,3 +2127,9 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - Challenge and consent classifications retain precedence. No challenge bypass was added.
 - Added a deterministic regression test for a parsed Google search-page URL rejected because it points back to the search provider.
 - This improves diagnosis of the reported discovery run (Google parse count greater than zero, accepted count zero); it does not by itself improve live provider responses or prove why each real-world URL was rejected.
+
+
+## 2026-10-20 — Cloud discovery roadmap accuracy
+
+- Reconciled the cloud discovery architecture's remaining-work section with the current implementation: five bounded queries, source-bound Kaggle/OCI extractors, consent-gated read-only quota/service-limit clients, and local review controls already exist.
+- Reframed remaining work around live provider-search reliability, real-account/human validation, target-Windows CLI checks, and the independent security gate. Remote execution remains disabled and never authorized by preflight.
