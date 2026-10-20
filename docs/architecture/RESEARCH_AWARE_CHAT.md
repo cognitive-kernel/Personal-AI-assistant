@@ -23,5 +23,5 @@ Ordinary small talk remains on the direct local Ollama chat path. Technical, tro
 
 - A model-assisted claim review is not independent fact verification.
 - A local audit row stores query/answer hashes, source URLs/titles/content hashes, review status and summary, memory record references, and duration. Raw query text, answer text, and source excerpts are not stored in this audit table.
-- Retrieval evaluation using a curated Persian/English dataset with Recall@5 and MRR is still required.
+- A synthetic Persian/English retrieval fixture and deterministic Recall@5/Precision@5/MRR regression are present in CI. Human-adjudicated relevance labels and a real local-embedding benchmark are still needed before asserting production retrieval quality.
 - If external source discovery is unavailable, the chat answer is based on local model knowledge and is explicitly marked unverified.
