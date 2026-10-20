@@ -117,6 +117,22 @@ def validate_practical_job(job_id: int, exercise_id: str) -> dict[str, Any]:
     return {"id": int(job["id"]), "topic": str(job["topic"]), "path_topic_id": job["path_topic_id"], "curriculum_slug": curriculum_slug}
 
 
+def build_grader_source(exercise_id: str, source_code: str) -> str:
+    """Validate the exercise and learner source before the trusted host-side grader runs.
+
+    The learner source is returned unchanged. Expected outputs and grading logic
+    remain in the host process and are never embedded in the learner container.
+    """
+    if exercise_id not in EXERCISES:
+        raise KeyError(exercise_id)
+    if (
+        not isinstance(source_code, str) or not source_code.strip()
+        or "\x00" in source_code or len(source_code.encode("utf-8")) > 32 * 1024
+    ):
+        raise ValueError("Practical source must be non-empty, NUL-free, and at most 32 KiB.")
+    return source_code
+
+
 def get_test_cases(exercise_id: str) -> list[dict[str, Any]]:
     """Return the server-side grading cases to the trusted task handler only."""
     if exercise_id not in _TEST_CASES:
