@@ -2133,3 +2133,10 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 - Reconciled the cloud discovery architecture's remaining-work section with the current implementation: five bounded queries, source-bound Kaggle/OCI extractors, consent-gated read-only quota/service-limit clients, and local review controls already exist.
 - Reframed remaining work around live provider-search reliability, real-account/human validation, target-Windows CLI checks, and the independent security gate. Remote execution remains disabled and never authorized by preflight.
+## 2026-10-20 — systemic learning quality plan
+
+- Added `docs/LEARNING_SYSTEM_COMPLETION_PLAN.md` describing a staged engineering plan for evidence-backed claim validation, fail-closed quality gates, calibrated assessment, bilingual AI regression cases, sandbox skill checks, and target-host reliability/performance acceptance.
+- Explicitly grounded the resource strategy in the repository's documented Windows / Intel Core i5-12400 / 32 GB RAM / Intel integrated graphics / local Ollama baseline. Discrete GPU availability is not assumed; resource budgets must be measured on the actual target host.
+- Numeric quality thresholds are proposals pending calibration against a versioned reference set. Existing exact-match scoring and same-model semantic review are not represented as independent scientific verification.
+- Documentation-only change. Tests, live-model evaluation, and target-host measurements were not run as part of this change.
+
