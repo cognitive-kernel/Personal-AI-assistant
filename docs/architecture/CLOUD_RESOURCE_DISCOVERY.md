@@ -47,7 +47,7 @@ No resource is automatically selected for execution by this implementation.
 
 Candidates are initially `unreviewed`, `unknown`, and `fresh` only because the page was just observed. The local reviewer can submit the current `content_sha256` to `PATCH /api/cloud-resources/{id}/review`; the server rejects stale hashes with HTTP 409. Approval requires an HTTPS `terms_url`, records `reviewed_at` and `reviewed_content_sha256`, and stores explicitly supplied quota/availability values. A page refresh with the same hash preserves review metadata; a changed title or text invalidates it.
 
-After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Remote jobs must remain disabled until provider-specific terms, quota, credentials, and capability checks are implemented. Accepted claims are evidence inputs only; they are not an authorization or scheduling decision.
+After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Provider adapters and quota/capability observations exist, but remote jobs must remain disabled until provider-specific terms, credential authorization, budget enforcement, and the independent security gate are accepted. Accepted claims and discovered quota are evidence inputs only; they are not authorization or a scheduling decision.
 
 
 ## Extracted claims are not verified limits
