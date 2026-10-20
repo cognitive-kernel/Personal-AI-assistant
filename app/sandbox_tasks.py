@@ -6,6 +6,7 @@ administrator-configured environment values; task payloads cannot override them.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import re
