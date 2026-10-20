@@ -1962,7 +1962,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **UI:** حالت فعال در دسکتاپ با نشانگر کناری و در نمایشگر باریک با نشانگر پایین لینک نمایش داده می‌شود. متن و ساختار لینک‌ها حفظ شده‌اند و هیچ کتابخانه یا فونت راه‌دور اضافه نشده است.
 - **آزمون افزوده‌شده:** browser E2E حالت اولیهٔ لینک فعال، یکتایی آن و انتقال وضعیت به «وظایف» را بررسی می‌کند.
 - **مستندات:** معیار مربوط در `docs/UI_ACCEPTANCE.md` و یادداشت نقشهٔ راه در `docs/ROADMAP_ACCEPTANCE.md` ثبت شد.
-- **وضعیت:** [ ] پیاده‌سازی و آزمون در [PR آینده]؛ این تیک فقط پس از موفقیت CI روی head دقیق تکمیل می‌شود. تست محلی اجرا نشده است.
+- **وضعیت:** [x] [PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360) ادغام شد (`098854d7d447318c107b98c42c0ebd37f5de68a5`). CI روی head دقیق موفق بود: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39366516658)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39366516717)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39366516709). تست محلی اجرا نشده است.
 - **گیت‌های باقی‌مانده:** مرور دستی صفحه‌کلید/صفحه‌خوان، کنتراست و usability روی میزبان هدف.
 
 
