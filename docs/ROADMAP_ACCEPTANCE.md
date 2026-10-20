@@ -84,3 +84,45 @@ Root cause: one boolean, `quality.accepted`, was used for two different decision
 The branch now separates the decisions: structurally accepted lessons remain available for learning, while `scientific_acceptance.accepted` remains false when evidence is insufficient and the knowledge item is stored as `unverified`. Regression assertions cover this split. The retry prompt's required JSON-key list was also corrected to include `answer_rubric`, which it validated later in the same prompt but previously omitted from its explicit required-key list.
 
 This change restores availability; it does not claim scientific truth has been proven. Current evidence gating is a conservative provenance policy plus model-assisted claim review, not an independent factual oracle. Reliable automated factual acceptance still requires versioned, domain-specific reference cases and executable validators where possible. Human scoring is not a runtime requirement, but the absence of human scoring must not be represented as proof that all generated lessons are correct. CI on the exact current branch head is still pending.
+
+## Hybrid learning system — required architecture and acceptance gates (2026-10-21)
+
+The learning subsystem must behave as a staged, evidence-carrying learner rather than a one-shot lesson generator. These are product requirements, not optional future ideas. A source URL or model response must never be rejected solely because the explanation is short or fails a lexical/format heuristic.
+
+### Required end-to-end learning cycle
+
+1. **Capture, do not discard:** accept a topic, pasted text, explicit public URL, or a source discovered online. Store every non-empty candidate in temporary knowledge with source URLs, fetch time, content digest, model/config versions, quality diagnostics, and verification state. Failed retrieval must preserve the candidate and record the retrieval failure; it must not silently substitute an unrelated source.
+2. **Extract claims and uses:** split the candidate into atomic claims, definitions, assumptions, boundary conditions, practical applications, and examples. Preserve source span/URL for each claim. Mark claims without traceable source as model-generated hypotheses.
+3. **Research the public web:** search multiple available public search engines, fetch public pages safely, deduplicate by canonical URL/content hash, and store supporting, contradicting, context, or application evidence. Store title, URL, retrieval timestamp, digest, excerpt, and reliability notes. Do not treat search ranking or fetch success as proof. Prefer primary documentation, peer-reviewed sources, standards, official specifications, and reproducible datasets where appropriate.
+4. **Consult peer AI systems:** when providers are explicitly configured, send each candidate to up to three OpenAI-compatible review endpoints. Ask each to challenge claims, find counterexamples, state limitations, propose applications and falsifiable tests, and cite public URLs. Persist provider/model, exact prompt/response, parsed claims/citations, response digest, and errors. Read secrets from environment variables; never persist them. If no provider is configured or a service is unavailable, continue offline and record that consultation was unavailable. Multiple AI opinions are not independent votes unless independence is established.
+5. **Construct an executable verification plan:** combine source-backed examples, deterministic assertions, curated reference datasets, property-based/metamorphic tests where applicable, and sandbox exercises. For code or algorithms, use the isolated sandbox with fixed expected outputs, edge cases, and resource limits. For factual/non-executable claims, require domain-specific reference cases or traceable evidence; a model-generated answer key alone cannot establish correctness. Tests without a trusted expected result remain exploratory and cannot promote the candidate.
+6. **Execute and retain outcomes:** run only allowlisted tests in an isolated environment. Save test-plan version, runner/version, expected/actual result, pass/fail, time, logs, source digest, and candidate digest. Convert every failed test into a durable learning experience recording what was tried, expected result, actual result, and next falsifiable hypothesis. Keep failed candidates for revision and retest; do not delete them.
+7. **Promote conditionally:** promote a candidate to the main knowledge store only when all required acceptance tests for its declared scope pass and evidence requirements are met. Record scope and verification level. A pass means validated against this versioned test set, not universally or eternally true. If evidence is insufficient, retain the candidate as awaiting_test/unverified; do not label it verified.
+8. **Learn from new information:** when later sources, peer responses, model versions, or tests conflict with promoted knowledge, create a new candidate/version and re-run affected tests. Preserve provenance and history; do not silently overwrite prior verified content. Add regression tests for observed failures.
+9. **Use established open-source tools where useful:** evaluate property-testing, retrieval and evaluation tools against supported Python version, license, offline behavior, resource limits, and security posture. Pin dependencies and provide deterministic fallback paths. Never use an untrusted model-generated test as its own oracle.
+10. **Operational transparency:** expose candidate status, source coverage, web-search status, peer consultation status, test outcomes, failure experiences, and promotion reason in the application/API. Network failures must degrade gracefully. Users must be able to inspect why a candidate was not promoted without manually scoring it.
+
+### Hybrid methods and their roles
+
+- **Retrieval/source-grounded learning:** public URL ingestion, multi-engine discovery, source normalization, deduplication, primary-source preference, and exact provenance.
+- **Symbolic/deterministic verification:** fixed expected outputs, schema checks, invariants, unit tests, regression tests, curated answer/reference sets, and explicit acceptance thresholds.
+- **Sandbox-based experiential learning:** isolated execution, bounded CPU/memory/time/network, source-derived examples, edge cases, and retained execution reports.
+- **Statistical/model-assisted review:** local model for lesson synthesis and claim decomposition; configured peer AIs for adversarial review and test proposals. Model judgments remain advisory unless checked against external oracles.
+- **Failure-driven learning:** durable experience records for mismatches, failed tests, missing evidence, source conflicts, and successful repairs.
+- **Incremental memory:** temporary candidates, verified knowledge versions, evidence/consultation history, and regression-test corpus remain distinct stores/states.
+
+### Acceptance criteria before declaring the hybrid loop implemented
+
+- Tests prove a concise valid candidate is retained even when lexical heuristics complain.
+- Explicit URL fetch success and failure are both tested; no silent source substitution occurs after a requested URL fails.
+- Web research persists source provenance and treats retrieved pages as context until claim support is checked.
+- Peer AI calls are tested with mocked providers, missing keys, timeouts, invalid endpoints, conflicting stances, and secret-redaction assertions.
+- Candidate tests cannot pass by omitting expected/actual outputs, changing test order/names, using a model-opinion runner, or passing an empty test list.
+- A failing test leaves the candidate in temporary storage and creates a reproducible failure experience.
+- A passing test promotes only within its declared verification scope, with test-set version/digest and provenance attached.
+- Unsupported factual claims remain unverified even if several peer AIs agree.
+- CI passes on the exact branch head. Target-host performance, clean-start isolation, recovery, and security checks remain separate release gates.
+
+### Current implementation status
+
+The branch has the temporary candidate table and gated promotion/failure-experience writer, automatic best-effort web research, configurable OpenAI-compatible peer consultation, provenance/evidence persistence, and unit tests for those storage and integration seams. The critical remaining gap is the end-to-end automated verification planner/runner: peer-suggested tests and source examples are not yet automatically converted into trusted executable tests and run before promotion. Until that exists and exact-head CI passes, candidates must remain temporary and the hybrid learning system must not be described as complete.
