@@ -54,3 +54,14 @@ def test_retrieval_acceptance_rejects_invalid_thresholds():
             {"recall_at_5": 1.0, "mrr": 1.0, "per_query": [{"recall_at_k": 1.0}]},
             min_mrr=1.5,
         )
+
+
+def test_retrieval_acceptance_rejects_non_finite_metric_values():
+    result = evaluation.apply_acceptance_thresholds({
+        "recall_at_5": float("nan"),
+        "mrr": 1.0,
+        "per_query": [{"recall_at_k": 1.0}],
+    })
+
+    assert result["acceptance"]["status"] == "invalid_metrics"
+    assert result["acceptance"]["passed"] is False
