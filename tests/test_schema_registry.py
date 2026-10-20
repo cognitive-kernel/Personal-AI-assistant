@@ -103,7 +103,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
             row[1] for row in connection.execute("PRAGMA table_info(temporary_knowledge_candidates)")
         }
         assert {
-            "job_id", "content", "source_sha256", "status", "test_plan_json",
+            "job_id", "content", "content_sha256", "status", "test_plan_json",
             "test_results_json", "failure_reason", "promoted_knowledge_id",
         } <= candidate_columns
         assert connection.execute(
