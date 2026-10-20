@@ -466,6 +466,7 @@ def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch)
 
     def fake_popen(args, **kwargs):
         captured["kwargs"] = kwargs
+        captured["args"] = args
         captured["pipe"] = pipe
         return FakeProcess(args, stdout=b"5\n", stdin=pipe)
 
@@ -479,7 +480,7 @@ def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch)
 
     assert result.status == "succeeded"
     assert captured["kwargs"]["stdin"] == subprocess.PIPE
-    assert "--interactive" in captured["kwargs"] if False else True
+    assert "--interactive" in captured["args"]
     assert bytes(pipe.data) == b'{"values":[2,3]}'
     assert pipe.closed
 
