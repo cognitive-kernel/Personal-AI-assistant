@@ -105,6 +105,7 @@ def evaluate_automated_acceptance(
     results: list[dict[str, Any]],
     *,
     minimum_concept_coverage: float = 0.5,
+    maximum_generation_seconds: float = 180.0,
 ) -> dict[str, Any]:
     """Apply fail-closed benchmark gates without human scoring.
 
@@ -114,6 +115,12 @@ def evaluate_automated_acceptance(
     """
     if not isinstance(results, list) or not results:
         raise ValueError("results must be a non-empty list")
+    if (
+        isinstance(maximum_generation_seconds, bool)
+        or not isinstance(maximum_generation_seconds, (int, float))
+        or maximum_generation_seconds <= 0
+    ):
+        raise ValueError("maximum_generation_seconds must be positive")
     if (
         isinstance(minimum_concept_coverage, bool)
         or not isinstance(minimum_concept_coverage, (int, float))
@@ -128,6 +135,11 @@ def evaluate_automated_acceptance(
             continue
         gates = {
             "generation_completed": item.get("generation_status") == "completed",
+            "generation_within_time_budget": (
+                isinstance(item.get("generation_seconds"), (int, float))
+                and not isinstance(item.get("generation_seconds"), bool)
+                and 0 <= item["generation_seconds"] <= maximum_generation_seconds
+            ),
             "surface_diagnostics_completed": item.get("surface_diagnostic_status") == "completed",
             "minimum_reference_concept_coverage": (
                 isinstance(item.get("surface_concept_coverage"), (int, float))
@@ -163,6 +175,7 @@ def evaluate_automated_acceptance(
         "case_count": len(results),
         "failed_case_count": len(failed_cases),
         "minimum_concept_coverage": float(minimum_concept_coverage),
+        "maximum_generation_seconds": float(maximum_generation_seconds),
         "failed_cases": failed_cases,
         "human_scoring_used": False,
         "independent_scientific_verification": False,
