@@ -14,7 +14,7 @@ import platform
 import statistics
 import subprocess
 import sys
-import time
+from time import perf_counter
 from pathlib import Path
 from typing import Any
 
@@ -99,7 +99,7 @@ def run_benchmark(
     samples: list[dict[str, Any]] = []
     # Warm-up is deliberately excluded from measured samples.
     for index in range(runs + 1):
-        started = time.perf_counter()
+        started = perf_counter()
         response = _request("/api/generate", {
             "model": model, "prompt": PROMPT, "stream": False,
             "options": {"temperature": 0, "num_predict": 128},
