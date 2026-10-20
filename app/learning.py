@@ -9,6 +9,7 @@ from .ollama import _request
 from . import curricula
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
+from .learning_evidence_gate import evaluate_lesson_evidence
 
 class LearningError(RuntimeError):
     pass
@@ -248,6 +249,20 @@ def run_job(job_id: int) -> None:
                 quality["claim_review"] = claim_review_result
             else:
                 quality["claim_review_status"] = "no_usable_sources"
+
+        # Every generated lesson receives a deterministic evidence-gate report.
+        # This does not replace the lesson-shape filter or imply scientific proof.
+        evidence_sources = _claim_review_sources(source_text) if source_text else []
+        quality["scientific_acceptance"] = evaluate_lesson_evidence(
+            result["lesson"] if quality["accepted"] else "",
+            evidence_sources,
+            claim_review_result,
+        )
+        quality["scientific_acceptance"]["source_kind"] = source_kind
+        quality["scientific_acceptance"]["interpretation"] = (
+            "این دروازه فقط شواهد و منشأ را طبق قواعد قطعی بررسی می‌کند؛ "
+            "تأیید مستقل صحت علمی محسوب نمی‌شود."
+        )
 
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
