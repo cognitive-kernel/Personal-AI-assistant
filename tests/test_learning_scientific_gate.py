@@ -41,6 +41,9 @@ def test_gate_passes_only_as_machine_reviewed_not_independently_verified():
     assert result["independently_verified"] is False
     assert result["source_count"] == 2
     assert result["distinct_source_host_count"] == 2
+    assert {item["url"] for item in result["source_manifest"]} == {
+        "https://docs-a.example/guide", "https://docs-b.example/reference"
+    }
 
 
 def test_gate_fails_closed_without_retrieved_sources():
