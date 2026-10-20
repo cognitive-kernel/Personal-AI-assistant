@@ -482,10 +482,8 @@ def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch)
     assert pipe.closed
 
 
-@pytest.mark.parametrize("stdin_text", [None, "x" * 4097, "bad\\x00input"])
+@pytest.mark.parametrize("stdin_text", ["x" * 4097, "bad\\x00input"])
 def test_sandbox_rejects_invalid_or_oversized_stdin(stdin_text):
-    if stdin_text is None:
-        return
     with pytest.raises(ValueError, match="stdin_text"):
         sandbox.run_python(
             "print(1)",
