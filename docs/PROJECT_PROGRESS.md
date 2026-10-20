@@ -99,3 +99,11 @@ The implementation log is the detailed record of merged changes and acceptance l
 - PR #369 also adds a network-free Markdown link checker and unit coverage for broken local targets, fenced code examples, URL encoding, and root traversal.
 - The checker is added to required test CI. It does not validate external link availability or replace manual content review.
 - Exact-head tests, browser E2E, and dependency-audit results are recorded on the PR; do not claim merge until review and merge are complete.
+
+
+## 2026-10-20 update — response-language guard hardening (PR #369)
+
+- The local-first chat path now applies the Persian/English response-language guard to both direct small-talk and research answers. A mismatched draft gets one bounded language-repair attempt; if the repair still mismatches, the assistant returns a localized safe fallback rather than knowingly returning the wrong language.
+- The same guard is applied after claim-review repair, closing a gap where a repaired factual answer could drift from the requested language after the initial language check.
+- Regression coverage includes direct-chat repair/fail-closed behavior and claim-repair language drift. This is a deterministic script-level guard, not a substitute for live Persian/English evaluation or human adjudication.
+- Exact-head CI for the current PR revision must pass before this change is considered validated; the user's latest local full-suite evidence (`646 passed, 5 skipped`) predates this language-guard change.

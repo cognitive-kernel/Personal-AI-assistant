@@ -93,3 +93,10 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 
 - PR #369 adds `dir="auto"` to chat and learning output containers and a polite live region only for the concise chat status, preserving the Persian-first RTL shell while supporting English responses without announcing the entire structured lesson as one status update.
 - The browser E2E contract checks the markup. This does not close the separately excluded manual keyboard/screen-reader review gate.
+
+
+### Response-language enforcement on every answer path (PR #369, 2026-10-20)
+
+- Direct chat and research answers now share the bounded Persian/English mismatch policy. The assistant attempts one language repair when the high-confidence script heuristic detects a mismatch and falls back to a localized safe message if the repair also fails.
+- Claim-review repair output is checked again before it can be returned, so the final generated response does not bypass the language guard.
+- Deterministic tests cover both repair and fail-closed paths. This heuristic cannot reliably distinguish every language or dialect and does not close the excluded live-model/human-adjudication gate.
