@@ -22,3 +22,5 @@
 ## Evidence policy
 
 Mark repository-level items complete only after the exact PR head CI passes. Browser automation does not replace manual accessibility review or target-host acceptance. Preserve existing API contracts and local data; do not enable remote provisioning or automatic deployment.
+
+- [ ] User-selectable dark theme with OS preference fallback and locally persisted explicit choice; [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365) adds exact browser E2E for toggle state, accessible pressed state, and reload persistence. Awaiting exact-head CI; manual contrast review remains a separate gate.
