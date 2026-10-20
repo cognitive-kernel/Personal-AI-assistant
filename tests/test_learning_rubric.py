@@ -92,3 +92,12 @@ def test_learning_assessment_uses_rubric_and_hides_answer_cues_until_submission(
     after = learning.get_job(job["id"])["assessment"]
     assert "rubric" in after
     assert "answer_key" in after
+
+
+def test_learning_ui_explains_scientific_gate_is_not_independent_proof():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    assert "learning-scientific-status" in page
+    assert "تأیید علمی مستقل محسوب نمی‌شود" in page
+    assert "وضعیت علمی: تأیید نشده" in page
