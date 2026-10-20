@@ -28,7 +28,6 @@ def normalize_rubric(value: Any, question_count: int) -> list[dict[str, Any]] | 
         if not isinstance(concepts, list) or not 2 <= len(concepts) <= 6:
             return None
         normalized_concepts = []
-        seen: set[str] = set()
         for concept_item in concepts:
             if not isinstance(concept_item, dict):
                 return None
@@ -41,6 +40,7 @@ def normalize_rubric(value: Any, question_count: int) -> list[dict[str, Any]] | 
             ):
                 return None
             clean_phrases = []
+            seen: set[str] = set()
             for phrase in [concept, *phrases]:
                 clean = phrase.strip()
                 key = normalize_answer_text(clean)
