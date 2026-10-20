@@ -344,6 +344,7 @@ def get_job(job_id: int) -> dict[str, Any]:
                 assessment["answer_key"] = assessment.get("answer_key", [])
             else:
                 assessment.pop("answer_key", None)
+                assessment.pop("answer_rubric", None)
         result["assessment"] = assessment
         result["assessment_attempts"] = attempts
         latest_review = conn.execute(
