@@ -67,7 +67,7 @@ def test_local_model_benchmark_fails_when_worst_latency_exceeds_limit(monkeypatc
         ),
     )
     times = iter([0.0, 1.0, 2.0, 20.0])
-    monkeypatch.setattr(benchmark.time, "perf_counter", lambda: next(times))
+    monkeypatch.setattr(benchmark, "perf_counter", lambda: next(times))
     monkeypatch.setattr(benchmark, "_git_commit", lambda: "commit")
 
     report = benchmark.run_benchmark(runs=1, min_tokens_per_second=1.0, max_latency_seconds=5.0)
