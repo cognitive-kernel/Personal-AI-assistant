@@ -189,7 +189,7 @@ def test_rubric_below_threshold_cannot_be_manually_marked_complete(tmp_path, mon
     topic = learning.get_learning_path(path_id)["topics"][0]
     assert topic["status"] == "in_progress"
     assert topic["latest_score_kind"] == "learner_rubric"
-    with pytest.raises(ValueError, match="only after a valid rubric assessment"):
+    with pytest.raises(ValueError, match="Manual completion is disabled"):
         learning.update_path_topic(path_id, topic_id, "completed")
 
 
