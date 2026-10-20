@@ -541,6 +541,42 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_temporary_candidates_topic ON temporary_knowledge_candidates(topic, id DESC)",
         ),
     ),
+    Migration(
+        17,
+        "candidate-research-and-peer-consultation",
+        (
+            """CREATE TABLE knowledge_review_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                evidence_kind TEXT NOT NULL CHECK(evidence_kind IN ('supporting','contradicting','context','application')),
+                source_url TEXT NOT NULL,
+                source_title TEXT NOT NULL DEFAULT '',
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                excerpt TEXT NOT NULL,
+                reliability_note TEXT NOT NULL DEFAULT '',
+                fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, source_url, source_sha256)
+            )""",
+            """CREATE TABLE knowledge_peer_consultations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL,
+                response TEXT NOT NULL,
+                claims_json TEXT NOT NULL DEFAULT '[]',
+                citations_json TEXT NOT NULL DEFAULT '[]',
+                stance TEXT NOT NULL DEFAULT 'mixed'
+                    CHECK(stance IN ('supports','contradicts','mixed','insufficient_evidence')),
+                independence_note TEXT NOT NULL DEFAULT '',
+                response_sha256 TEXT NOT NULL CHECK(length(response_sha256) = 64),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, provider, model_name, response_sha256)
+            )""",
+            "CREATE INDEX idx_review_evidence_candidate ON knowledge_review_evidence(candidate_id, evidence_kind, id)",
+            "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
+        ),
+    ),
 )
 
 
