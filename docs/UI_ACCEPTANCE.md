@@ -27,3 +27,6 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 
 
 - [x] Repository-local Markdown link integrity check runs in required test CI; it rejects missing relative targets and paths escaping the repository root. External URL availability and manual content/accessibility review remain separate.
+
+
+- [x] Recoverable learning-recommendation API failure: Chromium E2E forces a 503 response and verifies a localized Persian error message is rendered without an uncaught page exception. Exact-head CI evidence is required before merge.
