@@ -112,3 +112,13 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 
 - Cloud-discovery and experience-evidence cards share a client-side HTTPS URL validator that rejects embedded credentials and malformed/hostless URLs before rendering links.
 - Browser E2E checks the accepted/rejected URL cases. Source trustworthiness and independent security review remain separate acceptance requirements.
+
+
+### Exact-head repository CI evidence — 2026-10-20
+
+PR #369 head `e7ae4d5661d12b05b1a405a15d94574d17c0e411` completed all configured workflows successfully:
+- [Required tests and Windows storage regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230) — passed.
+- [Chromium browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350) — passed.
+- [Dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221) — passed.
+
+This is exact-head CI evidence only. PR #369 remains open and unmerged; it does not close target-host startup/migration, live-model/human adjudication, operational recovery/load and real restore/rollback, independent security review, or manual accessibility acceptance.
