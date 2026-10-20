@@ -377,6 +377,7 @@ def run_job(job_id: int) -> None:
                 "do not treat it as verified knowledge."
             )
 
+        candidate_id: int | None = None
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
             # If the user stopped the path while Ollama was generating, discard this result.
@@ -418,7 +419,7 @@ def run_job(job_id: int) -> None:
                 source_urls = [str(item["source_ref"]) for item in source_rows if str(item["source_ref"]).startswith("https://")]
                 lesson_text = result["lesson"].strip()
                 lesson_digest = hashlib.sha256(lesson_text.encode("utf-8")).hexdigest()
-                conn.execute(
+                candidate_cursor = conn.execute(
                     """INSERT INTO temporary_knowledge_candidates(
                            job_id, topic, content, source_kind, source_urls_json,
                            content_sha256, quality_report_json, status
@@ -427,6 +428,7 @@ def run_job(job_id: int) -> None:
                      json.dumps(source_urls, ensure_ascii=False), lesson_digest,
                      json.dumps(quality, ensure_ascii=False)),
                 )
+                candidate_id = int(candidate_cursor.lastrowid)
                 conn.execute(
                     "INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'temporary_candidate', ?, ?, ?)",
                     (job_id, f"temporary_knowledge_candidates:{job_id}", lesson_digest,
@@ -434,6 +436,17 @@ def run_job(job_id: int) -> None:
                 )
             # Preserve source text and evidence even when the generated output is unusable;
             # failed attempts are useful debugging/training data, not disposable noise.
+        if candidate_id is not None:
+            # Public web corroboration is best-effort: network failure must not discard a lesson.
+            try:
+                from .knowledge_review import research_candidate_online
+                research_candidate_online(
+                    candidate_id,
+                    f"{topic} {result['lesson'][:300]}",
+                    limit=3,
+                )
+            except Exception:
+                pass
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
