@@ -142,7 +142,7 @@ def handler_from_environment() -> Callable[
         if consent_revoked:
             raise RuntimeError("Sandbox execution stopped because user consent was revoked.")
         practical_assessment = None
-        if practical_metadata is not None and result.status == "completed" and result.exit_code == 0:
+        if practical_metadata is not None and result.status == "succeeded" and result.exit_code == 0:
             try:
                 grading_report = json.loads(result.stdout)
                 from .learning_practical import record_practical_attempt
