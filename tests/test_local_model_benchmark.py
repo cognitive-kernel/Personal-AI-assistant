@@ -17,7 +17,7 @@ def test_local_model_benchmark_records_redacted_performance_metrics(monkeypatch)
 
     def fake_request(path, payload=None):
         if path == "/api/tags":
-            return {"models": [{"name": "model:latest", "digest": "sha256:abc"}]}
+            return {"models": [{"name": "model:latest", "digest": "sha256:" + "a" * 64}]}
         calls["generate"] += 1
         return {
             "response": "private generated lesson content",
@@ -32,7 +32,7 @@ def test_local_model_benchmark_records_redacted_performance_metrics(monkeypatch)
 
     assert calls["generate"] == 4
     assert report["status"] == "passed"
-    assert report["model_digest"] == "sha256:abc"
+    assert report["model_digest"] == "sha256:" + "a" * 64
     assert report["median_generation_tokens_per_second"] == 20.0
     assert report["runs_completed"] == 3
     assert report["generated_text_included"] is False
@@ -61,7 +61,7 @@ def test_local_model_benchmark_fails_when_worst_latency_exceeds_limit(monkeypatc
     monkeypatch.setattr(
         benchmark, "_request",
         lambda path, payload=None: (
-            {"models": [{"name": "model:latest", "digest": "sha256:abc"}]}
+            {"models": [{"name": "model:latest", "digest": "sha256:" + "a" * 64}]}
             if path == "/api/tags"
             else {"response": "output", "eval_count": 100, "eval_duration": 1_000_000_000}
         ),
@@ -74,4 +74,22 @@ def test_local_model_benchmark_fails_when_worst_latency_exceeds_limit(monkeypatc
 
     assert report["max_latency_seconds_observed"] == 18.0
     assert report["status"] == "below_threshold"
+    assert report["performance_threshold_passed"] is False
+
+
+def test_local_model_benchmark_refuses_unpinned_model_digest(monkeypatch):
+    monkeypatch.setattr(benchmark, "get_settings", lambda: {"ollama_model": "model:latest"})
+    monkeypatch.setattr(
+        benchmark, "_request",
+        lambda path, payload=None: (
+            {"models": [{"name": "model:latest", "digest": "not-a-digest"}]}
+            if path == "/api/tags"
+            else {"response": "output", "eval_count": 10, "eval_duration": 1_000_000_000}
+        ),
+    )
+
+    report = benchmark.run_benchmark()
+
+    assert report["status"] == "model_digest_unavailable"
+    assert report["runs_completed"] == 0
     assert report["performance_threshold_passed"] is False
