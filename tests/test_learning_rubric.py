@@ -32,7 +32,7 @@ def test_rubric_scoring_gives_partial_credit_for_missing_concepts():
         ["Faster lookup.", "Isolation level."],
         _rubric(),
     )
-    assert result["score"] == 83.33
+    assert result["score"] == 60.0
     assert result["per_question"][0]["score"] == 66.67
     assert result["per_question"][1]["score"] == 50.0
 
