@@ -29,6 +29,8 @@ def _make_review_fixture(tmp_path, monkeypatch):
             ).lastrowid
         )
 
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_path_topics SET status='completed' WHERE id=?", (topic_a_id,))
     previous = learning.create_job("Topic A", path_topic_id=topic_a_id)
     with db.learning_connection() as conn:
         conn.execute(
