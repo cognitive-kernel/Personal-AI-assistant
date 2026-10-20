@@ -86,6 +86,20 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
                 "Indexes have maintenance costs and depend on data distribution.",
                 "Compare baseline and changed reads on representative data.",
             ],
+            "answer_rubric": [
+                {"required_concepts": [
+                    {"concept": "execution plan", "accepted_phrases": ["execution plan", "query plan"]},
+                    {"concept": "execution operations", "accepted_phrases": ["operations", "operators", "execution steps"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "index maintenance costs", "accepted_phrases": ["maintenance costs", "cost of maintaining indexes"]},
+                    {"concept": "data distribution", "accepted_phrases": ["data distribution", "distribution of data"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "baseline comparison", "accepted_phrases": ["baseline", "before and after"]},
+                    {"concept": "logical reads", "accepted_phrases": ["logical reads", "read counts"]},
+                ]},
+            ],
         }, ensure_ascii=False)}}
 
     monkeypatch.setattr(learning, "_request", fake_model)
