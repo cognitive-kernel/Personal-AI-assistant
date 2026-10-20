@@ -82,6 +82,9 @@ def test_practical_attempt_is_persisted_but_not_promoted_without_course_path(tmp
     assert attempt["score"] == 100
     assert attempt["scoring_method"] == "sandbox_practical_v1"
     assert json.loads(attempt["answers_json"])["exercise_id"] == learning_practical.EXERCISE_ID
+    refreshed_job = learning.get_job(job_id)
+    assert "answer_key" not in refreshed_job["assessment"]
+    assert refreshed_job["quiz_assessment_attempts"] == []
 
 
 def test_practical_attempt_rejects_inconsistent_grading_report(tmp_path, monkeypatch):
