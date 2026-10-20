@@ -44,3 +44,12 @@ def test_class_body_import_is_still_treated_as_module_time(tmp_path: Path) -> No
     graph = build_import_graph(package)
 
     assert find_import_cycles(graph) == [["app.alpha", "app.beta"]]
+
+
+
+def test_required_ci_workflow_fails_on_module_time_import_cycles() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    workflow = (repository_root / ".github" / "workflows" / "tests.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "scripts/check_import_cycles.py --fail-on-cycle" in workflow
