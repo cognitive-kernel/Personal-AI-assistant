@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -265,8 +266,8 @@ def main() -> int:
     parser.add_argument("--redact-answers", action="store_true",
                         help="omit raw model answers from the report")
     args = parser.parse_args()
-    if args.max_case_seconds <= 0:
-        parser.error("--max-case-seconds must be positive")
+    if not math.isfinite(args.max_case_seconds) or args.max_case_seconds <= 0:
+        parser.error("--max-case-seconds must be a finite positive number")
     try:
         cases = load_cases(args.dataset)
     except ValueError as exc:
