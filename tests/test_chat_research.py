@@ -33,6 +33,37 @@ def test_small_talk_stays_on_direct_chat_path(monkeypatch):
     assert chat_research.answer("Hello", [{"role": "user", "content": "Earlier"}]) == "direct reply"
 
 
+def test_direct_chat_repairs_response_language_before_returning(monkeypatch):
+    answers = iter([
+        "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
+        "This is the corrected English response for the user's greeting.",
+    ])
+    calls = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        calls.append((message, system_prompt))
+        return next(answers)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("Hello")
+
+    assert reply.startswith("This is the corrected English response")
+    assert len(calls) == 2
+    assert "Rewrite the answer entirely in English" in json.loads(calls[1][0])["instruction"]
+
+
+def test_direct_chat_uses_safe_language_fallback_after_failed_repair(monkeypatch):
+    answers = iter([
+        "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
+        "این پاسخ همچنان فارسی است و زبان درخواستی انگلیسی را رعایت نمی‌کند.",
+    ])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(answers))
+
+    reply = chat_research.answer("Hello")
+
+    assert reply.startswith("I couldn't reliably produce an answer in English")
+
+
 def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(monkeypatch):
     _disable_memory(monkeypatch)
     monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
