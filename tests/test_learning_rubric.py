@@ -191,3 +191,50 @@ def test_rubric_below_threshold_cannot_be_manually_marked_complete(tmp_path, mon
     assert topic["latest_score_kind"] == "learner_rubric"
     with pytest.raises(ValueError, match="only after a valid rubric assessment"):
         learning.update_path_topic(path_id, topic_id, "completed")
+
+
+def test_assessment_idempotency_returns_existing_attempt_and_rejects_key_reuse(tmp_path, monkeypatch):
+    import json
+    import pytest
+    from app import db, learning
+    from app.db import learning_connection
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
+    db.init_databases()
+    job = learning.create_job("Idempotent assessment")
+    assessment = {
+        "questions": ["Q1", "Q2"],
+        "answer_key": ["faster lookup and maintenance cost", "isolation level and dirty read"],
+        "rubric": _rubric(),
+        "rubric_version": "concept-coverage-v1",
+    }
+    with learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+    answers = ["Faster lookup and maintenance cost.", "Isolation level and dirty read."]
+    first = learning.submit_assessment(job["id"], answers, "assessment-key-0001")
+    replay = learning.submit_assessment(job["id"], answers, "assessment-key-0001")
+    assert replay["attempt_id"] == first["attempt_id"]
+    assert replay["idempotent_replay"] is True
+    with learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM assessment_attempts WHERE job_id=?", (job["id"],)
+        ).fetchone()[0]
+    assert count == 1
+    with pytest.raises(ValueError, match="already used with different answers"):
+        learning.submit_assessment(
+            job["id"], ["Different but valid answer.", "Isolation level and dirty read."],
+            "assessment-key-0001",
+        )
+
+
+def test_assessment_idempotency_key_validation():
+    import pytest
+    from app.learning import submit_assessment
+
+    with pytest.raises(ValueError, match="Idempotency key"):
+        submit_assessment(1, ["answer"], "short")
