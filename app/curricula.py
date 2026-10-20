@@ -336,7 +336,7 @@ def get_curriculum(slug: str) -> dict[str, Any] | None:
 
 
 _TOPIC_REFERENCE_URLS: dict[str, list[dict[str, str]]] = {
-    "معماری SQL Server، Database Engine و ابزارهای مدیریت": [
+    "معماری sql server، database engine و ابزارهای مدیریت": [
         {
             "title": "Microsoft Learn — What Is SQL Server?",
             "url": "https://learn.microsoft.com/en-us/sql/sql-server/what-is-sql-server?view=sql-server-ver17",
