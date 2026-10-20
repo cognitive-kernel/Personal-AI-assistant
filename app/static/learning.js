@@ -415,6 +415,8 @@ async function loadLearningPaths() {
   container.replaceChildren();
   learningEl("paths-output").textContent = "تعداد مسیرهای ثبت‌شده: " + data.paths.length;
   data.paths.forEach(path => {
+   const pathCard = document.createElement("div");
+   pathCard.className = "path-card";
    const details = document.createElement("details");
    const summary = document.createElement("summary");
    const topicCount = Math.max(0, Number(path.topic_count) || 0);
@@ -446,7 +448,6 @@ async function loadLearningPaths() {
     progressNumber.format(topicCount) + " سرفصل تکمیل شده است.";
    progressMeta.append(progressLabel, progressValue);
    progressGroup.append(progressMeta, progress, progressCaption);
-   details.append(progressGroup);
 
    if (Array.isArray(path.reference_urls) && path.reference_urls.length) {
     const references = document.createElement("div");
@@ -631,7 +632,8 @@ async function loadLearningPaths() {
     row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, output);
     details.append(row);
    });
-   container.append(details);
+   pathCard.append(progressGroup, details);
+   container.append(pathCard);
   });
  } catch (error) { learningEl("paths-output").textContent = error.message; }
 }
