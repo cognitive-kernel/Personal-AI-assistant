@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
@@ -34,8 +34,7 @@ class ExperienceCreateRequest(BaseModel):
     problem: str = Field(min_length=1, max_length=10000)
     hypothesis: str = Field(default="", max_length=5000)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ExperienceUpdateRequest(BaseModel):
@@ -53,22 +52,19 @@ class ExperienceUpdateRequest(BaseModel):
 class ExperienceAutoCaptureConsentRequest(BaseModel):
     confirm: StrictBool
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ExperienceSourceRefreshRequest(BaseModel):
     confirm: StrictBool
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ExperienceFeedbackRequest(BaseModel):
     rating: Literal[-1, 1]
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.get("/auto-capture/consent")
@@ -141,8 +137,7 @@ class ExperienceTestRunRequest(BaseModel):
     timeout_seconds: int = Field(default=10, ge=1, le=120)
     max_output_bytes: int = Field(default=32768, ge=1, le=65536)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post("/{experience_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
