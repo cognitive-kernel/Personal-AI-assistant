@@ -335,9 +335,16 @@ function renderLessonResult(output, job, path, topic) {
    semanticReviewButton.hidden = false;
    semanticReviewResult.textContent = "آزمون ثبت شد. بازبینی معنایی اختیاری است و نمره قطعی را تغییر نمی‌دهد.";
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
-    outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
-    outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
-   result.textContent += " این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود.";
+    outcome.correct_count + " پاسخ با پوشش کافی از " + outcome.question_count + "). " +
+    outcome.note;
+   if (outcome.mastery_achieved) {
+    topic.statusSelect.value = "completed";
+    result.textContent += " آستانه تسلط " + outcome.mastery_threshold + "٪ کسب شد؛ تکمیل سرفصل به‌صورت خودکار ثبت شد.";
+   } else if (job.path_topic_id) {
+    topic.statusSelect.value = "in_progress";
+    result.textContent += " برای تکمیل خودکار سرفصل، در آزمون rubric دست‌کم " + outcome.mastery_threshold + "٪ لازم است.";
+   }
+   result.textContent += " امتیاز کیفیت درس جداگانه محاسبه می‌شود و با نمره یادگیری یکی نیست."
   } catch (error) {
    result.textContent = "خطا در ثبت آزمون: " + error.message;
    submit.disabled = false;
@@ -345,7 +352,7 @@ function renderLessonResult(output, job, path, topic) {
  });
  output.append(form);
  const caveat = document.createElement("p");
- caveat.textContent = "این آزمون بر اساس تطبیق متنی پاسخ‌ها نمره می‌دهد و تأیید علمی مستقل یا فهم معنایی را اثبات نمی‌کند.";
+ caveat.textContent = "آزمون درس‌های جدید بر اساس پوشش واژه‌ای مفاهیم rubric نمره می‌دهد؛ این روش پاسخ‌های هم‌معنا را بهتر می‌پذیرد، اما به‌تنهایی فهم معنایی مستقل یا صحت علمی را اثبات نمی‌کند."
  output.append(caveat);
 }
 
