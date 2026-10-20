@@ -466,7 +466,7 @@ def run_python(
     if len(source_code.encode("utf-8")) > _MAX_SOURCE_BYTES:
         raise ValueError("source_code exceeds the 64 KiB limit.")
     if stdin_text is not None and (
-        not isinstance(stdin_text, str) or "\\x00" in stdin_text
+        not isinstance(stdin_text, str) or "\x00" in stdin_text
         or len(stdin_text.encode("utf-8")) > 4096
     ):
         raise ValueError("stdin_text must be valid text no larger than 4 KiB.")
