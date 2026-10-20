@@ -89,7 +89,7 @@ def evaluate_lesson_evidence(
     }
     review = claim_review if isinstance(claim_review, dict) else {}
     claims = review.get("claims")
-    conflicts = review.get("source_conflicts", [])
+    conflicts = review.get("source_conflicts")
     all_claims_supported = (
         isinstance(claims, list)
         and len(claims) > 0
