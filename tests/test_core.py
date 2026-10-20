@@ -382,8 +382,10 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
         "نه تضمین خودکار برای درست بودن طراحی."
     )
     payloads = []
-    def fake_request(_path, payload, **_kwargs):
+    request_timeouts = []
+    def fake_request(_path, payload, **kwargs):
         payloads.append(payload)
+        request_timeouts.append(kwargs.get("timeout"))
         return {"message": {"content": json.dumps({
             "lesson": lesson,
             "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
@@ -407,6 +409,7 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
     assert payloads[0]["options"]["num_predict"] >= 2400
+    assert request_timeouts and 5 <= request_timeouts[0] <= 240
     assert payloads[0]["options"]["num_ctx"] == 8192
     assert finished["status"] == "rejected"
     assert finished["quality"]["accepted"] is True
