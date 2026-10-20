@@ -122,3 +122,10 @@ PR #369 head `e7ae4d5661d12b05b1a405a15d94574d17c0e411` completed all configured
 - [Dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221) — passed.
 
 This is exact-head CI evidence only. PR #369 remains open and unmerged; it does not close target-host startup/migration, live-model/human adjudication, operational recovery/load and real restore/rollback, independent security review, or manual accessibility acceptance.
+
+
+### Search diagnostics distinguish parsing from acceptance (PR #369, 2026-10-20)
+
+- [x] Record a distinct diagnostic when search links were parsed but all rejected by destination validation.
+- [x] Deterministic regression covers a parsed search-provider self-link rejected by external-destination policy.
+- [ ] Live search-provider reliability and relevance remain environment-dependent. The supplied run shows DuckDuckGo HTML challenge pages, low Bing/Google accepted-result counts, and 5 relevant documents among 18 fetched pages.
