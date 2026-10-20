@@ -227,6 +227,7 @@ def run_job(job_id: int) -> None:
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         claim_review_result: dict[str, Any] | None = None
+        sources: list[dict[str, str]] = []
         if quality["accepted"] and source_kind == "web_retrieved" and source_text:
             sources = _claim_review_sources(source_text)
             if sources:
@@ -239,6 +240,7 @@ def run_job(job_id: int) -> None:
                         "passed": False,
                         "overall": "insufficient_evidence",
                         "claims": [],
+                        "source_conflicts": [],
                         "error": f"review_unavailable:{type(exc).__name__}",
                         "reviewer": "local_ollama_model_assisted_not_independent",
                     }
@@ -248,6 +250,17 @@ def run_job(job_id: int) -> None:
                 quality["claim_review"] = claim_review_result
             else:
                 quality["claim_review_status"] = "no_usable_sources"
+
+        # Structural acceptance is not scientific acceptance. Record a separate,
+        # deterministic, fail-closed evidence gate on every generated lesson.
+        from .learning_scientific_gate import evaluate_scientific_gate
+
+        quality["scientific_gate"] = evaluate_scientific_gate(
+            source_kind=source_kind,
+            sources=sources,
+            claim_review=claim_review_result,
+            lesson=result["lesson"] if quality["accepted"] else "",
+        )
 
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
