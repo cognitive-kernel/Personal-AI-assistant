@@ -353,14 +353,19 @@ def get_job(job_id: int) -> dict[str, Any]:
             "SELECT id, score, correct_count, question_count, scoring_method, created_at FROM assessment_attempts WHERE job_id=? ORDER BY id DESC",
             (job_id,),
         ).fetchall()]
+        quiz_attempts = [
+            item for item in attempts
+            if item.get("scoring_method") in {"rubric_concept_coverage_v1", "normalized_exact_match"}
+        ]
         if assessment:
-            if attempts:
+            if quiz_attempts:
                 assessment["answer_key"] = assessment.get("answer_key", [])
             else:
                 assessment.pop("answer_key", None)
                 assessment.pop("answer_rubric", None)
         result["assessment"] = assessment
         result["assessment_attempts"] = attempts
+        result["quiz_assessment_attempts"] = quiz_attempts
         latest_review = conn.execute(
             "SELECT id, outcomes_json, value_rating, takeaway, issues, created_at FROM lesson_reviews WHERE job_id=? ORDER BY id DESC LIMIT 1",
             (job_id,),
