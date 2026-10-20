@@ -78,7 +78,7 @@ _TEST_CASES = {
     "python-json-word-count-v1": [
         {"id": "ordinary-text", "input": {"text": "Hello, world! Hello"}, "expected": 3},
         {"id": "empty-text", "input": {"text": ""}, "expected": 0},
-        {"id": "multiple-whitespace", "input": {"text": "one\\t two  three\\n"}, "expected": 3},
+        {"id": "multiple-whitespace", "input": {"text": "one\t two  three\n"}, "expected": 3},
         {"id": "punctuation-tokens", "input": {"text": "red,blue !!!"}, "expected": 2},
     ]
 }
