@@ -184,3 +184,38 @@ def test_cancel_learning_task_is_safe_when_no_queue_task_exists(learning_task_st
     job = learning.create_job("No queue task yet")
 
     assert cancel_learning_task(job["id"]) is None
+
+
+def test_reconciliation_marks_job_failed_when_queue_retry_limit_was_exhausted(
+    learning_task_store,
+):
+    job = learning.create_job("Recover exhausted lesson")
+    task = task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": job["id"]},
+        max_attempts=1,
+        dedupe_key=f"learning-job:{job['id']}",
+    )
+    claimed = task_manager.claim_next_task("worker-exhausted")
+    assert claimed["id"] == task["id"]
+    failed = task_manager.fail_task(
+        task["id"], "worker-exhausted", "TimeoutError: model request exceeded its deadline"
+    )
+    assert failed["status"] == "failed"
+    assert learning.get_job(job["id"])["status"] == "queued"
+
+    assert reconcile_queued_learning_tasks() == 1
+    result = learning.get_job(job["id"])
+    assert result["status"] == "failed"
+    assert "exhausted its retry limit" in result["error"] or "TimeoutError" in result["error"]
+
+
+def test_reconciliation_does_not_requeue_a_cancelled_learning_task(learning_task_store):
+    job = learning.create_job("Recover cancelled lesson")
+    task = enqueue_learning_task(job["id"])
+    cancelled = task_manager.request_cancel(task["id"])
+    assert cancelled["status"] == "cancelled"
+
+    assert reconcile_queued_learning_tasks() == 1
+    result = learning.get_job(job["id"])
+    assert result["status"] == "cancelled"
