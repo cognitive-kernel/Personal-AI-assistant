@@ -499,3 +499,54 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
+
+
+/* User-selectable accessible dark theme. All assets remain local; contrast states keep redundant labels. */
+:root[data-theme="dark"] {
+  color-scheme: dark; --page:#0b1220; --surface:#111c2e; --surface-muted:#162338;
+  --text:#e5edf8; --muted:#b4c1d4; --border:#34445b; --primary:#8ba7ff;
+  --primary-hover:#a6baff; --accent:#5eead4; --focus:#fbbf24; --shadow:0 8px 24px rgba(0,0,0,.22);
+}
+:root[data-theme="dark"] body { color:var(--text); background:var(--page); }
+:root[data-theme="dark"] header { background:linear-gradient(135deg,#14213a,#111c2e); border-color:#344a70; }
+:root[data-theme="dark"] h1,:root[data-theme="dark"] h2,:root[data-theme="dark"] h3 { color:#e7efff; }
+:root[data-theme="dark"] h2 { border-block-end-color:#29384d; }
+:root[data-theme="dark"] button { color:#e5edf8; background:#1b2a41; border-color:#43546e; }
+:root[data-theme="dark"] button:hover { color:#fff; background:#263957; border-color:#8ba7ff; }
+:root[data-theme="dark"] button[type="submit"],:root[data-theme="dark"] #refresh,
+:root[data-theme="dark"] #refresh-storage-health,:root[data-theme="dark"] #create-storage-backup,
+:root[data-theme="dark"] #enroll-curriculum { color:#101a2c; background:#a6baff; border-color:#a6baff; }
+:root[data-theme="dark"] input,:root[data-theme="dark"] textarea,:root[data-theme="dark"] select { color:var(--text); background:#0d1727; border-color:#43546e; }
+:root[data-theme="dark"] input::placeholder,:root[data-theme="dark"] textarea::placeholder { color:#9eacc2; }
+:root[data-theme="dark"] pre { color:#dbe7f7; background:#0d1727; border-color:#34445b; }
+:root[data-theme="dark"] .dashboard-nav { background:rgba(17,28,46,.97); border-color:#34445b; }
+:root[data-theme="dark"] .dashboard-nav a { color:#cbd7e8; }
+:root[data-theme="dark"] .dashboard-nav a:hover,:root[data-theme="dark"] .dashboard-nav a:focus-visible,
+:root[data-theme="dark"] .dashboard-nav a[aria-current="location"],:root[data-theme="dark"] .dashboard-nav a.is-current { color:#e4ebff; background:#24365a; border-color:#506da8; }
+:root[data-theme="dark"] .cloud-candidate,:root[data-theme="dark"] .task-diagnostics,
+:root[data-theme="dark"] .task-empty-state,:root[data-theme="dark"] .path-progress { color:var(--text); background:var(--surface-muted); border-color:#3b4b62; }
+:root[data-theme="dark"] .task-summary-item { color:#b4c1d4; background:linear-gradient(145deg,#111c2e,#162338); }
+:root[data-theme="dark"] .task-summary-item strong { color:#f0f5ff; }
+:root[data-theme="dark"] .task-diagnostics > summary,:root[data-theme="dark"] .task-diagnostics[open] > summary { color:#e5edf8; background:#1a2940; border-color:#34445b; }
+:root[data-theme="dark"] .task-error-detail { color:#fecaca; background:#351c27; border-color:#854454; }
+:root[data-theme="dark"] .task-status-line { color:#e5edf8; background:#1b2a41; border-color:#43546e; }
+:root[data-theme="dark"] .task-status-line.is-queued { color:#bfdbfe; background:#172b48; border-color:#345e91; }
+:root[data-theme="dark"] .task-status-line.is-running { color:#ddd6fe; background:#2b2347; border-color:#6753a1; }
+:root[data-theme="dark"] .task-status-line.is-pause-requested,:root[data-theme="dark"] .task-status-line.is-paused { color:#fde68a; background:#332c17; border-color:#8b6d22; }
+:root[data-theme="dark"] .task-status-line.is-cancel-requested { color:#fed7aa; background:#38261a; border-color:#8a532b; }
+:root[data-theme="dark"] .task-status-line.is-cancelled { color:#cbd5e1; background:#263243; border-color:#4b5a70; }
+:root[data-theme="dark"] .task-status-line.is-succeeded { color:#bbf7d0; background:#15352b; border-color:#28765b; }
+:root[data-theme="dark"] .task-status-line.is-failed { color:#fecaca; background:#3b2026; border-color:#8e3d4b; }
+:root[data-theme="dark"] .path-progress-bar,:root[data-theme="dark"] .path-progress-bar::-webkit-progress-bar { background:#26364c; }
+:root[data-theme="dark"] .cloud-evidence { color:#dce7ff; background:#1b2941; }
+:root[data-theme="dark"] .storage-alert { color:#ffedd5; background:#38261a; border-color:#8a532b; }
+
+:root[data-theme="dark"] label { color:#d2deef; }
+:root[data-theme="dark"] .muted,
+:root[data-theme="dark"] .path-progress-caption,
+:root[data-theme="dark"] .path-progress-meta,
+:root[data-theme="dark"] .task-selected-count { color:#b4c1d4; }
+:root[data-theme="dark"] a { color:#a6c5ff; }
+:root[data-theme="dark"] .task-select-label { color:#b4c1d4; }
+:root[data-theme="dark"] .task-empty-state p { color:#b4c1d4; }
+:root[data-theme="dark"] .path-progress-bar { color:#a6baff; accent-color:#a6baff; }
