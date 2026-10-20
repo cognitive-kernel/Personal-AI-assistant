@@ -153,3 +153,8 @@ call it. Parsed numeric limits and scope metadata are stored in the local cloud-
 database only while consent remains enabled. Raw CLI output, private keys, and credentials
 are not stored. Revocation clears the snapshot and stored paths/identifiers. This remains
 a read-only service-limit check, not an execution authorization.
+
+
+## Search provider diagnostics
+
+Provider counters distinguish raw links parsed from the response from links accepted after destination validation and deduplication. A `no_parseable_results` attempt means the parser did not extract an organic result; `no_acceptable_results` means the parser extracted links but none passed destination normalization and public/external-host validation. Challenge and consent classifications take precedence. These diagnostics explain provider behavior; they do not establish source relevance or provider availability. Relevance is assessed later against fetched page content.
