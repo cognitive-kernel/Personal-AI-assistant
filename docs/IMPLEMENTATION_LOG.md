@@ -2072,3 +2072,5 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - Added target-host queue and local Ollama performance gates, including model digest, request latency, token throughput, and host CPU-count/RAM snapshots.
 - Local tests on the target/user machine have intentionally not been run. GitHub Actions checks for the newest revision are queued/running; no final acceptance claim is made until CI, local tests, live-model quality evaluation, and target-host measurements are complete.
 - Remaining implementation scope: expand practical exercises beyond Python/JSON, broaden versioned transfer/relevance datasets, and complete automated live-model acceptance criteria. Source-based checks and model-assisted claim review must not be described as proof of scientific correctness.
+
+- Follow-up hardening: lesson publication now fails closed when the deterministic evidence gate does not pass. Added fail-closed synthetic retrieval benchmark thresholds for recall@k, MRR, and zero-recall-query rate, with tests for low, malformed, and non-finite metrics.
