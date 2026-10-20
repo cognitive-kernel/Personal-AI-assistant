@@ -337,3 +337,54 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 @media (prefers-reduced-motion: reduce) {
   .task-card { transition: none; }
 }
+
+
+/* Progressive disclosure keeps task cards scannable while preserving diagnostics. */
+.task-diagnostics {
+  min-width: 0;
+  margin-block: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+  overflow: clip;
+}
+.task-diagnostics > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.task-diagnostics > summary::marker { color: var(--primary); }
+.task-diagnostics[open] > summary {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.task-diagnostics h4 {
+  margin: 12px 12px 6px;
+  font-size: .92rem;
+}
+.task-diagnostics pre,
+.task-error-detail {
+  margin: 0 12px 12px;
+  max-width: calc(100% - 24px);
+}
+.task-error-detail {
+  color: #991b1b;
+  background: #fff7f7;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.task-result-detail { max-height: 320px; overflow: auto; }
+.task-diagnostics > summary:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}

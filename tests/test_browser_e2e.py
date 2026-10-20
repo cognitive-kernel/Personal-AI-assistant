@@ -543,6 +543,59 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
 
 
 
+
+def test_browser_task_diagnostics_are_collapsed_and_accessibly_disclosed():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    task = {
+        "id": 6201,
+        "task_type": "e2e.diagnostic-disclosure",
+        "status": "failed",
+        "priority": 0,
+        "attempts": 1,
+        "max_attempts": 2,
+        "created_at": "2026-10-20T08:00:00+00:00",
+        "updated_at": "2026-10-20T08:01:00+00:00",
+        "error": "redacted diagnostic failure",
+        "result": {"phase": "validation", "retryable": True},
+    }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            if route.request.method == "GET" and "/api/tasks?" in route.request.url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"tasks": [task], "next_cursor": None, "has_more": False}),
+                )
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator("#refresh-tasks").click()
+        card = page.locator("#tasks-container article").filter(
+            has_text="#6201 — e2e.diagnostic-disclosure"
+        )
+        details = card.locator("details.task-diagnostics")
+        details.wait_for(state="attached", timeout=10000)
+        assert details.get_attribute("open") is None
+        summary = details.locator("summary")
+        assert summary.inner_text() == "جزئیات خطا و نتیجه"
+        summary.click()
+        assert details.get_attribute("open") is not None
+        assert details.get_by_text("redacted diagnostic failure").is_visible()
+        assert '"phase": "validation"' in details.locator(".task-result-detail").inner_text()
+        assert details.get_by_role("heading", name="خطا").count() == 1
+        assert details.get_by_role("heading", name="نتیجه").count() == 1
+        browser.close()
+
+
 def test_browser_task_bulk_controls_only_submit_actions_for_eligible_selected_tasks():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
