@@ -45,7 +45,7 @@ def _git_commit() -> str | None:
     return result.stdout.strip()
 
 
-def _rate(response: dict[str, Any], elapsed_seconds: float) -> tuple[int, float]:
+def _rate(response: dict[str, Any]) -> tuple[int, float]:
     count = response.get("eval_count")
     duration_ns = response.get("eval_duration")
     if (
@@ -119,7 +119,7 @@ def run_benchmark(
         generated = response.get("response")
         if not isinstance(generated, str) or not generated.strip():
             raise ValueError("Ollama returned no generated text.")
-        count, tokens_per_second = _rate(response, elapsed)
+        count, tokens_per_second = _rate(response)
         if index:
             samples.append({
                 "latency_seconds": round(elapsed, 4),
