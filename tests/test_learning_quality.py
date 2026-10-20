@@ -178,3 +178,15 @@ def test_learning_ui_discloses_machine_gate_and_automatic_reference_fetch():
     assert "دریافت خودکار صفحات عمومی" in page
     assert "تأیید علمی مستقل نیست" in page
     assert "اگر شواهد کافی نباشد انتشار درس مسدود می‌شود" in page
+
+
+def test_sources_section_does_not_count_as_instructional_lesson_words():
+    body = ("SQL Server Database Engine processes a query and returns results. " * 15)
+    sources = ("source evidence URL reference page Microsoft Learn SQL Server. " * 80)
+    result = evaluate_learning_value(
+        body + "\n\nمنابع:\n" + sources,
+        ["What does Database Engine do?", "Why inspect a query plan?", "How would you test a change?"],
+        ["It processes queries.", "It explains operators and access paths.", "Compare a baseline and measured results."],
+    )
+    assert result["word_count"] < 200
+    assert result["accepted"] is False
