@@ -426,7 +426,7 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
             "source_b_url": second_url,
             "description": "The sources disagree on the default behavior.",
         }],
-        "error": "source_conflicts_require_human_review",
+        "error": "source_conflicts_unresolved_release_blocked",
         "reviewer": "local_ollama_model_assisted_not_independent",
     }
     monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: conflict_review)
