@@ -2107,3 +2107,9 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - Source excerpts passed to the model now require an unambiguous HTTPS URL authority, a hostname, no embedded user-info credentials, and a parseable port.
 - Added regression coverage for insecure schemes, missing hosts, malformed ports, and misleading/credential-bearing authorities.
 - This is a narrow citation-integrity check, not an external URL reputation check or substitute for the independent security review.
+
+
+## 2026-10-20 — dashboard source-link validation
+
+- Reused a single `safeHttpsUrl` helper for cloud-discovery and experience-evidence links. Both views now reject non-HTTPS, hostless, malformed-port, and user-info-bearing URLs before creating clickable anchors.
+- Added browser E2E assertions for valid and deceptive/malformed URLs. The check protects link presentation; it is not a destination reputation check and does not replace the independent security review.
