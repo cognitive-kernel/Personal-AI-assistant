@@ -109,7 +109,7 @@ def evaluate_lesson_evidence(
             and claim.get("verdict") == "supported"
             and isinstance(claim.get("evidence_urls"), list)
             and len(claim["evidence_urls"]) > 0
-            and all(url in cited for url in claim["evidence_urls"])
+            and all(isinstance(url, str) and url in cited for url in claim["evidence_urls"])
             for claim in claims
         )
     )
