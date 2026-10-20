@@ -393,6 +393,10 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
             ],
         }, ensure_ascii=False)}}
     monkeypatch.setattr(learning, "_request", fake_request)
+    monkeypatch.setattr(
+        learning, "_discover_and_store_sources",
+        lambda _job_id, _topic: ("", "model_knowledge_no_external_source"),
+    )
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
