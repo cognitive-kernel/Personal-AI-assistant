@@ -308,7 +308,7 @@ def answer(
         reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
         _checkpoint(checkpoint, "chat_generation_completed")
         if _language_mismatch(message, reply):
-            requested_language = "Persian (فارسی)" if re.search(r"[\\u0600-\\u06FF]", message) else "English"
+            requested_language = "Persian (فارسی)" if re.search(r"[\u0600-\u06FF]", message) else "English"
             language_repair_payload = {
                 "question": message[:3000],
                 "draft_answer": reply[:10000],
@@ -491,7 +491,7 @@ def answer(
     # passed the language guard. Enforce the same bounded guard on every final
     # model-generated answer, including the post-review repair.
     if _language_mismatch(message, repaired):
-        requested_language = "Persian (فارسی)" if re.search(r"[\\u0600-\\u06FF]", message) else "English"
+        requested_language = "Persian (فارسی)" if re.search(r"[\u0600-\u06FF]", message) else "English"
         language_repair_payload = {
             "question": message[:3000],
             "draft_answer": repaired[:10000],
