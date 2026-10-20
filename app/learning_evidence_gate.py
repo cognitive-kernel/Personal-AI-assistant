@@ -23,6 +23,20 @@ _TRUSTED_DOMAIN_ROOTS = {
 }
 
 
+def is_allowlisted_primary_source(url: str) -> bool:
+    """Return whether an HTTPS URL belongs to a curated primary-source domain."""
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return False
+        host = parsed.hostname.casefold().rstrip(".")
+    except ValueError:
+        return False
+    return any(host == root or host.endswith("." + root) for root in _TRUSTED_DOMAIN_ROOTS)
+
+
 def _https_source(source: Any) -> tuple[str, str] | None:
     if not isinstance(source, dict):
         return None
@@ -71,7 +85,7 @@ def evaluate_lesson_evidence(
     hosts = {host for url, host in usable if url in cited}
     trusted_cited_hosts = {
         host for url, host in usable
-        if url in cited and any(host == root or host.endswith("." + root) for root in _TRUSTED_DOMAIN_ROOTS)
+        if url in cited and is_allowlisted_primary_source(url)
     }
     review = claim_review if isinstance(claim_review, dict) else {}
     claims = review.get("claims")
