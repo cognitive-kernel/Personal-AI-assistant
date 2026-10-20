@@ -52,6 +52,18 @@ def test_direct_chat_repairs_response_language_before_returning(monkeypatch):
     assert "Rewrite the answer entirely in English" in json.loads(calls[1][0])["instruction"]
 
 
+def test_direct_chat_fails_closed_when_language_repair_returns_empty(monkeypatch):
+    answers = iter([
+        "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
+        "",
+    ])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(answers))
+
+    reply = chat_research.answer("Hello")
+
+    assert reply.startswith("I couldn't reliably produce an answer in English")
+
+
 def test_direct_chat_uses_safe_language_fallback_after_failed_repair(monkeypatch):
     answers = iter([
         "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
