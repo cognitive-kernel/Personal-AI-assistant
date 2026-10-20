@@ -142,6 +142,8 @@ _FRENCH_FUNCTION_WORDS = {
 
 def _language_mismatch(message: str, answer_text: str) -> bool:
     """Conservatively detect likely Persian/English response-language mismatches."""
+    if not answer_text.strip():
+        return True
     persian_request = bool(re.search(r"[\u0600-\u06FF]", message))
     persian_letters = len(re.findall(r"[\u0600-\u06FF]", answer_text))
     latin_words = re.findall(r"[A-Za-z]+", answer_text.casefold())
