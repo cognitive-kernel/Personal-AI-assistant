@@ -131,3 +131,34 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     assert (knowledge["status"] == "unverified") if passed else (knowledge is None)
     assert event is not None
     assert "not an independent verification" in event["note"]
+
+
+def test_claim_review_uses_a_bounded_model_request_timeout(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    captured = {}
+
+    def fake_request(_path, _payload, **kwargs):
+        captured.update(kwargs)
+        return {"message": {"content": json.dumps({
+            "overall": "supported",
+            "claims": [{
+                "claim": "A factual claim",
+                "verdict": "supported",
+                "evidence_urls": ["https://docs.example.org/sql-guide"],
+                "reason": "Directly supported by the excerpt.",
+            }],
+            "source_conflicts": [],
+        })}}
+
+    monkeypatch.setattr(claim_review, "_request", fake_request)
+    result = claim_review.review_answer_claims(
+        "SQL Server", "A factual claim. https://docs.example.org/sql-guide",
+        [{
+            "title": "SQL guide",
+            "url": "https://docs.example.org/sql-guide",
+            "content": "This excerpt documents SQL Server query execution and its core components. " * 3,
+        }],
+    )
+
+    assert result["passed"] is True
+    assert 5 <= captured["timeout"] <= 180
