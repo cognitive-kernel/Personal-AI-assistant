@@ -1984,3 +1984,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **شواهد کد:** روی code head `83bee038ab9af43f89bcadd4809bd3e210a84b01` موفقیت ثبت شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284712)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284798)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284734). تغییرات مستندات این گزارش و تیک‌ها پس از این code head اضافه شده‌اند؛ CI نهایی PR پیش از ادغام باید روی head مستندات هم موفق باشد.
 - **تست محلی:** اجرا نشده است؛ CI خودکار با تست محلی یا پذیرش میزبان واقعی یکسان فرض نشده است.
 - **موارد عمداً باز:** baseline و migration روی Windows واقعی، ارزیابی مدل زنده و داوری انسانی، benchmark/soak و fault injection روی میزبان هدف، restore/rollback در staging، مرور دستی صفحه‌کلید/صفحه‌خوان و کنتراست، و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant). همچنین quota/provider runtime و remote provisioning بدون گیت رضایت/امنیت فعال نشده‌اند.
+
+
+## 171 — حالت‌های خالی و بازیابی فیلتر در داشبورد وظایف (2026-10-20)
+
+- **هدف نقشهٔ راه:** حذف ابهام بین صف واقعاً خالی و جست‌وجویی که نتیجه ندارد؛ بهبود تجربهٔ کاربر بدون endpoint جدید یا تغییر قرارداد API.
+- **پیاده‌سازی:** وضعیت خالی به‌صورت یک جزء قابل‌دسترس و پویا در داشبورد ساخته می‌شود. صف بدون وظیفه پیام راهنما دارد؛ نتیجهٔ صفر ناشی از جست‌وجو/فیلتر، پیام جداگانه و دکمهٔ پاک‌کردن فیلترها دارد.
+- **ایمنی و UI:** متن‌های پویا با `textContent` درج می‌شوند؛ دادهٔ task یا payload وارد HTML نمی‌شود. چیدمان با CSS محلی واکنش‌گرا و focus قابل مشاهده است. صفحه‌بندی و فیلتر سمت سرور حفظ می‌شوند.
+- **آزمون افزوده‌شده:** browser E2E حالت عدم تطابق جست‌وجو، پاک‌کردن فیلترها و صف واقعاً خالی را پوشش می‌دهد.
+- **وضعیت:** [ ] پیاده‌سازی در شاخه `feat/task-dashboard-empty-states` آمادهٔ CI و بازبینی است؛ تیک تکمیل پس از موفقیت CI روی head دقیق ثبت می‌شود. تست محلی اجرا نشده است.
+- **گیت‌های باقی‌مانده:** مرور دستی صفحه‌کلید/صفحه‌خوان، بررسی کنتراست و usability روی میزبان هدف.
