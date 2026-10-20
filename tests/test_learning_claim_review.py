@@ -79,7 +79,7 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
             "questions": [
                 "What does an execution plan show?",
                 "Why can an index increase costs?",
-                "How should an index change be evaluated?",
+                "How would you evaluate an index change in a new workload scenario?",
             ],
             "answer_key": [
                 "It shows the operations selected by the database engine.",
