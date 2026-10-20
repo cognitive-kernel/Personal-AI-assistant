@@ -96,3 +96,74 @@ def test_curriculum_references_are_resolvable_for_exact_topic_only():
         "https://learn.microsoft.com/en-us/sql/sql-server/",
     }
     assert get_reference_urls_for_topic("a user supplied arbitrary topic") == []
+
+
+def test_curated_references_are_fetched_and_stored_as_job_evidence(tmp_path, monkeypatch):
+    from app import db, learning, web_sources
+    from app.db import learning_connection
+    from app.web_sources import SourceDocument
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
+    db.init_databases()
+    fetched = []
+
+    def fake_fetch(url, title, *, max_chars=6000):
+        fetched.append(url)
+        return SourceDocument(url=url, title=title, text=("SQL Server Database Engine query execution index transaction. " * 20))
+
+    monkeypatch.setattr(web_sources, "discover_sources", lambda query, limit=3: [])
+    monkeypatch.setattr(web_sources, "fetch_public_document", fake_fetch)
+    job = learning.create_job("معماری SQL Server، Database Engine و ابزارهای مدیریت")
+    text, source_kind = learning._discover_and_store_sources(job["id"], job["topic"])
+
+    assert source_kind == "web_retrieved"
+    assert len(fetched) == 2
+    assert all(url in text for url in fetched)
+    with learning_connection() as connection:
+        evidence = connection.execute(
+            "SELECT source_ref, content_hash FROM learning_evidence WHERE job_id=? AND evidence_type='web_page'",
+            (job["id"],),
+        ).fetchall()
+    assert {row["source_ref"] for row in evidence} == set(fetched)
+    assert all(row["content_hash"] for row in evidence)
+
+
+def test_rejected_lesson_keeps_user_supplied_source_for_regeneration(tmp_path, monkeypatch):
+    import json
+    from app import db, learning
+    from app.db import learning_connection
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
+    db.init_databases()
+    source_text = "User-provided reference material for the lesson. " * 30
+    short_lesson = (
+        "SQL Server و Database Engine درخواست T-SQL را پردازش می‌کنند. "
+        "برای مثال، execution plan شیوه اجرای query را نشان می‌دهد. "
+        "زیرا index و آمار بر انتخاب optimizer اثر می‌گذارند، logical reads را مقایسه کنید."
+    )
+    payload = {
+        "lesson": short_lesson,
+        "learning_outcomes": ["تشخیص اجزای موتور", "خواندن execution plan", "مقایسه logical reads"],
+        "questions": ["Database Engine چه کاری انجام می‌دهد؟", "execution plan چه چیزی نشان می‌دهد؟", "چرا index همیشه سریع‌تر نیست؟"],
+        "answer_key": ["درخواست‌ها را اجرا می‌کند.", "عملگرهای اجرای query را نشان می‌دهد.", "هزینه نگهداری و توزیع داده اثر دارند."],
+    }
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda *args, **kwargs: {"message": {"content": json.dumps(payload, ensure_ascii=False)}},
+    )
+    job = learning.create_job("SQL Server", source_text=source_text)
+    learning.run_job(job["id"])
+
+    with learning_connection() as connection:
+        stored = connection.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?", (job["id"],)
+        ).fetchone()
+        status = connection.execute(
+            "SELECT status FROM learning_jobs WHERE id=?", (job["id"],)
+        ).fetchone()["status"]
+    assert stored is not None and stored["content"] == source_text
+    assert status == "rejected"
