@@ -236,11 +236,21 @@ def run_job(job_id: int) -> None:
         quality["assessment_rubric_valid"] = rubric is not None
         quality["transfer_question_valid"] = transfer_question_valid
         if not transfer_question_valid:
-            quality["accepted"] = False
-            quality.setdefault("reasons", []).append("سؤال سوم باید یک سناریوی تازه برای کاربرد/انتقال آموخته‌ها باشد، نه سؤال حفظی.")
+            quality.setdefault("reasons", []).append("سؤال سوم هنوز آزمون انتقال مناسبی نیست؛ درس به‌عنوان نامزد ذخیره می‌شود و آزمون کامل‌تری لازم دارد.")
         if rubric is None:
-            quality["accepted"] = False
-            quality.setdefault("reasons", []).append("برای هر سؤال rubric ساخت‌یافته با مفاهیم ضروری و عبارت‌های هم‌معنا لازم است.")
+            quality.setdefault("reasons", []).append("rubric ساخت‌یافته ناقص است؛ آزمون این درس باید پیش از ارتقا تکمیل شود.")
+        quality["heuristic_quality_accepted"] = quality["accepted"]
+        # A heuristic warning is diagnostic, not a reason to discard the candidate.
+        # Only an empty lesson is unusable at this stage; all non-empty lessons go
+        # to temporary storage and must pass declared tests before promotion.
+        quality["accepted"] = bool(result["lesson"].strip())
+        quality["candidate_status"] = "awaiting_test" if quality["accepted"] else "rejected_empty"
+        quality["assessment_available"] = (
+            len(assessment["questions"]) == 3
+            and len(assessment["answer_key"]) == 3
+            and rubric is not None
+            and transfer_question_valid
+        )
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
@@ -301,11 +311,18 @@ def run_job(job_id: int) -> None:
                 retry_quality["assessment_rubric_valid"] = retry_rubric is not None
                 retry_quality["transfer_question_valid"] = retry_transfer_valid
                 if not retry_transfer_valid:
-                    retry_quality["accepted"] = False
-                    retry_quality.setdefault("reasons", []).append("سؤال سوم باید یک سناریوی تازه برای کاربرد/انتقال آموخته‌ها باشد، نه سؤال حفظی.")
+                    retry_quality.setdefault("reasons", []).append("سؤال سوم هنوز آزمون انتقال مناسبی نیست؛ درس به‌عنوان نامزد ذخیره می‌شود و آزمون کامل‌تری لازم دارد.")
                 if retry_rubric is None:
-                    retry_quality["accepted"] = False
-                    retry_quality.setdefault("reasons", []).append("برای هر سؤال rubric ساخت‌یافته با مفاهیم ضروری و عبارت‌های هم‌معنا لازم است.")
+                    retry_quality.setdefault("reasons", []).append("rubric ساخت‌یافته ناقص است؛ آزمون این درس باید پیش از ارتقا تکمیل شود.")
+                retry_quality["heuristic_quality_accepted"] = retry_quality["accepted"]
+                retry_quality["accepted"] = bool(retry_result["lesson"].strip())
+                retry_quality["candidate_status"] = "awaiting_test" if retry_quality["accepted"] else "rejected_empty"
+                retry_quality["assessment_available"] = (
+                    len(retry_assessment["questions"]) == 3
+                    and len(retry_assessment["answer_key"]) == 3
+                    and retry_rubric is not None
+                    and retry_transfer_valid
+                )
                 retry_quality["user_provided_source_available"] = user_provided_source_available
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
@@ -367,9 +384,9 @@ def run_job(job_id: int) -> None:
                 return
             conn.execute("UPDATE learning_jobs SET status=?, lesson=?, assessment_json=?, quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 ("completed" if quality["accepted"] else "rejected", result["lesson"] if quality["accepted"] else None,
-                 json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
+                 json.dumps(assessment, ensure_ascii=False) if quality["accepted"] and quality.get("assessment_available") else None,
                  json.dumps(quality, ensure_ascii=False),
-                 None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
+                 None if quality["accepted"] else "مدل درس خالی تولید کرد؛ هیچ نامزد دانشی برای آزمون ایجاد نشد.", job_id))
             # Automatically persist the lesson-quality score on its curriculum topic.
             # This is a content-quality score, not a score for the learner's understanding.
             path_topic_id = conn.execute(
@@ -394,13 +411,29 @@ def run_job(job_id: int) -> None:
                     (job_id, claim_note),
                 )
             if quality["accepted"]:
-                latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
-                conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
-                    (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
-            else:
-                conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
-                conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
-                    ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
+                source_rows = conn.execute(
+                    "SELECT source_ref FROM learning_evidence WHERE job_id=? AND evidence_type='web_page' ORDER BY id",
+                    (job_id,),
+                ).fetchall()
+                source_urls = [str(item["source_ref"]) for item in source_rows if str(item["source_ref"]).startswith("https://")]
+                lesson_text = result["lesson"].strip()
+                lesson_digest = hashlib.sha256(lesson_text.encode("utf-8")).hexdigest()
+                conn.execute(
+                    """INSERT INTO temporary_knowledge_candidates(
+                           job_id, topic, content, source_kind, source_urls_json,
+                           source_sha256, quality_report_json, status
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_test')""",
+                    (job_id, topic, lesson_text, source_kind,
+                     json.dumps(source_urls, ensure_ascii=False), lesson_digest,
+                     json.dumps(quality, ensure_ascii=False)),
+                )
+                conn.execute(
+                    "INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'temporary_candidate', ?, ?, ?)",
+                    (job_id, f"temporary_knowledge_candidates:{job_id}", lesson_digest,
+                     "نامزد در پایگاه موقت ذخیره شد؛ تا ثبت موفق آزمون‌های تعریف‌شده به دانش اصلی ارتقا نمی‌یابد."),
+                )
+            # Preserve source text and evidence even when the generated output is unusable;
+            # failed attempts are useful debugging/training data, not disposable noise.
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
