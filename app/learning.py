@@ -502,6 +502,16 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
             "SELECT id, topic, position, status, latest_score, latest_score_kind, latest_content_quality_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
             (path_id,),
         ).fetchall()]
+    # Curriculum order is the current explicit prerequisite chain. Earlier topics
+    # must be completed before a later topic can start; this is derived, not user-scored.
+    for index, item in enumerate(topics):
+        blocked = [previous for previous in topics[:index] if previous["status"] != "completed"]
+        item["prerequisite_topic_ids"] = [int(previous["id"]) for previous in topics[:index]]
+        item["can_start"] = not blocked
+        item["blocked_by"] = [
+            {"id": int(previous["id"]), "topic": str(previous["topic"])}
+            for previous in blocked
+        ]
     total = len(topics)
     completed = sum(1 for item in topics if item["status"] == "completed")
     in_progress = sum(1 for item in topics if item["status"] == "in_progress")
@@ -694,11 +704,20 @@ def _latest_completed_topic_review(topic_id: int) -> dict[str, Any] | None:
 def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id, topic, position FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
+        blocked = conn.execute(
+            """SELECT topic FROM learning_path_topics
+               WHERE path_id=? AND position<? AND status!='completed'
+               ORDER BY position""",
+            (path_id, topic["position"]),
+        ).fetchall()
+        if blocked:
+            names = "، ".join(str(item["topic"]) for item in blocked[:5])
+            raise ValueError("Complete prerequisite topics before starting this topic: " + names)
         latest = conn.execute(
             "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
             (topic_id,),
@@ -722,11 +741,20 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
     """Always create a fresh lesson unless this topic already has an active job."""
     with learning_connection() as conn:
         topic = conn.execute(
-            "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
+            "SELECT id, topic, position FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
+        blocked = conn.execute(
+            """SELECT topic FROM learning_path_topics
+               WHERE path_id=? AND position<? AND status!='completed'
+               ORDER BY position""",
+            (path_id, topic["position"]),
+        ).fetchall()
+        if blocked:
+            names = "، ".join(str(item["topic"]) for item in blocked[:5])
+            raise ValueError("Complete prerequisite topics before regenerating this topic: " + names)
         latest = conn.execute(
             "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
             (topic_id,),
