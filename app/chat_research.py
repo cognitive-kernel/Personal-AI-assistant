@@ -307,6 +307,28 @@ def answer(
         _checkpoint(checkpoint, "chat_generation_started")
         reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
         _checkpoint(checkpoint, "chat_generation_completed")
+        if _language_mismatch(message, reply):
+            requested_language = "Persian (فارسی)" if re.search(r"[\\u0600-\\u06FF]", message) else "English"
+            language_repair_payload = {
+                "question": message[:3000],
+                "draft_answer": reply[:10000],
+                "instruction": (
+                    f"Rewrite the answer entirely in {requested_language}. Match the user's language as a hard requirement. "
+                    "Do not add unsupported factual claims. Return answer text only."
+                ),
+            }
+            _checkpoint(checkpoint, "chat_language_repair_started", requested_language=requested_language)
+            try:
+                repaired = ollama.chat(
+                    json.dumps(language_repair_payload, ensure_ascii=False),
+                    history,
+                    system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT,
+                )
+            except Exception as exc:
+                logger.warning("Direct chat language repair failed (%s)", type(exc).__name__)
+                repaired = ""
+            _checkpoint(checkpoint, "chat_language_repair_completed")
+            reply = repaired if not _language_mismatch(message, repaired) else _language_fallback(message)
         return reply
 
     started_at = time.perf_counter()
