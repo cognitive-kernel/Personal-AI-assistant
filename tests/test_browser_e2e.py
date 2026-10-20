@@ -1313,3 +1313,38 @@ def test_learning_path_progress_is_derived_and_accessible():
         assert page.locator(".path-progress-caption").inner_text() == "۱ از ۳ سرفصل تکمیل شده است."
         assert "33٪ (1/3)" in page.locator("#paths-container summary").inner_text()
         browser.close()
+
+
+
+def test_browser_learning_recommendations_show_recoverable_api_error():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/learning/recommendations*",
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"detail": "temporary test outage"}),
+            ),
+        )
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        page.locator("#refresh-learning-recommendations").click()
+        output = page.locator("#learning-recommendations-output")
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#learning-recommendations-output');
+                return node && node.textContent.includes('توصیه‌های یادگیری در دسترس نیست') &&
+                    node.textContent.includes('temporary test outage');
+            }""",
+            timeout=10000,
+        )
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
