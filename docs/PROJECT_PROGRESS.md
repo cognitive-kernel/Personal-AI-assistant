@@ -90,7 +90,7 @@ The implementation log is the detailed record of merged changes and acceptance l
 - Main commit `379a65610de007e33affe353b745e8f2d258fe17` has successful exact-head tests, Chromium browser E2E, and dependency-audit workflows. This is repository CI evidence, not target-host acceptance.
 - Dashboard improvements merged through PRs #356–#365 include task summary/search and safe bulk operations, semantic task status, active-section navigation, learning-path progress, contextual empty states, and a persistent theme preference.
 - PR #368 proposes a higher-contrast light-theme focus token and WCAG token regression tests; it remains an open review until merged.
-- PR #369 proposes mandatory import-cycle CI enforcement, a fresh-store clean-start regression, and corrected self-improvement governance documentation; it remains an open review until exact-head CI completes and the PR is reviewed.
+- PR #369 proposes mandatory import-cycle CI enforcement, a fresh-store clean-start regression, corrected self-improvement governance documentation, a required Markdown-link integrity gate, and bilingual chat/learning output direction plus live-region semantics. Its exact-head CI must pass and the PR must be reviewed before these changes are considered merged.
 - The target-host migration/startup, live-model human adjudication, operational recovery/load, real restore/rollback rehearsal, independent security review, and manual accessibility acceptance gates remain open by design and are not inferred from CI.
 
 
