@@ -58,16 +58,22 @@ def validate_practical_job(job_id: int, exercise_id: str) -> dict[str, Any]:
         raise KeyError(exercise_id)
     with learning_connection() as conn:
         job = conn.execute(
-            "SELECT id, status, topic, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
+            """SELECT j.id, j.status, j.topic, j.path_topic_id, p.curriculum_slug
+               FROM learning_jobs AS j
+               LEFT JOIN learning_path_topics AS t ON t.id=j.path_topic_id
+               LEFT JOIN learning_paths AS p ON p.id=t.path_id
+               WHERE j.id=?""",
+            (job_id,),
         ).fetchone()
     if job is None:
         raise KeyError(job_id)
     if job["status"] != "completed":
         raise ValueError("Practical assessment requires a completed lesson.")
     topic = str(job["topic"]).casefold()
-    if not any(keyword in topic for keyword in exercise["topic_keywords"]):
+    curriculum_slug = str(job["curriculum_slug"] or "").casefold()
+    if not any(keyword in topic for keyword in exercise["topic_keywords"]) and curriculum_slug != "python":
         raise ValueError("This practical exercise does not match the lesson topic.")
-    return {"id": int(job["id"]), "topic": str(job["topic"]), "path_topic_id": job["path_topic_id"]}
+    return {"id": int(job["id"]), "topic": str(job["topic"]), "path_topic_id": job["path_topic_id"], "curriculum_slug": curriculum_slug}
 
 
 def build_grader_source(exercise_id: str, learner_source: str) -> str:
@@ -149,14 +155,20 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
     source_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
     with learning_connection() as conn:
         job = conn.execute(
-            "SELECT status, topic, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
+            """SELECT j.status, j.topic, j.path_topic_id, p.curriculum_slug
+               FROM learning_jobs AS j
+               LEFT JOIN learning_path_topics AS t ON t.id=j.path_topic_id
+               LEFT JOIN learning_paths AS p ON p.id=t.path_id
+               WHERE j.id=?""",
+            (job_id,),
         ).fetchone()
         if job is None:
             raise KeyError(job_id)
         if job["status"] != "completed":
             raise ValueError("Practical assessment requires a completed lesson.")
         topic = str(job["topic"]).casefold()
-        if not any(keyword in topic for keyword in exercise["topic_keywords"]):
+        curriculum_slug = str(job["curriculum_slug"] or "").casefold()
+        if not any(keyword in topic for keyword in exercise["topic_keywords"]) and curriculum_slug != "python":
             raise ValueError("This practical exercise does not match the lesson topic.")
         path_topic_id = job["path_topic_id"]
         blockers = 0
