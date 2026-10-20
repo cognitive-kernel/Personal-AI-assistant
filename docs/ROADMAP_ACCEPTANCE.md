@@ -87,3 +87,9 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 - Added `scripts/check_markdown_links.py` to validate repository-relative Markdown targets without network access.
 - Unit tests cover missing targets with line numbers, external URLs, fenced-code examples, encoded spaces, anchor-only links, and attempts to escape the repository root.
 - The required test workflow now runs this check. Exact-head CI is the acceptance evidence; external URL availability, semantic correctness, and manual documentation review are not inferred from this static check.
+
+
+### Bilingual dynamic output semantics (2026-10-20)
+
+- PR #369 adds `dir="auto"` and polite live-region semantics to chat and learning output containers, preserving the Persian-first RTL shell while supporting English responses.
+- The browser E2E contract checks the markup. This does not close the separately excluded manual keyboard/screen-reader review gate.
