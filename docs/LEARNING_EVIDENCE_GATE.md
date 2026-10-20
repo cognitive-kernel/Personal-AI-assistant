@@ -1,0 +1,5 @@
+# Automated lesson evidence gate
+
+The learning pipeline now emits a deterministic evidence-gate report for every generated lesson. It checks that at least two distinct HTTPS hosts are represented, citations exactly match retrieved source URLs, the model-assisted claim review reports every claim as supported by known source URLs, and no source conflict is reported. Missing, malformed, contradicted, or insufficient evidence fails closed.
+
+This gate is intentionally not called scientific verification. HTTPS, multiple domains, and a model-generated review cannot prove that a source is authoritative or that a claim is true. The result is stored with the lesson quality metadata so the UI/API can explain which gate failed. A lesson may remain available for learning when the evidence gate fails, but it is not eligible to be described as scientifically verified. Human scoring is not used by this gate; domain-specific executable checks and target-host measurements are separate evidence requirements.
