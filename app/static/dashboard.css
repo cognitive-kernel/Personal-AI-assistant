@@ -409,3 +409,62 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   outline: 3px solid var(--focus);
   outline-offset: -3px;
 }
+
+
+/* Learning path progress: explicit, accessible progress with responsive metadata. */
+.path-card { min-width: 0; margin-block: 12px 18px; }
+.path-card > details { margin-block-start: 8px; }
+.path-progress {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 16px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+.path-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: .9rem;
+}
+.path-progress-meta strong {
+  color: var(--text);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.path-progress-bar {
+  display: block;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: var(--primary);
+  accent-color: var(--primary);
+}
+.path-progress-bar::-webkit-progress-bar {
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+.path-progress-bar::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--primary);
+  transition: width .2s ease;
+}
+.path-progress-bar::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--primary);
+}
+.path-progress-caption {
+  margin: 0;
+  color: var(--muted);
+  font-size: .85rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .path-progress-bar::-webkit-progress-value { transition: none; }
+}

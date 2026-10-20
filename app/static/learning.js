@@ -415,10 +415,39 @@ async function loadLearningPaths() {
   container.replaceChildren();
   learningEl("paths-output").textContent = "تعداد مسیرهای ثبت‌شده: " + data.paths.length;
   data.paths.forEach(path => {
+   const pathCard = document.createElement("div");
+   pathCard.className = "path-card";
    const details = document.createElement("details");
    const summary = document.createElement("summary");
-   summary.textContent = path.title + " — " + path.progress_percent + "٪ (" + path.completed_count + "/" + path.topic_count + ")";
+   const topicCount = Math.max(0, Number(path.topic_count) || 0);
+   const completedCount = Math.min(topicCount, Math.max(0, Number(path.completed_count) || 0));
+   const progressPercent = topicCount ? Math.round((completedCount / topicCount) * 100) : 0;
+   const progressNumber = new Intl.NumberFormat("fa-IR");
+   summary.textContent = path.title + " — " + progressPercent + "٪ (" + completedCount + "/" + topicCount + ")";
    details.append(summary);
+
+   const progressGroup = document.createElement("div");
+   progressGroup.className = "path-progress";
+   progressGroup.setAttribute("role", "group");
+   progressGroup.setAttribute("aria-label", "پیشرفت مسیر " + path.title);
+   const progressMeta = document.createElement("div");
+   progressMeta.className = "path-progress-meta";
+   const progressLabel = document.createElement("span");
+   progressLabel.textContent = "پیشرفت مسیر";
+   const progressValue = document.createElement("strong");
+   progressValue.textContent = progressNumber.format(progressPercent) + "٪";
+   const progress = document.createElement("progress");
+   progress.className = "path-progress-bar";
+   progress.max = 100;
+   progress.value = progressPercent;
+   progress.setAttribute("aria-label", "پیشرفت مسیر " + path.title);
+   progress.setAttribute("aria-valuetext", progressNumber.format(progressPercent) + " درصد تکمیل‌شده");
+   const progressCaption = document.createElement("p");
+   progressCaption.className = "path-progress-caption";
+   progressCaption.textContent = progressNumber.format(completedCount) + " از " +
+    progressNumber.format(topicCount) + " سرفصل تکمیل شده است.";
+   progressMeta.append(progressLabel, progressValue);
+   progressGroup.append(progressMeta, progress, progressCaption);
 
    if (Array.isArray(path.reference_urls) && path.reference_urls.length) {
     const references = document.createElement("div");
@@ -603,7 +632,8 @@ async function loadLearningPaths() {
     row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, output);
     details.append(row);
    });
-   container.append(details);
+   pathCard.append(progressGroup, details);
+   container.append(pathCard);
   });
  } catch (error) { learningEl("paths-output").textContent = error.message; }
 }

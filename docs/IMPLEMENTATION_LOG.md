@@ -1962,5 +1962,25 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **UI:** حالت فعال در دسکتاپ با نشانگر کناری و در نمایشگر باریک با نشانگر پایین لینک نمایش داده می‌شود. متن و ساختار لینک‌ها حفظ شده‌اند و هیچ کتابخانه یا فونت راه‌دور اضافه نشده است.
 - **آزمون افزوده‌شده:** browser E2E حالت اولیهٔ لینک فعال، یکتایی آن و انتقال وضعیت به «وظایف» را بررسی می‌کند.
 - **مستندات:** معیار مربوط در `docs/UI_ACCEPTANCE.md` و یادداشت نقشهٔ راه در `docs/ROADMAP_ACCEPTANCE.md` ثبت شد.
-- **وضعیت:** [ ] پیاده‌سازی و آزمون در [PR آینده]؛ این تیک فقط پس از موفقیت CI روی head دقیق تکمیل می‌شود. تست محلی اجرا نشده است.
+- **وضعیت:** [x] [PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360) ادغام شد (`098854d7d447318c107b98c42c0ebd37f5de68a5`). CI روی head دقیق موفق بود: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39366516658)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39366516717)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39366516709). تست محلی اجرا نشده است.
+- **اصلاح رگرسیون کشف‌شده در CI:** محاسبهٔ بخش جاری دیگر فرض نمی‌کند ترتیب لینک‌های ناوبری با ترتیب DOM یکسان است؛ همهٔ بخش‌ها بررسی می‌شوند تا ناوبری به «وظایف» در چیدمان فعلی پایدار بماند.
 - **گیت‌های باقی‌مانده:** مرور دستی صفحه‌کلید/صفحه‌خوان، کنتراست و usability روی میزبان هدف.
+
+
+## 169 — نمایش پیشرفت قابل‌دسترس مسیرهای یادگیری (2026-10-20)
+
+- **هدف نقشهٔ راه:** نمایش پیشرفت واقعی هر مسیر آموزشی با رابطی قابل اسکن، واکنش‌گرا و سازگار با فناوری‌های کمکی.
+- **پیاده‌سازی:** درصد پیشرفت از نسبت سرفصل‌های تکمیل‌شده به کل سرفصل‌ها محاسبه می‌شود؛ درصد ذخیره‌شدهٔ ناسازگار منبع حقیقت رابط نیست. مقدارها به بازهٔ معتبر محدود می‌شوند و مسیر بدون سرفصل، پیشرفت صفر نشان می‌دهد.
+- **UI و دسترس‌پذیری:** نوار پیشرفت native HTML با نام قابل‌دسترسی، متن مقدار و شمارش محلی‌شدهٔ سرفصل‌های تکمیل‌شده اضافه شد؛ نوار بیرون از جزئیات تاشو قرار دارد تا حتی در حالت بسته بودن مسیر هم قابل مشاهده باشد. CSS محلی واکنش‌گراست و انیمیشن در reduced-motion حذف می‌شود؛ API و دادهٔ ذخیره‌شده تغییر نمی‌کنند.
+- **آزمون افزوده‌شده:** تست browser در `tests/test_browser_e2e.py` با پاسخ API ساختگی، ناسازگاری درصد API (۹۹٪ در برابر ۱ از ۳) و مقدار/نام/متن دسترس‌پذیر progress bar را بررسی می‌کند.
+- **وضعیت:** [x] کد و آزمون روی code head `83bee038ab9af43f89bcadd4809bd3e210a84b01` با CI دقیق تأیید شدند: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284712)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284798)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284734). تست محلی اجرا نشده است.
+- **گیت‌های باقی‌مانده:** مرور دستی صفحه‌کلید/صفحه‌خوان، بررسی کنتراست و usability روی میزبان هدف؛ گیت‌های انتشار/امنیت بخش 165 نیز مستقل و باز می‌مانند.
+
+
+## 170 — گزارش اجرای موارد قابل‌پیشبرد بدون تست محلی (2026-10-20)
+
+- **ناوبری داشبورد:** [PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360) ادغام شد. CI دقیق روی commit `098854d7d447318c107b98c42c0ebd37f5de68a5` سبز بود. در جریان اعتبارسنجی بعدی، وابستگی الگوریتم ناوبری به ترتیب لینک‌ها کشف و در PR #362 اصلاح شد.
+- **پیشرفت مسیرهای یادگیری:** [PR #362](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/362) شامل progress bar بومی و قابل‌دسترس، درصد محاسبه‌شده از شمارش سرفصل‌ها، CSS واکنش‌گرا و browser E2E است. مقدار ناسازگار API دیگر درصد نمایشی را تعیین نمی‌کند.
+- **شواهد کد:** روی code head `83bee038ab9af43f89bcadd4809bd3e210a84b01` موفقیت ثبت شد: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284712)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284798)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284734). تغییرات مستندات این گزارش و تیک‌ها پس از این code head اضافه شده‌اند؛ CI نهایی PR پیش از ادغام باید روی head مستندات هم موفق باشد.
+- **تست محلی:** اجرا نشده است؛ CI خودکار با تست محلی یا پذیرش میزبان واقعی یکسان فرض نشده است.
+- **موارد عمداً باز:** baseline و migration روی Windows واقعی، ارزیابی مدل زنده و داوری انسانی، benchmark/soak و fault injection روی میزبان هدف، restore/rollback در staging، مرور دستی صفحه‌کلید/صفحه‌خوان و کنتراست، و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant). همچنین quota/provider runtime و remote provisioning بدون گیت رضایت/امنیت فعال نشده‌اند.

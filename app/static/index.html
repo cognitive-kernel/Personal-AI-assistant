@@ -1723,10 +1723,16 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
   scheduled=false;
   const marker=Math.min(Math.max(window.innerHeight*0.28,120),240);
   let current=sections[0];
+  let currentTop=-Infinity;
+  let firstVisibleTop=Infinity;
+  let firstVisibleSection=sections[0];
   for(const section of sections){
-   if(section.getBoundingClientRect().top<=marker) current=section;
-   else break;
+   // Navigation order can differ from document order; select the nearest section above the viewport marker.
+   const top=section.getBoundingClientRect().top;
+   if(top<firstVisibleTop){firstVisibleTop=top;firstVisibleSection=section;}
+   if(top<=marker && top>currentTop){current=section;currentTop=top;}
   }
+  if(currentTop===-Infinity) current=firstVisibleSection;
   const currentHash="#"+current.id;
   for(const link of links){
    if(link.getAttribute('href')===currentHash){
