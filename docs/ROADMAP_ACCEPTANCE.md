@@ -106,3 +106,9 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 
 - Source payload construction now rejects non-HTTPS links, missing hosts, malformed ports, and embedded username/password URL components that can make the citation destination ambiguous.
 - Deterministic tests cover valid HTTPS and representative malformed/deceptive URLs. This validates URL shape only; it does not establish source trustworthiness or close the independent security review gate.
+
+
+### Dashboard source-link integrity (PR #369, 2026-10-20)
+
+- Cloud-discovery and experience-evidence cards share a client-side HTTPS URL validator that rejects embedded credentials and malformed/hostless URLs before rendering links.
+- Browser E2E checks the accepted/rejected URL cases. Source trustworthiness and independent security review remain separate acceptance requirements.
