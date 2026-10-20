@@ -612,7 +612,11 @@ async function loadLearningPaths() {
     });
     const start = document.createElement("button");
     start.type = "button";
-    start.textContent = "شروع / ادامه درس";
+    start.disabled = topic.can_start === false;
+    start.textContent = topic.can_start === false ? "قفل‌شده: تکمیل پیش‌نیازها" : "شروع / ادامه درس";
+    if (topic.can_start === false && Array.isArray(topic.blocked_by) && topic.blocked_by.length) {
+     start.title = "ابتدا این سرفصل‌ها را تکمیل کنید: " + topic.blocked_by.map(item => item.topic).join("، ");
+    }
     const stop = document.createElement("button");
     stop.type = "button";
     stop.textContent = "توقف درس";
