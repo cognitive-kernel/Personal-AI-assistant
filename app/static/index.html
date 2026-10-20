@@ -420,14 +420,21 @@ function renderTasks(tasks,{append=false}={}) {
   const card=document.createElement("article"); card.className="cloud-candidate task-card";
   card.dataset.taskId=String(task.id);
   card.dataset.taskStatus=String(task.status||"");
-  card.dataset.taskSearch=("#"+task.id+" "+task.task_type+" "+task.status).toLocaleLowerCase();
+  const taskStatusLabels={
+   queued:"در صف",running:"در حال اجرا",pause_requested:"درخواست توقف",paused:"متوقف",
+   cancel_requested:"درخواست لغو",cancelled:"لغوشده",succeeded:"موفق",failed:"ناموفق"
+  };
+  const taskStatusLabel=taskStatusLabels[task.status]||"نامشخص";
+  card.dataset.taskSearch=("#"+task.id+" "+task.task_type+" "+task.status+" "+taskStatusLabel).toLocaleLowerCase();
   const selectLabel=document.createElement("label"); selectLabel.className="task-select-label";
   const selectInput=document.createElement("input"); selectInput.type="checkbox"; selectInput.className="task-select";
   selectInput.setAttribute("aria-label","انتخاب وظیفه "+task.id);
   selectInput.addEventListener("change",updateTaskDashboard);
   selectLabel.append(selectInput,document.createTextNode(" انتخاب")); card.append(selectLabel);
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
-  const statusLine=appendText(card,"p","وضعیت: "+task.status+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status task-status-line");
+  const statusLine=appendText(card,"p","وضعیت: "+taskStatusLabel+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status task-status-line");
+  statusLine.setAttribute("aria-label","وضعیت وظیفه "+task.id+": "+taskStatusLabel);
+  statusLine.title="وضعیت داخلی: "+String(task.status||"unknown");
   const taskStatusClass={
    queued:"is-queued",running:"is-running",pause_requested:"is-pause-requested",paused:"is-paused",
    cancel_requested:"is-cancel-requested",cancelled:"is-cancelled",succeeded:"is-succeeded",failed:"is-failed"
