@@ -123,7 +123,12 @@ function renderPracticalExerciseForm(output, job, path, topic, exercise) {
  source.style.display = "block";
  source.style.width = "100%";
  source.setAttribute("aria-label", "کد پایتون برای تمرین عملی");
- source.value = ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(sum(data[\"values\"])))"].join(String.fromCharCode(10));
+ const starter = exercise.id === "python-json-unique-v1"
+  ? ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(sorted(set(data[\"values\"]))))"]
+  : ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(sum(data[\"values\"])))"];
+ source.value = starter.join(String.fromCharCode(10));
+ const submit = document.createElement("button");
+ submit.type = "submit";
  submit.textContent = "اجرای آزمون عملی";
  form.append(submit);
  const status = document.createElement("p");
