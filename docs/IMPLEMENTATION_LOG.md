@@ -2062,3 +2062,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت ارزیابی:** audit محلی و سنجه‌های مصنوعی Recall@k/Precision@k/MRR و دروازهٔ رگرسیون lexical در بخش‌های 51–55 تکمیل شده‌اند.
 - **گیت‌های باز:** dataset واقعی با relevance انسانی، benchmark با embedding مدل محلی، و ارزیابی کیفیت پاسخ با مدل زنده باقی مانده‌اند؛ نتایج مصنوعی یا CI به‌عنوان کیفیت واقعی مدل گزارش نمی‌شوند.
 - **تست محلی:** اجرا نشده است.
+
+## 2026-10-20 — Automated learning acceptance and practical assessment
+
+- Draft PR: [#370](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/370), branch `feature/automated-learning-acceptance`.
+- Added exact URL-token citation matching, curated primary-source candidate checks, claim-evidence-to-citation binding, and fail-closed behavior for malformed claim reviews and source conflicts.
+- Added rubric token-boundary matching, a versioned rubric-scoring regression set, and a bilingual transfer-question classifier benchmark. These benchmarks validate deterministic implementation behavior only; they do not prove semantic understanding or scientific truth.
+- Added two consent-gated Python/JSON practical exercises. Learner code runs in separate Docker executions with bounded stdin; expected outputs stay in the host grader. Results are stored as `sandbox_practical_v1` attempts and only advance an eligible course topic when the score threshold and prerequisite conditions are met.
+- Added target-host queue and local Ollama performance gates, including model digest, request latency, token throughput, and host CPU-count/RAM snapshots.
+- Local tests on the target/user machine have intentionally not been run. GitHub Actions checks for the newest revision are queued/running; no final acceptance claim is made until CI, local tests, live-model quality evaluation, and target-host measurements are complete.
+- Remaining implementation scope: expand practical exercises beyond Python/JSON, broaden versioned transfer/relevance datasets, and complete automated live-model acceptance criteria. Source-based checks and model-assisted claim review must not be described as proof of scientific correctness.
