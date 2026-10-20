@@ -556,7 +556,7 @@ def run_python(
                 reason="Docker could not be started; no local execution fallback is permitted.",
             )
 
-        if stdin_text is not None and process.stdin is not None:
+        if stdin_text is not None and getattr(process, "stdin", None) is not None:
             try:
                 process.stdin.write(stdin_text.encode("utf-8"))
                 process.stdin.close()
