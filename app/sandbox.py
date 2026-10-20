@@ -338,7 +338,7 @@ def cleanup_orphaned_containers(
                     "--format={{json .Config.Labels}}|{{.State.Status}}|{{.Created}}",
                     container_id,
                 ],
-                stdin=subprocess.DEVNULL, capture_output=True, text=True, shell=False,
+                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL, capture_output=True, text=True, shell=False,
                 close_fds=True, env=env, timeout=5, check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -454,6 +454,7 @@ def run_python(
     image: str,
     timeout_seconds: int = 10,
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
+    stdin_text: str | None = None,
     control_check: Callable[[], str] | None = None,
     task_id: int | None = None,
 ) -> SandboxResult:
@@ -464,6 +465,11 @@ def run_python(
         raise ValueError("source_code must not contain NUL characters.")
     if len(source_code.encode("utf-8")) > _MAX_SOURCE_BYTES:
         raise ValueError("source_code exceeds the 64 KiB limit.")
+    if stdin_text is not None and (
+        not isinstance(stdin_text, str) or "\\x00" in stdin_text
+        or len(stdin_text.encode("utf-8")) > 4096
+    ):
+        raise ValueError("stdin_text must be valid text no larger than 4 KiB.")
     if task_id is not None and (
         isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1
     ):
@@ -549,6 +555,16 @@ def run_python(
                 duration_ms=int((time.monotonic() - started) * 1000),
                 reason="Docker could not be started; no local execution fallback is permitted.",
             )
+
+        if stdin_text is not None and process.stdin is not None:
+            try:
+                process.stdin.write(stdin_text.encode("utf-8"))
+                process.stdin.close()
+            except (BrokenPipeError, OSError):
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
 
         stdout_buffer = bytearray()
         stderr_buffer = bytearray()
