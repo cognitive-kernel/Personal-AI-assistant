@@ -119,3 +119,8 @@ The implementation log is the detailed record of merged changes and acceptance l
 - Hardware-aware design uses the documented Windows baseline (Intel Core i5-12400, 32 GB RAM, Intel integrated graphics reported as 128 MB) and local Ollama/qwen2.5:7b default. Actual model identity, resource use, latency, and target-host compatibility remain to be measured using the target-host baseline tool.
 - This is a roadmap/documentation commit, not implementation evidence. The existing exact-match score and same-model semantic review remain limited; proposed quality thresholds are targets, not measured results. No local tests or live Ollama evaluation were run for this documentation-only change.
 
+
+
+## 2026-10-20 — کدنویسی سامانهٔ یادگیری
+
+در PR #369 علاوه بر نقشهٔ تکمیل، دو مؤلفهٔ اجرایی افزوده شد: دروازهٔ شواهد علمی fail-closed با وضعیت غیرمبالغه‌آمیز و امتیازدهی rubric مفهومی قطعی. وضعیت علمی در رابط آشکار است؛ نبود شواهد کافی به‌عنوان تأیید ثبت نمی‌شود. rubric تا ارسال پاسخ مخفی است. این مرحله هنوز تأیید مستقل صحت علمی، کالیبراسیون false-pass/false-fail یا benchmark میزبان هدف را ثابت نمی‌کند.
