@@ -30,7 +30,7 @@ def test_rubric_scores_paraphrases_and_exposes_missing_concepts():
 
 def test_rubric_gives_partial_credit_instead_of_exact_match_zero():
     result = score_answers(
-        ["The execution plan explains query behavior.", "Uncertain."],
+        ["The execution plan explains query behavior.", "The source origin is preserved; the answer is uncertain."],
         _rubric(),
     )
     assert 0 < result["score"] < 100
