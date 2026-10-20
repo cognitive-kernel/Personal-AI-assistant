@@ -288,7 +288,7 @@ def run_job(job_id: int) -> None:
             ).fetchone()["path_topic_id"]
             if path_topic_id is not None:
                 conn.execute(
-                    "UPDATE learning_path_topics SET latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                    "UPDATE learning_path_topics SET latest_content_quality_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                     (float(quality["score"]), path_topic_id),
                 )
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
@@ -365,7 +365,7 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
         raise ValueError("Every answer must contain 1–2000 characters.")
     with learning_connection() as conn:
-        row = conn.execute("SELECT status, assessment_json FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute("SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise KeyError(job_id)
         if row["status"] != "completed" or not row["assessment_json"]:
@@ -404,6 +404,30 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
             (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions), scoring_method),
         )
         attempt_id = int(cursor.lastrowid)
+        path_topic_id = row["path_topic_id"]
+        if path_topic_id is not None:
+            topic_row = conn.execute(
+                "SELECT status FROM learning_path_topics WHERE id=?", (path_topic_id,)
+            ).fetchone()
+            if topic_row is not None:
+                current_status = str(topic_row["status"])
+                score_kind = "learner_rubric" if scoring_method == "rubric_concept_coverage_v1" else "legacy_exact_match"
+                if scoring_method == "rubric_concept_coverage_v1" and score >= 80.0:
+                    next_status = "completed"
+                elif current_status == "completed":
+                    next_status = "completed"
+                else:
+                    next_status = "in_progress"
+                conn.execute(
+                    """UPDATE learning_path_topics
+                       SET latest_score=?, latest_score_kind=?, status=?, updated_at=CURRENT_TIMESTAMP
+                       WHERE id=?""",
+                    (score, score_kind, next_status, path_topic_id),
+                )
+                conn.execute(
+                    "UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT path_id FROM learning_path_topics WHERE id=?)",
+                    (path_topic_id,),
+                )
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
@@ -475,7 +499,7 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
         if path is None:
             raise KeyError(path_id)
         topics = [dict(row) for row in conn.execute(
-            "SELECT id, topic, position, status, latest_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
+            "SELECT id, topic, position, status, latest_score, latest_score_kind, latest_content_quality_score, updated_at FROM learning_path_topics WHERE path_id=? ORDER BY position",
             (path_id,),
         ).fetchall()]
     total = len(topics)
@@ -616,9 +640,24 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
+        current_topic = conn.execute(
+            "SELECT latest_score, latest_score_kind FROM learning_path_topics WHERE id=? AND path_id=?",
+            (topic_id, path_id),
+        ).fetchone()
+        if status == "completed" and not (
+            current_topic["latest_score_kind"] == "learner_rubric"
+            and current_topic["latest_score"] is not None
+            and float(current_topic["latest_score"]) >= 80.0
+        ):
+            raise ValueError("A topic can be completed only after a valid rubric assessment scores at least 80%.")
         conn.execute(
-            "UPDATE learning_path_topics SET status=?, latest_score=COALESCE(?, latest_score), updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-            (status, latest_score, topic_id, path_id),
+            """UPDATE learning_path_topics
+               SET status=?,
+                   latest_score=COALESCE(?, latest_score),
+                   latest_score_kind=CASE WHEN ? IS NOT NULL THEN 'manual_override' ELSE latest_score_kind END,
+                   updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND path_id=?""",
+            (status, latest_score, latest_score, topic_id, path_id),
         )
         conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
     return get_learning_path(path_id)
