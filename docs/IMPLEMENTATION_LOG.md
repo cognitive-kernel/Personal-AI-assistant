@@ -2085,3 +2085,10 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - ادعای قدیمی «مرور فاصله‌دار پیاده‌سازی نشده» اصلاح شد؛ مرور فاصله‌دار موجود است، اما قفل خودکار سرفصل بر اساس نمره هنوز نیست.
 - وضعیت schema/migration و کشف منابع ابری در مستندات با کد فعلی همگام شد؛ وجود discovery یا دادهٔ quota به‌معنی مجوز اجرای ابری نیست.
 - تست محلی اجرا نشده است؛ آزمون مرورگر و suite کامل باید روی head نهایی CI موفق شوند.
+
+
+## 2026-10-20 — bilingual dynamic-output UX hardening
+
+- Dashboard chat and learning result regions now use automatic text direction and polite status announcements, improving mixed Persian/English output readability without changing the Persian-first RTL navigation shell.
+- Replaced the outdated “initial prototype” subtitle and stale learning copy with accurate descriptions of source-aware research and the limitation of exact-match assessment.
+- Browser E2E asserts `dir="auto"`, `role="status"`, and `aria-live="polite"` on both result regions. This is automated markup/behavior coverage, not manual screen-reader acceptance.
