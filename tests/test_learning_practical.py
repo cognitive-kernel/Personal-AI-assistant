@@ -124,8 +124,9 @@ def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch
     report = _valid_report()
 
     def fake_run(source, **kwargs):
-        calls.append(source)
-        return SandboxResult("succeeded", 0, json.dumps(report), "", 25)
+        calls.append((source, kwargs.get("stdin_text")))
+        data = json.loads(kwargs["stdin_text"])
+        return SandboxResult("succeeded", 0, json.dumps(sum(data["values"])), "", 25)
 
     monkeypatch.setattr(sandbox_tasks.sandbox, "run_python", fake_run)
     monkeypatch.setattr(
@@ -156,7 +157,9 @@ def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch
     assert result["execution_status"] == "succeeded"
     assert result["practical_assessment"]["score"] == 100.0
     assert result["practical_assessment"]["received_report"] is True
-    assert "subprocess.run(" in calls[0]
+    assert len(calls) == 4
+    assert all(source == "import json, sys\\ndata = json.load(sys.stdin)\\nprint(json.dumps(sum(data['values'])))" for source, _input in calls)
+    assert all(isinstance(json.loads(stdin)["values"], list) for _source, stdin in calls)
 
 
 def test_practical_mastery_completes_python_path_topic_automatically(tmp_path, monkeypatch):
