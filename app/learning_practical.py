@@ -30,6 +30,20 @@ EXERCISES = {
         "topic_keywords": ("python", "پایتون"),
         "test_count": 4,
         "grading_version": "python-json-sum-grader-v1",
+    },
+    "python-json-unique-v1": {
+        "id": "python-json-unique-v1",
+        "title": "حذف مقادیر تکراری از JSON با پایتون",
+        "description": (
+            "برنامه‌ای بنویسید که یک شیء JSON را از ورودی استاندارد بخواند. "
+            "آرایه values شامل اعداد است؛ خروجی باید آرایه‌ای JSON از اعداد یکتا به ترتیب صعودی باشد."
+        ),
+        "input_example": {"values": [3, 1, 3, 2]},
+        "output_example": [1, 2, 3],
+        "language": "python",
+        "topic_keywords": ("python", "پایتون"),
+        "test_count": 4,
+        "grading_version": "python-json-unique-grader-v1",
     }
 }
 
@@ -40,6 +54,12 @@ _TEST_CASES = {
         {"id": "empty-list", "input": {"values": []}, "expected": 0},
         {"id": "negative-and-fractional", "input": {"values": [-2, 1.5, 3]}, "expected": 2.5},
         {"id": "large-integers", "input": {"values": [1000000000000, 1]}, "expected": 1000000000001},
+    ],
+    "python-json-unique-v1": [
+        {"id": "duplicates", "input": {"values": [3, 1, 3, 2]}, "expected": [1, 2, 3]},
+        {"id": "empty-list", "input": {"values": []}, "expected": []},
+        {"id": "negative-values", "input": {"values": [-1, 0, -1, 2]}, "expected": [-1, 0, 2]},
+        {"id": "fractional-values", "input": {"values": [2.5, 1.5, 2.5]}, "expected": [1.5, 2.5]},
     ]
 }
 
