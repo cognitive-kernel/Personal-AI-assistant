@@ -6,7 +6,7 @@ Run from the repository root in the intended Python environment:
 
 ```bash
 python scripts/run_target_host_baseline.py
-python scripts/run_target_host_baseline.py --run-tests --output /path/outside/repository/target-host-baseline.json
+python scripts/run_target_host_baseline.py --run-tests --run-performance-benchmark --output /path/outside/repository/target-host-baseline.json
 ```
 
 On Windows PowerShell, use an absolute output path appropriate to the host, for example:
@@ -22,6 +22,7 @@ python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target
 - Read-only health of the configured settings, learning, and cloud-resource SQLite stores: integrity, foreign-key violations, migration history, schema fingerprint, and expected schema version.
 - Local-only network configuration: the application bind must be a loopback IP literal, and the effective Ollama endpoint must satisfy the same loopback-only URL policy as the client. The report records only classifications, never the configured host or URL.
 - When `--run-tests` is supplied, the full pytest suite's exit code and JUnit counts.
+- When `--run-performance-benchmark` is supplied, a disposable SQLite task-queue benchmark records enqueue and claim/complete throughput, database size, and integrity on this exact host. It uses temporary databases and does not benchmark or mutate the configured application stores. Use `--benchmark-tasks` to set the bounded workload.
 
 ## Safety and interpretation
 
@@ -29,4 +30,4 @@ python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target
 - Test execution is opt-in because it can take time. The test suite should still be run only in the intended development/acceptance environment; do not assume that passing CI substitutes for running on the target host.
 - Raw test output is intentionally omitted from the JSON report because test output can contain local paths or configuration details.
 - Exit code is `0` only when storage is healthy, the configured network boundary is safe and any requested test run passes. A non-loopback or unverified bind, a non-loopback/invalid Ollama URL, missing or outdated databases, or a failing requested test run produces a non-zero result; the script does not attempt automatic repair.
-- This does not run a live Ollama factuality evaluation, browser workflows, Docker sandbox validation, crash/load tests, or an independent security review. Those remain separate acceptance gates.
+- This does not run a live Ollama factuality evaluation, browser workflows, Docker sandbox validation, crash/load tests, or an independent security review. Those remain separate acceptance gates. The queue benchmark is a narrow throughput measure; it does not establish model inference latency, long-duration stability, or production readiness.
