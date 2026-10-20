@@ -91,5 +91,5 @@ The dashboard theme preference is implemented and merged in [PR #365](https://gi
 
 ### Bilingual dynamic output semantics (2026-10-20)
 
-- PR #369 adds `dir="auto"` and polite live-region semantics to chat and learning output containers, preserving the Persian-first RTL shell while supporting English responses.
+- PR #369 adds `dir="auto"` to chat and learning output containers and a polite live region only for the concise chat status, preserving the Persian-first RTL shell while supporting English responses without announcing the entire structured lesson as one status update.
 - The browser E2E contract checks the markup. This does not close the separately excluded manual keyboard/screen-reader review gate.
