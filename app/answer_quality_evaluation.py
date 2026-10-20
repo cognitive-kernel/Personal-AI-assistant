@@ -4,6 +4,7 @@ These checks are diagnostics only. They are not semantic adjudication or a model
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -122,6 +123,7 @@ def evaluate_automated_acceptance(
     if (
         isinstance(maximum_generation_seconds, bool)
         or not isinstance(maximum_generation_seconds, (int, float))
+        or not math.isfinite(maximum_generation_seconds)
         or maximum_generation_seconds <= 0
     ):
         raise ValueError("maximum_generation_seconds must be positive")
