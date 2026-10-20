@@ -591,6 +591,23 @@ def submit_learning_review(job_id: int, request: LessonReviewSubmission) -> dict
 @app.get("/api/learning/jobs/{job_id}")
 def learning_job(job_id: int) -> dict[str, Any]:
     try:
-        return learning.get_job(job_id)
+        result = learning.get_job(job_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
+
+    # Include only bounded operational metadata for the associated durable task.
+    # The queue payload is intentionally omitted because API consumers do not need it.
+    task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
+    if task is None:
+        result["background_task"] = {"status": "not_enqueued"}
+    else:
+        checkpoint = task.get("checkpoint")
+        result["background_task"] = {
+            "status": task.get("status"),
+            "attempts": task.get("attempts"),
+            "max_attempts": task.get("max_attempts"),
+            "updated_at": task.get("updated_at"),
+            "phase": checkpoint.get("phase") if isinstance(checkpoint, dict) else None,
+            "error": str(task.get("error") or "")[:500] or None,
+        }
+    return result
