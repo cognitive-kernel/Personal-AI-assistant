@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import tempfile
 from pathlib import Path
@@ -40,11 +41,25 @@ def apply_acceptance_thresholds(
     recall_key = next((key for key in metrics if key.startswith("recall_at_")), None)
     per_query = metrics.get("per_query")
     if (
-        recall_key is None or not isinstance(metrics.get(recall_key), (int, float))
+        not isinstance(metrics, dict)
+        or recall_key is None
+        or isinstance(metrics.get(recall_key), bool)
+        or not isinstance(metrics.get(recall_key), (int, float))
+        or not math.isfinite(metrics[recall_key])
+        or not 0 <= metrics[recall_key] <= 1
+        or isinstance(metrics.get("mrr"), bool)
         or not isinstance(metrics.get("mrr"), (int, float))
+        or not math.isfinite(metrics["mrr"])
+        or not 0 <= metrics["mrr"] <= 1
         or not isinstance(per_query, list) or not per_query
-        or any(not isinstance(item, dict) or not isinstance(item.get("recall_at_k"), (int, float))
-               for item in per_query)
+        or any(
+            not isinstance(item, dict)
+            or isinstance(item.get("recall_at_k"), bool)
+            or not isinstance(item.get("recall_at_k"), (int, float))
+            or not math.isfinite(item["recall_at_k"])
+            or not 0 <= item["recall_at_k"] <= 1
+            for item in per_query
+        )
     ):
         return {
             **metrics,
