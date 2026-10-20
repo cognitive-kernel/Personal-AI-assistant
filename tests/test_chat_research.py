@@ -18,6 +18,47 @@ def _source():
     )
 
 
+def test_source_payload_rejects_ambiguous_or_invalid_https_urls():
+    long_text = "This source excerpt contains enough technical detail for claim review. " * 2
+    documents = [
+        web_sources.SourceDocument(
+            url="https://docs.example.org/guide",
+            title="Valid",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https://docs.example.org@attacker.example/guide",
+            title="Misleading authority",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https://user:secret@docs.example.org/guide",
+            title="Credentials in URL",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https:///missing-host",
+            title="Missing host",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https://docs.example.org:invalid/guide",
+            title="Invalid port",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="http://docs.example.org/guide",
+            title="Insecure scheme",
+            text=long_text,
+        ),
+    ]
+
+    payload = chat_research._source_payload(documents)
+
+    assert [item["title"] for item in payload] == ["Valid"]
+    assert payload[0]["url"] == "https://docs.example.org/guide"
+
+
 def _disable_memory(monkeypatch):
     monkeypatch.setattr(chat_research.experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(chat_research.experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
