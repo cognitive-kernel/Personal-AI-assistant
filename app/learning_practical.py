@@ -26,7 +26,7 @@ EXERCISES = {
         "input_example": {"values": [2, 3]},
         "output_example": 5,
         "language": "python",
-        "topic_keywords": ("python", "پایتون", "json"),
+        "topic_keywords": ("python", "پایتون"),
         "test_count": 4,
         "grading_version": "python-json-sum-grader-v1",
     }
