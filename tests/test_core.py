@@ -400,7 +400,7 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
-    assert payloads[0]["options"]["num_predict"] >= 1000
+    assert payloads[0]["options"]["num_predict"] >= 2400
     assert finished["status"] == "rejected"
     assert finished["quality"]["accepted"] is True
     assert finished["quality"]["release_eligible"] is False
@@ -467,3 +467,63 @@ def test_path_topic_cannot_be_completed_or_scored_manually(tmp_path, monkeypatch
     unchanged = learning.get_learning_path(path["id"])
     assert unchanged["topics"][0]["status"] == "pending"
     assert unchanged["topics"][0]["latest_score"] is None
+
+
+def test_lesson_generation_prefers_accepted_repair_over_short_first_draft(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    good_lesson = (
+        "در SQL Server، Database Engine مسئول ذخیره‌سازی و اجرای پرس‌وجوها است. "
+        "درخواست T-SQL ابتدا تجزیه می‌شود و بهینه‌ساز برای آن برنامه اجرایی انتخاب می‌کند. "
+        "execution plan نشان می‌دهد داده‌ها چگونه خوانده می‌شوند؛ برای نمونه، اسکن جدول ممکن است "
+        "در جدول کوچک مناسب باشد، اما برای جست‌وجوی پرتکرار روی ستون انتخابی، ایندکس مناسب می‌تواند "
+        "تعداد صفحات خوانده‌شده را کاهش دهد. این بهبود قطعی نیست، زیرا هزینه نگهداری ایندکس و "
+        "توزیع داده نیز بر تصمیم بهینه‌ساز اثر می‌گذارند. SSMS ابزار مدیریت و مشاهده برنامه اجرا است، "
+        "در حالی که DMVها اطلاعاتی درباره وضعیت و کارایی نمونه سرور ارائه می‌کنند. در عمل، ابتدا "
+        "پرس‌وجو را با داده نماینده اجرا کنید، سپس execution plan و آمار ورودی و خروجی را بررسی کنید. "
+        "اگر ایندکس جدیدی پیشنهاد شد، اثر آن را با بار کاری واقعی و پس از ثبت خط مبنا بسنجید. "
+        "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
+        "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
+        "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
+        "نه تضمین خودکار برای درست بودن طراحی."
+    )
+    payloads = []
+
+    def response(lesson):
+        return {"message": {"content": json.dumps({
+            "lesson": lesson,
+            "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
+            "questions": [
+                "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
+                "چرا ایندکس همیشه باعث بهبود عملکرد نمی‌شود؟",
+                "چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
+            ],
+            "answer_key": [
+                "نشان می‌دهد موتور چگونه داده را می‌خواند و چه عملگرهایی را اجرا می‌کند.",
+                "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
+                "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
+            ],
+        }, ensure_ascii=False)}}
+
+    def fake_request(_path, payload, **_kwargs):
+        payloads.append(payload)
+        return response("SQL Server یک ابزار است. " * 12) if len(payloads) == 1 else response(good_lesson)
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    monkeypatch.setattr(
+        learning, "_discover_and_store_sources",
+        lambda _job_id, _topic: ("", "model_knowledge_no_external_source"),
+    )
+    job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert len(payloads) == 2
+    assert payloads[1]["options"]["num_predict"] >= 3000
+    assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["word_count"] >= 200
+    assert finished["status"] == "rejected"  # Evidence gate still fails closed without sources.
+    assert finished["lesson"] is None
