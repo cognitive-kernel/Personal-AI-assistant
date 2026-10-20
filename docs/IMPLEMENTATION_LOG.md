@@ -2019,7 +2019,7 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **هدف:** ارتقای خوانایی و تجربهٔ داشبورد با انتخاب پوسته بدون وابستگی بیرونی یا تغییر API.
 - **پیاده‌سازی:** دکمهٔ فارسی پوسته در سربرگ، پیروی از تنظیم سیستم‌عامل در اولین بازدید، حفظ انتخاب صریح در localStorage، حالت pressed قابل‌دسترسی و پالت تیرهٔ هماهنگ برای فرم‌ها، ناوبری، وضعیت وظایف، خطاها و نوار پیشرفت.
 - **آزمون افزوده‌شده:** browser E2E تغییر واقعی حالت، مقدار `aria-pressed` و حفظ انتخاب پس از بارگذاری مجدد را بررسی می‌کند.
-- **وضعیت:** [ ] [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365) باز است؛ تا سبزشدن CI روی head دقیق و ادغام، تیک تکمیل نمی‌خورد.
+- **وضعیت:** [x] [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365) در commit `9702984f236e0c3fdefad16365e1127027e17b87` ادغام شد؛ CI روی head دقیق پیش از ادغام موفق بود: [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288911)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288901)، [ممیزی وابستگی](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288902).
 - **تست محلی:** اجرا نشده است. مرور دستی کنتراست، صفحه‌کلید/صفحه‌خوان و پذیرش روی میزبان هدف همچنان جداگانه لازم است.
 
 ## 175 — تطبیق مستندات پذیرش با وضعیت واقعی CI (2026-10-20)
@@ -2034,3 +2034,13 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت:** [x] چهار توضیح تاریخی که به‌صورت حالِ جاری خوانده می‌شدند، اصلاح شدند تا مشخص باشد نبود dispatcher، runtime یا اتصال startup مربوط به مرحلهٔ قدیمی بوده و بعداً در بخش 23 رفع شده است.
 - **مرجع پیاده‌سازی فعلی:** `app/task_worker.py`, `app/task_runtime.py`, `app/learning_tasks.py` و `app/main.py`; اجرای صف همچنان allow-list است و کد ناشناس اجرا نمی‌شود.
 - **گیت‌های باز:** اجرای محلی کامل، crash/restart و contention روی میزبان هدف، benchmark/soak، و پذیرش عملیاتی همچنان تیک نخورده‌اند.
+
+
+## 177 — گزارش تکمیل پوستهٔ پایدار داشبورد و نهایی‌سازی این چرخه (2026-10-20)
+
+- **وضعیت:** [x] قابلیت پوستهٔ روشن/تیره در [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365) با squash ادغام شد؛ commit ادغام `9702984f236e0c3fdefad16365e1127027e17b87`.
+- **شواهد CI روی head دقیق پیش از ادغام:** [tests و رگرسیون Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288911)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288901)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288902) موفق شدند.
+- **تغییرات:** انتخاب پوسته با رعایت ترجیح سیستم‌عامل، نگهداری انتخاب صریح در مرورگر، نام و وضعیت قابل‌دسترس، پالت تیره برای کنترل‌ها/کارت‌ها/وضعیت وظایف/خطاها، و آزمون مرورگر برای تغییر پوسته و ماندگاری پس از reload.
+- **مستندات:** معیار پذیرش UI و نقشهٔ راه همگام شدند؛ وضعیت «CI در انتظار» برای نوار پیشرفت مسیرهای آموزشی و حالت‌های خالی داشبورد نیز با شواهد فعلی main اصلاح شده است.
+- **تست محلی:** اجرا نشده است. این تیک به معنای گذراندن CI روی head است، نه اجرای محلی یا پذیرش نهایی روی میزبان.
+- **گیت‌های باز:** مرور دستی کنتراست، صفحه‌کلید/صفحه‌خوان، usability روی میزبان، baseline/migration دیتابیس واقعی، ارزیابی مدل زنده و داوری انسانی، benchmark/soak/fault-injection، restore/rollback staging، clean-start نهایی و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant) همچنان تیک نخورده‌اند.
