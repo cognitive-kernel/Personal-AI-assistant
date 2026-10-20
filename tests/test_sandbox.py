@@ -12,7 +12,7 @@ IMAGE = "python:3.12-slim@sha256:" + "a" * 64
 
 
 class FakeProcess:
-    def __init__(self, args, *, stdout=b"hello\\n", stderr=b"", returncode=0, stdin=None):
+    def __init__(self, args, *, stdout=b"hello\n", stderr=b"", returncode=0, stdin=None):
         self.args = args
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
