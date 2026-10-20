@@ -323,7 +323,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
             """(taskId) => {
                 const card = Array.from(document.querySelectorAll('#tasks-container article'))
                     .find(node => node.textContent.includes('#' + taskId + ' — e2e.scheduled-cancellation'));
-                return card && card.textContent.includes('وضعیت: cancelled');
+                return card && card.textContent.includes('وضعیت: لغوشده');
             }""",
             arg=task_id,
             timeout=10000,
