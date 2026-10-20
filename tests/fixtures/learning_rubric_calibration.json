@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "pass_threshold": 80.0,
+  "rubric": [
+    {
+      "criteria": [
+        {"id": "lookup", "weight": 2, "accepted_phrases": ["index improves lookup", "faster lookup"]},
+        {"id": "tradeoff", "weight": 1, "accepted_phrases": ["maintenance cost", "cost of maintaining"]}
+      ]
+    },
+    {
+      "criteria": [
+        {"id": "isolation", "weight": 1, "accepted_phrases": ["transaction isolation", "isolation level"]},
+        {"id": "dirty-read", "weight": 1, "accepted_phrases": ["dirty read", "uncommitted data"]}
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "complete-answer",
+      "answers": ["Faster lookup; maintenance cost.", "Isolation level prevents a dirty read."],
+      "expected_pass": true
+    },
+    {
+      "id": "partial-concept-coverage",
+      "answers": ["Faster lookup.", "Isolation level."],
+      "expected_pass": false
+    },
+    {
+      "id": "negated-key-concept",
+      "answers": ["Not faster lookup; maintenance cost.", "Isolation level prevents a dirty read."],
+      "expected_pass": false
+    },
+    {
+      "id": "irrelevant-answers",
+      "answers": ["A completely unrelated response.", "No relevant database concept appears."],
+      "expected_pass": false
+    },
+    {
+      "id": "mixed-language-paraphrase",
+      "answers": ["The index provides faster lookup but has maintenance cost.", "Transaction isolation prevents reading uncommitted data."],
+      "expected_pass": true
+    }
+  ]
+}
