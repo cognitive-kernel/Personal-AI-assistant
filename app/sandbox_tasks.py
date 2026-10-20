@@ -121,15 +121,67 @@ def handler_from_environment() -> Callable[
                     return "control_unavailable"
             return "running"
 
-        result = sandbox.run_python(
-            source_code,
-            docker_executable=executable,
-            image=image,
-            timeout_seconds=timeout_seconds,
-            max_output_bytes=max_output_bytes,
-            control_check=control_check,
-            task_id=context.task_id,
-        )
+        practical_assessment = None
+        practical_completed = False
+        if practical_metadata is not None:
+            from .learning_practical import (
+                build_grade_report, get_test_cases, grade_case_output, record_practical_attempt,
+            )
+
+            case_results = []
+            total_duration_ms = 0
+            result = None
+            for case in get_test_cases(practical_metadata["exercise_id"]):
+                preflight_status = control_check()
+                if preflight_status != "running":
+                    stopped_status = "paused" if preflight_status in {"pause_requested", "paused"} else "cancelled"
+                    result = sandbox.SandboxResult(
+                        stopped_status, None, "", "", total_duration_ms,
+                        "Practical grading stopped before all test cases completed.",
+                    )
+                    break
+                case_result = sandbox.run_python(
+                    learner_source_code,
+                    docker_executable=executable,
+                    image=image,
+                    timeout_seconds=timeout_seconds,
+                    max_output_bytes=max_output_bytes,
+                    stdin_text=json.dumps(case["input"], ensure_ascii=False),
+                    control_check=control_check,
+                    task_id=context.task_id,
+                )
+                total_duration_ms += case_result.duration_ms
+                if case_result.status in {"unavailable", "paused", "cancelled"}:
+                    result = sandbox.SandboxResult(
+                        case_result.status, case_result.exit_code, "", "", total_duration_ms,
+                        case_result.reason,
+                    )
+                    break
+                case_results.append({
+                    "case_id": case["id"],
+                    "passed": grade_case_output(
+                        practical_metadata["exercise_id"], case["id"],
+                        case_result.status, case_result.exit_code, case_result.stdout,
+                    ),
+                })
+            if result is None:
+                grading_report = build_grade_report(practical_metadata["exercise_id"], case_results)
+                result = sandbox.SandboxResult(
+                    "succeeded", 0, json.dumps(grading_report, separators=(",", ":")),
+                    "", total_duration_ms,
+                )
+                practical_completed = True
+        else:
+            result = sandbox.run_python(
+                source_code,
+                docker_executable=executable,
+                image=image,
+                timeout_seconds=timeout_seconds,
+                max_output_bytes=max_output_bytes,
+                control_check=control_check,
+                task_id=context.task_id,
+            )
+
         evidence = {
             "phase": "sandbox_finished",
             "source_sha256": source_hash,
@@ -138,15 +190,15 @@ def handler_from_environment() -> Callable[
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
         }
+        if practical_metadata is not None:
+            evidence["practical_case_count"] = len(case_results)
+            evidence["practical_completed"] = practical_completed
         context.checkpoint(evidence)
         if consent_revoked:
             raise RuntimeError("Sandbox execution stopped because user consent was revoked.")
-        practical_assessment = None
-        if practical_metadata is not None and result.status == "succeeded" and result.exit_code == 0:
+        if practical_metadata is not None and practical_completed:
             try:
                 grading_report = json.loads(result.stdout)
-                from .learning_practical import record_practical_attempt
-
                 practical_assessment = record_practical_attempt(
                     practical_metadata["job_id"],
                     practical_metadata["exercise_id"],
