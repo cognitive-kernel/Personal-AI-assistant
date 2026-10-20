@@ -19,7 +19,7 @@ def test_exercise_catalog_is_filtered_to_completed_relevant_lessons(tmp_path, mo
     job_id = _setup(tmp_path, monkeypatch)
 
     result = learning_practical_routes.list_practical_exercises(job_id=job_id)
-    assert {item["id"] for item in result["exercises"]} == {"python-json-sum-v1", "python-json-unique-v1"}
+    assert {item["id"] for item in result["exercises"]} == {"python-json-sum-v1", "python-json-unique-v1", "python-json-word-count-v1"}
 
     with db.learning_connection() as conn:
         conn.execute("UPDATE learning_jobs SET topic='History' WHERE id=?", (job_id,))
