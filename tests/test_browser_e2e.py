@@ -1229,7 +1229,8 @@ def test_dashboard_theme_toggle_is_accessible_and_persists():
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.goto(base_url, wait_until="domcontentloaded")
-        toggle = page.get_by_role("button", name="تغییر پوستهٔ داشبورد")
+        toggle = page.locator("#theme-toggle")
+        assert toggle.get_attribute("aria-label") == "پوستهٔ روشن فعال است؛ تغییر به پوستهٔ تیره" or toggle.get_attribute("aria-label") == "پوستهٔ تیره فعال است؛ تغییر به پوستهٔ روشن"
         before = page.locator("html").get_attribute("data-theme")
         toggle.click()
         after = page.locator("html").get_attribute("data-theme")
