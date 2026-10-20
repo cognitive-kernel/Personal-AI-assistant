@@ -123,6 +123,11 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     finished = learning.get_job(job["id"])
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
+    # A failed provenance gate must be visible, but should not make an otherwise
+    # usable lesson disappear; scientific acceptance remains a separate status.
+    assert finished["quality"]["scientific_acceptance"]["accepted"] is False
+    assert finished["quality"]["scientific_acceptance"]["lesson_available_for_learning"] is True
+    assert finished["quality"]["scientific_acceptance"]["knowledge_verification_status"] == "unverified"
     assert finished["quality"]["claim_review_status"] == (
         "passed_model_assisted" if passed else "needs_review"
     )
