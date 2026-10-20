@@ -200,8 +200,8 @@ def test_unique_values_practical_grader_checks_sorted_unique_output():
 
     assert case["expected"] == [1, 2, 3]
     assert learning_practical.grade_case_output(
-        exercise_id, case["id"], "succeeded", 0, "[1, 2, 3]\\n"
+        exercise_id, case["id"], "succeeded", 0, "[1, 2, 3]\n"
     )
     assert not learning_practical.grade_case_output(
-        exercise_id, case["id"], "succeeded", 0, "[3, 1, 2]\\n"
+        exercise_id, case["id"], "succeeded", 0, "[3, 1, 2]\n"
     )
