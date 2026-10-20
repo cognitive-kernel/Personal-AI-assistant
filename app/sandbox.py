@@ -511,6 +511,7 @@ def run_python(
             str(executable),
             "run",
             "--rm",
+            *(["--interactive"] if stdin_text is not None else []),
             "--pull=never",
             "--label",
             f"{_SANDBOX_LABEL}=true",
