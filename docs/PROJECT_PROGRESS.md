@@ -107,3 +107,9 @@ The implementation log is the detailed record of merged changes and acceptance l
 - The same guard is applied after claim-review repair, closing a gap where a repaired factual answer could drift from the requested language after the initial language check.
 - Regression coverage includes direct-chat repair/fail-closed behavior and claim-repair language drift. This is a deterministic script-level guard, not a substitute for live Persian/English evaluation or human adjudication.
 - Exact-head CI for the current PR revision must pass before this change is considered validated; the user's latest local full-suite evidence (`646 passed, 5 skipped`) predates this language-guard change.
+
+
+## 2026-10-20 update — exact-head CI for PR #369
+
+- Head `e7ae4d5661d12b05b1a405a15d94574d17c0e411`: required tests and Windows storage regressions passed ([run #39384776230](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230)); Chromium browser E2E passed ([run #39384776350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350)); dependency audit passed ([run #39384776221](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221)).
+- PR #369 remains open and unmerged. These results validate configured CI only; target-host startup/migration, live-model/human adjudication, operational recovery/load and restore/rollback, independent security review, and manual accessibility gates remain open.
