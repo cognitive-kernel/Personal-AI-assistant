@@ -1208,6 +1208,21 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert "focus-visible" in stylesheet.text()
         assert page.locator("html").get_attribute("dir") == "rtl"
         assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
+        assert page.evaluate("""() => [
+            safeHttpsUrl("https://docs.example.org/guide"),
+            safeHttpsUrl("https://trusted.example@attacker.example/guide"),
+            safeHttpsUrl("https://user:secret@docs.example.org/guide"),
+            safeHttpsUrl("https:///missing-host"),
+            safeHttpsUrl("https://docs.example.org:invalid/guide"),
+            safeHttpsUrl("http://docs.example.org/guide"),
+        ]""") == [
+            "https://docs.example.org/guide",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
         missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
             "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
         )
