@@ -195,6 +195,9 @@ class LearningRequest(BaseModel):
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
+    idempotency_key: str | None = Field(
+        default=None, min_length=16, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
 
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
@@ -465,7 +468,7 @@ def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicPr
 @app.post("/api/learning/jobs/{job_id}/assessment")
 def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> dict[str, Any]:
     try:
-        return learning.submit_assessment(job_id, request.answers)
+        return learning.submit_assessment(job_id, request.answers, request.idempotency_key)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
     except ValueError as exc:
