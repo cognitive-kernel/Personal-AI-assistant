@@ -443,3 +443,20 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     failed = learning.get_job(job["id"])
     assert failed["status"] == "failed"
     assert "model offline" in failed["error"]
+
+
+def test_path_topic_cannot_be_completed_or_scored_manually(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("sql-server")
+    topic = path["topics"][0]
+    with pytest.raises(ValueError, match="manual score overrides are disabled"):
+        learning.update_path_topic(path["id"], topic["id"], "completed", 100)
+    with pytest.raises(ValueError, match="only be completed automatically"):
+        learning.update_path_topic(path["id"], topic["id"], "completed")
+    unchanged = learning.get_learning_path(path["id"])
+    assert unchanged["topics"][0]["status"] == "pending"
+    assert unchanged["topics"][0]["latest_score"] is None
