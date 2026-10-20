@@ -103,6 +103,10 @@ def evaluate_scientific_gate(
         "passed": passed,
         "independently_verified": False,
         "source_count": len(normalized_sources),
+        "source_manifest": [
+            {"title": item["title"], "url": item["url"]}
+            for item in normalized_sources
+        ],
         "distinct_source_host_count": len(hosts),
         "exact_cited_source_count": len(cited_urls),
         "reviewer": _MODEL_REVIEWER if isinstance(claim_review, dict) else None,
