@@ -87,6 +87,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             "cases_with_prohibited_phrase_hits": sum(bool(item["prohibited_phrase_hits"]) for item in items),
             "cases_with_expected_language_script": sum(item["expected_language_script_present"] is True for item in items),
             "cases_with_sources": sum(int(item["source_count"]) > 0 for item in items),
+            "cases_with_allowlisted_primary_sources": sum(int(item.get("trusted_source_count", 0)) > 0 for item in items),
             "cases_with_unattributed_answer_urls": sum(
                 int(item.get("unattributed_answer_url_count", 0)) > 0 for item in items
             ),
