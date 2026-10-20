@@ -92,14 +92,18 @@ function addRegenerateButton(output, path, topic) {
 }
 
 async function addPracticalExerciseForm(output, job, path, topic) {
- let exercise;
+ let exercises;
  try {
   const catalog = await learningApi("/api/learning/practical/exercises?job_id=" + encodeURIComponent(job.id));
-  exercise = (catalog.exercises || [])[0];
+  exercises = catalog.exercises || [];
  } catch (_error) {
   return;
  }
- if (!exercise || output.dataset.learningJobId !== String(job.id)) return;
+ if (output.dataset.learningJobId !== String(job.id)) return;
+ exercises.forEach(exercise => renderPracticalExerciseForm(output, job, path, topic, exercise));
+}
+
+function renderPracticalExerciseForm(output, job, path, topic, exercise) {
  const section = document.createElement("section");
  section.className = "learning-practical-exercise";
  const heading = document.createElement("h4");
@@ -119,7 +123,7 @@ async function addPracticalExerciseForm(output, job, path, topic) {
  source.style.display = "block";
  source.style.width = "100%";
  source.setAttribute("aria-label", "کد پایتون برای تمرین عملی");
- source.value = "import json\nimport sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data[\"values\"])))";
+ source.value = ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(sum(data[\"values\"])))"].join(String.fromCharCode(10));
  submit.textContent = "اجرای آزمون عملی";
  form.append(submit);
  const status = document.createElement("p");
