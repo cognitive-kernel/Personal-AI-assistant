@@ -344,6 +344,7 @@ function renderLessonResult(output, job, path, topic) {
      candidate.blocked_by = (candidate.blocked_by || []).filter(item => item.id !== topic.id);
      candidate.prerequisites_met = candidate.blocked_by.length === 0;
      if (candidate.startButton) candidate.startButton.disabled = !candidate.prerequisites_met;
+     if (candidate.prerequisites_met && candidate.prerequisiteNote) candidate.prerequisiteNote.remove();
     });
     result.textContent += " آستانه تسلط " + outcome.mastery_threshold + "٪ کسب شد؛ تکمیل سرفصل به‌صورت خودکار ثبت شد.";
    } else if (job.path_topic_id) {
@@ -611,6 +612,7 @@ async function loadLearningPaths() {
      const prerequisiteNote = document.createElement("p");
      prerequisiteNote.className = "path-topic-prerequisites";
      prerequisiteNote.textContent = "ابتدا این سرفصل‌ها را تکمیل کنید: " + topic.blocked_by.map(item => item.topic).join("، ");
+     topic.prerequisiteNote = prerequisiteNote;
      row.append(prerequisiteNote);
     }
     const stop = document.createElement("button");
