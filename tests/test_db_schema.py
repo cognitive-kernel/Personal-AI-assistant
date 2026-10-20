@@ -176,3 +176,51 @@ def test_spaced_repetition_history_cascades_when_topic_is_deleted(tmp_path, monk
         assert conn.execute(
             "SELECT COUNT(*) FROM learning_review_events WHERE topic_id=?", (topic_id,)
         ).fetchone()[0] == 0
+
+
+
+def test_fresh_stores_have_versioned_schema_and_no_promoted_learning_data(
+    tmp_path, monkeypatch
+):
+    """A clean start creates valid stores but never seeds user learning content."""
+    _init_stores(tmp_path, monkeypatch)
+
+    with db.settings_connection() as conn:
+        settings_history = conn.execute(
+            "SELECT COUNT(*) FROM schema_migrations"
+        ).fetchone()[0]
+        sandbox_consent = conn.execute(
+            "SELECT enabled FROM sandbox_execution_consent WHERE id=1"
+        ).fetchone()
+        capture_consent = conn.execute(
+            "SELECT enabled FROM experience_auto_capture_consent WHERE id=1"
+        ).fetchone()
+        assert settings_history > 0
+        assert sandbox_consent is not None and sandbox_consent[0] == 0
+        assert capture_consent is not None and capture_consent[0] == 0
+
+    with db.learning_connection() as conn:
+        migration_count = conn.execute(
+            "SELECT COUNT(*) FROM schema_migrations"
+        ).fetchone()[0]
+        assert migration_count > 0
+        content_tables = (
+            "learning_jobs",
+            "learning_evidence",
+            "learning_source_text",
+            "knowledge_items",
+            "assessment_attempts",
+            "assessment_semantic_reviews",
+            "self_improvement_proposals",
+            "self_improvement_events",
+            "learning_review_schedule",
+            "learning_review_events",
+            "lesson_reviews",
+            "learning_paths",
+            "learning_path_topics",
+            "task_queue",
+        )
+        for table in content_tables:
+            assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0, table
+        assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
