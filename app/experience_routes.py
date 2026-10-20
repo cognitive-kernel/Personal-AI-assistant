@@ -43,10 +43,9 @@ class ExperienceUpdateRequest(BaseModel):
     test_plan: list[dict[str, Any]] | None = Field(default=None, max_length=50)
     takeaway: str | None = Field(default=None, max_length=10000)
 
-    class Config:
-        # In particular, callers cannot smuggle test_results or the internal
-        # _controlled_run switch through the public HTTP boundary.
-        extra = "forbid"
+    # Callers cannot smuggle test_results or the internal _controlled_run
+    # switch through the public HTTP boundary.
+    model_config = ConfigDict(extra="forbid")
 
 
 class ExperienceAutoCaptureConsentRequest(BaseModel):
