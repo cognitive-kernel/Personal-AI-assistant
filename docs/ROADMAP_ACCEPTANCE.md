@@ -155,7 +155,8 @@ This is exact-head CI evidence only. PR #369 remains open and unmerged; it does 
 - [x] ابزار benchmark محلی برای ثبت fingerprint مدل، latency، خطاها و نمونه‌برداری حافظه.
 - [ ] تأیید CI آخرین commit.
 - [ ] کالیبراسیون false-pass/false-fail روی مجموعهٔ مرجع.
-- [ ] idempotency درخواست آزمون، گراف قفل پیش‌نیازها و آزمون عملی محدود.
+- [x] idempotency درخواست آزمون و قفل سروری زنجیره‌ای پیش‌نیازها.
+- [ ] گراف پیش‌نیاز سفارشی (DAG)، آزمون همزمانی و آزمون عملی محدود.
 - [ ] اجرای benchmark و آزمون‌های نهایی روی سیستم مقصد؛ این کار پس از پایان تغییرات کدنویسی انجام می‌شود.
 
 
