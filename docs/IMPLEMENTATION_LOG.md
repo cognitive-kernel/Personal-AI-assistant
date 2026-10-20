@@ -2089,6 +2089,6 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 
 ## 2026-10-20 — bilingual dynamic-output UX hardening
 
-- Dashboard chat and learning result regions now use automatic text direction and polite status announcements, improving mixed Persian/English output readability without changing the Persian-first RTL navigation shell.
+- Dashboard chat and learning result regions now use automatic text direction, improving mixed Persian/English output readability without changing the Persian-first RTL navigation shell. The concise chat status uses a polite live region; large structured learning results are not announced wholesale.
 - Replaced the outdated “initial prototype” subtitle and stale learning copy with accurate descriptions of source-aware research and the limitation of exact-match assessment.
 - Browser E2E asserts `dir="auto"`, `role="status"`, and `aria-live="polite"` on both result regions. This is automated markup/behavior coverage, not manual screen-reader acceptance.
