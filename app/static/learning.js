@@ -113,8 +113,20 @@ function renderLessonResult(output, job, path, topic) {
  }
 
  const qualityNote = document.createElement("p");
- qualityNote.textContent = "امتیاز کیفیت خودکار درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
+ qualityNote.textContent = "امتیاز کیفیت ساختاری درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
  output.append(qualityNote);
+ const evidenceGate = job.quality && job.quality.scientific_acceptance;
+ if (evidenceGate) {
+  const evidenceNote = document.createElement("p");
+  evidenceNote.setAttribute("role", "status");
+  if (evidenceGate.accepted) {
+   evidenceNote.textContent = "دروازه خودکار شواهد عبور کرد؛ این نتیجه اثبات مستقل صحت علمی نیست.";
+  } else {
+   evidenceNote.textContent = "دروازه شواهد عبور نکرده است؛ درس به‌عنوان محتوای تأییدشده علمی تلقی نشود. شروط ناموفق: " +
+    (evidenceGate.failed_gates || []).join("، ");
+  }
+  output.append(evidenceNote);
+ }
  addRegenerateButton(output, path, topic);
  const lesson = document.createElement("p");
  lesson.textContent = job.lesson || "متن درس در پاسخ موجود نیست.";
