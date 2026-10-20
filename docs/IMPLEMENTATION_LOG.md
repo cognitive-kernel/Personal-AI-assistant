@@ -2012,3 +2012,18 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **مستندات:** `docs/IMPLEMENTATION_LOG.md`، `docs/ROADMAP_ACCEPTANCE.md` و `docs/UI_ACCEPTANCE.md` با شواهد و چک‌باکس‌های مربوط به این قابلیت‌ها همگام شدند.
 - **گیت‌های باز و عمداً تیک‌نخورده:** baseline و migration روی Windows واقعی، ارزیابی مدل زنده و داوری انسانی، benchmark/soak و fault injection روی میزبان هدف، تمرین restore/rollback در staging، مرور دستی صفحه‌کلید/صفحه‌خوان و کنتراست، و بازبینی امنیتی مستقل issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant). این‌ها بدون اجرای واقعی محیط هدف، داوری انسانی یا بازبین مستقل قابل ادعای تکمیل نیستند.
 - **محدودیت این چرخه:** فقط CI و بررسی‌های مخزن انجام شده‌اند؛ هیچ دیتابیس واقعی کاربر تغییر نکرده، تست محلی اجرا نشده و آمادگی تولیدی ادعا نمی‌شود.
+
+
+## 174 — پوستهٔ روشن/تیرهٔ پایدار و قابل‌دسترس داشبورد (2026-10-20)
+
+- **هدف:** ارتقای خوانایی و تجربهٔ داشبورد با انتخاب پوسته بدون وابستگی بیرونی یا تغییر API.
+- **پیاده‌سازی:** دکمهٔ فارسی پوسته در سربرگ، پیروی از تنظیم سیستم‌عامل در اولین بازدید، حفظ انتخاب صریح در localStorage، حالت pressed قابل‌دسترسی و پالت تیرهٔ هماهنگ برای فرم‌ها، ناوبری، وضعیت وظایف، خطاها و نوار پیشرفت.
+- **آزمون افزوده‌شده:** browser E2E تغییر واقعی حالت، مقدار `aria-pressed` و حفظ انتخاب پس از بارگذاری مجدد را بررسی می‌کند.
+- **وضعیت:** [ ] [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365) باز است؛ تا سبزشدن CI روی head دقیق و ادغام، تیک تکمیل نمی‌خورد.
+- **تست محلی:** اجرا نشده است. مرور دستی کنتراست، صفحه‌کلید/صفحه‌خوان و پذیرش روی میزبان هدف همچنان جداگانه لازم است.
+
+## 175 — تطبیق مستندات پذیرش با وضعیت واقعی CI (2026-10-20)
+
+- **وضعیت:** [x] متن‌های قدیمی «CI در انتظار» برای نوار پیشرفت مسیرهای یادگیری و حالت‌های خالی وظایف با شواهد فعلی main جایگزین شدند؛ [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368788776)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368789105)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368788829) همگی روی commit `2097a91eb889816af9132160c1f06025da87c6a9` موفق‌اند.
+- **مرزهای تیک‌زدن:** تست‌های محلیِ اجرا‌نشده، baseline/migration دیتابیس واقعی، benchmark و soak میزبان، restore/rollback staging، مرور دستی دسترس‌پذیری و بررسی مستقل امنیتی تیک نخورده‌اند؛ CI به‌تنهایی جایگزین آن‌ها نیست.
+- **مواردی که عمداً فعال نشدند:** اتصال quota به provider runtime یا فعال‌سازی provisioning/remote execution بدون رضایت صریح، بررسی امنیتی و سیاست هزینه انجام نمی‌شود؛ گیت‌های امنیتی نقشهٔ راه حفظ می‌شوند.
