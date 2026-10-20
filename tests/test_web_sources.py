@@ -350,6 +350,9 @@ def test_search_diagnostics_distinguish_parsed_but_rejected_provider_links(monke
     def fake_open(url, **kwargs):
         host = urllib.parse.urlparse(url).hostname
         if host == "www.google.com":
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            if params.get("gbv") == ["1"]:
+                return "<html><body>no organic links</body></html>", "text/html"
             return '<a href="https://www.google.com/search?q=compute"><h3>Search</h3></a>', "text/html"
         return "<html><body>no organic links</body></html>", "text/html"
 
