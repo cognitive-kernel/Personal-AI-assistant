@@ -142,6 +142,59 @@ def test_failed_review_gets_one_repair_then_an_uncertainty_note(monkeypatch):
     assert "review_feedback" in prompts[1]
 
 
+def test_claim_repair_language_drift_gets_bounded_language_repair(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    answers = iter([
+        "هذه إجابة عربية وليست فارسية لكنها طويلة بما يكفي لتجاوز حد فحص اللغة الحالي في هذا الاختبار.",
+        "This is a long English response that drifts away from the requested Persian language and must be repaired before it is returned to the user.",
+        "این پاسخ نهایی فارسی است و پس از اصلاح زبان به کاربر بازگردانده می‌شود.",
+    ])
+    prompts = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        prompts.append(json.loads(message))
+        return next(answers)
+
+    reviews = iter([
+        {"passed": False, "error": "one_or_more_claims_not_supported_or_cited"},
+        {"passed": True, "overall": "supported"},
+    ])
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: next(reviews))
+
+    reply = chat_research.answer("خطا در SQL Server")
+
+    assert "پاسخ نهایی فارسی" in reply
+    assert len(prompts) == 3
+    assert "Rewrite the answer entirely in Persian (فارسی)" in prompts[2]["instruction"]
+
+
+def test_claim_repair_language_drift_fails_closed_if_language_repair_also_mismatches(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    answers = iter([
+        "هذه إجابة عربية وليست فارسية لكنها طويلة بما يكفي لتجاوز حد فحص اللغة الحالي في هذا الاختبار.",
+        "This is a long English response that drifts away from the requested Persian language and must be repaired before it is returned to the user.",
+        "This remains a long English answer despite the explicit request for Persian and should trigger the safe fallback response.",
+    ])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(answers))
+    reviews = iter([
+        {"passed": False, "error": "one_or_more_claims_not_supported_or_cited"},
+    ])
+    monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: next(reviews))
+    audits = []
+    monkeypatch.setattr(chat_research, "_record_audit", lambda *args, **kwargs: audits.append(args))
+
+    reply = chat_research.answer("خطا در SQL Server")
+
+    assert reply.startswith("نتوانستم پاسخ قابل‌اعتمادی را به فارسی تولید کنم.")
+    assert audits[-1][3] == "needs_review"
+    assert audits[-1][4]["error"] == "language_mismatch_after_claim_repair"
+
+
 def test_unavailable_reviewer_does_not_trigger_an_extra_generation(monkeypatch):
     source = _source()
     _disable_memory(monkeypatch)
