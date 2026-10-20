@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import db, learning, learning_practical
+from app import assessment_review, db, learning, learning_practical
 
 
 def _setup(tmp_path, monkeypatch):
@@ -90,6 +90,8 @@ def test_practical_attempt_is_persisted_but_not_promoted_without_course_path(tmp
     refreshed_job = learning.get_job(job_id)
     assert "answer_key" not in refreshed_job["assessment"]
     assert refreshed_job["quiz_assessment_attempts"] == []
+    with pytest.raises(ValueError, match="only for quiz assessment attempts"):
+        assessment_review.review_assessment_attempt(job_id, result["attempt_id"])
 
 
 def test_practical_attempt_rejects_inconsistent_grading_report(tmp_path, monkeypatch):
