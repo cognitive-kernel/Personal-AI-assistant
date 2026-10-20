@@ -173,7 +173,7 @@ def test_claim_review_surfaces_source_conflict_and_fails_closed(tmp_path, monkey
     )
     assert result["passed"] is False
     assert result["overall"] == "insufficient_evidence"
-    assert result["error"] == "source_conflicts_require_human_review"
+    assert result["error"] == "source_conflicts_unresolved_release_blocked"
     assert result["source_conflicts"][0]["source_a_url"] == first_url
     assert result["source_conflicts"][0]["source_b_url"] == second_url
 
