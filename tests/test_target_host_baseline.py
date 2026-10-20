@@ -125,3 +125,43 @@ def test_network_boundary_baseline_flags_non_loopback_bind_and_ollama_url(tmp_pa
 )
 def test_ollama_endpoint_classifier_matches_local_only_policy(url, expected):
     assert baseline._ollama_endpoint_status(url) == expected
+
+
+def test_target_host_performance_benchmark_reports_metrics_without_raw_output(monkeypatch):
+    payload = {
+        "result": "passed",
+        "benchmark": "sqlite-task-queue-throughput",
+        "task_count_requested": 100,
+        "task_count_succeeded": 100,
+        "enqueue_tasks_per_second": 250.0,
+        "claim_and_complete_tasks_per_second": 120.0,
+        "database_bytes": 4096,
+        "sqlite_integrity": "ok",
+    }
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout=json.dumps(payload), stderr="private detail"
+        ),
+    )
+
+    report = baseline._run_performance_benchmark(100)
+
+    assert report["status"] == "passed"
+    assert report["claim_and_complete_tasks_per_second"] == 120.0
+    assert report["sqlite_integrity"] == "ok"
+    assert report["raw_output_included"] is False
+    assert "private detail" not in json.dumps(report)
+
+
+def test_target_host_performance_benchmark_fails_closed_on_invalid_report(monkeypatch):
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout="not JSON", stderr=""
+        ),
+    )
+    report = baseline._run_performance_benchmark(10)
+    assert report["status"] == "invalid_report"
