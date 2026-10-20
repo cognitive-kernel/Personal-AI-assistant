@@ -1,8 +1,8 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-16 (UTC)  
+> Last verified: 2026-10-20 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Latest confirmed post-merge code CI: [run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) — success; 539 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `12fe5e5dd62c47edf5b06dbdfcbc7a6cb4ba48b1`.
+> Latest confirmed main-head CI: commit `379a65610de007e33affe353b745e8f2d258fe17`; tests [#39370245234](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245234), browser E2E [#39370245302](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245302), and dependency audit [#39370245245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245245) all succeeded on 2026-10-20.
 
 ## Executive status
 
@@ -83,3 +83,12 @@ The implementation log is the detailed record of merged changes and acceptance l
 - **Merged:** [PR #233](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/233) preserves the Ollama `/api/tags` model manifest digest in the local model inventory and records it in answer-quality reports when available.
 - **CI evidence:** [PR-head run #38927880019](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927880019) and [post-merge run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) succeeded; 539 passed, 4 skipped, and the deterministic retrieval benchmark passed.
 - **Limit:** a model digest improves model identity but does not freeze the live web retrieval corpus. A real Ollama evaluation and human adjudication are still required before reporting model-quality results.
+
+
+## 2026-10-20 update — current main verification and remaining boundaries
+
+- Main commit `379a65610de007e33affe353b745e8f2d258fe17` has successful exact-head tests, Chromium browser E2E, and dependency-audit workflows. This is repository CI evidence, not target-host acceptance.
+- Dashboard improvements merged through PRs #356–#365 include task summary/search and safe bulk operations, semantic task status, active-section navigation, learning-path progress, contextual empty states, and a persistent theme preference.
+- PR #368 proposes a higher-contrast light-theme focus token and WCAG token regression tests; it remains an open review until merged.
+- PR #369 proposes mandatory import-cycle CI enforcement, a fresh-store clean-start regression, and corrected self-improvement governance documentation; it remains an open review until exact-head CI completes and the PR is reviewed.
+- The target-host migration/startup, live-model human adjudication, operational recovery/load, real restore/rollback rehearsal, independent security review, and manual accessibility acceptance gates remain open by design and are not inferred from CI.
