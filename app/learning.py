@@ -293,15 +293,18 @@ def run_job(job_id: int) -> None:
             "تأیید مستقل صحت علمی محسوب نمی‌شود."
         )
         if quality["scientific_acceptance"].get("accepted") is not True:
-            # Fail closed: a lesson cannot be published merely because its
-            # shape/length checks passed when its evidence gate failed.
-            quality["accepted"] = False
-            reasons = quality.get("reasons")
-            if not isinstance(reasons, list):
-                reasons = []
-                quality["reasons"] = reasons
-            if "scientific_evidence_gate_failed" not in reasons:
-                reasons.append("scientific_evidence_gate_failed")
+            # Do not conflate "usable lesson" with "scientifically verified".
+            # The structural/assessment gate decides whether the learner can use
+            # the lesson; this separate evidence gate decides whether the lesson
+            # has enough traceable support to be treated as evidence-accepted.
+            # Keep usable lessons available with an explicit unverified status,
+            # and never promote their knowledge item to verified.
+            quality["scientific_acceptance"]["lesson_available_for_learning"] = bool(quality.get("accepted"))
+            quality["scientific_acceptance"]["knowledge_verification_status"] = "unverified"
+            quality["scientific_acceptance"]["publication_note"] = (
+                "Lesson is available for learning, but its scientific evidence gate did not pass; "
+                "do not treat it as verified knowledge."
+            )
 
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
