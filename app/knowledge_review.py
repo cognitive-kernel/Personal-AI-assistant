@@ -262,6 +262,31 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
                     "Training-data and organizational independence have not been established."
                 ),
             )
+            # Independently attempt to fetch cited pages. A fetched page is still
+            # contextual evidence until its content is checked against a specific claim.
+            from .web_sources import fetch_public_document
+            for citation in citations[:5]:
+                if not isinstance(citation, dict):
+                    continue
+                cited_url = citation.get("url")
+                if not isinstance(cited_url, str) or not cited_url.startswith(("https://", "http://")):
+                    continue
+                try:
+                    document = fetch_public_document(cited_url, str(citation.get("claim", ""))[:200], max_chars=4000)
+                    record_review_evidence(
+                        candidate_id,
+                        evidence_kind="context",
+                        source_url=document.url,
+                        source_title=document.title[:500],
+                        excerpt=document.text[:4000],
+                        reliability_note=(
+                            f"URL cited by peer provider {provider} was fetched independently. "
+                            "Fetch success does not establish that the page supports the cited claim."
+                        ),
+                    )
+                except Exception:
+                    # Keep the peer response but do not treat an unreachable citation as evidence.
+                    continue
             consulted += 1
         except (OSError, urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
             errors.append({"provider": provider, "error": str(exc)[:300]})
