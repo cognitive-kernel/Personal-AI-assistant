@@ -234,6 +234,7 @@ def test_automated_acceptance_gate_passes_only_when_all_case_checks_pass():
         results.append({
             "case_id": case_id,
             "generation_status": "completed",
+            "generation_seconds": 1.0,
             "surface_diagnostic_status": "completed",
             "surface_concept_coverage": 0.75,
             "prohibited_phrase_hits": [],
@@ -254,6 +255,7 @@ def test_automated_acceptance_gate_fails_closed_on_missing_sources_and_unsupport
     report = evaluate_automated_acceptance([{
         "case_id": "no-evidence",
         "generation_status": "completed",
+        "generation_seconds": 1.0,
         "surface_diagnostic_status": "completed",
         "surface_concept_coverage": 1.0,
         "prohibited_phrase_hits": [],
