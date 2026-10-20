@@ -152,3 +152,22 @@ def test_practical_sandbox_task_builds_grader_and_records_its_result(monkeypatch
     assert result["practical_assessment"]["score"] == 100.0
     assert result["practical_assessment"]["received_report"] is True
     assert "subprocess.run(" in calls[0]
+
+
+def test_practical_mastery_completes_python_path_topic_automatically(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    path = learning.enroll_curriculum("Python")
+    first_topic = path["topics"][0]
+    job = learning.create_job(first_topic["topic"], path_topic_id=first_topic["id"])
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET status='completed' WHERE id=?", (job["id"],))
+    source = "import json, sys\ndata = json.load(sys.stdin)\nprint(json.dumps(sum(data['values'])))"
+
+    result = learning_practical.record_practical_attempt(
+        job["id"], learning_practical.EXERCISE_ID, _valid_report(), source
+    )
+    refreshed = learning.get_learning_path(path["id"])
+
+    assert result["mastery_achieved"] is True
+    assert refreshed["topics"][0]["status"] == "completed"
+    assert refreshed["topics"][0]["latest_score"] == 100
