@@ -90,3 +90,12 @@ def test_every_claim_must_reference_sources_actually_cited_in_lesson():
 
     assert result["accepted"] is False
     assert "all_claims_supported_by_known_sources" in result["failed_gates"]
+
+
+def test_primary_source_allowlist_rejects_host_suffix_and_credential_spoofing():
+    from app.learning_evidence_gate import is_allowlisted_primary_source
+
+    assert is_allowlisted_primary_source("https://docs.python.org/3/")
+    assert not is_allowlisted_primary_source("https://python.org.attacker.example/")
+    assert not is_allowlisted_primary_source("https://python.org@attacker.example/")
+    assert not is_allowlisted_primary_source("http://docs.python.org/3/")
