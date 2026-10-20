@@ -2,8 +2,8 @@
 """Collect a redacted, mostly read-only acceptance baseline on the target host.
 
 By default this reads repository metadata and checks configured SQLite stores in
-read-only mode. Pass --run-tests to execute the repository's pytest suite.
-No database initialization, migration, repair, or model/network request is made.
+read-only mode. Opt-in flags run pytest and/or bounded disposable-queue and
+loopback Ollama benchmarks. No database migration or repair is performed.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import argparse
 import importlib.metadata
 import ipaddress
 import json
+import math
 import platform
 import sqlite3
 import subprocess
