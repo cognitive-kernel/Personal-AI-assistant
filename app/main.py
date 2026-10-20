@@ -194,6 +194,7 @@ class SettingsPatch(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+    source_url: str | None = Field(default=None, max_length=2048)
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
@@ -323,7 +324,7 @@ def learning_curriculum(slug: str) -> dict[str, Any]:
 @app.post("/api/learning/jobs", status_code=202)
 def create_learning_job(request: LearningRequest) -> dict[str, Any]:
     try:
-        return learning.submit_job(request.topic, request.source_text)
+        return learning.submit_job(request.topic, request.source_text, source_url=request.source_url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
