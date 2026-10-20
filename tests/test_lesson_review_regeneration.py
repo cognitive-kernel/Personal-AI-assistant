@@ -59,6 +59,13 @@ def test_regeneration_uses_only_latest_review_for_same_topic(tmp_path, monkeypat
     monkeypatch.setattr(learning, "_enqueue_learning_job", lambda _job_id: {})
 
     regenerated_a = learning.regenerate_topic_learning(path_id, topic_a_id)
+    # The fixture marks Topic A complete after scheduling its regeneration so the
+    # independent Topic B context can be exercised without bypassing prerequisite policy.
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_path_topics SET status='completed', latest_score=100, latest_score_kind='learner_rubric' WHERE id=?",
+            (topic_a_id,),
+        )
     regenerated_b = learning.regenerate_topic_learning(path_id, topic_b_id)
     captured_prompts = []
 
