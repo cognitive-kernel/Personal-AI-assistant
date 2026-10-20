@@ -12,7 +12,7 @@ python scripts/run_target_host_baseline.py --run-tests --run-performance-benchma
 On Windows PowerShell, use an absolute output path appropriate to the host, for example:
 
 ```powershell
-python .\scripts\run_target_host_baseline.py --run-tests --output C:\Temp\target-host-baseline.json
+python .\scripts\run_target_host_baseline.py --run-tests --run-performance-benchmark --output C:\Temp\target-host-baseline.json
 ```
 
 ## What it checks
