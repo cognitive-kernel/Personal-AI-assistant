@@ -213,8 +213,8 @@ def test_word_count_practical_grader_counts_whitespace_separated_tokens():
 
     assert case["expected"] == 3
     assert learning_practical.grade_case_output(
-        exercise_id, case["id"], "succeeded", 0, "3\\n"
+        exercise_id, case["id"], "succeeded", 0, "3\n"
     )
     assert not learning_practical.grade_case_output(
-        exercise_id, case["id"], "succeeded", 0, "2\\n"
+        exercise_id, case["id"], "succeeded", 0, "2\n"
     )
