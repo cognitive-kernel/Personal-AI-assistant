@@ -212,7 +212,7 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         raise RuntimeError("ساختار HTML داشبورد معتبر نیست.")
     main_end += len("</main>")
     main = source[main_start:main_end]
-    tag_pattern = re.compile(r"</?section\\b[^>]*>", re.IGNORECASE)
+    tag_pattern = re.compile(r"</?section\b[^>]*>", re.IGNORECASE)
     blocks: list[tuple[int, int, str]] = []
     depth = 0
     block_start = -1
@@ -278,12 +278,29 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         )
         filtered_main = filtered_main.replace("</header>", "</header>" + overview, 1)
     else:
-        title_match = re.search(
-            rf'<section\\b[^>]*\\bid=["\\\']{re.escape(DASHBOARD_SECTIONS[slug])}["\\\'][^>]*>\\s*<h2>(.*?)</h2>',
-            filtered_main, re.IGNORECASE | re.DOTALL,
+        page_titles = {
+            "storage-health": "سلامت ذخیره‌سازی",
+            "chat": "گفتگو و پژوهش",
+            "learning": "یادگیری و بررسی شواهد",
+            "learning-paths": "مسیرهای آموزشی",
+            "knowledge": "دانش ذخیره‌شده",
+            "tasks": "مدیریت وظایف",
+            "experience-memory": "حافظهٔ تجربه",
+            "cloud-resources": "منابع پردازشی",
+            "cloud-plan": "برنامه‌ریزی منابع",
+            "kaggle-quota": "سهمیهٔ Kaggle",
+            "oci-limits": "محدودیت‌های OCI",
+            "sandbox": "محیط آزمایش ایزوله",
+            "self-improvement": "بهبود کد",
+            "settings": "تنظیمات",
+        }
+        import html
+        page_title = html.escape(page_titles[slug])
+        source = re.sub(
+            r"<title>.*?</title>",
+            f"<title>{page_title} — دستیار هوش مصنوعی شخصی</title>",
+            source, count=1, flags=re.DOTALL,
         )
-        title = title_match.group(1).strip() if title_match else "بخش داشبورد"
-        source = re.sub(r"<title>.*?</title>", f"<title>{title} — دستیار هوش مصنوعی شخصی</title>", source, count=1, flags=re.DOTALL)
 
     # The returned page contains only the selected section, not hidden copies of all sections.
     return source[:main_start] + filtered_main + source[main_end:]
