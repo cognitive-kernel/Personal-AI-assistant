@@ -37,6 +37,10 @@ Allowed baseline transitions:
 
 No direct L0-to-L2 or L0-to-L3 transition. Validate every transition in a domain service and enforce invariants with SQLite CHECK/trigger constraints where feasible. Use transactions so status and evidence cannot be updated inconsistently. Preserve history; do not physically delete knowledge as part of correction.
 
+## 3.1 Immutable factual-claim revision history
+
+Each factual-knowledge record has an append-only `factual_claim_revisions` history for content identity fields (claim text, normalized claim, hash, scope, and environment). Migration 17 seeds existing records as revision 1 and triggers record later content changes as new revisions. Lifecycle/evidence-status changes do not create content revisions. This history records changes; it does not itself increase trust or authorize activation.
+
 ## 4. Relational knowledge graph
 
 Represent relations in a separate table rather than one `alternative_knowledge_id` field:
@@ -83,7 +87,7 @@ Measure against a small human-adjudicated golden set. Track factual precision, f
 
 The following are implementation gates, not promises. Mark them complete only after code review and relevant tests pass:
 - [x] Canonical specification and generated prompts are generated from `docs/learning/learning-artifacts.json`; CI checks for drift.
-- [x] Python-only factual-knowledge slice with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables (migration 16).
+- [x] Python-only factual-knowledge slice with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables (migration 16); immutable content-revision history for each claim is added in migration 17.
 - [x] State transition service rejects invalid trust/lifecycle transitions.
 - [x] Database constraints cover status enums, evidence-level invariants, foreign keys, and relation uniqueness.
 - [x] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.
