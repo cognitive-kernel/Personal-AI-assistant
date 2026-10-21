@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -724,7 +725,7 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
     init_databases()
     with learning_connection() as conn:
         candidate = conn.execute(
-            "SELECT id, topic, content, source_kind, source_urls_json, content_sha256, status FROM temporary_knowledge_candidates WHERE id=?",
+            "SELECT id, topic, content, source_kind, source_urls_json, content_sha256, status, test_results_json FROM temporary_knowledge_candidates WHERE id=?",
             (candidate_id,),
         ).fetchone()
         if candidate is None:
@@ -854,25 +855,33 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
         source_doctests = count_doctest_examples(original_source)
         source_assertions = len(extract_source_assertion_blocks(original_source))
         sandbox_ready = bool(
-            __import__("os").environ.get("SANDBOX_PYTHON_IMAGE", "").strip()
+            os.environ.get("SANDBOX_PYTHON_IMAGE", "").strip()
             and (
-                __import__("os").environ.get("SANDBOX_DOCKER_EXECUTABLE", "").strip()
-                or __import__("shutil").which("docker")
+                os.environ.get("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+                or shutil.which("docker")
             )
         )
     except Exception:
         source_doctests, source_assertions, sandbox_ready = 0, 0, False
 
+    try:
+        full_test_results = json.loads(candidate["test_results_json"] or "[]")
+        if not isinstance(full_test_results, list):
+            full_test_results = []
+    except (TypeError, json.JSONDecodeError):
+        full_test_results = []
+    complete_test_set_passed = candidate["status"] == "passed" and bool(full_test_results)
+
     promotion_blockers = []
-    if candidate["status"] != "passed":
+    if not complete_test_set_passed:
         promotion_blockers.append("candidate_has_not_passed_a_complete_versioned_test_set")
     if any(item["status"] == "conflicting_evidence" for item in claims):
         promotion_blockers.append("unresolved_claim_level_source_conflicts")
-    if not tests:
+    if not tests and not complete_test_set_passed:
         promotion_blockers.append("no_recorded_test_run_with_a_trusted_oracle")
     if source_doctests + source_assertions and not sandbox_ready and not tests:
         promotion_blockers.append("source_examples_exist_but_isolated_sandbox_is_not_configured")
-    if not source_doctests and not source_assertions and not tests:
+    if not source_doctests and not source_assertions and not tests and not complete_test_set_passed:
         promotion_blockers.append("no_trusted_executable_examples_or_curated_reference_test_set")
 
     next_actions = []
