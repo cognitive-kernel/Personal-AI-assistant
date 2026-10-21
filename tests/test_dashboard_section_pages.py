@@ -1,6 +1,23 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.main import DASHBOARD_SECTIONS, app
+
+
+
+def test_dashboard_markup_is_physically_split_into_page_templates():
+    project_root = Path(__file__).resolve().parents[1]
+    shell = (project_root / "app" / "static" / "index.html").read_text(encoding="utf-8")
+    assert 'id="dashboard-overview"' not in shell
+    assert 'id="storage-degraded-banner"' in shell
+    for slug, section_id in DASHBOARD_SECTIONS.items():
+        assert f'id="{section_id}"' not in shell, (
+            f"{section_id} must not be embedded in the shared main-page shell"
+        )
+        template = project_root / "app" / "dashboard_sections" / f"{slug}.html"
+        assert template.is_file(), f"Missing dedicated page template for {slug}"
+        assert f'id="{section_id}"' in template.read_text(encoding="utf-8")
 
 
 def test_each_dashboard_section_returns_only_its_own_html_content():
