@@ -576,6 +576,11 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
                FROM knowledge_test_runs WHERE candidate_id=? ORDER BY id""",
             (candidate_id,),
         ).fetchall()
+        channel_attempts = conn.execute(
+            """SELECT channel, status, provider, details_json, created_at
+               FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()
     confidence = calculate_knowledge_confidence(candidate_id)
     return {
         "candidate_id": candidate_id,
@@ -583,6 +588,10 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
         "peer_consultations": [dict(row) for row in peers],
         "user_application_feedback": [dict(row) for row in feedback],
         "test_runs": [dict(row) for row in test_runs],
+        "channel_attempts": [
+            {**dict(row), "details": json.loads(row["details_json"] or "{}")}
+            for row in channel_attempts
+        ],
         "distinct_peer_providers": int(peer_count),
         "verification_status": confidence["verification_status"],
         "confidence": confidence,
@@ -679,6 +688,11 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
                FROM knowledge_user_feedback WHERE candidate_id=? ORDER BY id""",
             (candidate_id,),
         ).fetchall()]
+        attempts = [dict(row) for row in conn.execute(
+            """SELECT channel, status, provider, details_json, created_at
+               FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()]
 
     lesson = str(candidate["content"] or "")
     # Bound output size and ignore fragments too short to be meaningful claims.
@@ -766,6 +780,10 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
         "topic": candidate["topic"],
         "candidate_status": candidate["status"],
         "candidate_sha256": candidate["content_sha256"],
+        "channel_attempts": [
+            {**item, "details": json.loads(item["details_json"] or "{}")}
+            for item in attempts
+        ],
         "verification_status": calculate_knowledge_confidence(candidate_id)["verification_status"],
         "confidence": calculate_knowledge_confidence(candidate_id),
         "claims": claims,
