@@ -18,8 +18,8 @@ def extract_candidate_claims(content: str, candidate_id: int) -> list[dict[str, 
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer")
     sentences = [
-        re.sub(r"\\s+", " ", part).strip(" \\t\\r\\n•-*")
-        for part in re.split(r"(?<=[.!?؟])\\s+|\\n+", content)
+        re.sub(r"\s+", " ", part).strip(" \t\r\n•-*")
+        for part in re.split(r"(?<=[.!?؟])\s+|\n+", content)
     ]
     sentences = [sentence for sentence in sentences if len(sentence) >= 24][:100]
     return [
@@ -102,7 +102,6 @@ def evaluate_claim_test_coverage(
         issues.append("one_or_more_claims_have_no_tests")
     covered = len(valid_claim_ids) - len(missing)
     total = len(valid_claim_ids)
-    # Keep deterministic ordering for comparable reports and hashes.
     issues = sorted(set(issues))
     unknown_claim_ids = sorted(set(unknown_claim_ids))
     return {
