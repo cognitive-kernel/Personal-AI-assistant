@@ -479,6 +479,12 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
                FROM knowledge_user_feedback WHERE candidate_id=? GROUP BY outcome""",
             (candidate_id,),
         ).fetchall()
+        test_runs = conn.execute(
+            """SELECT suite_name, suite_version, suite_sha256, run_status, oracle_url,
+                      runner_name, duration_ms, created_at
+               FROM knowledge_test_runs WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()
     confidence = calculate_knowledge_confidence(candidate_id)
     return {
         "candidate_id": candidate_id,
