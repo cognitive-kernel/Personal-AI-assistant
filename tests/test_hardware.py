@@ -65,7 +65,7 @@ def test_runtime_limits_use_conservative_context_when_ram_field_is_missing():
         {"logical_cpu_count": 6},
     )
 
-    assert limits == {"cpu_threads": 6, "num_ctx": 2048}
+    assert limits == {"cpu_threads": 5, "num_ctx": 2048}
 
 
 
