@@ -3,6 +3,7 @@ import json
 
 from app import db, sandbox
 from app.learning_verification import count_doctest_examples, run_candidate_source_doctests
+from app.knowledge_review import get_candidate_review_summary
 
 
 def _candidate(tmp_path, monkeypatch, lesson):
@@ -75,6 +76,9 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
     assert row["status"] == "awaiting_test"
     assert test_run["run_status"] == "passed"
     assert test_run["suite_name"] == "source-doctest-suite"
+    summary = get_candidate_review_summary(candidate_id)
+    assert summary["confidence"]["components"]["scoped_source_example_tests"] == 5
+    assert summary["test_runs"][0]["run_status"] == "passed"
 
 
 def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
