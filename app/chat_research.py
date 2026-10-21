@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from . import chat_audit, claim_review, experience, experience_capture_consent, ollama, web_sources
+from . import chat_audit, claim_review, db, experience, experience_capture_consent, factual_knowledge, ollama, web_sources
 
 _TECHNICAL_MARKERS = (
     "error", "exception", "bug", "debug", "traceback", "stack trace", "code",
@@ -56,6 +56,57 @@ def should_use_research(message: str) -> bool:
         return False
     normalized = message.casefold()
     return any(marker in normalized for marker in _TECHNICAL_MARKERS)
+
+
+def _factual_knowledge_context(message: str) -> list[dict[str, Any]]:
+    """Retrieve eligible, query-relevant factual claims for Python questions only."""
+    if not re.search(r"(?i)\\bpython\\b|پایتون", message):
+        return []
+    try:
+        with db.learning_connection() as connection:
+            claims = factual_knowledge.search_retrievable_claims(connection, message, limit=3)
+    except Exception as exc:
+        # Retrieval must fail closed without blocking chat or leaking storage details.
+        logger.warning("Verified factual knowledge lookup failed (%s)", type(exc).__name__)
+        return []
+    context: list[dict[str, Any]] = []
+    for item in claims:
+        sources = [
+            {
+                "url": str(source.get("source_ref", ""))[:1000],
+                "sha256": str(source.get("source_hash", ""))[:100],
+                "excerpt": str(source.get("excerpt", ""))[:1000],
+            }
+            for source in item.get("evidence", [])[:3]
+            if str(source.get("source_ref", "")).startswith("https://")
+            and source.get("source_hash")
+        ]
+        tests = [
+            {
+                "name": str(test.get("test_name", ""))[:200],
+                "environment": (
+                    str(test.get("environment_name", "")) + " " +
+                    str(test.get("environment_version", "")
+                )).strip()[:100],
+                "result": str(test.get("result_summary", ""))[:500],
+            }
+            for test in item.get("passing_tests", [])[:3]
+        ]
+        if not sources or not tests:
+            continue
+        context.append({
+            "id": int(item["id"]),
+            "claim": str(item.get("claim", ""))[:1000],
+            "evidence_level": str(item.get("evidence_level", "")),
+            "environment": (
+                str(item.get("environment_name", "")) + " " +
+                str(item.get("environment_version", "")
+            )).strip()[:100],
+            "sources": sources,
+            "passing_tests": tests,
+            "status": "eligible_verified_factual_knowledge",
+        })
+    return context
 
 
 def _memory_context(message: str) -> dict[str, list[dict[str, Any]]]:
