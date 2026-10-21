@@ -182,6 +182,32 @@ def shutdown() -> None:
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
+
+_DASHBOARD_PAGE_IDS = {
+    "storage-health-section",
+    "chat-section",
+    "learning-section",
+    "learning-paths-section",
+    "knowledge-section",
+    "task-manager-section",
+    "experience-memory-section",
+    "cloud-resources-section",
+    "cloud-plan-section",
+    "kaggle-quota-section",
+    "oci-limits-section",
+    "sandbox-section",
+    "self-improvement-section",
+    "settings-section",
+}
+
+
+@app.get("/page/{page_id}", include_in_schema=False)
+def dashboard_section_page(page_id: str) -> FileResponse:
+    """Serve the shared dashboard shell for one allowlisted, separately addressable section."""
+    if page_id not in _DASHBOARD_PAGE_IDS:
+        raise HTTPException(status_code=404, detail="Dashboard page not found.")
+    return FileResponse(STATIC_DIR / "index.html")
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     history: list[dict[str, str]] = Field(default_factory=list, max_length=30)
