@@ -368,8 +368,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             (f"{prefix}_ollama_num_ctx", 512, 8192),
             (f"{prefix}_ollama_num_thread", 0, 64),
             (f"{prefix}_max_concurrent_jobs", 1, 8),
-            (f"{prefix}_source_max_chars", 1000, 100000),
         ])
+    numeric_ranges.extend([
+        ("learning_source_max_chars", 1000, 100000),
+        ("programming_source_max_chars", 1000, 65536),
+    ])
     for key, low, high in numeric_ranges:
         if key in values:
             try:
