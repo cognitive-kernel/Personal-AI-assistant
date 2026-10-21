@@ -267,26 +267,3 @@ def put_cached_review(
     )
 
 
-def enqueue_review_task(
-    knowledge_id: int,
-    *,
-    cache_key: str,
-    model_version: str,
-    prompt_version: str,
-) -> dict[str, Any]:
-    """Queue a deduplicated review request; the runtime must explicitly register its handler."""
-    if not cache_key or not model_version or not prompt_version:
-        raise KnowledgePolicyError("cache_key, model_version and prompt_version are required")
-    from . import task_manager
-
-    return task_manager.create_task(
-        "learning.review_factual_claim",
-        {
-            "knowledge_id": knowledge_id,
-            "cache_key": cache_key,
-            "model_version": model_version,
-            "prompt_version": prompt_version,
-        },
-        max_attempts=3,
-        dedupe_key=f"factual-review:{cache_key}",
-    )
