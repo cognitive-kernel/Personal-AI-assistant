@@ -1209,14 +1209,15 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert page.locator(".skip-link").get_attribute("href") == "#main-content"
         navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
         assert navigation.is_visible()
-        current_links = navigation.locator('a[aria-current="location"]')
-        assert current_links.count() == 1, "Exactly one navigation item should identify the current section"
-        assert current_links.get_attribute("href") == "#storage-health-section"
+        current_links = navigation.locator('a[aria-current="page"]')
+        assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
+        assert current_links.get_attribute("href") == "/"
         navigation.get_by_role("link", name="وظایف").click()
-        page.wait_for_function(
-            "document.querySelector('.dashboard-nav a[aria-current=\\\"location\\\"]')?.getAttribute('href') === '#task-manager-section'",
-            timeout=5000,
-        )
+        page.wait_for_url("**/sections/tasks", timeout=5000)
+        section_navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
+        current_links = section_navigation.locator('a[aria-current="page"]')
+        assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
+        assert current_links.get_attribute("href") == "/sections/tasks"
         shell = page.locator(".dashboard-shell")
         assert shell.count() == 1
         for target in (
@@ -1226,7 +1227,6 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
             "oci-limits-section", "sandbox-section", "self-improvement-section",
             "learning-paths-section", "knowledge-section", "settings-section",
         ):
-            assert navigation.locator(f'a[href="#{target}"]').count() == 1
             assert page.locator(f"#{target}").count() == 1
         stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
         assert stylesheet.status == 200
