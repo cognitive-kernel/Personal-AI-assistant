@@ -39,6 +39,115 @@ async function waitForLearningJob(jobId, output) {
  throw new Error("پس از ۱۵ دقیقه انتظار، هنوز نتیجه نهایی دریافت نشد؛ کار ممکن است در پس‌زمینه ادامه داشته باشد. شناسه کار: " + jobId);
 }
 
+const learningStatusLabels = {
+ queued: "در صف", running: "در حال اجرا", completed: "درس تولید شد",
+ rejected: "ردشده در کنترل کیفیت", failed: "ناموفق", cancelled: "لغوشده"
+};
+const taskStatusLabels = {
+ queued: "در صف", running: "در حال اجرا", pause_requested: "درخواست توقف موقت",
+ paused: "متوقف موقت", cancel_requested: "درخواست لغو", succeeded: "اجرای وظیفه تمام شد",
+ failed: "اجرای وظیفه ناموفق", cancelled: "وظیفه لغو شد"
+};
+
+function appendHistoryText(container, label, value) {
+ if (value === null || value === undefined || value === "") return;
+ const line = document.createElement("p");
+ line.textContent = label + ": " + (typeof value === "string" ? value : JSON.stringify(value, null, 2));
+ container.append(line);
+}
+
+function renderTopicJobHistory(output, topic, jobs, tasksByJobId) {
+ const history = document.createElement("details");
+ history.className = "path-topic-job-history";
+ const summary = document.createElement("summary");
+ summary.textContent = "سوابق یادگیری و گزارش‌های ذخیره‌شده (" + jobs.length + ")";
+ history.append(summary);
+ if (!jobs.length) {
+  const empty = document.createElement("p");
+  empty.textContent = "هنوز وظیفه‌ای برای این درس ثبت نشده است.";
+  history.append(empty);
+  output.append(history);
+  return;
+ }
+ jobs.forEach(job => {
+  const record = document.createElement("details");
+  record.className = "path-topic-job-record";
+  const heading = document.createElement("summary");
+  const domainStatus = learningStatusLabels[job.status] || job.status || "نامشخص";
+  const task = tasksByJobId.get(Number(job.id));
+  const queueStatus = task ? (taskStatusLabels[task.status] || task.status) : "وظیفه صف یافت نشد";
+  heading.textContent = "درس #" + job.id + " — " + domainStatus + "؛ صف: " + queueStatus;
+  record.append(heading);
+  appendHistoryText(record, "موضوع", job.topic);
+  appendHistoryText(record, "ایجاد", job.created_at);
+  appendHistoryText(record, "آخرین تغییر", job.updated_at);
+  appendHistoryText(record, "نوع منبع", job.source_kind);
+  appendHistoryText(record, "خطای درس", job.error);
+  if (job.quality) appendHistoryText(record, "امتیاز کیفیت", job.quality.score + "/100");
+  if (job.lesson) appendHistoryText(record, "نتیجه درس", job.lesson);
+  if (job.assessment) appendHistoryText(record, "آزمون", job.assessment.questions || job.assessment.learning_outcomes || []);
+  if (job.evidence && job.evidence.length) {
+   const evidence = document.createElement("ul");
+   job.evidence.forEach(item => {
+    const entry = document.createElement("li");
+    entry.textContent = [item.evidence_type, item.source_ref, item.note].filter(Boolean).join(" — ");
+    evidence.append(entry);
+   });
+   record.append(evidence);
+  }
+  if (task) {
+   appendHistoryText(record, "شناسه وظیفه", task.id);
+   appendHistoryText(record, "تلاش‌ها", (task.attempts || 0) + "/" + (task.max_attempts || "?"));
+   appendHistoryText(record, "آخرین خطای صف", task.error);
+   if (task.result) appendHistoryText(record, "نتیجه اجرای صف", task.result);
+   const eventsButton = document.createElement("button");
+   eventsButton.type = "button";
+   eventsButton.textContent = "بارگذاری تاریخچه رویدادها";
+   const eventsOutput = document.createElement("div");
+   eventsOutput.setAttribute("aria-live", "polite");
+   eventsButton.addEventListener("click", async () => {
+    eventsButton.disabled = true;
+    eventsOutput.textContent = "در حال بارگذاری رویدادهای ذخیره‌شده…";
+    try {
+     const response = await learningApi("/api/tasks/" + task.id + "/events?limit=100");
+     const events = response.events || [];
+     eventsOutput.replaceChildren();
+     if (!events.length) {
+      eventsOutput.textContent = "برای این وظیفه رویدادی ثبت نشده است.";
+     } else {
+      const list = document.createElement("ol");
+      events.slice().reverse().forEach(event => {
+       const item = document.createElement("li");
+       const change = event.event_type === "status_changed"
+        ? ((event.old_status || "—") + " ← " + (event.new_status || "—"))
+        : (event.new_status || event.event_type || "رویداد");
+       item.textContent = (event.occurred_at || "") + " — " + event.event_type + " — " + change;
+       list.append(item);
+      });
+      eventsOutput.append(list);
+     }
+    } catch (error) {
+     eventsOutput.textContent = "بارگذاری تاریخچه ناموفق بود: " + error.message;
+    } finally {
+     eventsButton.disabled = false;
+    }
+   });
+   record.append(eventsButton, eventsOutput);
+  } else {
+   appendHistoryText(record, "تاریخچه صف", "رکورد صف برای این درس در ۱۰۰ وظیفه اخیر پیدا نشد.");
+  }
+  outputForHistory(record, job);
+  history.append(record);
+ });
+ output.append(history);
+}
+
+function outputForHistory(record, job) {
+ if (job.status === "rejected" && !job.error) {
+  appendHistoryText(record, "توضیح وضعیت", "وظیفه صف ممکن است موفق شده باشد، اما خود درس در کنترل کیفیت رد شده است. این دو وضعیت متفاوت‌اند.");
+ }
+}
+
 async function refreshLearningRecommendations() {
  const output = learningEl("learning-recommendations-output");
  if (!output) return;
@@ -411,6 +520,24 @@ async function loadLearningCurricula() {
 async function loadLearningPaths() {
  try {
   const data = await learningApi("/api/learning/paths");
+  const [jobData, taskData] = await Promise.all([
+   learningApi("/api/learning/jobs?limit=200").catch(() => ({jobs: []})),
+   learningApi("/api/tasks?limit=100").catch(() => ({tasks: []}))
+  ]);
+  const jobsByTopicId = new Map();
+  (jobData.jobs || []).forEach(job => {
+   if (job.path_topic_id == null) return;
+   const topicId = Number(job.path_topic_id);
+   if (!jobsByTopicId.has(topicId)) jobsByTopicId.set(topicId, []);
+   jobsByTopicId.get(topicId).push(job);
+  });
+  jobsByTopicId.forEach(items => items.sort((a, b) => Number(b.id) - Number(a.id)));
+  const tasksByJobId = new Map();
+  (taskData.tasks || []).forEach(task => {
+   if (task.task_type === "learning.run_job" && task.payload && task.payload.job_id != null) {
+    tasksByJobId.set(Number(task.payload.job_id), task);
+   }
+  });
   const container = learningEl("paths-container");
   container.replaceChildren();
   learningEl("paths-output").textContent = "تعداد مسیرهای ثبت‌شده: " + data.paths.length;
@@ -596,6 +723,8 @@ async function loadLearningPaths() {
     stop.disabled = true;
     const output = document.createElement("div");
     output.className = "path-topic-lesson";
+    const savedJobs = (jobsByTopicId.get(Number(topic.id)) || []).slice(0, 5);
+    renderTopicJobHistory(output, topic, savedJobs, tasksByJobId);
     const reviewLabel = document.createElement("label");
     reviewLabel.textContent = "میزان یادآوری (۰ تا ۵)";
     const reviewRating = document.createElement("select");
