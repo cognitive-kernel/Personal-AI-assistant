@@ -3,6 +3,7 @@ import json
 from app import db, experience, experience_feedback, ollama
 from app.db import learning_connection
 from app.ollama import OllamaError
+from app import experience_retrieval
 
 
 def _setup(tmp_path, monkeypatch):
@@ -111,7 +112,7 @@ def test_embedding_cache_is_versioned_and_old_vectors_are_not_reused(tmp_path, m
             "WHERE experience_id=? ORDER BY experience_version",
             (item["id"],),
         ).fetchall()
-    assert [row[0] for row in versions] == [item["version"], updated["version"]]
+    assert [row[0] for row in versions] == [updated["version"]]
     assert len(calls) == 4
 
 
@@ -175,3 +176,49 @@ def test_explicit_negative_feedback_reduces_retrieval_rank_without_unverifying(
         "retrieval_feedback"
     ]["rating"] == -1
     assert experience.get_experience(preferred["id"])["status"] == "verified"
+
+
+
+def test_embedding_cache_metrics_report_hits_misses_bytes_and_estimated_savings(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    experience_retrieval.reset_embedding_cache_metrics()
+    _verified("Cache metrics topic", "Measure embedding cache reuse.", "Reuse derived vectors.")
+    calls = []
+
+    def fake_embed(texts, model=None):
+        calls.append(list(texts))
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(ollama, "embed", fake_embed)
+    experience.search_relevant_experiences("Cache metrics topic")
+    first = experience_retrieval.embedding_cache_metrics()
+    assert first["misses"] == 1
+    assert first["hits"] == 0
+    assert first["embedded_vectors"] == 1
+    assert first["persistent_cache_rows"] == 1
+    assert first["persistent_cache_bytes"] > 0
+
+    experience.search_relevant_experiences("Cache metrics topic")
+    second = experience_retrieval.embedding_cache_metrics()
+    assert second["hits"] == 1
+    assert second["misses"] == 1
+    assert second["estimated_seconds_saved"] >= 0
+    assert second["persistent_cache_rows"] == 1
+    assert len(calls) == 3  # query vectors are fresh; experience vector is reused
+
+
+def test_embedding_cache_enforces_row_limit(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(experience_retrieval, "_MAX_EMBEDDING_CACHE_ROWS", 3)
+    items = [
+        _verified(f"Bounded cache item {index}", "Cache size test.", "Derived vector.")
+        for index in range(5)
+    ]
+    experience_retrieval._save_embeddings(items, [[1.0, 0.0] for _ in items], "test-model")
+    metrics = experience_retrieval.embedding_cache_metrics()
+    assert metrics["persistent_cache_rows"] == 3
+    assert metrics["cache_row_limit"] == 3
+    with learning_connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM learning_experience_embeddings"
+        ).fetchone()[0] == 3
