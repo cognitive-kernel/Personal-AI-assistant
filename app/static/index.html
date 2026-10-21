@@ -255,7 +255,7 @@ async function refreshStorageHealth() {
   output.textContent="بررسی سلامت ذخیره‌سازی ناموفق بود: "+error.message;
  }
 }
-el("refresh-storage-health").addEventListener("click",refreshStorageHealth);
+el("refresh-storage-health")?.addEventListener("click",refreshStorageHealth);
 async function refreshStorageBackups() {
  const output=el("storage-backups-list");
  output.replaceChildren();
@@ -274,7 +274,7 @@ async function refreshStorageBackups() {
    const restore=document.createElement("button");
    restore.type="button";
    restore.textContent="بازیابی آزمایشی در پوشهٔ جدا";
-   restore.addEventListener("click",()=>stageBackupRestore(item.id,restore));
+   restore?.addEventListener("click",()=>stageBackupRestore(item.id,restore));
    card.append(restore);
    output.append(card);
   });
@@ -322,7 +322,7 @@ async function pruneStorageBackups() {
  }
 }
 
-el("prune-storage-backups").addEventListener("click",pruneStorageBackups);
+el("prune-storage-backups")?.addEventListener("click",pruneStorageBackups);
 async function pruneRestoreStaging() {
  const output=el("storage-backup-output");
  const button=el("prune-restore-staging");
@@ -348,7 +348,7 @@ async function pruneRestoreStaging() {
   button.disabled=false;
  }
 }
-el("prune-restore-staging").addEventListener("click",pruneRestoreStaging);
+el("prune-restore-staging")?.addEventListener("click",pruneRestoreStaging);
 async function createStorageBackup() {
  const output=el("storage-backup-output");
  if(!window.confirm("یک پشتیبان کامل از دیتابیس‌های تنظیمات، یادگیری و منابع ابری ساخته شود؟ این کار فایل جدیدی روی دیسک ایجاد می‌کند.")) return;
@@ -365,8 +365,8 @@ async function createStorageBackup() {
   button.disabled=false;
  }
 }
-el("create-storage-backup").addEventListener("click",createStorageBackup);
-el("refresh-storage-backups").addEventListener("click",refreshStorageBackups);
+el("create-storage-backup")?.addEventListener("click",createStorageBackup);
+el("refresh-storage-backups")?.addEventListener("click",refreshStorageBackups);
 let taskPollScheduled=false;
 function updateTaskDashboard() {
  const container=el("tasks-container");
@@ -426,11 +426,11 @@ function updateTaskDashboard() {
    clearFilters.type="button";
    clearFilters.className="task-empty-clear";
    clearFilters.textContent="پاک کردن فیلترها";
-   clearFilters.addEventListener("click",()=>{
+   clearFilters?.addEventListener("click",()=>{
     el("task-search").value="";
     el("task-status-filter").value="";
     taskNextCursor=null;
-    refreshTasks();
+    if(el("task-manager-section")) refreshTasks();
    });
    emptyState.append(clearFilters);
   }
@@ -511,7 +511,7 @@ function renderTasks(tasks,{append=false}={}) {
   const selectLabel=document.createElement("label"); selectLabel.className="task-select-label";
   const selectInput=document.createElement("input"); selectInput.type="checkbox"; selectInput.className="task-select";
   selectInput.setAttribute("aria-label","انتخاب وظیفه "+task.id);
-  selectInput.addEventListener("change",updateTaskDashboard);
+  selectInput?.addEventListener("change",updateTaskDashboard);
   selectLabel.append(selectInput,document.createTextNode(" انتخاب")); card.append(selectLabel);
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
   const statusLine=appendText(card,"p","وضعیت: "+taskStatusLabel+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status task-status-line");
@@ -560,7 +560,7 @@ function renderTasks(tasks,{append=false}={}) {
    const priorityInput=document.createElement("input"); priorityInput.type="number"; priorityInput.min="-100000"; priorityInput.max="100000"; priorityInput.step="1"; priorityInput.value=String(task.priority??0);
    priorityInput.setAttribute("aria-label","اولویت وظیفه "+task.id);
    const prioritySave=document.createElement("button"); prioritySave.type="button"; prioritySave.textContent="ذخیره اولویت"; prioritySave.setAttribute("aria-label","ذخیره اولویت وظیفه "+task.id);
-   prioritySave.addEventListener("click",async()=>{
+   prioritySave?.addEventListener("click",async()=>{
     const value=Number(priorityInput.value);
     if(!Number.isInteger(value)||value < -100000||value > 100000) {
      el("tasks-output").textContent="اولویت باید عدد صحیح بین ۱۰۰۰۰۰- و ۱۰۰۰۰۰ باشد."; priorityInput.focus(); return;
@@ -586,7 +586,7 @@ function renderTasks(tasks,{append=false}={}) {
    const nowOffset=new Date().getTimezoneOffset()*60000;
    scheduleInput.min=new Date(Date.now()-nowOffset).toISOString().slice(0,16);
    const scheduleSave=document.createElement("button"); scheduleSave.type="button"; scheduleSave.textContent="ذخیره زمان"; scheduleSave.setAttribute("aria-label","ذخیره زمان اجرای وظیفه "+task.id);
-   scheduleSave.addEventListener("click",async()=>{
+   scheduleSave?.addEventListener("click",async()=>{
     if(!scheduleInput.value) { el("tasks-output").textContent="زمان اجرای وظیفه را مشخص کنید."; scheduleInput.focus(); return; }
     const scheduledAt=new Date(scheduleInput.value);
     if(Number.isNaN(scheduledAt.getTime())) { el("tasks-output").textContent="زمان واردشده معتبر نیست."; scheduleInput.focus(); return; }
@@ -631,7 +631,7 @@ function renderTasks(tasks,{append=false}={}) {
       historyLoadMore.type="button";
       historyLoadMore.textContent="رویدادهای قدیمی‌تر";
       historyLoadMore.setAttribute("aria-label","بارگذاری رویدادهای قدیمی‌تر وظیفه "+task.id);
-      historyLoadMore.addEventListener("click",async()=>{
+      historyLoadMore?.addEventListener("click",async()=>{
        try { await loadTaskHistory({append:true}); }
        catch(error) { if(historyOutput) historyOutput.textContent="تاریخچه قابل دریافت نیست: "+error.message; }
       });
@@ -645,7 +645,7 @@ function renderTasks(tasks,{append=false}={}) {
     if(historyLoadMore) historyLoadMore.disabled=false;
    }
   }
-  historyButton.addEventListener("click",async()=>{
+  historyButton?.addEventListener("click",async()=>{
    try { await loadTaskHistory(); }
    catch(error) {
     if(!historyOutput) {
@@ -659,7 +659,7 @@ function renderTasks(tasks,{append=false}={}) {
   actions.append(historyButton);
   const addAction=(label,path)=>{
    const button=document.createElement("button"); button.type="button"; button.textContent=label;
-   button.addEventListener("click",async()=>{
+   button?.addEventListener("click",async()=>{
     button.disabled=true;
     try { await api(path,{method:"POST"}); await refreshTasks(); }
     catch(error) { el("tasks-output").textContent="عملیات وظیفه ناموفق بود: "+error.message; button.disabled=false; }
@@ -697,26 +697,26 @@ async function refreshTasks({append=false}={}) {
    el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
   }
  }
- el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
-el("task-status-filter").addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
-el("task-search").addEventListener("input",updateTaskDashboard);
-el("task-select-all").addEventListener("change",()=>{
+ el("refresh-tasks")?.addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
+el("task-status-filter")?.addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
+el("task-search")?.addEventListener("input",updateTaskDashboard);
+el("task-select-all")?.addEventListener("change",()=>{
  const checked=el("task-select-all").checked;
  el("tasks-container").querySelectorAll(".task-select").forEach(input=>{input.checked=checked;});
  updateTaskDashboard();
 });
-el("bulk-pause-tasks").addEventListener("click",()=>runBulkTaskAction("pause"));
-el("bulk-resume-tasks").addEventListener("click",()=>runBulkTaskAction("resume"));
-el("bulk-cancel-tasks").addEventListener("click",()=>runBulkTaskAction("cancel"));
-el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
+el("bulk-pause-tasks")?.addEventListener("click",()=>runBulkTaskAction("pause"));
+el("bulk-resume-tasks")?.addEventListener("click",()=>runBulkTaskAction("resume"));
+el("bulk-cancel-tasks")?.addEventListener("click",()=>runBulkTaskAction("cancel"));
+el("load-more-tasks")?.addEventListener("click",()=>refreshTasks({append:true}));
 refreshStorageHealth();
 refreshStorageBackups();
-el("refresh").addEventListener("click", refresh);
-el("refresh-knowledge").addEventListener("click", async () => {
+el("refresh")?.addEventListener("click", refresh);
+el("refresh-knowledge")?.addEventListener("click", async () => {
  try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
  catch(error) { el("knowledge-output").textContent=error.message; }
 });
-el("chat-form").addEventListener("submit", async event => {
+el("chat-form")?.addEventListener("submit", async event => {
  event.preventDefault();
  const button=el("chat-form").querySelector('button[type="submit"]');
  const message=el("message").value;
@@ -765,7 +765,7 @@ function showLearningJob(result) {
   answer.name="answer"; label.append(answer); form.append(label);
  });
  const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ثبت پاسخ‌ها"; form.append(submit);
- form.addEventListener("submit",async event=>{
+ form?.addEventListener("submit",async event=>{
   event.preventDefault(); submit.disabled=true;
   try {
    const answers=Array.from(form.querySelectorAll("textarea")).map(input=>input.value);
@@ -776,7 +776,7 @@ function showLearningJob(result) {
  });
  container.append(form);
 }
-el("learning-form").addEventListener("submit", async event => {
+el("learning-form")?.addEventListener("submit", async event => {
  event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
  el("assessment-form-container").replaceChildren();
  try {
@@ -819,9 +819,9 @@ async function refreshLearningCandidateReview() {
   output.textContent=JSON.stringify({review,claim_verification_matrix:claimMatrix},null,2);
  } catch(error) { output.textContent="دریافت گزارش شواهد یا ماتریس ادعا ناموفق بود: "+error.message; }
 }
-el("refresh-learning-candidates").addEventListener("click",()=>refreshLearningCandidates());
-el("learning-candidate-select").addEventListener("change",()=>refreshLearningCandidateReview());
-el("research-learning-candidate").addEventListener("click",async()=>{
+el("refresh-learning-candidates")?.addEventListener("click",()=>refreshLearningCandidates());
+el("learning-candidate-select")?.addEventListener("change",()=>refreshLearningCandidateReview());
+el("research-learning-candidate")?.addEventListener("click",async()=>{
  const id=el("learning-candidate-select").value;
  if(!id) return;
  const button=el("research-learning-candidate");
@@ -835,7 +835,7 @@ el("research-learning-candidate").addEventListener("click",async()=>{
   el("learning-candidate-review").textContent="بازبینی انجام نشد: "+error.message;
  } finally { button.disabled=!el("learning-candidate-select").value; }
 });
-el("learning-field-feedback-form").addEventListener("submit",async event=>{
+el("learning-field-feedback-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const id=el("learning-candidate-select").value;
  if(!id) { el("learning-candidate-review").textContent="ابتدا یک نامزد را انتخاب کنید."; return; }
@@ -852,7 +852,7 @@ el("learning-field-feedback-form").addEventListener("submit",async event=>{
   await refreshLearningCandidates(id);
  } catch(error) { el("learning-candidate-review").textContent="ثبت بازخورد ناموفق بود: "+error.message; }
 });
-el("settings-form").addEventListener("submit", async event => {
+el("settings-form")?.addEventListener("submit", async event => {
  event.preventDefault();
  try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
@@ -989,8 +989,8 @@ function renderCloudCandidates(candidates) {
       reject.disabled=candidate.freshness_status==="stale";
      }
     };
-    accept.addEventListener("click",()=>sendClaimReview("accepted"));
-    reject.addEventListener("click",()=>sendClaimReview("rejected"));
+    accept?.addEventListener("click",()=>sendClaimReview("accepted"));
+    reject?.addEventListener("click",()=>sendClaimReview("rejected"));
     controls.append(accept,reject,claimFeedback); item.append(controls); claimList.append(item);
    });
    details.append(claimList);
@@ -1006,7 +1006,7 @@ function renderCloudCandidates(candidates) {
    const option=document.createElement("option"); option.value=value; option.textContent=label; review.append(option);
   });
   if(["approved","rejected"].includes(candidate.review_status)) review.value=candidate.review_status;
-  review.addEventListener("change",()=>{if(review.value==="rejected"&&availability.value==="available")availability.value="unknown";});
+  review?.addEventListener("change",()=>{if(review.value==="rejected"&&availability.value==="available")availability.value="unknown";});
   reviewLabel.append(review); grid.append(reviewLabel);
   const availabilityLabel=document.createElement("label"); availabilityLabel.textContent="وضعیت ظرفیت";
   const availability=document.createElement("select");
@@ -1027,7 +1027,7 @@ function renderCloudCandidates(candidates) {
   submit.disabled=candidate.freshness_status==="stale";
   actions.append(submit); form.append(actions);
   const feedback=document.createElement("p"); feedback.className="muted"; form.append(feedback);
-  form.addEventListener("submit",async event=>{
+  form?.addEventListener("submit",async event=>{
    event.preventDefault(); feedback.textContent="در حال ذخیره…"; submit.disabled=true;
    try {
     let quotaValue;
@@ -1053,9 +1053,9 @@ function renderCloudCandidates(candidates) {
   details.append(form); card.append(details); container.append(card);
  });
 }
-el("cloud-refresh").addEventListener("click",refreshCloudResources);
-el("cloud-candidate-limit").addEventListener("change",refreshCloudResources);
-el("cloud-discover").addEventListener("click",async()=>{
+el("cloud-refresh")?.addEventListener("click",refreshCloudResources);
+el("cloud-candidate-limit")?.addEventListener("change",refreshCloudResources);
+el("cloud-discover")?.addEventListener("click",async()=>{
  const output=el("cloud-output");
  const button=el("cloud-discover");
  button.disabled=true;
@@ -1111,7 +1111,7 @@ el("cloud-discover").addEventListener("click",async()=>{
  }
 });
 
-el("cloud-plan-run").addEventListener("click",async()=>{
+el("cloud-plan-run")?.addEventListener("click",async()=>{
  const output=el("cloud-plan-output");
  const cpuRaw=el("plan-min-cpu").value;
  const memoryRaw=el("plan-min-memory").value;
@@ -1167,7 +1167,7 @@ async function refreshKaggleQuota() {
   el("kaggle-quota-status").textContent="وضعیت سهمیه قابل دریافت نیست: "+error.message;
  }
 }
-el("kaggle-quota-enable").addEventListener("click",async()=>{
+el("kaggle-quota-enable")?.addEventListener("click",async()=>{
  const path=el("kaggle-cli-path").value.trim();
  if(!el("kaggle-quota-consent").checked) {
   el("kaggle-quota-status").textContent="برای فعال‌سازی، ابتدا چک‌باکس رضایت صریح را علامت بزنید.";
@@ -1188,7 +1188,7 @@ el("kaggle-quota-enable").addEventListener("click",async()=>{
   el("kaggle-quota-status").textContent="رضایت ذخیره نشد: "+error.message;
  }
 });
-el("kaggle-quota-revoke").addEventListener("click",async()=>{
+el("kaggle-quota-revoke")?.addEventListener("click",async()=>{
  el("kaggle-quota-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/cloud-resources/kaggle-quota/consent",{
@@ -1202,7 +1202,7 @@ el("kaggle-quota-revoke").addEventListener("click",async()=>{
   el("kaggle-quota-status").textContent="لغو رضایت انجام نشد: "+error.message;
  }
 });
-el("kaggle-quota-refresh").addEventListener("click",async()=>{
+el("kaggle-quota-refresh")?.addEventListener("click",async()=>{
  el("kaggle-quota-status").textContent="در حال خواندن سهمیه از CLI رسمی…";
  try {
   await api("/api/cloud-resources/kaggle-quota/refresh",{method:"POST"});
@@ -1239,7 +1239,7 @@ async function refreshOciLimits() {
   el("oci-limits-status").textContent="وضعیت محدودیت‌های OCI قابل دریافت نیست: "+error.message;
  }
 }
-el("oci-limits-enable").addEventListener("click",async()=>{
+el("oci-limits-enable")?.addEventListener("click",async()=>{
  if(!el("oci-limits-consent").checked) {
   el("oci-limits-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -1260,7 +1260,7 @@ el("oci-limits-enable").addEventListener("click",async()=>{
   el("oci-limits-status").textContent="رضایت OCI ذخیره نشد: "+error.message;
  }
 });
-el("oci-limits-revoke").addEventListener("click",async()=>{
+el("oci-limits-revoke")?.addEventListener("click",async()=>{
  el("oci-limits-status").textContent="در حال لغو رضایت و پاک‌سازی snapshotها…";
  try {
   await api("/api/cloud-resources/oci-limits/consent",{
@@ -1277,7 +1277,7 @@ el("oci-limits-revoke").addEventListener("click",async()=>{
   el("oci-limits-status").textContent="لغو رضایت OCI انجام نشد: "+error.message;
  }
 });
-el("oci-limits-refresh").addEventListener("click",async()=>{
+el("oci-limits-refresh")?.addEventListener("click",async()=>{
  el("oci-limits-status").textContent="در حال اجرای فرمان خواندنی OCI limits value list…";
  try {
   await api("/api/cloud-resources/oci-limits/refresh",{method:"POST"});
@@ -1311,8 +1311,8 @@ async function refreshSandbox() {
   status.textContent="وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند. "+error.message;
  }
 }
-el("sandbox-refresh").addEventListener("click",refreshSandbox);
-el("sandbox-cancel").addEventListener("click",async()=>{
+el("sandbox-refresh")?.addEventListener("click",refreshSandbox);
+el("sandbox-cancel")?.addEventListener("click",async()=>{
  if(activeSandboxTaskId===null) return;
  const taskId=activeSandboxTaskId;
  el("sandbox-cancel").disabled=true;
@@ -1325,7 +1325,7 @@ el("sandbox-cancel").addEventListener("click",async()=>{
   el("sandbox-cancel").disabled=false;
  }
 });
-el("sandbox-consent-grant").addEventListener("click",async()=>{
+el("sandbox-consent-grant")?.addEventListener("click",async()=>{
  if(!el("sandbox-consent-confirm").checked) {
   el("sandbox-status").textContent="برای ثبت رضایت، ابتدا چک‌باکس رضایت صریح را فعال کنید.";
   return;
@@ -1339,7 +1339,7 @@ el("sandbox-consent-grant").addEventListener("click",async()=>{
   el("sandbox-run").disabled=true;
  }
 });
-el("sandbox-consent-revoke").addEventListener("click",async()=>{
+el("sandbox-consent-revoke")?.addEventListener("click",async()=>{
  el("sandbox-status").textContent="در حال لغو رضایت…";
  el("sandbox-run").disabled=true;
  try {
@@ -1349,7 +1349,7 @@ el("sandbox-consent-revoke").addEventListener("click",async()=>{
   el("sandbox-status").textContent="لغو رضایت ناموفق بود: "+error.message;
  }
 });
-el("sandbox-run-form").addEventListener("submit",async event=>{
+el("sandbox-run-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const output=el("sandbox-run-output");
  const source=el("sandbox-source").value;
@@ -1448,7 +1448,7 @@ function renderExperienceItems(items) {
    const sourceHistoryButton=document.createElement("button");
    sourceHistoryButton.type="button"; sourceHistoryButton.textContent="نمایش تاریخچهٔ بازبینی منابع";
    const sourceCheckOutput=document.createElement("pre");
-   refreshSourcesButton.addEventListener("click",async()=>{
+   refreshSourcesButton?.addEventListener("click",async()=>{
     if(!window.confirm("فقط نشانی‌های HTTPS ذخیره‌شده بررسی می‌شوند. متن کامل صفحه ذخیره نمی‌شود و تجربه خودکار تأیید یا ویرایش نخواهد شد. ادامه می‌دهید؟")) return;
     refreshSourcesButton.disabled=true; sourceCheckOutput.textContent="در حال بررسی حداکثر سه منبع…";
     try {
@@ -1461,7 +1461,7 @@ function renderExperienceItems(items) {
     } catch(error) { sourceCheckOutput.textContent="بازبینی منابع ناموفق بود: "+error.message; }
     finally { refreshSourcesButton.disabled=false; }
    });
-   sourceHistoryButton.addEventListener("click",async()=>{
+   sourceHistoryButton?.addEventListener("click",async()=>{
     sourceCheckOutput.textContent="در حال دریافت تاریخچه…";
     try {
      const result=await api("/api/experiences/"+item.id+"/source-checks");
@@ -1483,7 +1483,7 @@ function renderExperienceItems(items) {
   const versionsButton=document.createElement("button");
   versionsButton.type="button"; versionsButton.textContent="نمایش تاریخچهٔ نسخه‌ها";
   const versionsOutput=document.createElement("pre");
-  versionsButton.addEventListener("click",async()=>{
+  versionsButton?.addEventListener("click",async()=>{
    versionsOutput.textContent="در حال دریافت تاریخچه…";
    try {
     const result=await api("/api/experiences/"+item.id+"/versions");
@@ -1521,9 +1521,9 @@ function renderExperienceItems(items) {
      clearFeedbackButton.disabled=!result.feedback;
     } catch(error) { feedbackStatus.textContent="وضعیت رأی دریافت نشد: "+error.message; }
    };
-   positiveButton.addEventListener("click",()=>sendFeedback(1));
-   negativeButton.addEventListener("click",()=>sendFeedback(-1));
-   clearFeedbackButton.addEventListener("click",()=>sendFeedback(null));
+   positiveButton?.addEventListener("click",()=>sendFeedback(1));
+   negativeButton?.addEventListener("click",()=>sendFeedback(-1));
+   clearFeedbackButton?.addEventListener("click",()=>sendFeedback(null));
    card.append(feedbackStatus,positiveButton,negativeButton,clearFeedbackButton);
    loadFeedback();
   }
@@ -1557,7 +1557,7 @@ function renderExperienceItems(items) {
   const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ذخیرهٔ بازبینی";
   const feedback=document.createElement("p"); feedback.className="muted";
   form.append(submit,feedback);
-  form.addEventListener("submit",async event=>{
+  form?.addEventListener("submit",async event=>{
    event.preventDefault(); submit.disabled=true; feedback.textContent="در حال ذخیره…";
    try {
     let sourceEvidence,testPlan;
@@ -1601,7 +1601,7 @@ function renderExperienceItems(items) {
    const runButton=document.createElement("button"); runButton.type="submit"; runButton.textContent="صف‌بندی آزمون";
    const runFeedback=document.createElement("pre"); runFeedback.className="muted";
    runnerForm.append(runButton,runFeedback);
-   runnerForm.addEventListener("submit",async event=>{
+   runnerForm?.addEventListener("submit",async event=>{
     event.preventDefault(); runButton.disabled=true; runFeedback.textContent="در حال صف‌بندی آزمون…";
     try {
      const queued=await api("/api/experiences/"+item.id+"/run-test",{
@@ -1659,7 +1659,7 @@ async function refreshExperienceAutoCaptureConsent() {
   output.textContent="وضعیت رضایت قابل دریافت نیست: "+error.message;
  }
 }
-el("experience-auto-capture-enable").addEventListener("click",async()=>{
+el("experience-auto-capture-enable")?.addEventListener("click",async()=>{
  if(!el("experience-auto-capture-confirm").checked) {
   el("experience-auto-capture-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -1670,7 +1670,7 @@ el("experience-auto-capture-enable").addEventListener("click",async()=>{
   await refreshExperienceAutoCaptureConsent();
  } catch(error) { el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message; }
 });
-el("experience-auto-capture-revoke").addEventListener("click",async()=>{
+el("experience-auto-capture-revoke")?.addEventListener("click",async()=>{
  el("experience-auto-capture-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/experiences/auto-capture/consent",{method:"DELETE"});
@@ -1678,11 +1678,11 @@ el("experience-auto-capture-revoke").addEventListener("click",async()=>{
   await refreshExperienceAutoCaptureConsent();
  } catch(error) { el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message; }
 });
-el("experience-auto-capture-refresh").addEventListener("click",refreshExperienceAutoCaptureConsent);
+el("experience-auto-capture-refresh")?.addEventListener("click",refreshExperienceAutoCaptureConsent);
 refreshExperienceAutoCaptureConsent();
 
-el("experience-refresh").addEventListener("click",refreshExperiences);
-el("experience-create-form").addEventListener("submit",async event=>{
+el("experience-refresh")?.addEventListener("click",refreshExperiences);
+el("experience-create-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const button=event.submitter;
  if(button) button.disabled=true;
@@ -1699,7 +1699,7 @@ el("experience-create-form").addEventListener("submit",async event=>{
  } catch(error) { el("experience-output").textContent="ثبت تجربه ناموفق بود: "+error.message; }
  finally { if(button) button.disabled=false; }
 });
-el("experience-search-form").addEventListener("submit",async event=>{
+el("experience-search-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const query=el("experience-query").value.trim();
  const output=el("experience-output");
@@ -1739,7 +1739,7 @@ async function refreshSelfImprovement() {
    const eventButton=document.createElement("button");
    eventButton.type="button";
    eventButton.textContent="تاریخچه";
-   eventButton.addEventListener("click",async()=>{
+   eventButton?.addEventListener("click",async()=>{
     try { const events=await api("/api/self-improvement/proposals/"+item.id+"/events"); output.textContent=JSON.stringify(events.events,null,2); }
     catch(error){output.textContent=error.message;}
    });
@@ -1747,7 +1747,7 @@ async function refreshSelfImprovement() {
    const diffButton=document.createElement("button");
    diffButton.type="button";
    diffButton.textContent="مشاهدهٔ diff";
-   diffButton.addEventListener("click",async()=>{
+   diffButton?.addEventListener("click",async()=>{
     try { const detail=await api("/api/self-improvement/proposals/"+item.id); output.textContent=detail.proposal.patch; }
     catch(error){output.textContent=error.message;}
    });
@@ -1756,7 +1756,7 @@ async function refreshSelfImprovement() {
     const validate=document.createElement("button");
     validate.type="button";
     validate.textContent="بررسی سازگاری diff";
-    validate.addEventListener("click",async()=>{
+    validate?.addEventListener("click",async()=>{
      validate.disabled=true;
      try { await api("/api/self-improvement/proposals/"+item.id+"/validate",{method:"POST"}); output.textContent="بررسی سازگاری انجام شد؛ این مرحله آزمون کد اجرا نمی‌کند."; await refreshSelfImprovement(); }
      catch(error){output.textContent=error.message;}
@@ -1768,7 +1768,7 @@ async function refreshSelfImprovement() {
     const syntaxCheck=document.createElement("button");
     syntaxCheck.type="button";
     syntaxCheck.textContent="بررسی ایزولهٔ نحوی و رفتاری";
-    syntaxCheck.addEventListener("click",async()=>{
+    syntaxCheck?.addEventListener("click",async()=>{
      if(!window.confirm("این بررسی، patch را فقط در worktree موقت اعمال و فایل‌های Python را داخل Docker با شبکهٔ خاموش تجزیهٔ نحوی می‌کند؛ آزمون پروژه یا اجرای کد پیشنهادی انجام نمی‌شود. رضایت Sandbox باید فعال باشد. ادامه؟")) return;
      syntaxCheck.disabled=true;
      try {
@@ -1785,7 +1785,7 @@ async function refreshSelfImprovement() {
     const approve=document.createElement("button");
     approve.type="button";
     approve.textContent="تأیید برای بررسی PR";
-    approve.addEventListener("click",async()=>{
+    approve?.addEventListener("click",async()=>{
      if(!window.confirm("این تأیید کد را اعمال یا مستقر نمی‌کند. فقط اجازهٔ انتقال به بررسی انسانی PR را ثبت می‌کند. ادامه؟")) return;
      approve.disabled=true;
      try { await api("/api/self-improvement/proposals/"+item.id+"/approve",{method:"POST",body:JSON.stringify({confirm:true})}); output.textContent="تأیید ثبت شد؛ هیچ فایلی تغییر نکرد."; await refreshSelfImprovement(); }
@@ -1798,7 +1798,7 @@ async function refreshSelfImprovement() {
     const openPr=document.createElement("button");
     openPr.type="button";
     openPr.textContent="ایجاد PR پیش‌نویس در GitHub";
-    openPr.addEventListener("click",async()=>{
+    openPr?.addEventListener("click",async()=>{
      if(!window.confirm("این اقدام patch تأییدشده را به‌صورت branch و PR پیش‌نویس در مخزن GitHub پیکربندی‌شده منتشر می‌کند. PR ادغام یا مستقر نمی‌شود و checkout محلی تغییر نمی‌کند. ادامه؟")) return;
      openPr.disabled=true;
      try {
@@ -1813,7 +1813,7 @@ async function refreshSelfImprovement() {
     const rollbackPr=document.createElement("button");
     rollbackPr.type="button";
     rollbackPr.textContent="ایجاد PR پیش‌نویس بازگشت";
-    rollbackPr.addEventListener("click",async()=>{
+    rollbackPr?.addEventListener("click",async()=>{
      if(!window.confirm("فقط اگر PR اصلی ادغام شده باشد، یک PR پیش‌نویس بازگشت ایجاد می‌شود. اگر فایل‌های مربوطه پس از ادغام تغییر کرده باشند، عملیات متوقف می‌شود. هیچ ادغام یا استقراری انجام نمی‌شود. ادامه؟")) return;
      rollbackPr.disabled=true;
      try {
@@ -1830,7 +1830,7 @@ async function refreshSelfImprovement() {
     const reject=document.createElement("button");
     reject.type="button";
     reject.textContent="رد پیشنهاد";
-    reject.addEventListener("click",async()=>{
+    reject?.addEventListener("click",async()=>{
      if(!window.confirm("این پیشنهاد رد شود؟")) return;
      try { await api("/api/self-improvement/proposals/"+item.id+"/reject",{method:"POST",body:JSON.stringify({confirm:true,reason:"رد از رابط محلی"})}); await refreshSelfImprovement(); }
      catch(error){output.textContent=error.message;}
@@ -1844,7 +1844,7 @@ async function refreshSelfImprovement() {
   output.textContent="مدیریت پیشنهادها در دسترس نیست: "+error.message;
  }
 }
-el("self-improvement-form").addEventListener("submit",async event=>{
+el("self-improvement-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const output=el("self-improvement-output");
  output.textContent="در حال ثبت پیشنهاد…";
@@ -1859,7 +1859,7 @@ el("self-improvement-form").addEventListener("submit",async event=>{
   await refreshSelfImprovement();
  } catch(error) { output.textContent=error.message; }
 });
-el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
+el("self-improvement-refresh")?.addEventListener("click",refreshSelfImprovement);
 // Accessible local theme preference; no network requests or external assets.
 (function initializeDashboardTheme(){
  const button=document.getElementById("theme-toggle");
@@ -1876,7 +1876,7 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
   if(persist){ try { window.localStorage.setItem("dashboard-theme",dark ? "dark" : "light"); } catch (_) {} }
  }
  applyTheme(saved==="dark" || (saved===null && prefersDark),false);
- button.addEventListener("click",()=>applyTheme(root.dataset.theme!=="dark",true));
+ button?.addEventListener("click",()=>applyTheme(root.dataset.theme!=="dark",true));
 })();
 
 // Keep the persistent section navigation synchronized with the user's reading position.
@@ -1917,7 +1917,7 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
   scheduled=true;
   window.requestAnimationFrame(updateCurrentSection);
  }
- navigation.addEventListener('click',event=>{
+ navigation?.addEventListener('click',event=>{
   const link=event.target.closest('a[href^="#"]');
   if(link && navigation.contains(link)){
    for(const item of links){
@@ -1927,9 +1927,9 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
    }
   }
  });
- window.addEventListener('scroll',scheduleUpdate,{passive:true});
- window.addEventListener('resize',scheduleUpdate,{passive:true});
- window.addEventListener('hashchange',scheduleUpdate);
+ window?.addEventListener('scroll',scheduleUpdate,{passive:true});
+ window?.addEventListener('resize',scheduleUpdate,{passive:true});
+ window?.addEventListener('hashchange',scheduleUpdate);
  updateCurrentSection();
 })();
 (function initializeSectionPageNavigation(){
