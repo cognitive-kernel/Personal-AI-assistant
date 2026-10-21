@@ -415,3 +415,17 @@ def test_claim_next_task_can_isolate_task_type_queues(task_store):
     assert claimed_learning is not None
     assert claimed_learning["id"] == learning["id"]
     assert claimed_learning["task_type"] == "learning.run_job"
+
+
+def test_claim_next_task_can_exclude_registered_queue_types(task_store):
+    known = task_manager.create_task("research.answer", {"message": "hello"})
+    unknown = task_manager.create_task("unregistered.type", {"payload": "preserve"})
+
+    claimed = task_manager.claim_next_task(
+        "dead-letter-worker",
+        exclude_task_types=("research.answer", "learning.run_job", "unregistered.placeholder"),
+    )
+    assert claimed is not None
+    assert claimed["id"] == unknown["id"]
+    assert claimed["task_type"] == "unregistered.type"
+    assert task_manager.get_task(known["id"])["status"] == "queued"
