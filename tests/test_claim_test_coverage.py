@@ -69,7 +69,7 @@ def test_versioned_multidomain_benchmark_has_zero_false_acceptance():
     assert report["benchmark_id"] == "claim-test-coverage-v1"
     assert report["case_count"] == 10
     assert report["passed_cases"] == 10
-    assert report["domain_count"] == 4
+    assert report["domain_count"] == 5
     assert report["confusion"]["false_acceptance_rate"] == 0.0
     assert report["confusion"]["false_rejection_rate"] == 0.0
 
