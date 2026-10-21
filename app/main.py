@@ -302,6 +302,10 @@ def _render_dashboard_page(slug: str | None = None) -> str:
             source, count=1, flags=re.DOTALL,
         )
 
+    if slug is not None:
+        page_attributes = f' data-section-page="{slug}" data-section-id="{DASHBOARD_SECTIONS[slug]}"'
+        source = source.replace('<html lang="fa" dir="rtl">', '<html lang="fa" dir="rtl"' + page_attributes + '>', 1)
+
     # The returned page contains only the selected section, not hidden copies of all sections.
     return source[:main_start] + filtered_main + source[main_end:]
 
