@@ -62,13 +62,20 @@ def create_claim(
     normalized = normalize_claim(claim)
     if not environment_version.strip():
         raise KnowledgePolicyError("environment_version is required")
-    digest = hashlib.sha256(normalized.casefold().encode("utf-8")).hexdigest()
+    scope_value = scope or {}
+    scope_json = json.dumps(scope_value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    identity = json.dumps(
+        {"claim": normalized.casefold(), "scope": scope_value, "environment_name": "python",
+         "environment_version": environment_version},
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    )
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     cursor = connection.execute(
         """INSERT INTO factual_knowledge(
                claim, normalized_claim, claim_hash, scope_json,
                environment_version, risk_level
            ) VALUES (?, ?, ?, ?, ?, ?)""",
-        (claim.strip(), normalized, digest, json.dumps(scope or {}, sort_keys=True), environment_version, risk_level),
+        (claim.strip(), normalized, digest, scope_json, environment_version, risk_level),
     )
     return int(cursor.lastrowid)
 
