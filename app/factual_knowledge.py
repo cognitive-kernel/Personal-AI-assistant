@@ -40,6 +40,7 @@ class Claim:
     claim: str
     evidence_level: str
     lifecycle_status: str
+    domain_name: str
     environment_name: str
     environment_version: str
 
@@ -210,7 +211,7 @@ def add_relation(
 
 def get_claim(connection: sqlite3.Connection, knowledge_id: int) -> Claim:
     row = connection.execute(
-        """SELECT id, claim, evidence_level, lifecycle_status, environment_name, environment_version
+        """SELECT id, claim, evidence_level, lifecycle_status, domain_name, environment_name, environment_version
            FROM factual_knowledge WHERE id = ?""",
         (knowledge_id,),
     ).fetchone()
