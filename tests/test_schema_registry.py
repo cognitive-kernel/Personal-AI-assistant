@@ -59,6 +59,7 @@ def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
             "INSERT INTO settings(key, value_json) VALUES (?, ?)",
             ("ollama_model", '"custom-local-model"'),
         )
+        connection.commit()
         assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 4
         assert connection.execute(
             "SELECT value_json FROM settings WHERE key='ollama_model'"
