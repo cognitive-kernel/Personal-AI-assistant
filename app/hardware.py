@@ -162,9 +162,9 @@ def model_keep_alive(
     settings = settings or {}
     configured = settings.get(f"{purpose}_model_keep_alive", "auto" if purpose == "chat" else "0")
     allowed = {"auto", "0", "1m", "5m", "10m", "30m"}
-    if configured in allowed and configured != "auto":
+    if isinstance(configured, str) and configured in allowed and configured != "auto":
         return configured
-    if configured != "auto" or purpose != "chat":
+    if not isinstance(configured, str) or configured != "auto" or purpose != "chat":
         return "0"
     hardware = hardware or detect_hardware()
     ram_budget = dynamic_ram_budget_gb(settings, hardware)
