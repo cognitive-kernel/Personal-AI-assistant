@@ -1,4 +1,6 @@
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 from app import db, experience, experience_feedback, ollama
 from app.db import learning_connection
@@ -222,3 +224,38 @@ def test_embedding_cache_enforces_row_limit(tmp_path, monkeypatch):
         assert connection.execute(
             "SELECT COUNT(*) FROM learning_experience_embeddings"
         ).fetchone()[0] == 3
+
+
+
+def test_concurrent_searches_fill_each_missing_embedding_only_once(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    experience_retrieval.reset_embedding_cache_metrics()
+    item = _verified(
+        "Concurrent cache record",
+        "Prevent duplicate embedding work during simultaneous searches.",
+        "Serialize cache miss fill.",
+    )
+    candidate_batches = []
+
+    def fake_embed(texts, model=None):
+        if all(text.startswith("concurrent cache query") for text in texts):
+            time.sleep(0.01)
+            return [[1.0, 0.0] for _ in texts]
+        candidate_batches.append(list(texts))
+        time.sleep(0.03)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(ollama, "embed", fake_embed)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(experience.search_relevant_experiences, "concurrent cache query")
+            for _ in range(2)
+        ]
+        results = [future.result(timeout=10) for future in futures]
+
+    assert all(any(row["id"] == item["id"] for row in result) for result in results)
+    assert len(candidate_batches) == 1
+    metrics = experience_retrieval.embedding_cache_metrics()
+    assert metrics["embedded_vectors"] == 1
+    assert metrics["misses"] == 1
+    assert metrics["hits"] == 1
