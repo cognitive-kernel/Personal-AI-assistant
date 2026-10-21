@@ -1,0 +1,22 @@
+<section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
+<p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
+<form id="experience-create-form">
+<div class="cloud-form-grid">
+<label>موضوع<input id="experience-topic" maxlength="300" required></label>
+<label>فرضیه<textarea id="experience-hypothesis" rows="2" maxlength="5000"></textarea></label>
+</div>
+<label>مشکل یا مشاهده<textarea id="experience-problem" rows="3" maxlength="10000" required></textarea></label>
+<button type="submit">ثبت تجربهٔ جدید</button>
+</form>
+<div class="cloud-actions"><button id="experience-refresh" type="button">بارگذاری تجربه‌ها</button></div>
+<form id="experience-search-form">
+<label>جست‌وجو در حافظه<input id="experience-query" maxlength="3000" required placeholder="موضوع یا مسئله را وارد کنید" aria-label="موضوع یا مسئله را وارد کنید"></label>
+<button type="submit">جست‌وجو</button>
+</form>
+<section id="experience-auto-capture-section"><h3>ذخیرهٔ خودکار پژوهش (اختیاری)</h3>
+<p class="muted">به‌صورت پیش‌فرض خاموش است. با رضایت صریح، پرسش‌ها و پاسخ‌های فنیِ دارای منبع HTTPS به‌همراه نشانی و گزیدهٔ کوتاه از حداکثر سه منبع، در پایگاه محلی ذخیره می‌شوند. گفت‌وگوی عادی ذخیره نمی‌شود. این موارد تأییدنشده می‌مانند و هیچ آزمونی اجرا یا تجربه‌ای خودکار تأیید نمی‌شود. لغو رضایت ذخیره‌سازی آینده را متوقف می‌کند؛ رکوردهای قبلی باقی می‌مانند.</p>
+<label><input id="experience-auto-capture-confirm" type="checkbox" style="width:auto"> رضایت می‌دهم پرسش و پاسخ‌های فنیِ دارای منبع به‌صورت محلی در حافظهٔ تجربه‌ها ذخیره شوند.</label>
+<div class="cloud-actions"><button id="experience-auto-capture-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="experience-auto-capture-revoke" type="button">لغو رضایت</button><button id="experience-auto-capture-refresh" type="button">به‌روزرسانی وضعیت</button></div>
+<pre id="experience-auto-capture-status">ذخیرهٔ خودکار غیرفعال است.</pre></section>
+<pre id="experience-output">هنوز تجربه‌ای بارگذاری نشده است.</pre>
+<div id="experience-list"></div></section>
