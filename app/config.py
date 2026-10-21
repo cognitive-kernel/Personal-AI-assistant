@@ -56,6 +56,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "chat_ollama_num_thread": defaults.ollama_num_thread,
     "chat_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "chat_max_concurrent_jobs": 1,
+    "chat_source_max_chars": 12000,
     "learning_ollama_model": defaults.learning_ollama_model,
     "learning_ollama_num_ctx": defaults.ollama_num_ctx,
     "learning_ollama_num_thread": defaults.ollama_num_thread,
