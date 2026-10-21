@@ -398,3 +398,20 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
     assert recovered["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
     with pytest.raises(TaskManagerError, match="not owned by this worker"):
         task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"})
+
+
+def test_claim_next_task_can_isolate_task_type_queues(task_store):
+    chat = task_manager.create_task("research.answer", {"message": "hello"})
+    learning = task_manager.create_task("learning.run_job", {"job_id": 42})
+
+    claimed_chat = task_manager.claim_next_task("chat-worker", task_types=("research.answer",))
+    assert claimed_chat is not None
+    assert claimed_chat["id"] == chat["id"]
+    assert claimed_chat["task_type"] == "research.answer"
+
+    # The learning task remains queued until the learning lane claims it.
+    assert task_manager.get_task(learning["id"])["status"] == "queued"
+    claimed_learning = task_manager.claim_next_task("learning-worker", task_types=("learning.run_job",))
+    assert claimed_learning is not None
+    assert claimed_learning["id"] == learning["id"]
+    assert claimed_learning["task_type"] == "learning.run_job"
