@@ -102,11 +102,12 @@ def evaluate(cases: list[dict[str, Any]]) -> dict[str, Any]:
 
     precision = ratio(tp, observed_accepts)
     recall = ratio(tp, expected_accepts)
-    f1 = (
-        2 * precision * recall / (precision + recall)
-        if precision is not None and recall is not None and precision + recall
-        else (0.0 if precision == 0 or recall == 0 else None)
-    )
+    if precision is None or recall is None:
+        f1 = None
+    elif precision + recall:
+        f1 = 2 * precision * recall / (precision + recall)
+    else:
+        f1 = 0.0
     return {
         "case_count": total,
         "confusion_matrix": {
