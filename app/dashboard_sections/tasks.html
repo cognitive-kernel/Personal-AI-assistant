@@ -1,0 +1,30 @@
+<section id="task-manager-section"><h2>مدیریت وظایف</h2>
+<p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
+<div class="cloud-actions">
+ <label for="task-status-filter">فیلتر وضعیت وظایف
+  <select id="task-status-filter">
+   <option value="">همهٔ وضعیت‌ها</option><option value="queued">در صف</option>
+   <option value="running">در حال اجرا</option><option value="pause_requested">درخواست توقف</option>
+   <option value="paused">متوقف</option><option value="cancel_requested">درخواست لغو</option>
+   <option value="cancelled">لغوشده</option><option value="succeeded">موفق</option><option value="failed">ناموفق</option>
+  </select>
+ </label>
+ <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
+ <button id="load-more-tasks" type="button" hidden>بارگذاری وظایف بیشتر</button>
+</div>
+<div class="task-search-row">
+ <label for="task-search">جست‌وجو در وظایف بارگذاری‌شده
+  <input id="task-search" type="search" maxlength="120" autocomplete="off" aria-label="جست‌وجو در وظایف بارگذاری‌شده" placeholder="شناسه، نوع وظیفه یا وضعیت…">
+ </label>
+ <p class="muted">جست‌وجو فقط میان صفحات بارگذاری‌شده انجام می‌شود؛ برای بررسی کل صف از فیلتر وضعیت و بارگذاری صفحات بیشتر استفاده کنید.</p>
+</div>
+<div id="task-summary" class="task-summary" aria-live="polite" aria-atomic="true"></div>
+<div class="task-bulk-toolbar" role="group" aria-label="عملیات گروهی روی وظایف">
+ <label class="task-select-all-label" for="task-select-all"><input id="task-select-all" type="checkbox"> انتخاب همهٔ وظایف بارگذاری‌شده</label>
+ <span id="task-selected-count" class="task-selected-count" aria-live="polite">انتخاب‌شده: ۰</span>
+ <button id="bulk-pause-tasks" type="button" disabled>توقف انتخاب‌شده‌ها</button>
+ <button id="bulk-resume-tasks" type="button" disabled>ادامهٔ انتخاب‌شده‌ها</button>
+ <button id="bulk-cancel-tasks" type="button" disabled>لغو انتخاب‌شده‌ها</button>
+</div>
+<pre id="tasks-output" role="status" aria-live="polite">فهرست وظایف هنوز بارگذاری نشده است.</pre>
+<div id="tasks-container"></div></section>
