@@ -216,6 +216,31 @@ def get_claim(connection: sqlite3.Connection, knowledge_id: int) -> Claim:
     return Claim(*row)
 
 
+def list_claim_revisions(
+    connection: sqlite3.Connection, knowledge_id: int
+) -> list[dict[str, Any]]:
+    """Return the immutable content history for one factual claim."""
+    if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int) or knowledge_id < 1:
+        raise KnowledgePolicyError("knowledge_id must be a positive integer")
+    exists = connection.execute(
+        "SELECT 1 FROM factual_knowledge WHERE id = ?", (knowledge_id,)
+    ).fetchone()
+    if exists is None:
+        raise KnowledgePolicyError(f"unknown knowledge id: {knowledge_id}")
+    rows = connection.execute(
+        """SELECT revision_number, claim, normalized_claim, claim_hash, scope_json,
+                  environment_name, environment_version, recorded_at
+           FROM factual_claim_revisions
+           WHERE knowledge_id = ? ORDER BY revision_number""",
+        (knowledge_id,),
+    ).fetchall()
+    keys = (
+        "revision_number", "claim", "normalized_claim", "claim_hash", "scope_json",
+        "environment_name", "environment_version", "recorded_at",
+    )
+    return [dict(zip(keys, row)) for row in rows]
+
+
 def review_cache_key(
     *,
     normalized_claim: str,

@@ -65,6 +65,8 @@
 - [x] آزمون drift فایل‌های تولیدشده در CI.
 
 ## مرحله ۲ — مدل داده و هسته دانش Python
+
+- [ ] تاریخچهٔ immutable و نسخه‌دارِ محتوای `factual_knowledge` در PR جداگانه پیاده‌سازی شده است؛ migration 17 رکوردهای فعلی را به revision 1 تبدیل می‌کند و تغییر claim/scope/environment را ثبت می‌کند. وضعیت نهایی پس از CI دقیق و ادغام به‌روزرسانی می‌شود.
 - [x] تعریف قرارداد claim، دامنه، نسخه و محیط در `app/factual_knowledge.py` و schema.
 - [x] جدول‌های مستقل `factual_knowledge`، `factual_evidence`، `factual_tests` و روابط.
 - [x] ثبت provenance، هش منبع و محدوده اعتبار.
