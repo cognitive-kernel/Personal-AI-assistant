@@ -178,8 +178,8 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
             conn.execute(
                 """INSERT INTO learning_experiences(
                        topic, problem, hypothesis, status, source_evidence_json,
-                       test_plan_json, test_results_json, takeaway
-                   ) VALUES (?, ?, ?, 'failed', ?, '[]', ?, ?)""",
+                       test_plan_json, test_results_json, takeaway, experience_type
+                   ) VALUES (?, ?, ?, 'failed', ?, '[]', ?, ?, 'consensus_failure')""",
                 (
                     str(candidate["topic"]),
                     f"اجماع متناقض برای نامزد دانش {candidate_id} (record {consensus_id})",
@@ -425,8 +425,8 @@ def start_self_correction(candidate_id: int) -> dict[str, Any]:
             conn.execute(
                 """INSERT INTO learning_experiences(
                        topic, problem, hypothesis, status, source_evidence_json,
-                       test_plan_json, test_results_json, takeaway
-                   ) VALUES (?, ?, ?, 'failed', ?, ?, ?, ?)""",
+                       test_plan_json, test_results_json, takeaway, experience_type
+                   ) VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, 'test_failure')""",
                 (str(candidate["topic"]), f"self-correction attempt {attempt_no} failed for candidate {candidate_id}",
                  "The bounded self-correction process may produce a different testable candidate.",
                  json.dumps([{"candidate_id": candidate_id}], ensure_ascii=False),

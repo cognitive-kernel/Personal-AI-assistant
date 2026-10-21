@@ -684,6 +684,20 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_knowledge_self_correction_candidate ON knowledge_self_correction_attempts(candidate_id, id DESC)",
         ),
     ),
+    Migration(
+        22,
+        "learning-experience-typed-outcomes",
+        (
+            "ALTER TABLE learning_experiences ADD COLUMN experience_type TEXT NOT NULL DEFAULT 'general' CHECK(experience_type IN ('general','consensus_failure','test_failure','usage_failure','successful_alternative','improvement'))",
+            "ALTER TABLE learning_experience_versions ADD COLUMN experience_type TEXT NOT NULL DEFAULT 'general' CHECK(experience_type IN ('general','consensus_failure','test_failure','usage_failure','successful_alternative','improvement'))",
+            "UPDATE learning_experiences SET experience_type='consensus_failure' WHERE problem LIKE '%اجماع متناقض%'",
+            "UPDATE learning_experiences SET experience_type='test_failure' WHERE problem LIKE 'آزمون نامزد دانشی %' OR problem LIKE 'self-correction attempt %'",
+            "UPDATE learning_experiences SET experience_type='successful_alternative' WHERE problem LIKE 'successful_alternative:%'",
+            "UPDATE learning_experience_versions SET experience_type='consensus_failure' WHERE problem LIKE '%اجماع متناقض%'",
+            "UPDATE learning_experience_versions SET experience_type='test_failure' WHERE problem LIKE 'آزمون نامزد دانشی %' OR problem LIKE 'self-correction attempt %'",
+            "UPDATE learning_experience_versions SET experience_type='successful_alternative' WHERE problem LIKE 'successful_alternative:%'",
+        ),
+    ),
 )
 
 

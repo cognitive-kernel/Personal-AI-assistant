@@ -842,8 +842,8 @@ def record_candidate_test_results(
                     conn.execute(
                         """INSERT INTO learning_experiences(
                                topic, problem, hypothesis, status, source_evidence_json,
-                               test_plan_json, test_results_json, takeaway
-                           ) VALUES (?, ?, ?, 'verified', ?, ?, ?, ?)""",
+                               test_plan_json, test_results_json, takeaway, experience_type
+                           ) VALUES (?, ?, ?, 'verified', ?, ?, ?, ?, 'successful_alternative')""",
                         (
                             str(parent["topic"]),
                             f"successful_alternative: نامزد {candidate_id} جایگزین نامزد {supersedes_candidate_id} شد.",
@@ -891,8 +891,8 @@ def record_candidate_test_results(
             conn.execute(
                 """INSERT INTO learning_experiences(
                        topic, problem, hypothesis, status, source_evidence_json,
-                       test_plan_json, test_results_json, takeaway
-                   ) VALUES (?, ?, ?, 'failed', ?, ?, ?, ?)""",
+                       test_plan_json, test_results_json, takeaway, experience_type
+                   ) VALUES (?, ?, ?, 'failed', ?, ?, ?, ?, 'test_failure')""",
                 (candidate["topic"],
                  f"آزمون نامزد دانشی {candidate_id} شکست خورد: {failure_reason}",
                  "فرضیه آموزشی/فنی هنوز در آزمون‌های تعریف‌شده تأیید نشده است.",

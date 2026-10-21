@@ -453,9 +453,12 @@ def record_user_application_feedback(
     output_digest = hashlib.sha256(observed_output.encode("utf-8")).hexdigest() if observed_output else ""
     init_databases()
     with learning_connection() as conn:
-        if conn.execute(
-            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
-        ).fetchone() is None:
+        candidate = conn.execute(
+            """SELECT id, job_id, topic, source_urls_json, promoted_knowledge_id
+               FROM temporary_knowledge_candidates WHERE id=?""",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
             raise KeyError(candidate_id)
         conn.execute(
             """INSERT INTO knowledge_user_feedback(
@@ -468,6 +471,57 @@ def record_user_application_feedback(
         row = conn.execute(
             "SELECT * FROM knowledge_user_feedback WHERE id=last_insert_rowid()"
         ).fetchone()
+        if outcome in {"failed", "partial"}:
+            try:
+                urls = json.loads(candidate["source_urls_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                urls = []
+            source_evidence = [
+                {"url": url, "claim": f"Source retained for candidate {candidate_id}"}
+                for url in urls if isinstance(url, str) and url.startswith("https://")
+            ][:20]
+            test_record = [{
+                "kind": "user_application_feedback", "outcome": outcome,
+                "observed_output": observed_output, "test_steps": test_steps,
+                "output_sha256": output_digest, "counts_as_automated_oracle": False,
+            }]
+            conn.execute(
+                """INSERT INTO learning_experiences(
+                       topic, problem, hypothesis, status, source_evidence_json,
+                       test_plan_json, test_results_json, takeaway, experience_type
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'usage_failure')""",
+                (
+                    str(candidate["topic"]),
+                    f"User-reported {outcome} application for knowledge candidate {candidate_id}: "
+                    + application_context.strip(),
+                    "Real-world application feedback may expose a missing condition or incorrect claim.",
+                    "failed" if outcome == "failed" else "needs_review",
+                    json.dumps(source_evidence, ensure_ascii=False),
+                    json.dumps([{
+                        "kind": "reported_application", "context": application_context.strip(),
+                        "steps": test_steps.strip(), "lab_oracle": False,
+                    }], ensure_ascii=False),
+                    json.dumps(test_record, ensure_ascii=False),
+                    "User-reported feedback is retained for review; it is not an automated test oracle.",
+                ),
+            )
+            if outcome == "failed":
+                reason = ("User-reported real-world application failure: " + application_context.strip())[:3000]
+                conn.execute(
+                    """UPDATE temporary_knowledge_candidates
+                       SET status='failed', trust_level='L-1', learning_status='failed',
+                           failure_reason=CASE WHEN trim(failure_reason)=''
+                               THEN ? ELSE substr(failure_reason || char(10) || ?, 1, 4000) END,
+                           updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (reason, reason, candidate_id),
+                )
+                if candidate["promoted_knowledge_id"] is not None:
+                    conn.execute(
+                        """UPDATE knowledge_items
+                           SET status='unverified', trust_level='L-1', learning_status='failed'
+                           WHERE id=? AND status!='superseded'""",
+                        (candidate["promoted_knowledge_id"],),
+                    )
     return dict(row)
 
 

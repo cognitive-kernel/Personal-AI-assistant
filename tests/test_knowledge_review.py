@@ -452,3 +452,59 @@ def test_evidence_only_review_refuses_known_contradictions_without_promoting(tmp
     assert result["reason"] == "contradicting_evidence_or_failed_field_use"
     with db.learning_connection() as conn:
         assert conn.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0] == 0
+
+
+
+def test_failed_field_feedback_creates_usage_failure_and_downgrades_l2(tmp_path, monkeypatch):
+    setup_settings_db(tmp_path, monkeypatch)
+    import hashlib
+
+    from app import learning
+    from app.knowledge_review import record_user_application_feedback
+
+    job = learning.create_job("Field feedback downgrade", source_text="Retained source for test.")
+    lesson = "A tested candidate lesson which failed in real use."
+    digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
+    with db.learning_connection() as conn:
+        knowledge_id = int(conn.execute(
+            """INSERT INTO knowledge_items(
+                   topic, content, source_kind, version, status, job_id,
+                   trust_level, learning_status, source_url, raw_content
+               ) VALUES (?, ?, 'user_provided_text', 1, 'verified', ?, 'L2', 'tested', '', 'source')""",
+            (job["topic"], lesson, job["id"]),
+        ).lastrowid)
+        candidate_id = int(conn.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json, status, trust_level,
+                   learning_status, promoted_knowledge_id
+               ) VALUES (?, ?, ?, 'user_provided_text', '[]', ?, '{}',
+                         'passed', 'L2', 'tested', ?)""",
+            (job["id"], job["topic"], lesson, digest, knowledge_id),
+        ).lastrowid)
+
+    record_user_application_feedback(
+        candidate_id, outcome="failed",
+        application_context="Production use fails when the input is empty.",
+        observed_output="IndexError: list index out of range",
+        test_steps="Submit an empty input and capture the output.",
+    )
+
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        knowledge = conn.execute(
+            "SELECT status, trust_level, learning_status FROM knowledge_items WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        experience = conn.execute(
+            "SELECT status, experience_type, problem, test_results_json FROM learning_experiences WHERE experience_type='usage_failure'"
+        ).fetchone()
+    assert tuple(candidate) == ("failed", "L-1", "failed")
+    assert tuple(knowledge) == ("unverified", "L-1", "failed")
+    assert experience["status"] == "failed"
+    assert experience["experience_type"] == "usage_failure"
+    assert "empty input" in experience["problem"]
+    assert json.loads(experience["test_results_json"])[0]["counts_as_automated_oracle"] is False

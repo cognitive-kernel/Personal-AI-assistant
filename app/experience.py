@@ -120,11 +120,11 @@ def _store_version_snapshot(conn, row) -> None:
     conn.execute(
         """INSERT OR IGNORE INTO learning_experience_versions(
             experience_id, version, topic, problem, hypothesis, status,
-            source_evidence_json, test_plan_json, test_results_json, takeaway)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            source_evidence_json, test_plan_json, test_results_json, takeaway, experience_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (row["id"], row["version"], row["topic"], row["problem"], row["hypothesis"],
          row["status"], row["source_evidence_json"], row["test_plan_json"],
-         row["test_results_json"], row["takeaway"]),
+         row["test_results_json"], row["takeaway"], row["experience_type"]),
     )
 
 
