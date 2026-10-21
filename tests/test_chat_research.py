@@ -439,9 +439,41 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
     assert context[0]["sources"][0]["url"] == "https://docs.python.org/3/library/stdtypes.html"
     assert context[0]["passing_tests"][0]["name"] == "list-order-regression"
 
-    assert chat_research._factual_knowledge_context(
+    with db.learning_connection() as conn:
+        sql_id = factual_knowledge.create_claim(
+            conn,
+            "SQL Server query plans expose the chosen operations.",
+            environment_name="sql_server",
+            environment_version="unspecified",
+        )
+        factual_knowledge.add_evidence(
+            conn,
+            sql_id,
+            source_type="official_docs",
+            source_ref="https://learn.microsoft.com/en-us/sql/",
+            source_hash="sha256:sql-server-plan-source",
+            excerpt="Query plans describe selected database operations.",
+        )
+        factual_knowledge.transition_evidence_level(conn, sql_id, "L1_sourced")
+        factual_knowledge.record_test(
+            conn,
+            sql_id,
+            test_kind="unit",
+            test_name="sql-plan-regression",
+            environment_name="sql_server",
+            environment_version="unspecified",
+            outcome="passed",
+            result_summary="Plan representation test passed.",
+        )
+        factual_knowledge.transition_evidence_level(conn, sql_id, "L2_tested")
+        factual_knowledge.transition_lifecycle(conn, sql_id, "active")
+
+    sql_context = chat_research._factual_knowledge_context(
         "How do SQL Server query plans work?"
-    ) == []
+    )
+    assert len(sql_context) == 1
+    assert sql_context[0]["id"] == sql_id
+    assert sql_context[0]["environment"] == "sql_server unspecified"
     assert chat_research._factual_knowledge_context("Python?") == []
 
     captured = {}
