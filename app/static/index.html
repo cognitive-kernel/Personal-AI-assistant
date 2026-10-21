@@ -782,9 +782,12 @@ async function refreshLearningCandidateReview() {
  if(!id) { output.textContent="یک نامزد را انتخاب کنید."; return; }
  output.textContent="در حال بارگذاری گزارش شواهد…";
  try {
-  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/review");
-  output.textContent=JSON.stringify(result,null,2);
- } catch(error) { output.textContent="دریافت گزارش ناموفق بود: "+error.message; }
+  const [review,claimMatrix]=await Promise.all([
+   api("/api/learning/candidates/"+encodeURIComponent(id)+"/review"),
+   api("/api/learning/candidates/"+encodeURIComponent(id)+"/claims")
+  ]);
+  output.textContent=JSON.stringify({review,claim_verification_matrix:claimMatrix},null,2);
+ } catch(error) { output.textContent="دریافت گزارش شواهد یا ماتریس ادعا ناموفق بود: "+error.message; }
 }
 el("refresh-learning-candidates").addEventListener("click",()=>refreshLearningCandidates());
 el("learning-candidate-select").addEventListener("change",()=>refreshLearningCandidateReview());
