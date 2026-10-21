@@ -556,8 +556,10 @@ el("bulk-pause-tasks")?.addEventListener("click",()=>runBulkTaskAction("pause"))
 el("bulk-resume-tasks")?.addEventListener("click",()=>runBulkTaskAction("resume"));
 el("bulk-cancel-tasks")?.addEventListener("click",()=>runBulkTaskAction("cancel"));
 el("load-more-tasks")?.addEventListener("click",()=>refreshTasks({append:true}));
-refreshStorageHealth();
-refreshStorageBackups();
+if (el("storage-health-section")) {
+ refreshStorageHealth();
+ refreshStorageBackups();
+}
 el("refresh")?.addEventListener("click", refresh);
 el("refresh-knowledge")?.addEventListener("click", async () => {
  try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
