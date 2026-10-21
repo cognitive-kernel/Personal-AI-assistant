@@ -1432,7 +1432,7 @@ async function refreshExperiences(page=experiencePage) {
   if(el("experience-page-prev")) el("experience-page-prev").disabled=!p.has_previous;
   if(el("experience-page-next")) el("experience-page-next").disabled=!p.has_next;
   if(el("experience-page-status")) el("experience-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
-  output.textContent="تعداد کل تجربه‌ها: "+result.count;
+  output.textContent="تعداد تجربه‌ها (کل): "+result.count;
   renderExperienceItems(result.items||[]);
  } catch(error) {
   output.textContent="بارگذاری تجربه‌ها ناموفق بود: "+error.message;
