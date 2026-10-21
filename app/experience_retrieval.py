@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
+import time
 from datetime import datetime, timezone
 from collections import Counter
 from typing import Any, Sequence
@@ -137,6 +139,12 @@ def _save_embeddings(items: list[dict[str, Any]], vectors: list[list[float]], mo
         raise ValueError("Embedding cache item/vector count mismatch.")
     with learning_connection() as connection:
         for item, vector in zip(items, vectors):
+            # Old versions and old embedding models are derived data and can be rebuilt.
+            connection.execute(
+                "DELETE FROM learning_experience_embeddings "
+                "WHERE experience_id=? AND (experience_version<>? OR model<>?)",
+                (item["id"], item["version"], model),
+            )
             connection.execute(
                 """INSERT OR REPLACE INTO learning_experience_embeddings(
                        experience_id, experience_version, model, dimensions, embedding_json
@@ -144,6 +152,17 @@ def _save_embeddings(items: list[dict[str, Any]], vectors: list[list[float]], mo
                 (item["id"], item["version"], model, len(vector),
                  json.dumps(vector, separators=(",", ":"), allow_nan=False)),
             )
+        # Keep the rebuildable cache bounded even as experiences accumulate over time.
+        connection.execute(
+            """DELETE FROM learning_experience_embeddings
+               WHERE (experience_id, experience_version, model) IN (
+                   SELECT experience_id, experience_version, model
+                   FROM learning_experience_embeddings
+                   ORDER BY created_at DESC, experience_id DESC, experience_version DESC
+                   LIMIT -1 OFFSET ?
+               )""",
+            (_MAX_EMBEDDING_CACHE_ROWS,),
+        )
 
 
 def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> list[tuple[int, float]]:
@@ -161,9 +180,17 @@ def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> lis
         item for item in items
         if (int(item["id"]), int(item["version"])) not in cached
     ]
+    with _METRICS_LOCK:
+        _CACHE_METRICS["hits"] = int(_CACHE_METRICS["hits"]) + len(cached)
+        _CACHE_METRICS["misses"] = int(_CACHE_METRICS["misses"]) + len(missing)
     for offset in range(0, len(missing), 32):
         batch = missing[offset:offset + 32]
+        started = time.perf_counter()
         vectors = ollama.embed([_search_text(item)[:6000] for item in batch], model=model)
+        elapsed = max(0.0, time.perf_counter() - started)
+        with _METRICS_LOCK:
+            _CACHE_METRICS["embedded_vectors"] = int(_CACHE_METRICS["embedded_vectors"]) + len(batch)
+            _CACHE_METRICS["embedding_seconds"] = float(_CACHE_METRICS["embedding_seconds"]) + elapsed
         _save_embeddings(batch, vectors, model)
         for item, vector in zip(batch, vectors):
             cached[(int(item["id"]), int(item["version"]))] = vector
