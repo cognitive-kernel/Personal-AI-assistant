@@ -119,11 +119,11 @@ def chat(
     settings = get_settings()
     prefix = purpose
     limits = runtime_limits({
-        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings["ollama_num_ctx"]),
-        "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings["ollama_num_thread"]),
+        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
+        "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
     }, detect_hardware())
-    request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
-    model = str(settings.get(f"{prefix}_ollama_model", settings["ollama_model"]))
+    request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
+    model = str(settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b")))
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
