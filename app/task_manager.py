@@ -284,12 +284,20 @@ def list_terminal_task_ids(
     return [int(row["id"]) for row in rows]
 
 
-def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, Any] | None:
+def claim_next_task(
+    worker_id: str, *, lease_seconds: int = 300, task_types: list[str] | tuple[str, ...] | None = None
+) -> dict[str, Any] | None:
     """Atomically claim one due task; expired running leases may be reclaimed."""
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ValueError("worker_id must be a non-empty string.")
     if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or lease_seconds < 1:
         raise ValueError("lease_seconds must be a positive integer.")
+    if task_types is not None and (
+        not isinstance(task_types, (list, tuple)) or not task_types
+        or any(not isinstance(item, str) or not item.strip() for item in task_types)
+    ):
+        raise ValueError("task_types must be a non-empty list of non-empty strings.")
+    normalized_types = tuple(dict.fromkeys(item.strip() for item in task_types)) if task_types is not None else None
     now = _now()
     now_text = _timestamp(now)
     expires = _timestamp(now + timedelta(seconds=lease_seconds))
@@ -313,12 +321,19 @@ def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, An
                WHERE status='running' AND lease_expires_at <= ? AND attempts >= max_attempts""",
             (now_text, now_text),
         )
+        type_clause = ""
+        query_params: tuple[Any, ...] = (now_text, now_text)
+        if normalized_types is not None:
+            placeholders = ",".join("?" for _ in normalized_types)
+            type_clause = f" AND task_type IN ({placeholders})"
+            query_params = (*query_params, *normalized_types)
         row = conn.execute(
             """SELECT id FROM task_queue
-               WHERE (status='queued' AND scheduled_at <= ?)
-                  OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts)
-               ORDER BY priority DESC, scheduled_at ASC, id ASC LIMIT 1""",
-            (now_text, now_text),
+               WHERE ((status='queued' AND scheduled_at <= ?)
+                  OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts))"""
+            + type_clause +
+            " ORDER BY priority DESC, scheduled_at ASC, id ASC LIMIT 1",
+            query_params,
         ).fetchone()
         if row is None:
             return None
