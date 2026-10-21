@@ -339,6 +339,24 @@ def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
 
 
+@app.get("/api/learning/candidates")
+def learning_candidates(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
+    """List temporary knowledge candidates with their evidence score and verification method."""
+    from .knowledge_review import get_candidate_review_summary
+    with db.learning_connection() as conn:
+        rows = conn.execute(
+            """SELECT id, topic, status, source_kind, updated_at
+               FROM temporary_knowledge_candidates ORDER BY id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
+    candidates = []
+    for row in rows:
+        item = dict(row)
+        item["review"] = get_candidate_review_summary(int(row["id"]))
+        candidates.append(item)
+    return {"candidates": candidates}
+
+
 @app.get("/api/learning/candidates/{candidate_id}/review")
 def learning_candidate_review(candidate_id: int) -> dict[str, Any]:
     """Return evidence, verification methods, contradictions and confidence breakdown."""
