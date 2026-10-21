@@ -50,6 +50,10 @@ def test_online_research_persists_source_as_context_not_proof(tmp_path, monkeypa
         ]
 
     monkeypatch.setattr("app.web_sources.discover_sources", fake_discover)
+    monkeypatch.setattr("app.claim_review.review_answer_claims", lambda *_args, **_kwargs: {
+        "passed": False, "overall": "insufficient_evidence", "claims": [],
+        "source_conflicts": [], "error": "insufficient_evidence",
+    })
     result = research_candidate_online(candidate_id, "photosynthesis", limit=2)
 
     assert result["status"] == "completed"
