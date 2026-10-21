@@ -335,3 +335,47 @@ def test_channel_attempt_history_records_web_and_peer_failures_without_secrets(t
     peer_attempts = [item for item in attempts if item["channel"] == "peer_ai"]
     assert peer_attempts
     assert all("secret" not in json.dumps(item).lower() for item in peer_attempts)
+
+
+def test_online_research_classifies_claim_linked_sources_only_after_claim_review(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    url = "https://example.org/photosynthesis"
+    monkeypatch.setattr(
+        "app.web_sources.discover_sources",
+        lambda query, limit: [SourceDocument(
+            url=url,
+            title="Photosynthesis reference",
+            text="Photosynthesis converts light energy into chemical energy in plants and algae.",
+        )],
+    )
+
+    def fake_claim_review(question, answer, sources):
+        assert question == "photosynthesis"
+        assert url in answer
+        assert sources[0]["url"] == url
+        assert "chemical energy" in sources[0]["content"]
+        return {
+            "passed": True,
+            "overall": "supported",
+            "claims": [{
+                "claim": "Photosynthesis converts light energy into chemical energy.",
+                "verdict": "supported",
+                "evidence_urls": [url],
+                "reason": "The retrieved excerpt directly supports the claim.",
+            }],
+            "source_conflicts": [],
+        }
+
+    monkeypatch.setattr("app.claim_review.review_answer_claims", fake_claim_review)
+    result = research_candidate_online(candidate_id, "photosynthesis")
+
+    assert result["claim_review"]["passed"] is True
+    assert result["claim_review"]["classified_sources"] == 1
+    with db.learning_connection() as conn:
+        evidence = conn.execute(
+            "SELECT evidence_kind, reliability_note FROM knowledge_review_evidence "
+            "WHERE candidate_id=? AND source_url=?",
+            (candidate_id, url),
+        ).fetchone()
+    assert evidence["evidence_kind"] == "supporting"
+    assert "not independent proof" in evidence["reliability_note"]
