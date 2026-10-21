@@ -440,56 +440,21 @@ def run_job(job_id: int) -> None:
             # Preserve source text and evidence even when the generated output is unusable;
             # failed attempts are useful debugging/training data, not disposable noise.
         if candidate_id is not None:
-            # Each verification channel is independent and its outcome is persisted.
-            if requested_url and not requested_url_fetch_succeeded:
-                # Do not silently replace an explicitly requested but unreachable URL
-                # with unrelated search results. The candidate remains stored and peer
-                # consultation can still run as a separate, clearly labeled channel.
-                try:
-                    from .knowledge_review import record_review_attempt
-                    record_review_attempt(
-                        candidate_id, channel="web_research", status="unavailable",
-                        details={"reason": "explicit_requested_url_failed_no_automatic_substitution"},
-                    )
-                except Exception:
-                    pass
-            elif os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower() not in {"0", "false", "no", "off"}:
-                try:
-                    from .knowledge_review import research_candidate_online
-                    research_candidate_online(
-                        candidate_id,
-                        f"{topic} {result['lesson'][:300]}",
-                        limit=3,
-                    )
-                except Exception:
-                    pass
-            else:
-                try:
-                    from .knowledge_review import record_review_attempt
-                    record_review_attempt(
-                        candidate_id, channel="web_research", status="unconfigured",
-                        details={"reason": "LEARNING_AUTO_WEB_RESEARCH_disabled"},
-                    )
-                except Exception:
-                    pass
-            # Peer-AI consultation is configured separately and remains independent of web search.
-            try:
-                from .knowledge_review import consult_configured_peer_ais
-                consult_configured_peer_ais(candidate_id, limit=3)
-            except Exception:
-                pass
-            # Run source-provided doctest examples only when the bounded sandbox is configured.
-            try:
-                from .learning_verification import run_candidate_source_doctests
-                run_candidate_source_doctests(candidate_id)
-            except Exception:
-                # Keep the temporary candidate and its evidence if optional sandbox checks fail.
-                pass
+            # The orchestrator attempts web, peer-AI, and sandbox channels independently.
+            # A failed explicit URL must not be silently replaced by an unrelated search.
+            from .hybrid_learning import run_hybrid_verification
+            web_mode = (
+                "skip_requested_url_failed" if requested_url and not requested_url_fetch_succeeded
+                else "search"
+            )
+            run_hybrid_verification(
+                candidate_id, query=f"{topic} {result['lesson'][:300]}",
+                web_mode=web_mode, run_sandbox=True,
+            )
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
                          (str(exc)[:1000], job_id))
-        raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 
