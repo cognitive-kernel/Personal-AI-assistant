@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from . import chat_history, db, research_tasks, task_manager
 from .task_routes import require_loopback_client
@@ -21,8 +21,7 @@ class ResearchTaskRequest(BaseModel):
     history: list[dict[str, str]] = Field(default_factory=list, max_length=30)
     conversation_id: int | None = Field(default=None, ge=1)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post("/tasks", status_code=202)
