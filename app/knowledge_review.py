@@ -591,8 +591,11 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
             else "partial_scope_tested"
             if passed_scoped_suites
             else "evidence_reviewed_no_lab"
-            if (evidence or peers) and not full_test_results
-            and not any(row["run_status"] in {"passed", "failed"} for row in test_runs)
+            if (
+                (any(row["evidence_kind"] in {"supporting", "contradicting"} for row in evidence) or peers)
+                and not full_test_results
+                and not any(row["run_status"] in {"passed", "failed"} for row in test_runs)
+            )
             else "unverified"
         ),
         "limitations": [
