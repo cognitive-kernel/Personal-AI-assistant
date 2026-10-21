@@ -1,0 +1,12 @@
+<section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
+<p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
+<form id="self-improvement-form">
+<input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر" aria-label="عنوان تغییر">
+<textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر" aria-label="دلیل و هدف تغییر"></textarea>
+<textarea id="self-improvement-patch" dir="ltr" required maxlength="262144" rows="8" placeholder="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md" aria-label="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md"></textarea>
+<button type="submit">ثبت پیشنهاد</button>
+</form>
+<p id="self-improvement-output" role="status"></p>
+<button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
+<div id="self-improvement-list"></div>
+</section>
