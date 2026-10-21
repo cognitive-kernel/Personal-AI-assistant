@@ -29,6 +29,7 @@ Payload, checkpoint, and result must be valid JSON; NaN and Infinity are rejecte
 - Workers must renew leases for long operations and may only mutate tasks while their lease is valid.
 - Pause and cancellation are cooperative. Running tasks transition to a request state; workers settle that request at a checkpoint/control poll. A crashed worker's expired pause/cancel request is settled by the next claimant.
 - Paused tasks retain their checkpoint and must be explicitly resumed.
+- Inactive tasks may be deleted through the loopback-only API; task-event rows cascade with the task. Running, pause-requested, and cancel-requested tasks cannot be deleted until their worker lifecycle settles. The dashboard requires explicit confirmation before deletion.
 - Priority is ordered descending among due tasks; scheduled tasks are not claimed before their due time.
 
 ## Safety boundaries
