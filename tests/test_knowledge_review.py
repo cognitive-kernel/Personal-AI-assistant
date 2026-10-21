@@ -289,3 +289,49 @@ def test_claim_matrix_exposes_evidence_channels_without_promoting_context_to_tru
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()
     assert candidate["status"] == "awaiting_test"
+
+
+def test_unconfigured_peer_ai_attempt_is_persisted_in_candidate_review(tmp_path, monkeypatch):
+    from app.knowledge_review import build_claim_verification_matrix
+
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    monkeypatch.delenv("PEER_AI_PROVIDERS_JSON", raising=False)
+
+    result = consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "unconfigured"
+    matrix = build_claim_verification_matrix(candidate_id)
+    attempts = matrix["channel_attempts"]
+    assert any(
+        item["channel"] == "peer_ai"
+        and item["status"] == "unconfigured"
+        and item["details"]["reason"] == "PEER_AI_PROVIDERS_JSON_not_set"
+        for item in attempts
+    )
+
+
+def test_channel_attempt_history_records_web_and_peer_failures_without_secrets(tmp_path, monkeypatch):
+    from app.knowledge_review import build_claim_verification_matrix
+
+    candidate_id = _candidate(tmp_path, monkeypatch)
+
+    def broken_discovery(*_args, **_kwargs):
+        raise TimeoutError("public search timed out")
+
+    monkeypatch.setattr("app.web_sources.discover_sources", broken_discovery)
+    web = research_candidate_online(candidate_id, "photosynthesis")
+    assert web["status"] == "unavailable"
+
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "peer-test", "model": "review-model",
+        "base_url": "https://peer.example/v1", "api_key_env": "NEVER_SET_SECRET",
+    }]))
+    peer = consult_configured_peer_ais(candidate_id)
+    assert peer["status"] == "unavailable"
+
+    matrix = build_claim_verification_matrix(candidate_id)
+    attempts = matrix["channel_attempts"]
+    assert any(item["channel"] == "web_research" and item["status"] == "unavailable" for item in attempts)
+    peer_attempts = [item for item in attempts if item["channel"] == "peer_ai"]
+    assert peer_attempts
+    assert all("secret" not in json.dumps(item).lower() for item in peer_attempts)
