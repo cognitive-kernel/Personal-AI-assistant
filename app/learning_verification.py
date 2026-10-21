@@ -55,7 +55,9 @@ def extract_source_assertion_blocks(text: str, *, max_blocks: int = 5) -> list[s
         except SyntaxError:
             continue
         nodes = list(ast.walk(tree))
-        if not any(isinstance(node, ast.Assert) for node in nodes):
+        # Require a top-level assertion so a never-called function or dead branch
+        # cannot make an empty test block appear to pass.
+        if not any(isinstance(statement, ast.Assert) for statement in tree.body):
             continue
         unsafe = False
         for node in nodes:
