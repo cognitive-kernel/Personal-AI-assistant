@@ -92,6 +92,8 @@ def test_human_verification_requires_explicit_reviewer_and_high_risk_activation(
     transition_evidence_level(connection, kid, "L2_tested")
     with pytest.raises(KnowledgePolicyError, match="human verification"):
         transition_lifecycle(connection, kid, "active")
+    with pytest.raises(sqlite3.IntegrityError, match="high-risk knowledge requires human verification"):
+        connection.execute("UPDATE factual_knowledge SET lifecycle_status='active' WHERE id=?", (kid,))
     with pytest.raises(KnowledgePolicyError, match="human_verified_by"):
         transition_evidence_level(connection, kid, "L3_human_verified")
     transition_evidence_level(connection, kid, "L3_human_verified", human_verified_by="reviewer-1")
