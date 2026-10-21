@@ -371,7 +371,7 @@ def test_verified_retrieval_returns_only_active_source_backed_exact_scope(connec
     )
     results = retrieve_verified_claims(
         connection,
-        "SQL Server query plans",
+        "SQL Server",
         environment_name="sql_server",
         environment_version="2022",
     )
