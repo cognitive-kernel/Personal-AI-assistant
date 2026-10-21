@@ -193,6 +193,23 @@ def startup() -> None:
         )
         runtime.start()
         _task_runtimes.append(runtime)
+
+    # Preserve fail-closed behavior for tasks whose type has no registered handler.
+    known_task_types = tuple(
+        task_type for lane_handlers, _count, _prefix, _maintenance in runtime_specs
+        for task_type in lane_handlers
+    )
+    fallback_placeholder = "__unregistered_task_type__"
+    fallback_runtime = TaskRuntime(
+        {fallback_placeholder: lambda *_args: {"ok": True}},
+        worker_count=1,
+        worker_prefix="dead-letter-worker",
+        poll_interval=0.5,
+        lease_seconds=300,
+        exclude_task_types=known_task_types + (fallback_placeholder,),
+    )
+    fallback_runtime.start()
+    _task_runtimes.append(fallback_runtime)
     backup_scheduler.start_backup_scheduler()
 
 @app.on_event("shutdown")
