@@ -75,16 +75,16 @@ def create_claim(
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
     connection.execute(
         """INSERT INTO factual_knowledge(
-               claim, normalized_claim, claim_hash, scope_json,
+               claim, normalized_claim, claim_hash, scope_json, domain_name,
                environment_name, environment_version, risk_level
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(claim_hash, environment_name, environment_version) DO NOTHING""",
-        (claim.strip(), normalized, digest, scope_json, environment_name, environment_version, risk_level),
+        (claim.strip(), normalized, digest, scope_json, environment_name, environment_name, environment_version, risk_level),
     )
     row = connection.execute(
         """SELECT id FROM factual_knowledge
-           WHERE claim_hash = ? AND environment_name = ? AND environment_version = ?""",
-        (digest, environment_name, environment_version),
+           WHERE claim_hash = ? AND domain_name = ? AND environment_name = ? AND environment_version = ?""",
+        (digest, environment_name, environment_name, environment_version),
     ).fetchone()
     if row is None:
         raise KnowledgePolicyError("claim could not be persisted")
@@ -219,146 +219,6 @@ def get_claim(connection: sqlite3.Connection, knowledge_id: int) -> Claim:
     return Claim(*row)
 
 
-_RETRIEVAL_STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "can", "does", "for",
-    "from", "how", "in", "is", "it", "of", "on", "or", "the", "to", "what",
-    "when", "where", "which", "why", "with", "should",
-    "از", "به", "در", "و", "که", "برای", "چگونه", "چیست", "چطور", "آیا",
-    "با", "را", "این", "آن", "می", "شود", "است", "هستند",
-}
-
-
-def _retrieval_tokens(value: str) -> list[str]:
-    normalized = value.casefold().replace("ي", "ی").replace("ك", "ک")
-    return [
-        token for token in re.findall(r"[a-z0-9_]+|[\u0600-\u06FF]+", normalized)
-        if len(token) >= 2 and token not in _RETRIEVAL_STOPWORDS
-    ]
-
-
-def retrieve_verified_claims(
-    connection: sqlite3.Connection,
-    query: str,
-    *,
-    environment_name: str,
-    environment_version: str,
-    limit: int = 5,
-) -> list[dict[str, Any]]:
-    """Return only source-backed, active L2/L3 claims for one exact environment.
-
-    This is a read-only lexical candidate retriever, not a truth oracle or an LLM
-    judgment. Missing scope, weak trust, conflicting active relations, and missing
-    evidence all fail closed. Results include source provenance for downstream use.
-    """
-    if (
-        not isinstance(query, str) or not query.strip() or len(query) > 1000
-        or not isinstance(environment_name, str)
-        or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", environment_name)
-        or not isinstance(environment_version, str) or not environment_version.strip()
-    ):
-        return []
-    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 20:
-        raise KnowledgePolicyError("limit must be an integer between 1 and 20")
-
-    tokens = list(dict.fromkeys(_retrieval_tokens(query)))[:32]
-    if not tokens:
-        return []
-    token_predicates = " OR ".join("normalized_claim LIKE ?" for _ in tokens)
-    token_values = [f"%{token}%" for token in tokens]
-    rows = connection.execute(
-        f"""SELECT id, claim, normalized_claim, evidence_level, lifecycle_status,
-                   environment_name, environment_version, scope_json, risk_level, updated_at
-            FROM factual_knowledge AS k
-            WHERE k.environment_name = ?
-              AND k.environment_version = ?
-              AND k.evidence_level IN ('L2_tested', 'L3_human_verified')
-              AND k.lifecycle_status = 'active'
-              AND (k.risk_level NOT IN ('high', 'critical') OR k.evidence_level = 'L3_human_verified')
-              AND EXISTS (
-                  SELECT 1 FROM factual_evidence e
-                  WHERE e.knowledge_id = k.id
-                    AND e.source_type IN ('official_docs', 'source_code', 'human_review')
-                    AND length(trim(e.source_ref)) > 0
-                    AND length(trim(e.source_hash)) > 0
-              )
-              AND NOT EXISTS (
-                  SELECT 1
-                  FROM knowledge_relations r
-                  JOIN factual_knowledge other
-                    ON other.id = CASE
-                        WHEN r.knowledge_id = k.id THEN r.related_knowledge_id
-                        ELSE r.knowledge_id
-                    END
-                  WHERE r.relation_type = 'contradicts'
-                    AND (r.knowledge_id = k.id OR r.related_knowledge_id = k.id)
-                    AND other.lifecycle_status IN ('active', 'conflicting', 'needs_review')
-              )
-              AND ({token_predicates})
-            ORDER BY CASE k.evidence_level
-                       WHEN 'L3_human_verified' THEN 0 ELSE 1 END,
-                     k.updated_at DESC, k.id DESC
-            LIMIT 500""",
-        [environment_name, environment_version, *token_values],
-    ).fetchall()
-
-    query_tokens = set(tokens)
-    ranked = []
-    for row in rows:
-        claim_tokens = set(_retrieval_tokens(row[2]))
-        overlap = len(query_tokens & claim_tokens)
-        if overlap == 0:
-            continue
-        score = round(overlap / len(query_tokens), 4)
-        evidence_rows = connection.execute(
-            """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
-               FROM factual_evidence WHERE knowledge_id = ? ORDER BY id""",
-            (row[0],),
-        ).fetchall()
-        evidence = []
-        for item in evidence_rows:
-            try:
-                applicability = json.loads(item[4]) if item[4] else {}
-            except (json.JSONDecodeError, TypeError):
-                applicability = {}
-            if not isinstance(applicability, dict):
-                applicability = {}
-            evidence.append({
-                "source_type": item[0],
-                "source_ref": item[1],
-                "source_hash": item[2],
-                "excerpt": item[3][:2500] if isinstance(item[3], str) else "",
-                "applicability": applicability,
-            })
-        if not evidence:
-            continue
-        try:
-            scope = json.loads(row[7]) if row[7] else {}
-        except (json.JSONDecodeError, TypeError):
-            scope = {}
-        if not isinstance(scope, dict):
-            scope = {}
-        ranked.append({
-            "id": row[0],
-            "claim": row[1],
-            "evidence_level": row[3],
-            "lifecycle_status": row[4],
-            "environment_name": row[5],
-            "environment_version": row[6],
-            "scope": scope,
-            "risk_level": row[8],
-            "score": score,
-            "evidence": evidence,
-        })
-    ranked.sort(
-        key=lambda item: (
-            -item["score"],
-            0 if item["evidence_level"] == "L3_human_verified" else 1,
-            -item["id"],
-        )
-    )
-    return ranked[:limit]
-
-
 def list_claim_revisions(
     connection: sqlite3.Connection, knowledge_id: int
 ) -> list[dict[str, Any]]:
@@ -372,14 +232,14 @@ def list_claim_revisions(
         raise KnowledgePolicyError(f"unknown knowledge id: {knowledge_id}")
     rows = connection.execute(
         """SELECT revision_number, claim, normalized_claim, claim_hash, scope_json,
-                  environment_name, environment_version, recorded_at
+                  environment_name, environment_version, recorded_at, domain_name
            FROM factual_claim_revisions
            WHERE knowledge_id = ? ORDER BY revision_number""",
         (knowledge_id,),
     ).fetchall()
     keys = (
         "revision_number", "claim", "normalized_claim", "claim_hash", "scope_json",
-        "environment_name", "environment_version", "recorded_at",
+        "environment_name", "environment_version", "recorded_at", "domain_name",
     )
     return [dict(zip(keys, row)) for row in rows]
 
