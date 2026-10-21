@@ -4,6 +4,7 @@ import json
 import pytest
 
 from app import db, learning
+from app.main import KnowledgeApplicationFeedbackRequest, learning_candidate_feedback
 from app.knowledge_review import (
     get_candidate_review_summary,
     record_peer_consultation,
@@ -503,3 +504,41 @@ def test_failed_field_feedback_creates_usage_failure_and_downgrades_l2(tmp_path,
     assert experience["experience_type"] == "usage_failure"
     assert "empty input" in experience["problem"]
     assert json.loads(experience["test_results_json"])[0]["counts_as_automated_oracle"] is False
+
+
+
+def test_failed_feedback_route_triggers_auto_self_correction_without_losing_review(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    monkeypatch.delenv("LEARNING_AUTO_SELF_CORRECTION", raising=False)
+    called = []
+    monkeypatch.setattr(
+        "app.learning_consensus.start_self_correction",
+        lambda cid: called.append(cid) or {
+            "status": "alternative_created", "parent_candidate_id": cid,
+            "alternative_candidate_id": 999, "trust_level": "L0",
+        },
+    )
+
+    result = learning_candidate_feedback(
+        candidate_id,
+        KnowledgeApplicationFeedbackRequest(
+            outcome="failed",
+            application_context="Command failed in the reported environment.",
+            observed_output="non-zero exit status",
+            test_steps="Run the command with the reported arguments.",
+        ),
+    )
+
+    assert called == [candidate_id]
+    assert result["automatic_self_correction"]["status"] == "alternative_created"
+    assert result["automatic_self_correction"]["trigger"] == "user_reported_application_failure"
+    assert result["trust"]["trust_level"] == "L-1"
+    assert result["trust"]["learning_status"] == "failed"
+    with db.learning_connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM knowledge_user_feedback WHERE candidate_id=? AND outcome='failed'",
+            (candidate_id,),
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM learning_experiences WHERE experience_type='usage_failure'"
+        ).fetchone()[0] == 1

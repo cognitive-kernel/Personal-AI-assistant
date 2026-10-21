@@ -552,7 +552,30 @@ def learning_candidate_feedback(
             observed_output=request.observed_output,
             test_steps=request.test_steps,
         )
-        return get_candidate_review_summary(candidate_id)
+        summary = get_candidate_review_summary(candidate_id)
+        auto_correction: dict[str, Any] = {"status": "not_needed"}
+        auto_enabled = os.environ.get("LEARNING_AUTO_SELF_CORRECTION", "true").strip().lower() not in {
+            "0", "false", "no", "off",
+        }
+        if request.outcome == "failed" and auto_enabled:
+            try:
+                from .learning_consensus import start_self_correction
+                auto_correction = start_self_correction(candidate_id)
+                auto_correction["trigger"] = "user_reported_application_failure"
+            except ValueError as exc:
+                # The feedback and downgrade are already durable. A bounded-attempt
+                # refusal should be reported without turning feedback into an API error.
+                auto_correction = {
+                    "status": "not_started",
+                    "reason": "correction_not_eligible_or_lineage_limit_reached",
+                    "detail_type": type(exc).__name__,
+                }
+            except Exception as exc:
+                auto_correction = {"status": "failed", "error_type": type(exc).__name__}
+        elif request.outcome == "failed":
+            auto_correction = {"status": "disabled", "reason": "LEARNING_AUTO_SELF_CORRECTION"}
+        summary["automatic_self_correction"] = auto_correction
+        return summary
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
     except ValueError as exc:
