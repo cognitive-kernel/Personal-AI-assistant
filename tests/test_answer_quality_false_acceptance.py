@@ -26,12 +26,15 @@ def test_prohibited_reference_phrase_is_rejected_and_counted_in_false_acceptance
     assert report["failed_case_count"] == 1
     assert report["case_decisions"][0]["accepted"] is False
     assert report["false_acceptance"]["reference_negative_case_count"] == 1
-    assert report["false_acceptance"]["false_acceptance_count"] == 0
-    assert report["false_acceptance"]["false_acceptance_rate"] == 0.0
+    assert report["false_acceptance"]["before_content_filter"]["false_acceptance_count"] == 1
+    assert report["false_acceptance"]["before_content_filter"]["false_acceptance_rate"] == 1.0
+    assert report["false_acceptance"]["final_gate"]["false_acceptance_count"] == 0
+    assert report["false_acceptance"]["final_gate"]["false_acceptance_rate"] == 0.0
 
 
 def test_clean_case_has_no_claimed_false_acceptance_rate_without_negative_labels():
     report = evaluate_automated_acceptance([_result()])
     assert report["accepted_case_count"] == 1
     assert report["false_acceptance"]["reference_negative_case_count"] == 0
-    assert report["false_acceptance"]["false_acceptance_rate"] is None
+    assert report["false_acceptance"]["before_content_filter"]["false_acceptance_rate"] is None
+    assert report["false_acceptance"]["final_gate"]["false_acceptance_rate"] is None
