@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, StrictBool
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
+from .pagination import metadata as pagination_metadata
 
 router = APIRouter(
     prefix="/api/experiences",
@@ -103,14 +104,17 @@ def revoke_auto_capture_consent() -> dict[str, Any]:
 def list_experiences(
     topic: str | None = Query(default=None, max_length=300),
     experience_status: EditableStatus | Literal["verified"] | None = Query(default=None, alias="status"),
-    limit: int = Query(default=50, ge=1, le=200),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=200),
 ) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
     try:
-        items = experience.list_experiences(topic=topic, status=experience_status, limit=limit)
+        items = experience.list_experiences(topic=topic, status=experience_status, limit=size, offset=(page - 1) * size)
+        total = experience.count_experiences(topic=topic, status=experience_status)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return {"items": items, "count": len(items)}
-
+    return {"items": items, "count": total, "pagination": pagination_metadata(page, size, total)}
 
 @router.get("/search")
 def search_experiences(

@@ -187,22 +187,38 @@ def get_experience(experience_id: int) -> dict[str, Any]:
     return result
 
 
-def list_experiences(topic: str | None = None, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    init_experience_tables()
+def _experience_filter(topic: str | None = None, status: str | None = None) -> tuple[str, list[Any]]:
     if status is not None and status not in STATUSES:
         raise ValueError("Unsupported experience status.")
-    clauses, params = [], []
+    clauses: list[str] = []
+    params: list[Any] = []
     if topic:
         clauses.append("topic LIKE ?")
         params.append("%" + topic.strip()[:300] + "%")
     if status:
         clauses.append("status=?")
         params.append(status)
-    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    return (" WHERE " + " AND ".join(clauses) if clauses else ""), params
+
+
+def count_experiences(topic: str | None = None, status: str | None = None) -> int:
+    init_experience_tables()
+    where, params = _experience_filter(topic, status)
+    with learning_connection() as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM learning_experiences" + where, params).fetchone()[0])
+
+
+def list_experiences(topic: str | None = None, status: str | None = None, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    init_experience_tables()
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200.")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+        raise ValueError("offset must be between 0 and 1000000.")
+    where, params = _experience_filter(topic, status)
     with learning_connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM learning_experiences" + where + " ORDER BY updated_at DESC, id DESC LIMIT ?",
-            (*params, max(1, min(200, int(limit)))),
+            "SELECT id FROM learning_experiences" + where + " ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
     return [get_experience(int(row["id"])) for row in rows]
 

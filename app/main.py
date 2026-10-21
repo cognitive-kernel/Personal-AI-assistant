@@ -21,6 +21,7 @@ from .research_routes import router as research_router
 from .self_improvement_routes import router as self_improvement_router
 from .learning_practical_routes import router as learning_practical_router
 from .schema_migrations import UntrackedSchemaError
+from .pagination import metadata as pagination_metadata
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
@@ -456,27 +457,39 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @app.get("/api/learning/jobs")
-def learning_jobs(limit: int = 50) -> dict[str, Any]:
-    return {"jobs": learning.list_jobs(limit)}
-
+def learning_jobs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
+    with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM learning_jobs").fetchone()[0])
+    jobs = learning.list_jobs(limit=size, offset=(page - 1) * size)
+    return {"jobs": jobs, "pagination": pagination_metadata(page, size, total)}
 
 @app.get("/api/learning/candidates")
-def learning_candidates(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
-    """List temporary knowledge candidates with their evidence score and verification method."""
+def learning_candidates(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=100),
+) -> dict[str, Any]:
     from .knowledge_review import get_candidate_review_summary
+    size = limit if limit is not None else page_size
+    offset = (page - 1) * size
     with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM temporary_knowledge_candidates").fetchone()[0])
         rows = conn.execute(
             """SELECT id, topic, status, source_kind, updated_at
-               FROM temporary_knowledge_candidates ORDER BY id DESC LIMIT ?""",
-            (limit,),
+               FROM temporary_knowledge_candidates ORDER BY id DESC LIMIT ? OFFSET ?""",
+            (size, offset),
         ).fetchall()
     candidates = []
     for row in rows:
         item = dict(row)
         item["review"] = get_candidate_review_summary(int(row["id"]))
         candidates.append(item)
-    return {"candidates": candidates}
-
+    return {"candidates": candidates, "pagination": pagination_metadata(page, size, total)}
 
 @app.get("/api/learning/candidates/{candidate_id}/review")
 def learning_candidate_review(candidate_id: int) -> dict[str, Any]:
@@ -598,19 +611,32 @@ def legacy_scheduler_status() -> dict[str, Any]:
 
 
 @app.get("/api/knowledge")
-def knowledge_items(limit: int = 100) -> dict[str, Any]:
+def knowledge_items(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=300),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
     with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0])
         rows = conn.execute(
             """SELECT id, topic, content, source_kind, version, status, job_id, created_at
-               FROM knowledge_items ORDER BY id DESC LIMIT ?""",
-            (max(1, min(300, limit)),),
+               FROM knowledge_items ORDER BY id DESC LIMIT ? OFFSET ?""",
+            (size, (page - 1) * size),
         ).fetchall()
-    return {"items": [dict(row) for row in rows]}
+    return {"items": [dict(row) for row in rows], "pagination": pagination_metadata(page, size, total)}
 
 @app.get("/api/learning/paths")
-def learning_paths() -> dict[str, Any]:
-    return {"paths": learning.list_learning_paths()}
-
+def learning_paths(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=100),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
+    with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM learning_paths").fetchone()[0])
+    paths = learning.list_learning_paths(limit=size, offset=(page - 1) * size)
+    return {"paths": paths, "pagination": pagination_metadata(page, size, total)}
 
 @app.post("/api/learning/paths", status_code=201)
 def enroll_learning_path(request: CurriculumEnrollment) -> dict[str, Any]:

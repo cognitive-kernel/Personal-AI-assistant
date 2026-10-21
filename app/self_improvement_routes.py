@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, StrictBool
 from . import self_improvement
 from .self_improvement import ProposalError
 from .task_routes import require_loopback_client
+from .pagination import metadata as pagination_metadata
 
 router = APIRouter(
     prefix="/api/self-improvement",
@@ -46,9 +47,16 @@ def _proposal_error(exc: Exception) -> None:
 
 
 @router.get("/proposals")
-def list_proposals(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]:
+def list_proposals(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=100),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
     try:
-        return {"proposals": self_improvement.list_proposals(limit)}
+        proposals = self_improvement.list_proposals(size, (page - 1) * size)
+        total = self_improvement.count_proposals()
+        return {"proposals": proposals, "pagination": pagination_metadata(page, size, total)}
     except ProposalError as exc:
         _proposal_error(exc)
 

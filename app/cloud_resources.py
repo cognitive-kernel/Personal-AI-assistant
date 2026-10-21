@@ -897,9 +897,11 @@ def _serialize_candidate(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
     return item
 
 
-def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
+def list_candidates(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500.")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 50_000:
+        raise ValueError("offset must be between 0 and 50000.")
     initialize_store()
     with closing(_connect()) as connection:
         _mark_stale_candidates(connection, max_age_days=30)
@@ -920,7 +922,7 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
         reference_path_params = [
             f"%{marker.casefold()}%" for marker in _OFFICIAL_REFERENCE_PATH_MARKERS
         ]
-        scan_limit = min(5000, max(limit * 20, 200))
+        scan_limit = min(10000, max((limit + offset) * 20, 200))
         rows = connection.execute(
             f"""SELECT * FROM cloud_resource_candidates
                 ORDER BY CASE
@@ -964,7 +966,7 @@ def list_candidates(*, limit: int = 100) -> list[dict[str, Any]]:
             reverse=True,
         )
         eligible.sort(key=_candidate_source_rank)
-        results = eligible[:limit]
+        results = eligible[offset:offset + limit]
 
         for item in results:
             claim_rows = connection.execute(

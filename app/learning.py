@@ -1038,9 +1038,15 @@ def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, ta
             "note": "این بازخورد، خودارزیابی یادگیرنده است و به‌تنهایی صحت علمی درس را تأیید نمی‌کند."}
 
 
-def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
+def list_jobs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200.")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+        raise ValueError("offset must be between 0 and 1000000.")
     with learning_connection() as conn:
-        ids = [row["id"] for row in conn.execute("SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ?", (max(1, min(200, limit)),)).fetchall()]
+        ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM learning_jobs ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
+        ).fetchall()]
     return [get_job(job_id) for job_id in ids]
 
 def _enqueue_learning_job(job_id: int) -> dict[str, Any]:
@@ -1099,9 +1105,15 @@ def get_learning_path(path_id: int) -> dict[str, Any]:
     return result
 
 
-def list_learning_paths() -> list[dict[str, Any]]:
+def list_learning_paths(limit: int = 25, offset: int = 0) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ValueError("limit must be between 1 and 100.")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+        raise ValueError("offset must be between 0 and 1000000.")
     with learning_connection() as conn:
-        ids = [row["id"] for row in conn.execute("SELECT id FROM learning_paths ORDER BY id DESC").fetchall()]
+        ids = [row["id"] for row in conn.execute(
+            "SELECT id FROM learning_paths ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)
+        ).fetchall()]
     return [get_learning_path(path_id) for path_id in ids]
 
 
