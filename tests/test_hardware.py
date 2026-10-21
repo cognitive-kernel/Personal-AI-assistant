@@ -199,7 +199,7 @@ def test_gpu_resource_guard_is_skipped_when_gpu_is_disabled(monkeypatch):
         (25, 25, 4, 21),
         (12, 25, 4, 8),
         (6, 25, 4, 2),
-        (32, 20, 5, 20),
+        (32, 20, 5, 15),
         (4, 25, 4, 0),
         (0, 25, 4, 0),
         (None, 25, 4, None),
@@ -230,3 +230,16 @@ def test_resource_headroom_fails_closed_when_psutil_is_unavailable(monkeypatch):
     monkeypatch.setattr(hardware, "psutil", None)
     with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
         hardware.ensure_resource_headroom()
+
+def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
+    limits = hardware.runtime_limits(
+        {
+            "ollama_num_ctx": 8192,
+            "ollama_num_thread": 0,
+            "ram_budget_max_gb": 6,
+            "ram_safety_reserve_gb": 4,
+        },
+        {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 24},
+    )
+    assert limits["num_ctx"] == 2048
+
