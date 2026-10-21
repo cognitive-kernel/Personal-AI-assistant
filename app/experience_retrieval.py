@@ -25,6 +25,7 @@ _MAX_VECTOR_RESULTS = 30
 _TOKEN_RE = re.compile(r"[\w-]{2,}", flags=re.UNICODE)
 _MAX_EMBEDDING_CACHE_ROWS = 5000
 _METRICS_LOCK = threading.Lock()
+_CACHE_FILL_LOCK = threading.Lock()
 _CACHE_METRICS: dict[str, float | int] = {
     "hits": 0, "misses": 0, "embedded_vectors": 0, "embedding_seconds": 0.0,
 }
@@ -209,25 +210,28 @@ def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> lis
     if not query_vectors:
         return []
 
-    cached = _cached_embeddings([(int(item["id"]), int(item["version"])) for item in items], model)
-    missing = [
-        item for item in items
-        if (int(item["id"]), int(item["version"])) not in cached
-    ]
-    with _METRICS_LOCK:
-        _CACHE_METRICS["hits"] = int(_CACHE_METRICS["hits"]) + len(cached)
-        _CACHE_METRICS["misses"] = int(_CACHE_METRICS["misses"]) + len(missing)
-    for offset in range(0, len(missing), 32):
-        batch = missing[offset:offset + 32]
-        started = time.perf_counter()
-        vectors = ollama.embed([_search_text(item)[:6000] for item in batch], model=model)
-        elapsed = max(0.0, time.perf_counter() - started)
+    # Serialize cache miss-fill so concurrent searches do not embed the same
+    # experience version repeatedly. Query vectors are computed outside this lock.
+    with _CACHE_FILL_LOCK:
+        cached = _cached_embeddings([(int(item["id"]), int(item["version"])) for item in items], model)
+        missing = [
+            item for item in items
+            if (int(item["id"]), int(item["version"])) not in cached
+        ]
         with _METRICS_LOCK:
-            _CACHE_METRICS["embedded_vectors"] = int(_CACHE_METRICS["embedded_vectors"]) + len(batch)
-            _CACHE_METRICS["embedding_seconds"] = float(_CACHE_METRICS["embedding_seconds"]) + elapsed
-        _save_embeddings(batch, vectors, model)
-        for item, vector in zip(batch, vectors):
-            cached[(int(item["id"]), int(item["version"]))] = vector
+            _CACHE_METRICS["hits"] = int(_CACHE_METRICS["hits"]) + len(cached)
+            _CACHE_METRICS["misses"] = int(_CACHE_METRICS["misses"]) + len(missing)
+        for offset in range(0, len(missing), 32):
+            batch = missing[offset:offset + 32]
+            started = time.perf_counter()
+            vectors = ollama.embed([_search_text(item)[:6000] for item in batch], model=model)
+            elapsed = max(0.0, time.perf_counter() - started)
+            with _METRICS_LOCK:
+                _CACHE_METRICS["embedded_vectors"] = int(_CACHE_METRICS["embedded_vectors"]) + len(batch)
+                _CACHE_METRICS["embedding_seconds"] = float(_CACHE_METRICS["embedding_seconds"]) + elapsed
+            _save_embeddings(batch, vectors, model)
+            for item, vector in zip(batch, vectors):
+                cached[(int(item["id"]), int(item["version"]))] = vector
 
     ranked = []
     for item in items:
