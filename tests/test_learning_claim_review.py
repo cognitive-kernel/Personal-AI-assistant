@@ -125,15 +125,14 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
             "SELECT note FROM learning_evidence WHERE job_id=? AND evidence_type='claim_review'",
             (job["id"],),
         ).fetchone()
-        gate_event = connection.execute(
-            "SELECT details_json FROM learning_events WHERE job_id=? AND event_type='evidence_gate'",
-            (job["id"],),
+        persisted_quality = connection.execute(
+            "SELECT quality_json FROM learning_jobs WHERE id=?", (job["id"],)
         ).fetchone()
     assert knowledge["status"] == "unverified"
     assert event is not None
     assert "not an independent verification" in event["note"]
-    assert gate_event is not None
-    assert json.loads(gate_event["details_json"])["accepted"] is False
+    assert persisted_quality is not None
+    assert json.loads(persisted_quality["quality_json"])["evidence_gate"]["accepted"] is False
 
 def test_sql_server_claims_are_persisted_unverified_with_version_scope(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
