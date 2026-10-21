@@ -550,18 +550,28 @@ def test_cloud_resource_delete_preserves_saved_plan_audit_history(tmp_path, monk
     candidate = cloud_resources.list_candidates()[0]
     cloud_resources.save_resource_selection_plan({
         "plan_version": "provider-neutral-selection-v1",
-        "status": "no_eligible_candidate",
-        "requirements": {"min_cpu_count": 1, "min_memory_gib": 0, "require_gpu": False},
-        "limitations": [],
-        "selected_candidate_id": None,
+        "status": "candidate_found",
+        "requirements": {
+            "min_cpu_count": 1,
+            "min_memory_gib": 0,
+            "require_gpu": False,
+            "gpu_models": [],
+            "allowed_provider_domains": [],
+        },
+        "limitations": ["Test-only audit record."],
+        "selected_candidate_id": candidate["id"],
         "execution_authorized": False,
         "remote_execution_enabled": False,
         "candidates": [{
             "candidate_id": candidate["id"],
             "provider_domain": candidate["provider_domain"],
             "content_sha256": candidate["content_sha256"],
-            "decision": "rejected",
+            "eligible_for_adapter_review": False,
+            "preflight_status": "needs_review",
+            "capabilities": {},
             "reasons": ["test audit record"],
+            "policy_blockers": [],
+            "policy_review_needed": ["Manual review required."],
         }],
     })
 
