@@ -73,6 +73,12 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
     settings = get_settings()
+    if path in _INFERENCE_PATHS and settings.get("gpu_enabled", False) is not True:
+        payload = dict(payload or {})
+        options = payload.get("options")
+        options = dict(options) if isinstance(options, dict) else {}
+        options["num_gpu"] = 0
+        payload["options"] = options
     request = urllib.request.Request(
         _base_url() + path,
         data=None if payload is None else json.dumps(payload).encode("utf-8"),
@@ -150,6 +156,7 @@ def chat(
     limits = runtime_limits({
         "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
+        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
     }, hardware)
     keep_alive = model_keep_alive(purpose, hardware)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
