@@ -2218,3 +2218,8 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 ## 2026-10-21 — Require a trusted test before durable knowledge promotion
 
 The evidence-only promotion path has been changed to diagnostics-only. Supporting web sources, peer-AI agreement, and a confidence score can inform review, but they no longer insert or update a row in the durable `knowledge_items` table. Candidates remain in temporary storage with `awaiting_test`; the API returns `lab_verification_required` until a trusted, versioned test suite passes through the existing acceptance gate. Known contradictions return a blocking reason. Regression tests assert that even two allowlisted source domains and two supporting peer providers cannot promote a candidate without lab tests. The roadmap was updated to match this rule.
+
+
+## 2026-10-21 — Scope source-example test results to the examples themselves
+
+A passing doctest or fenced assertion block from a trusted source is now recorded as scoped evidence only. It no longer marks the entire generated lesson as `verified` or promotes it into durable knowledge. The candidate stays `awaiting_test` until a separate trusted suite covers the lesson's declared claim inventory. Failed trusted-source examples still go through the failure-recording path so the mismatch and its experience remain durable. Browser E2E navigation assertions were also updated to match the dashboard's actual route-based navigation, and the root dashboard now marks its current route with `aria-current="page"`.
