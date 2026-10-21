@@ -13,6 +13,7 @@ from app.factual_knowledge import (
     put_cached_review,
     review_cache_key,
     record_test,
+    search_retrievable_claims,
     transition_evidence_level,
     transition_lifecycle,
 )
@@ -24,7 +25,7 @@ from app.schema_migrations import MigrationRunner
 def connection():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 18
     yield conn
     conn.close()
 
@@ -276,18 +277,51 @@ def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 16
-        old_id = create_claim(
-            conn, "Existing claim before revision migration", environment_version="3.11"
-        )
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-2]).apply(conn) == 16
+        old_id = conn.execute(
+            """INSERT INTO factual_knowledge(
+                   claim, normalized_claim, claim_hash, scope_json,
+                   environment_name, environment_version, risk_level
+               ) VALUES (?, ?, ?, '{}', 'python', '3.11', 'low')""",
+            (
+                "Existing claim before revision migration",
+                "Existing claim before revision migration",
+                "a" * 64,
+            ),
+        ).lastrowid
+        domain_id = conn.execute(
+            """INSERT INTO factual_knowledge(
+                   claim, normalized_claim, claim_hash, scope_json,
+                   environment_name, environment_version, risk_level
+               ) VALUES (?, ?, ?, '{}', 'sql_server', 'unspecified', 'low')""",
+            (
+                "Legacy SQL Server claim",
+                "Legacy SQL Server claim",
+                "b" * 64,
+            ),
+        ).lastrowid
         conn.commit()
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 17
+        legacy_revision = conn.execute(
+            "SELECT revision_number, claim FROM factual_claim_revisions WHERE knowledge_id=?",
+            (old_id,),
+        ).fetchall()
+        assert legacy_revision == [(1, "Existing claim before revision migration")]
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 18
         revisions = list_claim_revisions(conn, old_id)
         assert len(revisions) == 1
         assert revisions[0]["revision_number"] == 1
         assert revisions[0]["claim"] == "Existing claim before revision migration"
+        assert revisions[0]["domain_name"] == "python"
+        domain_revision = list_claim_revisions(conn, domain_id)
+        assert len(domain_revision) == 1
+        assert domain_revision[0]["domain_name"] == "sql_server"
+        assert conn.execute(
+            "SELECT domain_name FROM factual_knowledge WHERE id=?", (domain_id,)
+        ).fetchone()[0] == "sql_server"
     finally:
         conn.close()
+
 
 def test_claim_identity_isolated_by_environment_name(connection):
     python_claim = create_claim(
@@ -300,11 +334,11 @@ def test_claim_identity_isolated_by_environment_name(connection):
     )
     assert python_claim != sql_claim
     rows = connection.execute(
-        "SELECT id, environment_name FROM factual_knowledge WHERE id IN (?, ?)",
+        "SELECT id, domain_name, environment_name FROM factual_knowledge WHERE id IN (?, ?)",
         (python_claim, sql_claim),
     ).fetchall()
-    assert {(row[0], row[1]) for row in rows} == {
-        (python_claim, "python"), (sql_claim, "sql_server")
+    assert {(row[0], row[1], row[2]) for row in rows} == {
+        (python_claim, "python", "python"), (sql_claim, "sql_server", "sql_server")
     }
 
 
@@ -313,5 +347,148 @@ def test_claim_rejects_invalid_environment_name(connection):
         create_claim(
             connection, "A claim", environment_name="SQL Server",
             environment_version="unspecified",
+        )
+
+def _active_tested_claim(
+    connection, claim, *, environment_name="sql_server", environment_version="2022",
+    level="L2_tested", risk_level="low",
+):
+    connection.row_factory = sqlite3.Row
+    knowledge_id = create_claim(
+        connection,
+        claim,
+        environment_name=environment_name,
+        environment_version=environment_version,
+        scope={"topic": claim},
+        risk_level=risk_level,
+    )
+    add_evidence(
+        connection,
+        knowledge_id,
+        source_type="official_docs",
+        source_ref=f"https://learn.microsoft.com/test/{knowledge_id}",
+        source_hash=f"sha256:test-source-{knowledge_id}",
+        excerpt=claim,
+        applicability={"environment_name": environment_name, "environment_version": environment_version},
+    )
+    transition_evidence_level(connection, knowledge_id, "L1_sourced")
+    record_test(
+        connection,
+        knowledge_id,
+        test_kind="unit",
+        test_name=f"test_claim_{knowledge_id}",
+        environment_name=environment_name,
+        environment_version=environment_version,
+        outcome="passed",
+        result_summary="Deterministic test fixture.",
+    )
+    transition_evidence_level(connection, knowledge_id, "L2_tested")
+    if level == "L3_human_verified":
+        transition_evidence_level(connection, knowledge_id, "L3_human_verified", human_verified_by="test-reviewer")
+    transition_lifecycle(connection, knowledge_id, "active")
+    return knowledge_id
+
+
+def test_verified_retrieval_returns_only_active_source_backed_exact_scope(connection):
+    l2_id = _active_tested_claim(connection, "SQL Server query plans expose selected operations")
+    l3_id = _active_tested_claim(
+        connection, "SQL Server indexes can reduce reads", level="L3_human_verified"
+    )
+    _active_tested_claim(
+        connection, "SQL Server query plans for a different version",
+        environment_version="2025",
+    )
+    test_only_id = _active_tested_claim(
+        connection, "SQL Server claim supported only by test output",
+    )
+    connection.execute("DELETE FROM factual_evidence WHERE knowledge_id=?", (test_only_id,))
+    add_evidence(
+        connection, test_only_id, source_type="test_output",
+        source_ref=f"test-run:{test_only_id}", source_hash=f"sha256:test-only-{test_only_id}",
+        excerpt="A passing test without source provenance.",
+    )
+    results = search_retrievable_claims(
+        connection,
+        "SQL Server",
+        domain="sql_server",
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    assert {item["id"] for item in results} == {l2_id, l3_id}
+    assert results[0]["evidence_level"] == "L3_human_verified"
+    assert results[0]["lifecycle_status"] == "active"
+    assert results[0]["evidence"][0]["source_type"] == "official_docs"
+    assert all(item["environment_version"] == "2022" for item in results)
+
+
+def test_verified_retrieval_excludes_unverified_failed_conflicting_superseded_and_l1(connection):
+    _active_tested_claim(connection, "SQL Server active verified query plans")
+    unverified = create_claim(
+        connection, "SQL Server unverified query plans",
+        environment_name="sql_server", environment_version="2022",
+    )
+    failed = create_claim(
+        connection, "SQL Server failed query plans",
+        environment_name="sql_server", environment_version="2022",
+    )
+    transition_lifecycle(connection, failed, "failed")
+    conflicting = _active_tested_claim(connection, "SQL Server conflicting query plans")
+    transition_lifecycle(connection, conflicting, "conflicting")
+    superseded = _active_tested_claim(connection, "SQL Server superseded query plans")
+    transition_lifecycle(connection, superseded, "superseded")
+    l1 = create_claim(
+        connection, "SQL Server sourced but untested query plans",
+        environment_name="sql_server", environment_version="2022",
+    )
+    add_evidence(
+        connection, l1, source_type="official_docs",
+        source_ref="https://learn.microsoft.com/test/l1",
+        source_hash="sha256:l1", excerpt="Sourced, not tested.",
+    )
+    transition_evidence_level(connection, l1, "L1_sourced")
+    transition_lifecycle(connection, l1, "active")
+
+    results = search_retrievable_claims(
+        connection,
+        "SQL Server query plans",
+        domain="sql_server",
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    ids = {item["id"] for item in results}
+    assert unverified not in ids
+    assert failed not in ids
+    assert conflicting not in ids
+    assert superseded not in ids
+    assert l1 not in ids
+
+
+def test_verified_retrieval_excludes_both_sides_of_active_contradiction(connection):
+    first = _active_tested_claim(connection, "SQL Server isolation level allows phantom reads")
+    second = _active_tested_claim(connection, "SQL Server isolation level prevents phantom reads")
+    add_relation(connection, first, second, "contradicts")
+    results = search_retrievable_claims(
+        connection,
+        "SQL Server isolation level phantom reads",
+        domain="sql_server",
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    assert first not in {item["id"] for item in results}
+    assert second not in {item["id"] for item in results}
+
+
+def test_verified_retrieval_fails_closed_without_exact_environment_scope(connection):
+    _active_tested_claim(connection, "SQL Server query plans expose selected operations")
+    assert search_retrievable_claims(
+        connection, "SQL Server query plans", environment_name="", environment_version="2022"
+    ) == []
+    assert search_retrievable_claims(
+        connection, "SQL Server query plans", environment_name="sql_server", environment_version=""
+    ) == []
+    with pytest.raises(KnowledgePolicyError, match="limit must be an integer"):
+        search_retrievable_claims(
+            connection, "SQL Server query plans", environment_name="sql_server",
+            environment_version="2022", limit=0,
         )
 

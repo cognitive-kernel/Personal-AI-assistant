@@ -41,7 +41,7 @@ No direct L0-to-L2 or L0-to-L3 transition. Validate every transition in a domain
 
 ## 3.1 Immutable factual-claim revision history
 
-Each factual-knowledge record has an append-only `factual_claim_revisions` history for content identity fields (claim text, normalized text, hash, scope, and environment). Migration 17 seeds existing records as revision 1 and triggers record later content changes as new revisions. Lifecycle/evidence-status changes do not create content revisions. This history records changes; it does not itself increase trust or authorize activation.
+Each factual-knowledge record has an append-only `factual_claim_revisions` history for content identity fields (claim text, normalized text, hash, scope, and environment). Migration 17 seeds existing records as revision 1 and triggers record later content changes as new revisions. Migration 18 adds `domain_name`, backfills it from `environment_name`, and includes it in revision history. Lifecycle/evidence-status changes do not create content revisions. This history records changes; it does not itself increase trust or authorize activation.
 
 ## 4. Relational knowledge graph
 
@@ -89,7 +89,7 @@ Measure against a small human-adjudicated golden set. Track factual precision, f
 
 The following are implementation gates, not promises. Mark them complete only after code review and relevant tests pass:
 - [x] Canonical specification and generated prompts are generated from `docs/learning/learning-artifacts.json`; CI checks for drift.
-- [x] Domain-scoped factual-knowledge records with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables; claim identity includes `environment_name` and `environment_version`, and immutable content-revision history is added in migration 17. Automatic trust promotion remains disabled.
+- [x] Domain-scoped factual-knowledge records with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables; claim identity includes `environment_name` and `environment_version`, immutable content-revision history is added in migration 17, and migration 18 introduces canonical `domain_name` with backfill. Automatic trust promotion remains disabled.
 - [x] State transition service rejects invalid trust/lifecycle transitions.
 - [x] Database constraints cover status enums, evidence-level invariants, foreign keys, and relation uniqueness.
 - [x] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.

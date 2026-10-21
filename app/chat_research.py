@@ -13,7 +13,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from . import chat_audit, claim_review, db, experience, experience_capture_consent, factual_knowledge, ollama, web_sources
+from . import chat_audit, claim_review, db, experience, experience_capture_consent, factual_knowledge, learning, ollama, web_sources
 
 _TECHNICAL_MARKERS = (
     "error", "exception", "bug", "debug", "traceback", "stack trace", "code",
@@ -60,12 +60,21 @@ def should_use_research(message: str) -> bool:
 
 
 def _factual_knowledge_context(message: str) -> list[dict[str, Any]]:
-    """Retrieve eligible, query-relevant factual claims for Python questions only."""
-    if not re.search(r"(?i)\bpython\b|پایتون", message):
+    """Retrieve eligible claims only for one unambiguous, exact technical environment."""
+    domain = learning._factual_domain_for_topic(message)
+    if domain is None:
         return []
+    environment_name, environment_version, _specificity = domain
     try:
         with db.learning_connection() as connection:
-            claims = factual_knowledge.search_retrievable_claims(connection, message, limit=3)
+            claims = factual_knowledge.search_retrievable_claims(
+                connection,
+                message,
+                limit=3,
+                domain=environment_name,
+                environment_name=environment_name,
+                environment_version=environment_version,
+            )
     except Exception as exc:
         # Retrieval must fail closed without blocking chat or leaking storage details.
         logger.warning("Verified factual knowledge lookup failed (%s)", type(exc).__name__)
