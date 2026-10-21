@@ -51,6 +51,26 @@ def test_settings_schema_can_be_created_from_versioned_migrations():
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
+
+def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
+    with sqlite3.connect(":memory:") as connection:
+        assert MigrationRunner(SETTINGS_MIGRATIONS[:3]).apply(connection) == 3
+        connection.execute(
+            "INSERT INTO settings(key, value_json) VALUES ('ollama_model', '"custom-local-model"')"
+        )
+        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 4
+        assert connection.execute(
+            "SELECT value_json FROM settings WHERE key='ollama_model'"
+        ).fetchone() == ('"custom-local-model"',)
+        tables = {
+            row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        assert {"chat_conversations", "chat_messages"} <= tables
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
 def test_learning_schema_migrates_from_v1_without_losing_rows():
     with sqlite3.connect(":memory:") as connection:
         connection.execute("PRAGMA foreign_keys = ON")
