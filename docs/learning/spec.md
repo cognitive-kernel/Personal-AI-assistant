@@ -39,7 +39,7 @@ No direct L0-to-L2 or L0-to-L3 transition. Validate every transition in a domain
 
 ## 3.1 Immutable factual-claim revision history
 
-Each factual-knowledge record has an append-only `factual_claim_revisions` history for content identity fields (claim text, normalized claim, hash, scope, and environment). Migration 17 seeds existing records as revision 1 and triggers record later content changes as new revisions. Lifecycle/evidence-status changes do not create content revisions. This history records changes; it does not itself increase trust or authorize activation.
+Each factual-knowledge record has an append-only `factual_claim_revisions` history for content identity fields (claim text, normalized text, hash, scope, and environment). Migration 17 seeds existing records as revision 1 and triggers record later content changes as new revisions. Lifecycle/evidence-status changes do not create content revisions. This history records changes; it does not itself increase trust or authorize activation.
 
 ## 4. Relational knowledge graph
 
