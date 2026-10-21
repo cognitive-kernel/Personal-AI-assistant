@@ -40,6 +40,27 @@ def source(conn, knowledge_id):
     )
 
 
+def test_claim_identity_includes_scope_and_environment_version(connection):
+    first = create_claim(
+        connection, "The API returns a list", environment_version="3.11",
+        scope={"platform": "linux"},
+    )
+    second = create_claim(
+        connection, "The API returns a list", environment_version="3.11",
+        scope={"platform": "windows"},
+    )
+    third = create_claim(
+        connection, "The API returns a list", environment_version="3.12",
+        scope={"platform": "linux"},
+    )
+    assert len({first, second, third}) == 3
+    hashes = connection.execute(
+        "SELECT claim_hash FROM factual_knowledge WHERE id IN (?, ?, ?)",
+        (first, second, third),
+    ).fetchall()
+    assert len({row[0] for row in hashes}) == 3
+
+
 def test_fresh_schema_has_separate_knowledge_evidence_tests_and_relations(connection):
     tables = {row[0] for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
