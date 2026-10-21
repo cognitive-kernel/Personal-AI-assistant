@@ -129,6 +129,12 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
                 f"Retrieved public page; title: {document.title}. Content has not been independently verified."))
     return combined, "web_retrieved"
 
+def _format_source_document(document: Any, content: str | None = None) -> str:
+    """Serialize one source in the exact line-oriented format used by the claim parser."""
+    body = str(document.text if content is None else content).strip()
+    return f"Source title: {document.title}\\nSource URL: {document.url}\\nContent:\\n{body}"
+
+
 def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
     """Extract bounded source excerpts from the structured text stored by web discovery."""
     pattern = re.compile(
