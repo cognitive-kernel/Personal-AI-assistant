@@ -4,8 +4,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from . import chat_history, chat_research
-from .task_worker import PermanentTaskError, TaskContext
+from . import chat_history, chat_research, ollama
+from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 RESEARCH_TASK_TYPE = "research.answer"
 _ALLOWED_KEYS = {"message", "history", "conversation_id"}
@@ -63,7 +63,12 @@ def handle_research_task(
         )
 
     context.checkpoint({"phase": "research_task_started", "message_sha256": message_hash})
-    reply = chat_research.answer(message, history, checkpoint=save_phase)
+    try:
+        reply = chat_research.answer(message, history, checkpoint=save_phase)
+    except ollama.OllamaError as exc:
+        if exc.retryable:
+            raise RetryableTaskError("Research model request failed; retry may succeed.") from exc
+        raise PermanentTaskError("Research model configuration or policy is invalid.") from exc
     context.checkpoint({"phase": "research_task_completed", "message_sha256": message_hash})
     if conversation_id is not None:
         chat_history.append_assistant_message(conversation_id, reply, task_id=context.task_id)
