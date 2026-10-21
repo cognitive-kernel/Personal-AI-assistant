@@ -1,5 +1,7 @@
+import pytest
+
 from app import db, ollama, programming_tasks
-from app.task_worker import PermanentTaskError
+from app.task_worker import PermanentTaskError, RetryableTaskError
 
 
 class FakeTaskContext:
@@ -72,16 +74,10 @@ def test_programming_handler_classifies_retryable_model_failure(tmp_path, monkey
         ),
     )
 
-    try:
+    with pytest.raises(RetryableTaskError, match="retry may succeed"):
         programming_tasks.handle_programming_task(
             {"instruction": "fix this"}, None, FakeTaskContext()
         )
-    except Exception as exc:
-        from app.task_worker import RetryableTaskError
-        assert isinstance(exc, RetryableTaskError)
-        assert "retry may succeed" in str(exc)
-    else:
-        raise AssertionError("Retryable Ollama failures must use RetryableTaskError")
 
 
 def test_programming_handler_classifies_invalid_payload_as_permanent(tmp_path, monkeypatch):
