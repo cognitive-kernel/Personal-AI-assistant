@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, learning, task_manager
+from app import db, learning, ollama, task_manager
 from app.learning_tasks import (
     LEARNING_TASK_TYPE,
     cancel_learning_task,
@@ -39,11 +39,9 @@ def test_learning_task_classifies_model_failure_as_retryable(
     job = learning.create_job("Retry transient learning failure")
 
     def fail(_job_id):
-        raise learning.LearningError(
-            "temporary failure",
-            ) from __import__("app.ollama", fromlist=["OllamaError"]).OllamaError(
-                "connection timed out", retryable=True
-            )
+        raise learning.LearningError("temporary failure") from ollama.OllamaError(
+            "connection timed out", retryable=True
+        )
 
     monkeypatch.setattr(learning, "run_job", fail)
     context, _task = _claimed_context(job["id"])
