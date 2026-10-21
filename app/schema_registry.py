@@ -619,6 +619,22 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_knowledge_test_runs_candidate ON knowledge_test_runs(candidate_id, run_status, id)",
         ),
     ),
+    Migration(
+        20,
+        "hybrid-learning-channel-attempt-history",
+        (
+            """CREATE TABLE knowledge_review_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                channel TEXT NOT NULL CHECK(channel IN ('web_research','peer_ai','sandbox')),
+                status TEXT NOT NULL CHECK(status IN ('completed','unavailable','unconfigured','failed','no_examples','sandbox_unconfigured')),
+                provider TEXT NOT NULL DEFAULT '',
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)",
+        ),
+    ),
 )
 
 
