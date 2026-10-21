@@ -196,3 +196,16 @@ def test_resource_headroom_fails_closed_when_available_ram_telemetry_is_missing(
 
 def test_dynamic_ram_budget_rejects_non_finite_telemetry():
     assert hardware.dynamic_ram_budget_gb({}, {"available_ram_gb": float("nan")}) is None
+
+def test_ram_ceiling_subtracts_safety_reserve_before_context_selection():
+    limits = hardware.runtime_limits(
+        {
+            "ollama_num_ctx": 8192,
+            "ollama_num_thread": 0,
+            "ram_budget_max_gb": 6,
+            "ram_safety_reserve_gb": 4,
+        },
+        {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 24},
+    )
+    assert limits["num_ctx"] == 2048
+
