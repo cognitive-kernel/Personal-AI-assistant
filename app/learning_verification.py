@@ -34,7 +34,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     db.init_databases()
     with db.learning_connection() as conn:
         candidate = conn.execute(
-            """SELECT content, source_urls_json FROM temporary_knowledge_candidates WHERE id=?""",
+            """SELECT content, source_urls_json, content_sha256 FROM temporary_knowledge_candidates WHERE id=?""",
             (candidate_id,),
         ).fetchone()
     if candidate is None:
@@ -76,34 +76,34 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         actual = {"status": result.status, "stdout": result.stdout[-1000:], "stderr": result.stderr[-1000:]}
     expected = {"attempted": example_count, "failed": 0}
     passed = result.status == "succeeded" and actual == expected
-    plan = [{
-        "test": "source-doctest-suite",
-        "oracle_kind": "source_example",
-        "oracle_ref": oracle_url,
-        "expected": expected,
-        "oracle_sha256": hashlib.sha256(
-            json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest(),
-    }]
-    results = [{
-        "test": "source-doctest-suite",
-        "runner": "sandbox",
-        "passed": passed,
-        "expected": expected,
-        "actual": actual,
-        "oracle_sha256": plan[0]["oracle_sha256"],
-        "duration_ms": result.duration_ms,
-        "sandbox_status": result.status,
-        "stderr": result.stderr[-1000:],
-    }]
-    from .learning import record_candidate_test_results
-    saved = record_candidate_test_results(candidate_id, plan, results)
+    suite_digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
+    run_status = "passed" if passed else "failed"
+    actual_json = json.dumps(actual, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    expected_json = json.dumps(expected, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """INSERT INTO knowledge_test_runs(
+                   candidate_id, suite_name, suite_version, suite_sha256, source_sha256,
+                   oracle_url, runner_name, run_status, expected_json, actual_json,
+                   duration_ms, details
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                candidate_id, "source-doctest-suite", "1",
+                suite_digest, candidate["content_sha256"], oracle_url, "docker-doctest",
+                run_status, expected_json, actual_json, result.duration_ms,
+                (result.stderr or result.reason or "")[-2000:],
+            ),
+        )
+        current_status = conn.execute(
+            "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()["status"]
     return {
         "candidate_id": candidate_id,
         "status": result.status,
         "tests": example_count,
         "passed": passed,
-        "candidate_status": saved["status"],
+        "candidate_status": current_status,
         "verification_scope": "explicit doctest examples in this lesson only",
-        "promoted": saved["status"] == "passed",
+        "promoted": False,
+        "note": "A scoped example test is not sufficient to promote the entire lesson.",
     }
