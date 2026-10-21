@@ -285,7 +285,8 @@ def list_terminal_task_ids(
 
 
 def claim_next_task(
-    worker_id: str, *, lease_seconds: int = 300, task_types: list[str] | tuple[str, ...] | None = None
+    worker_id: str, *, lease_seconds: int = 300, task_types: list[str] | tuple[str, ...] | None = None,
+    exclude_task_types: list[str] | tuple[str, ...] | None = None
 ) -> dict[str, Any] | None:
     """Atomically claim one due task; expired running leases may be reclaimed."""
     if not isinstance(worker_id, str) or not worker_id.strip():
@@ -297,7 +298,13 @@ def claim_next_task(
         or any(not isinstance(item, str) or not item.strip() for item in task_types)
     ):
         raise ValueError("task_types must be a non-empty list of non-empty strings.")
+    if exclude_task_types is not None and (
+        not isinstance(exclude_task_types, (list, tuple)) or not exclude_task_types
+        or any(not isinstance(item, str) or not item.strip() for item in exclude_task_types)
+    ):
+        raise ValueError("exclude_task_types must be a non-empty list of non-empty strings.")
     normalized_types = tuple(dict.fromkeys(item.strip() for item in task_types)) if task_types is not None else None
+    normalized_excluded = tuple(dict.fromkeys(item.strip() for item in exclude_task_types)) if exclude_task_types is not None else None
     now = _now()
     now_text = _timestamp(now)
     expires = _timestamp(now + timedelta(seconds=lease_seconds))
@@ -325,8 +332,12 @@ def claim_next_task(
         query_params: tuple[Any, ...] = (now_text, now_text)
         if normalized_types is not None:
             placeholders = ",".join("?" for _ in normalized_types)
-            type_clause = f" AND task_type IN ({placeholders})"
+            type_clause += f" AND task_type IN ({placeholders})"
             query_params = (*query_params, *normalized_types)
+        if normalized_excluded is not None:
+            placeholders = ",".join("?" for _ in normalized_excluded)
+            type_clause += f" AND task_type NOT IN ({placeholders})"
+            query_params = (*query_params, *normalized_excluded)
         row = conn.execute(
             """SELECT id FROM task_queue
                WHERE ((status='queued' AND scheduled_at <= ?)
