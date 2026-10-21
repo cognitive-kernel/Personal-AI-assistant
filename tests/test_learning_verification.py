@@ -79,6 +79,7 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
     summary = get_candidate_review_summary(candidate_id)
     assert summary["confidence"]["components"]["scoped_source_example_tests"] == 5
     assert summary["test_runs"][0]["run_status"] == "passed"
+    assert summary["verification_status"] == "partial_scope_tested"
 
 
 def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
