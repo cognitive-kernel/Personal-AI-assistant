@@ -131,11 +131,11 @@ def _store_version_snapshot(conn, row) -> None:
 def list_experience_versions(experience_id: int) -> list[dict[str, Any]]:
     init_experience_tables()
     with learning_connection() as conn:
-        current = conn.execute("SELECT version, status, takeaway, updated_at AS created_at FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
+        current = conn.execute("SELECT version, status, takeaway, experience_type, updated_at AS created_at FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
         if current is None:
             raise KeyError(experience_id)
         rows = conn.execute(
-            "SELECT version, status, takeaway, created_at FROM learning_experience_versions WHERE experience_id=? ORDER BY version DESC",
+            "SELECT version, status, takeaway, experience_type, created_at FROM learning_experience_versions WHERE experience_id=? ORDER BY version DESC",
             (experience_id,),
         ).fetchall()
     versions = [dict(row) for row in rows]
@@ -162,11 +162,11 @@ def rollback_experience(experience_id: int, target_version: int, *, _controlled_
         _store_version_snapshot(conn, current)
         conn.execute(
             """UPDATE learning_experiences SET topic=?, problem=?, hypothesis=?, status=?,
-               source_evidence_json=?, test_plan_json=?, test_results_json=?, takeaway=?,
+               source_evidence_json=?, test_plan_json=?, test_results_json=?, takeaway=?, experience_type=?,
                version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (target["topic"], target["problem"], target["hypothesis"], target["status"],
              target["source_evidence_json"], target["test_plan_json"], target["test_results_json"],
-             target["takeaway"], experience_id),
+             target["takeaway"], target["experience_type"], experience_id),
         )
     return get_experience(experience_id)
 

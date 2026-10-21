@@ -1506,6 +1506,7 @@ function renderExperienceItems(items) {
   card.className="cloud-candidate";
   appendText(card,"h3",(item._memory_group?item._memory_group+" — ":"")+(item.topic||"بدون موضوع"));
   appendText(card,"p","وضعیت: "+item.status+" | نسخه: "+item.version+" | شناسه: "+item.id,"cloud-status");
+  appendText(card,"p","نوع تجربه: "+(item.experience_type||"general"),"muted");
   appendText(card,"p","مشکل: "+(item.problem||"ثبت نشده"));
   if(item.hypothesis) appendText(card,"p","فرضیه: "+item.hypothesis);
   if(item.takeaway) appendText(card,"p","جمع‌بندی: "+item.takeaway);

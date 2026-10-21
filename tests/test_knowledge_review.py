@@ -456,32 +456,26 @@ def test_evidence_only_review_refuses_known_contradictions_without_promoting(tmp
 
 
 def test_failed_field_feedback_creates_usage_failure_and_downgrades_l2(tmp_path, monkeypatch):
-    setup_settings_db(tmp_path, monkeypatch)
-    import hashlib
-
-    from app import learning
-    from app.knowledge_review import record_user_application_feedback
-
-    job = learning.create_job("Field feedback downgrade", source_text="Retained source for test.")
-    lesson = "A tested candidate lesson which failed in real use."
-    digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
+    candidate_id = _candidate(tmp_path, monkeypatch)
     with db.learning_connection() as conn:
+        candidate = conn.execute(
+            """SELECT job_id, topic, content, source_kind
+               FROM temporary_knowledge_candidates WHERE id=?""",
+            (candidate_id,),
+        ).fetchone()
         knowledge_id = int(conn.execute(
             """INSERT INTO knowledge_items(
                    topic, content, source_kind, version, status, job_id,
                    trust_level, learning_status, source_url, raw_content
-               ) VALUES (?, ?, 'user_provided_text', 1, 'verified', ?, 'L2', 'tested', '', 'source')""",
-            (job["topic"], lesson, job["id"]),
+               ) VALUES (?, ?, ?, 1, 'verified', ?, 'L2', 'tested', '', 'source')""",
+            (candidate["topic"], candidate["content"], candidate["source_kind"], candidate["job_id"]),
         ).lastrowid)
-        candidate_id = int(conn.execute(
-            """INSERT INTO temporary_knowledge_candidates(
-                   job_id, topic, content, source_kind, source_urls_json,
-                   content_sha256, quality_report_json, status, trust_level,
-                   learning_status, promoted_knowledge_id
-               ) VALUES (?, ?, ?, 'user_provided_text', '[]', ?, '{}',
-                         'passed', 'L2', 'tested', ?)""",
-            (job["id"], job["topic"], lesson, digest, knowledge_id),
-        ).lastrowid)
+        conn.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET status='passed', trust_level='L2', learning_status='tested',
+                   promoted_knowledge_id=? WHERE id=?""",
+            (knowledge_id, candidate_id),
+        )
 
     record_user_application_feedback(
         candidate_id, outcome="failed",
@@ -500,7 +494,8 @@ def test_failed_field_feedback_creates_usage_failure_and_downgrades_l2(tmp_path,
             (knowledge_id,),
         ).fetchone()
         experience = conn.execute(
-            "SELECT status, experience_type, problem, test_results_json FROM learning_experiences WHERE experience_type='usage_failure'"
+            """SELECT status, experience_type, problem, test_results_json
+               FROM learning_experiences WHERE experience_type='usage_failure'"""
         ).fetchone()
     assert tuple(candidate) == ("failed", "L-1", "failed")
     assert tuple(knowledge) == ("unverified", "L-1", "failed")
