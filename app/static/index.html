@@ -6,7 +6,7 @@
 <script>
 (function(){
  const sections={"storage-health":"storage-health-section","chat":"chat-section","learning":"learning-section","learning-paths":"learning-paths-section","knowledge":"knowledge-section","tasks":"task-manager-section","experience-memory":"experience-memory-section","cloud-resources":"cloud-resources-section","cloud-plan":"cloud-plan-section","kaggle-quota":"kaggle-quota-section","oci-limits":"oci-limits-section","sandbox":"sandbox-section","self-improvement":"self-improvement-section","settings":"settings-section"};
- const match=window.location.pathname.match(/^\\/sections\\/([^/]+)\\/?$/);
+ const match=window.location.pathname.match(/^\/sections\/([^/]+)\/?$/);
  const slug=match && match[1];
  if(slug && Object.prototype.hasOwnProperty.call(sections,slug)){
   document.documentElement.dataset.sectionPage=slug;
