@@ -65,7 +65,7 @@ async def report_storage_schema_block(request, call_next):
     """Keep the local dashboard available when a legacy DB needs reviewed recovery."""
     if _startup_storage_error and request.url.path not in {
         "/", "/api/health", "/openapi.json", "/docs", "/redoc"
-    } and not request.url.path.startswith("/static/"):
+    } and not request.url.path.startswith(("/static/", "/sections/")):
         return JSONResponse(
             status_code=503,
             content={
@@ -114,6 +114,26 @@ async def enforce_loopback_only(request, call_next):
 
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Each dashboard area has a stable, directly addressable page URL. The pages reuse
+# the existing dashboard document so all existing controls and their JS/API bindings
+# remain present; the client only hides unrelated sections for the selected page.
+DASHBOARD_SECTIONS: dict[str, str] = {
+    "storage-health": "storage-health-section",
+    "chat": "chat-section",
+    "learning": "learning-section",
+    "learning-paths": "learning-paths-section",
+    "knowledge": "knowledge-section",
+    "tasks": "task-manager-section",
+    "experience-memory": "experience-memory-section",
+    "cloud-resources": "cloud-resources-section",
+    "cloud-plan": "cloud-plan-section",
+    "kaggle-quota": "kaggle-quota-section",
+    "oci-limits": "oci-limits-section",
+    "sandbox": "sandbox-section",
+    "self-improvement": "self-improvement-section",
+    "settings": "settings-section",
+}
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _task_runtime: TaskRuntime | None = None
@@ -183,6 +203,14 @@ def shutdown() -> None:
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/sections/{slug}", include_in_schema=False)
+def dashboard_section(slug: str) -> FileResponse:
+    """Serve a dedicated, addressable view for one existing dashboard section."""
+    if slug not in DASHBOARD_SECTIONS:
+        raise HTTPException(status_code=404, detail="بخش داشبورد پیدا نشد.")
     return FileResponse(STATIC_DIR / "index.html")
 
 class ChatRequest(BaseModel):
