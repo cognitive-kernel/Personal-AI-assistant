@@ -172,6 +172,7 @@ def run_job(job_id: int) -> None:
         ).fetchone()
         requested_url = str(requested_url_row["source_ref"]) if requested_url_row else ""
     user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
+    requested_url_fetch_succeeded = False
     if requested_url:
         try:
             from .web_sources import fetch_public_document
@@ -179,6 +180,7 @@ def run_job(job_id: int) -> None:
             source_chunk = f"Source title: {document.title}\\nSource URL: {document.url}\\nContent:\\n{document.text}"
             source_text = ((source_text + "\\n\\n" + source_chunk).strip() if source_text else source_chunk)[:max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))]
             source_kind = "web_retrieved"
+            requested_url_fetch_succeeded = True
             digest = hashlib.sha256(document.text.encode("utf-8")).hexdigest()
             with learning_connection() as conn:
                 conn.execute(
@@ -439,7 +441,19 @@ def run_job(job_id: int) -> None:
             # failed attempts are useful debugging/training data, not disposable noise.
         if candidate_id is not None:
             # Each verification channel is independent and its outcome is persisted.
-            if os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower() not in {"0", "false", "no", "off"}:
+            if requested_url and not requested_url_fetch_succeeded:
+                # Do not silently replace an explicitly requested but unreachable URL
+                # with unrelated search results. The candidate remains stored and peer
+                # consultation can still run as a separate, clearly labeled channel.
+                try:
+                    from .knowledge_review import record_review_attempt
+                    record_review_attempt(
+                        candidate_id, channel="web_research", status="unavailable",
+                        details={"reason": "explicit_requested_url_failed_no_automatic_substitution"},
+                    )
+                except Exception:
+                    pass
+            elif os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower() not in {"0", "false", "no", "off"}:
                 try:
                     from .knowledge_review import research_candidate_online
                     research_candidate_online(
