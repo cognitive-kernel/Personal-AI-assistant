@@ -224,3 +224,9 @@ def test_resource_headroom_fails_closed_when_available_ram_telemetry_is_missing(
 
 def test_dynamic_ram_budget_rejects_non_finite_telemetry():
     assert hardware.dynamic_ram_budget_gb({}, {"available_ram_gb": float("nan")}) is None
+
+
+def test_resource_headroom_fails_closed_when_psutil_is_unavailable(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", None)
+    with pytest.raises(RuntimeError, match="CPU/RAM telemetry is unavailable"):
+        hardware.ensure_resource_headroom()
