@@ -420,6 +420,25 @@ def test_evidence_only_promotion_requires_two_domains_and_two_peer_providers(tmp
     assert candidate["status"] == "evidence_reviewed_no_lab"
     assert knowledge["status"] == "evidence_reviewed_no_lab"
 
+    record_review_evidence(
+        candidate_id, evidence_kind="contradicting",
+        source_url="https://www.nist.gov/new-conflicting-guidance",
+        excerpt="New source contradicts the previously supported claim.",
+    )
+    reconsidered = promote_candidate_after_evidence_review(candidate_id)
+    assert reconsidered["promoted"] is False
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        knowledge = conn.execute(
+            "SELECT status FROM knowledge_items WHERE id=?",
+            (candidate["promoted_knowledge_id"],),
+        ).fetchone()
+    assert candidate["status"] == "conflicted"
+    assert knowledge["status"] == "conflicted"
+
 
 def test_evidence_only_promotion_refuses_known_contradictions(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch)
