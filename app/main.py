@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
@@ -201,17 +201,105 @@ def shutdown() -> None:
     if _task_runtime is not None and not _task_runtime.stop(timeout=10.0):
         logger.warning("Task runtime did not stop before the shutdown deadline.")
 
+def _render_dashboard_page(slug: str | None = None) -> str:
+    """Render only the requested top-level section into the returned HTML document."""
+    import re
+
+    source = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    main_start = source.find('<main id="main-content"')
+    main_end = source.find("</main>", main_start)
+    if main_start < 0 or main_end < 0:
+        raise RuntimeError("ساختار HTML داشبورد معتبر نیست.")
+    main_end += len("</main>")
+    main = source[main_start:main_end]
+    tag_pattern = re.compile(r"</?section\\b[^>]*>", re.IGNORECASE)
+    blocks: list[tuple[int, int, str]] = []
+    depth = 0
+    block_start = -1
+    block_id = ""
+    for match in tag_pattern.finditer(main):
+        tag = match.group(0)
+        if tag.startswith("</"):
+            if depth:
+                depth -= 1
+                if depth == 0 and block_start >= 0:
+                    blocks.append((block_start, match.end(), block_id))
+                    block_start = -1
+                    block_id = ""
+            continue
+        if depth == 0:
+            block_start = match.start()
+            id_match = re.search(r'\\bid=["\\\']([^"\\\']+)["\\\']', tag)
+            block_id = id_match.group(1) if id_match else ""
+        depth += 1
+    if depth != 0:
+        raise RuntimeError("تگ‌های section داشبورد بسته نشده‌اند.")
+
+    keep_ids = {"storage-degraded-banner"}
+    if slug is not None:
+        keep_ids.add(DASHBOARD_SECTIONS[slug])
+        if slug == "learning":
+            keep_ids.add("learning-evidence-section")
+    rebuilt: list[str] = []
+    cursor = 0
+    for start, end, section_id in blocks:
+        rebuilt.append(main[cursor:start])
+        if section_id in keep_ids:
+            rebuilt.append(main[start:end])
+        cursor = end
+    rebuilt.append(main[cursor:])
+    filtered_main = "".join(rebuilt)
+    if slug is None:
+        overview = (
+            '<section id="dashboard-overview"><h2>نمای کلی</h2>'
+            '<p class="muted">هر قابلیت در صفحهٔ مستقل خود قرار دارد. برای جلوگیری از شلوغی، '
+            'اطلاعات و فرم‌های هر بخش فقط پس از ورود به صفحهٔ همان بخش بارگذاری می‌شوند.</p>'
+            '<ul class="dashboard-overview-links">'
+            + "".join(
+                f'<li><a href="/sections/{key}">{label}</a></li>'
+                for key, label in (
+                    ("storage-health", "سلامت و پشتیبان"),
+                    ("chat", "گفتگو و پژوهش"),
+                    ("learning", "یادگیری و بررسی شواهد"),
+                    ("learning-paths", "مسیرهای آموزشی"),
+                    ("knowledge", "دانش ذخیره‌شده"),
+                    ("tasks", "مدیریت وظایف"),
+                    ("experience-memory", "حافظهٔ تجربه"),
+                    ("cloud-resources", "منابع پردازشی"),
+                    ("cloud-plan", "برنامه‌ریزی منابع"),
+                    ("kaggle-quota", "سهمیهٔ Kaggle"),
+                    ("oci-limits", "محدودیت‌های OCI"),
+                    ("sandbox", "محیط آزمایش ایزوله"),
+                    ("self-improvement", "بهبود کد"),
+                    ("settings", "تنظیمات"),
+                )
+            )
+            + "</ul></section>"
+        )
+        filtered_main = filtered_main.replace("</header>", "</header>" + overview, 1)
+    else:
+        title_match = re.search(
+            rf'<section\\b[^>]*\\bid=["\\\']{re.escape(DASHBOARD_SECTIONS[slug])}["\\\'][^>]*>\\s*<h2>(.*?)</h2>',
+            filtered_main, re.IGNORECASE | re.DOTALL,
+        )
+        title = title_match.group(1).strip() if title_match else "بخش داشبورد"
+        source = re.sub(r"<title>.*?</title>", f"<title>{title} — دستیار هوش مصنوعی شخصی</title>", source, count=1, flags=re.DOTALL)
+
+    # The returned page contains only the selected section, not hidden copies of all sections.
+    return source[:main_start] + filtered_main + source[main_end:]
+
+
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def index() -> HTMLResponse:
+    return HTMLResponse(_render_dashboard_page())
 
 
 @app.get("/sections/{slug}", include_in_schema=False)
-def dashboard_section(slug: str) -> FileResponse:
-    """Serve a dedicated, addressable view for one existing dashboard section."""
+def dashboard_section(slug: str) -> HTMLResponse:
+    """Serve a genuinely separate HTML page containing only its requested section."""
     if slug not in DASHBOARD_SECTIONS:
         raise HTTPException(status_code=404, detail="بخش داشبورد پیدا نشد.")
-    return FileResponse(STATIC_DIR / "index.html")
+    return HTMLResponse(_render_dashboard_page(slug))
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
