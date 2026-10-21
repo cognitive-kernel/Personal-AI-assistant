@@ -1341,5 +1341,102 @@ def test_learning_path_progress_is_derived_and_accessible():
         assert progress.get_attribute("value") == "33"
         assert progress.get_attribute("aria-valuetext") == "۳۳ درصد تکمیل‌شده"
         assert page.locator(".path-progress-caption").inner_text() == "۱ از ۳ سرفصل تکمیل شده است."
-        assert "33٪ (1/3)" in page.locator("#paths-container summary").inner_text()
+        assert "33٪ (1/3)" in page.locator(".path-card > details > summary").inner_text()
+        browser.close()
+
+
+def test_learning_lesson_history_survives_refresh_and_shows_task_events():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        path_data = {
+            "paths": [{
+                "id": 7,
+                "title": "History persistence test",
+                "topic_count": 1,
+                "completed_count": 0,
+                "reference_urls": [],
+                "topics": [{
+                    "id": 70,
+                    "topic": "Persisted lesson topic",
+                    "position": 1,
+                    "status": "in_progress",
+                    "latest_score": None,
+                    "updated_at": "2026-10-21 13:28:44",
+                }],
+            }]
+        }
+        job_data = {
+            "jobs": [{
+                "id": 10,
+                "path_topic_id": 70,
+                "topic": "Persisted lesson topic",
+                "status": "rejected",
+                "error": "Quality threshold not met.",
+                "created_at": "2026-10-21 13:22:29",
+                "updated_at": "2026-10-21 13:28:44",
+                "source_kind": "model_knowledge_no_external_source",
+                "quality": {"score": 42},
+                "lesson": None,
+                "assessment": None,
+                "evidence": [],
+            }]
+        }
+        task_data = {
+            "tasks": [{
+                "id": 28,
+                "task_type": "learning.run_job",
+                "status": "succeeded",
+                "attempts": 1,
+                "max_attempts": 3,
+                "error": None,
+                "result": {"job_id": 10, "learning_status": "rejected", "already_terminal": False},
+                "payload": {"job_id": 10},
+            }]
+        }
+        events_data = {
+            "events": [
+                {"id": 26, "task_id": 28, "event_type": "created", "old_status": None,
+                 "new_status": "queued", "occurred_at": "2026-10-21 13:22:29"},
+                {"id": 27, "task_id": 28, "event_type": "status_changed", "old_status": "queued",
+                 "new_status": "running", "occurred_at": "2026-10-21 13:22:29"},
+                {"id": 28, "task_id": 28, "event_type": "status_changed", "old_status": "running",
+                 "new_status": "succeeded", "occurred_at": "2026-10-21 13:28:44"},
+            ],
+            "has_more": False,
+            "next_before_id": None,
+        }
+
+        def fulfill_json(route, payload):
+            route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+        page.route("**/api/learning/paths", lambda route: fulfill_json(route, path_data))
+        page.route("**/api/learning/jobs*", lambda route: fulfill_json(route, job_data))
+        page.route("**/api/tasks*", lambda route: fulfill_json(route, task_data))
+        page.route("**/api/tasks/28/events*", lambda route: fulfill_json(route, events_data))
+        page.route("**/api/learning/curricula", lambda route: fulfill_json(route, {"curricula": []}))
+        page.route("**/api/learning/reviews/due*", lambda route: fulfill_json(route, {"items": []}))
+        page.route("**/api/learning/recommendations*", lambda route: fulfill_json(route, {"recommendations": []}))
+
+        _goto_section(page, base_url, "learning-paths-section")
+        page.locator(".path-card > details > summary").click()
+        page.locator(".path-topic-job-history-container > details > summary").click()
+        page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
+        page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").click()
+        assert "Quality threshold not met." in page.locator(".path-topic-job-history-container").inner_text()
+
+        # Refresh simulates leaving and returning to the section: history must
+        # be rebuilt from persisted APIs rather than in-memory JavaScript state.
+        page.reload(wait_until="domcontentloaded")
+        page.locator(".path-card > details > summary").click()
+        page.locator(".path-topic-job-history-container > details > summary").click()
+        page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
+        page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").click()
+        page.get_by_role("button", name="بارگذاری تاریخچه رویدادها").click()
+        page.get_by_text("running ← succeeded").wait_for(timeout=10000)
+        assert "2026-10-21 13:28:44" in page.locator(".path-topic-job-history-container").inner_text()
         browser.close()
