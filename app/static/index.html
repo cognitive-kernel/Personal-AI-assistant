@@ -46,7 +46,7 @@
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
-<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
@@ -184,6 +184,99 @@ async function api(path, options = {}) {
  if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
  return data;
 }
+let currentConversationId = null;
+let conversationRefreshInProgress = false;
+function renderChatMessages(messages) {
+ const container = el("chat-messages");
+ container.replaceChildren();
+ if (!messages.length) {
+  const empty = document.createElement("p");
+  empty.className = "muted";
+  empty.textContent = "هنوز پیامی در این گفتگو ثبت نشده است.";
+  container.append(empty);
+  return;
+ }
+ for (const message of messages) {
+  const card = document.createElement("article");
+  card.className = "chat-message chat-message-" + message.role;
+  const heading = document.createElement("h3");
+  heading.textContent = message.role === "user" ? "شما" : "دستیار";
+  const body = document.createElement("p");
+  body.dir = "auto";
+  body.style.whiteSpace = "pre-wrap";
+  body.textContent = message.content;
+  const time = document.createElement("small");
+  time.className = "muted";
+  time.textContent = message.created_at || "";
+  card.append(heading, body, time);
+  container.append(card);
+ }
+}
+async function loadConversationMessages(conversationId) {
+ if (!conversationId) { renderChatMessages([]); return; }
+ const result = await api("/api/conversations/" + encodeURIComponent(conversationId) + "/messages");
+ currentConversationId = Number(result.conversation.id);
+ renderChatMessages(result.messages || []);
+}
+async function refreshConversations({selectId=currentConversationId, createIfEmpty=true}={}) {
+ if (conversationRefreshInProgress) return;
+ conversationRefreshInProgress = true;
+ const select = el("chat-conversation-select");
+ try {
+  let result = await api("/api/conversations?limit=200");
+  let conversations = result.conversations || [];
+  if (!conversations.length && createIfEmpty) {
+   const created = await api("/api/conversations", {method:"POST"});
+   conversations = [created.conversation];
+  }
+  select.replaceChildren();
+  if (!conversations.length) {
+   const option = document.createElement("option");
+   option.value = "";
+   option.textContent = "گفتگویی وجود ندارد";
+   select.append(option);
+   currentConversationId = null;
+   renderChatMessages([]);
+   return;
+  }
+  for (const conversation of conversations) {
+   const option = document.createElement("option");
+   option.value = String(conversation.id);
+   option.textContent = (conversation.title || "گفتگوی جدید") + " (" + conversation.message_count + ")";
+   select.append(option);
+  }
+  const target = conversations.some(item => Number(item.id) === Number(selectId))
+   ? Number(selectId) : Number(conversations[0].id);
+  select.value = String(target);
+  currentConversationId = target;
+  await loadConversationMessages(target);
+ } catch(error) {
+  el("chat-output").textContent = "بارگذاری تاریخچهٔ گفتگو ناموفق بود: " + error.message;
+ } finally {
+  conversationRefreshInProgress = false;
+ }
+}
+el("chat-conversation-select").addEventListener("change", async () => {
+ const selected = Number(el("chat-conversation-select").value);
+ if (!Number.isInteger(selected) || selected < 1) return;
+ el("chat-output").textContent = "";
+ try { await loadConversationMessages(selected); }
+ catch(error) { el("chat-output").textContent = "گفتگو بارگذاری نشد: " + error.message; }
+});
+el("chat-new-conversation").addEventListener("click", async () => {
+ const button = el("chat-new-conversation");
+ button.disabled = true;
+ try {
+  const result = await api("/api/conversations", {method:"POST"});
+  currentConversationId = Number(result.conversation.id);
+  el("chat-output").textContent = "";
+  await refreshConversations({selectId:currentConversationId, createIfEmpty:false});
+  el("message").focus();
+ } catch(error) {
+  el("chat-output").textContent = "ایجاد گفتگوی جدید ناموفق بود: " + error.message;
+ } finally { button.disabled = false; }
+});
+el("chat-refresh-conversations").addEventListener("click", () => refreshConversations());
 async function refresh() {
  try {
   const health = await api("/api/health");
@@ -675,29 +768,38 @@ el("refresh-knowledge").addEventListener("click", async () => {
 el("chat-form").addEventListener("submit", async event => {
  event.preventDefault();
  const button=el("chat-form").querySelector('button[type="submit"]');
- const message=el("message").value;
+ const message=el("message").value.trim();
+ if(!message) return;
  if(button) button.disabled=true;
- el("chat-output").textContent="در حال صف‌بندی پژوهش…";
+ el("chat-output").textContent="در حال ثبت پیام و صف‌بندی پاسخ…";
  try {
-  const queued=await api("/api/research/tasks",{method:"POST",body:JSON.stringify({message})});
+  if(!currentConversationId) {
+   const created=await api("/api/conversations",{method:"POST"});
+   currentConversationId=Number(created.conversation.id);
+  }
+  const queued=await api("/api/research/tasks",{method:"POST",body:JSON.stringify({message,conversation_id:currentConversationId})});
   const taskId=queued.task.id;
-  el("chat-output").textContent="پژوهش در صف قرار گرفت: #"+taskId+" ("+queued.task.status+").";
+  el("message").value="";
+  await refreshConversations({selectId:currentConversationId,createIfEmpty:false});
+  el("chat-output").textContent="پاسخ در صف قرار گرفت: #"+taskId+" ("+queued.task.status+").";
   const poll=async()=>{
    try {
     const current=await api("/api/tasks/"+taskId);
     if(["queued","running","pause_requested","paused","cancel_requested"].includes(current.status)) {
-     el("chat-output").textContent="وضعیت پژوهش #"+taskId+": "+current.status;
+     el("chat-output").textContent="وضعیت پاسخ #"+taskId+": "+current.status;
      setTimeout(poll,1000);
      return;
     }
     if(current.status==="succeeded") {
-     el("chat-output").textContent=(current.result&&current.result.reply)||"پژوهش کامل شد، اما پاسخی در نتیجه ثبت نشده است.";
+     await refreshConversations({selectId:currentConversationId,createIfEmpty:false});
+     el("chat-output").textContent="پاسخ ذخیره شد.";
     } else {
-     el("chat-output").textContent="پژوهش تکمیل نشد: "+(current.error||current.status);
+     await refreshConversations({selectId:currentConversationId,createIfEmpty:false});
+     el("chat-output").textContent="پاسخ تکمیل نشد: "+(current.error||current.status);
     }
     if(button) button.disabled=false;
    } catch(error) {
-    el("chat-output").textContent="وضعیت پژوهش قابل دریافت نیست: "+error.message;
+    el("chat-output").textContent="وضعیت پاسخ قابل دریافت نیست: "+error.message;
     if(button) button.disabled=false;
    }
   };
@@ -1841,4 +1943,5 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
  updateCurrentSection();
 })();
 refreshTasks();
+refreshConversations();
 </script><script src="/static/page-navigation.js"></script><script src="/static/learning.js"></script></main></div></body></html>
