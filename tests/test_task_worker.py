@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -42,7 +43,9 @@ def test_worker_fails_unknown_task_type_without_executing_payload(worker_store):
     assert "No registered handler" in saved["error"]
 
 
-def test_worker_retries_handler_failure_then_marks_exhausted(worker_store):
+def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
     task = task_manager.create_task("test.flaky", {}, max_attempts=2)
 
     def fail(_payload, _checkpoint, _context):
@@ -53,7 +56,10 @@ def test_worker_retries_handler_failure_then_marks_exhausted(worker_store):
     first = task_manager.get_task(task["id"])
     assert first["status"] == "queued"
     assert first["error"] == "RuntimeError: transient failure"
+    assert datetime.fromisoformat(first["scheduled_at"]) == current + timedelta(seconds=2)
+    assert worker.run_once() is False
 
+    current += timedelta(seconds=2)
     assert worker.run_once() is True
     second = task_manager.get_task(task["id"])
     assert second["status"] == "failed"
