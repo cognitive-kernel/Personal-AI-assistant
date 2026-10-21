@@ -839,6 +839,32 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
             ),
         })
 
+    def peer_proposals(field: str) -> list[dict[str, Any]]:
+        proposals: list[dict[str, Any]] = []
+        for peer in peers:
+            try:
+                parsed = json.loads(str(peer.get("response") or ""))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            values = parsed.get(field, []) if isinstance(parsed, dict) else []
+            if not isinstance(values, list):
+                continue
+            for value in values[:20]:
+                if isinstance(value, str):
+                    proposal = value.strip()[:1200]
+                elif isinstance(value, dict):
+                    proposal = json.dumps(value, ensure_ascii=False, sort_keys=True)[:1200]
+                else:
+                    continue
+                if proposal:
+                    proposals.append({
+                        "provider": peer["provider"], "model": peer["model_name"],
+                        "proposal": proposal, "executed": False,
+                        "trusted_oracle": False, "status": "exploratory_only",
+                    })
+                if len(proposals) >= 50:
+                    return proposals
+        return proposals
     passed_suites = [item for item in tests if item["run_status"] == "passed"]
     failed_suites = [item for item in tests if item["run_status"] == "failed"]
     # Build a deterministic next-step plan from recorded evidence and source examples.
@@ -945,6 +971,10 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
                 "stances": [{"provider": item["provider"], "model": item["model_name"], "stance": item["stance"],
                              "independence_note": item["independence_note"]} for item in peers],
                 "counts_as_truth_oracle": False,
+                "suggested_tests": peer_proposals("testable_tests"),
+                "suggested_applications": peer_proposals("applications"),
+                "suggested_limitations": peer_proposals("limitations"),
+                "proposal_policy": "Peer-suggested tests are untrusted exploratory ideas, never executable promotion tests until a trusted oracle is independently established.",
             },
             "isolated_tests": {
                 "passed_suites": len(passed_suites),
