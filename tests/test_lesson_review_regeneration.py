@@ -67,11 +67,11 @@ def test_regeneration_uses_only_latest_review_for_same_topic(tmp_path, monkeypat
     regenerated_b = learning.regenerate_topic_learning(path_id, topic_b_id)
     captured_prompts = []
 
-    def capture_prompt_then_stop(_path, payload, **_kwargs):
-        captured_prompts.append(json.loads(payload["messages"][-1]["content"]))
+    def capture_prompt_then_stop(message, history=None, system_prompt=None, **_kwargs):
+        captured_prompts.append(json.loads(message))
         raise RuntimeError("Stop after capturing the generation prompt")
 
-    monkeypatch.setattr(learning, "_request", capture_prompt_then_stop)
+    monkeypatch.setattr(learning.model_runtime, "chat", capture_prompt_then_stop)
     for job in (regenerated_a, regenerated_b):
         with pytest.raises(learning.LearningError, match="Learning job"):
             learning.run_job(job["id"])

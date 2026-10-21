@@ -11,6 +11,21 @@ def setup_settings_db(tmp_path, monkeypatch):
     db.init_databases()
 
 
+def _adapt_legacy_request(request_callable):
+    def model_chat(message, history=None, system_prompt=None, **_kwargs):
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.extend(item for item in (history or []) if item.get("role") in {"user", "assistant"})
+        messages.append({"role": "user", "content": message})
+        payload = {"model": "test-model", "stream": False, "messages": messages, "options": {}}
+        # Claim review always requests structured JSON output.
+        payload["format"] = "json"
+        response = request_callable("/api/chat", payload)
+        return response.get("message", {}).get("content", "")
+    return model_chat
+
+
 def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
     url = "https://docs.python.org/3/library/json.html"
@@ -35,7 +50,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
             }],
         })}}
 
-    monkeypatch.setattr(claim_review, "_request", fake_request)
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(fake_request))
     result = claim_review.review_answer_claims(
         "Why can JSON parsing fail?",
         f"Invalid JSON may raise a decoding error. Source: {url}",
@@ -47,9 +62,9 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
 
 def test_claim_review_fails_closed_on_malformed_json(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(lambda *_args, **_kwargs: {
         "message": {"content": "not JSON"},
-    })
+    }))
     result = claim_review.review_answer_claims(
         "question",
         "A factual answer with a citation https://docs.python.org/",
@@ -68,7 +83,7 @@ def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monk
     setup_settings_db(tmp_path, monkeypatch)
     known_url = "https://docs.python.org/3/library/json.html"
     unknown_url = "https://example.invalid/not-retrieved"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "source_conflicts": [],
@@ -79,7 +94,7 @@ def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monk
                 "reason": "Unsupported assertion.",
             }],
         })},
-    })
+    }))
     result = claim_review.review_answer_claims(
         "question",
         f"Unsupported assertion. Source: {known_url}",
@@ -113,7 +128,7 @@ def test_citation_must_be_an_exact_url_token(answer, expected):
 def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
     url = "https://docs.python.org/3/library/json.html"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "source_conflicts": [],
@@ -124,7 +139,7 @@ def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monke
                 "reason": "Directly stated in the excerpt.",
             }],
         })},
-    })
+    }))
     result = claim_review.review_answer_claims(
         "Why can JSON parsing fail?",
         "Invalid JSON may raise a decoding error. Source: https://docs.python.org/3/library/json.html.evil.example",
@@ -162,7 +177,7 @@ def test_claim_review_surfaces_source_conflict_and_fails_closed(tmp_path, monkey
             }],
         })}}
 
-    monkeypatch.setattr(claim_review, "_request", fake_request)
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(fake_request))
     result = claim_review.review_answer_claims(
         "What is the default state?",
         f"The feature is enabled. Source: {first_url}",
@@ -190,7 +205,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
     setup_settings_db(tmp_path, monkeypatch)
     first_url = "https://docs.example.org/a"
     second_url = "https://docs.example.org/b"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "claims": [{
@@ -201,7 +216,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
             }],
             "source_conflicts": [conflict],
         })},
-    })
+    }))
     result = claim_review.review_answer_claims(
         "Question?",
         f"The statement is supported. Source: {first_url}",
@@ -217,7 +232,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
 def test_claim_review_fails_closed_when_source_conflict_field_is_missing(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
     url = "https://docs.example.org/guide"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review.model_runtime, "chat", _adapt_legacy_request(lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "claims": [{
@@ -227,7 +242,7 @@ def test_claim_review_fails_closed_when_source_conflict_field_is_missing(tmp_pat
                 "reason": "Direct support.",
             }],
         })},
-    })
+    }))
     result = claim_review.review_answer_claims(
         "Question?",
         f"The excerpt supports this statement. Source: {url}",

@@ -27,7 +27,13 @@ def test_cloud_resource_api_lists_candidates_and_latest_run(tmp_path, monkeypatc
         response = client.get("/api/cloud-resources", params={"limit": 10})
 
     assert response.status_code == 200
-    assert response.json() == {"latest_run": None, "candidates": []}
+    body = response.json()
+    assert body["latest_run"] is None
+    assert body["candidates"] == []
+    assert body["pagination"] == {
+        "page": 1, "page_size": 10, "total": None, "pages": None,
+        "has_previous": False, "has_next": False,
+    }
 
 
 def test_cloud_resource_api_queues_manual_discovery_without_executing_inline(

@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from . import model_runtime
+from . import model_runtime, ollama
 from .db import init_databases, learning_connection
 
 _ALLOWED_JUDGMENTS = {"matches", "partial", "incorrect", "uncertain"}

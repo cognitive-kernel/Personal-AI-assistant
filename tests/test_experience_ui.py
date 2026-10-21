@@ -16,7 +16,7 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     assert 'method:"DELETE"' in page
     assert 'به‌صورت پیش‌فرض خاموش است' in page
     assert 'id="experience-list"' in page
-    assert '"/api/experiences?limit=100"' in page
+    assert '"/api/experiences?page="+experiencePage+"&page_size=25"' in page
     assert '"/api/experiences/search?query="+encodeURIComponent(query)' in page
     assert '"/api/experiences/"+item.id+"/versions"' in page
     assert '"/api/experiences/"+item.id' in page

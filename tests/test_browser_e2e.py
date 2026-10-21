@@ -275,7 +275,7 @@ def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
                     body=json.dumps(task),
                 )
                 return
-            if url.startswith(base_url.rstrip("/") + "/api/cloud-resources?limit="):
+            if url.startswith(base_url.rstrip("/") + "/api/cloud-resources?page="):
                 route.fulfill(
                     status=200,
                     content_type="application/json",
@@ -1190,7 +1190,7 @@ def test_browser_can_review_and_persist_an_unverified_experience():
             arg={"topic": topic, "takeaway": takeaway},
             timeout=15000,
         )
-        response = page.request.get(base_url.rstrip("/") + "/api/experiences?limit=100")
+        response = page.request.get(base_url.rstrip("/") + "/api/experiences?page=1&page_size=25")
         assert response.status == 200
         saved = next(item for item in response.json()["items"] if item["topic"] == topic)
         assert saved["status"] == "researching"
