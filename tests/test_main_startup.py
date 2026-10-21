@@ -56,7 +56,7 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
         cloud_resources, "ensure_daily_discovery_scheduled",
         lambda: {"status": "disabled_for_test"},
     )
-    monkeypatch.setattr(main, "_task_runtimes", None)
+    monkeypatch.setattr(main, "_task_runtimes", [])
     db.init_databases()
     job = learning.create_job("startup recovery fixture")
     assert task_manager.get_task_by_dedupe_key(f"learning-job:{job['id']}") is None
