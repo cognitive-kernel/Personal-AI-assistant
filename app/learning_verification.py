@@ -213,6 +213,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()["status"]
     experience_id = None
+    promoted_to_knowledge = False
     from .learning_evidence_gate import is_allowlisted_primary_source
     trusted_oracle = is_allowlisted_primary_source(oracle_url)
     if run_status == "failed":
@@ -247,6 +248,9 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         }]
         promoted = record_candidate_test_results(candidate_id, plan, result_record)
         current_status = str(promoted["status"])
+        promoted_to_knowledge = bool(
+            run_status == "passed" and promoted.get("promoted_knowledge_id") is not None
+        )
         if run_status == "failed":
             with db.learning_connection() as conn:
                 latest_experience = conn.execute(
@@ -302,7 +306,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         "passed": passed,
         "candidate_status": current_status,
         "verification_scope": "explicit source doctests and restricted fenced Python assertion blocks only",
-        "promoted": False,
+        "promoted": promoted_to_knowledge,
         "failure_experience_id": experience_id,
         "note": "A scoped example test is not sufficient to promote the entire lesson.",
     }
