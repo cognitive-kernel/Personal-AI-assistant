@@ -253,7 +253,7 @@ def search_relevant_experiences(
     lexical_ranks = {item_id: rank for rank, (item_id, _) in enumerate(lexical, 1)}
     try:
         vector = _vector_ranking(items, variants)
-    except ollama.OllamaError:
+    except (ollama.OllamaError, model_runtime.ModelRuntimeError):
         vector = []
     vector_ranks = {item_id: rank for rank, (item_id, _) in enumerate(vector, 1)}
     try:

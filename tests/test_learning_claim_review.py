@@ -71,9 +71,9 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
 
     model_payloads = []
 
-    def fake_model(_path, payload, **_kwargs):
-        model_payloads.append(payload)
-        return {"message": {"content": json.dumps({
+    def fake_model(message, history=None, system_prompt=None, **_kwargs):
+        model_payloads.append(json.loads(message))
+        return json.dumps({
             "lesson": LESSON,
             "learning_outcomes": ["Explain query plans", "Compare index costs", "Measure logical reads"],
             "questions": [
@@ -100,9 +100,9 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
                     {"concept": "logical reads", "accepted_phrases": ["logical reads", "read counts"]},
                 ]},
             ],
-        }, ensure_ascii=False)}}
+        }, ensure_ascii=False)
 
-    monkeypatch.setattr(learning, "_request", fake_model)
+    monkeypatch.setattr(learning.model_runtime, "chat", fake_model)
     review = {
         "passed": passed,
         "overall": "supported" if passed else "insufficient_evidence",
@@ -131,7 +131,7 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     assert finished["quality"]["claim_review_status"] == (
         "passed_model_assisted" if passed else "needs_review"
     )
-    assert "exact source URLs" in model_payloads[0]["messages"][-1]["content"]
+    assert "exact source URLs" in model_payloads[0]["instruction"]
     with db.learning_connection() as connection:
         knowledge = connection.execute(
             "SELECT status FROM knowledge_items WHERE job_id=?", (job["id"],)

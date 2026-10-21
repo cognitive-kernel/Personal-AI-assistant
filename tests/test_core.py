@@ -381,9 +381,11 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
         "نه تضمین خودکار برای درست بودن طراحی."
     )
     payloads = []
-    def fake_request(_path, payload, **_kwargs):
-        payloads.append(payload)
-        return {"message": {"content": json.dumps({
+    def fake_chat(message, history=None, system_prompt=None, **kwargs):
+        payloads.append({"options": kwargs.get("options", {}), "messages": [
+            {"role": "system", "content": system_prompt or ""}, {"role": "user", "content": message}
+        ]})
+        return json.dumps({
             "lesson": lesson,
             "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
             "questions": [
@@ -410,8 +412,8 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
                     {"concept": "logical reads", "accepted_phrases": ["logical reads", "read counts"]},
                 ]},
             ],
-        }, ensure_ascii=False)}}
-    monkeypatch.setattr(learning, "_request", fake_request)
+        }, ensure_ascii=False)
+    monkeypatch.setattr(learning.model_runtime, "chat", fake_chat)
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
@@ -432,7 +434,7 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     def fail_request(*_args, **_kwargs):
         raise RuntimeError("model offline")
 
-    monkeypatch.setattr(learning, "_request", fail_request)
+    monkeypatch.setattr(learning.model_runtime, "chat", fail_request)
     try:
         learning.run_job(job["id"])
     except learning.LearningError as exc:
@@ -454,7 +456,7 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     def fail_request(*_args, **_kwargs):
         raise RuntimeError("model offline")
 
-    monkeypatch.setattr(learning, "_request", fail_request)
+    monkeypatch.setattr(learning.model_runtime, "chat", fail_request)
     try:
         learning.run_job(job["id"])
     except learning.LearningError as exc:
@@ -515,15 +517,13 @@ def test_failed_explicit_source_url_does_not_trigger_automatic_substitution(tmp_
     monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests", lambda *_args, **_kwargs: {
         "status": "no_examples", "promoted": False,
     })
-    monkeypatch.setattr(learning, "_request", lambda *_args, **_kwargs: {
-        "message": {"content": json.dumps({
-            "lesson": "A concise candidate lesson.",
-            "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
-            "questions": ["Recall?", "Why?", "Apply to a new case?"],
-            "answer_key": ["One", "Two", "Three"],
-            "answer_rubric": [],
-        })}
-    })
+    monkeypatch.setattr(learning.model_runtime, "chat", lambda *_args, **_kwargs: json.dumps({
+        "lesson": "A concise candidate lesson.",
+        "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
+        "questions": ["Recall?", "Why?", "Apply to a new case?"],
+        "answer_key": ["One", "Two", "Three"],
+        "answer_rubric": [],
+    }))
 
     learning.run_job(job["id"])
 
@@ -572,19 +572,19 @@ def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch)
         "status": "no_examples", "promoted": False,
     })
     payloads = []
-    monkeypatch.setattr(learning, "_request", lambda _path, payload, **_kwargs: (
-        payloads.append(payload) or {"message": {"content": json.dumps({
+    monkeypatch.setattr(learning.model_runtime, "chat", lambda message, **_kwargs: (
+        payloads.append(json.loads(message)) or json.dumps({
             "lesson": "A concise lesson about Python functions.",
             "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
             "questions": ["Recall?", "Why?", "Apply to a new case?"],
             "answer_key": ["One", "Two", "Three"],
             "answer_rubric": [],
-        })}}
+        }, ensure_ascii=False)
     ))
 
     learning.run_job(job["id"])
 
-    assert source_text in payloads[0]["messages"][1]["content"]
+    assert source_text in json.dumps(payloads[0], ensure_ascii=False)
     assert research_calls
     with db.learning_connection() as conn:
         evidence = conn.execute(
