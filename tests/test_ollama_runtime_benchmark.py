@@ -58,7 +58,7 @@ def test_run_benchmark_emits_redacted_fixed_workload_report(monkeypatch):
     ])
     monkeypatch.setattr(benchmark, "resource_snapshot", lambda: next(snapshots))
     monkeypatch.setattr(hardware, "runtime_limits", lambda settings, detected: {"cpu_threads": 2, "num_ctx": 2048})
-    monkeypatch.setattr(hardware, "model_keep_alive", lambda purpose, detected, settings: "1m")
+    monkeypatch.setattr(hardware, "model_keep_alive", lambda purpose, detected, settings: "1m" if settings.get(f"{purpose}_model_keep_alive") == "auto" else settings.get(f"{purpose}_model_keep_alive", "0"))
     monkeypatch.setattr(benchmark, "_git_commit", lambda: "a" * 40)
     calls = []
     def fake_request(path, payload, timeout):
@@ -77,6 +77,7 @@ def test_run_benchmark_emits_redacted_fixed_workload_report(monkeypatch):
     assert report["benchmark"] == "ollama-runtime"
     assert report["model_digest"] == "abc123"
     assert report["model_size_bytes"] == 1234
+    assert report["keep_alive"] == "1m"
     assert report["summary"]["runs"] == len(benchmark.CASES)
     assert len(calls) == len(benchmark.CASES)
     assert all(call[0] == "/api/chat" for call in calls)
