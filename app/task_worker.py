@@ -64,6 +64,7 @@ class TaskWorker:
         *,
         lease_seconds: int = 300,
         restrict_task_types: bool = False,
+        exclude_task_types: tuple[str, ...] | None = None,
     ) -> None:
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("worker_id must be a non-empty string.")
@@ -75,9 +76,15 @@ class TaskWorker:
         ):
             raise ValueError("handlers must map non-empty task types to callable handlers.")
         self.worker_id = worker_id.strip()
+        if exclude_task_types is not None and (
+            not isinstance(exclude_task_types, tuple) or not exclude_task_types
+            or any(not isinstance(item, str) or not item.strip() for item in exclude_task_types)
+        ):
+            raise ValueError("exclude_task_types must be a non-empty tuple of non-empty strings.")
         self.handlers = dict(handlers)
         self.lease_seconds = lease_seconds
         self.restrict_task_types = bool(restrict_task_types)
+        self.exclude_task_types = exclude_task_types
 
     def _maintain_lease(self, context: TaskContext, stop_event: threading.Event) -> None:
         """Renew a running task lease while its handler is doing long-running work."""
@@ -103,6 +110,8 @@ class TaskWorker:
         claim_options: dict[str, Any] = {"lease_seconds": self.lease_seconds}
         if self.restrict_task_types:
             claim_options["task_types"] = tuple(self.handlers)
+        if self.exclude_task_types is not None:
+            claim_options["exclude_task_types"] = self.exclude_task_types
         task = task_manager.claim_next_task(self.worker_id, **claim_options)
         if task is None:
             return False
