@@ -25,6 +25,7 @@ class TaskRuntime:
         maintenance_callback: Callable[[], None] | None = None,
         maintenance_interval: float = 30.0,
         restrict_task_types: bool = False,
+        exclude_task_types: tuple[str, ...] | None = None,
     ) -> None:
         if isinstance(worker_count, bool) or not isinstance(worker_count, int) or not 1 <= worker_count <= 8:
             raise ValueError("worker_count must be an integer between 1 and 8.")
@@ -37,7 +38,10 @@ class TaskRuntime:
         if isinstance(maintenance_interval, bool) or not isinstance(maintenance_interval, (int, float)) or not 1 <= maintenance_interval <= 3600:
             raise ValueError("maintenance_interval must be between 1 and 3600 seconds.")
         # Validate the registry and lease configuration before any threads start.
-        TaskWorker(f"{worker_prefix.strip()}-validation", handlers, lease_seconds=lease_seconds)
+        TaskWorker(
+            f"{worker_prefix.strip()}-validation", handlers,
+            lease_seconds=lease_seconds, exclude_task_types=exclude_task_types,
+        )
         self.handlers = dict(handlers)
         self.worker_count = worker_count
         self.worker_prefix = worker_prefix.strip()
@@ -46,6 +50,7 @@ class TaskRuntime:
         self.maintenance_callback = maintenance_callback
         self.maintenance_interval = float(maintenance_interval)
         self.restrict_task_types = bool(restrict_task_types)
+        self.exclude_task_types = exclude_task_types
         self._maintenance_ready = threading.Event()
         self._maintenance_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -74,6 +79,7 @@ class TaskRuntime:
                     self.handlers,
                     lease_seconds=self.lease_seconds,
                     restrict_task_types=self.restrict_task_types,
+                    exclude_task_types=self.exclude_task_types,
                 )
                 thread = threading.Thread(
                     target=self._run_worker,
