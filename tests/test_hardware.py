@@ -101,3 +101,53 @@ def test_resource_headroom_rejects_ram_at_safety_threshold(monkeypatch):
 )
 def test_model_keep_alive_is_ram_aware_and_profile_safe(purpose, hardware_info, expected):
     assert hardware.model_keep_alive(purpose, hardware_info) == expected
+
+
+
+def test_runtime_limits_use_configured_cpu_percentage():
+    limits = runtime_limits(
+        {"ollama_num_thread": 0, "ollama_num_ctx": 4096, "cpu_resource_limit_percent": 50},
+        {"logical_cpu_count": 8, "total_ram_gb": 32},
+    )
+    assert limits["cpu_threads"] == 4
+
+
+def test_resource_headroom_uses_independent_cpu_and_ram_limits(monkeypatch):
+    monkeypatch.setattr(hardware, "detect_gpu", lambda: {"gpu_available": False})
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        cpu_percent=lambda interval: 75.0,
+        virtual_memory=lambda: SimpleNamespace(percent=65.0),
+    ))
+    with pytest.raises(RuntimeError, match="CPU 75.0%"):
+        hardware.ensure_resource_headroom({
+            "cpu_resource_limit_percent": 70,
+            "ram_resource_limit_percent": 80,
+            "gpu_resource_limit_percent": 90,
+        })
+
+
+def test_resource_headroom_checks_gpu_compute_and_vram_independently(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        cpu_percent=lambda interval: 20.0,
+        virtual_memory=lambda: SimpleNamespace(percent=30.0),
+    ))
+    monkeypatch.setattr(hardware, "detect_gpu", lambda: {
+        "gpu_available": True,
+        "gpu_utilization_percent": 40,
+        "gpu_memory_percent": 92.0,
+    })
+    with pytest.raises(RuntimeError, match="GPU memory 92.0%"):
+        hardware.ensure_resource_headroom({
+            "cpu_resource_limit_percent": 90,
+            "ram_resource_limit_percent": 90,
+            "gpu_resource_limit_percent": 85,
+        })
+
+
+def test_detect_gpu_fails_closed_to_unknown_when_nvidia_smi_is_missing(monkeypatch):
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("nvidia-smi not installed")
+    monkeypatch.setattr(hardware.subprocess, "run", missing)
+    result = hardware.detect_gpu()
+    assert result["gpu_available"] is False
+    assert result["gpu_utilization_percent"] is None
