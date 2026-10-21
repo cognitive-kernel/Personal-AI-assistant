@@ -578,7 +578,7 @@ def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch)
             "questions": ["Recall?", "Why?", "Apply to a new case?"],
             "answer_key": ["One", "Two", "Three"],
             "answer_rubric": [],
-        })}
+        })}}
     ))
 
     learning.run_job(job["id"])
