@@ -299,3 +299,39 @@ def test_task_status_audit_events_are_durable_and_payload_free(tmp_path, monkeyp
             assert older.json()["events"][0]["id"] < paged.json()["events"][0]["id"]
         missing = client.get("/api/tasks/999999/events")
         assert missing.status_code == 404
+
+def test_task_api_deletes_inactive_tasks_and_returns_not_found_afterward(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/tasks", json={"task_type": "test.delete", "payload": {"safe": True}}
+        )
+        assert created.status_code == 202
+        task_id = created.json()["id"]
+
+        deleted = client.delete(f"/api/tasks/{task_id}")
+        assert deleted.status_code == 200
+        assert deleted.json()["deleted"] is True
+        assert deleted.json()["task"]["id"] == task_id
+
+        missing = client.get(f"/api/tasks/{task_id}")
+        assert missing.status_code == 404
+
+
+def test_task_api_refuses_to_delete_running_tasks(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/tasks", json={"task_type": "test.active", "payload": {}}
+        ).json()
+        claimed = task_manager.claim_next_task("delete-safety-test")
+        assert claimed["id"] == created["id"]
+
+        response = client.delete(f"/api/tasks/{created['id']}")
+        assert response.status_code == 409
+        assert client.get(f"/api/tasks/{created['id']}").status_code == 200
+
