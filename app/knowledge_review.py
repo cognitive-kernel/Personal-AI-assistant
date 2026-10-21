@@ -651,8 +651,14 @@ def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score:
             return (urllib.parse.urlsplit(url).hostname or "").casefold().removeprefix("www.")
         except ValueError:
             return ""
-    supporting_domains = {host(row["source_url"]) for row in evidence
-                          if row["evidence_kind"] == "supporting" and host(row["source_url"])}
+    from .learning_evidence_gate import is_allowlisted_primary_source
+    supporting_domains = {
+        host(row["source_url"]) for row in evidence
+        if row["evidence_kind"] == "supporting"
+        and row["source_url"].startswith("https://")
+        and is_allowlisted_primary_source(row["source_url"])
+        and host(row["source_url"])
+    }
     contradicting_domains = {host(row["source_url"]) for row in evidence
                              if row["evidence_kind"] == "contradicting" and host(row["source_url"])}
     supporting_peers = {row["provider"] for row in peers if row["stance"] == "supports"}
