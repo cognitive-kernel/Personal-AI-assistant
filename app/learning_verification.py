@@ -48,6 +48,9 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     source_text = candidate["source_content"] or ""
     example_count = count_doctest_examples(source_text)
     if example_count == 0:
+        from .knowledge_review import record_review_attempt
+        record_review_attempt(candidate_id, channel="sandbox", status="no_examples",
+                              details={"tests": 0, "reason": "no_explicit_source_doctests"})
         return {"candidate_id": candidate_id, "status": "no_examples", "tests": 0, "promoted": False}
     try:
         source_urls = json.loads(candidate["source_urls_json"] or "[]")
@@ -55,10 +58,16 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         source_urls = []
     oracle_url = next((u for u in source_urls if isinstance(u, str) and u.startswith("https://")), None)
     if not oracle_url:
+        from .knowledge_review import record_review_attempt
+        record_review_attempt(candidate_id, channel="sandbox", status="unavailable",
+                              details={"tests": 0, "reason": "missing_https_source_oracle"})
         return {"candidate_id": candidate_id, "status": "missing_source_oracle", "tests": 0, "promoted": False}
     image = os.environ.get("SANDBOX_PYTHON_IMAGE", "").strip()
     docker = os.environ.get("SANDBOX_DOCKER_EXECUTABLE", "").strip() or shutil.which("docker") or ""
     if not image or not docker:
+        from .knowledge_review import record_review_attempt
+        record_review_attempt(candidate_id, channel="sandbox", status="sandbox_unconfigured",
+                              details={"tests": 0, "docker_configured": bool(docker), "image_configured": bool(image)})
         return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "tests": 0, "promoted": False}
 
     # Encode the lesson as data; it is interpreted only inside the isolated container.
@@ -73,9 +82,17 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         "print(json.dumps({'attempted': runner.tries, 'failed': runner.failures}, sort_keys=True))\n"
         "raise SystemExit(0 if runner.tries > 0 and runner.failures == 0 else 1)\n"
     )
-    result = sandbox.run_python(
-        runner, docker_executable=docker, image=image, timeout_seconds=15, max_output_bytes=8192,
-    )
+    from .knowledge_review import record_review_attempt
+    try:
+        result = sandbox.run_python(
+            runner, docker_executable=docker, image=image, timeout_seconds=15, max_output_bytes=8192,
+        )
+    except Exception as exc:
+        record_review_attempt(
+            candidate_id, channel="sandbox", status="failed",
+            details={"tests": example_count, "error_type": type(exc).__name__},
+        )
+        raise
     try:
         actual = json.loads(result.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError, json.JSONDecodeError):
@@ -84,6 +101,12 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     passed = result.status == "succeeded" and actual == expected
     suite_digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     run_status = "passed" if passed else ("failed" if result.status in {"succeeded", "failed"} else "unavailable")
+    record_review_attempt(
+        candidate_id, channel="sandbox",
+        status="completed" if run_status in {"passed", "failed"} else "unavailable",
+        details={"tests": example_count, "run_status": run_status,
+                 "suite_sha256": suite_digest, "duration_ms": result.duration_ms},
+    )
     actual_json = json.dumps(actual, ensure_ascii=False, sort_keys=True, allow_nan=False)
     expected_json = json.dumps(expected, ensure_ascii=False, sort_keys=True, allow_nan=False)
     with db.learning_connection() as conn:
