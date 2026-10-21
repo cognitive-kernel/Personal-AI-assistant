@@ -3,6 +3,7 @@ import ipaddress
 import json
 import math
 import socket
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -22,6 +23,9 @@ def _ensure_resource_headroom() -> None:
 
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# Keep this process from running multiple model inferences at once across task lanes.
+_INFERENCE_LOCK = threading.Lock()
+_INFERENCE_PATHS = frozenset({"/api/chat", "/api/embed", "/api/generate"})
 
 def _base_url() -> str:
     base = str(get_settings()["ollama_base_url"]).rstrip("/")
@@ -73,7 +77,7 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         headers={"Content-Type": "application/json"},
         method="GET" if payload is None else "POST",
     )
-    try:
+    def perform_request() -> dict[str, Any]:
         # Never let environment-configured proxies forward local prompts elsewhere.
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
@@ -89,6 +93,15 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         if not isinstance(result, dict):
             raise OllamaError("Unexpected Ollama response shape.")
         return result
+
+    try:
+        if path in _INFERENCE_PATHS:
+            # Recheck only after acquiring the shared lock, so queued requests cannot
+            # all pass a stale CPU/RAM preflight and then infer concurrently.
+            with _INFERENCE_LOCK:
+                _ensure_resource_headroom()
+                return perform_request()
+        return perform_request()
     except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise OllamaError(f"Ollama request failed: {exc}") from exc
 
@@ -141,7 +154,6 @@ def chat(
     if purpose == "programming":
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
-    _ensure_resource_headroom()
     response = _request("/api/chat", {
         "model": model, "stream": False, "messages": messages,
         "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
@@ -169,7 +181,6 @@ def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
         raise OllamaError("Embedding model name is invalid.")
 
     configured_timeout = int(settings["ollama_timeout_seconds"])
-    _ensure_resource_headroom()
     response = _request(
         "/api/embed",
         {"model": selected_model, "input": normalized},
