@@ -156,3 +156,10 @@ Use mature open-source tools where they improve the loop rather than rebuilding 
 Automated tests cover independent channel failures, explicit-URL failure without source substitution, and disabled web research while peer-AI/sandbox checks continue. This is an integration improvement, not closure of the remaining factual-oracle/calibration gaps. Exact-head CI must pass before the change is considered validated.
 
 Peer-AI review responses now expose their proposed tests, applications, and limitations in the claim matrix. These remain explicitly marked `exploratory_only`, `executed=false`, and `trusted_oracle=false`; they are surfaced for the next verification step but cannot be promoted or run as trusted acceptance tests without an independently established expected result.
+
+
+### Claim-to-source attribution hardening (2026-10-21)
+
+The follow-up in [PR #371](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/371) upgrades the lesson evidence gate to `lesson-evidence-v3`. A claim is now counted as explicitly mapped only when it has non-empty claim text, a non-empty rationale, and non-empty evidence URLs that are both present in the retrieved evidence inventory and cited exactly in the lesson. The gate reports `claim_count` and `explicitly_mapped_claim_count`; missing attribution fails closed. This is a traceability gate, not proof that the cited excerpt logically entails the claim.
+
+Validation state at documentation time: regression tests were added but had not yet run; no CI run was visible for the exact head commit when this entry was written. Do not label the change tested until exact-head CI is green. Target-host execution, live model assessment, curated domain-specific trusted oracles, source-level attribution for executable examples spanning multiple pages, false-pass/false-fail calibration, and independent security review remain open.
