@@ -8,7 +8,7 @@ from app.learning_tasks import (
     handle_learning_job,
     reconcile_queued_learning_tasks,
 )
-from app.task_worker import PermanentTaskError, TaskContext
+from app.task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 
 @pytest.fixture
@@ -31,6 +31,25 @@ def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
 
     with pytest.raises(PermanentTaskError, match="does not exist"):
         handle_learning_job({"job_id": 999999}, None, context)
+
+
+def test_learning_task_classifies_model_failure_as_retryable(
+    learning_task_store, monkeypatch
+):
+    job = learning.create_job("Retry transient learning failure")
+
+    def fail(_job_id):
+        raise learning.LearningError(
+            "temporary failure",
+            ) from __import__("app.ollama", fromlist=["OllamaError"]).OllamaError(
+                "connection timed out", retryable=True
+            )
+
+    monkeypatch.setattr(learning, "run_job", fail)
+    context, _task = _claimed_context(job["id"])
+
+    with pytest.raises(RetryableTaskError, match="retry may succeed"):
+        handle_learning_job({"job_id": job["id"]}, None, context)
 
 
 def test_learning_task_handler_persists_real_learning_outcome(
