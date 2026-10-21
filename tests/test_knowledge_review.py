@@ -194,6 +194,8 @@ def test_confidence_score_tracks_distinct_methods_and_user_field_results(tmp_pat
     candidate_id = _candidate(tmp_path, monkeypatch)
     baseline = calculate_knowledge_confidence(candidate_id)
     assert baseline["score"] == 0
+    assert baseline["score_version"] == "knowledge-evidence-v1"
+    assert baseline["weighting"]["complete_passing_test_set_max"] == 40
     assert baseline["verification_status"] == "unverified"
 
     record_review_evidence(
