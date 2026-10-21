@@ -20,7 +20,7 @@ def test_settings_schema_can_be_created_from_versioned_migrations():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(SETTINGS_MIGRATIONS)
         assert runner.apply(connection) == 4
-        assert runner.apply(connection) == 3
+        assert runner.apply(connection) == 4
         columns = {row[1] for row in connection.execute("PRAGMA table_info(settings)")}
         assert {"key", "value_json", "updated_at"} <= columns
         consent_columns = {
