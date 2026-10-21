@@ -1,12 +1,14 @@
 from __future__ import annotations
 import ipaddress
+from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictBool, StrictInt
+from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
@@ -21,7 +23,22 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .schema_migrations import UntrackedSchemaError
 
-app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Run blocking startup/shutdown work outside the event loop."""
+    try:
+        await run_in_threadpool(startup)
+        yield
+    finally:
+        await run_in_threadpool(shutdown)
+
+
+app = FastAPI(
+    title="Personal AI Assistant",
+    version="0.1.0",
+    description="Local-first personal assistant; learning storage is isolated from settings.",
+    lifespan=lifespan,
+)
 
 app.include_router(task_router)
 app.include_router(cloud_resource_router)
@@ -119,7 +136,6 @@ _task_runtimes: list[TaskRuntime] = []
 _startup_storage_error: str | None = None
 
 
-@app.on_event("startup")
 def startup() -> None:
     global _task_runtimes, _startup_storage_error
     _startup_storage_error = None
@@ -212,7 +228,6 @@ def startup() -> None:
     _task_runtimes.append(fallback_runtime)
     backup_scheduler.start_backup_scheduler()
 
-@app.on_event("shutdown")
 def shutdown() -> None:
     backup_scheduler.stop_backup_scheduler(timeout=5.0)
     for runtime in _task_runtimes:
@@ -266,14 +281,12 @@ class AssessmentSubmission(BaseModel):
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 class SpacedRepetitionRequest(BaseModel):
     rating: StrictInt = Field(ge=0, le=5)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 class CurriculumEnrollment(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
