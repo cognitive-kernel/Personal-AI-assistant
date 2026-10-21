@@ -851,12 +851,12 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
         ).fetchall()]
 
     lesson = str(candidate["content"] or "")
-    # Bound output size and ignore fragments too short to be meaningful claims.
+    # Share stable claim segmentation with the promotion gate so review IDs
+    # and mandatory test-mapping IDs cannot drift apart.
+    from .claim_test_coverage import extract_candidate_claims
     sentences = [
-        re.sub(r"\s+", " ", part).strip(" \t\r\n•-*")
-        for part in re.split(r"(?<=[.!?؟])\s+|\n+", lesson)
+        item["text"] for item in extract_candidate_claims(lesson, candidate_id)
     ]
-    sentences = [sentence for sentence in sentences if len(sentence) >= 24][:100]
     stop_words = {
         "the", "and", "for", "that", "with", "from", "this", "are", "was", "into",
         "when", "then", "than", "have", "has", "will", "can", "not", "but", "its",
