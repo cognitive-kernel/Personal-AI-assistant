@@ -2231,3 +2231,13 @@ A passing doctest or fenced assertion block from a trusted source is now recorde
 - اصلاح: routeها اکنون HTML را در سمت سرور فیلتر می‌کنند؛ صفحهٔ اصلی فقط نمای کلی و پیوندهای بخش‌ها را دارد و هر مسیر فقط markup بخش خودش را برمی‌گرداند. صفحهٔ یادگیری بازبینی شواهد را نیز در همان صفحه نگه می‌دارد.
 - اسکریپت‌های مشترک برای نبود کنترل‌های یک بخش مقاوم‌تر شدند و بارگذاری اولیهٔ وظایف، شواهد ذخیره‌سازی، منابع ابری و رضایت حافظه به صفحات مرتبط محدود شد.
 - آزمون‌های route برای نبود markup بخش‌های دیگر بازنویسی شدند و آزمون مرورگر به مسیرهای واقعی هر قابلیت هدایت می‌شود. نتیجهٔ نهایی CI برای SHA جدید باید بررسی شود.
+
+
+## 2026-10-21 — Claim-level test coverage and false-acceptance diagnostics
+
+- Claim IDs now use a shared sentence-splitting helper so the review matrix and promotion gate refer to the same claim inventory.
+- Every extracted claim must be explicitly mapped to at least one uniquely named test in the test plan. Complete coverage is a mandatory prerequisite alongside trusted oracle checks, canonical expected-output hashes, approved runner labels, and exact passing outputs.
+- If tests pass but a claim is unmapped, unknown IDs are used, or the mapping is ambiguous, the candidate remains in awaiting_test. A durable coverage-block evidence event records the diagnostic result; the system does not mislabel this as a test failure.
+- Added the versioned claim-test-coverage-v1 module, a ten-case/five-domain JSONL policy dataset, an offline evaluator, and regression tests for incomplete mappings, unknown claims, duplicate test names, stable claim IDs, false acceptance and false rejection.
+- The bilingual answer-quality gate was versioned to bilingual-answer-gate-v2 and now reports the false-acceptance rate for results containing exact prohibited phrases from the reference dataset. This denominator does not include semantically unsafe paraphrases without a phrase hit.
+- Validation status: new test files and exact-head CI runs are pending; no claim is made that live Ollama evaluation, target-host checks, or an independent security audit have been completed.
