@@ -36,8 +36,8 @@ logger = logging.getLogger("personal_ai_assistant.http")
 
 # توضیح فارسی برای 404ها؛ این لاگ‌ها علت احتمالی را مشخص می‌کنند و جایگزین رفع خطای واقعی نیستند.
 _KNOWN_404_EXPLANATIONS = {
-    "/learning/status": "مسیر وضعیت یادگیری در نسخه فعلی تعریف نشده است؛ نسخه جدید برنامه را دریافت و سرور را دوباره اجرا کنید.",
-    "/learning/active": "مسیر کارهای فعال یادگیری در نسخه فعلی تعریف نشده است؛ نسخه جدید برنامه را دریافت و سرور را دوباره اجرا کنید.",
+    "/learning/status": "مسیر وضعیت یادگیری قدیمی است؛ از API وضعیت فعلی یادگیری استفاده کنید.",
+    "/learning/active": "مسیر کارهای فعال یادگیری قدیمی است؛ از API وضعیت فعلی یادگیری استفاده کنید.",
     "/scheduler/status": "مسیر وضعیت زمان‌بند تعریف نشده است؛ ممکن است زمان‌بندی خودکار هنوز پیاده‌سازی نشده باشد.",
     "/.well-known/appspecific/com.chrome.devtools.json": "درخواست خودکار Chrome DevTools است؛ معمولاً برای عملکرد برنامه ضروری نیست و می‌توان آن را نادیده گرفت.",
 }
@@ -448,8 +448,22 @@ def legacy_learning_status() -> dict[str, Any]:
             "failed": counts.get("failed", 0),
         },
         "knowledge": {"total": knowledge_count, "unverified": unverified_count},
-        "web_learning": "not_implemented",
-        "independent_verification": "not_implemented",
+        "web_learning": {
+            "status": "best_effort_candidate_research",
+            "automatic": True,
+            "limitations": ["retrieved pages remain contextual until claim support is assessed"],
+        },
+        "peer_ai_review": {
+            "status": "configured_endpoints_only",
+            "providers_configured": bool(os.environ.get("PEER_AI_PROVIDERS_JSON", "").strip()),
+            "maximum_providers_per_review": 3,
+        },
+        "independent_verification": {
+            "status": "source_examples_only",
+            "sandbox_configured": bool(os.environ.get("SANDBOX_PYTHON_IMAGE", "").strip()),
+            "scope": "source-authored doctests and restricted fenced Python assertion blocks",
+            "automatic_whole_lesson_promotion": False,
+        },
     }
 
 
