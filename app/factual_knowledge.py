@@ -290,3 +290,90 @@ def put_cached_review(
     )
 
 
+
+
+
+def list_retrievable_claims(
+    connection: sqlite3.Connection,
+    *,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Return only fresh, active, source-backed L2/L3 claims eligible for RAG.
+
+    This is a strict eligibility filter, not a semantic retriever and not proof
+    that a claim is true. Unverified, failed, conflicting, superseded, stale,
+    source-less, or inapplicably tested claims are excluded.
+    """
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        raise KnowledgePolicyError("limit must be an integer between 1 and 500")
+
+    rows = connection.execute(
+        """SELECT k.id, k.claim, k.normalized_claim, k.scope_json, k.environment_name,
+                  k.environment_version, k.evidence_level, k.lifecycle_status,
+                  k.risk_level, k.verified_at, k.reverify_after
+           FROM factual_knowledge AS k
+           WHERE k.domain = 'python'
+             AND k.lifecycle_status = 'active'
+             AND k.evidence_level IN ('L2_tested', 'L3_human_verified')
+             AND (k.reverify_after IS NULL OR k.reverify_after > CURRENT_TIMESTAMP)
+             AND EXISTS (
+                 SELECT 1 FROM factual_evidence AS e
+                 WHERE e.knowledge_id = k.id
+                   AND length(trim(e.source_ref)) > 0
+                   AND length(trim(e.source_hash)) > 0
+             )
+             AND EXISTS (
+                 SELECT 1 FROM factual_tests AS t
+                 WHERE t.knowledge_id = k.id
+                   AND t.outcome = 'passed'
+                   AND t.environment_name = k.environment_name
+                   AND t.environment_version = k.environment_version
+             )
+           ORDER BY
+             CASE k.evidence_level WHEN 'L3_human_verified' THEN 0 ELSE 1 END,
+             k.updated_at DESC, k.id DESC
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["scope"] = json.loads(item.pop("scope_json"))
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise KnowledgePolicyError(
+                f"claim {item.get('id')} has invalid scope JSON"
+            ) from exc
+        evidence_rows = connection.execute(
+            """SELECT source_type, source_ref, source_hash, excerpt, captured_at,
+                      applicability_json
+               FROM factual_evidence
+               WHERE knowledge_id = ?
+               ORDER BY id""",
+            (item["id"],),
+        ).fetchall()
+        item["evidence"] = []
+        for evidence in evidence_rows:
+            entry = dict(evidence)
+            try:
+                entry["applicability"] = json.loads(entry.pop("applicability_json"))
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise KnowledgePolicyError(
+                    f"claim {item['id']} has invalid evidence applicability JSON"
+                ) from exc
+            item["evidence"].append(entry)
+        test_rows = connection.execute(
+            """SELECT test_kind, test_name, environment_name, environment_version,
+                      outcome, result_summary, executed_at
+               FROM factual_tests
+               WHERE knowledge_id = ?
+                 AND outcome = 'passed'
+                 AND environment_name = ?
+                 AND environment_version = ?
+               ORDER BY executed_at DESC, id DESC""",
+            (item["id"], item["environment_name"], item["environment_version"]),
+        ).fetchall()
+        item["passing_tests"] = [dict(test) for test in test_rows]
+        result.append(item)
+    return result
