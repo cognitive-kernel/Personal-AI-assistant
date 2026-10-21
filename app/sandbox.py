@@ -454,6 +454,7 @@ def run_python(
     image: str,
     timeout_seconds: int = 10,
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
+    stdin_text: str | None = None,
     control_check: Callable[[], str] | None = None,
     task_id: int | None = None,
 ) -> SandboxResult:
@@ -464,6 +465,11 @@ def run_python(
         raise ValueError("source_code must not contain NUL characters.")
     if len(source_code.encode("utf-8")) > _MAX_SOURCE_BYTES:
         raise ValueError("source_code exceeds the 64 KiB limit.")
+    if stdin_text is not None and (
+        not isinstance(stdin_text, str) or "\x00" in stdin_text
+        or len(stdin_text.encode("utf-8")) > 4096
+    ):
+        raise ValueError("stdin_text must be valid text no larger than 4 KiB.")
     if task_id is not None and (
         isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1
     ):
@@ -505,6 +511,7 @@ def run_python(
             str(executable),
             "run",
             "--rm",
+            *(["--interactive"] if stdin_text is not None else []),
             "--pull=never",
             "--label",
             f"{_SANDBOX_LABEL}=true",
@@ -533,7 +540,7 @@ def run_python(
         try:
             process = subprocess.Popen(
                 command,
-                stdin=subprocess.DEVNULL,
+                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
@@ -567,6 +574,16 @@ def run_python(
         ]
         for reader in readers:
             reader.start()
+
+        if stdin_text is not None and getattr(process, "stdin", None) is not None:
+            try:
+                process.stdin.write(stdin_text.encode("utf-8"))
+                process.stdin.close()
+            except (BrokenPipeError, OSError):
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
 
         timed_out = False
         interrupted_status: str | None = None

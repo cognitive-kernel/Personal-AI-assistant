@@ -4,8 +4,11 @@ These checks are diagnostics only. They are not semantic adjudication or a model
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
+
+from .learning_evidence_gate import is_allowlisted_primary_source
 
 
 def normalize_text(value: str) -> str:
@@ -56,6 +59,7 @@ def evaluate_answer_surface(case: dict[str, Any], answer: str, sources: list[dic
         "expected_language_script_present": expected_language_marker,
         "source_urls": source_urls,
         "source_count": len(source_urls),
+        "trusted_source_count": sum(1 for url in source_urls if is_allowlisted_primary_source(url)),
         "answer_urls": answer_urls,
         "unattributed_answer_urls": unattributed_answer_urls,
         "unattributed_answer_url_count": len(unattributed_answer_urls),
@@ -70,7 +74,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     if not results:
         raise ValueError("results must not be empty")
     summary: dict[str, Any] = {"case_count": len(results), "languages": {}, "interpretation": (
-        "Not a model-quality score. Human adjudication and a pinned live-model run are required."
+        "Not a model-quality score. Automated lexical/provenance indicators only; a pinned live-model run and all acceptance gates are required. Human scoring is not used, and passing is not proof of scientific truth."
     )}
     for language in sorted({str(item["language"]) for item in results}):
         items = [item for item in results if item["language"] == language]
@@ -84,6 +88,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             "cases_with_prohibited_phrase_hits": sum(bool(item["prohibited_phrase_hits"]) for item in items),
             "cases_with_expected_language_script": sum(item["expected_language_script_present"] is True for item in items),
             "cases_with_sources": sum(int(item["source_count"]) > 0 for item in items),
+            "cases_with_allowlisted_primary_sources": sum(int(item.get("trusted_source_count") or 0) > 0 for item in items),
             "cases_with_unattributed_answer_urls": sum(
                 int(item.get("unattributed_answer_url_count", 0)) > 0 for item in items
             ),
@@ -92,3 +97,157 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
             ),
         }
     return summary
+
+
+AUTOMATED_ACCEPTANCE_VERSION = "bilingual-answer-gate-v2"
+_ACCEPTED_REVIEW_STATUSES = {
+    "passed_model_assisted",
+    "passed_model_assisted_after_repair",
+}
+
+
+def evaluate_automated_acceptance(
+    results: list[dict[str, Any]],
+    *,
+    minimum_concept_coverage: float = 0.5,
+    maximum_generation_seconds: float = 180.0,
+) -> dict[str, Any]:
+    """Apply fail-closed benchmark gates and report a reference-negative false-accept rate.
+
+    The false-accept denominator is restricted to cases whose output contains a
+    benchmark-listed prohibited phrase. This is an auditable lexical negative label,
+    not a comprehensive semantic gold label or a probability of factual error.
+    """
+    if not isinstance(results, list) or not results:
+        raise ValueError("results must be a non-empty list")
+    if (
+        isinstance(maximum_generation_seconds, bool)
+        or not isinstance(maximum_generation_seconds, (int, float))
+        or not math.isfinite(maximum_generation_seconds)
+        or maximum_generation_seconds <= 0
+    ):
+        raise ValueError("maximum_generation_seconds must be positive")
+    if (
+        isinstance(minimum_concept_coverage, bool)
+        or not isinstance(minimum_concept_coverage, (int, float))
+        or not 0 <= minimum_concept_coverage <= 1
+    ):
+        raise ValueError("minimum_concept_coverage must be between 0 and 1")
+
+    failed_cases = []
+    case_decisions = []
+    reference_negative_ids = []
+    pre_content_filter_false_acceptance_ids = []
+    final_gate_false_acceptance_ids = []
+    for item in results:
+        if not isinstance(item, dict):
+            failed_cases.append({"case_id": None, "failed_gates": ["result_is_object"]})
+            case_decisions.append({
+                "case_id": None, "accepted": False,
+                "reference_negative_by_prohibited_phrase": False,
+                "decision": "reject", "failed_gates": ["result_is_object"],
+            })
+            continue
+        gates = {
+            "generation_completed": item.get("generation_status") == "completed",
+            "generation_within_time_budget": (
+                isinstance(item.get("generation_seconds"), (int, float))
+                and not isinstance(item.get("generation_seconds"), bool)
+                and 0 <= item["generation_seconds"] <= maximum_generation_seconds
+            ),
+            "surface_diagnostics_completed": item.get("surface_diagnostic_status") == "completed",
+            "minimum_reference_concept_coverage": (
+                isinstance(item.get("surface_concept_coverage"), (int, float))
+                and not isinstance(item.get("surface_concept_coverage"), bool)
+                and item["surface_concept_coverage"] >= minimum_concept_coverage
+            ),
+            "no_prohibited_claims": not bool(item.get("prohibited_phrase_hits")),
+            "requested_language_script_present": item.get("expected_language_script_present") is True,
+            "at_least_one_retrieved_source": (
+                item.get("source_audit_status") == "completed"
+                and isinstance(item.get("source_count"), int)
+                and not isinstance(item.get("source_count"), bool)
+                and item["source_count"] >= 1
+            ),
+            "at_least_one_allowlisted_primary_source": (
+                isinstance(item.get("trusted_source_count"), int)
+                and not isinstance(item.get("trusted_source_count"), bool)
+                and item["trusted_source_count"] >= 1
+            ),
+            "claim_review_passed": item.get("research_review_status") in _ACCEPTED_REVIEW_STATUSES,
+            "no_unattributed_answer_urls": (
+                isinstance(item.get("unattributed_answer_url_count"), int)
+                and not isinstance(item.get("unattributed_answer_url_count"), bool)
+                and item["unattributed_answer_url_count"] == 0
+            ),
+        }
+        failed = [name for name, passed in gates.items() if not passed]
+        case_id = item.get("case_id")
+        accepted = not failed
+        is_reference_negative = bool(item.get("prohibited_phrase_hits"))
+        if failed:
+            failed_cases.append({"case_id": case_id, "failed_gates": failed})
+        if is_reference_negative:
+            reference_negative_ids.append(case_id)
+            non_content_gate_failures = [
+                name for name, passed in gates.items()
+                if name != "no_prohibited_claims" and not passed
+            ]
+            if not non_content_gate_failures:
+                pre_content_filter_false_acceptance_ids.append(case_id)
+            if accepted:
+                final_gate_false_acceptance_ids.append(case_id)
+        case_decisions.append({
+            "case_id": case_id,
+            "accepted": accepted,
+            "reference_negative_by_prohibited_phrase": is_reference_negative,
+            "decision": "accept" if accepted else "reject",
+            "failed_gates": failed,
+        })
+
+    return {
+        "version": AUTOMATED_ACCEPTANCE_VERSION,
+        "status": "passed" if not failed_cases else "failed",
+        "passed": not failed_cases,
+        "case_count": len(results),
+        "accepted_case_count": len(results) - len(failed_cases),
+        "failed_case_count": len(failed_cases),
+        "minimum_concept_coverage": float(minimum_concept_coverage),
+        "maximum_generation_seconds": float(maximum_generation_seconds),
+        "failed_cases": failed_cases,
+        "case_decisions": case_decisions,
+        "false_acceptance": {
+            "reference_negative_definition": "A result with one or more exact prohibited-phrase hits from its versioned reference case.",
+            "reference_negative_case_count": len(reference_negative_ids),
+            "before_content_filter": {
+                "definition": "Negative cases that would pass every other gate if the direct prohibited-phrase gate were omitted.",
+                "false_acceptance_count": len(pre_content_filter_false_acceptance_ids),
+                "false_acceptance_rate": (
+                    round(len(pre_content_filter_false_acceptance_ids) / len(reference_negative_ids), 4)
+                    if reference_negative_ids else None
+                ),
+                "false_acceptance_case_ids": pre_content_filter_false_acceptance_ids,
+            },
+            "final_gate": {
+                "definition": "Negative cases accepted by the full gate, including the prohibited-phrase check.",
+                "false_acceptance_count": len(final_gate_false_acceptance_ids),
+                "false_acceptance_rate": (
+                    round(len(final_gate_false_acceptance_ids) / len(reference_negative_ids), 4)
+                    if reference_negative_ids else None
+                ),
+                "false_acceptance_case_ids": final_gate_false_acceptance_ids,
+            },
+            "interpretation": (
+                "Only exact reference-listed prohibited-phrase hits are labeled negative. The before-content-filter "
+                "rate measures the guardrail's contribution; semantic false acceptance without a phrase hit remains unmeasured."
+            ),
+        },
+        "human_scoring_used": False,
+        "independent_scientific_verification": False,
+        "limitations": [
+            "Reference-concept matching is lexical and can miss valid paraphrases.",
+            "False-acceptance rates only include exact reference-listed prohibited-phrase hits; the pre-filter rate is counterfactual without the direct prohibited-phrase gate.",
+            "A passing benchmark does not prove every factual claim is true.",
+            "Claim review is model-assisted and must not be described as independent verification.",
+        ],
+    }

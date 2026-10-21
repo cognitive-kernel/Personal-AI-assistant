@@ -2,8 +2,8 @@
 """Collect a redacted, mostly read-only acceptance baseline on the target host.
 
 By default this reads repository metadata and checks configured SQLite stores in
-read-only mode. Pass --run-tests to execute the repository's pytest suite.
-No database initialization, migration, repair, or model/network request is made.
+read-only mode. Opt-in flags run pytest and/or bounded disposable-queue and
+loopback Ollama benchmarks. No database migration or repair is performed.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import argparse
 import importlib.metadata
 import ipaddress
 import json
+import math
 import platform
 import sqlite3
 import subprocess
@@ -24,6 +25,8 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from app.hardware import detect_hardware
 
 PACKAGE_NAMES = {
     "fastapi": "fastapi",
@@ -212,13 +215,114 @@ def _run_tests(timeout_seconds: int) -> dict[str, Any]:
         }
 
 
-def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dict[str, Any]:
+def _run_performance_benchmark(task_count: int, min_queue_tps: float = 10.0, timeout_seconds: int = 300) -> dict[str, Any]:
+    """Run the disposable SQLite queue benchmark and keep the report redacted."""
+    if isinstance(task_count, bool) or not isinstance(task_count, int) or not 1 <= task_count <= 100000:
+        raise ValueError("benchmark task count must be between 1 and 100000")
+    if isinstance(min_queue_tps, bool) or not isinstance(min_queue_tps, (int, float)) or min_queue_tps <= 0:
+        raise ValueError("minimum queue throughput must be positive")
+    command = [
+        sys.executable, str(ROOT / "scripts" / "benchmark_task_queue.py"),
+        "--tasks", str(task_count), "--producers", "4", "--workers", "4",
+    ]
+    try:
+        result = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True,
+            timeout=timeout_seconds, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "timeout_seconds": timeout_seconds, "task_count": task_count}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__, "task_count": task_count}
+    try:
+        report = json.loads(result.stdout)
+    except (TypeError, ValueError):
+        return {
+            "status": "invalid_report",
+            "return_code": result.returncode,
+            "task_count": task_count,
+        }
+    if not isinstance(report, dict):
+        return {"status": "invalid_report", "return_code": result.returncode, "task_count": task_count}
+    throughput = report.get("claim_and_complete_tasks_per_second")
+    workload_passed = result.returncode == 0 and report.get("result") == "passed"
+    threshold_passed = (
+        isinstance(throughput, (int, float)) and not isinstance(throughput, bool)
+        and throughput >= min_queue_tps
+    )
+    passed = workload_passed and threshold_passed
+    return {
+        "status": "passed" if passed else "below_threshold" if workload_passed and not threshold_passed else "failed",
+        "return_code": result.returncode,
+        "benchmark": report.get("benchmark"),
+        "task_count_requested": report.get("task_count_requested"),
+        "task_count_succeeded": report.get("task_count_succeeded"),
+        "enqueue_tasks_per_second": report.get("enqueue_tasks_per_second"),
+        "claim_and_complete_tasks_per_second": throughput,
+        "minimum_claim_and_complete_tasks_per_second": float(min_queue_tps),
+        "performance_threshold_passed": threshold_passed,
+        "database_bytes": report.get("database_bytes"),
+        "sqlite_integrity": report.get("sqlite_integrity"),
+        "timed_out": False,
+        "raw_output_included": False,
+    }
+
+
+def _run_local_model_benchmark(runs: int, min_tokens_per_second: float, max_latency_seconds: float, timeout_seconds: int = 900) -> dict[str, Any]:
+    """Measure the configured loopback Ollama model without exposing generated text."""
+    if isinstance(runs, bool) or not isinstance(runs, int) or not 1 <= runs <= 10:
+        raise ValueError("model benchmark runs must be between 1 and 10")
+    if not isinstance(min_tokens_per_second, (int, float)) or isinstance(min_tokens_per_second, bool) or not math.isfinite(min_tokens_per_second) or min_tokens_per_second <= 0:
+        raise ValueError("minimum model throughput must be finite and positive")
+    if not isinstance(max_latency_seconds, (int, float)) or isinstance(max_latency_seconds, bool) or not math.isfinite(max_latency_seconds) or max_latency_seconds <= 0:
+        raise ValueError("maximum model latency must be finite and positive")
+    command = [
+        sys.executable, str(ROOT / "scripts" / "benchmark_local_model.py"),
+        "--runs", str(runs), "--min-tokens-per-second", str(min_tokens_per_second),
+        "--max-latency-seconds", str(max_latency_seconds),
+    ]
+    try:
+        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=timeout_seconds, check=False)
+    except subprocess.TimeoutExpired:
+        return {"status": "timeout", "timeout_seconds": timeout_seconds, "runs_requested": runs}
+    except OSError as exc:
+        return {"status": "error", "error_type": type(exc).__name__, "runs_requested": runs}
+    try:
+        report = json.loads(result.stdout)
+    except (TypeError, ValueError):
+        return {"status": "invalid_report", "return_code": result.returncode, "runs_requested": runs}
+    if not isinstance(report, dict):
+        return {"status": "invalid_report", "return_code": result.returncode, "runs_requested": runs}
+    return {
+        "status": report.get("status") if report.get("status") != "passed" or result.returncode == 0 else "failed",
+        "benchmark": report.get("benchmark"),
+        "model": report.get("model"),
+        "model_digest": report.get("model_digest"),
+        "hardware_before": report.get("hardware_before"),
+        "hardware_after": report.get("hardware_after"),
+        "available_ram_delta_gb": report.get("available_ram_delta_gb"),
+        "runs_requested": report.get("runs_requested", runs),
+        "runs_completed": report.get("runs_completed", 0),
+        "median_latency_seconds": report.get("median_latency_seconds"),
+        "max_latency_seconds_observed": report.get("max_latency_seconds_observed"),
+        "median_generation_tokens_per_second": report.get("median_generation_tokens_per_second"),
+        "minimum_generation_tokens_per_second": report.get("minimum_generation_tokens_per_second", float(min_tokens_per_second)),
+        "maximum_allowed_latency_seconds": report.get("maximum_allowed_latency_seconds", float(max_latency_seconds)),
+        "performance_threshold_passed": report.get("performance_threshold_passed") is True and result.returncode == 0,
+        "error_type": report.get("error_type"),
+        "raw_output_included": False,
+    }
+
+
+def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800, run_performance_benchmark: bool = False, benchmark_tasks: int = 1000, min_queue_tps: float = 10.0, run_model_benchmark: bool = False, model_benchmark_runs: int = 3, min_model_tps: float = 1.0, max_model_latency_seconds: float = 120.0) -> dict[str, Any]:
     storage = _storage_summary()
     network_boundary = _network_boundary_summary()
     tests = _run_tests(timeout_seconds) if run_tests else {"status": "not_run"}
+    performance = _run_performance_benchmark(benchmark_tasks, min_queue_tps) if run_performance_benchmark else {"status": "not_run"}
+    model_performance = _run_local_model_benchmark(model_benchmark_runs, min_model_tps, max_model_latency_seconds) if run_model_benchmark else {"status": "not_run"}
     dirty = _git_value("status", "--porcelain")
     return {
-        "report_version": 1,
+        "report_version": 4,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "repository": {
             "commit": _git_value("rev-parse", "HEAD"),
@@ -230,17 +334,22 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dic
             "system": platform.system(),
             "system_release": platform.release(),
             "machine": platform.machine(),
+            "hardware": detect_hardware(),
             "packages": _package_versions(),
         },
         "storage": storage,
         "network_boundary": network_boundary,
         "tests": tests,
+        "performance_benchmark": performance,
+        "local_model_performance_benchmark": model_performance,
         "scope": {
             "storage_check_is_read_only": True,
             "database_initialization_performed": False,
             "database_migration_performed": False,
             "database_repair_performed": False,
             "live_model_evaluation_performed": False,
+            "performance_benchmark_performed": run_performance_benchmark,
+            "local_model_performance_benchmark_performed": run_model_benchmark,
             "remote_execution_performed": False,
         },
     }
@@ -249,6 +358,13 @@ def build_report(*, run_tests: bool = False, timeout_seconds: int = 1800) -> dic
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-tests", action="store_true", help="run the full pytest suite")
+    parser.add_argument("--run-performance-benchmark", action="store_true", help="benchmark disposable SQLite task queue on this host")
+    parser.add_argument("--benchmark-tasks", type=int, default=1000, help="disposable benchmark task count (1..100000)")
+    parser.add_argument("--min-queue-tps", type=float, default=10.0, help="minimum queue claim/complete throughput for acceptance (default: 10 tasks/s)")
+    parser.add_argument("--run-model-benchmark", action="store_true", help="measure configured local Ollama generation latency and throughput")
+    parser.add_argument("--model-benchmark-runs", type=int, default=3, help="measured local model generations (1..10; one warm-up added)")
+    parser.add_argument("--min-model-tps", type=float, default=1.0, help="minimum median local model generation tokens/s")
+    parser.add_argument("--max-model-latency-seconds", type=float, default=120.0, help="maximum median local model request latency")
     parser.add_argument(
         "--timeout-seconds", type=int, default=1800,
         help="pytest timeout when --run-tests is used (default: 1800)",
@@ -257,8 +373,28 @@ def main() -> int:
     args = parser.parse_args()
     if args.timeout_seconds < 1:
         parser.error("--timeout-seconds must be positive")
+    if not 1 <= args.benchmark_tasks <= 100000:
+        parser.error("--benchmark-tasks must be between 1 and 100000")
+    if not math.isfinite(args.min_queue_tps) or args.min_queue_tps <= 0:
+        parser.error("--min-queue-tps must be finite and positive")
+    if not 1 <= args.model_benchmark_runs <= 10:
+        parser.error("--model-benchmark-runs must be between 1 and 10")
+    if not math.isfinite(args.min_model_tps) or args.min_model_tps <= 0:
+        parser.error("--min-model-tps must be finite and positive")
+    if not math.isfinite(args.max_model_latency_seconds) or args.max_model_latency_seconds <= 0:
+        parser.error("--max-model-latency-seconds must be finite and positive")
 
-    report = build_report(run_tests=args.run_tests, timeout_seconds=args.timeout_seconds)
+    report = build_report(
+        run_tests=args.run_tests,
+        timeout_seconds=args.timeout_seconds,
+        run_performance_benchmark=args.run_performance_benchmark,
+        benchmark_tasks=args.benchmark_tasks,
+        min_queue_tps=args.min_queue_tps,
+        run_model_benchmark=args.run_model_benchmark,
+        model_benchmark_runs=args.model_benchmark_runs,
+        min_model_tps=args.min_model_tps,
+        max_model_latency_seconds=args.max_model_latency_seconds,
+    )
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         try:
@@ -271,7 +407,9 @@ def main() -> int:
     storage_ok = report["storage"].get("status") == "ok"
     network_ok = report["network_boundary"].get("status") == "ok"
     tests_ok = report["tests"].get("status") in {"not_run", "passed"}
-    return 0 if storage_ok and network_ok and tests_ok else 1
+    performance_ok = report["performance_benchmark"].get("status") in ({"passed"} if args.run_performance_benchmark else {"not_run"})
+    model_performance_ok = report["local_model_performance_benchmark"].get("status") in ({"passed"} if args.run_model_benchmark else {"not_run"})
+    return 0 if storage_ok and network_ok and tests_ok and performance_ok and model_performance_ok else 1
 
 
 if __name__ == "__main__":

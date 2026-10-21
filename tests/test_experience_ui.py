@@ -2,9 +2,8 @@ from pathlib import Path
 
 
 def test_experience_memory_ui_exposes_safe_curation_search_and_history():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "experience-memory.html").read_text(encoding="utf-8")
 
     assert 'id="experience-memory-section"' in page
     assert 'id="experience-create-form"' in page
@@ -17,7 +16,7 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
     assert 'method:"DELETE"' in page
     assert 'به‌صورت پیش‌فرض خاموش است' in page
     assert 'id="experience-list"' in page
-    assert '"/api/experiences?limit=100"' in page
+    assert '"/api/experiences?page="+experiencePage+"&page_size=25"' in page
     assert '"/api/experiences/search?query="+encodeURIComponent(query)' in page
     assert '"/api/experiences/"+item.id+"/versions"' in page
     assert '"/api/experiences/"+item.id' in page
@@ -36,9 +35,8 @@ def test_experience_memory_ui_exposes_safe_curation_search_and_history():
 
 
 def test_experience_feedback_ui_exposes_explicit_ranking_controls():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "experience-memory.html").read_text(encoding="utf-8")
 
     assert 'بازخورد برای بهبود رتبه‌بندی بازیابی' in page
     assert 'مفید بود' in page

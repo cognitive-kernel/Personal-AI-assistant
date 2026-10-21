@@ -291,14 +291,20 @@ def get_proposal(proposal_id: int) -> dict[str, Any] | None:
     return _proposal(row, include_patch=True) if row else None
 
 
-def list_proposals(limit: int = 50) -> list[dict[str, Any]]:
-    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
-        raise ProposalError("limit must be an integer from 1 to 100.")
+def count_proposals() -> int:
     db.init_databases()
     with learning_connection() as conn:
-        rows = conn.execute(
-            "SELECT * FROM self_improvement_proposals ORDER BY id DESC LIMIT ?", (limit,)
-        ).fetchall()
+        return int(conn.execute("SELECT COUNT(*) FROM self_improvement_proposals").fetchone()[0])
+
+
+def list_proposals(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 100:
+        raise ProposalError("limit must be an integer from 1 to 100.")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+        raise ProposalError("offset must be between 0 and 1000000.")
+    db.init_databases()
+    with learning_connection() as conn:
+        rows = conn.execute("SELECT * FROM self_improvement_proposals ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
     return [_proposal(row) for row in rows]
 
 

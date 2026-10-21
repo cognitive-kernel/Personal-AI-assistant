@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # Unit tests mock public web retrieval; live integration is opt-in and tested separately.
+      LEARNING_AUTO_WEB_RESEARCH: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -20,6 +23,8 @@ jobs:
         run: python scripts/check_import_cycles.py
       - name: Run deterministic lexical retrieval benchmark
         run: python scripts/evaluate_experience_retrieval.py --lexical-only
+      - name: Run versioned claim-to-test coverage benchmark
+        run: python scripts/run_knowledge_acceptance_eval.py
 
   windows-storage-regressions:
     runs-on: windows-latest

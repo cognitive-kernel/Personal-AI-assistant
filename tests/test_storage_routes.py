@@ -58,9 +58,8 @@ def test_backup_api_is_loopback_only(tmp_path, monkeypatch):
 def test_dashboard_requires_visible_confirmation_for_full_backup():
     from pathlib import Path
 
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "storage-health.html").read_text(encoding="utf-8")
     assert 'id="create-storage-backup"' in page
     assert 'id="refresh-storage-backups"' in page
     assert 'api("/api/storage/backups",{method:"POST",body:JSON.stringify({confirm:true})})' in page
@@ -148,9 +147,8 @@ def test_restore_api_rejects_tampered_backup(tmp_path, monkeypatch):
 def test_dashboard_exposes_explicit_staging_restore_without_live_cutover():
     from pathlib import Path
 
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "storage-health.html").read_text(encoding="utf-8")
     assert "بازیابی آزمایشی در پوشهٔ جدا" in page
     assert "دیتابیس‌های زنده تغییر نمی‌کنند" in page
     assert '"/api/storage/backups/"+encodeURIComponent(backupId)+"/restore"' in page
@@ -223,9 +221,8 @@ def test_backup_prune_enforces_conservative_minimums_and_loopback_access(tmp_pat
 def test_dashboard_exposes_preview_first_backup_retention_controls():
     from pathlib import Path
 
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "storage-health.html").read_text(encoding="utf-8")
     assert 'id="prune-storage-backups"' in page
     assert '"/api/storage/backups/prune"' in page
     assert "keep_last:3,min_age_days:30" in page
@@ -321,9 +318,8 @@ def test_restore_staging_cleanup_enforces_minimum_age_and_loopback_access(tmp_pa
 def test_dashboard_exposes_preview_first_restore_staging_cleanup():
     from pathlib import Path
 
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "storage-health.html").read_text(encoding="utf-8")
     assert 'id="prune-restore-staging"' in page
     assert '"/api/storage/restore-staging/prune"' in page
     assert "بیش از ۷ روز" in page

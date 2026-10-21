@@ -9,9 +9,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -21,7 +23,11 @@ sys.path.insert(0, str(ROOT))
 
 from app import chat_research, db, ollama
 from app.answer_quality_dataset import DEFAULT_DATASET, DATASET_VERSION, load_cases
-from app.answer_quality_evaluation import evaluate_answer_surface, summarize_surface_results
+from app.answer_quality_evaluation import (
+    evaluate_answer_surface,
+    evaluate_automated_acceptance,
+    summarize_surface_results,
+)
 from app.db import get_settings, learning_connection
 
 
@@ -101,18 +107,21 @@ def run_evaluation(
     answer_fn: Callable[[str], str],
     dataset_path: Path,
     redact_answers: bool = False,
+    max_case_seconds: float = 180.0,
 ) -> dict[str, Any]:
     """Execute each case once and produce a versioned diagnostic report."""
     raw_results: list[dict[str, Any]] = []
     sources_by_case_id: dict[str, list[dict[str, Any]]] = {}
     for case in cases:
         entry: dict[str, Any] = {"case_id": case["id"], "language": case["language"]}
+        started = time.perf_counter()
         try:
             answer = answer_fn(case["prompt"])
             if not isinstance(answer, str) or not answer.strip():
                 raise ValueError("assistant returned an empty/non-string answer")
         except Exception as exc:  # Keep error details out of potentially shared reports.
             entry.update({
+                "generation_seconds": round(time.perf_counter() - started, 4),
                 "generation_status": "failed",
                 "generation_error_type": type(exc).__name__,
             })
@@ -120,6 +129,7 @@ def run_evaluation(
             continue
 
         # Generation success is independent of optional provenance and lexical diagnostics.
+        entry["generation_seconds"] = round(time.perf_counter() - started, 4)
         entry["generation_status"] = "completed"
         if not redact_answers:
             entry["answer"] = answer
@@ -179,8 +189,11 @@ def run_evaluation(
         }
         for item in completed
     ]
+    automated_acceptance = evaluate_automated_acceptance(
+        raw_results, maximum_generation_seconds=max_case_seconds
+    )
     report: dict[str, Any] = {
-        "report_schema_version": 1,
+        "report_schema_version": 2,
         "benchmark": "bilingual-answer-quality",
         "dataset_version": DATASET_VERSION,
         "dataset_path": str(dataset_path.relative_to(ROOT)) if dataset_path.is_relative_to(ROOT) else dataset_path.name,
@@ -213,7 +226,14 @@ def run_evaluation(
         "failed_count": len(cases) - len(completed),
         "generation_completed_count": len(completed),
         "generation_failed_count": len(cases) - len(completed),
-        "quality_assessment_status": "not_scored",
+        "performance": {
+            "generation_seconds_total": round(sum(float(item.get("generation_seconds", 0)) for item in raw_results), 4),
+            "generation_seconds_max": round(max((float(item.get("generation_seconds", 0)) for item in raw_results), default=0.0), 4),
+            "configured_max_generation_seconds_per_case": automated_acceptance["maximum_generation_seconds"],
+            "interpretation": "Measured on the machine running this report; hardware and model dependent.",
+        },
+        "quality_assessment_status": "automated_gate_passed" if automated_acceptance["passed"] else "automated_gate_failed",
+        "automated_acceptance": automated_acceptance,
         "surface_diagnostics": summarize_surface_results([
             {key: value for key, value in item.items() if key in {
                 "case_id", "language", "answer_chars", "expected_concepts_count",
@@ -229,8 +249,9 @@ def run_evaluation(
         "source_snapshots": source_snapshots,
         "results": raw_results,
         "interpretation": (
-            "Surface diagnostics only. They do not establish factual correctness, source reliability, "
-            "or semantic equivalence. Review every output manually; do not present these metrics as a model-quality score."
+            "The automated gate uses versioned reference concepts, prohibited-claim checks, source provenance, "
+            "and model-assisted claim-review status. It does not use human scoring and is not proof of scientific truth. "
+            "Lexical checks can miss paraphrases; a passing result is a bounded regression signal only."
         ),
     }
     return report
@@ -240,9 +261,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--output", type=Path, default=Path("answer-quality-report.json"))
+    parser.add_argument("--max-case-seconds", type=float, default=180.0,
+                        help="maximum permitted generation time per benchmark case (default: 180 seconds)")
     parser.add_argument("--redact-answers", action="store_true",
                         help="omit raw model answers from the report")
     args = parser.parse_args()
+    if not math.isfinite(args.max_case_seconds) or args.max_case_seconds <= 0:
+        parser.error("--max-case-seconds must be a finite positive number")
     try:
         cases = load_cases(args.dataset)
     except ValueError as exc:
@@ -261,7 +286,9 @@ def main() -> int:
                 answer_fn=chat_research.answer,
                 dataset_path=args.dataset.resolve(),
                 redact_answers=args.redact_answers,
+                max_case_seconds=args.max_case_seconds,
             )
+            report.setdefault("performance", {})["configured_max_generation_seconds_per_case"] = args.max_case_seconds
     finally:
         db.defaults.settings_db_path = original_settings_path
         db.defaults.learning_db_path = original_learning_path
@@ -274,10 +301,11 @@ def main() -> int:
         "completed_count": report["generation_completed_count"],
         "generation_failed_count": report["generation_failed_count"],
         "quality_assessment_status": report["quality_assessment_status"],
+        "automated_acceptance": report["automated_acceptance"],
         "surface_diagnostics": report["surface_diagnostics"],
         "warning": report["interpretation"],
     }, ensure_ascii=False, indent=2))
-    return 0 if report["run_status"] == "completed" else 1
+    return 0 if report["run_status"] == "completed" and report["automated_acceptance"]["passed"] else 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,21 @@
+<section id="learning-evidence-section"><h2>بازبینی و امتیاز شواهد دانش</h2>
+<p class="muted">برای هر درس، وضعیت تأیید، منابع اینترنتی، مشورت با هوش‌های مصنوعی، آزمون‌های اجراشده و نتیجهٔ کاربرد واقعی را جداگانه ببینید. امتیاز ۰ تا ۱۰۰ شاخص قدرت شواهد است، نه احتمال قطعی درست‌بودن.</p>
+<div class="cloud-actions"><button id="refresh-learning-metrics" type="button">بارگذاری شاخص‌های یادگیری</button>
+<button id="refresh-learning-candidates" type="button">بارگذاری دانش‌های موقت</button>
+<label for="learning-candidate-select">نامزد دانش <select id="learning-candidate-select"><option value="">ابتدا فهرست را بارگذاری کنید</option></select></label>
+<button id="research-learning-candidate" type="button" disabled>جست‌وجوی وب و پرس‌وجو از هوش‌های مصنوعی</button>
+<button id="learning-candidate-consensus" type="button" disabled>محاسبه و ثبت اجماع مدل‌ها</button>
+<button id="learning-candidate-self-correct" type="button" disabled>ساخت راه‌حل جایگزین (حداکثر ۳ تلاش)</button>
+<label for="learning-human-verify-rationale">دلیل تأیید انسانی L3</label>
+<input id="learning-human-verify-rationale" aria-label="دلیل تأیید انسانی سطح L3" maxlength="2000" placeholder="دلیل صریح بررسی انسانی">
+<button id="learning-candidate-human-verify" type="button" disabled>تأیید انسانی دانش آزموده‌شده</button>
+<button id="learning-candidate-prev" type="button" disabled>صفحهٔ قبل</button><span id="learning-candidate-page" aria-live="polite">صفحهٔ ۱</span><button id="learning-candidate-next" type="button" disabled>صفحهٔ بعد</button></div>
+<pre id="learning-metrics-output" role="status" aria-live="polite">شاخص‌های یادگیری هنوز بارگذاری نشده‌اند. اعداد، شمارش رویدادهای ثبت‌شده‌اند و احتمال صحت نیستند.</pre>
+<pre id="learning-candidate-review" role="status" aria-live="polite">گزارش شواهد هنوز بارگذاری نشده است.</pre>
+<details><summary>ثبت نتیجهٔ کاربرد در دنیای واقعی</summary>
+<form id="learning-field-feedback-form">
+<label for="field-outcome">نتیجه</label><select id="field-outcome" required><option value="worked">موفق بود</option><option value="failed">ناموفق بود</option><option value="partial">تا حدی موفق بود</option><option value="not_tested">هنوز آزمایش نشده</option></select>
+<label for="field-context">زمینه و کاربرد</label><textarea id="field-context" aria-label="زمینه و کاربرد دانش" rows="2" maxlength="3000" required placeholder="کجا و برای چه کاری از این دانش استفاده شد؟"></textarea>
+<label for="field-output">خروجی مشاهده‌شده</label><textarea id="field-output" aria-label="خروجی مشاهده‌شده در کاربرد واقعی" rows="2" maxlength="12000" placeholder="خروجی واقعی یا خطا"></textarea>
+<label for="field-steps">مراحل اجرا</label><textarea id="field-steps" aria-label="مراحل اجرای کاربرد واقعی" rows="2" maxlength="6000" placeholder="مراحل بازتولید نتیجه"></textarea>
+<button type="submit">ثبت بازخورد و محاسبهٔ دوبارهٔ امتیاز</button></form></details></section>

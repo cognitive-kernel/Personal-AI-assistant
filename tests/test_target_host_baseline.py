@@ -125,3 +125,123 @@ def test_network_boundary_baseline_flags_non_loopback_bind_and_ollama_url(tmp_pa
 )
 def test_ollama_endpoint_classifier_matches_local_only_policy(url, expected):
     assert baseline._ollama_endpoint_status(url) == expected
+
+
+def test_target_host_performance_benchmark_reports_metrics_without_raw_output(monkeypatch):
+    payload = {
+        "result": "passed",
+        "benchmark": "sqlite-task-queue-throughput",
+        "task_count_requested": 100,
+        "task_count_succeeded": 100,
+        "enqueue_tasks_per_second": 250.0,
+        "claim_and_complete_tasks_per_second": 120.0,
+        "database_bytes": 4096,
+        "sqlite_integrity": "ok",
+    }
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout=json.dumps(payload), stderr="private detail"
+        ),
+    )
+
+    report = baseline._run_performance_benchmark(100)
+
+    assert report["status"] == "passed"
+    assert report["claim_and_complete_tasks_per_second"] == 120.0
+    assert report["minimum_claim_and_complete_tasks_per_second"] == 10.0
+    assert report["performance_threshold_passed"] is True
+    assert report["sqlite_integrity"] == "ok"
+    assert report["raw_output_included"] is False
+    assert "private detail" not in json.dumps(report)
+
+
+def test_target_host_performance_benchmark_fails_closed_on_invalid_report(monkeypatch):
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout="not JSON", stderr=""
+        ),
+    )
+    report = baseline._run_performance_benchmark(10)
+    assert report["status"] == "invalid_report"
+
+
+def test_target_host_performance_benchmark_fails_when_throughput_misses_floor(monkeypatch):
+    payload = {
+        "result": "passed",
+        "benchmark": "sqlite-task-queue-throughput",
+        "task_count_requested": 100,
+        "task_count_succeeded": 100,
+        "enqueue_tasks_per_second": 50.0,
+        "claim_and_complete_tasks_per_second": 4.0,
+        "database_bytes": 4096,
+        "sqlite_integrity": "ok",
+    }
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout=json.dumps(payload), stderr=""
+        ),
+    )
+    report = baseline._run_performance_benchmark(100, min_queue_tps=10.0)
+    assert report["status"] == "below_threshold"
+    assert report["performance_threshold_passed"] is False
+
+
+def test_target_host_model_benchmark_redacts_generated_text_and_reports_thresholds(monkeypatch):
+    payload = {
+        "status": "passed",
+        "benchmark": "local-ollama-generation",
+        "model": "test-model",
+        "model_digest": "sha256:abc",
+        "runs_requested": 3,
+        "runs_completed": 3,
+        "median_latency_seconds": 4.0,
+        "max_latency_seconds_observed": 5.0,
+        "median_generation_tokens_per_second": 12.5,
+        "minimum_generation_tokens_per_second": 1.0,
+        "maximum_allowed_latency_seconds": 120.0,
+        "performance_threshold_passed": True,
+        "secret_generated_text": "must not be copied",
+    }
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=0, stdout=json.dumps(payload), stderr="private detail"
+        ),
+    )
+
+    report = baseline._run_local_model_benchmark(3, 1.0, 120.0)
+
+    assert report["status"] == "passed"
+    assert report["median_generation_tokens_per_second"] == 12.5
+    assert report["performance_threshold_passed"] is True
+    assert report["raw_output_included"] is False
+    assert "secret_generated_text" not in json.dumps(report)
+    assert "must not be copied" not in json.dumps(report)
+    assert "private detail" not in json.dumps(report)
+
+
+def test_target_host_model_benchmark_fails_closed_when_model_is_unavailable(monkeypatch):
+    payload = {
+        "status": "model_not_found",
+        "model": "configured-model",
+        "runs_requested": 3,
+        "runs_completed": 0,
+        "performance_threshold_passed": False,
+    }
+    monkeypatch.setattr(
+        baseline.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["benchmark"], returncode=1, stdout=json.dumps(payload), stderr=""
+        ),
+    )
+    report = baseline._run_local_model_benchmark(3, 1.0, 120.0)
+    assert report["status"] == "model_not_found"
+    assert report["performance_threshold_passed"] is False

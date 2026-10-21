@@ -25,10 +25,13 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         assert page.get_by_role("heading", name="دستیار هوش مصنوعی شخصی").is_visible()
-        assert page.locator("#chat-form").count() == 1
-        assert page.locator("#task-manager-section").is_visible()
-        assert page.locator("#experience-memory-section").is_visible()
+        assert page.locator("#chat-form").count() == 0
+        assert page.locator("#task-manager-section").count() == 0
+        assert page.locator("#experience-memory-section").count() == 0
+        assert page.locator("#dashboard-overview").is_visible()
 
+        page.goto(base_url.rstrip("/") + "/sections/storage-health", wait_until="domcontentloaded")
+        assert page.locator("#storage-health-section").is_visible()
         storage_output = page.locator("#storage-health-output")
         page.locator("#refresh-storage-health").click()
         page.wait_for_function(
@@ -88,6 +91,7 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         assert isinstance(recommendations.get("recommendations"), list)
         assert recommendations.get("autonomous_action_taken") is False
 
+        page.goto(base_url.rstrip("/") + "/sections/learning-paths", wait_until="domcontentloaded")
         page.locator("#refresh-learning-recommendations").click()
         page.wait_for_function(
             """() => {
@@ -102,6 +106,32 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
 
 
 
+def test_learning_evidence_review_ui_loads_candidates_without_a_live_model():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.goto(base_url.rstrip("/") + "/sections/learning", wait_until="domcontentloaded")
+        assert page.locator("#learning-evidence-section").is_visible()
+        assert page.locator("#learning-candidate-select").count() == 1
+        assert page.locator("#research-learning-candidate").is_disabled()
+        page.locator("#refresh-learning-candidates").click()
+        page.wait_for_function(
+            """() => {
+                const output = document.querySelector('#learning-candidate-review');
+                return output && !output.textContent.includes('در حال بارگذاری نامزدهای دانش');
+            }""",
+            timeout=10000,
+        )
+        assert "نامزد موقتی برای بازبینی وجود ندارد" in page.locator("#learning-candidate-review").inner_text() or page.locator("#learning-candidate-select option").count() > 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
@@ -109,7 +139,7 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/experience-memory", wait_until="domcontentloaded")
 
         consent_checkbox = page.locator("#experience-auto-capture-confirm")
         assert not consent_checkbox.is_checked()
@@ -245,7 +275,7 @@ def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
                     body=json.dumps(task),
                 )
                 return
-            if url.startswith(base_url.rstrip("/") + "/api/cloud-resources?limit="):
+            if url.startswith(base_url.rstrip("/") + "/api/cloud-resources?page="):
                 route.fulfill(
                     status=200,
                     content_type="application/json",
@@ -264,7 +294,7 @@ def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/cloud-resources", wait_until="domcontentloaded")
         button = page.locator("#cloud-discover")
         button.click()
 
@@ -285,7 +315,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
 
         scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         response = page.request.post(
@@ -392,7 +422,7 @@ def test_browser_task_audit_history_loads_older_cursor_pages():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(has_text="#424242 — e2e.audit-history")
         card.wait_for(timeout=5000)
@@ -449,7 +479,7 @@ def test_browser_task_filter_and_cursor_pagination_preserve_cards():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         page.get_by_text("#101 — e2e.first-page", exact=True).wait_for(timeout=5000)
         page.locator("#load-more-tasks").click()
@@ -499,7 +529,7 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         cards = page.locator("#tasks-container article")
         page.get_by_text("#6001 — e2e.research", exact=True).wait_for(timeout=5000)
@@ -588,7 +618,7 @@ def test_browser_task_diagnostics_are_collapsed_and_accessibly_disclosed():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(
             has_text="#6201 — e2e.diagnostic-disclosure"
@@ -645,7 +675,7 @@ def test_browser_task_bulk_controls_only_submit_actions_for_eligible_selected_ta
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         page.get_by_text("#6101 — e2e.queued", exact=True).wait_for(timeout=5000)
         page.locator("#task-select-all").check()
@@ -711,7 +741,7 @@ def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(has_text="#5151 — e2e.manage-task")
         card.wait_for(timeout=5000)
@@ -760,7 +790,7 @@ def test_browser_task_priority_and_schedule_controls_hidden_for_running_task():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(has_text="#5152 — e2e.running-task")
         card.wait_for(timeout=5000)
@@ -787,7 +817,7 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
             "Verify the local UI records a proposed patch without applying it to the checkout."
@@ -825,7 +855,7 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/chat", wait_until="domcontentloaded")
 
         saved_review = {
             "kind": "model_assisted_advisory",
@@ -935,7 +965,7 @@ def test_browser_reloads_and_recovers_persisted_research_task():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
 
         response = page.request.post(
             base_url.rstrip("/") + "/api/research/tasks",
@@ -976,7 +1006,7 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         page.on("dialog", lambda dialog: dialog.accept())
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
@@ -1091,7 +1121,7 @@ def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
                 dialog.accept()
 
         page.on("dialog", handle_dialog)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         page.locator("#self-improvement-refresh").click()
 
         card = page.locator("#self-improvement-list article").filter(
@@ -1123,7 +1153,7 @@ def test_browser_can_review_and_persist_an_unverified_experience():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/experience-memory", wait_until="domcontentloaded")
 
         page.locator("#experience-topic").fill(topic)
         page.locator("#experience-hypothesis").fill(
@@ -1160,7 +1190,7 @@ def test_browser_can_review_and_persist_an_unverified_experience():
             arg={"topic": topic, "takeaway": takeaway},
             timeout=15000,
         )
-        response = page.request.get(base_url.rstrip("/") + "/api/experiences?limit=100")
+        response = page.request.get(base_url.rstrip("/") + "/api/experiences?page=1&page_size=25")
         assert response.status == 200
         saved = next(item for item in response.json()["items"] if item["topic"] == topic)
         assert saved["status"] == "researching"
@@ -1173,6 +1203,22 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
         pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    sections = {
+        "storage-health": "storage-health-section",
+        "chat": "chat-section",
+        "learning": "learning-section",
+        "learning-paths": "learning-paths-section",
+        "knowledge": "knowledge-section",
+        "tasks": "task-manager-section",
+        "experience-memory": "experience-memory-section",
+        "cloud-resources": "cloud-resources-section",
+        "cloud-plan": "cloud-plan-section",
+        "kaggle-quota": "kaggle-quota-section",
+        "oci-limits": "oci-limits-section",
+        "sandbox": "sandbox-section",
+        "self-improvement": "self-improvement-section",
+        "settings": "settings-section",
+    }
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -1183,44 +1229,44 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert page.locator(".skip-link").get_attribute("href") == "#main-content"
         navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
         assert navigation.is_visible()
-        current_links = navigation.locator('a[aria-current="location"]')
-        assert current_links.count() == 1, "Exactly one navigation item should identify the current section"
-        assert current_links.get_attribute("href") == "#storage-health-section"
-        navigation.get_by_role("link", name="وظایف").click()
-        page.wait_for_function(
-            "document.querySelector('.dashboard-nav a[aria-current=\\\"location\\\"]')?.getAttribute('href') === '#task-manager-section'",
-            timeout=5000,
-        )
-        shell = page.locator(".dashboard-shell")
-        assert shell.count() == 1
-        for target in (
-            "storage-health-section", "chat-section", "learning-section",
-            "task-manager-section", "experience-memory-section",
-            "cloud-resources-section", "cloud-plan-section", "kaggle-quota-section",
-            "oci-limits-section", "sandbox-section", "self-improvement-section",
-            "learning-paths-section", "knowledge-section", "settings-section",
-        ):
-            assert navigation.locator(f'a[href="#{target}"]').count() == 1
+        current_links = navigation.locator('a[aria-current="page"]')
+        assert current_links.count() == 1
+        assert current_links.get_attribute("href") == "/"
+        assert page.locator("#dashboard-overview").is_visible()
+        for target in sections.values():
+            assert page.locator(f"#{target}").count() == 0
+
+        for slug, target in sections.items():
+            response = page.goto(base_url.rstrip("/") + "/sections/" + slug, wait_until="domcontentloaded")
+            assert response is not None and response.status == 200
             assert page.locator(f"#{target}").count() == 1
+            for other_slug, other_target in sections.items():
+                if other_slug != slug:
+                    assert page.locator(f"#{other_target}").count() == 0
+            current = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد").locator('a[aria-current="page"]')
+            assert current.count() == 1
+            assert current.get_attribute("href") == "/sections/" + slug
+            missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
+                "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
+            )
+            assert missing_names == [], f"Controls missing accessible names on {slug}: {missing_names}"
+            if slug == "storage-health":
+                assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
+
         stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
         assert stylesheet.status == 200
         assert "prefers-reduced-motion" in stylesheet.text()
         assert "focus-visible" in stylesheet.text()
         assert page.locator("html").get_attribute("dir") == "rtl"
-        assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
-        missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
-            "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
-        )
-        assert missing_names == [], f"Controls missing accessible names: {missing_names}"
         for width in (360, 768, 1280):
             page.set_viewport_size({"width": width, "height": 900})
-            nav_direction = navigation.evaluate("node => getComputedStyle(node).flexDirection")
+            nav_direction = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد").evaluate(
+                "node => getComputedStyle(node).flexDirection"
+            )
             assert nav_direction == ("column" if width > 1000 else "row")
             dimensions = page.evaluate("() => ({viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth})")
             assert dimensions["document"] <= dimensions["viewport"] + 1, f"Page overflow at {width}px: {dimensions}"
         browser.close()
-
-
 def test_dashboard_theme_toggle_is_accessible_and_persists():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
@@ -1250,19 +1296,18 @@ def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/chat", wait_until="domcontentloaded")
         message = page.locator("#message")
         assert message.get_attribute("dir") == "auto"
         message.fill("How do SQL execution plans work?")
         assert message.evaluate("node => getComputedStyle(node).direction") == "ltr"
         message.fill("چطور برنامه اجرای SQL کار می‌کند؟")
         assert message.evaluate("node => getComputedStyle(node).direction") == "rtl"
+        page.goto(base_url.rstrip("/") + "/sections/sandbox", wait_until="domcontentloaded")
         assert page.locator("#sandbox-source").get_attribute("dir") == "ltr"
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         assert page.locator("#self-improvement-patch").get_attribute("dir") == "ltr"
         browser.close()
-
-
-
 def test_learning_path_progress_is_derived_and_accessible():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
@@ -1304,7 +1349,7 @@ def test_learning_path_progress_is_derived_and_accessible():
                 route.continue_()
 
         page.route("**/api/learning/**", mock_learning_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/learning-paths", wait_until="domcontentloaded")
         progress = page.get_by_role("progressbar", name="پیشرفت مسیر مسیر آزمایشی یادگیری")
         progress.wait_for(state="visible", timeout=10000)
         assert progress.get_attribute("max") == "100"

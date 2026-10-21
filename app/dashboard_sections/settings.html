@@ -1,0 +1,12 @@
+<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
+<label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
+<label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
+<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre>
+<section id="model-routing-section"><h3>پروفایل‌های مدل</h3>
+<p class="muted">برای هر دستهٔ کار، مدل جداگانه انتخاب کنید. نام مدل‌ها نمونه‌اند و باید با مدل‌های نصب‌شده و توان سخت‌افزار شما سازگار باشند. adapter اجرایی فعلی Ollama است؛ افزودن LLM اختصاصی نیازمند adapter برنامه‌نویسی‌شده است.</p>
+<div class="cloud-actions"><button id="add-model-profile" type="button">افزودن پروفایل</button><button id="refresh-installed-models" type="button">خواندن مدل‌های نصب‌شده از Ollama</button></div>
+<datalist id="installed-ollama-models"></datalist><div id="model-profiles-list"></div>
+<h3>تخصیص مدل به وظایف</h3><div id="task-model-assignments"></div>
+<p class="muted">مثال قابل تنظیم: گفتگوی ساده ← qwen2.5:7b، یادگیری دانش ← qwen3:8b، برنامه‌نویسی ← qwen3:14b.</p>
+<button id="save-model-routing" type="button">ذخیره پروفایل‌ها و تخصیص‌ها</button>
+<pre id="model-routing-output" role="status" aria-live="polite">تخصیص مدل‌ها هنوز بارگذاری نشده است.</pre></section></section>

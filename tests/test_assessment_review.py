@@ -34,7 +34,7 @@ def test_semantic_review_is_advisory_and_does_not_change_deterministic_score(tmp
     job_id, attempt_id = _setup(tmp_path, monkeypatch)
     captured = {}
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, **_kwargs):
         captured.update(message=message, system_prompt=system_prompt)
         return json.dumps({
             "items": [{
@@ -93,7 +93,8 @@ def test_learning_ui_exposes_opt_in_advisory_semantic_review():
     assert "نمره آزمون را تغییر نمی‌دهد" in page
     assert 'const saved = await learningApi(reviewPath);' in page
     assert "if (error.status !== 404) throw error;" in page
-    assert "job.assessment_attempts[0].id" in page
+    assert "job.quiz_assessment_attempts" in page
+    assert 'attempt.scoring_method !== "sandbox_practical_v1"' in page
     assert '"/api/learning/jobs/" + job.id + "/assessment/" + latestAttemptId + "/semantic-review"' in page
 
 
@@ -183,7 +184,7 @@ def test_semantic_review_does_not_interpolate_learner_prompt_injection_into_syst
         )
     captured = {}
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, **_kwargs):
         captured["message"] = message
         captured["system_prompt"] = system_prompt
         return json.dumps({

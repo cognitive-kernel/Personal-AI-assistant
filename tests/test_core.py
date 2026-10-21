@@ -227,6 +227,7 @@ def test_assessment_answers_are_persisted_and_answer_key_is_hidden_until_submiss
     before = learning.get_job(job["id"])
     assert before["assessment"]["questions"]
     assert "answer_key" not in before["assessment"]
+    assert "answer_rubric" not in before["assessment"]
     result = learning.submit_assessment(job["id"], ["A callable", "wrong", "Reusable behavior"])
     assert result["correct_count"] == 2
     assert result["score"] == 66.67
@@ -257,6 +258,9 @@ def test_assessment_rejects_wrong_answer_count(tmp_path, monkeypatch):
 
 
 def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypatch):
+    import json
+    import pytest
+
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
@@ -265,7 +269,33 @@ def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypa
     assert path["completed_count"] == 0
     assert path["progress_percent"] == 0
     first_topic = path["topics"][0]
-    updated = learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+
+    with pytest.raises(ValueError, match="requires a latest rubric-based assessment"):
+        learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+
+    job = learning.create_job("Python", path_topic_id=first_topic["id"])
+    rubric = [
+        {"required_concepts": [
+            {"concept": "alpha", "accepted_phrases": ["alpha"]},
+            {"concept": "beta", "accepted_phrases": ["beta"]},
+        ]}
+        for _ in range(3)
+    ]
+    assessment = {
+        "questions": ["Q1", "Q2", "Q3"],
+        "answer_key": ["alpha beta", "alpha beta", "alpha beta"],
+        "answer_rubric": rubric,
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+    result = learning.submit_assessment(job["id"], ["alpha beta", "alpha beta", "alpha beta"])
+    assert result["scoring_method"] == "rubric_concept_coverage_v1"
+    assert result["score"] == 100.0
+
+    updated = learning.get_learning_path(path["id"])
     assert updated["completed_count"] == 1
     assert updated["progress_percent"] > 0
     again = learning.enroll_curriculum("Python")
@@ -351,29 +381,48 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
         "نه تضمین خودکار برای درست بودن طراحی."
     )
     payloads = []
-    def fake_request(_path, payload, **_kwargs):
-        payloads.append(payload)
-        return {"message": {"content": json.dumps({
+    def fake_chat(message, history=None, system_prompt=None, **kwargs):
+        payloads.append({"options": kwargs.get("options", {}), "messages": [
+            {"role": "system", "content": system_prompt or ""}, {"role": "user", "content": message}
+        ]})
+        return json.dumps({
             "lesson": lesson,
             "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
             "questions": [
                 "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
                 "چرا ایندکس همیشه باعث بهبود عملکرد نمی‌شود؟",
-                "چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
+                "اگر بار کاری تغییر کند، چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
             ],
             "answer_key": [
                 "نشان می‌دهد موتور چگونه داده را می‌خواند و چه عملگرهایی را اجرا می‌کند.",
                 "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
                 "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
             ],
-        }, ensure_ascii=False)}}
-    monkeypatch.setattr(learning, "_request", fake_request)
+            "answer_rubric": [
+                {"required_concepts": [
+                    {"concept": "execution plan", "accepted_phrases": ["execution plan", "query execution plan"]},
+                    {"concept": "operations", "accepted_phrases": ["operations", "operators", "execution steps"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "index maintenance costs", "accepted_phrases": ["maintenance costs", "cost of maintaining indexes"]},
+                    {"concept": "data distribution", "accepted_phrases": ["data distribution", "distribution of data"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "baseline comparison", "accepted_phrases": ["baseline", "before and after"]},
+                    {"concept": "logical reads", "accepted_phrases": ["logical reads", "read counts"]},
+                ]},
+            ],
+        }, ensure_ascii=False)
+    monkeypatch.setattr(learning.model_runtime, "chat", fake_chat)
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
     assert payloads[0]["options"]["num_predict"] >= 1000
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["scientific_acceptance"]["accepted"] is False
+    assert finished["quality"]["scientific_acceptance"]["lesson_available_for_learning"] is True
+    assert finished["quality"]["scientific_acceptance"]["knowledge_verification_status"] == "unverified"
 
 
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
@@ -385,7 +434,7 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     def fail_request(*_args, **_kwargs):
         raise RuntimeError("model offline")
 
-    monkeypatch.setattr(learning, "_request", fail_request)
+    monkeypatch.setattr(learning.model_runtime, "chat", fail_request)
     try:
         learning.run_job(job["id"])
     except learning.LearningError as exc:
@@ -407,7 +456,7 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     def fail_request(*_args, **_kwargs):
         raise RuntimeError("model offline")
 
-    monkeypatch.setattr(learning, "_request", fail_request)
+    monkeypatch.setattr(learning.model_runtime, "chat", fail_request)
     try:
         learning.run_job(job["id"])
     except learning.LearningError as exc:
@@ -418,3 +467,135 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     failed = learning.get_job(job["id"])
     assert failed["status"] == "failed"
     assert "model offline" in failed["error"]
+
+
+def test_learning_job_records_explicit_https_source_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    url = "https://docs.python.org/3/tutorial/"
+    job = learning.create_job("Python tutorial", source_url=url)
+    assert job["status"] == "queued"
+    assert any(
+        item["evidence_type"] == "requested_url" and item["source_ref"] == url
+        for item in job["evidence"]
+    )
+
+
+def test_learning_job_rejects_non_https_source_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    try:
+        learning.create_job("Unsafe source", source_url="http://example.org/guide")
+    except ValueError as exc:
+        assert "HTTPS" in str(exc)
+    else:
+        raise AssertionError("Non-HTTPS source URL should be rejected")
+
+
+def test_failed_explicit_source_url_does_not_trigger_automatic_substitution(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Requested source must not be silently replaced", source_url="https://unreachable.example/lesson")
+
+    def fail_fetch(*_args, **_kwargs):
+        raise OSError("requested URL unavailable")
+
+    research_calls = []
+    monkeypatch.setattr("app.web_sources.fetch_public_document", fail_fetch)
+    monkeypatch.setattr(
+        "app.knowledge_review.research_candidate_online",
+        lambda *args, **kwargs: research_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr("app.knowledge_review.consult_configured_peer_ais", lambda *args, **kwargs: {
+        "status": "unconfigured", "consulted": 0, "errors": [],
+    })
+    monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests", lambda *_args, **_kwargs: {
+        "status": "no_examples", "promoted": False,
+    })
+    monkeypatch.setattr(learning.model_runtime, "chat", lambda *_args, **_kwargs: json.dumps({
+        "lesson": "A concise candidate lesson.",
+        "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
+        "questions": ["Recall?", "Why?", "Apply to a new case?"],
+        "answer_key": ["One", "Two", "Three"],
+        "answer_rubric": [],
+    }))
+
+    learning.run_job(job["id"])
+
+    assert research_calls == []
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT id, status FROM temporary_knowledge_candidates WHERE job_id=?", (job["id"],)
+        ).fetchone()
+        attempt = conn.execute(
+            "SELECT status, details_json FROM knowledge_review_attempts "
+            "WHERE candidate_id=? AND channel='web_research' ORDER BY id DESC LIMIT 1",
+            (candidate["id"],),
+        ).fetchone()
+    assert candidate["status"] == "awaiting_test"
+    assert attempt["status"] == "unavailable"
+    assert "explicit_requested_url_failed_no_automatic_substitution" in attempt["details_json"]
+
+
+def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch):
+    import json
+    from app.web_sources import SourceDocument
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    url = "https://docs.example.org/python"
+    job = learning.create_job("Python source ingestion", source_url=url)
+    monkeypatch.setenv("LEARNING_AUTO_WEB_RESEARCH", "true")
+    source_text = "Python documentation explains functions, parameters, and return values with examples."
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: SourceDocument(url=url, title="Python reference", text=source_text),
+    )
+    monkeypatch.setattr("app.claim_review.review_answer_claims", lambda *_args, **_kwargs: {
+        "passed": False, "overall": "insufficient_evidence", "claims": [], "source_conflicts": [],
+    })
+    research_calls = []
+    monkeypatch.setattr(
+        "app.knowledge_review.research_candidate_online",
+        lambda *args, **kwargs: research_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr("app.knowledge_review.consult_configured_peer_ais", lambda *args, **kwargs: {
+        "status": "unconfigured", "consulted": 0, "errors": [],
+    })
+    monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests", lambda *_args, **_kwargs: {
+        "status": "no_examples", "promoted": False,
+    })
+    payloads = []
+    monkeypatch.setattr(learning.model_runtime, "chat", lambda message, **_kwargs: (
+        payloads.append(json.loads(message)) or json.dumps({
+            "lesson": "A concise lesson about Python functions.",
+            "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
+            "questions": ["Recall?", "Why?", "Apply to a new case?"],
+            "answer_key": ["One", "Two", "Three"],
+            "answer_rubric": [],
+        }, ensure_ascii=False)
+    ))
+
+    learning.run_job(job["id"])
+
+    assert source_text in json.dumps(payloads[0], ensure_ascii=False)
+    assert research_calls
+    with db.learning_connection() as conn:
+        evidence = conn.execute(
+            "SELECT source_ref, note FROM learning_evidence WHERE job_id=? AND evidence_type='web_page'",
+            (job["id"],),
+        ).fetchone()
+        candidate = conn.execute(
+            "SELECT source_urls_json, status FROM temporary_knowledge_candidates WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert evidence["source_ref"] == url
+    assert "Factual claims still require validation" in evidence["note"]
+    assert url in json.loads(candidate["source_urls_json"])
+    assert candidate["status"] == "awaiting_test"

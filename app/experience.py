@@ -120,22 +120,22 @@ def _store_version_snapshot(conn, row) -> None:
     conn.execute(
         """INSERT OR IGNORE INTO learning_experience_versions(
             experience_id, version, topic, problem, hypothesis, status,
-            source_evidence_json, test_plan_json, test_results_json, takeaway)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            source_evidence_json, test_plan_json, test_results_json, takeaway, experience_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (row["id"], row["version"], row["topic"], row["problem"], row["hypothesis"],
          row["status"], row["source_evidence_json"], row["test_plan_json"],
-         row["test_results_json"], row["takeaway"]),
+         row["test_results_json"], row["takeaway"], row["experience_type"]),
     )
 
 
 def list_experience_versions(experience_id: int) -> list[dict[str, Any]]:
     init_experience_tables()
     with learning_connection() as conn:
-        current = conn.execute("SELECT version, status, takeaway, updated_at AS created_at FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
+        current = conn.execute("SELECT version, status, takeaway, experience_type, updated_at AS created_at FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
         if current is None:
             raise KeyError(experience_id)
         rows = conn.execute(
-            "SELECT version, status, takeaway, created_at FROM learning_experience_versions WHERE experience_id=? ORDER BY version DESC",
+            "SELECT version, status, takeaway, experience_type, created_at FROM learning_experience_versions WHERE experience_id=? ORDER BY version DESC",
             (experience_id,),
         ).fetchall()
     versions = [dict(row) for row in rows]
@@ -162,11 +162,11 @@ def rollback_experience(experience_id: int, target_version: int, *, _controlled_
         _store_version_snapshot(conn, current)
         conn.execute(
             """UPDATE learning_experiences SET topic=?, problem=?, hypothesis=?, status=?,
-               source_evidence_json=?, test_plan_json=?, test_results_json=?, takeaway=?,
+               source_evidence_json=?, test_plan_json=?, test_results_json=?, takeaway=?, experience_type=?,
                version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (target["topic"], target["problem"], target["hypothesis"], target["status"],
              target["source_evidence_json"], target["test_plan_json"], target["test_results_json"],
-             target["takeaway"], experience_id),
+             target["takeaway"], target["experience_type"], experience_id),
         )
     return get_experience(experience_id)
 
@@ -187,22 +187,38 @@ def get_experience(experience_id: int) -> dict[str, Any]:
     return result
 
 
-def list_experiences(topic: str | None = None, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-    init_experience_tables()
+def _experience_filter(topic: str | None = None, status: str | None = None) -> tuple[str, list[Any]]:
     if status is not None and status not in STATUSES:
         raise ValueError("Unsupported experience status.")
-    clauses, params = [], []
+    clauses: list[str] = []
+    params: list[Any] = []
     if topic:
         clauses.append("topic LIKE ?")
         params.append("%" + topic.strip()[:300] + "%")
     if status:
         clauses.append("status=?")
         params.append(status)
-    where = " WHERE " + " AND ".join(clauses) if clauses else ""
+    return (" WHERE " + " AND ".join(clauses) if clauses else ""), params
+
+
+def count_experiences(topic: str | None = None, status: str | None = None) -> int:
+    init_experience_tables()
+    where, params = _experience_filter(topic, status)
+    with learning_connection() as conn:
+        return int(conn.execute("SELECT COUNT(*) FROM learning_experiences" + where, params).fetchone()[0])
+
+
+def list_experiences(topic: str | None = None, status: str | None = None, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    init_experience_tables()
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise ValueError("limit must be between 1 and 200.")
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+        raise ValueError("offset must be between 0 and 1000000.")
+    where, params = _experience_filter(topic, status)
     with learning_connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM learning_experiences" + where + " ORDER BY updated_at DESC, id DESC LIMIT ?",
-            (*params, max(1, min(200, int(limit)))),
+            "SELECT id FROM learning_experiences" + where + " ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ).fetchall()
     return [get_experience(int(row["id"])) for row in rows]
 

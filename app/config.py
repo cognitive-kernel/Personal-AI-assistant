@@ -45,6 +45,8 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ollama_base_url": defaults.ollama_base_url,
     "ollama_model": defaults.ollama_model,
     "ollama_embedding_model": defaults.ollama_embedding_model,
+    "model_profiles": [],
+    "task_model_assignments": {},
     "ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "ollama_num_ctx": defaults.ollama_num_ctx,
     "ollama_num_thread": defaults.ollama_num_thread,

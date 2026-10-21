@@ -3,25 +3,41 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>دستیار هوش مصنوعی شخصی</title>
-<link rel="stylesheet" href="/static/dashboard.css"></head>
+<script>
+(function(){
+ const sections={"storage-health":"storage-health-section","chat":"chat-section","learning":"learning-section","learning-paths":"learning-paths-section","knowledge":"knowledge-section","tasks":"task-manager-section","experience-memory":"experience-memory-section","cloud-resources":"cloud-resources-section","cloud-plan":"cloud-plan-section","kaggle-quota":"kaggle-quota-section","oci-limits":"oci-limits-section","sandbox":"sandbox-section","self-improvement":"self-improvement-section","settings":"settings-section"};
+ const match=window.location.pathname.match(/^\/sections\/([^/]+)\/?$/);
+ const slug=match && match[1];
+ if(slug && Object.prototype.hasOwnProperty.call(sections,slug)){
+  document.documentElement.dataset.sectionPage=slug;
+  document.documentElement.dataset.sectionId=sections[slug];
+  document.title=document.title+" — "+slug;
+ }
+})();
+</script>
+<link rel="stylesheet" href="/static/dashboard.css">
+<style>
+html[data-section-page] .dashboard-nav a[data-section-slug][aria-current="page"]{font-weight:700;text-decoration:underline;text-underline-offset:5px}
+</style></head>
 <body>
 <div class="dashboard-shell">
 <a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
 <nav class="dashboard-nav" aria-label="ناوبری بخش‌های داشبورد">
-  <a href="#storage-health-section">سلامت و پشتیبان</a>
-  <a href="#chat-section">گفتگو و پژوهش</a>
-  <a href="#learning-section">یادگیری</a>
-  <a href="#learning-paths-section">مسیرهای آموزشی</a>
-  <a href="#knowledge-section">دانش ذخیره‌شده</a>
-  <a href="#task-manager-section">وظایف</a>
-  <a href="#experience-memory-section">حافظهٔ تجربه</a>
-  <a href="#cloud-resources-section">منابع پردازشی</a>
-  <a href="#cloud-plan-section">برنامه‌ریزی منابع</a>
-  <a href="#kaggle-quota-section">سهمیهٔ Kaggle</a>
-  <a href="#oci-limits-section">محدودیت‌های OCI</a>
-  <a href="#sandbox-section">محیط ایزوله</a>
-  <a href="#self-improvement-section">بهبود کد</a>
-  <a href="#settings-section">تنظیمات</a>
+  <a href="/">نمای کلی</a>
+  <a href="/sections/storage-health" data-section-slug="storage-health">سلامت و پشتیبان</a>
+  <a href="/sections/chat" data-section-slug="chat">گفتگو و پژوهش</a>
+  <a href="/sections/learning" data-section-slug="learning">یادگیری</a>
+  <a href="/sections/learning-paths" data-section-slug="learning-paths">مسیرهای آموزشی</a>
+  <a href="/sections/knowledge" data-section-slug="knowledge">دانش ذخیره‌شده</a>
+  <a href="/sections/tasks" data-section-slug="tasks">وظایف</a>
+  <a href="/sections/experience-memory" data-section-slug="experience-memory">حافظهٔ تجربه</a>
+  <a href="/sections/cloud-resources" data-section-slug="cloud-resources">منابع پردازشی</a>
+  <a href="/sections/cloud-plan" data-section-slug="cloud-plan">برنامه‌ریزی منابع</a>
+  <a href="/sections/kaggle-quota" data-section-slug="kaggle-quota">سهمیهٔ Kaggle</a>
+  <a href="/sections/oci-limits" data-section-slug="oci-limits">محدودیت‌های OCI</a>
+  <a href="/sections/sandbox" data-section-slug="sandbox">محیط ایزوله</a>
+  <a href="/sections/self-improvement" data-section-slug="self-improvement">بهبود کد</a>
+  <a href="/sections/settings" data-section-slug="settings">تنظیمات</a>
 </nav>
 <main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
@@ -34,148 +50,6 @@
 <code>python scripts/inspect_sqlite_schema.py .\data\learning.db --kind learning --output C:\Temp\learning-schema-report.json</code>
 </section>
 
-<section id="storage-health-section"><h2>سلامت ذخیره‌سازی</h2>
-<p class="muted">این بررسی فقط‌خواندنی است؛ دیتابیس را ایجاد، مهاجرت یا تعمیر نمی‌کند. برای رفع خرابی ابتدا از پشتیبان معتبر استفاده کنید.</p>
-<button id="refresh-storage-health" type="button">بررسی سلامت دیتابیس‌ها</button>
-<pre id="storage-health-output" role="status" aria-live="polite" aria-atomic="true">وضعیت ذخیره‌سازی هنوز بررسی نشده است.</pre>
-<hr>
-<h3>پشتیبان‌گیری کامل</h3>
-<p class="muted">با تأیید شما، از هر سه دیتابیس یک پشتیبان بررسی‌شده ساخته می‌شود. فایل‌ها در پوشهٔ پشتیبان محلی ذخیره می‌شوند؛ این عملیات دیتابیس زنده را تغییر نمی‌دهد.</p>
-<button id="create-storage-backup" type="button">ایجاد پشتیبان کامل</button>
-<button id="refresh-storage-backups" type="button">فهرست پشتیبان‌ها</button><button id="prune-storage-backups" type="button">پاک‌سازی پشتیبان‌های قدیمی</button><button id="prune-restore-staging" type="button">پاک‌سازی بازیابی‌های آزمایشی قدیمی</button>
-<pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
-<div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
-<div class="row">
-<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
-<section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
-<textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
-<section id="task-manager-section"><h2>مدیریت وظایف</h2>
-<p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
-<div class="cloud-actions">
- <label for="task-status-filter">فیلتر وضعیت وظایف
-  <select id="task-status-filter">
-   <option value="">همهٔ وضعیت‌ها</option><option value="queued">در صف</option>
-   <option value="running">در حال اجرا</option><option value="pause_requested">درخواست توقف</option>
-   <option value="paused">متوقف</option><option value="cancel_requested">درخواست لغو</option>
-   <option value="cancelled">لغوشده</option><option value="succeeded">موفق</option><option value="failed">ناموفق</option>
-  </select>
- </label>
- <button id="refresh-tasks" type="button">به‌روزرسانی وظایف</button>
- <button id="load-more-tasks" type="button" hidden>بارگذاری وظایف بیشتر</button>
-</div>
-<div class="task-search-row">
- <label for="task-search">جست‌وجو در وظایف بارگذاری‌شده
-  <input id="task-search" type="search" maxlength="120" autocomplete="off" aria-label="جست‌وجو در وظایف بارگذاری‌شده" placeholder="شناسه، نوع وظیفه یا وضعیت…">
- </label>
- <p class="muted">جست‌وجو فقط میان صفحات بارگذاری‌شده انجام می‌شود؛ برای بررسی کل صف از فیلتر وضعیت و بارگذاری صفحات بیشتر استفاده کنید.</p>
-</div>
-<div id="task-summary" class="task-summary" aria-live="polite" aria-atomic="true"></div>
-<div class="task-bulk-toolbar" role="group" aria-label="عملیات گروهی روی وظایف">
- <label class="task-select-all-label" for="task-select-all"><input id="task-select-all" type="checkbox"> انتخاب همهٔ وظایف بارگذاری‌شده</label>
- <span id="task-selected-count" class="task-selected-count" aria-live="polite">انتخاب‌شده: ۰</span>
- <button id="bulk-pause-tasks" type="button" disabled>توقف انتخاب‌شده‌ها</button>
- <button id="bulk-resume-tasks" type="button" disabled>ادامهٔ انتخاب‌شده‌ها</button>
- <button id="bulk-cancel-tasks" type="button" disabled>لغو انتخاب‌شده‌ها</button>
-</div>
-<pre id="tasks-output" role="status" aria-live="polite">فهرست وظایف هنوز بارگذاری نشده است.</pre>
-<div id="tasks-container"></div></section>
-<section id="learning-paths-section"><h2>مسیرهای آموزشی</h2>
-<p class="muted">یک دوره را ثبت‌نام کنید و وضعیت سرفصل‌ها و پیشرفت آن را پیگیری کنید.</p>
-<label>انتخاب دوره<select id="curriculum-select"><option value="">در حال بارگذاری دوره‌ها…</option></select></label>
-<button id="enroll-curriculum" type="button">ثبت‌نام در دوره</button>
-<button id="refresh-paths" type="button">بارگذاری مسیرهای من</button>
-<button id="refresh-due-reviews" type="button">نمایش مرورهای سررسیدشده</button>
-<button id="refresh-learning-recommendations" type="button">پیشنهاد گام بعدی یادگیری</button>
-<pre id="learning-recommendations-output"></pre>
-<pre id="due-reviews-output"></pre>
-<pre id="paths-output"></pre><div id="paths-container"></div></section>
-<section id="knowledge-section"><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
-<section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
-<p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
-<form id="experience-create-form">
-<div class="cloud-form-grid">
-<label>موضوع<input id="experience-topic" maxlength="300" required></label>
-<label>فرضیه<textarea id="experience-hypothesis" rows="2" maxlength="5000"></textarea></label>
-</div>
-<label>مشکل یا مشاهده<textarea id="experience-problem" rows="3" maxlength="10000" required></textarea></label>
-<button type="submit">ثبت تجربهٔ جدید</button>
-</form>
-<div class="cloud-actions"><button id="experience-refresh" type="button">بارگذاری تجربه‌ها</button></div>
-<form id="experience-search-form">
-<label>جست‌وجو در حافظه<input id="experience-query" maxlength="3000" required placeholder="موضوع یا مسئله را وارد کنید" aria-label="موضوع یا مسئله را وارد کنید"></label>
-<button type="submit">جست‌وجو</button>
-</form>
-<section id="experience-auto-capture-section"><h3>ذخیرهٔ خودکار پژوهش (اختیاری)</h3>
-<p class="muted">به‌صورت پیش‌فرض خاموش است. با رضایت صریح، پرسش‌ها و پاسخ‌های فنیِ دارای منبع HTTPS به‌همراه نشانی و گزیدهٔ کوتاه از حداکثر سه منبع، در پایگاه محلی ذخیره می‌شوند. گفت‌وگوی عادی ذخیره نمی‌شود. این موارد تأییدنشده می‌مانند و هیچ آزمونی اجرا یا تجربه‌ای خودکار تأیید نمی‌شود. لغو رضایت ذخیره‌سازی آینده را متوقف می‌کند؛ رکوردهای قبلی باقی می‌مانند.</p>
-<label><input id="experience-auto-capture-confirm" type="checkbox" style="width:auto"> رضایت می‌دهم پرسش و پاسخ‌های فنیِ دارای منبع به‌صورت محلی در حافظهٔ تجربه‌ها ذخیره شوند.</label>
-<div class="cloud-actions"><button id="experience-auto-capture-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="experience-auto-capture-revoke" type="button">لغو رضایت</button><button id="experience-auto-capture-refresh" type="button">به‌روزرسانی وضعیت</button></div>
-<pre id="experience-auto-capture-status">ذخیرهٔ خودکار غیرفعال است.</pre></section>
-<pre id="experience-output">هنوز تجربه‌ای بارگذاری نشده است.</pre>
-<div id="experience-list"></div></section>
-<section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
-<p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. نامزدها ابتدا بر اساس دامنه‌های رسمی شناخته‌شده و صفحات رسمی مستندات/قیمت‌گذاری، سپس بر اساس تازگی مرتب می‌شوند. فهرست همچنان فقط نامزدها و شواهد است؛ برچسب دامنه، صحت ادعاها یا ظرفیت زنده را تأیید نمی‌کند و هیچ منبعی صرفاً با دیده‌شدن در این صفحه مجاز به اجرا نمی‌شود.</p>
-<div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button><label for="cloud-candidate-limit">تعداد نامزدهای نمایشی <select id="cloud-candidate-limit"><option value="10" selected>۱۰ مورد اخیر</option><option value="25">۲۵ مورد اخیر</option><option value="50">۵۰ مورد اخیر</option><option value="100">۱۰۰ مورد اخیر</option></select></label></div>
-<pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
-<div id="cloud-candidates"></div></section>
-<section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
-<p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
-<div class="cloud-form-grid">
-<label>حداقل تعداد CPU<input id="plan-min-cpu" type="number" min="0" max="256" step="1" value="1"></label>
-<label>حداقل حافظه (GiB)<input id="plan-min-memory" type="number" min="0" max="1048576" step="0.5" value="0"></label>
-<label><input id="plan-require-gpu" type="checkbox" style="width:auto"> نیاز به GPU دارم</label>
-<label>مدل‌های GPU مجاز (با ویرگول جدا کنید)<input id="plan-gpu-models" type="text" maxlength="1000" placeholder="NVIDIA A10, NVIDIA T4" aria-label="NVIDIA A10, NVIDIA T4"></label>
-<label>دامنه‌های ارائه‌دهندهٔ مجاز (با ویرگول جدا کنید)<input id="plan-provider-domains" type="text" maxlength="2000" placeholder="compute.example.org" aria-label="compute.example.org"></label>
-</div>
-<div class="cloud-actions"><button id="cloud-plan-run" type="button">ساخت برنامهٔ انتخاب</button></div>
-<pre id="cloud-plan-output">برای ساخت برنامه، نیازهای منابع را وارد کنید.</pre>
-</section>
-<section id="kaggle-quota-section"><h2>سهمیهٔ حساب Kaggle (اختیاری)</h2>
-<p class="muted">به‌طور پیش‌فرض غیرفعال است. فقط با فعال‌سازی صریح، برنامه از CLI رسمی Kaggle استفاده می‌کند تا سهمیهٔ GPU/TPU حساب فعلی را بخواند. هیچ notebook ارسال یا اجرا نمی‌شود؛ توکن‌ها ذخیره نمی‌شوند. شرایط استفادهٔ Kaggle و محدودیت یک حساب فعال را رعایت کنید.</p>
-<label>مسیر کامل فایل اجرایی Kaggle CLI<input id="kaggle-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه" aria-label="مسیر کامل kaggle یا kaggle.exe روی همین دستگاه"></label>
-<label><input id="kaggle-quota-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه با اعتبارنامهٔ از قبل تنظیم‌شدهٔ حساب فعلی، سهمیهٔ GPU/TPU را فقط هنگام درخواست من بخواند.</label>
-<div class="cloud-actions"><button id="kaggle-quota-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="kaggle-quota-revoke" type="button">لغو رضایت</button><button id="kaggle-quota-refresh" type="button">خواندن سهمیه اکنون</button></div>
-<pre id="kaggle-quota-status">سهمیهٔ Kaggle غیرفعال است.</pre>
-</section>
-<section id="oci-limits-section"><h2>محدودیت‌های حساب Oracle Cloud (فقط‌خواندنی، اختیاری)</h2>
-<p class="muted">به‌صورت پیش‌فرض غیرفعال است. با رضایت صریح، فقط فرمان رسمی و خواندنیِ فهرست محدودیت‌های Compute اجرا می‌شود. مسیرها، profile، region و شناسهٔ compartment در پایگاه محلی ذخیره می‌شوند؛ کلید خصوصی یا خروجی خام CLI ذخیره نمی‌شود. این داده‌ها اثبات‌کنندهٔ رایگان‌بودن یا ظرفیت فعلی نیستند. هیچ ماشین ساخته یا کدی در ابر اجرا نمی‌شود و مجوز اجرای remote همیشه false است.</p>
-<div class="cloud-form-grid">
-<label>مسیر کامل OCI CLI<input id="oci-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل oci یا oci.exe" aria-label="مسیر کامل oci یا oci.exe"></label>
-<label>مسیر فایل config محلی OCI<input id="oci-config-path" type="text" maxlength="2048" placeholder="مسیر کامل فایل ~/.oci/config" aria-label="مسیر کامل فایل ~/.oci/config"></label>
-<label>Profile<input id="oci-profile" type="text" maxlength="64" value="DEFAULT"></label>
-<label>Region<input id="oci-region" type="text" maxlength="80" placeholder="مثلاً us-ashburn-1" aria-label="مثلاً us-ashburn-1"></label>
-<label>Compartment یا Tenancy OCID<input id="oci-compartment-id" type="text" maxlength="512" placeholder="ocid1.compartment..." aria-label="ocid1.compartment..."></label>
-</div>
-<label><input id="oci-limits-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه فقط با درخواست دستی من، از CLI رسمی و config محلی فعلی برای خواندن محدودیت‌های Compute حساب Oracle استفاده کند.</label>
-<div class="cloud-actions"><button id="oci-limits-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="oci-limits-revoke" type="button">لغو رضایت و حذف snapshotها</button><button id="oci-limits-refresh" type="button">خواندن محدودیت‌ها اکنون</button></div>
-<pre id="oci-limits-status">خواندن محدودیت‌های OCI غیرفعال است.</pre>
-</section>
-<section id="sandbox-section"><h2>اجرای آزمایشی کد در محیط ایزوله</h2>
-<p class="muted">این قابلیت به‌صورت پیش‌فرض غیرفعال است. اجرا فقط در Docker با image رسمی و digest ثابت، بدون شبکه و با محدودیت زمان و خروجی انجام می‌شود. پیش از فعال‌سازی، پیکربندی مدیر و رضایت صریح شما لازم است.</p>
-<pre id="sandbox-status">در حال بررسی وضعیت sandbox…</pre>
-<label><input id="sandbox-consent-confirm" type="checkbox" style="width:auto"> ریسک اجرای کد را می‌پذیرم و رضایت می‌دهم کد واردشده در محیط ایزولهٔ محلی اجرا شود.</label>
-<div class="cloud-actions"><button id="sandbox-consent-grant" type="button">ثبت رضایت</button><button id="sandbox-consent-revoke" type="button">لغو رضایت</button><button id="sandbox-refresh" type="button">به‌روزرسانی وضعیت</button><button id="sandbox-cancel" type="button" disabled>لغو اجرای فعال</button></div>
-<form id="sandbox-run-form">
-<label>کد Python<textarea id="sandbox-source" dir="ltr" rows="7" maxlength="65536" required placeholder="print('Hello')" aria-label="print('Hello')"></textarea></label>
-<div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
-<button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
-<pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
-<section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
-<p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
-<form id="self-improvement-form">
-<input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر" aria-label="عنوان تغییر">
-<textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر" aria-label="دلیل و هدف تغییر"></textarea>
-<textarea id="self-improvement-patch" dir="ltr" required maxlength="262144" rows="8" placeholder="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md" aria-label="Unified diff؛ فقط app/*.py، tests/*.py یا docs/*.md"></textarea>
-<button type="submit">ثبت پیشنهاد</button>
-</form>
-<p id="self-improvement-output" role="status"></p>
-<button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
-<div id="self-improvement-list"></div>
-</section>
-<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
-<label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
-<label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
-<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
 <script>
 const el = id => document.getElementById(id);
 async function api(path, options = {}) {
@@ -192,14 +66,31 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = !degraded;
   if (degraded) {
-   el("storage-degraded-message").textContent = health.message || "ساختار پایگاه داده نیازمند بررسی است؛ عملیات دیتابیسی مسدود است و هیچ مهاجرت یا تعمیری انجام نشده است.";
+   const message = el("storage-degraded-message");
+   if (message) message.textContent = health.message || "ساختار پایگاه داده نیازمند بررسی است؛ عملیات دیتابیسی مسدود است و هیچ مهاجرت یا تعمیری انجام نشده است.";
   }
  } catch(error) {
-  el("health").textContent = error.message;
+  const output = el("health");
+  if (output) output.textContent = error.message;
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
- try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
+ // Settings are fetched only on the dedicated settings page; the overview and
+ // other feature pages intentionally do not contain settings form controls.
+ if (el("settings-section")) {
+  try {
+   const s = await api("/api/settings");
+   el("ctx").value=s.ollama_num_ctx;
+   el("threads").value=s.ollama_num_thread;
+   el("timeout").value=s.ollama_timeout_seconds;
+   el("concurrency").value=s.learning_max_concurrent_jobs;
+   el("source-limit").value=s.learning_source_max_chars;
+   renderModelRouting(s);
+  } catch(error) {
+   const output = el("settings-output");
+   if (output) output.textContent=error.message;
+  }
+ }
 }
 async function refreshStorageHealth() {
  const output=el("storage-health-output");
@@ -211,7 +102,7 @@ async function refreshStorageHealth() {
   output.textContent="بررسی سلامت ذخیره‌سازی ناموفق بود: "+error.message;
  }
 }
-el("refresh-storage-health").addEventListener("click",refreshStorageHealth);
+el("refresh-storage-health")?.addEventListener("click",refreshStorageHealth);
 async function refreshStorageBackups() {
  const output=el("storage-backups-list");
  output.replaceChildren();
@@ -230,7 +121,7 @@ async function refreshStorageBackups() {
    const restore=document.createElement("button");
    restore.type="button";
    restore.textContent="بازیابی آزمایشی در پوشهٔ جدا";
-   restore.addEventListener("click",()=>stageBackupRestore(item.id,restore));
+   restore?.addEventListener("click",()=>stageBackupRestore(item.id,restore));
    card.append(restore);
    output.append(card);
   });
@@ -278,7 +169,7 @@ async function pruneStorageBackups() {
  }
 }
 
-el("prune-storage-backups").addEventListener("click",pruneStorageBackups);
+el("prune-storage-backups")?.addEventListener("click",pruneStorageBackups);
 async function pruneRestoreStaging() {
  const output=el("storage-backup-output");
  const button=el("prune-restore-staging");
@@ -304,7 +195,7 @@ async function pruneRestoreStaging() {
   button.disabled=false;
  }
 }
-el("prune-restore-staging").addEventListener("click",pruneRestoreStaging);
+el("prune-restore-staging")?.addEventListener("click",pruneRestoreStaging);
 async function createStorageBackup() {
  const output=el("storage-backup-output");
  if(!window.confirm("یک پشتیبان کامل از دیتابیس‌های تنظیمات، یادگیری و منابع ابری ساخته شود؟ این کار فایل جدیدی روی دیسک ایجاد می‌کند.")) return;
@@ -321,8 +212,8 @@ async function createStorageBackup() {
   button.disabled=false;
  }
 }
-el("create-storage-backup").addEventListener("click",createStorageBackup);
-el("refresh-storage-backups").addEventListener("click",refreshStorageBackups);
+el("create-storage-backup")?.addEventListener("click",createStorageBackup);
+el("refresh-storage-backups")?.addEventListener("click",refreshStorageBackups);
 let taskPollScheduled=false;
 function updateTaskDashboard() {
  const container=el("tasks-container");
@@ -382,11 +273,11 @@ function updateTaskDashboard() {
    clearFilters.type="button";
    clearFilters.className="task-empty-clear";
    clearFilters.textContent="پاک کردن فیلترها";
-   clearFilters.addEventListener("click",()=>{
+   clearFilters?.addEventListener("click",()=>{
     el("task-search").value="";
     el("task-status-filter").value="";
     taskNextCursor=null;
-    refreshTasks();
+    if(el("task-manager-section")) refreshTasks();
    });
    emptyState.append(clearFilters);
   }
@@ -467,7 +358,7 @@ function renderTasks(tasks,{append=false}={}) {
   const selectLabel=document.createElement("label"); selectLabel.className="task-select-label";
   const selectInput=document.createElement("input"); selectInput.type="checkbox"; selectInput.className="task-select";
   selectInput.setAttribute("aria-label","انتخاب وظیفه "+task.id);
-  selectInput.addEventListener("change",updateTaskDashboard);
+  selectInput?.addEventListener("change",updateTaskDashboard);
   selectLabel.append(selectInput,document.createTextNode(" انتخاب")); card.append(selectLabel);
   appendText(card,"h3","#"+task.id+" — "+task.task_type);
   const statusLine=appendText(card,"p","وضعیت: "+taskStatusLabel+" | اولویت: "+task.priority+" | تلاش: "+task.attempts+"/"+task.max_attempts,"cloud-status task-status-line");
@@ -516,7 +407,7 @@ function renderTasks(tasks,{append=false}={}) {
    const priorityInput=document.createElement("input"); priorityInput.type="number"; priorityInput.min="-100000"; priorityInput.max="100000"; priorityInput.step="1"; priorityInput.value=String(task.priority??0);
    priorityInput.setAttribute("aria-label","اولویت وظیفه "+task.id);
    const prioritySave=document.createElement("button"); prioritySave.type="button"; prioritySave.textContent="ذخیره اولویت"; prioritySave.setAttribute("aria-label","ذخیره اولویت وظیفه "+task.id);
-   prioritySave.addEventListener("click",async()=>{
+   prioritySave?.addEventListener("click",async()=>{
     const value=Number(priorityInput.value);
     if(!Number.isInteger(value)||value < -100000||value > 100000) {
      el("tasks-output").textContent="اولویت باید عدد صحیح بین ۱۰۰۰۰۰- و ۱۰۰۰۰۰ باشد."; priorityInput.focus(); return;
@@ -542,7 +433,7 @@ function renderTasks(tasks,{append=false}={}) {
    const nowOffset=new Date().getTimezoneOffset()*60000;
    scheduleInput.min=new Date(Date.now()-nowOffset).toISOString().slice(0,16);
    const scheduleSave=document.createElement("button"); scheduleSave.type="button"; scheduleSave.textContent="ذخیره زمان"; scheduleSave.setAttribute("aria-label","ذخیره زمان اجرای وظیفه "+task.id);
-   scheduleSave.addEventListener("click",async()=>{
+   scheduleSave?.addEventListener("click",async()=>{
     if(!scheduleInput.value) { el("tasks-output").textContent="زمان اجرای وظیفه را مشخص کنید."; scheduleInput.focus(); return; }
     const scheduledAt=new Date(scheduleInput.value);
     if(Number.isNaN(scheduledAt.getTime())) { el("tasks-output").textContent="زمان واردشده معتبر نیست."; scheduleInput.focus(); return; }
@@ -587,7 +478,7 @@ function renderTasks(tasks,{append=false}={}) {
       historyLoadMore.type="button";
       historyLoadMore.textContent="رویدادهای قدیمی‌تر";
       historyLoadMore.setAttribute("aria-label","بارگذاری رویدادهای قدیمی‌تر وظیفه "+task.id);
-      historyLoadMore.addEventListener("click",async()=>{
+      historyLoadMore?.addEventListener("click",async()=>{
        try { await loadTaskHistory({append:true}); }
        catch(error) { if(historyOutput) historyOutput.textContent="تاریخچه قابل دریافت نیست: "+error.message; }
       });
@@ -601,7 +492,7 @@ function renderTasks(tasks,{append=false}={}) {
     if(historyLoadMore) historyLoadMore.disabled=false;
    }
   }
-  historyButton.addEventListener("click",async()=>{
+  historyButton?.addEventListener("click",async()=>{
    try { await loadTaskHistory(); }
    catch(error) {
     if(!historyOutput) {
@@ -615,7 +506,7 @@ function renderTasks(tasks,{append=false}={}) {
   actions.append(historyButton);
   const addAction=(label,path)=>{
    const button=document.createElement("button"); button.type="button"; button.textContent=label;
-   button.addEventListener("click",async()=>{
+   button?.addEventListener("click",async()=>{
     button.disabled=true;
     try { await api(path,{method:"POST"}); await refreshTasks(); }
     catch(error) { el("tasks-output").textContent="عملیات وظیفه ناموفق بود: "+error.message; button.disabled=false; }
@@ -653,26 +544,43 @@ async function refreshTasks({append=false}={}) {
    el("tasks-output").textContent="فهرست وظایف دریافت نشد: "+error.message;
   }
  }
- el("refresh-tasks").addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
-el("task-status-filter").addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
-el("task-search").addEventListener("input",updateTaskDashboard);
-el("task-select-all").addEventListener("change",()=>{
+ el("refresh-tasks")?.addEventListener("click",()=>{taskNextCursor=null;refreshTasks();});
+el("task-status-filter")?.addEventListener("change",()=>{taskNextCursor=null;refreshTasks();});
+el("task-search")?.addEventListener("input",updateTaskDashboard);
+el("task-select-all")?.addEventListener("change",()=>{
  const checked=el("task-select-all").checked;
  el("tasks-container").querySelectorAll(".task-select").forEach(input=>{input.checked=checked;});
  updateTaskDashboard();
 });
-el("bulk-pause-tasks").addEventListener("click",()=>runBulkTaskAction("pause"));
-el("bulk-resume-tasks").addEventListener("click",()=>runBulkTaskAction("resume"));
-el("bulk-cancel-tasks").addEventListener("click",()=>runBulkTaskAction("cancel"));
-el("load-more-tasks").addEventListener("click",()=>refreshTasks({append:true}));
-refreshStorageHealth();
-refreshStorageBackups();
-el("refresh").addEventListener("click", refresh);
-el("refresh-knowledge").addEventListener("click", async () => {
- try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
- catch(error) { el("knowledge-output").textContent=error.message; }
-});
-el("chat-form").addEventListener("submit", async event => {
+el("bulk-pause-tasks")?.addEventListener("click",()=>runBulkTaskAction("pause"));
+el("bulk-resume-tasks")?.addEventListener("click",()=>runBulkTaskAction("resume"));
+el("bulk-cancel-tasks")?.addEventListener("click",()=>runBulkTaskAction("cancel"));
+el("load-more-tasks")?.addEventListener("click",()=>refreshTasks({append:true}));
+if (el("storage-health-section")) {
+ refreshStorageHealth();
+ refreshStorageBackups();
+}
+el("refresh")?.addEventListener("click", refresh);
+let knowledgePage=1;
+async function refreshKnowledge(page=knowledgePage) {
+ knowledgePage=Math.max(1,Number(page)||1);
+ const output=el("knowledge-output");
+ if(!output) return;
+ output.textContent="در حال بارگذاری صفحهٔ دانش…";
+ try {
+  const result=await api("/api/knowledge?page="+knowledgePage+"&page_size=25");
+  const p=result.pagination||{page:knowledgePage,has_previous:knowledgePage>1,has_next:false,total:(result.items||[]).length,pages:1};
+  knowledgePage=p.page;
+  output.textContent=JSON.stringify({items:result.items||[],pagination:p},null,2);
+  if(el("knowledge-page-prev")) el("knowledge-page-prev").disabled=!p.has_previous;
+  if(el("knowledge-page-next")) el("knowledge-page-next").disabled=!p.has_next;
+  if(el("knowledge-page-status")) el("knowledge-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+(p.total??"نامشخص");
+ } catch(error) { output.textContent="بارگذاری دانش ناموفق بود: "+error.message; }
+}
+el("refresh-knowledge")?.addEventListener("click",()=>refreshKnowledge(knowledgePage));
+el("knowledge-page-prev")?.addEventListener("click",()=>refreshKnowledge(knowledgePage-1));
+el("knowledge-page-next")?.addEventListener("click",()=>refreshKnowledge(knowledgePage+1));
+el("chat-form")?.addEventListener("submit", async event => {
  event.preventDefault();
  const button=el("chat-form").querySelector('button[type="submit"]');
  const message=el("message").value;
@@ -721,7 +629,7 @@ function showLearningJob(result) {
   answer.name="answer"; label.append(answer); form.append(label);
  });
  const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ثبت پاسخ‌ها"; form.append(submit);
- form.addEventListener("submit",async event=>{
+ form?.addEventListener("submit",async event=>{
   event.preventDefault(); submit.disabled=true;
   try {
    const answers=Array.from(form.querySelectorAll("textarea")).map(input=>input.value);
@@ -732,29 +640,318 @@ function showLearningJob(result) {
  });
  container.append(form);
 }
-el("learning-form").addEventListener("submit", async event => {
+el("learning-form")?.addEventListener("submit", async event => {
  event.preventDefault(); el("learning-output").textContent="کار یادگیری ثبت شد؛ وضعیت در حال بررسی است…";
  el("assessment-form-container").replaceChildren();
  try {
-  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
+  const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null,source_url:el("source-url").value.trim()||null})});
   const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
-el("settings-form").addEventListener("submit", async event => {
+async function refreshLearningMetrics() {
+ const output=el("learning-metrics-output");
+ if(!output) return;
+ output.textContent="در حال محاسبهٔ شاخص‌های ثبت‌شدهٔ یادگیری…";
+ try {
+  const metrics=await api("/api/learning/metrics");
+  output.textContent=JSON.stringify(metrics,null,2);
+ } catch(error) {
+  output.textContent="بارگذاری شاخص‌ها ناموفق بود: "+error.message;
+ }
+}
+el("refresh-learning-metrics")?.addEventListener("click",refreshLearningMetrics);
+
+let learningCandidatePage=1;
+async function refreshLearningCandidates(selectedId=null, requestedPage=learningCandidatePage) {
+ const select=el("learning-candidate-select");
+ const output=el("learning-candidate-review");
+ learningCandidatePage=Math.max(1,Number(requestedPage)||1);
+ output.textContent="در حال بارگذاری صفحهٔ نامزدهای دانش…";
+ try {
+  const result=await api("/api/learning/candidates?page="+learningCandidatePage+"&page_size=25");
+  const p=result.pagination||{page:learningCandidatePage,has_previous:learningCandidatePage>1,has_next:false,total:(result.candidates||[]).length,pages:1};
+  learningCandidatePage=p.page;
+  if(el("learning-candidate-prev")) el("learning-candidate-prev").disabled=!p.has_previous;
+  if(el("learning-candidate-next")) el("learning-candidate-next").disabled=!p.has_next;
+  if(el("learning-candidate-page")) el("learning-candidate-page").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
+  select.replaceChildren();
+  (result.candidates||[]).forEach(item=>{
+   const option=document.createElement("option");
+   option.value=String(item.id);
+   const confidence=item.review?.confidence;
+   option.textContent="#"+item.id+" — "+item.topic+" | "+(item.status||"unknown")+" | امتیاز "+(confidence?.score??0);
+   select.append(option);
+  });
+  if(selectedId!==null && [...select.options].some(option=>option.value===String(selectedId))) select.value=String(selectedId);
+  el("research-learning-candidate").disabled=!select.value;
+  if(el("learning-candidate-consensus")) el("learning-candidate-consensus").disabled=!select.value;
+  if(el("learning-candidate-self-correct")) el("learning-candidate-self-correct").disabled=!select.value;
+  if(el("learning-candidate-human-verify")) el("learning-candidate-human-verify").disabled=!select.value;
+  if(select.value) await refreshLearningCandidateReview();
+  else output.textContent="نامزد موقتی برای بازبینی وجود ندارد.";
+ } catch(error) { output.textContent="بارگذاری نامزدها ناموفق بود: "+error.message; }
+}
+async function refreshLearningCandidateReview() {
+ const id=el("learning-candidate-select").value;
+ const output=el("learning-candidate-review");
+ el("research-learning-candidate").disabled=!id;
+ if(!id) { output.textContent="یک نامزد را انتخاب کنید."; return; }
+ output.textContent="در حال بارگذاری گزارش شواهد…";
+ try {
+  const [review,claimMatrix]=await Promise.all([
+   api("/api/learning/candidates/"+encodeURIComponent(id)+"/review"),
+   api("/api/learning/candidates/"+encodeURIComponent(id)+"/claims")
+  ]);
+  output.textContent=JSON.stringify({review,claim_verification_matrix:claimMatrix},null,2);
+  const trust=review.trust||{};
+  if(el("learning-candidate-consensus")) el("learning-candidate-consensus").disabled=!id;
+  if(el("learning-candidate-self-correct")) el("learning-candidate-self-correct").disabled=!(
+   trust.trust_level==="L-1" || ["failed","conflicting"].includes(trust.learning_status)
+  );
+  if(el("learning-candidate-human-verify")) el("learning-candidate-human-verify").disabled=!(
+   trust.trust_level==="L2" && trust.learning_status==="tested"
+  );
+ } catch(error) { output.textContent="دریافت گزارش شواهد یا ماتریس ادعا ناموفق بود: "+error.message; }
+}
+el("refresh-learning-candidates")?.addEventListener("click",()=>refreshLearningCandidates(null,1));
+el("learning-candidate-prev")?.addEventListener("click",()=>refreshLearningCandidates(null,learningCandidatePage-1));
+el("learning-candidate-next")?.addEventListener("click",()=>refreshLearningCandidates(null,learningCandidatePage+1));
+el("learning-candidate-select")?.addEventListener("change",()=>refreshLearningCandidateReview());
+el("learning-candidate-consensus")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ if(!id) return;
+ const button=el("learning-candidate-consensus");button.disabled=true;
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/consensus",{method:"POST"});
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="محاسبه اجماع ناموفق بود: "+error.message;
+ } finally {button.disabled=!el("learning-candidate-select").value;}
+});
+el("learning-candidate-self-correct")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ if(!id) return;
+ const button=el("learning-candidate-self-correct");button.disabled=true;
+ el("learning-candidate-review").textContent="در حال ساخت جایگزین؛ خروجی تازه از سطح L0 شروع می‌شود…";
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/self-correct",{method:"POST"});
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(result.alternative_candidate_id||id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="خودتصحیح ناموفق بود: "+error.message;
+ } finally {button.disabled=!el("learning-candidate-select").value;}
+});
+el("learning-candidate-human-verify")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ const rationale=el("learning-human-verify-rationale")?.value?.trim()||"";
+ if(!id||!rationale) {
+  el("learning-candidate-review").textContent="برای تأیید انسانی، یک نامزد و دلیل صریح لازم است.";
+  return;
+ }
+ if(!confirm("این اقدام سطح اعتماد دانش را از L2 به L3 تغییر می‌دهد. ادامه می‌دهید؟")) return;
+ const button=el("learning-candidate-human-verify");button.disabled=true;
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/human-verify",{
+   method:"POST",body:JSON.stringify({rationale})
+  });
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="تأیید انسانی ناموفق بود: "+error.message;
+ } finally {button.disabled=!el("learning-candidate-select").value;}
+});
+el("research-learning-candidate")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ if(!id) return;
+ const button=el("research-learning-candidate");
+ button.disabled=true;
+ el("learning-candidate-review").textContent="در حال جست‌وجوی منابع و پرس‌وجو از ارائه‌دهندگان تنظیم‌شده…";
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/research",{method:"POST"});
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="بازبینی انجام نشد: "+error.message;
+ } finally { button.disabled=!el("learning-candidate-select").value; }
+});
+el("learning-field-feedback-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
- try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
- el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
+ const id=el("learning-candidate-select").value;
+ if(!id) { el("learning-candidate-review").textContent="ابتدا یک نامزد را انتخاب کنید."; return; }
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/feedback",{
+   method:"POST",body:JSON.stringify({
+    outcome:el("field-outcome").value,
+    application_context:el("field-context").value,
+    observed_output:el("field-output").value,
+    test_steps:el("field-steps").value
+   })
+  });
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) { el("learning-candidate-review").textContent="ثبت بازخورد ناموفق بود: "+error.message; }
+});
+let modelProfiles=[];
+let taskModelAssignments={};
+let modelTaskCatalog=[];
+let modelProviderAdapters=["ollama"];
+
+function createModelField(labelText, value, type="text", listId=null) {
+ const label=document.createElement("label");
+ label.textContent=labelText;
+ const input=document.createElement("input");
+ input.type=type;
+ input.value=value==null?"":String(value);
+ if(listId) input.setAttribute("list",listId);
+ label.append(input);
+ return {label,input};
+}
+function renderModelRouting(settings=null) {
+ const profilesNode=el("model-profiles-list");
+ const assignmentsNode=el("task-model-assignments");
+ if(settings) {
+  modelProfiles=Array.isArray(settings.model_profiles)?settings.model_profiles.map(p=>({...p})):[];
+  taskModelAssignments={...(settings.task_model_assignments||{})};
+  modelTaskCatalog=Array.isArray(settings.model_task_catalog)?settings.model_task_catalog:[];
+  modelProviderAdapters=Array.isArray(settings.available_provider_adapters)?settings.available_provider_adapters:["ollama"];
+ }
+ if(!profilesNode||!assignmentsNode) return;
+ const enabled=()=>modelProfiles.filter(p=>p.enabled===true);
+ profilesNode.replaceChildren();
+ modelProfiles.forEach((profile,index)=>{
+  const card=document.createElement("fieldset");
+  card.className="model-profile-card";
+  const title=document.createElement("legend");
+  title.textContent=profile.name||profile.id||("پروفایل "+(index+1));
+  card.append(title);
+  const idLabel=document.createElement("label");
+  idLabel.textContent="شناسهٔ ثابت";
+  const idInput=document.createElement("input");
+  idInput.value=profile.id;
+  idInput.readOnly=true;
+  idInput.setAttribute("aria-label","شناسهٔ ثابت پروفایل "+profile.id);
+  idLabel.append(idInput);
+  card.append(idLabel);
+  const nameField=createModelField("نام نمایشی",profile.name);
+  nameField.input.maxLength=100;
+  nameField.input.addEventListener("input",()=>{profile.name=nameField.input.value;title.textContent=profile.name||profile.id;});
+  card.append(nameField.label);
+  const providerLabel=document.createElement("label");
+  providerLabel.textContent="ارائه‌دهنده";
+  const provider=document.createElement("select");
+  modelProviderAdapters.forEach(providerId=>{const opt=document.createElement("option");opt.value=providerId;opt.textContent=providerId==="ollama"?"Ollama":providerId;provider.append(opt);});
+  provider.value=profile.provider;
+  provider.addEventListener("change",()=>{profile.provider=provider.value;});
+  providerLabel.append(provider);card.append(providerLabel);
+  const modelField=createModelField("نام یا شناسهٔ مدل",profile.model,"text","installed-ollama-models");
+  modelField.input.maxLength=200;
+  modelField.input.autocomplete="off";
+  modelField.input.addEventListener("input",()=>{profile.model=modelField.input.value;});
+  card.append(modelField.label);
+  const enabledLabel=document.createElement("label");
+  const enabledInput=document.createElement("input");
+  enabledInput.type="checkbox";enabledInput.checked=profile.enabled===true;
+  enabledInput.style.width="auto";
+  enabledInput.addEventListener("change",()=>{
+   if(!enabledInput.checked&&enabled().length<=1) {
+    enabledInput.checked=true;
+    const status=el("model-routing-output");if(status)status.textContent="حداقل یک پروفایل باید فعال بماند.";
+    return;
+   }
+   profile.enabled=enabledInput.checked;
+   const replacement=enabled().find(p=>p.id!==profile.id);
+   if(!profile.enabled&&replacement) {
+    Object.keys(taskModelAssignments).forEach(task=>{if(taskModelAssignments[task]===profile.id)taskModelAssignments[task]=replacement.id;});
+   }
+   renderModelRouting();
+  });
+  enabledLabel.append(enabledInput,document.createTextNode(" فعال"));
+  card.append(enabledLabel);
+  const remove=document.createElement("button");
+  remove.type="button";remove.textContent="حذف پروفایل";
+  remove.disabled=modelProfiles.length<=1;
+  remove.addEventListener("click",()=>{
+   const replacement=enabled().find(p=>p.id!==profile.id);
+   if(!replacement){const status=el("model-routing-output");if(status)status.textContent="پیش از حذف، یک پروفایل دیگر را فعال کنید.";return;}
+   Object.keys(taskModelAssignments).forEach(task=>{if(taskModelAssignments[task]===profile.id)taskModelAssignments[task]=replacement.id;});
+   modelProfiles.splice(index,1);renderModelRouting();
+  });
+  card.append(remove);
+  profilesNode.append(card);
+ });
+ assignmentsNode.replaceChildren();
+ const active=enabled();
+ if(!active.length) {
+  assignmentsNode.textContent="حداقل یک پروفایل فعال کنید.";
+  return;
+ }
+ modelTaskCatalog.forEach(task=>{
+  const label=document.createElement("label");
+  label.textContent=task.label||task.id;
+  const select=document.createElement("select");
+  select.setAttribute("aria-label","مدل برای "+(task.label||task.id));
+  active.forEach(profile=>{
+   const option=document.createElement("option");
+   option.value=profile.id;option.textContent=profile.name+" — "+profile.model;
+   select.append(option);
+  });
+  if(!active.some(p=>p.id===taskModelAssignments[task.id])) taskModelAssignments[task.id]=active[0].id;
+  select.value=taskModelAssignments[task.id];
+  select.addEventListener("change",()=>{taskModelAssignments[task.id]=select.value;});
+  label.append(select);assignmentsNode.append(label);
+ });
+}
+el("add-model-profile")?.addEventListener("click",()=>{
+ let n=1;while(modelProfiles.some(p=>p.id==="custom-model-"+n))n+=1;
+ const first=modelProfiles.find(p=>p.enabled)||modelProfiles[0];
+ modelProfiles.push({id:"custom-model-"+n,name:"پروفایل جدید "+n,provider:"ollama",model:first?.model||"qwen2.5:7b",enabled:true});
+ renderModelRouting();
+});
+el("refresh-installed-models")?.addEventListener("click",async()=>{
+ const output=el("model-routing-output");
+ if(output)output.textContent="در حال دریافت فهرست مدل‌های نصب‌شده…";
+ try {
+  const result=await api("/api/models");
+  const list=el("installed-ollama-models");if(list)list.replaceChildren();
+  (result.models||[]).forEach(item=>{if(typeof item.name==="string"&&list){const option=document.createElement("option");option.value=item.name;list.append(option);}});
+  if(output)output.textContent="فهرست مدل‌های نصب‌شده به‌روزرسانی شد. نام مدل همچنان قابل ورود دستی است.";
+ } catch(error) {if(output)output.textContent="خواندن مدل‌ها ناموفق بود: "+error.message;}
+});
+el("save-model-routing")?.addEventListener("click",async()=>{
+ const output=el("model-routing-output");
+ if(output)output.textContent="در حال اعتبارسنجی و ذخیرهٔ پروفایل‌ها…";
+ try {
+  const values={model_profiles:modelProfiles,task_model_assignments:taskModelAssignments};
+  const result=await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})});
+  renderModelRouting(result);
+  if(output)output.textContent="پروفایل‌ها و تخصیص مدل‌ها ذخیره شدند.";
+ } catch(error) {if(output)output.textContent="ذخیره ناموفق بود: "+error.message;}
 });
 
+el("settings-form")?.addEventListener("submit", async event => {
+ event.preventDefault();
+ try {
+  const values={ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
+  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2);
+ } catch(error) { el("settings-output").textContent=error.message; }
+});
+
+let cloudCandidatePage=1;
 async function refreshCloudResources() {
  const output=el("cloud-output");
- output.textContent="در حال بارگذاری نامزدهای منابع…";
+ output.textContent="در حال بارگذاری صفحهٔ نامزدهای منابع…";
  try {
   const limitControl=el("cloud-candidate-limit");
   const requestedLimit=Number(limitControl?.value||10);
   const candidateLimit=[10,25,50,100].includes(requestedLimit)?requestedLimit:10;
-  const result=await api("/api/cloud-resources?limit="+candidateLimit);
+  const result=await api("/api/cloud-resources?page="+cloudCandidatePage+"&page_size="+candidateLimit);
+  const p=result.pagination||{page:cloudCandidatePage,has_previous:cloudCandidatePage>1,has_next:false};
+  cloudCandidatePage=p.page;
+  if(el("cloud-candidate-prev")) el("cloud-candidate-prev").disabled=!p.has_previous;
+  if(el("cloud-candidate-next")) el("cloud-candidate-next").disabled=!p.has_next;
+  if(el("cloud-candidate-page")) el("cloud-candidate-page").textContent="صفحهٔ "+p.page+" | صفحهٔ بعد: "+(p.has_next?"بله":"خیر");
   const run=result.latest_run;
   const runSummary=run
    ? "آخرین اجرا: "+run.status+" | زمان: "+(run.finished_at||run.started_at)+" | منابع دیده‌شده: "+run.sources_seen+" | نامزدهای ذخیره‌شده: "+run.candidates_upserted
@@ -878,8 +1075,8 @@ function renderCloudCandidates(candidates) {
       reject.disabled=candidate.freshness_status==="stale";
      }
     };
-    accept.addEventListener("click",()=>sendClaimReview("accepted"));
-    reject.addEventListener("click",()=>sendClaimReview("rejected"));
+    accept?.addEventListener("click",()=>sendClaimReview("accepted"));
+    reject?.addEventListener("click",()=>sendClaimReview("rejected"));
     controls.append(accept,reject,claimFeedback); item.append(controls); claimList.append(item);
    });
    details.append(claimList);
@@ -895,7 +1092,7 @@ function renderCloudCandidates(candidates) {
    const option=document.createElement("option"); option.value=value; option.textContent=label; review.append(option);
   });
   if(["approved","rejected"].includes(candidate.review_status)) review.value=candidate.review_status;
-  review.addEventListener("change",()=>{if(review.value==="rejected"&&availability.value==="available")availability.value="unknown";});
+  review?.addEventListener("change",()=>{if(review.value==="rejected"&&availability.value==="available")availability.value="unknown";});
   reviewLabel.append(review); grid.append(reviewLabel);
   const availabilityLabel=document.createElement("label"); availabilityLabel.textContent="وضعیت ظرفیت";
   const availability=document.createElement("select");
@@ -916,7 +1113,7 @@ function renderCloudCandidates(candidates) {
   submit.disabled=candidate.freshness_status==="stale";
   actions.append(submit); form.append(actions);
   const feedback=document.createElement("p"); feedback.className="muted"; form.append(feedback);
-  form.addEventListener("submit",async event=>{
+  form?.addEventListener("submit",async event=>{
    event.preventDefault(); feedback.textContent="در حال ذخیره…"; submit.disabled=true;
    try {
     let quotaValue;
@@ -942,9 +1139,9 @@ function renderCloudCandidates(candidates) {
   details.append(form); card.append(details); container.append(card);
  });
 }
-el("cloud-refresh").addEventListener("click",refreshCloudResources);
-el("cloud-candidate-limit").addEventListener("change",refreshCloudResources);
-el("cloud-discover").addEventListener("click",async()=>{
+el("cloud-refresh")?.addEventListener("click",refreshCloudResources);
+el("cloud-candidate-limit")?.addEventListener("change",refreshCloudResources);
+el("cloud-discover")?.addEventListener("click",async()=>{
  const output=el("cloud-output");
  const button=el("cloud-discover");
  button.disabled=true;
@@ -1000,7 +1197,7 @@ el("cloud-discover").addEventListener("click",async()=>{
  }
 });
 
-el("cloud-plan-run").addEventListener("click",async()=>{
+el("cloud-plan-run")?.addEventListener("click",async()=>{
  const output=el("cloud-plan-output");
  const cpuRaw=el("plan-min-cpu").value;
  const memoryRaw=el("plan-min-memory").value;
@@ -1056,7 +1253,7 @@ async function refreshKaggleQuota() {
   el("kaggle-quota-status").textContent="وضعیت سهمیه قابل دریافت نیست: "+error.message;
  }
 }
-el("kaggle-quota-enable").addEventListener("click",async()=>{
+el("kaggle-quota-enable")?.addEventListener("click",async()=>{
  const path=el("kaggle-cli-path").value.trim();
  if(!el("kaggle-quota-consent").checked) {
   el("kaggle-quota-status").textContent="برای فعال‌سازی، ابتدا چک‌باکس رضایت صریح را علامت بزنید.";
@@ -1077,7 +1274,7 @@ el("kaggle-quota-enable").addEventListener("click",async()=>{
   el("kaggle-quota-status").textContent="رضایت ذخیره نشد: "+error.message;
  }
 });
-el("kaggle-quota-revoke").addEventListener("click",async()=>{
+el("kaggle-quota-revoke")?.addEventListener("click",async()=>{
  el("kaggle-quota-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/cloud-resources/kaggle-quota/consent",{
@@ -1091,7 +1288,7 @@ el("kaggle-quota-revoke").addEventListener("click",async()=>{
   el("kaggle-quota-status").textContent="لغو رضایت انجام نشد: "+error.message;
  }
 });
-el("kaggle-quota-refresh").addEventListener("click",async()=>{
+el("kaggle-quota-refresh")?.addEventListener("click",async()=>{
  el("kaggle-quota-status").textContent="در حال خواندن سهمیه از CLI رسمی…";
  try {
   await api("/api/cloud-resources/kaggle-quota/refresh",{method:"POST"});
@@ -1128,7 +1325,7 @@ async function refreshOciLimits() {
   el("oci-limits-status").textContent="وضعیت محدودیت‌های OCI قابل دریافت نیست: "+error.message;
  }
 }
-el("oci-limits-enable").addEventListener("click",async()=>{
+el("oci-limits-enable")?.addEventListener("click",async()=>{
  if(!el("oci-limits-consent").checked) {
   el("oci-limits-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -1149,7 +1346,7 @@ el("oci-limits-enable").addEventListener("click",async()=>{
   el("oci-limits-status").textContent="رضایت OCI ذخیره نشد: "+error.message;
  }
 });
-el("oci-limits-revoke").addEventListener("click",async()=>{
+el("oci-limits-revoke")?.addEventListener("click",async()=>{
  el("oci-limits-status").textContent="در حال لغو رضایت و پاک‌سازی snapshotها…";
  try {
   await api("/api/cloud-resources/oci-limits/consent",{
@@ -1166,7 +1363,7 @@ el("oci-limits-revoke").addEventListener("click",async()=>{
   el("oci-limits-status").textContent="لغو رضایت OCI انجام نشد: "+error.message;
  }
 });
-el("oci-limits-refresh").addEventListener("click",async()=>{
+el("oci-limits-refresh")?.addEventListener("click",async()=>{
  el("oci-limits-status").textContent="در حال اجرای فرمان خواندنی OCI limits value list…";
  try {
   await api("/api/cloud-resources/oci-limits/refresh",{method:"POST"});
@@ -1200,8 +1397,8 @@ async function refreshSandbox() {
   status.textContent="وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند. "+error.message;
  }
 }
-el("sandbox-refresh").addEventListener("click",refreshSandbox);
-el("sandbox-cancel").addEventListener("click",async()=>{
+el("sandbox-refresh")?.addEventListener("click",refreshSandbox);
+el("sandbox-cancel")?.addEventListener("click",async()=>{
  if(activeSandboxTaskId===null) return;
  const taskId=activeSandboxTaskId;
  el("sandbox-cancel").disabled=true;
@@ -1214,7 +1411,7 @@ el("sandbox-cancel").addEventListener("click",async()=>{
   el("sandbox-cancel").disabled=false;
  }
 });
-el("sandbox-consent-grant").addEventListener("click",async()=>{
+el("sandbox-consent-grant")?.addEventListener("click",async()=>{
  if(!el("sandbox-consent-confirm").checked) {
   el("sandbox-status").textContent="برای ثبت رضایت، ابتدا چک‌باکس رضایت صریح را فعال کنید.";
   return;
@@ -1228,7 +1425,7 @@ el("sandbox-consent-grant").addEventListener("click",async()=>{
   el("sandbox-run").disabled=true;
  }
 });
-el("sandbox-consent-revoke").addEventListener("click",async()=>{
+el("sandbox-consent-revoke")?.addEventListener("click",async()=>{
  el("sandbox-status").textContent="در حال لغو رضایت…";
  el("sandbox-run").disabled=true;
  try {
@@ -1238,7 +1435,7 @@ el("sandbox-consent-revoke").addEventListener("click",async()=>{
   el("sandbox-status").textContent="لغو رضایت ناموفق بود: "+error.message;
  }
 });
-el("sandbox-run-form").addEventListener("submit",async event=>{
+el("sandbox-run-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const output=el("sandbox-run-output");
  const source=el("sandbox-source").value;
@@ -1277,9 +1474,12 @@ el("sandbox-run-form").addEventListener("submit",async event=>{
  }
 });
 refresh();
-refreshCloudResources();
-refreshKaggleQuota();
-refreshOciLimits();
+el("cloud-candidate-prev")?.addEventListener("click",()=>{cloudCandidatePage=Math.max(1,cloudCandidatePage-1);refreshCloudResources();});
+el("cloud-candidate-next")?.addEventListener("click",()=>{cloudCandidatePage+=1;refreshCloudResources();});
+el("cloud-candidate-limit")?.addEventListener("change",()=>{cloudCandidatePage=1;refreshCloudResources();});
+if (el("cloud-resources-section")) refreshCloudResources();
+if (el("kaggle-quota-section")) refreshKaggleQuota();
+if (el("oci-limits-section")) refreshOciLimits();
 
 
 // Experience memory: untrusted record/source text is always rendered as text.
@@ -1288,12 +1488,19 @@ const experienceStatuses = [
  ["ready_to_test","آمادهٔ آزمون"],["testing","در حال آزمون"],
  ["failed","ناموفق"],["needs_review","نیازمند بازبینی"]
 ];
-async function refreshExperiences() {
+let experiencePage=1;
+async function refreshExperiences(page=experiencePage) {
+ experiencePage=Math.max(1,Number(page)||1);
  const output=el("experience-output");
- output.textContent="در حال بارگذاری تجربه‌ها…";
+ output.textContent="در حال بارگذاری صفحهٔ تجربه‌ها…";
  try {
-  const result=await api("/api/experiences?limit=100");
-  output.textContent="تعداد تجربه‌ها: "+result.count;
+  const result=await api("/api/experiences?page="+experiencePage+"&page_size=25");
+  const p=result.pagination||{page:experiencePage,has_previous:experiencePage>1,has_next:false,total:result.count,pages:1};
+  experiencePage=p.page;
+  if(el("experience-page-prev")) el("experience-page-prev").disabled=!p.has_previous;
+  if(el("experience-page-next")) el("experience-page-next").disabled=!p.has_next;
+  if(el("experience-page-status")) el("experience-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
+  output.textContent="تعداد تجربه‌ها (کل): "+result.count;
   renderExperienceItems(result.items||[]);
  } catch(error) {
   output.textContent="بارگذاری تجربه‌ها ناموفق بود: "+error.message;
@@ -1312,6 +1519,7 @@ function renderExperienceItems(items) {
   card.className="cloud-candidate";
   appendText(card,"h3",(item._memory_group?item._memory_group+" — ":"")+(item.topic||"بدون موضوع"));
   appendText(card,"p","وضعیت: "+item.status+" | نسخه: "+item.version+" | شناسه: "+item.id,"cloud-status");
+  appendText(card,"p","نوع تجربه: "+(item.experience_type||"general"),"muted");
   appendText(card,"p","مشکل: "+(item.problem||"ثبت نشده"));
   if(item.hypothesis) appendText(card,"p","فرضیه: "+item.hypothesis);
   if(item.takeaway) appendText(card,"p","جمع‌بندی: "+item.takeaway);
@@ -1337,7 +1545,7 @@ function renderExperienceItems(items) {
    const sourceHistoryButton=document.createElement("button");
    sourceHistoryButton.type="button"; sourceHistoryButton.textContent="نمایش تاریخچهٔ بازبینی منابع";
    const sourceCheckOutput=document.createElement("pre");
-   refreshSourcesButton.addEventListener("click",async()=>{
+   refreshSourcesButton?.addEventListener("click",async()=>{
     if(!window.confirm("فقط نشانی‌های HTTPS ذخیره‌شده بررسی می‌شوند. متن کامل صفحه ذخیره نمی‌شود و تجربه خودکار تأیید یا ویرایش نخواهد شد. ادامه می‌دهید؟")) return;
     refreshSourcesButton.disabled=true; sourceCheckOutput.textContent="در حال بررسی حداکثر سه منبع…";
     try {
@@ -1350,7 +1558,7 @@ function renderExperienceItems(items) {
     } catch(error) { sourceCheckOutput.textContent="بازبینی منابع ناموفق بود: "+error.message; }
     finally { refreshSourcesButton.disabled=false; }
    });
-   sourceHistoryButton.addEventListener("click",async()=>{
+   sourceHistoryButton?.addEventListener("click",async()=>{
     sourceCheckOutput.textContent="در حال دریافت تاریخچه…";
     try {
      const result=await api("/api/experiences/"+item.id+"/source-checks");
@@ -1372,7 +1580,7 @@ function renderExperienceItems(items) {
   const versionsButton=document.createElement("button");
   versionsButton.type="button"; versionsButton.textContent="نمایش تاریخچهٔ نسخه‌ها";
   const versionsOutput=document.createElement("pre");
-  versionsButton.addEventListener("click",async()=>{
+  versionsButton?.addEventListener("click",async()=>{
    versionsOutput.textContent="در حال دریافت تاریخچه…";
    try {
     const result=await api("/api/experiences/"+item.id+"/versions");
@@ -1410,9 +1618,9 @@ function renderExperienceItems(items) {
      clearFeedbackButton.disabled=!result.feedback;
     } catch(error) { feedbackStatus.textContent="وضعیت رأی دریافت نشد: "+error.message; }
    };
-   positiveButton.addEventListener("click",()=>sendFeedback(1));
-   negativeButton.addEventListener("click",()=>sendFeedback(-1));
-   clearFeedbackButton.addEventListener("click",()=>sendFeedback(null));
+   positiveButton?.addEventListener("click",()=>sendFeedback(1));
+   negativeButton?.addEventListener("click",()=>sendFeedback(-1));
+   clearFeedbackButton?.addEventListener("click",()=>sendFeedback(null));
    card.append(feedbackStatus,positiveButton,negativeButton,clearFeedbackButton);
    loadFeedback();
   }
@@ -1446,7 +1654,7 @@ function renderExperienceItems(items) {
   const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ذخیرهٔ بازبینی";
   const feedback=document.createElement("p"); feedback.className="muted";
   form.append(submit,feedback);
-  form.addEventListener("submit",async event=>{
+  form?.addEventListener("submit",async event=>{
    event.preventDefault(); submit.disabled=true; feedback.textContent="در حال ذخیره…";
    try {
     let sourceEvidence,testPlan;
@@ -1490,7 +1698,7 @@ function renderExperienceItems(items) {
    const runButton=document.createElement("button"); runButton.type="submit"; runButton.textContent="صف‌بندی آزمون";
    const runFeedback=document.createElement("pre"); runFeedback.className="muted";
    runnerForm.append(runButton,runFeedback);
-   runnerForm.addEventListener("submit",async event=>{
+   runnerForm?.addEventListener("submit",async event=>{
     event.preventDefault(); runButton.disabled=true; runFeedback.textContent="در حال صف‌بندی آزمون…";
     try {
      const queued=await api("/api/experiences/"+item.id+"/run-test",{
@@ -1548,7 +1756,7 @@ async function refreshExperienceAutoCaptureConsent() {
   output.textContent="وضعیت رضایت قابل دریافت نیست: "+error.message;
  }
 }
-el("experience-auto-capture-enable").addEventListener("click",async()=>{
+el("experience-auto-capture-enable")?.addEventListener("click",async()=>{
  if(!el("experience-auto-capture-confirm").checked) {
   el("experience-auto-capture-status").textContent="برای فعال‌سازی، ابتدا رضایت صریح را علامت بزنید.";
   return;
@@ -1559,7 +1767,7 @@ el("experience-auto-capture-enable").addEventListener("click",async()=>{
   await refreshExperienceAutoCaptureConsent();
  } catch(error) { el("experience-auto-capture-status").textContent="رضایت ثبت نشد: "+error.message; }
 });
-el("experience-auto-capture-revoke").addEventListener("click",async()=>{
+el("experience-auto-capture-revoke")?.addEventListener("click",async()=>{
  el("experience-auto-capture-status").textContent="در حال لغو رضایت…";
  try {
   await api("/api/experiences/auto-capture/consent",{method:"DELETE"});
@@ -1567,11 +1775,13 @@ el("experience-auto-capture-revoke").addEventListener("click",async()=>{
   await refreshExperienceAutoCaptureConsent();
  } catch(error) { el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message; }
 });
-el("experience-auto-capture-refresh").addEventListener("click",refreshExperienceAutoCaptureConsent);
-refreshExperienceAutoCaptureConsent();
+el("experience-auto-capture-refresh")?.addEventListener("click",refreshExperienceAutoCaptureConsent);
+if(el("experience-memory-section")) refreshExperienceAutoCaptureConsent();
 
-el("experience-refresh").addEventListener("click",refreshExperiences);
-el("experience-create-form").addEventListener("submit",async event=>{
+el("experience-refresh")?.addEventListener("click",()=>refreshExperiences(experiencePage));
+el("experience-page-prev")?.addEventListener("click",()=>refreshExperiences(experiencePage-1));
+el("experience-page-next")?.addEventListener("click",()=>refreshExperiences(experiencePage+1));
+el("experience-create-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const button=event.submitter;
  if(button) button.disabled=true;
@@ -1588,7 +1798,7 @@ el("experience-create-form").addEventListener("submit",async event=>{
  } catch(error) { el("experience-output").textContent="ثبت تجربه ناموفق بود: "+error.message; }
  finally { if(button) button.disabled=false; }
 });
-el("experience-search-form").addEventListener("submit",async event=>{
+el("experience-search-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const query=el("experience-query").value.trim();
  const output=el("experience-output");
@@ -1605,11 +1815,18 @@ el("experience-search-form").addEventListener("submit",async event=>{
  }
 });
 
-async function refreshSelfImprovement() {
+let selfImprovementPage=1;
+async function refreshSelfImprovement(page=selfImprovementPage) {
+ selfImprovementPage=Math.max(1,Number(page)||1);
  const output=el("self-improvement-output");
  const list=el("self-improvement-list");
  try {
-  const result=await api("/api/self-improvement/proposals");
+  const result=await api("/api/self-improvement/proposals?page="+selfImprovementPage+"&page_size=25");
+  const p=result.pagination||{page:selfImprovementPage,has_previous:selfImprovementPage>1,has_next:false,total:(result.proposals||[]).length,pages:1};
+  selfImprovementPage=p.page;
+  if(el("self-improvement-page-prev")) el("self-improvement-page-prev").disabled=!p.has_previous;
+  if(el("self-improvement-page-next")) el("self-improvement-page-next").disabled=!p.has_next;
+  if(el("self-improvement-page-status")) el("self-improvement-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
   list.replaceChildren();
   for (const item of result.proposals || []) {
    const card=document.createElement("article");
@@ -1628,7 +1845,7 @@ async function refreshSelfImprovement() {
    const eventButton=document.createElement("button");
    eventButton.type="button";
    eventButton.textContent="تاریخچه";
-   eventButton.addEventListener("click",async()=>{
+   eventButton?.addEventListener("click",async()=>{
     try { const events=await api("/api/self-improvement/proposals/"+item.id+"/events"); output.textContent=JSON.stringify(events.events,null,2); }
     catch(error){output.textContent=error.message;}
    });
@@ -1636,7 +1853,7 @@ async function refreshSelfImprovement() {
    const diffButton=document.createElement("button");
    diffButton.type="button";
    diffButton.textContent="مشاهدهٔ diff";
-   diffButton.addEventListener("click",async()=>{
+   diffButton?.addEventListener("click",async()=>{
     try { const detail=await api("/api/self-improvement/proposals/"+item.id); output.textContent=detail.proposal.patch; }
     catch(error){output.textContent=error.message;}
    });
@@ -1645,7 +1862,7 @@ async function refreshSelfImprovement() {
     const validate=document.createElement("button");
     validate.type="button";
     validate.textContent="بررسی سازگاری diff";
-    validate.addEventListener("click",async()=>{
+    validate?.addEventListener("click",async()=>{
      validate.disabled=true;
      try { await api("/api/self-improvement/proposals/"+item.id+"/validate",{method:"POST"}); output.textContent="بررسی سازگاری انجام شد؛ این مرحله آزمون کد اجرا نمی‌کند."; await refreshSelfImprovement(); }
      catch(error){output.textContent=error.message;}
@@ -1657,7 +1874,7 @@ async function refreshSelfImprovement() {
     const syntaxCheck=document.createElement("button");
     syntaxCheck.type="button";
     syntaxCheck.textContent="بررسی ایزولهٔ نحوی و رفتاری";
-    syntaxCheck.addEventListener("click",async()=>{
+    syntaxCheck?.addEventListener("click",async()=>{
      if(!window.confirm("این بررسی، patch را فقط در worktree موقت اعمال و فایل‌های Python را داخل Docker با شبکهٔ خاموش تجزیهٔ نحوی می‌کند؛ آزمون پروژه یا اجرای کد پیشنهادی انجام نمی‌شود. رضایت Sandbox باید فعال باشد. ادامه؟")) return;
      syntaxCheck.disabled=true;
      try {
@@ -1674,7 +1891,7 @@ async function refreshSelfImprovement() {
     const approve=document.createElement("button");
     approve.type="button";
     approve.textContent="تأیید برای بررسی PR";
-    approve.addEventListener("click",async()=>{
+    approve?.addEventListener("click",async()=>{
      if(!window.confirm("این تأیید کد را اعمال یا مستقر نمی‌کند. فقط اجازهٔ انتقال به بررسی انسانی PR را ثبت می‌کند. ادامه؟")) return;
      approve.disabled=true;
      try { await api("/api/self-improvement/proposals/"+item.id+"/approve",{method:"POST",body:JSON.stringify({confirm:true})}); output.textContent="تأیید ثبت شد؛ هیچ فایلی تغییر نکرد."; await refreshSelfImprovement(); }
@@ -1687,7 +1904,7 @@ async function refreshSelfImprovement() {
     const openPr=document.createElement("button");
     openPr.type="button";
     openPr.textContent="ایجاد PR پیش‌نویس در GitHub";
-    openPr.addEventListener("click",async()=>{
+    openPr?.addEventListener("click",async()=>{
      if(!window.confirm("این اقدام patch تأییدشده را به‌صورت branch و PR پیش‌نویس در مخزن GitHub پیکربندی‌شده منتشر می‌کند. PR ادغام یا مستقر نمی‌شود و checkout محلی تغییر نمی‌کند. ادامه؟")) return;
      openPr.disabled=true;
      try {
@@ -1702,7 +1919,7 @@ async function refreshSelfImprovement() {
     const rollbackPr=document.createElement("button");
     rollbackPr.type="button";
     rollbackPr.textContent="ایجاد PR پیش‌نویس بازگشت";
-    rollbackPr.addEventListener("click",async()=>{
+    rollbackPr?.addEventListener("click",async()=>{
      if(!window.confirm("فقط اگر PR اصلی ادغام شده باشد، یک PR پیش‌نویس بازگشت ایجاد می‌شود. اگر فایل‌های مربوطه پس از ادغام تغییر کرده باشند، عملیات متوقف می‌شود. هیچ ادغام یا استقراری انجام نمی‌شود. ادامه؟")) return;
      rollbackPr.disabled=true;
      try {
@@ -1719,7 +1936,7 @@ async function refreshSelfImprovement() {
     const reject=document.createElement("button");
     reject.type="button";
     reject.textContent="رد پیشنهاد";
-    reject.addEventListener("click",async()=>{
+    reject?.addEventListener("click",async()=>{
      if(!window.confirm("این پیشنهاد رد شود؟")) return;
      try { await api("/api/self-improvement/proposals/"+item.id+"/reject",{method:"POST",body:JSON.stringify({confirm:true,reason:"رد از رابط محلی"})}); await refreshSelfImprovement(); }
      catch(error){output.textContent=error.message;}
@@ -1733,7 +1950,7 @@ async function refreshSelfImprovement() {
   output.textContent="مدیریت پیشنهادها در دسترس نیست: "+error.message;
  }
 }
-el("self-improvement-form").addEventListener("submit",async event=>{
+el("self-improvement-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const output=el("self-improvement-output");
  output.textContent="در حال ثبت پیشنهاد…";
@@ -1748,7 +1965,9 @@ el("self-improvement-form").addEventListener("submit",async event=>{
   await refreshSelfImprovement();
  } catch(error) { output.textContent=error.message; }
 });
-el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
+el("self-improvement-refresh")?.addEventListener("click",()=>refreshSelfImprovement(selfImprovementPage));
+el("self-improvement-page-prev")?.addEventListener("click",()=>refreshSelfImprovement(selfImprovementPage-1));
+el("self-improvement-page-next")?.addEventListener("click",()=>refreshSelfImprovement(selfImprovementPage+1));
 // Accessible local theme preference; no network requests or external assets.
 (function initializeDashboardTheme(){
  const button=document.getElementById("theme-toggle");
@@ -1765,7 +1984,7 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
   if(persist){ try { window.localStorage.setItem("dashboard-theme",dark ? "dark" : "light"); } catch (_) {} }
  }
  applyTheme(saved==="dark" || (saved===null && prefersDark),false);
- button.addEventListener("click",()=>applyTheme(root.dataset.theme!=="dark",true));
+ button?.addEventListener("click",()=>applyTheme(root.dataset.theme!=="dark",true));
 })();
 
 // Keep the persistent section navigation synchronized with the user's reading position.
@@ -1806,7 +2025,7 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
   scheduled=true;
   window.requestAnimationFrame(updateCurrentSection);
  }
- navigation.addEventListener('click',event=>{
+ navigation?.addEventListener('click',event=>{
   const link=event.target.closest('a[href^="#"]');
   if(link && navigation.contains(link)){
    for(const item of links){
@@ -1816,10 +2035,36 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
    }
   }
  });
- window.addEventListener('scroll',scheduleUpdate,{passive:true});
- window.addEventListener('resize',scheduleUpdate,{passive:true});
- window.addEventListener('hashchange',scheduleUpdate);
+ window?.addEventListener('scroll',scheduleUpdate,{passive:true});
+ window?.addEventListener('resize',scheduleUpdate,{passive:true});
+ window?.addEventListener('hashchange',scheduleUpdate);
  updateCurrentSection();
 })();
-refreshTasks();
+(function initializeSectionPageNavigation(){
+ const slug=document.documentElement.dataset.sectionPage;
+ if(!slug){
+  const normalizePath=value=>{
+   let path=value||'/';
+   while(path.length>1 && path.endsWith('/')) path=path.slice(0,-1);
+   return path;
+  };
+  const path=normalizePath(window.location.pathname);
+  const active=Array.from(document.querySelectorAll('.dashboard-nav a')).find(link=>{
+   const target=normalizePath(new URL(link.href,window.location.origin).pathname);
+   return target===path;
+  });
+  if(active){active.setAttribute('aria-current','page');}
+  return;
+ }
+ const active=document.querySelector('.dashboard-nav a[data-section-slug="'+slug+'"]');
+ if(active){active.setAttribute('aria-current','page');}
+ const sectionId=document.documentElement.dataset.sectionId;
+ const section=document.getElementById(sectionId);
+ if(section){
+  const heading=section.querySelector('h2');
+  if(heading){document.title=heading.textContent.trim()+" — دستیار هوش مصنوعی شخصی";}
+  section.setAttribute('tabindex','-1');
+ }
+})();
+if(el("task-manager-section")) refreshTasks();
 </script><script src="/static/learning.js"></script></main></div></body></html>

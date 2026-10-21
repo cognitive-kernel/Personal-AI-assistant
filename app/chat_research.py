@@ -13,7 +13,19 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from . import chat_audit, claim_review, experience, experience_capture_consent, ollama, web_sources
+from . import chat_audit, claim_review, experience, experience_capture_consent, model_runtime, ollama, web_sources
+
+_PROGRAMMING_MARKERS = (
+    "programming", "write code", "write a function", "implement", "refactor", "debug",
+    "python", "javascript", "typescript", "sql query", "source code", "script", "algorithm",
+    "برنامه‌نویسی", "برنامه نویسی", "کدنویسی", "کد بنویس", "کد", "اسکریپت", "تابع", "کلاس", "دیباگ",
+)
+
+
+def _generation_task_type(message: str) -> str:
+    lowered = message.casefold()
+    return "programming" if any(marker in lowered for marker in _PROGRAMMING_MARKERS) else "research"
+
 
 _TECHNICAL_MARKERS = (
     "error", "exception", "bug", "debug", "traceback", "stack trace", "code",
@@ -188,9 +200,9 @@ def _source_conflict_reason(message: str, review: dict[str, Any]) -> str:
                     urls.append(url[:1000])
     sources_note = (" منابع متعارض: " if re.search(r"[\u0600-\u06FF]", message) else " Conflicting sources: ")
     prefix = (
-        "منابع بازیابی‌شده دربارهٔ یک نکتهٔ مهم با هم تعارض دارند؛ این پاسخ قطعی نیست و به بررسی انسانی نیاز دارد."
+        "منابع بازیابی‌شده دربارهٔ یک نکتهٔ مهم با هم تعارض دارند؛ سامانه از ارائه نتیجه قطعی خودداری می‌کند و پاسخ تأییدشده نیست."
         if re.search(r"[\u0600-\u06FF]", message)
-        else "Retrieved sources materially disagree; this answer is not conclusive and requires human review."
+        else "Retrieved sources materially disagree; the system abstains from a definitive answer and marks it unverified."
     )
     return prefix + (sources_note + "، ".join(urls) if urls else "")
 
@@ -305,7 +317,7 @@ def answer(
     """Answer normally for small-talk; use bounded source review for technical queries."""
     if not should_use_research(message):
         _checkpoint(checkpoint, "chat_generation_started")
-        reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
+        reply = model_runtime.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT, task_type="simple_chat")
         _checkpoint(checkpoint, "chat_generation_completed")
         return reply
 
@@ -338,9 +350,13 @@ def answer(
             "sources or memory. Return the answer only, not JSON."
         ),
     }
+    generation_task = _generation_task_type(message)
     _checkpoint(checkpoint, "draft_generation_started")
     try:
-        draft = ollama.chat(json.dumps(payload, ensure_ascii=False), history, system_prompt=_SYSTEM_PROMPT)
+        draft = model_runtime.chat(
+            json.dumps(payload, ensure_ascii=False), history,
+            system_prompt=_SYSTEM_PROMPT, task_type=generation_task,
+        )
     except Exception:
         _record_audit(message, "", sources, "generation_failed", None, memory, started_at)
         raise
@@ -359,10 +375,10 @@ def answer(
         }
         _checkpoint(checkpoint, "language_repair_started", requested_language=requested_language)
         try:
-            repaired_language = ollama.chat(
+            repaired_language = model_runtime.chat(
                 json.dumps(language_repair_payload, ensure_ascii=False),
                 history,
-                system_prompt=_SYSTEM_PROMPT,
+                system_prompt=_SYSTEM_PROMPT, task_type=generation_task,
             )
         except Exception as exc:
             logger.warning("Answer language repair failed (%s)", type(exc).__name__)
@@ -456,10 +472,10 @@ def answer(
     }
     _checkpoint(checkpoint, "repair_generation_started")
     try:
-        repaired = ollama.chat(
+        repaired = model_runtime.chat(
             json.dumps(repair_payload, ensure_ascii=False),
             history,
-            system_prompt=_SYSTEM_PROMPT,
+            system_prompt=_SYSTEM_PROMPT, task_type=generation_task,
         )
     except Exception:
         _record_audit(message, "", sources, "generation_failed", review, memory, started_at)

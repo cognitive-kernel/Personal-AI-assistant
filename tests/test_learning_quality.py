@@ -66,3 +66,36 @@ def test_sql_server_curriculum_has_curated_reference_links():
     assert refs["W3Schools — SQL Tutorial"] == "https://www.w3schools.com/sql/default.asp"
     assert refs["Microsoft Learn — SQL Server"] == "https://learn.microsoft.com/en-us/sql/sql-server/"
     assert len(course["topics"]) == 19
+
+
+def test_transfer_question_gate_requires_application_marker_as_a_word():
+    from app.learning import _has_transfer_question
+
+    assert _has_transfer_question("How would you apply this to a new scenario?")
+    assert _has_transfer_question("فرض کنید بار کاری تغییر کند؛ چه اقدامی انجام می‌دهید؟")
+    assert not _has_transfer_question("What is the difference between a table scan and an index seek?")
+    assert not _has_transfer_question("Explain the design of a query plan.")
+
+
+def test_concise_technical_lesson_is_not_rejected_only_for_word_count():
+    lesson = (
+        "Python decorators wrap a function with reusable behavior. For example, a logging decorator "
+        "calls the original function and records its arguments. Because the wrapper can change returned "
+        "behavior, use functools.wraps to preserve metadata. The @ syntax applies the decorator when the "
+        "function is defined. A test should compare the decorated function output and metadata with "
+        "expected values. This helps catch bugs."
+    )
+    questions = [
+        "What does a Python decorator wrap?",
+        "Why use functools.wraps in a wrapper?",
+        "How would you test a logging decorator on another function?",
+    ]
+    answers = [
+        "It wraps a function with reusable behavior.",
+        "It preserves the original function metadata.",
+        "Call the decorated function and compare output and metadata with expected values.",
+    ]
+    result = evaluate_learning_value(lesson, questions, answers)
+    assert result["word_count"] < 80
+    assert result["accepted"] is True
+    assert any("length alone" in reason or "طول به‌تنهایی" in reason for reason in result["reasons"])

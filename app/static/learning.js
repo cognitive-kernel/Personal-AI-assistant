@@ -91,8 +91,113 @@ function addRegenerateButton(output, path, topic) {
  output.append(button);
 }
 
+async function addPracticalExerciseForm(output, job, path, topic) {
+ let exercises;
+ try {
+  const catalog = await learningApi("/api/learning/practical/exercises?job_id=" + encodeURIComponent(job.id));
+  exercises = catalog.exercises || [];
+ } catch (_error) {
+  return;
+ }
+ if (output.dataset.learningJobId !== String(job.id)) return;
+ exercises.forEach(exercise => renderPracticalExerciseForm(output, job, path, topic, exercise));
+}
+
+function renderPracticalExerciseForm(output, job, path, topic, exercise) {
+ const section = document.createElement("section");
+ section.className = "learning-practical-exercise";
+ const heading = document.createElement("h4");
+ heading.textContent = "تمرین عملی با اجرای واقعی کد";
+ section.append(heading);
+ const description = document.createElement("p");
+ description.textContent = "این تمرین برنامه را در Docker sandbox بدون شبکه اجرا می‌کند و نتیجه را با آزمون‌های ورودی/خروجی نسخه‌بندی‌شده می‌سنجد. برای اجرا، رضایت صریح sandbox و Docker پیکربندی‌شده لازم است.";
+ section.append(description);
+ const exerciseInfo = document.createElement("p");
+ exerciseInfo.textContent = exercise.title + "؛ ورودی نمونه: " + JSON.stringify(exercise.input_example) + "؛ خروجی نمونه: " + JSON.stringify(exercise.output_example);
+ section.append(exerciseInfo);
+ const form = document.createElement("form");
+ const source = document.createElement("textarea");
+ source.rows = 8;
+ source.maxLength = 32768;
+ source.required = true;
+ source.style.display = "block";
+ source.style.width = "100%";
+ source.setAttribute("aria-label", "کد پایتون برای تمرین عملی");
+ const starter = exercise.id === "python-json-unique-v1"
+  ? ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(sorted(set(data[\"values\"]))))"]
+  : exercise.id === "python-json-word-count-v1"
+   ? ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(len(data[\"text\"].split())))"]
+   : ["import json", "import sys", "data = json.load(sys.stdin)", "print(json.dumps(sum(data[\"values\"])))"];
+ source.value = starter.join(String.fromCharCode(10));
+ const submit = document.createElement("button");
+ submit.type = "submit";
+ submit.textContent = "اجرای آزمون عملی";
+ form.append(submit);
+ const status = document.createElement("p");
+ status.setAttribute("role", "status");
+ form.append(status);
+ form.addEventListener("submit", async event => {
+  event.preventDefault();
+  submit.disabled = true;
+  status.textContent = "در حال ثبت تمرین…";
+  try {
+   const queued = await learningApi("/api/learning/practical/exercises/" + encodeURIComponent(exercise.id) + "/submit", {
+    method: "POST",
+    body: JSON.stringify({job_id: job.id, source_code: source.value})
+   });
+   const taskId = queued.task && queued.task.id;
+   if (!taskId) throw new Error("شناسه کار اجرایی برنگشت.");
+   status.textContent = "تمرین در صف اجراست؛ شناسه کار: " + taskId;
+   let finished = false;
+   for (let attempt = 0; attempt < 120; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const task = await learningApi("/api/tasks/" + taskId);
+    if (["succeeded", "failed", "cancelled"].includes(task.status)) {
+     finished = true;
+     if (task.status !== "succeeded") {
+      status.textContent = "اجرای تمرین موفق نبود: " + (task.error || task.status);
+      break;
+     }
+     const grade = task.result && task.result.practical_assessment;
+     if (!grade) {
+      status.textContent = "کد اجرا شد اما گزارش نمره معتبر در دسترس نیست. وضعیت اجرا: " +
+       ((task.result && task.result.execution_status) || "نامشخص");
+      break;
+     }
+     const failedCases = (grade.case_results || []).filter(item => !item.passed).map(item => item.case_id);
+     status.textContent = "نتیجه آزمون عملی: " + grade.score + " از 100؛ " +
+      grade.passed_tests + " آزمون از " + grade.total_tests + " موفق. " +
+      (failedCases.length ? "آزمون‌های ناموفق: " + failedCases.join("، ") + ". " : "") +
+      (grade.mastery_achieved
+       ? "تسلط عملی ثبت شد و سرفصل تکمیل شد."
+       : "این نتیجه فقط همین تمرین را می‌سنجد؛ برای تکمیل سرفصل، آستانه و پیش‌نیازهای مسیر باید برقرار باشند.");
+     if (grade.mastery_achieved && path && topic && topic.statusSelect) {
+      topic.status = "completed";
+      topic.statusSelect.value = "completed";
+      (path.topics || []).forEach(candidate => {
+       candidate.blocked_by = (candidate.blocked_by || []).filter(item => item.id !== topic.id);
+       candidate.prerequisites_met = candidate.blocked_by.length === 0;
+       if (candidate.startButton) candidate.startButton.disabled = !candidate.prerequisites_met;
+       if (candidate.prerequisites_met && candidate.prerequisiteNote) candidate.prerequisiteNote.remove();
+      });
+     }
+     break;
+    }
+   }
+   if (!finished) status.textContent = "تمرین هنوز در حال اجراست. شناسه کار برای پیگیری: " + taskId;
+  } catch (error) {
+   status.textContent = "تمرین عملی در دسترس نیست: " + error.message;
+  } finally {
+   submit.disabled = false;
+  }
+ });
+ section.append(form);
+ output.append(section);
+}
+ 
 function renderLessonResult(output, job, path, topic) {
  output.replaceChildren();
+ output.dataset.learningJobId = String(job.id);
  if (job.quality && topic.row) {
   const scoreField = topic.row.querySelector(".path-topic-score");
   if (scoreField) scoreField.textContent = "امتیاز کیفیت درس: " + job.quality.score + " از 100 (خودکار)";
@@ -113,8 +218,20 @@ function renderLessonResult(output, job, path, topic) {
  }
 
  const qualityNote = document.createElement("p");
- qualityNote.textContent = "امتیاز کیفیت خودکار درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
+ qualityNote.textContent = "امتیاز کیفیت ساختاری درس: " + (job.quality ? job.quality.score : "نامشخص") + " از 100. این امتیاز کیفیت محتوا را می‌سنجد، نه میزان یادگیری شما.";
  output.append(qualityNote);
+ const evidenceGate = job.quality && job.quality.scientific_acceptance;
+ if (evidenceGate) {
+  const evidenceNote = document.createElement("p");
+  evidenceNote.setAttribute("role", "status");
+  if (evidenceGate.accepted) {
+   evidenceNote.textContent = "دروازه خودکار شواهد عبور کرد؛ این نتیجه اثبات مستقل صحت علمی نیست.";
+  } else {
+   evidenceNote.textContent = "دروازه شواهد عبور نکرده است؛ درس به‌عنوان محتوای تأییدشده علمی تلقی نشود. شروط ناموفق: " +
+    (evidenceGate.failed_gates || []).join("، ");
+  }
+  output.append(evidenceNote);
+ }
  addRegenerateButton(output, path, topic);
  const lesson = document.createElement("p");
  lesson.textContent = job.lesson || "متن درس در پاسخ موجود نیست.";
@@ -249,9 +366,15 @@ function renderLessonResult(output, job, path, topic) {
  heading.textContent = "آزمون درس";
  form.append(heading);
  const fields = [];
+ const questionTypeLabels = {
+  recall: "بازیابی",
+  explanation: "توضیح علت‌ومعلول",
+  transfer: "کاربرد و انتقال آموخته‌ها"
+ };
  assessment.questions.forEach((question, index) => {
   const label = document.createElement("label");
-  label.textContent = (index + 1) + ". " + question;
+  const questionType = Array.isArray(assessment.question_types) ? assessment.question_types[index] : null;
+  label.textContent = (index + 1) + (questionType && questionTypeLabels[questionType] ? " [" + questionTypeLabels[questionType] + "] " : ". ") + question;
   const answer = document.createElement("textarea");
   answer.setAttribute("aria-label", "پاسخ سؤال " + (index + 1) + ": " + question);
   answer.required = true;
@@ -276,8 +399,12 @@ function renderLessonResult(output, job, path, topic) {
  const semanticReviewResult = document.createElement("p");
  semanticReviewResult.setAttribute("role", "status");
  form.append(semanticReviewButton, semanticReviewResult);
- let latestAttemptId = Array.isArray(job.assessment_attempts) && job.assessment_attempts.length
-  ? job.assessment_attempts[0].id : null;
+ const quizAttempts = Array.isArray(job.quiz_assessment_attempts)
+  ? job.quiz_assessment_attempts
+  : (Array.isArray(job.assessment_attempts) ? job.assessment_attempts : []).filter(
+   attempt => attempt.scoring_method !== "sandbox_practical_v1"
+  );
+ let latestAttemptId = quizAttempts.length ? quizAttempts[0].id : null;
  semanticReviewButton.hidden = !latestAttemptId;
  semanticReviewResult.textContent = latestAttemptId
   ? "برای آخرین تلاش آزمون می‌توانید بازبینی ذخیره‌شده را ببینید یا بازبینی کمکی تازه‌ای ایجاد کنید."
@@ -335,17 +462,32 @@ function renderLessonResult(output, job, path, topic) {
    semanticReviewButton.hidden = false;
    semanticReviewResult.textContent = "آزمون ثبت شد. بازبینی معنایی اختیاری است و نمره قطعی را تغییر نمی‌دهد.";
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
-    outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
-    outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
-   result.textContent += " این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود.";
+    outcome.correct_count + " پاسخ با پوشش کافی از " + outcome.question_count + "). " +
+    outcome.note;
+   if (outcome.mastery_achieved) {
+    topic.status = "completed";
+    topic.statusSelect.value = "completed";
+    path.topics.forEach(candidate => {
+     candidate.blocked_by = (candidate.blocked_by || []).filter(item => item.id !== topic.id);
+     candidate.prerequisites_met = candidate.blocked_by.length === 0;
+     if (candidate.startButton) candidate.startButton.disabled = !candidate.prerequisites_met;
+     if (candidate.prerequisites_met && candidate.prerequisiteNote) candidate.prerequisiteNote.remove();
+    });
+    result.textContent += " آستانه تسلط " + outcome.mastery_threshold + "٪ کسب شد؛ تکمیل سرفصل به‌صورت خودکار ثبت شد.";
+   } else if (job.path_topic_id) {
+    topic.statusSelect.value = "in_progress";
+    result.textContent += " برای تکمیل خودکار سرفصل، در آزمون rubric دست‌کم " + outcome.mastery_threshold + "٪ لازم است.";
+   }
+   result.textContent += " امتیاز کیفیت درس جداگانه محاسبه می‌شود و با نمره یادگیری یکی نیست."
   } catch (error) {
    result.textContent = "خطا در ثبت آزمون: " + error.message;
    submit.disabled = false;
   }
  });
  output.append(form);
+ addPracticalExerciseForm(output, job, path, topic);
  const caveat = document.createElement("p");
- caveat.textContent = "این آزمون بر اساس تطبیق متنی پاسخ‌ها نمره می‌دهد و تأیید علمی مستقل یا فهم معنایی را اثبات نمی‌کند.";
+ caveat.textContent = "آزمون درس‌های جدید بر اساس پوشش واژه‌ای مفاهیم rubric نمره می‌دهد؛ این روش پاسخ‌های هم‌معنا را بهتر می‌پذیرد، اما به‌تنهایی فهم معنایی مستقل یا صحت علمی را اثبات نمی‌کند."
  output.append(caveat);
 }
 
@@ -408,12 +550,19 @@ async function loadLearningCurricula() {
  } catch (error) { learningEl("paths-output").textContent = error.message; }
 }
 
-async function loadLearningPaths() {
+let learningPathsPage=1;
+async function loadLearningPaths(page=learningPathsPage) {
+ learningPathsPage=Math.max(1,Number(page)||1);
  try {
-  const data = await learningApi("/api/learning/paths");
+  const data = await learningApi("/api/learning/paths?page="+learningPathsPage+"&page_size=25");
+  const p=data.pagination||{page:learningPathsPage,has_previous:learningPathsPage>1,has_next:false,total:(data.paths||[]).length,pages:1};
+  learningPathsPage=p.page;
+  if(learningEl("learning-path-page-prev")) learningEl("learning-path-page-prev").disabled=!p.has_previous;
+  if(learningEl("learning-path-page-next")) learningEl("learning-path-page-next").disabled=!p.has_next;
+  if(learningEl("learning-path-page-status")) learningEl("learning-path-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
   const container = learningEl("paths-container");
   container.replaceChildren();
-  learningEl("paths-output").textContent = "تعداد مسیرهای ثبت‌شده: " + data.paths.length;
+  learningEl("paths-output").textContent = "تعداد کل مسیرهای ثبت‌شده: " + p.total;
   data.paths.forEach(path => {
    const pathCard = document.createElement("div");
    pathCard.className = "path-card";
@@ -505,7 +654,7 @@ async function loadLearningPaths() {
    bulkControls.className = "path-bulk-controls";
    const startAll = document.createElement("button");
    startAll.type = "button";
-   startAll.textContent = "شروع یادگیری همه درس‌ها";
+   startAll.textContent = "شروع درس بعدیِ مجاز";
    const stopAll = document.createElement("button");
    stopAll.type = "button";
    stopAll.textContent = "توقف یادگیری همه درس‌ها";
@@ -521,9 +670,10 @@ async function loadLearningPaths() {
      bulkOutput.textContent = result.message + " تعداد افزوده‌شده: " + result.queued_count +
       "؛ از قبل فعال: " + result.skipped_active_count +
       "؛ درس‌های قبلاً تولیدشده و حفظ‌شده: " + result.skipped_existing_lesson_count +
-      "؛ مسیرهای تکمیل‌شده: " + result.skipped_completed_count + ".";
+      "؛ مسیرهای تکمیل‌شده: " + result.skipped_completed_count +
+      "؛ درس‌های مسدود به‌علت پیش‌نیاز: " + (result.skipped_prerequisite_count || 0) + ".";
      path.topics.forEach(topic => {
-      if (topic.status !== "completed") topic.statusSelect.value = "in_progress";
+      if (topic.prerequisites_met && topic.status !== "completed") topic.statusSelect.value = "in_progress";
      });
     } catch (error) {
      bulkOutput.textContent = "خطا در شروع گروهی: " + error.message;
@@ -562,6 +712,7 @@ async function loadLearningPaths() {
      const option = document.createElement("option");
      option.value = value;
      option.textContent = title;
+     if (value === "completed" && topic.status !== "completed") option.disabled = true;
      status.append(option);
     });
     status.value = topic.status;
@@ -590,6 +741,15 @@ async function loadLearningPaths() {
     const start = document.createElement("button");
     start.type = "button";
     start.textContent = "شروع / ادامه درس";
+    start.disabled = Array.isArray(topic.blocked_by) && topic.blocked_by.length > 0;
+    topic.startButton = start;
+    if (start.disabled) {
+     const prerequisiteNote = document.createElement("p");
+     prerequisiteNote.className = "path-topic-prerequisites";
+     prerequisiteNote.textContent = "ابتدا این سرفصل‌ها را تکمیل کنید: " + topic.blocked_by.map(item => item.topic).join("، ");
+     topic.prerequisiteNote = prerequisiteNote;
+     row.append(prerequisiteNote);
+    }
     const stop = document.createElement("button");
     stop.type = "button";
     stop.textContent = "توقف درس";
@@ -650,7 +810,9 @@ document.addEventListener("DOMContentLoaded", () => {
    await loadLearningPaths();
   } catch (error) { learningEl("paths-output").textContent = error.message; }
  });
- learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
+ learningEl("refresh-paths").addEventListener("click",()=>loadLearningPaths(learningPathsPage));
+ learningEl("learning-path-page-prev")?.addEventListener("click",()=>loadLearningPaths(learningPathsPage-1));
+ learningEl("learning-path-page-next")?.addEventListener("click",()=>loadLearningPaths(learningPathsPage+1));
  learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
  learningEl("refresh-learning-recommendations").addEventListener("click", refreshLearningRecommendations);
  loadLearningCurricula();

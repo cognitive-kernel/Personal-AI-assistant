@@ -29,6 +29,8 @@ def _make_review_fixture(tmp_path, monkeypatch):
             ).lastrowid
         )
 
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_path_topics SET status='completed' WHERE id=?", (topic_a_id,))
     previous = learning.create_job("Topic A", path_topic_id=topic_a_id)
     with db.learning_connection() as conn:
         conn.execute(
@@ -59,14 +61,17 @@ def test_regeneration_uses_only_latest_review_for_same_topic(tmp_path, monkeypat
     monkeypatch.setattr(learning, "_enqueue_learning_job", lambda _job_id: {})
 
     regenerated_a = learning.regenerate_topic_learning(path_id, topic_a_id)
+    # This fixture focuses on review context; explicitly simulate mastery so Topic B's prerequisite is satisfied.
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_path_topics SET status='completed' WHERE id=?", (topic_a_id,))
     regenerated_b = learning.regenerate_topic_learning(path_id, topic_b_id)
     captured_prompts = []
 
-    def capture_prompt_then_stop(_path, payload, **_kwargs):
-        captured_prompts.append(json.loads(payload["messages"][-1]["content"]))
+    def capture_prompt_then_stop(message, history=None, system_prompt=None, **_kwargs):
+        captured_prompts.append(json.loads(message))
         raise RuntimeError("Stop after capturing the generation prompt")
 
-    monkeypatch.setattr(learning, "_request", capture_prompt_then_stop)
+    monkeypatch.setattr(learning.model_runtime, "chat", capture_prompt_then_stop)
     for job in (regenerated_a, regenerated_b):
         with pytest.raises(learning.LearningError, match="Learning job"):
             learning.run_job(job["id"])

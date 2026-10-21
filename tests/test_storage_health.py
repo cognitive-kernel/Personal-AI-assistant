@@ -82,9 +82,8 @@ def test_general_health_does_not_disclose_database_filesystem_paths(tmp_path, mo
 def test_local_dashboard_exposes_read_only_storage_health_panel():
     from pathlib import Path
 
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "storage-health.html").read_text(encoding="utf-8")
     assert 'id="storage-health-section"' in page
     assert 'id="refresh-storage-health"' in page
     assert 'id="storage-health-output"' in page

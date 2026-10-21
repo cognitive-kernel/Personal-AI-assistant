@@ -11,6 +11,7 @@ from . import cloud_resource_planner, cloud_resources
 from .kaggle_quota_client import KaggleQuotaClientError, fetch_quota_snapshot
 from .oci_quota_client import OciQuotaClientError, fetch_service_limits
 from .task_routes import require_loopback_client
+from .pagination import metadata as pagination_metadata
 
 router = APIRouter(
     prefix="/api/cloud-resources",
@@ -21,16 +22,22 @@ router = APIRouter(
 
 @router.get("")
 def list_cloud_resources(
-    limit: int = Query(default=100, ge=1, le=500),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=500),
 ) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
     try:
+        candidates = cloud_resources.list_candidates(limit=size + 1, offset=(page - 1) * size)
+        has_next = len(candidates) > size
         return {
             "latest_run": cloud_resources.latest_discovery_run(),
-            "candidates": cloud_resources.list_candidates(limit=limit),
+            "candidates": candidates[:size],
+            "pagination": {"page": page, "page_size": size, "total": None, "pages": None,
+                           "has_previous": page > 1, "has_next": has_next},
         }
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Cloud resource discovery storage is unavailable.") from exc
-
 
 @router.post("/discover", status_code=status.HTTP_202_ACCEPTED)
 def request_cloud_discovery() -> dict[str, Any]:

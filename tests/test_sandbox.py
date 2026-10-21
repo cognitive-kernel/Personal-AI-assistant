@@ -12,11 +12,13 @@ IMAGE = "python:3.12-slim@sha256:" + "a" * 64
 
 
 class FakeProcess:
-    def __init__(self, args, *, stdout=b"hello\n", stderr=b"", returncode=0):
+    def __init__(self, args, *, stdout=b"hello\n", stderr=b"", returncode=0, stdin=None):
         self.args = args
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
         self.returncode = returncode
+        self.stdin = stdin
+        self.stdin = stdin
         self.terminated = False
         self.killed = False
 
@@ -66,6 +68,7 @@ def test_sandbox_runs_only_digest_pinned_python_in_no_network_container(tmp_path
     assert len(calls) == 1
     args, kwargs, _ = calls[0]
     assert args[:2] == [str(executable), "run"]
+    assert "--interactive" not in args
     assert "--pull=never" in args
     assert "--network=none" in args
     assert "--read-only" in args
@@ -444,3 +447,50 @@ def test_workspace_tests_report_failure_without_host_fallback(tmp_path, monkeypa
     assert result.exit_code == 1
     assert result.stdout == "1 failed"
     assert result.stderr == "assertion failed"
+
+
+def test_sandbox_passes_bounded_stdin_only_when_requested(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    captured = {}
+
+    class FakeInput:
+        def __init__(self):
+            self.data = bytearray()
+            self.closed = False
+        def write(self, value):
+            self.data.extend(value)
+        def close(self):
+            self.closed = True
+
+    pipe = FakeInput()
+
+    def fake_popen(args, **kwargs):
+        captured["kwargs"] = kwargs
+        captured["args"] = args
+        captured["pipe"] = pipe
+        return FakeProcess(args, stdout=b"5\n", stdin=pipe)
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    result = sandbox.run_python(
+        "print(1)",
+        docker_executable=executable,
+        image=IMAGE,
+        stdin_text='{"values":[2,3]}',
+    )
+
+    assert result.status == "succeeded"
+    assert captured["kwargs"]["stdin"] == subprocess.PIPE
+    assert "--interactive" in captured["args"]
+    assert bytes(pipe.data) == b'{"values":[2,3]}'
+    assert pipe.closed
+
+
+@pytest.mark.parametrize("stdin_text", ["x" * 4097, "bad\x00input"])
+def test_sandbox_rejects_invalid_or_oversized_stdin(stdin_text):
+    with pytest.raises(ValueError, match="stdin_text"):
+        sandbox.run_python(
+            "print(1)",
+            docker_executable="/not-used",
+            image=IMAGE,
+            stdin_text=stdin_text,
+        )

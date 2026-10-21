@@ -443,7 +443,10 @@ def test_list_candidates_prioritizes_official_references_before_newer_articles(
     assert candidates[0]["source_classification"] == "recognized_provider_domain"
     assert candidates[1]["source_authority"] == "unverified_domain"
     assert candidates[1]["source_classification"] == "likely_intermediary_article"
-    assert cloud_resources.list_candidates(limit=1)[0]["provider_domain"] == "docs.oracle.com"
+    # Page boundaries are applied after SQL filters relevance, deduplicates, and ranks.
+    assert cloud_resources.list_candidates(limit=1, offset=0)[0]["provider_domain"] == "docs.oracle.com"
+    assert cloud_resources.list_candidates(limit=1, offset=1)[0]["provider_domain"] == "agentdeals.dev"
+    assert cloud_resources.list_candidates(limit=1, offset=2) == []
 
 
 def test_list_candidates_deduplicates_urls_with_tracking_and_www_variants(

@@ -1,0 +1,12 @@
+<section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
+<p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
+<div class="cloud-form-grid">
+<label>حداقل تعداد CPU<input id="plan-min-cpu" type="number" min="0" max="256" step="1" value="1"></label>
+<label>حداقل حافظه (GiB)<input id="plan-min-memory" type="number" min="0" max="1048576" step="0.5" value="0"></label>
+<label><input id="plan-require-gpu" type="checkbox" style="width:auto"> نیاز به GPU دارم</label>
+<label>مدل‌های GPU مجاز (با ویرگول جدا کنید)<input id="plan-gpu-models" type="text" maxlength="1000" placeholder="NVIDIA A10, NVIDIA T4" aria-label="NVIDIA A10, NVIDIA T4"></label>
+<label>دامنه‌های ارائه‌دهندهٔ مجاز (با ویرگول جدا کنید)<input id="plan-provider-domains" type="text" maxlength="2000" placeholder="compute.example.org" aria-label="compute.example.org"></label>
+</div>
+<div class="cloud-actions"><button id="cloud-plan-run" type="button">ساخت برنامهٔ انتخاب</button></div>
+<pre id="cloud-plan-output">برای ساخت برنامه، نیازهای منابع را وارد کنید.</pre>
+</section>

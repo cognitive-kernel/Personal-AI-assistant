@@ -1,13 +1,14 @@
 from __future__ import annotations
 import ipaddress
+import os
 import logging
 from pathlib import Path
 from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, model_runtime, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -18,7 +19,9 @@ from .sandbox_routes import router as sandbox_router
 from .experience_routes import router as experience_router
 from .research_routes import router as research_router
 from .self_improvement_routes import router as self_improvement_router
+from .learning_practical_routes import router as learning_practical_router
 from .schema_migrations import UntrackedSchemaError
+from .pagination import metadata as pagination_metadata
 
 app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
 
@@ -28,14 +31,15 @@ app.include_router(sandbox_router)
 app.include_router(experience_router)
 app.include_router(research_router)
 app.include_router(self_improvement_router)
+app.include_router(learning_practical_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
 
 # توضیح فارسی برای 404ها؛ این لاگ‌ها علت احتمالی را مشخص می‌کنند و جایگزین رفع خطای واقعی نیستند.
 _KNOWN_404_EXPLANATIONS = {
-    "/learning/status": "مسیر وضعیت یادگیری در نسخه فعلی تعریف نشده است؛ نسخه جدید برنامه را دریافت و سرور را دوباره اجرا کنید.",
-    "/learning/active": "مسیر کارهای فعال یادگیری در نسخه فعلی تعریف نشده است؛ نسخه جدید برنامه را دریافت و سرور را دوباره اجرا کنید.",
+    "/learning/status": "مسیر وضعیت یادگیری قدیمی است؛ از API وضعیت فعلی یادگیری استفاده کنید.",
+    "/learning/active": "مسیر کارهای فعال یادگیری قدیمی است؛ از API وضعیت فعلی یادگیری استفاده کنید.",
     "/scheduler/status": "مسیر وضعیت زمان‌بند تعریف نشده است؛ ممکن است زمان‌بندی خودکار هنوز پیاده‌سازی نشده باشد.",
     "/.well-known/appspecific/com.chrome.devtools.json": "درخواست خودکار Chrome DevTools است؛ معمولاً برای عملکرد برنامه ضروری نیست و می‌توان آن را نادیده گرفت.",
 }
@@ -62,7 +66,7 @@ async def report_storage_schema_block(request, call_next):
     """Keep the local dashboard available when a legacy DB needs reviewed recovery."""
     if _startup_storage_error and request.url.path not in {
         "/", "/api/health", "/openapi.json", "/docs", "/redoc"
-    } and not request.url.path.startswith("/static/"):
+    } and not request.url.path.startswith(("/static/", "/sections/")):
         return JSONResponse(
             status_code=503,
             content={
@@ -111,6 +115,26 @@ async def enforce_loopback_only(request, call_next):
 
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+# Each dashboard area has a stable, directly addressable page URL. The server
+# keeps the shared shell and scripts but injects only the selected section template;
+# the root route is a lightweight overview rather than a page containing every form.
+DASHBOARD_SECTIONS: dict[str, str] = {
+    "storage-health": "storage-health-section",
+    "chat": "chat-section",
+    "learning": "learning-section",
+    "learning-paths": "learning-paths-section",
+    "knowledge": "knowledge-section",
+    "tasks": "task-manager-section",
+    "experience-memory": "experience-memory-section",
+    "cloud-resources": "cloud-resources-section",
+    "cloud-plan": "cloud-plan-section",
+    "kaggle-quota": "kaggle-quota-section",
+    "oci-limits": "oci-limits-section",
+    "sandbox": "sandbox-section",
+    "self-improvement": "self-improvement-section",
+    "settings": "settings-section",
+}
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 _task_runtime: TaskRuntime | None = None
@@ -178,9 +202,109 @@ def shutdown() -> None:
     if _task_runtime is not None and not _task_runtime.stop(timeout=10.0):
         logger.warning("Task runtime did not stop before the shutdown deadline.")
 
+def _render_dashboard_page(slug: str | None = None) -> str:
+    """Render the navigation shell plus one independently stored dashboard page."""
+    import html
+    import re
+
+    source = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    main_start = source.find('<main id="main-content"')
+    main_end = source.find("</main>", main_start)
+    if main_start < 0 or main_end < 0:
+        raise RuntimeError("ساختار HTML داشبورد معتبر نیست.")
+    main_end += len("</main>")
+    main = source[main_start:main_end]
+    page_title: str | None = None
+
+    if slug is None:
+        overview = (
+            '<section id="dashboard-overview"><h2>نمای کلی</h2>'
+            '<p class="muted">هر قابلیت در صفحهٔ مستقل خود قرار دارد. برای جلوگیری از شلوغی، '
+            'اطلاعات و فرم‌های هر بخش فقط پس از ورود به صفحهٔ همان بخش بارگذاری می‌شوند.</p>'
+            '<ul class="dashboard-overview-links">'
+            + "".join(
+                f'<li><a href="/sections/{key}">{label}</a></li>'
+                for key, label in (
+                    ("storage-health", "سلامت و پشتیبان"),
+                    ("chat", "گفتگو و پژوهش"),
+                    ("learning", "یادگیری و بررسی شواهد"),
+                    ("learning-paths", "مسیرهای آموزشی"),
+                    ("knowledge", "دانش ذخیره‌شده"),
+                    ("tasks", "مدیریت وظایف"),
+                    ("experience-memory", "حافظهٔ تجربه"),
+                    ("cloud-resources", "منابع پردازشی"),
+                    ("cloud-plan", "برنامه‌ریزی منابع"),
+                    ("kaggle-quota", "سهمیهٔ Kaggle"),
+                    ("oci-limits", "محدودیت‌های OCI"),
+                    ("sandbox", "محیط آزمایش ایزوله"),
+                    ("self-improvement", "بهبود کد"),
+                    ("settings", "تنظیمات"),
+                )
+            )
+            + "</ul></section>"
+        )
+        main = main.replace("</header>", "</header>" + overview, 1)
+    else:
+        if slug not in DASHBOARD_SECTIONS:
+            raise HTTPException(status_code=404, detail="بخش داشبورد پیدا نشد.")
+        sections_dir = Path(__file__).resolve().parent / "dashboard_sections"
+        try:
+            section_html = (sections_dir / f"{slug}.html").read_text(encoding="utf-8")
+            if slug == "learning":
+                section_html += "\n" + (sections_dir / "learning-evidence.html").read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.exception("Dashboard section template is missing: %s", slug)
+            raise RuntimeError(f"قالب صفحهٔ داشبورد پیدا نشد: {slug}") from exc
+
+        banner_start = main.find('id="storage-degraded-banner"')
+        script_start = main.find("<script>", banner_start)
+        if banner_start < 0 or script_start < 0:
+            raise RuntimeError("محل درج صفحهٔ مستقل در قالب داشبورد پیدا نشد.")
+        main = main[:script_start] + section_html + "\n" + main[script_start:]
+        page_titles = {
+            "storage-health": "سلامت ذخیره‌سازی",
+            "chat": "گفتگو و پژوهش",
+            "learning": "یادگیری و بررسی شواهد",
+            "learning-paths": "مسیرهای آموزشی",
+            "knowledge": "دانش ذخیره‌شده",
+            "tasks": "مدیریت وظایف",
+            "experience-memory": "حافظهٔ تجربه",
+            "cloud-resources": "منابع پردازشی",
+            "cloud-plan": "برنامه‌ریزی منابع",
+            "kaggle-quota": "سهمیهٔ Kaggle",
+            "oci-limits": "محدودیت‌های OCI",
+            "sandbox": "محیط آزمایش ایزوله",
+            "self-improvement": "بهبود کد",
+            "settings": "تنظیمات",
+        }
+        page_title = html.escape(page_titles[slug])
+
+    rendered = source[:main_start] + main + source[main_end:]
+    if slug is not None:
+        page_attributes = f' data-section-page="{slug}" data-section-id="{DASHBOARD_SECTIONS[slug]}"'
+        rendered = rendered.replace(
+            '<html lang="fa" dir="rtl">',
+            '<html lang="fa" dir="rtl"' + page_attributes + '>', 1,
+        )
+        rendered = re.sub(
+            r"<title>.*?</title>",
+            f"<title>{page_title} — دستیار هوش مصنوعی شخصی</title>",
+            rendered, count=1, flags=re.DOTALL,
+        )
+    return rendered
+
+
 @app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+def index() -> HTMLResponse:
+    return HTMLResponse(_render_dashboard_page())
+
+
+@app.get("/sections/{slug}", include_in_schema=False)
+def dashboard_section(slug: str) -> HTMLResponse:
+    """Serve a genuinely separate HTML page containing only its requested section."""
+    if slug not in DASHBOARD_SECTIONS:
+        raise HTTPException(status_code=404, detail="بخش داشبورد پیدا نشد.")
+    return HTMLResponse(_render_dashboard_page(slug))
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
@@ -192,9 +316,20 @@ class SettingsPatch(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+    source_url: str | None = Field(default=None, max_length=2048)
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
+
+class KnowledgeApplicationFeedbackRequest(BaseModel):
+    outcome: str = Field(pattern="^(worked|failed|partial|not_tested)$")
+    application_context: str = Field(min_length=1, max_length=3000)
+    observed_output: str = Field(default="", max_length=12000)
+    test_steps: str = Field(default="", max_length=6000)
+
+
+class HumanKnowledgeVerificationRequest(BaseModel):
+    rationale: str = Field(min_length=1, max_length=2000)
 
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
@@ -274,12 +409,13 @@ def models() -> dict[str, Any]:
 def chat(request: ChatRequest) -> dict[str, str]:
     try:
         return {"reply": chat_research.answer(request.message, request.history)}
-    except ollama.OllamaError as exc:
+    except (ollama.OllamaError, model_runtime.ModelRuntimeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 @app.get("/api/settings")
 def get_settings() -> dict[str, Any]:
-    return db.get_settings()
+    settings = db.get_settings()
+    return {**settings, **model_runtime.effective_model_configuration(settings)}
 
 @app.patch("/api/settings")
 def patch_settings(request: SettingsPatch) -> dict[str, Any]:
@@ -300,8 +436,20 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
     if "ollama_model" in values and (not isinstance(values["ollama_model"], str) or not values["ollama_model"].strip() or len(values["ollama_model"]) > 200):
         raise HTTPException(status_code=422, detail="ollama_model must be a non-empty string of at most 200 characters.")
+    if "model_profiles" in values or "task_model_assignments" in values:
+        current = db.get_settings()
+        effective = model_runtime.effective_model_configuration(current)
+        profiles = values.get("model_profiles", effective["model_profiles"])
+        assignments = values.get("task_model_assignments", effective["task_model_assignments"])
+        try:
+            profiles, assignments = model_runtime.validate_model_configuration(profiles, assignments)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        values["model_profiles"] = profiles
+        values["task_model_assignments"] = assignments
     try:
-        return db.update_settings(values)
+        saved = db.update_settings(values)
+        return {**saved, **model_runtime.effective_model_configuration(saved)}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -321,13 +469,187 @@ def learning_curriculum(slug: str) -> dict[str, Any]:
 @app.post("/api/learning/jobs", status_code=202)
 def create_learning_job(request: LearningRequest) -> dict[str, Any]:
     try:
-        return learning.submit_job(request.topic, request.source_text)
+        return learning.submit_job(request.topic, request.source_text, source_url=request.source_url)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @app.get("/api/learning/jobs")
-def learning_jobs(limit: int = 50) -> dict[str, Any]:
-    return {"jobs": learning.list_jobs(limit)}
+def learning_jobs(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=200),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
+    with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM learning_jobs").fetchone()[0])
+    jobs = learning.list_jobs(limit=size, offset=(page - 1) * size)
+    return {"jobs": jobs, "pagination": pagination_metadata(page, size, total)}
+
+@app.get("/api/learning/metrics")
+def learning_metrics_summary() -> dict[str, Any]:
+    """Return read-only counts for trust-level, failures, alternatives, and self-correction."""
+    from .learning_metrics import get_learning_metrics
+    return get_learning_metrics()
+
+
+@app.get("/api/learning/candidates")
+def learning_candidates(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=100),
+) -> dict[str, Any]:
+    from .knowledge_review import get_candidate_review_summary
+    size = limit if limit is not None else page_size
+    offset = (page - 1) * size
+    with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM temporary_knowledge_candidates").fetchone()[0])
+        rows = conn.execute(
+            """SELECT id, topic, status, source_kind, trust_level, learning_status,
+                      supersedes_candidate_id, replaced_by_candidate_id, updated_at
+               FROM temporary_knowledge_candidates ORDER BY id DESC LIMIT ? OFFSET ?""",
+            (size, offset),
+        ).fetchall()
+    candidates = []
+    for row in rows:
+        item = dict(row)
+        item["review"] = get_candidate_review_summary(int(row["id"]))
+        candidates.append(item)
+    return {"candidates": candidates, "pagination": pagination_metadata(page, size, total)}
+
+@app.get("/api/learning/candidates/{candidate_id}/review")
+def learning_candidate_review(candidate_id: int) -> dict[str, Any]:
+    """Return evidence, verification methods, contradictions and confidence breakdown."""
+    from .knowledge_review import get_candidate_review_summary
+    try:
+        return get_candidate_review_summary(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+
+
+@app.get("/api/learning/candidates/{candidate_id}/claims")
+def learning_candidate_claim_matrix(candidate_id: int) -> dict[str, Any]:
+    """Return claim-by-claim evidence and verification channels without inferring truth from votes."""
+    from .knowledge_review import build_claim_verification_matrix
+    try:
+        return build_claim_verification_matrix(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/feedback", status_code=201)
+def learning_candidate_feedback(
+    candidate_id: int, request: KnowledgeApplicationFeedbackRequest
+) -> dict[str, Any]:
+    """Record a user's real-world outcome and return the recalculated evidence score."""
+    from .knowledge_review import record_user_application_feedback, get_candidate_review_summary
+    try:
+        record_user_application_feedback(
+            candidate_id,
+            outcome=request.outcome,
+            application_context=request.application_context,
+            observed_output=request.observed_output,
+            test_steps=request.test_steps,
+        )
+        summary = get_candidate_review_summary(candidate_id)
+        auto_correction: dict[str, Any] = {"status": "not_needed"}
+        auto_enabled = os.environ.get("LEARNING_AUTO_SELF_CORRECTION", "true").strip().lower() not in {
+            "0", "false", "no", "off",
+        }
+        if request.outcome == "failed" and auto_enabled:
+            try:
+                from .learning_consensus import start_self_correction
+                auto_correction = start_self_correction(candidate_id)
+                auto_correction["trigger"] = "user_reported_application_failure"
+            except ValueError as exc:
+                # The feedback and downgrade are already durable. A bounded-attempt
+                # refusal should be reported without turning feedback into an API error.
+                auto_correction = {
+                    "status": "not_started",
+                    "reason": "correction_not_eligible_or_lineage_limit_reached",
+                    "detail_type": type(exc).__name__,
+                }
+            except Exception as exc:
+                auto_correction = {"status": "failed", "error_type": type(exc).__name__}
+        elif request.outcome == "failed":
+            auto_correction = {"status": "disabled", "reason": "LEARNING_AUTO_SELF_CORRECTION"}
+        summary["automatic_self_correction"] = auto_correction
+        return summary
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/consensus")
+def learning_candidate_consensus(candidate_id: int) -> dict[str, Any]:
+    from .learning_consensus import evaluate_candidate_consensus
+    try:
+        return evaluate_candidate_consensus(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/self-correct", status_code=201)
+def self_correct_learning_candidate(candidate_id: int) -> dict[str, Any]:
+    from .learning_consensus import start_self_correction
+    try:
+        return start_self_correction(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/human-verify")
+def human_verify_knowledge(candidate_id: int, request: HumanKnowledgeVerificationRequest) -> dict[str, Any]:
+    rationale = request.rationale.strip()
+    if not rationale:
+        raise HTTPException(status_code=422, detail="Human verification rationale is required.")
+    from .db import init_databases
+    init_databases()
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            """SELECT id, job_id, promoted_knowledge_id, trust_level, learning_status
+               FROM temporary_knowledge_candidates WHERE id=?""", (candidate_id,)
+        ).fetchone()
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="Knowledge candidate not found.")
+        if candidate["promoted_knowledge_id"] is None or candidate["learning_status"] != "tested" or candidate["trust_level"] != "L2":
+            raise HTTPException(status_code=409, detail="Only L2 tested knowledge can be explicitly human-verified.")
+        conn.execute(
+            """UPDATE temporary_knowledge_candidates SET trust_level='L3',
+               learning_status='human_verified', updated_at=CURRENT_TIMESTAMP WHERE id=?""", (candidate_id,)
+        )
+        conn.execute(
+            "UPDATE knowledge_items SET trust_level='L3', learning_status='human_verified' WHERE id=?",
+            (candidate["promoted_knowledge_id"],),
+        )
+        conn.execute(
+            """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+               SELECT job_id, 'human_verification', ?, content_sha256, ?
+               FROM temporary_knowledge_candidates WHERE id=?""",
+            (f"knowledge_items:{candidate['promoted_knowledge_id']}", rationale, candidate_id),
+        )
+    return {"candidate_id": candidate_id, "knowledge_id": int(candidate["promoted_knowledge_id"]),
+            "trust_level": "L3", "learning_status": "human_verified",
+            "rationale": rationale, "explicit_human_action": True}
+
+
+@app.post("/api/learning/candidates/{candidate_id}/research")
+def research_learning_candidate(candidate_id: int) -> dict[str, Any]:
+    """Run independent hybrid verification channels and return their evidence ledger."""
+    from .hybrid_learning import run_hybrid_verification
+    try:
+        return run_hybrid_verification(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 # Backward-compatible status endpoints used by older local UI clients.
 @app.get("/learning/status", include_in_schema=False)
@@ -352,8 +674,22 @@ def legacy_learning_status() -> dict[str, Any]:
             "failed": counts.get("failed", 0),
         },
         "knowledge": {"total": knowledge_count, "unverified": unverified_count},
-        "web_learning": "not_implemented",
-        "independent_verification": "not_implemented",
+        "web_learning": {
+            "status": "best_effort_candidate_research",
+            "automatic": True,
+            "limitations": ["retrieved pages remain contextual until claim support is assessed"],
+        },
+        "peer_ai_review": {
+            "status": "configured_endpoints_only",
+            "providers_configured": bool(os.environ.get("PEER_AI_PROVIDERS_JSON", "").strip()),
+            "maximum_providers_per_review": 3,
+        },
+        "independent_verification": {
+            "status": "source_examples_only",
+            "sandbox_configured": bool(os.environ.get("SANDBOX_PYTHON_IMAGE", "").strip()),
+            "scope": "source-authored doctests and restricted fenced Python assertion blocks",
+            "automatic_whole_lesson_promotion": False,
+        },
     }
 
 
@@ -380,19 +716,34 @@ def legacy_scheduler_status() -> dict[str, Any]:
 
 
 @app.get("/api/knowledge")
-def knowledge_items(limit: int = 100) -> dict[str, Any]:
+def knowledge_items(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=300),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
     with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0])
         rows = conn.execute(
-            """SELECT id, topic, content, source_kind, version, status, job_id, created_at
-               FROM knowledge_items ORDER BY id DESC LIMIT ?""",
-            (max(1, min(300, limit)),),
+            """SELECT id, topic, content, source_kind, version, status, trust_level,
+                      learning_status, domain, source_url, raw_content,
+                      predecessor_knowledge_id, replacement_knowledge_id, job_id, created_at
+               FROM knowledge_items ORDER BY id DESC LIMIT ? OFFSET ?""",
+            (size, (page - 1) * size),
         ).fetchall()
-    return {"items": [dict(row) for row in rows]}
+    return {"items": [dict(row) for row in rows], "pagination": pagination_metadata(page, size, total)}
 
 @app.get("/api/learning/paths")
-def learning_paths() -> dict[str, Any]:
-    return {"paths": learning.list_learning_paths()}
-
+def learning_paths(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    limit: int | None = Query(default=None, ge=1, le=100),
+) -> dict[str, Any]:
+    size = limit if limit is not None else page_size
+    with db.learning_connection() as conn:
+        total = int(conn.execute("SELECT COUNT(*) FROM learning_paths").fetchone()[0])
+    paths = learning.list_learning_paths(limit=size, offset=(page - 1) * size)
+    return {"paths": paths, "pagination": pagination_metadata(page, size, total)}
 
 @app.post("/api/learning/paths", status_code=201)
 def enroll_learning_path(request: CurriculumEnrollment) -> dict[str, Any]:

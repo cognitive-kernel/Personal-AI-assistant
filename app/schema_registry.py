@@ -515,6 +515,227 @@ LEARNING_MIGRATIONS = (
                END""",
         ),
     ),
+    Migration(
+        16,
+        "temporary-knowledge-test-promotion-loop",
+        (
+            """CREATE TABLE temporary_knowledge_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL UNIQUE REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                topic TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                source_urls_json TEXT NOT NULL DEFAULT '[]',
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                quality_report_json TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'awaiting_test'
+                    CHECK(status IN ('awaiting_test','passed','failed')),
+                test_plan_json TEXT NOT NULL DEFAULT '[]',
+                test_results_json TEXT NOT NULL DEFAULT '[]',
+                failure_reason TEXT NOT NULL DEFAULT '',
+                promoted_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_temporary_candidates_status ON temporary_knowledge_candidates(status, id DESC)",
+            "CREATE INDEX idx_temporary_candidates_topic ON temporary_knowledge_candidates(topic, id DESC)",
+        ),
+    ),
+    Migration(
+        17,
+        "candidate-research-and-peer-consultation",
+        (
+            """CREATE TABLE knowledge_review_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                evidence_kind TEXT NOT NULL CHECK(evidence_kind IN ('supporting','contradicting','context','application')),
+                source_url TEXT NOT NULL,
+                source_title TEXT NOT NULL DEFAULT '',
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                excerpt TEXT NOT NULL,
+                reliability_note TEXT NOT NULL DEFAULT '',
+                fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, source_url, source_sha256)
+            )""",
+            """CREATE TABLE knowledge_peer_consultations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL,
+                response TEXT NOT NULL,
+                claims_json TEXT NOT NULL DEFAULT '[]',
+                citations_json TEXT NOT NULL DEFAULT '[]',
+                stance TEXT NOT NULL DEFAULT 'mixed'
+                    CHECK(stance IN ('supports','contradicts','mixed','insufficient_evidence')),
+                independence_note TEXT NOT NULL DEFAULT '',
+                response_sha256 TEXT NOT NULL CHECK(length(response_sha256) = 64),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, provider, model_name, response_sha256)
+            )""",
+            "CREATE INDEX idx_review_evidence_candidate ON knowledge_review_evidence(candidate_id, evidence_kind, id)",
+            "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
+        ),
+    ),
+    Migration(
+        18,
+        "knowledge-user-application-feedback",
+        (
+            """CREATE TABLE knowledge_user_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                outcome TEXT NOT NULL CHECK(outcome IN ('worked','failed','partial','not_tested')),
+                application_context TEXT NOT NULL,
+                observed_output TEXT NOT NULL DEFAULT '',
+                output_sha256 TEXT NOT NULL DEFAULT '',
+                test_steps TEXT NOT NULL DEFAULT '',
+                reporter_kind TEXT NOT NULL DEFAULT 'user'
+                    CHECK(reporter_kind IN ('user','automated_system')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_user_feedback_candidate ON knowledge_user_feedback(candidate_id, outcome, id)",
+        ),
+    ),
+    Migration(
+        19,
+        "scoped-knowledge-test-run-history",
+        (
+            """CREATE TABLE knowledge_test_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                suite_name TEXT NOT NULL,
+                suite_version TEXT NOT NULL,
+                suite_sha256 TEXT NOT NULL CHECK(length(suite_sha256) = 64),
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                oracle_url TEXT NOT NULL DEFAULT '',
+                runner_name TEXT NOT NULL,
+                run_status TEXT NOT NULL CHECK(run_status IN ('passed','failed','unavailable','no_examples','missing_source_oracle')),
+                expected_json TEXT NOT NULL DEFAULT '{}',
+                actual_json TEXT NOT NULL DEFAULT '{}',
+                duration_ms INTEGER NOT NULL DEFAULT 0 CHECK(duration_ms >= 0),
+                details TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_test_runs_candidate ON knowledge_test_runs(candidate_id, run_status, id)",
+        ),
+    ),
+    Migration(
+        20,
+        "hybrid-learning-channel-attempt-history",
+        (
+            """CREATE TABLE knowledge_review_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                channel TEXT NOT NULL CHECK(channel IN ('web_research','peer_ai','sandbox')),
+                status TEXT NOT NULL CHECK(status IN ('completed','unavailable','unconfigured','failed','no_examples','sandbox_unconfigured')),
+                provider TEXT NOT NULL DEFAULT '',
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)",
+        ),
+    ),
+    Migration(
+        21,
+        "roadmap-trust-consensus-and-self-correction",
+        (
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'L0' CHECK(trust_level IN ('L0','L1','L2','L3','L-1'))",
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN learning_status TEXT NOT NULL DEFAULT 'unverified' CHECK(learning_status IN ('unverified','model_consensus','tested','human_verified','failed','conflicting','superseded'))",
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN supersedes_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL",
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN replaced_by_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL",
+            "ALTER TABLE knowledge_items ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'L0' CHECK(trust_level IN ('L0','L1','L2','L3','L-1'))",
+            "ALTER TABLE knowledge_items ADD COLUMN learning_status TEXT NOT NULL DEFAULT 'unverified' CHECK(learning_status IN ('unverified','model_consensus','tested','human_verified','failed','conflicting','superseded'))",
+            "ALTER TABLE knowledge_items ADD COLUMN domain TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE knowledge_items ADD COLUMN source_url TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE knowledge_items ADD COLUMN raw_content TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE knowledge_items ADD COLUMN predecessor_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL",
+            "ALTER TABLE knowledge_items ADD COLUMN replacement_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL",
+            """CREATE TABLE knowledge_consensus_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                candidate_sha256 TEXT NOT NULL CHECK(length(candidate_sha256) = 64),
+                prompt_version TEXT NOT NULL,
+                models_used_json TEXT NOT NULL,
+                votes_json TEXT NOT NULL,
+                supporting_count INTEGER NOT NULL CHECK(supporting_count >= 0),
+                contradicting_count INTEGER NOT NULL CHECK(contradicting_count >= 0),
+                uncertain_count INTEGER NOT NULL CHECK(uncertain_count >= 0),
+                consensus_score REAL NOT NULL CHECK(consensus_score >= 0 AND consensus_score <= 1),
+                source_present INTEGER NOT NULL CHECK(source_present IN (0,1)),
+                outcome TEXT NOT NULL CHECK(outcome IN ('model_consensus','conflicting','insufficient_evidence')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_consensus_candidate ON knowledge_consensus_records(candidate_id, id DESC)",
+            """CREATE TABLE knowledge_self_correction_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE RESTRICT,
+                candidate_sha256 TEXT NOT NULL CHECK(length(candidate_sha256) = 64),
+                attempt_no INTEGER NOT NULL CHECK(attempt_no BETWEEN 1 AND 3),
+                prompt_version TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                response TEXT NOT NULL DEFAULT '',
+                alternative_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL,
+                status TEXT NOT NULL CHECK(status IN ('started','alternative_created','failed','resolved','exhausted')),
+                failure_reason TEXT NOT NULL DEFAULT '',
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, attempt_no)
+            )""",
+            "CREATE INDEX idx_knowledge_self_correction_candidate ON knowledge_self_correction_attempts(candidate_id, id DESC)",
+        ),
+    ),
+    Migration(
+        22,
+        "learning-experience-typed-outcomes",
+        (
+            "ALTER TABLE learning_experiences ADD COLUMN experience_type TEXT NOT NULL DEFAULT 'general' CHECK(experience_type IN ('general','consensus_failure','test_failure','usage_failure','successful_alternative','improvement'))",
+            "ALTER TABLE learning_experience_versions ADD COLUMN experience_type TEXT NOT NULL DEFAULT 'general' CHECK(experience_type IN ('general','consensus_failure','test_failure','usage_failure','successful_alternative','improvement'))",
+            "UPDATE learning_experiences SET experience_type='consensus_failure' WHERE problem LIKE '%اجماع متناقض%'",
+            "UPDATE learning_experiences SET experience_type='test_failure' WHERE problem LIKE 'آزمون نامزد دانشی %' OR problem LIKE 'self-correction attempt %'",
+            "UPDATE learning_experiences SET experience_type='successful_alternative' WHERE problem LIKE 'successful_alternative:%'",
+            "UPDATE learning_experience_versions SET experience_type='consensus_failure' WHERE problem LIKE '%اجماع متناقض%'",
+            "UPDATE learning_experience_versions SET experience_type='test_failure' WHERE problem LIKE 'آزمون نامزد دانشی %' OR problem LIKE 'self-correction attempt %'",
+            "UPDATE learning_experience_versions SET experience_type='successful_alternative' WHERE problem LIKE 'successful_alternative:%'",
+        ),
+    ),
+    Migration(
+        23,
+        "version-learning-peer-prompts",
+        (
+            "DROP INDEX IF EXISTS idx_peer_consultations_candidate",
+            "ALTER TABLE knowledge_peer_consultations RENAME TO knowledge_peer_consultations_legacy_v22",
+            """CREATE TABLE knowledge_peer_consultations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL,
+                response TEXT NOT NULL,
+                claims_json TEXT NOT NULL DEFAULT '[]',
+                citations_json TEXT NOT NULL DEFAULT '[]',
+                stance TEXT NOT NULL DEFAULT 'mixed'
+                    CHECK(stance IN ('supports','contradicts','mixed','insufficient_evidence')),
+                independence_note TEXT NOT NULL DEFAULT '',
+                response_sha256 TEXT NOT NULL CHECK(length(response_sha256) = 64),
+                prompt_version TEXT NOT NULL DEFAULT 'legacy_unversioned'
+                    CHECK(length(prompt_version) BETWEEN 1 AND 100),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, provider, model_name, response_sha256, prompt_version)
+            )""",
+            """INSERT INTO knowledge_peer_consultations(
+                id, candidate_id, provider, model_name, prompt, response, claims_json,
+                citations_json, stance, independence_note, response_sha256,
+                prompt_version, created_at
+            )
+            SELECT id, candidate_id, provider, model_name, prompt, response, claims_json,
+                   citations_json, stance, independence_note, response_sha256,
+                   'legacy_unversioned', created_at
+            FROM knowledge_peer_consultations_legacy_v22""",
+            "DROP TABLE knowledge_peer_consultations_legacy_v22",
+            "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
+            "CREATE INDEX idx_knowledge_peer_prompt_version ON knowledge_peer_consultations(candidate_id, prompt_version, id DESC)",
+        ),
+    ),
 )
 
 

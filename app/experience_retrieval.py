@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from collections import Counter
 from typing import Any, Sequence
 
-from . import experience_feedback, ollama
-from .db import get_settings, learning_connection
+from . import experience_feedback, model_runtime, ollama
+from .db import learning_connection
 from .experience import list_experiences
 
 _RRF_K = 60
@@ -149,10 +149,8 @@ def _save_embeddings(items: list[dict[str, Any]], vectors: list[list[float]], mo
 def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> list[tuple[int, float]]:
     if not items:
         return []
-    model = str(get_settings().get("ollama_embedding_model", "nomic-embed-text")).strip()
-    if not model:
-        return []
-    query_vectors = ollama.embed(list(variants[:8]), model=model)
+    model = model_runtime.profile_cache_key("embeddings")
+    query_vectors = model_runtime.embed(list(variants[:8]), task_type="embeddings")
     if not query_vectors:
         return []
 
@@ -163,7 +161,7 @@ def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> lis
     ]
     for offset in range(0, len(missing), 32):
         batch = missing[offset:offset + 32]
-        vectors = ollama.embed([_search_text(item)[:6000] for item in batch], model=model)
+        vectors = model_runtime.embed([_search_text(item)[:6000] for item in batch], task_type="embeddings")
         _save_embeddings(batch, vectors, model)
         for item, vector in zip(batch, vectors):
             cached[(int(item["id"]), int(item["version"]))] = vector
@@ -255,7 +253,7 @@ def search_relevant_experiences(
     lexical_ranks = {item_id: rank for rank, (item_id, _) in enumerate(lexical, 1)}
     try:
         vector = _vector_ranking(items, variants)
-    except ollama.OllamaError:
+    except (ollama.OllamaError, model_runtime.ModelRuntimeError):
         vector = []
     vector_ranks = {item_id: rank for rank, (item_id, _) in enumerate(vector, 1)}
     try:

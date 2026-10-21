@@ -71,24 +71,38 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
 
     model_payloads = []
 
-    def fake_model(_path, payload, **_kwargs):
-        model_payloads.append(payload)
-        return {"message": {"content": json.dumps({
+    def fake_model(message, history=None, system_prompt=None, **_kwargs):
+        model_payloads.append(json.loads(message))
+        return json.dumps({
             "lesson": LESSON,
             "learning_outcomes": ["Explain query plans", "Compare index costs", "Measure logical reads"],
             "questions": [
                 "What does an execution plan show?",
                 "Why can an index increase costs?",
-                "How should an index change be evaluated?",
+                "How would you evaluate an index change in a new workload scenario?",
             ],
             "answer_key": [
                 "It shows the operations selected by the database engine.",
                 "Indexes have maintenance costs and depend on data distribution.",
                 "Compare baseline and changed reads on representative data.",
             ],
-        }, ensure_ascii=False)}}
+            "answer_rubric": [
+                {"required_concepts": [
+                    {"concept": "execution plan", "accepted_phrases": ["execution plan", "query plan"]},
+                    {"concept": "execution operations", "accepted_phrases": ["operations", "operators", "execution steps"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "index maintenance costs", "accepted_phrases": ["maintenance costs", "cost of maintaining indexes"]},
+                    {"concept": "data distribution", "accepted_phrases": ["data distribution", "distribution of data"]},
+                ]},
+                {"required_concepts": [
+                    {"concept": "baseline comparison", "accepted_phrases": ["baseline", "before and after"]},
+                    {"concept": "logical reads", "accepted_phrases": ["logical reads", "read counts"]},
+                ]},
+            ],
+        }, ensure_ascii=False)
 
-    monkeypatch.setattr(learning, "_request", fake_model)
+    monkeypatch.setattr(learning.model_runtime, "chat", fake_model)
     review = {
         "passed": passed,
         "overall": "supported" if passed else "insufficient_evidence",
@@ -109,18 +123,47 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     finished = learning.get_job(job["id"])
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
+    # A failed provenance gate must be visible, but should not make an otherwise
+    # usable lesson disappear; scientific acceptance remains a separate status.
+    assert finished["quality"]["scientific_acceptance"]["accepted"] is False
+    assert finished["quality"]["scientific_acceptance"]["lesson_available_for_learning"] is True
+    assert finished["quality"]["scientific_acceptance"]["knowledge_verification_status"] == "unverified"
     assert finished["quality"]["claim_review_status"] == (
         "passed_model_assisted" if passed else "needs_review"
     )
-    assert "exact source URLs" in model_payloads[0]["messages"][-1]["content"]
+    assert "exact source URLs" in model_payloads[0]["instruction"]
     with db.learning_connection() as connection:
         knowledge = connection.execute(
             "SELECT status FROM knowledge_items WHERE job_id=?", (job["id"],)
+        ).fetchone()
+        candidate = connection.execute(
+            "SELECT status, content_sha256 FROM temporary_knowledge_candidates WHERE job_id=?",
+            (job["id"],),
         ).fetchone()
         event = connection.execute(
             "SELECT note FROM learning_evidence WHERE job_id=? AND evidence_type='claim_review'",
             (job["id"],),
         ).fetchone()
-    assert knowledge["status"] == "unverified"
+    assert knowledge is None
+    assert candidate["status"] == "awaiting_test"
+    assert len(candidate["content_sha256"]) == 64
     assert event is not None
     assert "not an independent verification" in event["note"]
+
+
+def test_explicit_source_serialization_is_parseable_by_claim_review():
+    from types import SimpleNamespace
+
+    excerpt = "This source explains query plans and optimizer behavior. " * 4
+    document = SimpleNamespace(
+        title="SQL Guide",
+        url="https://docs.example.org/sql-guide",
+        text=excerpt,
+    )
+    serialized = learning._format_source_document(document)
+    parsed = learning._claim_review_sources(serialized)
+
+    assert len(parsed) == 1
+    assert parsed[0]["title"] == document.title
+    assert parsed[0]["url"] == document.url
+    assert parsed[0]["content"] == excerpt.strip()
