@@ -374,6 +374,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             (f"{prefix}_max_concurrent_jobs", 1, 8),
         ])
     numeric_ranges.extend([
+        ("chat_source_max_chars", 1000, 12000),
         ("learning_source_max_chars", 1000, 100000),
         ("programming_source_max_chars", 1000, 65536),
     ])
