@@ -27,27 +27,26 @@ Each candidate records its HTTPS source URL, hostname, title, SHA-256 of the pag
 - No account creation, credential handling, provisioning, job execution on remote hosts, quota bypass, or provider terms acceptance is implemented here.
 - Durable source metadata and discovery history remain local. The provider catalog is stored in its own versioned database because it has a distinct operational lifecycle and review policy; this is a data-domain boundary, not a separate server requirement.
 
-## Current limitations and next stage
+## Current limitations and remaining work
 
-This is autonomous **discovery**, not autonomous compute provisioning. The first version uses three bounded search templates and records candidate evidence; it does not reliably parse contractual free-tier limits, authenticate providers, reserve capacity, or dispatch jobs. It must not claim a resource is usable merely because a page mentions free compute.
+This is autonomous **discovery and local evidence review**, not autonomous compute provisioning. Discovery uses five bounded search queries, stores source-backed candidates, and applies conservative content filtering. Provider-specific extractors now cover documented Kaggle CLI options and Oracle Cloud Always Free claims; read-only, explicitly consented quota/service-limit clients and local review controls also exist. These features do not establish live capacity, account eligibility, guaranteed zero cost, or permission to run remote jobs.
 
-Next stages:
+Remaining work is evidence and operational validation, not merely adding the already implemented review UI:
 
-1. Parse provider terms, quotas, region, runtime limits, expiry, authentication, and costs into explicit evidence-backed fields.
-2. Add freshness checks and mark stale candidate metadata as unknown.
-3. Add provider-specific adapters only where the provider's public API and terms permit them.
-4. Compare local and provider capabilities, and schedule remote work only after a provider is explicitly reviewed/eligible and credentials/permissions are valid.
-5. Keep all durable learning records, queue state, and checkpoints local; send only minimal, approved job inputs to remote compute.
-6. Add UI controls for discovery history, candidate review, stale data, and provider eligibility.
+1. Improve provider search resilience and relevance based on repeated live runs; challenge pages and low accepted-result counts can still reduce coverage.
+2. Validate current provider terms, quota semantics, regions, expiry, authentication, and zero-spend assumptions against real accounts and human review.
+3. Complete provider-specific enforcement and independent security review before considering any remote execution adapter.
+4. Keep learning records, queue state, and checkpoints local; only a future explicitly approved adapter may transmit minimal job inputs, and it must enforce cost, quota, authorization, and region limits.
+5. Validate the read-only clients on the target Windows environment with real CLI installations and consent/revocation, without treating a successful quota read as execution permission.
 
-No resource is automatically selected for execution by this implementation.
+No resource is automatically selected for execution by this implementation, and no current assessment authorizes execution.
 
 
 ## Review and freshness workflow
 
 Candidates are initially `unreviewed`, `unknown`, and `fresh` only because the page was just observed. The local reviewer can submit the current `content_sha256` to `PATCH /api/cloud-resources/{id}/review`; the server rejects stale hashes with HTTP 409. Approval requires an HTTPS `terms_url`, records `reviewed_at` and `reviewed_content_sha256`, and stores explicitly supplied quota/availability values. A page refresh with the same hash preserves review metadata; a changed title or text invalidates it.
 
-After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Remote jobs must remain disabled until provider-specific terms, quota, credentials, and capability checks are implemented. Accepted claims are evidence inputs only; they are not an authorization or scheduling decision.
+After 30 days without re-observation, `freshness_status` becomes `stale` and `availability_status` is reset to `unknown`. This is a conservative discovery/review workflow, not yet a scheduler eligibility contract. Provider adapters and quota/capability observations exist, but remote jobs must remain disabled until provider-specific terms, credential authorization, budget enforcement, and the independent security gate are accepted. Accepted claims and discovered quota are evidence inputs only; they are not authorization or a scheduling decision.
 
 
 ## Extracted claims are not verified limits
@@ -153,3 +152,8 @@ call it. Parsed numeric limits and scope metadata are stored in the local cloud-
 database only while consent remains enabled. Raw CLI output, private keys, and credentials
 are not stored. Revocation clears the snapshot and stored paths/identifiers. This remains
 a read-only service-limit check, not an execution authorization.
+
+
+## Search provider diagnostics
+
+Provider counters distinguish raw links parsed from the response from links accepted after destination validation and deduplication. A `no_parseable_results` attempt means the parser did not extract an organic result; `no_acceptable_results` means the parser extracted links but none passed destination normalization and public/external-host validation. Challenge and consent classifications take precedence. These diagnostics explain provider behavior; they do not establish source relevance or provider availability. Relevance is assessed later against fetched page content.

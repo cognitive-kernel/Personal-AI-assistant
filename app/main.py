@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
@@ -158,14 +158,19 @@ def startup() -> None:
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
         handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
+    def maintain_background_tasks() -> None:
+        # Keep the learning-domain state consistent with terminal queue outcomes,
+        # including a worker process dying while the model request was in flight.
+        reconcile_queued_learning_tasks()
+        if sandbox_handler is not None:
+            sandbox_tasks.cleanup_terminal_containers()
+
     _task_runtime = TaskRuntime(
         handlers,
         worker_count=worker_count,
         poll_interval=0.5,
         lease_seconds=300,
-        maintenance_callback=(
-            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None
-        ),
+        maintenance_callback=maintain_background_tasks,
         maintenance_interval=30.0,
     )
     _task_runtime.start()
@@ -195,18 +200,19 @@ class LearningRequest(BaseModel):
 
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
+    idempotency_key: str | None = Field(
+        default=None, min_length=16, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$"
+    )
 
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 class SpacedRepetitionRequest(BaseModel):
     rating: StrictInt = Field(ge=0, le=5)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 class CurriculumEnrollment(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
@@ -467,7 +473,7 @@ def update_learning_path_topic(path_id: int, topic_id: int, request: PathTopicPr
 @app.post("/api/learning/jobs/{job_id}/assessment")
 def submit_learning_assessment(job_id: int, request: AssessmentSubmission) -> dict[str, Any]:
     try:
-        return learning.submit_assessment(job_id, request.answers)
+        return learning.submit_assessment(job_id, request.answers, request.idempotency_key)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
     except ValueError as exc:
@@ -585,6 +591,23 @@ def submit_learning_review(job_id: int, request: LessonReviewSubmission) -> dict
 @app.get("/api/learning/jobs/{job_id}")
 def learning_job(job_id: int) -> dict[str, Any]:
     try:
-        return learning.get_job(job_id)
+        result = learning.get_job(job_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Learning job not found.") from exc
+
+    # Include only bounded operational metadata for the associated durable task.
+    # The queue payload is intentionally omitted because API consumers do not need it.
+    task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
+    if task is None:
+        result["background_task"] = {"status": "not_enqueued"}
+    else:
+        checkpoint = task.get("checkpoint")
+        result["background_task"] = {
+            "status": task.get("status"),
+            "attempts": task.get("attempts"),
+            "max_attempts": task.get("max_attempts"),
+            "updated_at": task.get("updated_at"),
+            "phase": checkpoint.get("phase") if isinstance(checkpoint, dict) else None,
+            "error": str(task.get("error") or "")[:500] or None,
+        }
+    return result

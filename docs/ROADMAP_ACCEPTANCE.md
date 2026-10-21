@@ -4,14 +4,14 @@ Last reviewed: 2026-10-20
 
 This document records repository-level evidence and the remaining acceptance gates. A merged implementation or passing CI suite does not by itself establish production readiness on a user's machine.
 
-Repository status last reconciled on 2026-10-20 at `bd4267f069c0b469541ddc0e16303fa83a9bc597`. Task dashboard summary/search ([PR #356](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/356)), safe bulk operations ([PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357)), semantic task status styling ([PR #358](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/358)), current-section navigation ([PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360)), accessible learning-path progress ([PR #362](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/362)), and contextual task empty states ([PR #363](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/363)) are merged. Post-merge main CI passed on `bd4267f069c0b469541ddc0e16303fa83a9bc597`: [tests and Windows storage regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408060), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408011), and [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368408061). Target-host, live-model, manual accessibility, staging/rollback, and independent security acceptance remain open.
+Main status last reconciled on 2026-10-20 at `379a65610de007e33affe353b745e8f2d258fe17`; proposed repository-level hardening is tracked separately in [PR #369](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/369). Task dashboard summary/search ([PR #356](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/356)), safe bulk operations ([PR #357](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/357)), semantic task status styling ([PR #358](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/358)), current-section navigation ([PR #360](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/360)), accessible learning-path progress ([PR #362](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/362)), and contextual task empty states ([PR #363](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/363)) are merged. Main-head CI passed on `379a65610de007e33affe353b745e8f2d258fe17`: [tests and Windows storage regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245234), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245302), and [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245245). Target-host, live-model, manual accessibility, staging/rollback, and independent security acceptance remain open.
 
 ## Current status
 
 | Stage | Status | Evidence and remaining gate |
 |---|---|---|
 | Repository audit and baseline | Partial | A redacted target-host baseline tool now records commit/runtime, read-only SQLite health, and optional full pytest counts. The tool still must be run on the actual target host; complete checkout and broader supply-chain audit remain; a scheduled `pip-audit` workflow now checks the resolved Python environment on pull requests, main pushes, and weekly. |
-| Module boundaries and contracts | Partial | The merged AST-based audit (`scripts/check_import_cycles.py`) scans 55 Python modules and found no eager module-time import cycles on its checked head. Dynamic/runtime dependencies and architecture-level refactoring still require broader review. |
+| Module boundaries and contracts | Partial | CI now fails when the AST-based audit (`scripts/check_import_cycles.py --fail-on-cycle`) detects eager module-time import cycles; dynamic/runtime dependencies and architecture-level refactoring still require broader review. Fresh-store tests also verify versioned migration history and no seeded learning content. |
 | Persistent task execution | Implemented with bounded evidence | SQLite queue, leases, checkpoints, cancellation, recovery, thread-race tests, a six-process independent-connection claim test, an abrupt worker-process termination/checkpoint-recovery test, and an isolated concurrent-enqueue/claim-complete benchmark are covered by CI. The allow-listed `TaskRuntime` is wired into FastAPI startup/shutdown; learning jobs are reconciled and enqueued idempotently, and the schema registry validates startup before worker activation. The benchmark now rejects paths aliasing configured application SQLite stores and rejects identical settings/learning paths before initialization. Run `python scripts/benchmark_task_queue.py --tasks 1000 --producers 4 --workers 4 --output reports/task-queue-benchmark.json` on the target host and archive the report. Target-host crash/restart, storage fault injection, sustained load, and recovery across every task type remain. |
 | Research and learning | Implemented with limitations | Source-backed research, provenance, source-conflict reporting, local quality diagnostics, learning paths, recommendations, spaced review, and advisory semantic review exist. Live Ollama runs and human adjudication on a versioned evaluation set remain necessary before claiming knowledge quality. |
 | Isolated execution | CI-validated | Docker sandbox and self-improvement test runner use restricted containers; CI includes real Docker integration with a pinned image. Target-machine installation and operational validation remain. |
@@ -73,3 +73,121 @@ The task queue now distinguishes a genuinely empty queue from zero matches cause
 ### Dashboard theme preference (2026-10-20)
 
 The dashboard theme preference is implemented and merged in [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365), commit `9702984f236e0c3fdefad16365e1127027e17b87`. Exact-head tests/Windows regressions, browser E2E, and dependency audit passed ([tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288911), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288901), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288902)). OS preference fallback and explicit local persistence are covered. Manual contrast, keyboard/screen-reader, and target-host acceptance remain open.
+
+
+## Automated acceptance hardening (2026-10-20)
+
+- PR #369 changes CI to treat eager module-time import cycles as a failure rather than a non-blocking report; merge status is separate from branch CI.
+- PR #369 adds a fresh-store regression test for migration history, SQLite integrity/foreign keys, disabled consent defaults, and empty learning/task/self-improvement content tables.
+- Repository-level checks do not replace the excluded target-host clean-start rehearsal, live model review, operational recovery/restore exercises, independent security review, or manual accessibility review.
+
+
+### Repository documentation integrity (2026-10-20)
+
+- Added `scripts/check_markdown_links.py` to validate repository-relative Markdown targets without network access.
+- Unit tests cover missing targets with line numbers, external URLs, fenced-code examples, encoded spaces, anchor-only links, and attempts to escape the repository root.
+- The required test workflow now runs this check. Exact-head CI is the acceptance evidence; external URL availability, semantic correctness, and manual documentation review are not inferred from this static check.
+
+
+### Bilingual dynamic output semantics (2026-10-20)
+
+- PR #369 adds `dir="auto"` to chat and learning output containers and a polite live region only for the concise chat status, preserving the Persian-first RTL shell while supporting English responses without announcing the entire structured lesson as one status update.
+- The browser E2E contract checks the markup. This does not close the separately excluded manual keyboard/screen-reader review gate.
+
+
+### Response-language enforcement on every answer path (PR #369, 2026-10-20)
+
+- Direct chat and research answers now share the bounded Persian/English mismatch policy. The assistant attempts one language repair when the high-confidence script heuristic detects a mismatch and falls back to a localized safe message if the repair also fails.
+- Claim-review repair output is checked again before it can be returned, so the final generated response does not bypass the language guard.
+- Deterministic tests cover both repair and fail-closed paths. This heuristic cannot reliably distinguish every language or dialect and does not close the excluded live-model/human-adjudication gate.
+
+
+### Research citation URL hardening (PR #369, 2026-10-20)
+
+- Source payload construction now rejects non-HTTPS links, missing hosts, malformed ports, and embedded username/password URL components that can make the citation destination ambiguous.
+- Deterministic tests cover valid HTTPS and representative malformed/deceptive URLs. This validates URL shape only; it does not establish source trustworthiness or close the independent security review gate.
+
+
+### Dashboard source-link integrity (PR #369, 2026-10-20)
+
+- Cloud-discovery and experience-evidence cards share a client-side HTTPS URL validator that rejects embedded credentials and malformed/hostless URLs before rendering links.
+- Browser E2E checks the accepted/rejected URL cases. Source trustworthiness and independent security review remain separate acceptance requirements.
+
+
+### Exact-head repository CI evidence — 2026-10-20
+
+PR #369 head `e7ae4d5661d12b05b1a405a15d94574d17c0e411` completed all configured workflows successfully:
+- [Required tests and Windows storage regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230) — passed.
+- [Chromium browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350) — passed.
+- [Dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221) — passed.
+
+This is exact-head CI evidence only. PR #369 remains open and unmerged; it does not close target-host startup/migration, live-model/human adjudication, operational recovery/load and real restore/rollback, independent security review, or manual accessibility acceptance.
+
+
+### Search diagnostics distinguish parsing from acceptance (PR #369, 2026-10-20)
+
+- [x] Record a distinct diagnostic when search links were parsed but all rejected by destination validation.
+- [x] Deterministic regression covers a parsed search-provider self-link rejected by external-destination policy.
+- [ ] Live search-provider reliability and relevance remain environment-dependent. The supplied run shows DuckDuckGo HTML challenge pages, low Bing/Google accepted-result counts, and 5 relevant documents among 18 fetched pages.
+## Learning system completion plan (2026-10-20)
+
+- Added [docs/LEARNING_SYSTEM_COMPLETION_PLAN.md](LEARNING_SYSTEM_COMPLETION_PLAN.md) as the engineering plan for systemic scientific-quality gates, calibrated learning assessment, bilingual AI regression fixtures, and hardware-aware operational acceptance.
+- The documented hardware baseline is Windows, Intel Core i5-12400, 32 GB RAM, Intel integrated graphics (reported 128 MB), Python 3.11+, and local Ollama with qwen2.5:7b as the documented default. This is a repository baseline, not a live measurement; the target-host report must confirm actual values.
+- The plan does not mark these capabilities as implemented. Provenance-backed claim checks, fail-closed source conflict handling, calibrated semantic assessment, score-to-prerequisite coupling, practical sandbox assessment, and live target-host performance evidence remain work items.
+- Proposed numeric thresholds are explicitly targets to calibrate against a versioned reference set, not measured results. No absolute factual correctness guarantee is claimed.
+- Acceptance must remain local-first and resource-bounded; no assumption of discrete GPU/VRAM, cloud API, or remote execution is permitted.
+
+
+
+## افزوده‌شده در 2026-10-20 — گیت علمی و ارزیابی rubric
+
+- وجود منبع یا قبولی مدل به‌تنهایی به معنی تأیید علمی نیست؛ دروازهٔ جداگانه باید منشأ، تنوع میزبان منبع، ارزیابی ادعاها، ارجاع دقیق و نبود تعارض را بررسی کند.
+- نمرهٔ آزمون برای درس‌های دارای rubric معتبر از پوشش وزن‌دار معیارها محاسبه می‌شود؛ درس‌های قدیمی fallback سازگار دارند. این نمره معیار پوشش است، نه اثبات مستقل تسلط.
+- تست‌های جدید در CI باید سبز باشند؛ اجرای محلی روی میزبان هدف و benchmark زنده هنوز گیت پذیرش جداگانه‌اند.
+
+
+## سامانهٔ آموزشی — وضعیت کدنویسی 2026-10-20
+
+- [x] گیت شواهد fail-closed با وضعیت غیرمستقل و قابل مشاهده در UI.
+- [x] rubric مفهومی قطعی با نمرهٔ جزئی، کنترل ساختار و پنهان‌سازی معیارها تا پس از پاسخ.
+- [x] تفکیک نمرهٔ کیفیت محتوا از نمرهٔ یادگیرنده با مهاجرت نسخهٔ ۱۶ و حفظ دادهٔ قدیمی.
+- [x] تکمیل خودکار سرفصل برای rubric معتبر با نمرهٔ حداقل ۸۰؛ آزمون legacy به‌تنهایی تکمیل ایجاد نمی‌کند.
+- [x] ابزار benchmark محلی برای ثبت fingerprint مدل، latency، خطاها و نمونه‌برداری حافظه.
+- [ ] تأیید CI آخرین commit.
+- [ ] کالیبراسیون false-pass/false-fail روی مجموعهٔ مرجع.
+- [x] idempotency درخواست آزمون و قفل سروری زنجیره‌ای پیش‌نیازها.
+- [ ] گراف پیش‌نیاز سفارشی (DAG)، آزمون همزمانی و آزمون عملی محدود.
+- [ ] اجرای benchmark و آزمون‌های نهایی روی سیستم مقصد؛ این کار پس از پایان تغییرات کدنویسی انجام می‌شود.
+
+
+## قابلیت‌های جدید پذیرش
+
+- [x] کلید idempotency برای ارسال آزمون؛ تکرار همان کلید/پاسخ تلاش جدید نمی‌سازد.
+- [x] قفل سروری برای شروع، بازتولید و ارسال آزمون سرفصل تا تکمیل سرفصل‌های قبلی.
+- [ ] آزمون همزمانی و گراف پیش‌نیاز سفارشی؛ قفل فعلی زنجیره‌ای و مبتنی بر ترتیب کاتالوگ است.
+
+
+## معیارهای تکمیل کدنویسی جدید
+
+- [x] شرط پذیرش طول درس با هدف تولید همسو است؛ درس زیر هدف وارد repair می‌شود.
+- [x] صفحات مرجع ثبت‌شده برای سرفصل‌های کاتالوگ از طریق fetcher امن دریافت می‌شوند و URL/hash در شواهد ثبت می‌شود.
+- [x] منبع متنی کاربر هنگام رد درس حذف نمی‌شود؛ متن درس ردشده منتشر نمی‌شود.
+- [ ] آزمون‌های CI آخرین commit باید سبز شوند.
+- [ ] benchmark و آزمون‌های نهایی روی سیستم مقصد پس از اتمام تغییرات کدنویسی اجرا می‌شوند.
+
+
+- [x] تعارض منبع در دروازهٔ ادعا به‌صورت ماشینی مسدود می‌شود و به تأیید انسانی وابسته نیست.
+- [x] برای سرفصل معماری SQL Server مرجع‌های موضوعی رسمی Microsoft Learn به دریافت خودکار افزوده شدند.
+
+
+## بازیابی کار پس‌زمینه و مهلت مدل
+
+- [x] همگام‌سازی وضعیت وظیفهٔ صف شکست‌خورده/لغوشده با رکورد درس در نگهداری دوره‌ای.
+- [x] اجرای reconciliation در runtime حتی وقتی sandbox اختیاری فعال نیست.
+- [x] محدودیت مهلت درخواست مدل: تولید/اصلاح حداکثر ۲۴۰ ثانیه و مرور ادعا حداکثر ۱۸۰ ثانیه، یا timeout کوچک‌تر پیکربندی‌شده.
+- [ ] آزمون واقعی kill/restart مدل، timeout روی سیستم مقصد، بازیابی worker و نمایش وضعیت خطای نهایی در UI.
+
+
+
+- [x] API وضعیت کار، اطلاعات محدود صف/checkpoint و خطای bounded را بدون payload صف در اختیار UI می‌گذارد.
+- [x] UI پس از timeout وضعیت تازه می‌گیرد و وضعیت درس/صف و تلاش‌ها را برای عیب‌یابی نشان می‌دهد.

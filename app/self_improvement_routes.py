@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from . import self_improvement
 from .self_improvement import ProposalError
@@ -22,15 +22,13 @@ class ProposalCreateRequest(BaseModel):
     rationale: str = Field(min_length=1, max_length=4000)
     patch: str = Field(min_length=1, max_length=262144)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ExplicitConfirmation(BaseModel):
     confirm: StrictBool
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class RejectProposalRequest(ExplicitConfirmation):

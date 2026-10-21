@@ -75,7 +75,7 @@ def review_answer_claims(
             "excerpt directly conflicts; otherwise use insufficient_evidence. Compare the supplied sources "
             "against each other, not only against the answer. Explicitly list material disagreements between "
             "sources, including the exact URLs for both sides. Never silently choose one side of a conflict. "
-            "A material source conflict makes the overall review fail closed and requires human review. "
+            "A material source conflict must block release until a future automated attempt retrieves enough authoritative evidence to resolve it; do not require a human decision or claim scientific certainty. "
             "Include one or more exact evidence URLs for supported/contradicted claims. If there are no material "
             "factual claims, return one insufficient_evidence claim explaining that. Return JSON only with this schema: "
             '{"overall":"supported|contradicted|insufficient_evidence","claims":'
@@ -107,7 +107,7 @@ def review_answer_claims(
                 "num_thread": limits["cpu_threads"],
                 "num_predict": 1000,
             },
-        })
+        }, timeout=min(180, max(5, int(settings.get("ollama_timeout_seconds", 300)))))
         raw = response.get("message", {}).get("content")
         parsed = json.loads(raw) if isinstance(raw, str) else None
     except (ollama.OllamaError, json.JSONDecodeError, TypeError, ValueError) as exc:
@@ -189,7 +189,7 @@ def review_answer_claims(
     if passed:
         error = None
     elif normalized_conflicts:
-        error = "source_conflicts_require_human_review"
+        error = "source_conflicts_unresolved_release_blocked"
     else:
         error = "one_or_more_claims_not_supported_or_cited"
     return {

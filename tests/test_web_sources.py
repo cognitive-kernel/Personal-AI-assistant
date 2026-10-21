@@ -346,6 +346,35 @@ def test_google_basic_html_fallback_is_used_when_standard_markup_has_no_results(
     assert google["attempts"][1]["accepted_result_count"] == 1
 
 
+def test_search_diagnostics_distinguish_parsed_but_rejected_provider_links(monkeypatch):
+    def fake_open(url, **kwargs):
+        host = urllib.parse.urlparse(url).hostname
+        if host == "www.google.com":
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+            if params.get("gbv") == ["1"]:
+                return "<html><body>no organic links</body></html>", "text/html"
+            return '<a href="https://www.google.com/search?q=compute"><h3>Search</h3></a>', "text/html"
+        return "<html><body>no organic links</body></html>", "text/html"
+
+    monkeypatch.setattr(web_sources, "_open", fake_open)
+    monkeypatch.setattr(
+        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+    )
+
+    with pytest.raises(web_sources.SourceFetchError) as exc_info:
+        web_sources._search_results("cloud compute terms", 3)
+
+    diagnostics = {
+        item["provider"]: item for item in exc_info.value.provider_diagnostics
+    }
+    google = diagnostics["Google"]
+
+    assert google["attempts"][0]["parsed_result_count"] == 1
+    assert google["attempts"][0]["accepted_result_count"] == 0
+    assert google["attempts"][0]["error"] == "no_acceptable_results"
+    assert google["attempts"][1]["error"] == "no_parseable_results"
+
+
 def test_search_results_include_per_engine_counts_and_duplicate_counts(monkeypatch):
     pages = {
         "html.duckduckgo.com": (

@@ -515,6 +515,23 @@ LEARNING_MIGRATIONS = (
                END""",
         ),
     ),
+    Migration(
+        16,
+        "separate-learning-content-quality-from-learner-score",
+        (
+            "ALTER TABLE learning_path_topics ADD COLUMN latest_content_quality_score REAL",
+            """ALTER TABLE learning_path_topics ADD COLUMN latest_score_kind TEXT NOT NULL DEFAULT 'legacy_unknown'
+               CHECK(latest_score_kind IN ('legacy_unknown','learner_rubric','legacy_exact_match','manual_override'))""",
+        ),
+    ),
+    Migration(
+        17,
+        "idempotent-learning-assessment-submissions",
+        (
+            "ALTER TABLE assessment_attempts ADD COLUMN idempotency_key TEXT",
+            "CREATE UNIQUE INDEX idx_assessment_attempts_idempotency ON assessment_attempts(job_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
+        ),
+    ),
 )
 
 

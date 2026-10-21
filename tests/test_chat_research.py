@@ -18,6 +18,47 @@ def _source():
     )
 
 
+def test_source_payload_rejects_ambiguous_or_invalid_https_urls():
+    long_text = "This source excerpt contains enough technical detail for claim review. " * 2
+    documents = [
+        web_sources.SourceDocument(
+            url="https://docs.example.org/guide",
+            title="Valid",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https://docs.example.org@attacker.example/guide",
+            title="Misleading authority",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https://user:secret@docs.example.org/guide",
+            title="Credentials in URL",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https:///missing-host",
+            title="Missing host",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="https://docs.example.org:invalid/guide",
+            title="Invalid port",
+            text=long_text,
+        ),
+        web_sources.SourceDocument(
+            url="http://docs.example.org/guide",
+            title="Insecure scheme",
+            text=long_text,
+        ),
+    ]
+
+    payload = chat_research._source_payload(documents)
+
+    assert [item["title"] for item in payload] == ["Valid"]
+    assert payload[0]["url"] == "https://docs.example.org/guide"
+
+
 def _disable_memory(monkeypatch):
     monkeypatch.setattr(chat_research.experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(chat_research.experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
@@ -31,6 +72,49 @@ def test_small_talk_stays_on_direct_chat_path(monkeypatch):
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("web search should not run")),
     )
     assert chat_research.answer("Hello", [{"role": "user", "content": "Earlier"}]) == "direct reply"
+
+
+def test_direct_chat_repairs_response_language_before_returning(monkeypatch):
+    answers = iter([
+        "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
+        "This is the corrected English response for the user's greeting.",
+    ])
+    calls = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        calls.append((message, system_prompt))
+        return next(answers)
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("Hello")
+
+    assert reply.startswith("This is the corrected English response")
+    assert len(calls) == 2
+    assert "Rewrite the answer entirely in English" in json.loads(calls[1][0])["instruction"]
+
+
+def test_direct_chat_fails_closed_when_language_repair_returns_empty(monkeypatch):
+    answers = iter([
+        "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
+        "",
+    ])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(answers))
+
+    reply = chat_research.answer("Hello")
+
+    assert reply.startswith("I couldn't reliably produce an answer in English")
+
+
+def test_direct_chat_uses_safe_language_fallback_after_failed_repair(monkeypatch):
+    answers = iter([
+        "این پاسخ فارسی است و با زبان انگلیسی درخواست کاربر سازگار نیست.",
+        "این پاسخ همچنان فارسی است و زبان درخواستی انگلیسی را رعایت نمی‌کند.",
+    ])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(answers))
+
+    reply = chat_research.answer("Hello")
+
+    assert reply.startswith("I couldn't reliably produce an answer in English")
 
 
 def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(monkeypatch):
@@ -140,6 +224,59 @@ def test_failed_review_gets_one_repair_then_an_uncertainty_note(monkeypatch):
     assert "Verification note:" in reply
     assert len(prompts) == 2
     assert "review_feedback" in prompts[1]
+
+
+def test_claim_repair_language_drift_gets_bounded_language_repair(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    answers = iter([
+        "این پاسخ اولیه فارسی است اما ادعاهای آن هنوز از سوی بازبینی تأیید نشده‌اند.",
+        "This is a long English response that drifts away from the requested Persian language and must be repaired before it is returned to the user.",
+        "این پاسخ نهایی فارسی است و پس از اصلاح زبان به کاربر بازگردانده می‌شود.",
+    ])
+    prompts = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        prompts.append(json.loads(message))
+        return next(answers)
+
+    reviews = iter([
+        {"passed": False, "error": "one_or_more_claims_not_supported_or_cited"},
+        {"passed": True, "overall": "supported"},
+    ])
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: next(reviews))
+
+    reply = chat_research.answer("خطا در SQL Server")
+
+    assert "پاسخ نهایی فارسی" in reply
+    assert len(prompts) == 3
+    assert "Rewrite the answer entirely in Persian (فارسی)" in prompts[2]["instruction"]
+
+
+def test_claim_repair_language_drift_fails_closed_if_language_repair_also_mismatches(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    answers = iter([
+        "این پاسخ اولیه فارسی است اما ادعاهای آن هنوز از سوی بازبینی تأیید نشده‌اند.",
+        "This is a long English response that drifts away from the requested Persian language and must be repaired before it is returned to the user.",
+        "This remains a long English answer despite the explicit request for Persian and should trigger the safe fallback response.",
+    ])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(answers))
+    reviews = iter([
+        {"passed": False, "error": "one_or_more_claims_not_supported_or_cited"},
+    ])
+    monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: next(reviews))
+    audits = []
+    monkeypatch.setattr(chat_research, "_record_audit", lambda *args, **kwargs: audits.append(args))
+
+    reply = chat_research.answer("خطا در SQL Server")
+
+    assert reply.startswith("نتوانستم پاسخ قابل‌اعتمادی را به فارسی تولید کنم.")
+    assert audits[-1][3] == "needs_review"
+    assert audits[-1][4]["error"] == "language_mismatch_after_claim_repair"
 
 
 def test_unavailable_reviewer_does_not_trigger_an_extra_generation(monkeypatch):
@@ -289,7 +426,7 @@ def test_material_source_conflict_is_shown_to_user_without_repair_or_verificatio
             "source_b_url": second_url,
             "description": "The sources disagree on the default behavior.",
         }],
-        "error": "source_conflicts_require_human_review",
+        "error": "source_conflicts_unresolved_release_blocked",
         "reviewer": "local_ollama_model_assisted_not_independent",
     }
     monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", lambda *_args: conflict_review)

@@ -26,7 +26,7 @@
 
 **مرزهای ایمنی:** تمام درخواست‌های HTTP از peerهای غیر-loopback با 403 رد می‌شوند. provisioning ابری و اجرای راه‌دور عمداً غیرفعال‌اند. API احراز هویت راه‌دور ندارد و نباید این محدودیت دور زده شود.
 
-**پذیرش باقی‌مانده:** ممیزی کامل checkout و اجرای baseline روی ماشین هدف، اجرای زندهٔ ارزیابی Ollama همراه با داوری انسانی، آزمون‌های کامل مرورگر و crash/multi-process، اندازه‌گیری عملکرد روی سخت‌افزار هدف و بازبینی امنیتی مستقل [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52). موفقیت CI به‌تنهایی کیفیت factual مدل یا آمادگی محصول را ثابت نمی‌کند. برای آماده‌سازی گزارش ماشین هدف از ابزار [Target-host baseline](docs/TARGET_HOST_BASELINE.md) استفاده کنید؛ این ابزار دیتابیس‌ها را فقط‌خواندنی بررسی می‌کند و اجرای تست‌ها نیازمند گزینهٔ صریح `--run-tests` است. برای ثبت داوری انسانیِ ارزیابی زنده نیز [راهنمای Human Adjudication](docs/HUMAN_ADJUDICATION.md) را دنبال کنید؛ ابزار worksheet به‌تنهایی نمرهٔ کیفیت تولید نمی‌کند.
+**پذیرش باقی‌مانده:** اجرای baseline و مهاجرت روی میزبان هدف، ارزیابی زندهٔ Ollama همراه با داوری انسانی، آزمون‌های عملیاتی crash/recovery/load روی میزبان، تمرین واقعی restore/rollback، بازبینی امنیتی مستقل [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) و ارزیابی دستی دسترس‌پذیری. CI اکنون تست‌های مرورگر، کنترل چرخه‌های import، ممیزی وابستگی‌ها و بررسی لینک‌های محلی Markdown را نیز اجرا می‌کند؛ این کنترل‌ها جایگزین پذیرش عملیاتی یا انسانی نیستند. موفقیت CI به‌تنهایی کیفیت factual مدل یا آمادگی محصول را ثابت نمی‌کند. برای آماده‌سازی گزارش ماشین هدف از ابزار [Target-host baseline](docs/TARGET_HOST_BASELINE.md) استفاده کنید؛ این ابزار دیتابیس‌ها را فقط‌خواندنی بررسی می‌کند و اجرای تست‌ها نیازمند گزینهٔ صریح `--run-tests` است. برای ثبت داوری انسانیِ ارزیابی زنده نیز [راهنمای Human Adjudication](docs/HUMAN_ADJUDICATION.md) را دنبال کنید؛ ابزار worksheet به‌تنهایی نمرهٔ کیفیت تولید نمی‌کند.
 
 ## شروع سریع
 Python 3.11+ و Ollama را نصب کنید؛ سپس فقط لانچر را اجرا کنید:
@@ -76,3 +76,10 @@ python run.py --check-only
 - نسخه اولیه فقط endpoint محلی Ollama را قبول می‌کند.
 - API احراز هویت راه‌دور ندارد؛ برای دسترسی از LAN یا اینترنت این کنترل را دور نزنید. دسترسی راه‌دور به طراحی احراز هویت و بازبینی امنیتی مستقل جداگانه نیاز دارد.
 - داده‌های محلی و فایل‌های پایگاه داده نباید به مخزن commit شوند.
+
+## Learning-system quality and acceptance
+
+The systemic completion plan defines the engineering phases and measurable acceptance gates for scientific source provenance, fail-closed lesson quality, calibrated learning assessment, bilingual AI regression tests, practical sandbox evaluation, and performance/reliability on the actual local Windows/Ollama host. Hardware figures in documentation are a baseline to confirm, not live measurements; no discrete GPU is assumed. Proposed thresholds must be calibrated against a versioned benchmark and are not current results.
+
+See the [Learning system completion plan](docs/LEARNING_SYSTEM_COMPLETION_PLAN.md) and [Target-host acceptance baseline](docs/TARGET_HOST_BASELINE.md).
+

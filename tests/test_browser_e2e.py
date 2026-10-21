@@ -1176,6 +1176,7 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.emulate_media(reduced_motion="reduce")
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         page.keyboard.press("Tab")
@@ -1208,6 +1209,21 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert "focus-visible" in stylesheet.text()
         assert page.locator("html").get_attribute("dir") == "rtl"
         assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
+        assert page.evaluate("""() => [
+            safeHttpsUrl("https://docs.example.org/guide"),
+            safeHttpsUrl("https://trusted.example@attacker.example/guide"),
+            safeHttpsUrl("https://user:secret@docs.example.org/guide"),
+            safeHttpsUrl("https://"),
+            safeHttpsUrl("https://docs.example.org:invalid/guide"),
+            safeHttpsUrl("http://docs.example.org/guide"),
+        ]""") == [
+            "https://docs.example.org/guide",
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
         missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
             "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
         )
@@ -1253,6 +1269,11 @@ def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
         page.goto(base_url, wait_until="domcontentloaded")
         message = page.locator("#message")
         assert message.get_attribute("dir") == "auto"
+        for output_id in ("#chat-output", "#learning-output"):
+            assert page.locator(output_id).get_attribute("dir") == "auto"
+        chat_output = page.locator("#chat-output")
+        assert chat_output.get_attribute("role") == "status"
+        assert chat_output.get_attribute("aria-live") == "polite"
         message.fill("How do SQL execution plans work?")
         assert message.evaluate("node => getComputedStyle(node).direction") == "ltr"
         message.fill("چطور برنامه اجرای SQL کار می‌کند؟")
@@ -1312,4 +1333,39 @@ def test_learning_path_progress_is_derived_and_accessible():
         assert progress.get_attribute("aria-valuetext") == "۳۳ درصد تکمیل‌شده"
         assert page.locator(".path-progress-caption").inner_text() == "۱ از ۳ سرفصل تکمیل شده است."
         assert "33٪ (1/3)" in page.locator("#paths-container summary").inner_text()
+        browser.close()
+
+
+
+def test_browser_learning_recommendations_show_recoverable_api_error():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/learning/recommendations*",
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"detail": "temporary test outage"}),
+            ),
+        )
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+
+        page.locator("#refresh-learning-recommendations").click()
+        output = page.locator("#learning-recommendations-output")
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#learning-recommendations-output');
+                return node && node.textContent.includes('توصیه‌های یادگیری در دسترس نیست') &&
+                    node.textContent.includes('temporary test outage');
+            }""",
+            timeout=10000,
+        )
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()

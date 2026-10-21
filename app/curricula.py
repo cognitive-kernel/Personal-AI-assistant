@@ -333,3 +333,44 @@ def get_curriculum(slug: str) -> dict[str, Any] | None:
             "topics": topics,
             "levels": _learning_levels(topics),
             "prerequisites": list(item.get("prerequisites", []))}
+
+
+_TOPIC_REFERENCE_URLS: dict[str, list[dict[str, str]]] = {
+    "معماری sql server، database engine و ابزارهای مدیریت": [
+        {
+            "title": "Microsoft Learn — What Is SQL Server?",
+            "url": "https://learn.microsoft.com/en-us/sql/sql-server/what-is-sql-server?view=sql-server-ver17",
+        },
+        {
+            "title": "Microsoft Learn — Query Processing Architecture Guide",
+            "url": "https://learn.microsoft.com/en-us/sql/relational-databases/query-processing-architecture-guide?view=sql-server-ver17",
+        },
+    ],
+}
+
+
+def get_reference_urls_for_topic(topic: str) -> list[dict[str, str]]:
+    """Return curated course and topic references for an exact catalog topic."""
+    normalized = " ".join(topic.casefold().split()) if isinstance(topic, str) else ""
+    if not normalized:
+        return []
+    for item in CURRICULA.values():
+        if not any(" ".join(str(candidate).casefold().split()) == normalized for candidate in item["topics"]):
+            continue
+        references = list(_TOPIC_REFERENCE_URLS.get(normalized, []))
+        references.extend(item.get("reference_urls", []))
+        result: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for ref in references:
+            if (
+                not isinstance(ref, dict)
+                or not isinstance(ref.get("title"), str)
+                or not isinstance(ref.get("url"), str)
+                or not ref["url"].startswith("https://")
+                or ref["url"] in seen
+            ):
+                continue
+            seen.add(ref["url"])
+            result.append({"title": ref["title"][:250], "url": ref["url"]})
+        return result
+    return []

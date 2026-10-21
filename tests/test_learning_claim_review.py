@@ -18,7 +18,8 @@ LESSON = (
     "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
     "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
     "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
-    "نه تضمین خودکار برای درست بودن طراحی."
+    "نه تضمین خودکار برای درست بودن طراحی. "
+    "منابع: https://docs.example.org/sql-guide https://learn.microsoft.com/sql-guide"
 )
 
 
@@ -49,9 +50,12 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
 ):
     _setup(tmp_path, monkeypatch)
     url = "https://docs.example.org/sql-guide"
+    second_url = "https://learn.microsoft.com/sql-guide"
     source_text = (
         f"Source title: SQL Guide\nSource URL: {url}\nContent:\n"
         + ("This excerpt documents a database execution plan and query optimizer. " * 10)
+        + f"\n\nSource title: Microsoft SQL Guide\nSource URL: {second_url}\nContent:\n"
+        + ("This documentation explains SQL Server execution plans and query optimization. " * 10)
     )
     job = learning.create_job("SQL Server execution plans")
     with db.learning_connection() as connection:
@@ -95,9 +99,10 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
         "claims": [{
             "claim": "The lesson's technical claims were reviewed.",
             "verdict": "supported" if passed else "insufficient_evidence",
-            "evidence_urls": [url] if passed else [],
+            "evidence_urls": [url, second_url] if passed else [],
             "reason": "Test review result.",
         }],
+        "source_conflicts": [],
         "error": None if passed else "review needs review",
         "reviewer": "local_ollama_model_assisted_not_independent",
     }
@@ -107,8 +112,10 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
 
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
-    assert finished["status"] == "completed"
+    assert finished["status"] == ("completed" if passed else "rejected")
     assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["release_eligible"] is passed
+    assert finished["quality"]["scientific_gate"]["passed"] is passed
     assert finished["quality"]["claim_review_status"] == (
         "passed_model_assisted" if passed else "needs_review"
     )
@@ -121,6 +128,37 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
             "SELECT note FROM learning_evidence WHERE job_id=? AND evidence_type='claim_review'",
             (job["id"],),
         ).fetchone()
-    assert knowledge["status"] == "unverified"
+    assert (knowledge["status"] == "unverified") if passed else (knowledge is None)
     assert event is not None
     assert "not an independent verification" in event["note"]
+
+
+def test_claim_review_uses_a_bounded_model_request_timeout(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    captured = {}
+
+    def fake_request(_path, _payload, **kwargs):
+        captured.update(kwargs)
+        return {"message": {"content": json.dumps({
+            "overall": "supported",
+            "claims": [{
+                "claim": "A factual claim",
+                "verdict": "supported",
+                "evidence_urls": ["https://docs.example.org/sql-guide"],
+                "reason": "Directly supported by the excerpt.",
+            }],
+            "source_conflicts": [],
+        })}}
+
+    monkeypatch.setattr(claim_review, "_request", fake_request)
+    result = claim_review.review_answer_claims(
+        "SQL Server", "A factual claim. https://docs.example.org/sql-guide",
+        [{
+            "title": "SQL guide",
+            "url": "https://docs.example.org/sql-guide",
+            "content": "This excerpt documents SQL Server query execution and its core components. " * 3,
+        }],
+    )
+
+    assert result["passed"] is True
+    assert 5 <= captured["timeout"] <= 180

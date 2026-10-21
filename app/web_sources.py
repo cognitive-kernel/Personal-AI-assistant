@@ -531,6 +531,11 @@ def _search_results(query: str, limit: int) -> SearchResultList:
                     stats["accepted_result_count"] = int(stats["accepted_result_count"]) + accepted_count
                     if not results:
                         reason = _search_page_failure_reason(html, name)
+                        # Keep provider diagnostics truthful: parsing links is not
+                        # the same as accepting safe, external destination URLs.
+                        # Challenge/consent pages take precedence over parser counts.
+                        if parsed_count > 0 and reason == "no_parseable_results":
+                            reason = "no_acceptable_results"
                         attempt["error"] = reason
                         failures.append(f"{name}:{reason}[{variant_label}:{endpoint_variant}]")
                         continue

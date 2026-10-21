@@ -24,7 +24,7 @@
   <a href="#settings-section">تنظیمات</a>
 </nav>
 <main id="main-content" tabindex="-1">
-<header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
+<header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">دستیار محلی با پژوهش منبع‌محور، یادگیری پایدار و کنترل‌های شفاف</p>
 <button id="refresh">بررسی وضعیت سیستم</button>
 <button id="theme-toggle" type="button" aria-pressed="false" aria-label="تغییر پوستهٔ داشبورد">حالت تیره</button><pre id="health" role="status" aria-live="polite" aria-atomic="true">وضعیت هنوز بررسی نشده است.</pre></header>
 <section id="storage-degraded-banner" class="storage-alert" role="alert" aria-live="assertive" hidden>
@@ -46,10 +46,10 @@
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
-<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" dir="auto" role="status" aria-live="polite" aria-atomic="true"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<p class="muted">محتوای یادگیری می‌تواند بر دانش مدل یا متن منبع ارائه‌شده تکیه کند؛ نمرهٔ آزمون فعلی تطبیق متنی دقیق است و جایگزین ارزیابی علمی مستقل نیست.</p><pre id="learning-output" dir="auto"></pre><div id="assessment-form-container"></div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -178,6 +178,17 @@
 <label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
 <script>
 const el = id => document.getElementById(id);
+function safeHttpsUrl(value) {
+ try {
+  const source = new URL(value);
+  if (source.protocol !== "https:" || !source.hostname || source.username || source.password) return null;
+  // Reading port forces URL implementations to reject malformed port values.
+  void source.port;
+  return source.href;
+ } catch (_) {
+  return null;
+ }
+}
 async function api(path, options = {}) {
  const response = await fetch(path, {headers: {"Content-Type":"application/json"}, ...options});
  const data = await response.json().catch(() => ({}));

@@ -184,3 +184,77 @@ def test_cancel_learning_task_is_safe_when_no_queue_task_exists(learning_task_st
     job = learning.create_job("No queue task yet")
 
     assert cancel_learning_task(job["id"]) is None
+
+
+def test_reconciliation_marks_job_failed_when_queue_retry_limit_was_exhausted(
+    learning_task_store,
+):
+    job = learning.create_job("Recover exhausted lesson")
+    task = task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": job["id"]},
+        max_attempts=1,
+        dedupe_key=f"learning-job:{job['id']}",
+    )
+    claimed = task_manager.claim_next_task("worker-exhausted")
+    assert claimed["id"] == task["id"]
+    failed = task_manager.fail_task(
+        task["id"], "worker-exhausted", "TimeoutError: model request exceeded its deadline"
+    )
+    assert failed["status"] == "failed"
+    assert learning.get_job(job["id"])["status"] == "queued"
+
+    assert reconcile_queued_learning_tasks() == 1
+    result = learning.get_job(job["id"])
+    assert result["status"] == "failed"
+    assert "exhausted its retry limit" in result["error"] or "TimeoutError" in result["error"]
+
+
+def test_reconciliation_does_not_requeue_a_cancelled_learning_task(learning_task_store):
+    job = learning.create_job("Recover cancelled lesson")
+    task = enqueue_learning_task(job["id"])
+    cancelled = task_manager.request_cancel(task["id"])
+    assert cancelled["status"] == "cancelled"
+
+    assert reconcile_queued_learning_tasks() == 1
+    result = learning.get_job(job["id"])
+    assert result["status"] == "cancelled"
+
+
+def test_learning_job_status_exposes_bounded_queue_diagnostics_without_payload(monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main.learning, "get_job", lambda job_id: {
+        "id": job_id, "status": "running", "error": None,
+    })
+    monkeypatch.setattr(main.task_manager, "get_task_by_dedupe_key", lambda key: {
+        "id": 9,
+        "status": "running",
+        "attempts": 2,
+        "max_attempts": 3,
+        "updated_at": "2026-10-20T10:00:00Z",
+        "checkpoint": {"phase": "learning_queued"},
+        "error": None,
+        "payload": {"job_id": 42, "secret": "must not be returned"},
+    })
+
+    result = main.learning_job(42)
+
+    assert result["background_task"] == {
+        "status": "running",
+        "attempts": 2,
+        "max_attempts": 3,
+        "updated_at": "2026-10-20T10:00:00Z",
+        "phase": "learning_queued",
+        "error": None,
+    }
+    assert "payload" not in result["background_task"]
+
+
+def test_learning_wait_timeout_includes_task_diagnostics_for_recovery():
+    from pathlib import Path
+
+    source = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(encoding="utf-8")
+    assert 'latest.background_task || {}' in source
+    assert "وضعیت وظیفه پس‌زمینه" in source
+    assert "تلاش " in source

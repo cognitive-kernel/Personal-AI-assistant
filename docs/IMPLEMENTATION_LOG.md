@@ -2062,3 +2062,146 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - **وضعیت ارزیابی:** audit محلی و سنجه‌های مصنوعی Recall@k/Precision@k/MRR و دروازهٔ رگرسیون lexical در بخش‌های 51–55 تکمیل شده‌اند.
 - **گیت‌های باز:** dataset واقعی با relevance انسانی، benchmark با embedding مدل محلی، و ارزیابی کیفیت پاسخ با مدل زنده باقی مانده‌اند؛ نتایج مصنوعی یا CI به‌عنوان کیفیت واقعی مدل گزارش نمی‌شوند.
 - **تست محلی:** اجرا نشده است.
+
+
+## 181 — سخت‌گیری CI برای چرخهٔ import و شروع پاک (2026-10-20)
+
+- CI اکنون اجرای `scripts/check_import_cycles.py --fail-on-cycle` را انجام می‌دهد؛ چرخهٔ import زمان بارگذاری ماژول، به‌جای گزارش صرف، باعث شکست job می‌شود.
+- تست شروع پاک با پایگاه‌های دادهٔ موقت اضافه شد: وجود تاریخچهٔ migration، سلامت SQLite و کلیدهای خارجی، خاموش‌بودن رضایت‌های opt-in به‌صورت پیش‌فرض و خالی‌بودن جدول‌های محتوای یادگیری/وظایف/خودبهبوددهی را بررسی می‌کند.
+- این تغییر فقط آزمون‌های مخزن را سخت‌گیرانه‌تر می‌کند؛ پذیرش میزبان هدف و سایر دروازه‌های عملیاتی/انسانی را جایگزین نمی‌کند.
+- تست محلی در این محیط اجرا نشده است؛ نتیجه باید از CI دقیق همین commit ثبت شود.
+
+
+## 182 — کنترل یکپارچگی لینک‌های Markdown در CI (2026-10-20)
+
+- ابزار `scripts/check_markdown_links.py` و آزمون‌های واحد آن اضافه شد تا لینک‌های نسبی ناموجود و مسیرهای خارج‌شونده از ریشهٔ مخزن شناسایی شوند.
+- بررسی در workflow اصلی تست اجباری شد؛ لینک‌های خارجی عمداً از شبکه بررسی نمی‌شوند.
+- تست محلی اجرا نشده است؛ پذیرش این تغییر به موفقیت CI روی آخرین commit وابسته است.
+
+
+## 183 — رگرسیون حالت خطای رابط یادگیری و همگام‌سازی اسناد (2026-10-20)
+
+- آزمون مرورگر واقعی برای پاسخ خطای 503 در API توصیه‌های یادگیری اضافه شد؛ رابط باید پیام خطای فارسی و جزئیات قابل‌نمایش را نشان دهد و خطای uncaught در صفحه ایجاد نشود.
+- ادعای قدیمی «مرور فاصله‌دار پیاده‌سازی نشده» اصلاح شد؛ مرور فاصله‌دار موجود است، اما قفل خودکار سرفصل بر اساس نمره هنوز نیست.
+- وضعیت schema/migration و کشف منابع ابری در مستندات با کد فعلی همگام شد؛ وجود discovery یا دادهٔ quota به‌معنی مجوز اجرای ابری نیست.
+- تست محلی اجرا نشده است؛ آزمون مرورگر و suite کامل باید روی head نهایی CI موفق شوند.
+
+
+## 2026-10-20 — bilingual dynamic-output UX hardening
+
+- Dashboard chat and learning result regions now use automatic text direction, improving mixed Persian/English output readability without changing the Persian-first RTL navigation shell. The concise chat status uses a polite live region; large structured learning results are not announced wholesale.
+- Replaced the outdated “initial prototype” subtitle and stale learning copy with accurate descriptions of source-aware research and the limitation of exact-match assessment.
+- Browser E2E asserts `dir="auto"`, `role="status"`, and `aria-live="polite"` on both result regions. This is automated markup/behavior coverage, not manual screen-reader acceptance.
+
+
+## 2026-10-20 — response-language guard on direct and repaired answers
+
+- Applied the existing conservative Persian/English response-language check to direct chat as well as source-backed research.
+- Added a bounded repair attempt and localized safe fallback when the repair still fails the language check.
+- Rechecked the answer after claim-review repair to prevent a post-review language regression from reaching the user.
+- Added regression tests for direct chat and claim-repair drift. Live Ollama behavior and human-adjudicated bilingual quality remain unverified.
+
+
+## 2026-10-20 — research citation URL hardening
+
+- Source excerpts passed to the model now require an unambiguous HTTPS URL authority, a hostname, no embedded user-info credentials, and a parseable port.
+- Added regression coverage for insecure schemes, missing hosts, malformed ports, and misleading/credential-bearing authorities.
+- This is a narrow citation-integrity check, not an external URL reputation check or substitute for the independent security review.
+
+
+## 2026-10-20 — dashboard source-link validation
+
+- Reused a single `safeHttpsUrl` helper for cloud-discovery and experience-evidence links. Both views now reject non-HTTPS, hostless, malformed-port, and user-info-bearing URLs before creating clickable anchors.
+- Added browser E2E assertions for valid and deceptive/malformed URLs. The check protects link presentation; it is not a destination reputation check and does not replace the independent security review.
+
+
+## 2026-10-20 — exact-head validation for repository hardening
+
+- PR #369 head `e7ae4d5661d12b05b1a405a15d94574d17c0e411` passed the required tests including Windows storage regressions (run [#39384776230](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230)), Chromium browser E2E (run [#39384776350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350)), and dependency audit (run [#39384776221](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221)).
+- PR remains open and unmerged. CI does not satisfy target-host, live-model/human, operational recovery/restore, independent security, or manual accessibility acceptance.
+
+
+## 2026-10-20 — search provider diagnostic accuracy
+
+- Search diagnostics now report `no_acceptable_results` when a provider parser extracted links but every link failed destination acceptance, instead of reporting `no_parseable_results`.
+- Challenge and consent classifications retain precedence. No challenge bypass was added.
+- Added a deterministic regression test for a parsed Google search-page URL rejected because it points back to the search provider.
+- This improves diagnosis of the reported discovery run (Google parse count greater than zero, accepted count zero); it does not by itself improve live provider responses or prove why each real-world URL was rejected.
+
+
+## 2026-10-20 — Cloud discovery roadmap accuracy
+
+- Reconciled the cloud discovery architecture's remaining-work section with the current implementation: five bounded queries, source-bound Kaggle/OCI extractors, consent-gated read-only quota/service-limit clients, and local review controls already exist.
+- Reframed remaining work around live provider-search reliability, real-account/human validation, target-Windows CLI checks, and the independent security gate. Remote execution remains disabled and never authorized by preflight.
+## 2026-10-20 — systemic learning quality plan
+
+- Added `docs/LEARNING_SYSTEM_COMPLETION_PLAN.md` describing a staged engineering plan for evidence-backed claim validation, fail-closed quality gates, calibrated assessment, bilingual AI regression cases, sandbox skill checks, and target-host reliability/performance acceptance.
+- Explicitly grounded the resource strategy in the repository's documented Windows / Intel Core i5-12400 / 32 GB RAM / Intel integrated graphics / local Ollama baseline. Discrete GPU availability is not assumed; resource budgets must be measured on the actual target host.
+- Numeric quality thresholds are proposals pending calibration against a versioned reference set. Existing exact-match scoring and same-model semantic review are not represented as independent scientific verification.
+- Documentation-only change. Tests, live-model evaluation, and target-host measurements were not run as part of this change.
+
+
+
+## 2026-10-20 — کد دروازهٔ علمی و rubric ارزیابی
+
+- افزودن `app/learning_scientific_gate.py` با سیاست fail-closed و وضعیت صریح `machine_reviewed_not_independently_verified`؛ نبود منبع، یک منبع، تعارض، citation نامعتبر یا ارزیابی ناقص مانع عبور می‌شود.
+- اتصال نتیجه به متادیتای کیفیت درس و نمایش وضعیت در رابط، بدون ارتقای `knowledge_items.status` از `unverified`.
+- افزودن `app/learning_rubric.py` برای امتیازدهی قطعی معیارهای مفهومی وزن‌دار و عبارت‌های پذیرفته‌شده، با حفظ سازگاری آزمون‌های ذخیره‌شدهٔ قدیمی.
+- افزودن تست‌های گیت، scoring، نمرهٔ جزئی، عبارت نفی‌شده و پنهان‌ماندن rubric قبل از ارسال پاسخ.
+- این ثبت، گزارش اجرای محلی یا benchmark زنده نیست. نتیجهٔ CI برای commit نهایی جداگانه بررسی می‌شود.
+
+
+## 2026-10-20 — تفکیک امتیاز و ابزار benchmark میزبان
+
+- مهاجرت ۱۶، ستون جداگانهٔ کیفیت تولید محتوا و منشأ نمرهٔ یادگیرنده را اضافه می‌کند و دادهٔ قدیمی را حفظ می‌کند.
+- تلاش آزمون دارای rubric معتبر، نمره و وضعیت سرفصل را در یک تراکنش به‌روزرسانی می‌کند؛ آستانهٔ تکمیل خودکار ۸۰ است. نمرهٔ exact-match قدیمی به‌تنهایی مجوز تکمیل نیست و وضعیت تکمیل دستی بدون rubric معتبر و نمرهٔ آستانه رد می‌شود.
+- ابزار `scripts/benchmark_learning_runtime.py` برای اندازه‌گیری محلی و گزارش JSON به‌صورت redacted اضافه شد. این ابزار در CI اجرا نمی‌شود؛ اجرای آن باید روی میزبان مقصد و پس از اجازهٔ کاربر انجام شود.
+
+
+## 2026-10-20 — idempotency و قفل پیش‌نیازها
+
+- مهاجرت ۱۷ کلید idempotency و شاخص یکتای جزئی برای تلاش‌های آزمون اضافه کرد. API پاسخ قبلی را برای retry همان پاسخ برمی‌گرداند و استفاده از کلید با payload متفاوت را رد می‌کند.
+- رابط کلید را برای retry همان پاسخ حفظ می‌کند. قفل پیش‌نیاز زنجیره‌ای در شروع/بازتولید/ارسال آزمون اجرا می‌شود و UI سرفصل مسدود را نشان می‌دهد.
+- گراف پیش‌نیاز غیرخطی، آزمون بار همزمان و benchmark واقعی مقصد همچنان باز هستند.
+
+
+## 2026-10-20 — اصلاح طول درس و retrieval واقعی منابع
+
+- فیلتر ساختاری اکنون شرط پذیرش را با قرارداد تولید ۲۰۰–۲۶۰ واژه همسو می‌کند؛ درس کوتاه‌تر حتی اگر امتیاز عددی آن بالا باشد وارد مسیر اصلاح می‌شود.
+- مرجع‌های ثبت‌شده برای سرفصل کاتالوگ از طریق fetcher امن دریافت می‌شوند و شواهد دارای URL و SHA-256 ثبت می‌شوند. بررسی علمی همچنان fail-closed و model-assisted-not-independent است.
+- متن منبع کاربر هنگام رد شدن درس حذف نمی‌شود؛ متن وب بازیابی‌شده در مسیر رد همچنان حذف می‌شود. تست‌های رگرسیون این قراردادها اضافه شدند.
+
+
+- برای سرفصل معماری SQL Server، مرجع‌های موضوعی رسمی Microsoft Learn قبل از لینک‌های عمومی دوره دریافت می‌شوند تا شواهد مستقیم‌تر در اولویت باشد.
+- تعارض منبع با خطای `source_conflicts_unresolved_release_blocked` مسدود می‌ماند؛ دیگر متن یا خطای runtime کاربر را به تصمیم انسانی ارجاع نمی‌دهد.
+
+
+- prompt تولید و repair آزمون به‌روزرسانی شد تا سه سؤال شامل مفهوم، علت‌ومعلول و سناریوی کاربردی همراه با توجیه تصمیم/trade-off باشند؛ کالیبراسیون و اجرای sandbox هنوز باز هستند.
+
+
+- UI منابع دریافت‌شده را از manifest دروازهٔ علمی نمایش می‌دهد؛ مقصد لینک‌ها در مرورگر دوباره از نظر HTTPS و نبود credentials بررسی می‌شود.
+- بخش منابع و URLهای استنادی دیگر به‌اشتباه بخشی از طول واژه‌های آموزشی حساب نمی‌شوند.
+
+
+## 2026-10-20 — اصلاح تولید درس کوتاه و انتخاب نتیجهٔ repair
+
+- بودجهٔ تولید درس به ۲۴۰۰ توکن و repair به ۳۰۰۰ توکن افزایش یافت؛ انتخاب خروجی repair فقط بر نمرهٔ کل تکیه نمی‌کند و در امتیاز مساوی، شواهد واقعی‌ترِ جزئیات فنی، مثال، استدلال و نزدیکی طول درس به هدف را مقایسه می‌کند.
+- context تولید درس با RAM تشخیص‌داده‌شده تطبیق می‌یابد؛ نصب‌های قدیمی که مقدار پیش‌فرض ۲۰۴۸ را در SQLite ذخیره کرده‌اند، در میزبان ۲۴GB به بالا برای تولید درس از context برابر ۸۱۹۲ و در ۱۲ تا ۲۴GB از ۴۰۹۶ استفاده می‌کنند. زیر ۱۲GB محدودیت محافظه‌کارانه حفظ می‌شود.
+- مقدار پیش‌فرض نصب تازه به ۸۱۹۲ تغییر کرد؛ محدودیت سخت‌افزار در \`runtime_limits\` همچنان اعمال می‌شود. این تغییر به معنی تأیید علمی درس نیست؛ دروازهٔ شواهد مستقل از فیلتر ساختاری باقی می‌ماند.
+- تست رگرسیون تولید repair، انتخاب متن پذیرفته‌شده و context میزبان اضافه شد. تأیید نهایی تابع نتیجهٔ CI روی commit فعلی است.
+
+
+## 2026-10-20 — رفع وضعیت گیرکردهٔ کار یادگیری و محدودسازی timeout
+
+- وظایف صفی که retry آن‌ها تمام شده بود می‌توانستند رکورد دامنه‌ای درس را در وضعیت `running` باقی بگذارند؛ همگام‌سازی صف/درس در تابع reconciliation اصلاح شد تا شکست نهایی و لغو به وضعیت نهایی درس منتقل شوند.
+- callback نگهداری runtime اکنون همیشه فعال است؛ پاک‌سازی containerهای sandbox، در صورت پیکربندی، همچنان اجرا می‌شود.
+- هر فراخوانی تولید/اصلاح درس حداکثر ۲۴۰ ثانیه و مرور ادعا حداکثر ۱۸۰ ثانیه مهلت دارد (یا کمتر اگر تنظیم فعلی کاربر کمتر باشد). شکست همچنان fail-closed است.
+- تست رگرسیون برای retry تمام‌شده، لغو و timeout محدود مرور ادعا اضافه شد. تست محلی مقصد اجرا نشده؛ وضعیت CI آخرین commit باید بررسی شود.
+
+
+
+## 2026-10-20 — تشخیص‌پذیری timeout در رابط یادگیری
+
+- API جزئیات کار یادگیری، وضعیت وظیفهٔ صف، تلاش فعلی/حداکثر، مرحلهٔ checkpoint، زمان به‌روزرسانی و خطای محدودشده را بدون payload صف نمایش می‌دهد.
+- بعد از پایان مهلت انتظار رابط، وضعیت درس دوباره خوانده می‌شود و پیام شامل وضعیت صف/درس و تلاش‌ها می‌شود؛ این پیام ادعای توقف یا ادامهٔ واقعی پردازش نمی‌کند.
+- تست‌های رگرسیون برای قرارداد diagnostics و پیام timeout اضافه شدند.

@@ -1,3 +1,4 @@
+import json
 from app import db, hardware, learning, ollama
 
 def test_databases_are_separate(tmp_path, monkeypatch):
@@ -84,7 +85,7 @@ def test_learning_quality_gate_rejects_source_failure_reports():
 
 
 def test_learning_quality_gate_accepts_substantive_lesson():
-    lesson = ("Python decorators let a program wrap a function with reusable behavior. A decorator receives a callable and returns another callable, often preserving metadata with functools.wraps. The @ syntax applies the decorator when the function is defined. Decorators are useful for logging, caching, authorization, and measuring execution time. A simple decorator defines an inner wrapper, calls the original function, and returns its result. Arguments can be forwarded with *args and **kwargs. Decorator order matters because decorators are applied from the nearest function outward. For methods, the wrapper must preserve descriptor behavior expected by the class. Use a decorator when behavior should be shared across functions; avoid it when it hides important control flow.")
+    lesson = ("Python decorators let a program wrap a function with reusable behavior. A decorator receives a callable and returns another callable, often preserving metadata with functools.wraps. The @ syntax applies the decorator when the function is defined. Decorators are useful for logging, caching, authorization, and measuring execution time. A simple decorator defines an inner wrapper, calls the original function, and returns its result. Arguments can be forwarded with *args and **kwargs. Decorator order matters because decorators are applied from the nearest function outward. For methods, the wrapper must preserve descriptor behavior expected by the class. Use a decorator when behavior should be shared across functions; avoid it when it hides important control flow. Before applying a decorator in production, test normal returns, raised exceptions, keyword arguments, and metadata preservation. Measure the overhead when the wrapper runs on a hot path, and document any changed calling convention.")
     result = learning.evaluate_learning_value(lesson, ["What does a decorator receive?", "Why use wraps?", "When are decorators useful?"], ["A callable.", "To preserve metadata.", "For reusable cross-cutting behavior."])
     assert result["accepted"] is True
     assert result["score"] >= 65
@@ -265,7 +266,24 @@ def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypa
     assert path["completed_count"] == 0
     assert path["progress_percent"] == 0
     first_topic = path["topics"][0]
-    updated = learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
+    job = learning.create_job(first_topic["topic"], path_topic_id=first_topic["id"])
+    assessment = {
+        "questions": ["What does an index improve?"],
+        "answer_key": ["An index can improve lookup speed but has maintenance cost."],
+        "rubric": [{"criteria": [
+            {"id": "lookup", "weight": 1, "accepted_phrases": ["lookup speed"]},
+            {"id": "tradeoff", "weight": 1, "accepted_phrases": ["maintenance cost"]},
+        ]}],
+        "rubric_version": "concept-coverage-v1",
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', assessment_json=? WHERE id=?",
+            (json.dumps(assessment), job["id"]),
+        )
+    attempt = learning.submit_assessment(job["id"], ["Lookup speed improves; maintenance cost remains."])
+    assert attempt["score"] == 100.0
+    updated = learning.get_learning_path(path["id"])
     assert updated["completed_count"] == 1
     assert updated["progress_percent"] > 0
     again = learning.enroll_curriculum("Python")
@@ -316,7 +334,14 @@ def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
             "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
             (path["id"], "Legacy topic with job", next_position + 2),
         ).lastrowid
-    job = learning.create_job("Legacy topic with job", path_topic_id=legacy_job_id)
+    # Preserve a historical linked job fixture without bypassing current runtime gates.
+    with db.learning_connection() as conn:
+        historical_job_id = conn.execute(
+            """INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id)
+               VALUES (?, 'queued', 'model_knowledge_no_external_source', ?)""",
+            ("Legacy topic with job", legacy_job_id),
+        ).lastrowid
+    job = learning.get_job(int(historical_job_id))
     result = learning.sync_curriculum_path(path["id"])
     topics = {item["topic"]: item for item in result["topics"]}
     assert "Legacy unstarted duplicate" not in topics
@@ -332,9 +357,15 @@ def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
 def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     import json
 
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 12, "total_ram_gb": 32, "available_ram_gb": 24,
+        "gpu_policy": "disabled_by_default", "notes": [],
+    })
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    # Simulate an existing installation with the former persisted default.
+    db.update_settings({"ollama_num_ctx": 2048})
     lesson = (
         "در SQL Server، Database Engine مسئول ذخیره‌سازی و اجرای پرس‌وجوها است. "
         "درخواست T-SQL ابتدا تجزیه و بهینه‌سازی می‌شود و سپس برنامه اجرایی مناسب انتخاب می‌شود. "
@@ -351,8 +382,10 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
         "نه تضمین خودکار برای درست بودن طراحی."
     )
     payloads = []
-    def fake_request(_path, payload, **_kwargs):
+    request_timeouts = []
+    def fake_request(_path, payload, **kwargs):
         payloads.append(payload)
+        request_timeouts.append(kwargs.get("timeout"))
         return {"message": {"content": json.dumps({
             "lesson": lesson,
             "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
@@ -368,12 +401,21 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
             ],
         }, ensure_ascii=False)}}
     monkeypatch.setattr(learning, "_request", fake_request)
+    monkeypatch.setattr(
+        learning, "_discover_and_store_sources",
+        lambda _job_id, _topic: ("", "model_knowledge_no_external_source"),
+    )
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
-    assert payloads[0]["options"]["num_predict"] >= 1000
-    assert finished["status"] == "completed"
+    assert payloads[0]["options"]["num_predict"] >= 2400
+    assert request_timeouts and 5 <= request_timeouts[0] <= 240
+    assert payloads[0]["options"]["num_ctx"] == 8192
+    assert finished["status"] == "rejected"
     assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["release_eligible"] is False
+    assert finished["quality"]["scientific_gate"]["passed"] is False
+    assert "external_retrieved_sources_required" in finished["quality"]["scientific_gate"]["reasons"]
 
 
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
@@ -418,3 +460,80 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     failed = learning.get_job(job["id"])
     assert failed["status"] == "failed"
     assert "model offline" in failed["error"]
+
+
+def test_path_topic_cannot_be_completed_or_scored_manually(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("sql-server")
+    topic = path["topics"][0]
+    with pytest.raises(ValueError, match="manual score overrides are disabled"):
+        learning.update_path_topic(path["id"], topic["id"], "completed", 100)
+    with pytest.raises(ValueError, match="Manual completion is disabled"):
+        learning.update_path_topic(path["id"], topic["id"], "completed")
+    unchanged = learning.get_learning_path(path["id"])
+    assert unchanged["topics"][0]["status"] == "pending"
+    assert unchanged["topics"][0]["latest_score"] is None
+
+
+def test_lesson_generation_prefers_accepted_repair_over_short_first_draft(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    good_lesson = (
+        "در SQL Server، Database Engine مسئول ذخیره‌سازی و اجرای پرس‌وجوها است. "
+        "درخواست T-SQL ابتدا تجزیه می‌شود و بهینه‌ساز برای آن برنامه اجرایی انتخاب می‌کند. "
+        "execution plan نشان می‌دهد داده‌ها چگونه خوانده می‌شوند؛ برای نمونه، اسکن جدول ممکن است "
+        "در جدول کوچک مناسب باشد، اما برای جست‌وجوی پرتکرار روی ستون انتخابی، ایندکس مناسب می‌تواند "
+        "تعداد صفحات خوانده‌شده را کاهش دهد. این بهبود قطعی نیست، زیرا هزینه نگهداری ایندکس و "
+        "توزیع داده نیز بر تصمیم بهینه‌ساز اثر می‌گذارند. SSMS ابزار مدیریت و مشاهده برنامه اجرا است، "
+        "در حالی که DMVها اطلاعاتی درباره وضعیت و کارایی نمونه سرور ارائه می‌کنند. در عمل، ابتدا "
+        "پرس‌وجو را با داده نماینده اجرا کنید، سپس execution plan و آمار ورودی و خروجی را بررسی کنید. "
+        "اگر ایندکس جدیدی پیشنهاد شد، اثر آن را با بار کاری واقعی و پس از ثبت خط مبنا بسنجید. "
+        "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
+        "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
+        "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
+        "نه تضمین خودکار برای درست بودن طراحی."
+    )
+    payloads = []
+
+    def response(lesson):
+        return {"message": {"content": json.dumps({
+            "lesson": lesson,
+            "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
+            "questions": [
+                "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
+                "چرا ایندکس همیشه باعث بهبود عملکرد نمی‌شود؟",
+                "چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
+            ],
+            "answer_key": [
+                "نشان می‌دهد موتور چگونه داده را می‌خواند و چه عملگرهایی را اجرا می‌کند.",
+                "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
+                "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
+            ],
+        }, ensure_ascii=False)}}
+
+    def fake_request(_path, payload, **_kwargs):
+        payloads.append(payload)
+        return response("SQL Server یک ابزار است. " * 12) if len(payloads) == 1 else response(good_lesson)
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    monkeypatch.setattr(
+        learning, "_discover_and_store_sources",
+        lambda _job_id, _topic: ("", "model_knowledge_no_external_source"),
+    )
+    job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert len(payloads) == 2
+    assert payloads[1]["options"]["num_predict"] >= 3000
+    assert finished["quality"]["accepted"] is True
+    assert finished["quality"]["word_count"] >= 200
+    assert finished["status"] == "rejected"  # Evidence gate still fails closed without sources.
+    assert finished["lesson"] is None

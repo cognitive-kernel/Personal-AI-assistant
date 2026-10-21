@@ -1,8 +1,8 @@
 # Project Progress Dashboard
 
-> Last verified: 2026-10-16 (UTC)  
+> Last verified: 2026-10-20 (UTC)  
 > Repository: [cognitive-kernel/Personal-AI-assistant](https://github.com/cognitive-kernel/Personal-AI-assistant)  
-> Latest confirmed post-merge code CI: [run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) — success; 539 passed, 4 skipped, and the deterministic retrieval benchmark passed for merge commit `12fe5e5dd62c47edf5b06dbdfcbc7a6cb4ba48b1`.
+> Latest confirmed main-head CI: commit `379a65610de007e33affe353b745e8f2d258fe17`; tests [#39370245234](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245234), browser E2E [#39370245302](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245302), and dependency audit [#39370245245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39370245245) all succeeded on 2026-10-20.
 
 ## Executive status
 
@@ -83,3 +83,75 @@ The implementation log is the detailed record of merged changes and acceptance l
 - **Merged:** [PR #233](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/233) preserves the Ollama `/api/tags` model manifest digest in the local model inventory and records it in answer-quality reports when available.
 - **CI evidence:** [PR-head run #38927880019](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38927880019) and [post-merge run #38928026168](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/38928026168) succeeded; 539 passed, 4 skipped, and the deterministic retrieval benchmark passed.
 - **Limit:** a model digest improves model identity but does not freeze the live web retrieval corpus. A real Ollama evaluation and human adjudication are still required before reporting model-quality results.
+
+
+## 2026-10-20 update — current main verification and remaining boundaries
+
+- Main commit `379a65610de007e33affe353b745e8f2d258fe17` has successful exact-head tests, Chromium browser E2E, and dependency-audit workflows. This is repository CI evidence, not target-host acceptance.
+- Dashboard improvements merged through PRs #356–#365 include task summary/search and safe bulk operations, semantic task status, active-section navigation, learning-path progress, contextual empty states, and a persistent theme preference.
+- PR #368 proposes a higher-contrast light-theme focus token and WCAG token regression tests; it remains an open review until merged.
+- PR #369 proposes mandatory import-cycle CI enforcement, a fresh-store clean-start regression, corrected self-improvement governance documentation, a required Markdown-link integrity gate, and bilingual chat/learning output direction plus live-region semantics. Its exact-head CI must pass and the PR must be reviewed before these changes are considered merged.
+- The target-host migration/startup, live-model human adjudication, operational recovery/load, real restore/rollback rehearsal, independent security review, and manual accessibility acceptance gates remain open by design and are not inferred from CI.
+
+
+## 2026-10-20 update — documentation integrity gate
+
+- PR #369 also adds a network-free Markdown link checker and unit coverage for broken local targets, fenced code examples, URL encoding, and root traversal.
+- The checker is added to required test CI. It does not validate external link availability or replace manual content review.
+- Exact-head tests, browser E2E, and dependency-audit results are recorded on the PR; do not claim merge until review and merge are complete.
+
+
+## 2026-10-20 update — response-language guard hardening (PR #369)
+
+- The local-first chat path now applies the Persian/English response-language guard to both direct small-talk and research answers. A mismatched draft gets one bounded language-repair attempt; if the repair still mismatches, the assistant returns a localized safe fallback rather than knowingly returning the wrong language.
+- The same guard is applied after claim-review repair, closing a gap where a repaired factual answer could drift from the requested language after the initial language check.
+- Regression coverage includes direct-chat repair/fail-closed behavior and claim-repair language drift. This is a deterministic script-level guard, not a substitute for live Persian/English evaluation or human adjudication.
+- Exact-head CI for the current PR revision must pass before this change is considered validated; the user's latest local full-suite evidence (`646 passed, 5 skipped`) predates this language-guard change.
+
+
+## 2026-10-20 update — exact-head CI for PR #369
+
+- Head `e7ae4d5661d12b05b1a405a15d94574d17c0e411`: required tests and Windows storage regressions passed ([run #39384776230](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776230)); Chromium browser E2E passed ([run #39384776350](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776350)); dependency audit passed ([run #39384776221](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39384776221)).
+- PR #369 remains open and unmerged. These results validate configured CI only; target-host startup/migration, live-model/human adjudication, operational recovery/load and restore/rollback, independent security review, and manual accessibility gates remain open.
+## 2026-10-20 — learning-system completion plan
+
+- Added [the systemic learning completion plan](LEARNING_SYSTEM_COMPLETION_PLAN.md) to define engineering phases and acceptance criteria for provenance-backed scientific checks, fail-closed behavior, calibrated learning assessment, bilingual AI regression datasets, and practical skill evaluation.
+- Hardware-aware design uses the documented Windows baseline (Intel Core i5-12400, 32 GB RAM, Intel integrated graphics reported as 128 MB) and local Ollama/qwen2.5:7b default. Actual model identity, resource use, latency, and target-host compatibility remain to be measured using the target-host baseline tool.
+- This is a roadmap/documentation commit, not implementation evidence. The existing exact-match score and same-model semantic review remain limited; proposed quality thresholds are targets, not measured results. No local tests or live Ollama evaluation were run for this documentation-only change.
+
+
+
+## 2026-10-20 — کدنویسی سامانهٔ یادگیری
+
+در PR #369 علاوه بر نقشهٔ تکمیل، دو مؤلفهٔ اجرایی افزوده شد: دروازهٔ شواهد علمی fail-closed با وضعیت غیرمبالغه‌آمیز و امتیازدهی rubric مفهومی قطعی. وضعیت علمی در رابط آشکار است؛ نبود شواهد کافی به‌عنوان تأیید ثبت نمی‌شود. rubric تا ارسال پاسخ مخفی است. این مرحله هنوز تأیید مستقل صحت علمی، کالیبراسیون false-pass/false-fail یا benchmark میزبان هدف را ثابت نمی‌کند.
+
+
+## 2026-10-20 — پیشرفت کدنویسی سامانهٔ آموزشی
+
+- دروازهٔ علمی، rubric مفهومی، تفکیک نمرهٔ کیفیت درس/نمرهٔ آزمون، اتصال نمرهٔ rubric به تکمیل سرفصل و ابزار benchmark محلی اضافه شده‌اند.
+- تست‌های خودکار جدید برای قرارداد rubric و benchmark افزوده شده‌اند؛ یک اجرای CI پیشین یک شکست در محافظ نفی مفهوم پیدا کرد و regex آن اصلاح شد. وضعیت نهایی CI برای آخرین commit باید جداگانه بررسی شود.
+- باقی‌مانده‌های مهم: کالیبراسیون rubric روی مجموعهٔ مرجع، گراف پیش‌نیاز سفارشی و آزمون همزمانی، سنجش عملی sandbox، و benchmark واقعی Ollama روی میزبان مقصد. هنوز ادعای قبولی نهایی یا اجرای محلی وجود ندارد.
+
+
+## 2026-10-20 — idempotency و پیش‌نیازهای دوره
+
+کلید idempotency برای POST آزمون، جلوگیری از تکرار با پاسخ متفاوت، و قفل سرفصل بر مبنای تکمیل سرفصل‌های قبلی اضافه شده‌اند. قفل پیش‌نیاز در سرور enforce می‌شود و فقط به غیرفعال‌سازی دکمهٔ رابط متکی نیست. هنوز گراف وابستگی سفارشی، آزمون همزمانی و benchmark میزبان هدف لازم‌اند.
+
+
+## 2026-10-20 — اصلاح تولید درس و منبع
+
+فیلتر طول درس و prompt تولید همسو شدند تا درس زیر هدف ۲۰۰ واژه‌ای به‌صورت اشتباه پذیرفته نشود. پیوندهای مرجع کاتالوگ اکنون واقعاً دریافت می‌شوند و متن/URL/hash آن‌ها در شواهد ثبت می‌شود؛ در صورت شکست retrieval، دروازهٔ علمی اجازه انتشار نمی‌دهد. منبعی که کاربر داده در صورت رد درس حفظ می‌شود. تست‌های رگرسیون به CI افزوده شده‌اند؛ benchmark سیستم مقصد هنوز اجرا نشده است.
+
+
+در مسیر آموزشی، دریافت مرجع‌های موضوعی رسمی برای سرفصل معماری SQL Server اضافه شد و تعارض منبع به‌صورت ماشینی fail-closed می‌ماند؛ تأیید انسانی شرط انتشار نیست. اثبات مستقل حقیقت همچنان ادعا نمی‌شود.
+
+
+## 2026-10-20 — بازیابی کارهای یادگیری متوقف‌شده
+
+وضعیت وظیفهٔ صف با رکورد درس در maintenance دوره‌ای همگام می‌شود؛ شکست نهایی پس از اتمام retry دیگر به‌صورت نامحدود «در حال اجرا» نمایش داده نمی‌شود و لغو نیز منعکس می‌شود. مهلت هر مرحلهٔ تولید/اصلاح مدل حداکثر ۲۴۰ ثانیه و مرور ادعا حداکثر ۱۸۰ ثانیه است، با رعایت timeout کوچک‌تر تنظیم‌شده. تست رگرسیون CI اضافه شد؛ اجرای واقعی روی Ollama و سیستم مقصد هنوز باز است.
+
+
+
+## 2026-10-20 — عیب‌یابی timeout از API تا رابط
+
+در API وضعیت درس، اطلاعات محدود صف و checkpoint بدون payload داخلی اضافه شد. رابط پس از پایان زمان انتظار یک بار وضعیت را تازه می‌کند و وضعیت واقعی درس/صف و تلاش‌ها را در خطا نشان می‌دهد. تست رگرسیون CI افزوده شده است؛ تأیید رفتار زنده در سیستم مقصد همچنان باز است.
