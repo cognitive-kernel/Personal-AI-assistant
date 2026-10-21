@@ -176,3 +176,9 @@ Remaining gates include durable URL attribution for each example extracted from 
 
 
 The source-example runner also fails closed when a candidate lists multiple trusted source URLs but the stored executable examples are not individually attributable to one source. It returns `source_attribution_ambiguous` and records no passing test run rather than assigning a combined suite to an arbitrary URL. Full multi-page support still requires storing and running a separate example suite per retrieved URL and mapping each suite to its claims.
+
+### No-laboratory evidence review promotion
+
+The hybrid orchestrator now also supports a separate no-lab path. It promotes a candidate into the main knowledge table with status `evidence_reviewed_no_lab` only when at least two distinct curated HTTPS primary-source domains are classified as supporting, at least two configured peer providers support the claim, the confidence index reaches the threshold, and there are no known contradictory sources/providers or failed real-world reports. This status is explicitly not experimental verification. The candidate remains linked to all source and peer records, and a later trusted lab test can upgrade it to `verified`; a failing later test downgrades the no-lab main-store row to `unverified` and records the failure experience.
+
+The score remains a transparent heuristic and provider labels do not establish true model independence. This path is conservative evidence-based promotion, not a substitute for a trusted oracle. Claims that lack primary-source support, have disagreements, or have only one evidence channel remain temporary/unverified.
