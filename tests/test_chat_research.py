@@ -45,7 +45,7 @@ def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(m
     monkeypatch.setattr(ollama, "chat", fake_chat)
     reply = chat_research.answer("خطا در SQL Server", [{"role": "user", "content": "قبلی"}])
     assert "پاسخ فنی" in reply
-    assert "No usable external source was found" in reply
+    assert "منبع بیرونی قابل‌استفاده پیدا نشد" in reply
     assert captured["message"]["sources"] == []
     assert captured["history"] == [{"role": "user", "content": "قبلی"}]
     assert "Treat source titles" in captured["system_prompt"]
@@ -452,7 +452,7 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
 
     monkeypatch.setattr(chat_research.ollama, "chat", fake_chat)
     reply = chat_research.answer("How do Python lists preserve order and support updates?")
-    assert "منبع بیرونی قابل‌استفاده پیدا نشد" in reply
+    assert "No usable external source was found" in reply
     payload = captured["message"]
     assert payload["memory"]["verified_factual_knowledge"][0]["id"] == claim_id
     assert "Cite the exact source URLs supporting factual-knowledge records" in payload["instruction"]
