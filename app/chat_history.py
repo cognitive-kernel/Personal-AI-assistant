@@ -45,6 +45,15 @@ def get_conversation(conversation_id: int) -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
 
+def delete_conversation(conversation_id: int) -> bool:
+    """Delete one conversation and its messages; leave all other conversations intact."""
+    with db.settings_connection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM chat_conversations WHERE id = ?", (conversation_id,)
+        )
+        return cursor.rowcount > 0
+
+
 def list_messages(conversation_id: int) -> list[dict[str, Any]]:
     with db.settings_connection() as conn:
         exists = conn.execute(
