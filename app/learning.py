@@ -490,6 +490,7 @@ def record_candidate_test_results(
     This function records declared-test success, not universal scientific truth.
     """
     from .db import init_databases
+    from .claim_test_coverage import evaluate_claim_test_coverage, extract_candidate_claims
 
     init_databases()
     if not isinstance(test_plan, list) or not 1 <= len(test_plan) <= 50:
@@ -580,7 +581,7 @@ def record_candidate_test_results(
     if len(plan_json) > 20000 or len(results_json) > 20000:
         raise ValueError("Test plan/results exceed the storage limit.")
 
-    passed = all(item["passed"] is True for item in test_results)
+    tests_passed = all(item["passed"] is True for item in test_results)
     failed_names = [item["test"] for item in test_results if item["passed"] is False]
     failure_reason = "Failed tests: " + ", ".join(failed_names) if failed_names else ""
     with learning_connection() as conn:
@@ -600,13 +601,26 @@ def record_candidate_test_results(
             if plan_item["oracle_kind"] == "source_example":
                 if plan_item["oracle_ref"] not in candidate_source_urls:
                     raise ValueError("Source-example oracle must be a URL recorded for this candidate.")
+        claim_records = extract_candidate_claims(str(candidate["content"] or ""), candidate_id)
+        claim_coverage = evaluate_claim_test_coverage(
+            [claim["claim_id"] for claim in claim_records], test_plan
+        )
+        promotion_eligible = tests_passed and claim_coverage["complete"]
+        candidate_status = (
+            "passed" if promotion_eligible
+            else "failed" if not tests_passed
+            else "awaiting_test"
+        )
+        if tests_passed and not claim_coverage["complete"]:
+            blockers = claim_coverage["missing_claim_ids"] or claim_coverage["issues"]
+            failure_reason = "Claim test coverage incomplete: " + ", ".join(blockers)
         conn.execute(
             """UPDATE temporary_knowledge_candidates
                SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,
                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-            ("passed" if passed else "failed", plan_json, results_json, failure_reason, candidate_id),
+            (candidate_status, plan_json, results_json, failure_reason, candidate_id),
         )
-        if passed:
+        if promotion_eligible:
             # run_job() already stores the generated lesson as an unverified knowledge row.
             # Upgrade that row in place so the unique job_id constraint is respected and
             # we do not create duplicate versions of the same lesson.
@@ -644,11 +658,13 @@ def record_candidate_test_results(
                    VALUES (?, 'candidate_test_results', ?, ?, ?)""",
                 (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
                  candidate["content_sha256"],
-                 "تمام آزمون‌های ثبت‌شده با runner خودکار مجاز موفق شدند؛ ارتقا فقط در محدوده همین آزمون‌هاست، نه اثبات همگانی صحت علمی."),
+                 "تمام آزمون‌های ثبت‌شده با runner خودکار مجاز موفق شدند و نگاشت صریح همه ادعاهای استخراج‌شده به آزمون‌ها کامل بود. " 
+                 f"claim_coverage={claim_coverage['covered_claim_count']}/{claim_coverage['candidate_claim_count']}; "
+                 "این ارتقا اثبات همگانی صحت علمی نیست."),
             )
-        else:
-            # A failed later lab test downgrades any evidence-only main-store entry
-            # to unverified; preserve the record and the failure experience.
+        elif not tests_passed:
+            # A failed lab test downgrades evidence-only entries to unverified and
+            # preserves the concrete failure as a learning experience.
             conn.execute(
                 """UPDATE knowledge_items SET status='unverified'
                    WHERE job_id=? AND status='evidence_reviewed_no_lab'""",
@@ -680,11 +696,25 @@ def record_candidate_test_results(
                 (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
                  candidate["content_sha256"], takeaway[:1000]),
             )
+        else:
+            # Passing a partial suite is neither a test failure nor grounds for
+            # promotion. Keep the candidate temporary and preserve the blocker.
+            coverage_note = json.dumps(claim_coverage, ensure_ascii=False, sort_keys=True)[:1800]
+            conn.execute(
+                """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                   VALUES (?, 'candidate_test_coverage_block', ?, ?, ?)""",
+                (candidate["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
+                 candidate["content_sha256"], coverage_note),
+            )
         final = conn.execute(
             "SELECT * FROM temporary_knowledge_candidates WHERE id=?",
             (candidate_id,),
         ).fetchone()
-        return dict(final)
+        result = dict(final)
+        result["claim_coverage"] = claim_coverage
+        result["tests_passed"] = tests_passed
+        result["promotion_eligible"] = promotion_eligible
+        return result
 
 
 def list_temporary_knowledge_candidates(status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
