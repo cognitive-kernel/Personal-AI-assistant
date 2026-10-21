@@ -712,13 +712,16 @@ const MODEL_TASK_LABELS = {
 let settingsModelProfiles = [];
 let settingsModelProviders = [{id:"ollama",label:"Ollama (محلی)"}];
 let settingsTaskMapping = {};
-function escapeModelSettingsValue(value) {
- return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
-}
 function nextModelProfileId() {
  let n=1; const existing=new Set(settingsModelProfiles.map(item=>item.id));
  while(existing.has("model-"+n)) n++;
  return "model-"+n;
+}
+function appendModelProfileField(parent, caption, control) {
+ const label=document.createElement("label");
+ label.append(document.createTextNode(caption));
+ label.append(control);
+ parent.append(label);
 }
 function renderModelProfiles() {
  const container=el("model-profile-list");
@@ -728,17 +731,70 @@ function renderModelProfiles() {
   const row=document.createElement("div");
   row.className="model-profile-row";
   row.dataset.profileId=profile.id;
-  const providerOptions=settingsModelProviders.map(provider =>
-   '<option value="'+escapeModelSettingsValue(provider.id)+'"'+(provider.id===profile.provider?" selected":"")+'>'+escapeModelSettingsValue(provider.label)+'</option>'
-  ).join("");
-  const currentProvider=settingsModelProviders.some(provider=>provider.id===profile.provider)?"":'<option value="'+escapeModelSettingsValue(profile.provider)+'" selected>'+escapeModelSettingsValue(profile.provider)+'</option>';
-  row.innerHTML='<h4>پروفایل '+(index+1)+' <small>'+escapeModelSettingsValue(profile.id)+'</small></h4>'+
-   '<label>نام نمایشی<input class="model-profile-label" aria-label="نام نمایشی پروفایل مدل '+(index+1)+'" maxlength="100" value="'+escapeModelSettingsValue(profile.label||"")+'" placeholder="مثلاً مدل گفتگوی سبک" required></label>'+
-   '<label>ارائه‌دهنده<select class="model-profile-provider" aria-label="ارائه‌دهندهٔ پروفایل مدل '+(index+1)+'" required>'+providerOptions+currentProvider+'</select></label>'+
-   '<label>نام مدل / شناسهٔ مدل<input class="model-profile-name" aria-label="نام مدل یا شناسهٔ پروفایل '+(index+1)+'" list="installed-model-options" maxlength="200" value="'+escapeModelSettingsValue(profile.model||"")+'" placeholder="مثلاً qwen2.5:7b" required></label>'+
-   '<label class="inline-check"><input class="model-profile-enabled" aria-label="فعال بودن پروفایل مدل '+(index+1)+'" type="checkbox"'+(profile.enabled!==false?" checked":"")+'> فعال</label>'+
-   '<button type="button" class="remove-model-profile" aria-label="حذف پروفایل مدل '+(index+1)+'" data-profile-id="'+escapeModelSettingsValue(profile.id)+'"'+(settingsModelProfiles.length<=1?" disabled":"")+'>حذف پروفایل</button>';
-  container.appendChild(row);
+  const number=index+1;
+
+  const heading=document.createElement("h4");
+  heading.append(document.createTextNode("پروفایل "+number+" "));
+  const profileId=document.createElement("small");
+  profileId.textContent=profile.id;
+  heading.append(profileId);
+  row.append(heading);
+
+  const labelInput=document.createElement("input");
+  labelInput.className="model-profile-label";
+  labelInput.setAttribute("aria-label","نام نمایشی پروفایل مدل "+number);
+  labelInput.maxLength=100;
+  labelInput.value=profile.label||"";
+  labelInput.placeholder="مثلاً مدل گفتگوی سبک";
+  labelInput.required=true;
+  appendModelProfileField(row,"نام نمایشی",labelInput);
+
+  const providerSelect=document.createElement("select");
+  providerSelect.className="model-profile-provider";
+  providerSelect.setAttribute("aria-label","ارائه‌دهندهٔ پروفایل مدل "+number);
+  providerSelect.required=true;
+  const providers=settingsModelProviders.some(provider=>provider.id===profile.provider)
+   ?settingsModelProviders
+   :settingsModelProviders.concat([{id:profile.provider,label:profile.provider}]);
+  for(const provider of providers) {
+   const option=document.createElement("option");
+   option.value=provider.id;
+   option.textContent=provider.label;
+   option.selected=provider.id===profile.provider;
+   providerSelect.append(option);
+  }
+  appendModelProfileField(row,"ارائه‌دهنده",providerSelect);
+
+  const modelInput=document.createElement("input");
+  modelInput.className="model-profile-name";
+  modelInput.setAttribute("aria-label","نام مدل یا شناسهٔ پروفایل "+number);
+  modelInput.setAttribute("list","installed-model-options");
+  modelInput.maxLength=200;
+  modelInput.value=profile.model||"";
+  modelInput.placeholder="مثلاً qwen2.5:7b";
+  modelInput.required=true;
+  appendModelProfileField(row,"نام مدل / شناسهٔ مدل",modelInput);
+
+  const enabledLabel=document.createElement("label");
+  enabledLabel.className="inline-check";
+  const enabledInput=document.createElement("input");
+  enabledInput.className="model-profile-enabled";
+  enabledInput.setAttribute("aria-label","فعال بودن پروفایل مدل "+number);
+  enabledInput.type="checkbox";
+  enabledInput.checked=profile.enabled!==false;
+  enabledLabel.append(enabledInput,document.createTextNode(" فعال"));
+  row.append(enabledLabel);
+
+  const removeButton=document.createElement("button");
+  removeButton.type="button";
+  removeButton.className="remove-model-profile";
+  removeButton.setAttribute("aria-label","حذف پروفایل مدل "+number);
+  removeButton.dataset.profileId=profile.id;
+  removeButton.disabled=settingsModelProfiles.length<=1;
+  removeButton.textContent="حذف پروفایل";
+  row.append(removeButton);
+
+  container.append(row);
  });
  renderTaskModelMapping();
 }

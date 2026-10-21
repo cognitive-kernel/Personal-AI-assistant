@@ -71,7 +71,7 @@ def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monk
     setup_settings_db(tmp_path, monkeypatch)
     known_url = "https://docs.python.org/3/library/json.html"
     unknown_url = "https://example.invalid/not-retrieved"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review, "llm_complete", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "source_conflicts": [],
@@ -116,7 +116,7 @@ def test_citation_must_be_an_exact_url_token(answer, expected):
 def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
     url = "https://docs.python.org/3/library/json.html"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review, "llm_complete", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "source_conflicts": [],
@@ -165,7 +165,7 @@ def test_claim_review_surfaces_source_conflict_and_fails_closed(tmp_path, monkey
             }],
         })}}
 
-    monkeypatch.setattr(claim_review, "_request", fake_request)
+    monkeypatch.setattr(claim_review, "llm_complete", lambda _task, messages, options=None, response_format=None, **_kwargs: fake_request("/api/chat", {"messages": messages, "options": options, "format": response_format}))
     result = claim_review.review_answer_claims(
         "What is the default state?",
         f"The feature is enabled. Source: {first_url}",
@@ -193,7 +193,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
     setup_settings_db(tmp_path, monkeypatch)
     first_url = "https://docs.example.org/a"
     second_url = "https://docs.example.org/b"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review, "llm_complete", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "claims": [{
@@ -220,7 +220,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
 def test_claim_review_fails_closed_when_source_conflict_field_is_missing(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
     url = "https://docs.example.org/guide"
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review, "llm_complete", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "overall": "supported",
             "claims": [{

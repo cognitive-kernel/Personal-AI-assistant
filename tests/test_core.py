@@ -459,7 +459,7 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     def fail_request(*_args, **_kwargs):
         raise RuntimeError("model offline")
 
-    monkeypatch.setattr(learning, "_request", fail_request)
+    monkeypatch.setattr(learning, "llm_complete", fail_request)
     try:
         learning.run_job(job["id"])
     except learning.LearningError as exc:
@@ -520,7 +520,7 @@ def test_failed_explicit_source_url_does_not_trigger_automatic_substitution(tmp_
     monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests", lambda *_args, **_kwargs: {
         "status": "no_examples", "promoted": False,
     })
-    monkeypatch.setattr(learning, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(learning, "llm_complete", lambda *_args, **_kwargs: {
         "message": {"content": json.dumps({
             "lesson": "A concise candidate lesson.",
             "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
@@ -577,8 +577,8 @@ def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch)
         "status": "no_examples", "promoted": False,
     })
     payloads = []
-    monkeypatch.setattr(learning, "_request", lambda _path, payload, **_kwargs: (
-        payloads.append(payload) or {"message": {"content": json.dumps({
+    monkeypatch.setattr(learning, "llm_complete", lambda _task, messages, options=None, response_format=None, **_kwargs: (
+        payloads.append({"messages": messages, "options": options, "format": response_format}) or {"message": {"content": json.dumps({
             "lesson": "A concise lesson about Python functions.",
             "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
             "questions": ["Recall?", "Why?", "Apply to a new case?"],

@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import chat_research, main, ollama, web_sources
+from app import chat_research, llm, main, ollama, web_sources
 
 
 @pytest.fixture(autouse=True)
@@ -165,11 +165,18 @@ def test_chat_api_uses_research_router(monkeypatch):
 
 
 def test_ollama_chat_places_trusted_system_prompt_before_history(monkeypatch):
-    monkeypatch.setattr(
-        ollama,
-        "get_settings",
-        lambda: {"ollama_model": "test-model", "ollama_timeout_seconds": 5},
-    )
+    test_settings = {
+        "ollama_model": "test-model",
+        "llm_models": [],
+        "llm_task_mapping": {},
+        "ollama_timeout_seconds": 5,
+        "ollama_num_ctx": 1024,
+        "ollama_num_thread": 2,
+    }
+    monkeypatch.setattr(llm, "get_settings", lambda: test_settings)
+    monkeypatch.setattr(llm, "detect_hardware", lambda: {})
+    monkeypatch.setattr(llm, "runtime_limits", lambda *_args: {"num_ctx": 1024, "cpu_threads": 2})
+    monkeypatch.setattr(ollama, "get_settings", lambda: test_settings)
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
     monkeypatch.setattr(ollama, "runtime_limits", lambda *_args: {"num_ctx": 1024, "cpu_threads": 2})
     captured = {}
