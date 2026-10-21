@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from app import db, hardware, learning, ollama
 
 def test_databases_are_separate(tmp_path, monkeypatch):
