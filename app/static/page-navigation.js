@@ -11,7 +11,7 @@
   }
   if (!pages.has("chat-section")) return;
 
-  const routeMatch = window.location.pathname.match(/^\\/page\\/([^/]+)\\/?$/);
+  const routeMatch = window.location.pathname.match(/^\/page\/([^/]+)\/?$/);
   const requested = routeMatch ? decodeURIComponent(routeMatch[1]) : "chat-section";
   const pageId = pages.has(requested) ? requested : "chat-section";
   const isStoragePage = pageId === "storage-health-section";
