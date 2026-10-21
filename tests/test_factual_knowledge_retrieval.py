@@ -20,7 +20,7 @@ def connection():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 16
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
     yield conn
     conn.close()
 
