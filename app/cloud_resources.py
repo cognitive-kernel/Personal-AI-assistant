@@ -981,6 +981,12 @@ def list_candidates(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]
             raw.pop("_discovery_rank", None)
             raw.pop("_identity_rank", None)
             item = _serialize_candidate(raw)
+            # Preserve the prior contract: reflect signals recalculated from the
+            # stored excerpt, rather than potentially stale JSON from an old run.
+            item["resource_signals"] = _resource_signals(
+                str(item.get("title") or ""),
+                str(item.get("evidence_excerpt") or ""),
+            )
             parsed_host = urlparse(str(item.get("source_url") or "")).hostname
             item["source_authority"] = (
                 "recognized_official_domain"
