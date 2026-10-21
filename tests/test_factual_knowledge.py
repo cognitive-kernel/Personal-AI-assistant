@@ -334,11 +334,11 @@ def test_claim_identity_isolated_by_environment_name(connection):
     )
     assert python_claim != sql_claim
     rows = connection.execute(
-        "SELECT id, environment_name FROM factual_knowledge WHERE id IN (?, ?)",
+        "SELECT id, domain_name, environment_name FROM factual_knowledge WHERE id IN (?, ?)",
         (python_claim, sql_claim),
     ).fetchall()
-    assert {(row[0], row[1]) for row in rows} == {
-        (python_claim, "python"), (sql_claim, "sql_server")
+    assert {(row[0], row[1], row[2]) for row in rows} == {
+        (python_claim, "python", "python"), (sql_claim, "sql_server", "sql_server")
     }
 
 
