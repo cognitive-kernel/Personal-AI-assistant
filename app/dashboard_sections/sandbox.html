@@ -1,0 +1,10 @@
+<section id="sandbox-section"><h2>اجرای آزمایشی کد در محیط ایزوله</h2>
+<p class="muted">این قابلیت به‌صورت پیش‌فرض غیرفعال است. اجرا فقط در Docker با image رسمی و digest ثابت، بدون شبکه و با محدودیت زمان و خروجی انجام می‌شود. پیش از فعال‌سازی، پیکربندی مدیر و رضایت صریح شما لازم است.</p>
+<pre id="sandbox-status">در حال بررسی وضعیت sandbox…</pre>
+<label><input id="sandbox-consent-confirm" type="checkbox" style="width:auto"> ریسک اجرای کد را می‌پذیرم و رضایت می‌دهم کد واردشده در محیط ایزولهٔ محلی اجرا شود.</label>
+<div class="cloud-actions"><button id="sandbox-consent-grant" type="button">ثبت رضایت</button><button id="sandbox-consent-revoke" type="button">لغو رضایت</button><button id="sandbox-refresh" type="button">به‌روزرسانی وضعیت</button><button id="sandbox-cancel" type="button" disabled>لغو اجرای فعال</button></div>
+<form id="sandbox-run-form">
+<label>کد Python<textarea id="sandbox-source" dir="ltr" rows="7" maxlength="65536" required placeholder="print('Hello')" aria-label="print('Hello')"></textarea></label>
+<div class="cloud-form-grid"><label>مهلت اجرا (ثانیه)<input id="sandbox-timeout" type="number" min="1" max="120" value="10" required></label><label>حداکثر خروجی (بایت)<input id="sandbox-output-limit" type="number" min="1" max="65536" value="32768" required></label></div>
+<button id="sandbox-run" type="submit" disabled>اجرای ایزوله</button></form>
+<pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
