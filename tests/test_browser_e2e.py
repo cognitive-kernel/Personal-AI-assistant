@@ -102,6 +102,32 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
 
 
 
+def test_learning_evidence_review_ui_loads_candidates_without_a_live_model():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.goto(base_url, wait_until="domcontentloaded")
+        assert page.locator("#learning-evidence-section").is_visible()
+        assert page.locator("#learning-candidate-select").count() == 1
+        assert page.locator("#research-learning-candidate").is_disabled()
+        page.locator("#refresh-learning-candidates").click()
+        page.wait_for_function(
+            """() => {
+                const output = document.querySelector('#learning-candidate-review');
+                return output && !output.textContent.includes('در حال بارگذاری نامزدهای دانش');
+            }""",
+            timeout=10000,
+        )
+        assert "نامزد موقتی برای بازبینی وجود ندارد" in page.locator("#learning-candidate-review").inner_text() or page.locator("#learning-candidate-select option").count() > 0
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
