@@ -196,7 +196,9 @@ def test_promoted_alternative_marks_parent_candidate_and_knowledge_superseded(tm
         experience = connection.execute(
             "SELECT experience_type FROM learning_experiences WHERE problem LIKE 'successful_alternative:%' ORDER BY id DESC LIMIT 1"
         ).fetchone()
-    assert tuple(parent) == ("superseded", "L-1", "superseded", child_id)
+    assert tuple(parent) == ("failed", "L-1", "superseded", child_id)
+    with pytest.raises(ValueError, match="superseded candidate cannot be retested"):
+        learning.record_candidate_test_results(parent_id, [plan], [result])
     assert tuple(old_knowledge) == ("superseded", "superseded", promoted["promoted_knowledge_id"])
     assert tuple(replacement) == ("verified", "tested", old_knowledge_id)
     assert experience["experience_type"] == "successful_alternative"

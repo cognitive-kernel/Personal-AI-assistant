@@ -638,6 +638,8 @@ def record_candidate_test_results(
         ).fetchone()
         if candidate is None:
             raise KeyError(candidate_id)
+        if str(candidate["learning_status"]) == "superseded":
+            raise ValueError("A superseded candidate cannot be retested.")
         if candidate["status"] not in {"awaiting_test", "failed", "evidence_reviewed_no_lab", "conflicted"}:
             raise ValueError("Only a candidate awaiting tests or a failed candidate can be tested.")
         try:
@@ -839,7 +841,7 @@ def record_candidate_test_results(
                 if parent is not None:
                     conn.execute(
                         """UPDATE temporary_knowledge_candidates
-                           SET status='superseded', learning_status='superseded',
+                           SET learning_status='superseded',
                                replaced_by_candidate_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                         (candidate_id, int(supersedes_candidate_id)),
                     )

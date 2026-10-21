@@ -2280,7 +2280,7 @@ A passing doctest or fenced assertion block from a trusted source is now recorde
 - Migration 23 جدول peer consultation را بدون حذف ردیف‌ها بازسازی می‌کند و فیلد prompt_version را اضافه می‌کند. رأی‌های قبلی legacy_unversioned می‌شوند؛ نسخهٔ prompt و hash پاسخ برای ممیزی حفظ می‌شوند و کلید یکتا نسخهٔ prompt را هم در نظر می‌گیرد تا پاسخ یکسان در prompt جدید تاریخچهٔ جدا داشته باشد.
 - اجماع فعلی فقط رأی‌های ثبت‌شده با learning-peer-review-v2 را می‌پذیرد. رأی legacy نمی‌تواند L1 جاری یا گیت L2 را تأمین کند؛ آزمون قبولی با consensus record نسخهٔ قدیمی، ارتقا را رد می‌کند.
 - وقتی نسخهٔ پرامپت جدید شواهد کافی برای L1 ندارد، L1 کهنه به L0/unverified تنزل می‌یابد تا سطح اعتماد قدیمی بدون رأی معتبر جاری باقی نماند.
-- در پذیرش جایگزین، وضعیت نامزد قبلی هم در ستون status و هم در learning_status به superseded تغییر می‌کند؛ شناسهٔ جانشین و پیوند knowledge قبلی/جدید حفظ می‌شود.
+- در پذیرش جایگزین، نامزد موقت قبلی وضعیت عملیاتی شکست را برای تاریخچه حفظ می‌کند، اما learning_status آن superseded و replaced_by_candidate_id آن به جانشین تنظیم می‌شود؛ آزمون مجدد نامزد منسوخ مسدود است. رکورد پایدار knowledge_items قبلی status/learning_status=superseded و replacement_knowledge_id را نگه می‌دارد.
 - خروجی self-correction اکنون وضعیت واقعی نامزد بعد از اجرای کانال‌های بررسی را می‌خواند و وضعیت hard-coded awaiting_test را گزارش نمی‌کند.
 - GET /api/learning/metrics و دکمهٔ UI مربوط اضافه شدند؛ شاخص‌ها تعداد تجربه‌ها و سهم L2/L3 را نشان می‌دهند و در روش‌شناسی تصریح می‌کنند که شمارش رویداد، نرخ خطا یا احتمال صحت نیست.
 - تست‌های migration، prompt version، منع ارتقای L2 با اجماع legacy، وضعیت superseded و تجمیع متریک اضافه شدند. CI باید روی commit نهایی تأیید شود.
