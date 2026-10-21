@@ -6,12 +6,15 @@ from app.learning_verification import count_doctest_examples, run_candidate_sour
 from app.knowledge_review import get_candidate_review_summary
 
 
-def _candidate(tmp_path, monkeypatch, lesson):
+def _candidate(tmp_path, monkeypatch, lesson, source_text=None):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
     from app import learning
-    job = learning.create_job("doctest verification", source_text="source lesson")
+    job = learning.create_job(
+        "doctest verification",
+        source_text=lesson if source_text is None else source_text,
+    )
     digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
     with db.learning_connection() as conn:
         cursor = conn.execute(
@@ -29,6 +32,21 @@ def _candidate(tmp_path, monkeypatch, lesson):
 def test_count_doctest_examples_ignores_non_examples():
     assert count_doctest_examples("Example: 1 + 1 = 2") == 0
     assert count_doctest_examples(">>> 1 + 1\n2\n>>> len('abc')\n3") == 2
+
+
+def test_model_generated_examples_are_not_used_as_their_own_oracle(tmp_path, monkeypatch):
+    candidate_id = _candidate(
+        tmp_path, monkeypatch,
+        "Model-generated lesson:\\n\\n>>> 1 + 1\\n2\\n",
+        source_text="Original source contains no executable example.",
+    )
+    result = run_candidate_source_doctests(candidate_id)
+    assert result["status"] == "no_examples"
+    assert result["promoted"] is False
+    with db.learning_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_test_runs WHERE candidate_id=?", (candidate_id,)
+        ).fetchone()[0] == 0
 
 
 def test_no_doctest_does_not_count_as_a_pass(tmp_path, monkeypatch):
