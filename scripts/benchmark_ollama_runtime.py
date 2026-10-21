@@ -143,8 +143,6 @@ def run_benchmark(
             started = time.perf_counter()
             response = ollama._request("/api/chat", {
                 "model": model,
-        "model_digest": model_record.get("digest") if isinstance(model_record, dict) else None,
-        "model_size_bytes": model_record.get("size") if isinstance(model_record, dict) and isinstance(model_record.get("size"), int) else None,
                 "stream": False,
                 "keep_alive": keep_alive,
                 "messages": [{"role": "user", "content": prompt}],
@@ -172,6 +170,8 @@ def run_benchmark(
         "python_version": platform.python_version(),
         "purpose": purpose,
         "model": model,
+        "model_digest": model_record.get("digest") if isinstance(model_record, dict) else None,
+        "model_size_bytes": model_record.get("size") if isinstance(model_record, dict) and isinstance(model_record.get("size"), int) else None,
         "gpu_enabled_setting": settings.get("gpu_enabled") is True,
         "keep_alive": keep_alive,
         "repeats_per_case": repeats,
