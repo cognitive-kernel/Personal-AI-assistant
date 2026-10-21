@@ -1212,14 +1212,6 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         current_links = navigation.locator('a[aria-current="page"]')
         assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
         assert current_links.get_attribute("href") == "/"
-        navigation.get_by_role("link", name="وظایف").click()
-        page.wait_for_url("**/sections/tasks", timeout=5000)
-        section_navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
-        current_links = section_navigation.locator('a[aria-current="page"]')
-        assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
-        assert current_links.get_attribute("href") == "/sections/tasks"
-        shell = page.locator(".dashboard-shell")
-        assert shell.count() == 1
         for target in (
             "storage-health-section", "chat-section", "learning-section",
             "task-manager-section", "experience-memory-section",
@@ -1228,12 +1220,20 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
             "learning-paths-section", "knowledge-section", "settings-section",
         ):
             assert page.locator(f"#{target}").count() == 1
+        assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
+        navigation.get_by_role("link", name="وظایف").click()
+        page.wait_for_url("**/sections/tasks", timeout=5000)
+        section_navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
+        current_links = section_navigation.locator('a[aria-current="page"]')
+        assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
+        assert current_links.get_attribute("href") == "/sections/tasks"
+        shell = page.locator(".dashboard-shell")
+        assert shell.count() == 1
         stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
         assert stylesheet.status == 200
         assert "prefers-reduced-motion" in stylesheet.text()
         assert "focus-visible" in stylesheet.text()
         assert page.locator("html").get_attribute("dir") == "rtl"
-        assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
         missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
             "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
         )
