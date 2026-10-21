@@ -744,6 +744,8 @@ LEARNING_MIGRATIONS = (
             """ALTER TABLE factual_claim_revisions
                ADD COLUMN domain_name TEXT NOT NULL DEFAULT 'python'
                CHECK(length(trim(domain_name)) BETWEEN 1 AND 64 AND domain_name = lower(domain_name))""",
+            "UPDATE factual_knowledge SET domain_name = environment_name",
+            "UPDATE factual_claim_revisions SET domain_name = environment_name",
             "CREATE INDEX idx_factual_knowledge_domain_environment ON factual_knowledge(domain_name, environment_name, environment_version, lifecycle_status, evidence_level)",
             "DROP TRIGGER factual_claim_revision_insert",
             "DROP TRIGGER factual_claim_revision_update",
