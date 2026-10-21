@@ -141,6 +141,7 @@ def test_resource_headroom_checks_gpu_compute_and_vram_independently(monkeypatch
             "cpu_resource_limit_percent": 90,
             "ram_resource_limit_percent": 90,
             "gpu_resource_limit_percent": 85,
+            "gpu_enabled": True,
         })
 
 
