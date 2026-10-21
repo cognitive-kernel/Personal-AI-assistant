@@ -24,7 +24,7 @@ def _disable_memory(monkeypatch):
 
 
 def test_small_talk_stays_on_direct_chat_path(monkeypatch):
-    monkeypatch.setattr(ollama, "chat", lambda message, history=None, system_prompt=None: "direct reply")
+    monkeypatch.setattr(ollama, "chat", lambda message, history=None, system_prompt=None, task="simple_chat": "direct reply")
     monkeypatch.setattr(
         chat_research.web_sources,
         "discover_sources",
@@ -38,7 +38,7 @@ def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(m
     monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
     captured = {}
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, task="simple_chat"):
         captured.update(message=json.loads(message), history=history, system_prompt=system_prompt)
         return "پاسخ فنی"
 
@@ -98,7 +98,7 @@ def test_technical_query_uses_sources_memory_and_returns_reviewed_answer(monkeyp
     )
     captured = {}
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, task="simple_chat"):
         captured.update(payload=json.loads(message), system_prompt=system_prompt)
         return "Answer with source https://docs.example.org/guide"
 
@@ -125,7 +125,7 @@ def test_failed_review_gets_one_repair_then_an_uncertainty_note(monkeypatch):
     answers = iter(["unsupported draft", "repaired draft"])
     prompts = []
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, task="simple_chat"):
         prompts.append(json.loads(message))
         return next(answers)
 
@@ -329,7 +329,7 @@ def test_language_guard_retries_wrong_language_then_fails_closed(monkeypatch):
     answers = iter([french, french])
     prompts = []
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, task="simple_chat"):
         prompts.append(json.loads(message) if message.startswith("{") else message)
         return next(answers)
 
@@ -347,7 +347,7 @@ def test_language_guard_retries_wrong_language_then_fails_closed(monkeypatch):
 def test_direct_chat_prompt_treats_user_correction_as_unverified(monkeypatch):
     captured = {}
 
-    def fake_chat(message, history=None, system_prompt=None):
+    def fake_chat(message, history=None, system_prompt=None, task="simple_chat"):
         captured["system_prompt"] = system_prompt
         return "The correction is unverified feedback."
 
