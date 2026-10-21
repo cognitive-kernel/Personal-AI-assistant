@@ -174,7 +174,7 @@ def test_promoted_alternative_marks_parent_candidate_and_knowledge_superseded(tm
             (child_job["id"], child_job["topic"], child_lesson, child_digest, parent_id),
         ).lastrowid)
     _establish_l1_consensus(child_id)
-    plan, result = _case("alternative_claim_test", "ok", "ok", "deterministic_assertion")
+    plan, result = _case("existing_row_upgrade", "ok", "ok", "deterministic_assertion")
     plan["claim_ids"] = [f"{child_id}:1"]
 
     promoted = learning.record_candidate_test_results(child_id, [plan], [result])
