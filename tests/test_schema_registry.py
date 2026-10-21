@@ -151,7 +151,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,), (11,), (12,), (13,), (14,), (15,), (16,), (17,), (18,), (19,), (20,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,), (11,), (12,), (13,), (14,), (15,), (16,), (17,), (18,), (19,), (20,), (21,)]
 
 
 def test_registry_exposes_reviewable_canonical_fingerprints():
