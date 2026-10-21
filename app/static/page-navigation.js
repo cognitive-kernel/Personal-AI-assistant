@@ -11,7 +11,8 @@
   }
   if (!pages.has("chat-section")) return;
 
-  const requested = new URLSearchParams(window.location.search).get("page");
+  const routeMatch = window.location.pathname.match(/^\\/page\\/([^/]+)\\/?$/);
+  const requested = routeMatch ? decodeURIComponent(routeMatch[1]) : "chat-section";
   const pageId = pages.has(requested) ? requested : "chat-section";
   const isStoragePage = pageId === "storage-health-section";
 
@@ -30,7 +31,7 @@
 
   for (const link of links) {
     const id = link.dataset.page;
-    link.href = id === "chat-section" ? "/" : "/?page=" + encodeURIComponent(id);
+    link.href = id === "chat-section" ? "/" : "/page/" + encodeURIComponent(id);
     if (id === pageId) {
       link.setAttribute("aria-current", "page");
     } else {
