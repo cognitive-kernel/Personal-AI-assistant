@@ -318,7 +318,7 @@ def test_claim_rejects_invalid_environment_name(connection):
 
 def _active_tested_claim(
     connection, claim, *, environment_name="sql_server", environment_version="2022",
-    level="L2_tested", risk_level="low", with_evidence=True, source_type="official_docs",
+    level="L2_tested", risk_level="low", source_type="official_docs",
 ):
     knowledge_id = create_claim(
         connection,
@@ -328,16 +328,15 @@ def _active_tested_claim(
         scope={"topic": claim},
         risk_level=risk_level,
     )
-    if with_evidence:
-        add_evidence(
+    add_evidence(
             connection,
             knowledge_id,
             source_type=source_type,
             source_ref=(f"https://learn.microsoft.com/test/{knowledge_id}" if source_type == "official_docs" else f"test-run:{knowledge_id}"),
             source_hash=f"sha256:test-source-{knowledge_id}",
             excerpt=claim,
-            applicability={"environment_name": environment_name, "environment_version": environment_version},
-        )
+        applicability={"environment_name": environment_name, "environment_version": environment_version},
+    )
     transition_evidence_level(connection, knowledge_id, "L1_sourced")
     record_test(
         connection,
