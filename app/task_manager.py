@@ -417,7 +417,7 @@ def fail_task(
             # avoided here in favor of a small 2s, 4s, 8s... backoff, capped at 5m.
             delay = min(
                 RETRY_MAX_DELAY_SECONDS,
-                RETRY_BASE_DELAY_SECONDS ** min(max(int(row["attempts"]), 1), 9),
+                RETRY_BASE_DELAY_SECONDS * (2 ** min(max(int(row["attempts"]) - 1, 0), 8)),
             )
             scheduled_at = _timestamp(now_dt + timedelta(seconds=delay))
             status = "queued"
