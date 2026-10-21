@@ -171,7 +171,7 @@ def test_gpu_resource_guard_is_skipped_when_gpu_is_disabled(monkeypatch):
         (25, 25, 4, 21),
         (12, 25, 4, 8),
         (6, 25, 4, 2),
-        (32, 20, 5, 20),
+        (32, 20, 5, 15),
         (4, 25, 4, 0),
         (0, 25, 4, 0),
         (None, 25, 4, None),
