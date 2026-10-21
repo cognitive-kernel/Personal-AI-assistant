@@ -8,10 +8,17 @@ import urllib.parse
 import urllib.request
 from typing import Any
 from .db import get_settings
-from .hardware import detect_hardware, runtime_limits
+from .hardware import detect_hardware, ensure_resource_headroom, runtime_limits
 
 class OllamaError(RuntimeError):
     pass
+
+
+def _ensure_resource_headroom() -> None:
+    try:
+        ensure_resource_headroom(90.0)
+    except RuntimeError as exc:
+        raise OllamaError(str(exc)) from exc
 
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -134,6 +141,7 @@ def chat(
     if purpose == "programming":
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
+    _ensure_resource_headroom()
     response = _request("/api/chat", {
         "model": model, "stream": False, "messages": messages,
         "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
@@ -161,6 +169,7 @@ def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
         raise OllamaError("Embedding model name is invalid.")
 
     configured_timeout = int(settings["ollama_timeout_seconds"])
+    _ensure_resource_headroom()
     response = _request(
         "/api/embed",
         {"model": selected_model, "input": normalized},
