@@ -670,6 +670,67 @@ LEARNING_MIGRATIONS = (
                BEGIN SELECT RAISE(ABORT, 'only reviewed knowledge may supersede another claim'); END""",
         ),
     ),
+    Migration(
+        17,
+        "factual-claim-revision-history",
+        (
+            """CREATE TABLE factual_claim_revisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE CASCADE,
+                revision_number INTEGER NOT NULL CHECK(revision_number >= 1),
+                claim TEXT NOT NULL CHECK(length(trim(claim)) > 0),
+                normalized_claim TEXT NOT NULL CHECK(length(trim(normalized_claim)) > 0),
+                claim_hash TEXT NOT NULL,
+                scope_json TEXT NOT NULL DEFAULT '{}',
+                environment_name TEXT NOT NULL DEFAULT 'python',
+                environment_version TEXT NOT NULL,
+                recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(knowledge_id, revision_number)
+            )""",
+            """INSERT INTO factual_claim_revisions(
+                   knowledge_id, revision_number, claim, normalized_claim, claim_hash,
+                   scope_json, environment_name, environment_version, recorded_at
+               )
+               SELECT id, 1, claim, normalized_claim, claim_hash, scope_json,
+                      environment_name, environment_version, created_at
+               FROM factual_knowledge""",
+            "CREATE INDEX idx_factual_claim_revisions_history ON factual_claim_revisions(knowledge_id, revision_number DESC)",
+            """CREATE TRIGGER factual_claim_revision_insert
+               AFTER INSERT ON factual_knowledge
+               BEGIN
+                 INSERT INTO factual_claim_revisions(
+                   knowledge_id, revision_number, claim, normalized_claim, claim_hash,
+                   scope_json, environment_name, environment_version
+                 ) VALUES (
+                   NEW.id, 1, NEW.claim, NEW.normalized_claim, NEW.claim_hash,
+                   NEW.scope_json, NEW.environment_name, NEW.environment_version
+                 );
+               END""",
+            """CREATE TRIGGER factual_claim_revision_update
+               AFTER UPDATE OF claim, normalized_claim, claim_hash, scope_json,
+                               environment_name, environment_version
+               ON factual_knowledge
+               WHEN OLD.claim IS NOT NEW.claim
+                 OR OLD.normalized_claim IS NOT NEW.normalized_claim
+                 OR OLD.claim_hash IS NOT NEW.claim_hash
+                 OR OLD.scope_json IS NOT NEW.scope_json
+                 OR OLD.environment_name IS NOT NEW.environment_name
+                 OR OLD.environment_version IS NOT NEW.environment_version
+               BEGIN
+                 INSERT INTO factual_claim_revisions(
+                   knowledge_id, revision_number, claim, normalized_claim, claim_hash,
+                   scope_json, environment_name, environment_version
+                 )
+                 SELECT NEW.id, COALESCE(MAX(revision_number), 0) + 1,
+                        NEW.claim, NEW.normalized_claim, NEW.claim_hash, NEW.scope_json,
+                        NEW.environment_name, NEW.environment_version
+                 FROM factual_claim_revisions WHERE knowledge_id = NEW.id;
+               END""",
+            """CREATE TRIGGER factual_claim_revision_immutable
+               BEFORE UPDATE ON factual_claim_revisions
+               BEGIN SELECT RAISE(ABORT, 'factual claim revisions are immutable'); END""",
+        ),
+    ),
 )
 
 
