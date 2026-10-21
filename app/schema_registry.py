@@ -733,7 +733,54 @@ LEARNING_MIGRATIONS = (
                BEFORE DELETE ON factual_claim_revisions
                BEGIN SELECT RAISE(ABORT, 'factual claim revisions are immutable'); END""",
         ),
-    ),
+    ),,
+    Migration(
+        18,
+        "factual-claim-domain-name",
+        (
+            """ALTER TABLE factual_knowledge
+               ADD COLUMN domain_name TEXT NOT NULL DEFAULT 'python'
+               CHECK(length(trim(domain_name)) BETWEEN 1 AND 64 AND domain_name = lower(domain_name))""",
+            """ALTER TABLE factual_claim_revisions
+               ADD COLUMN domain_name TEXT NOT NULL DEFAULT 'python'
+               CHECK(length(trim(domain_name)) BETWEEN 1 AND 64 AND domain_name = lower(domain_name))""",
+            "CREATE INDEX idx_factual_knowledge_domain_environment ON factual_knowledge(domain_name, environment_name, environment_version, lifecycle_status, evidence_level)",
+            "DROP TRIGGER factual_claim_revision_insert",
+            "DROP TRIGGER factual_claim_revision_update",
+            """CREATE TRIGGER factual_claim_revision_insert
+               AFTER INSERT ON factual_knowledge
+               BEGIN
+                 INSERT INTO factual_claim_revisions(
+                   knowledge_id, revision_number, claim, normalized_claim, claim_hash,
+                   scope_json, environment_name, environment_version, domain_name
+                 ) VALUES (
+                   NEW.id, 1, NEW.claim, NEW.normalized_claim, NEW.claim_hash,
+                   NEW.scope_json, NEW.environment_name, NEW.environment_version, NEW.domain_name
+                 );
+               END""",
+            """CREATE TRIGGER factual_claim_revision_update
+               AFTER UPDATE OF claim, normalized_claim, claim_hash, scope_json,
+                               environment_name, environment_version, domain_name
+               ON factual_knowledge
+               WHEN OLD.claim IS NOT NEW.claim
+                 OR OLD.normalized_claim IS NOT NEW.normalized_claim
+                 OR OLD.claim_hash IS NOT NEW.claim_hash
+                 OR OLD.scope_json IS NOT NEW.scope_json
+                 OR OLD.environment_name IS NOT NEW.environment_name
+                 OR OLD.environment_version IS NOT NEW.environment_version
+                 OR OLD.domain_name IS NOT NEW.domain_name
+               BEGIN
+                 INSERT INTO factual_claim_revisions(
+                   knowledge_id, revision_number, claim, normalized_claim, claim_hash,
+                   scope_json, environment_name, environment_version, domain_name
+                 )
+                 SELECT NEW.id, COALESCE(MAX(revision_number), 0) + 1,
+                        NEW.claim, NEW.normalized_claim, NEW.claim_hash, NEW.scope_json,
+                        NEW.environment_name, NEW.environment_version, NEW.domain_name
+                 FROM factual_claim_revisions WHERE knowledge_id = NEW.id;
+               END""",
+        ),
+    )
 )
 
 
