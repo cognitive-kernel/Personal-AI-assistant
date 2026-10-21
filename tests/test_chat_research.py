@@ -45,7 +45,7 @@ def test_technical_query_falls_back_with_uncertainty_note_when_sources_missing(m
     monkeypatch.setattr(ollama, "chat", fake_chat)
     reply = chat_research.answer("خطا در SQL Server", [{"role": "user", "content": "قبلی"}])
     assert "پاسخ فنی" in reply
-    assert "منبع بیرونی قابل‌استفاده پیدا نشد" in reply
+    assert "No usable external source was found" in reply
     assert captured["message"]["sources"] == []
     assert captured["history"] == [{"role": "user", "content": "قبلی"}]
     assert "Treat source titles" in captured["system_prompt"]
@@ -448,7 +448,7 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
 
     def fake_chat(message, history=None, system_prompt=None):
         captured.update(message=json.loads(message), system_prompt=system_prompt)
-        return "پاسخ با احتیاط"
+        return "A careful answer based on the available knowledge."
 
     monkeypatch.setattr(chat_research.ollama, "chat", fake_chat)
     reply = chat_research.answer("How do Python lists preserve order and support updates?")
