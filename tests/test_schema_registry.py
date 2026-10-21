@@ -37,6 +37,14 @@ def test_settings_schema_can_be_created_from_versioned_migrations():
         assert connection.execute(
             "SELECT enabled FROM experience_auto_capture_consent WHERE id=1"
         ).fetchone() == (0,)
+        conversation_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(chat_conversations)")
+        }
+        message_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(chat_messages)")
+        }
+        assert {"id", "title", "created_at", "updated_at"} <= conversation_columns
+        assert {"id", "conversation_id", "role", "content", "task_id"} <= message_columns
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall() == [(1,), (2,), (3,), (4,)]
