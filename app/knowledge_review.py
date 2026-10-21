@@ -439,7 +439,11 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
             "failed_scoped_test_suites": len(failed_scoped_suites),
         },
         "verification_status": (
-            "tested_in_declared_scope" if candidate["status"] == "passed" and test_score
+            "tested_in_declared_scope"
+            if candidate["status"] == "passed" and test_score
+            else "evidence_reviewed_no_lab"
+            if (evidence or peers) and not candidate["test_results_json"]
+            and not any(row["run_status"] in {"passed", "failed"} for row in test_runs)
             else "unverified"
         ),
         "limitations": [
