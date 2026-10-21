@@ -559,6 +559,9 @@ def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
         "gpu_resource_limit_percent": 65,
         "ram_budget_max_gb": 20,
         "ram_safety_reserve_gb": 5,
+        "chat_model_keep_alive": "10m",
+        "learning_model_keep_alive": "5m",
+        "programming_model_keep_alive": "0",
     })
     assert saved["cpu_resource_limit_percent"] == 75
     assert saved["ram_resource_limit_percent"] == 80
@@ -566,6 +569,9 @@ def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
     assert saved["gpu_enabled"] is False
     assert saved["ram_budget_max_gb"] == 20
     assert saved["ram_safety_reserve_gb"] == 5
+    assert saved["chat_model_keep_alive"] == "10m"
+    assert saved["learning_model_keep_alive"] == "5m"
+    assert saved["programming_model_keep_alive"] == "0"
 
 
 def test_gpu_disabled_forces_cpu_option_on_inference_payload(monkeypatch):
