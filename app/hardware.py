@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 import os
 import subprocess
 from typing import Any
@@ -87,7 +88,7 @@ def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
     memory = psutil.virtual_memory()
     available_bytes = getattr(memory, "available", None)
     memory_percent = getattr(memory, "percent", None)
-    if isinstance(available_bytes, bool) or not isinstance(available_bytes, (int, float)) or available_bytes <= 0:
+    if isinstance(available_bytes, bool) or not isinstance(available_bytes, (int, float)) or not math.isfinite(available_bytes) or available_bytes <= 0:
         raise RuntimeError("RAM availability telemetry is unavailable; refusing to start model inference safely.")
     if isinstance(memory_percent, bool) or not isinstance(memory_percent, (int, float)) or not 0 <= memory_percent <= 100:
         raise RuntimeError("RAM utilization telemetry is invalid; refusing to start model inference safely.")
