@@ -51,6 +51,19 @@
 <input id="source-url" type="url" maxlength="2048" placeholder="نشانی HTTPS منبع (اختیاری)" aria-label="نشانی HTTPS منبع (اختیاری)">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت واردکردن نشانی، متن صفحه هم دریافت می‌شود" aria-label="متن منبع اختیاری؛ در صورت واردکردن نشانی، متن صفحه هم دریافت می‌شود"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نشانی HTTPS عمومی را می‌توان مستقیماً وارد کرد. دریافت صفحه و ثبت منشأ خودکار است؛ این کار به‌تنهایی صحت علمی را ثابت نمی‌کند. درس کوتاه یا ناقص باید ابتدا برای اصلاح/ارزیابی نگه داشته شود، نه اینکه با تأیید علمی اشتباه گرفته شود.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<section id="learning-evidence-section"><h2>بازبینی و امتیاز شواهد دانش</h2>
+<p class="muted">برای هر درس، وضعیت تأیید، منابع اینترنتی، مشورت با هوش‌های مصنوعی، آزمون‌های اجراشده و نتیجهٔ کاربرد واقعی را جداگانه ببینید. امتیاز ۰ تا ۱۰۰ شاخص قدرت شواهد است، نه احتمال قطعی درست‌بودن.</p>
+<div class="cloud-actions"><button id="refresh-learning-candidates" type="button">بارگذاری دانش‌های موقت</button>
+<label for="learning-candidate-select">نامزد دانش <select id="learning-candidate-select"><option value="">ابتدا فهرست را بارگذاری کنید</option></select></label>
+<button id="research-learning-candidate" type="button" disabled>جست‌وجوی وب و پرس‌وجو از هوش‌های مصنوعی</button></div>
+<pre id="learning-candidate-review" role="status" aria-live="polite">گزارش شواهد هنوز بارگذاری نشده است.</pre>
+<details><summary>ثبت نتیجهٔ کاربرد در دنیای واقعی</summary>
+<form id="learning-field-feedback-form">
+<label for="field-outcome">نتیجه</label><select id="field-outcome" required><option value="worked">موفق بود</option><option value="failed">ناموفق بود</option><option value="partial">تا حدی موفق بود</option><option value="not_tested">هنوز آزمایش نشده</option></select>
+<label for="field-context">زمینه و کاربرد</label><textarea id="field-context" rows="2" maxlength="3000" required placeholder="کجا و برای چه کاری از این دانش استفاده شد؟"></textarea>
+<label for="field-output">خروجی مشاهده‌شده</label><textarea id="field-output" rows="2" maxlength="12000" placeholder="خروجی واقعی یا خطا"></textarea>
+<label for="field-steps">مراحل اجرا</label><textarea id="field-steps" rows="2" maxlength="6000" placeholder="مراحل بازتولید نتیجه"></textarea>
+<button type="submit">ثبت بازخورد و محاسبهٔ دوبارهٔ امتیاز</button></form></details></section>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -741,6 +754,70 @@ el("learning-form").addEventListener("submit", async event => {
   const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
+});
+async function refreshLearningCandidates(selectedId=null) {
+ const select=el("learning-candidate-select");
+ const output=el("learning-candidate-review");
+ output.textContent="در حال بارگذاری نامزدهای دانش…";
+ try {
+  const result=await api("/api/learning/candidates?limit=100");
+  select.replaceChildren();
+  (result.candidates||[]).forEach(item=>{
+   const option=document.createElement("option");
+   option.value=String(item.id);
+   const confidence=item.review?.confidence;
+   option.textContent="#"+item.id+" — "+item.topic+" | "+(item.status||"unknown")+" | امتیاز "+(confidence?.score??0);
+   select.append(option);
+  });
+  if(selectedId!==null && [...select.options].some(option=>option.value===String(selectedId))) select.value=String(selectedId);
+  el("research-learning-candidate").disabled=!select.value;
+  if(select.value) await refreshLearningCandidateReview();
+  else output.textContent="نامزد موقتی برای بازبینی وجود ندارد.";
+ } catch(error) { output.textContent="بارگذاری نامزدها ناموفق بود: "+error.message; }
+}
+async function refreshLearningCandidateReview() {
+ const id=el("learning-candidate-select").value;
+ const output=el("learning-candidate-review");
+ el("research-learning-candidate").disabled=!id;
+ if(!id) { output.textContent="یک نامزد را انتخاب کنید."; return; }
+ output.textContent="در حال بارگذاری گزارش شواهد…";
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/review");
+  output.textContent=JSON.stringify(result,null,2);
+ } catch(error) { output.textContent="دریافت گزارش ناموفق بود: "+error.message; }
+}
+el("refresh-learning-candidates").addEventListener("click",()=>refreshLearningCandidates());
+el("learning-candidate-select").addEventListener("change",()=>refreshLearningCandidateReview());
+el("research-learning-candidate").addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ if(!id) return;
+ const button=el("research-learning-candidate");
+ button.disabled=true;
+ el("learning-candidate-review").textContent="در حال جست‌وجوی منابع و پرس‌وجو از ارائه‌دهندگان تنظیم‌شده…";
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/research",{method:"POST"});
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="بازبینی انجام نشد: "+error.message;
+ } finally { button.disabled=!el("learning-candidate-select").value; }
+});
+el("learning-field-feedback-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const id=el("learning-candidate-select").value;
+ if(!id) { el("learning-candidate-review").textContent="ابتدا یک نامزد را انتخاب کنید."; return; }
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/feedback",{
+   method:"POST",body:JSON.stringify({
+    outcome:el("field-outcome").value,
+    application_context:el("field-context").value,
+    observed_output:el("field-output").value,
+    test_steps:el("field-steps").value
+   })
+  });
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) { el("learning-candidate-review").textContent="ثبت بازخورد ناموفق بود: "+error.message; }
 });
 el("settings-form").addEventListener("submit", async event => {
  event.preventDefault();
