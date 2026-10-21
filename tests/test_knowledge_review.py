@@ -110,7 +110,7 @@ def test_peer_consultations_and_disagreements_are_persisted_without_verification
     summary = get_candidate_review_summary(candidate_id)
 
     assert summary["distinct_peer_providers"] == 2
-    assert summary["verification_status"] == "evidence_reviewed_no_lab"
+    assert summary["verification_status"] == "conflicting_evidence"
     assert {item["evidence_kind"] for item in summary["evidence"]} == {"supporting", "contradicting"}
     assert {item["stance"] for item in summary["peer_consultations"]} == {"supports", "contradicts"}
 
