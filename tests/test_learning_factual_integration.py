@@ -80,7 +80,7 @@ def test_python_lesson_review_persists_claims_as_unverified_factual_knowledge(
             "SELECT id, claim, evidence_level, lifecycle_status FROM factual_knowledge"
         ).fetchall()
         evidence = conn.execute(
-            """SELECT source_ref, source_hash, excerpt, applicability_json
+            """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
                FROM factual_evidence WHERE knowledge_id=?""",
             (claims[0]["id"],),
         ).fetchall()
@@ -91,6 +91,7 @@ def test_python_lesson_review_persists_claims_as_unverified_factual_knowledge(
     assert claims[0]["evidence_level"] == "L0_raw"
     assert claims[0]["lifecycle_status"] == "unverified"
     assert len(evidence) == 1
+    assert evidence[0]["source_type"] == "official_docs"
     assert evidence[0]["source_ref"] == url
     assert evidence[0]["source_hash"] == source_hash
     assert evidence[0]["excerpt"] == excerpt
