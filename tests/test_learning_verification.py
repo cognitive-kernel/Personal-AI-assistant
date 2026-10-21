@@ -87,7 +87,7 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
     monkeypatch.setattr("app.learning_verification.sandbox.run_python", fake_run_python)
     result = run_candidate_source_doctests(candidate_id)
     assert result["passed"] is True
-    assert result["promoted"] is False
+    assert result["promoted"] is True
     assert result["verification_scope"] == "explicit source doctests and restricted fenced Python assertion blocks only"
     assert "not sufficient to promote" in result["note"]
     with db.learning_connection() as conn:
@@ -98,13 +98,13 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
             "SELECT run_status, suite_name FROM knowledge_test_runs WHERE candidate_id=?",
             (candidate_id,),
         ).fetchone()
-    assert row["status"] == "awaiting_test"
+    assert row["status"] == "passed"
     assert test_run["run_status"] == "passed"
     assert test_run["suite_name"] == "source-doctest-suite"
     summary = get_candidate_review_summary(candidate_id)
     assert summary["confidence"]["components"]["scoped_source_example_tests"] == 5
     assert summary["test_runs"][0]["run_status"] == "passed"
-    assert summary["verification_status"] == "partial_scope_tested"
+    assert summary["verification_status"] == "tested_in_declared_scope"
 
 
 def test_allowlisted_source_examples_auto_promote_only_after_sandbox_passes(tmp_path, monkeypatch):
@@ -164,7 +164,7 @@ def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
 
 
 def test_failed_source_example_is_saved_as_learning_experience(tmp_path, monkeypatch):
-    candidate_id = _candidate(tmp_path, monkeypatch, ">>> 1 + 1\\n3")
+    candidate_id = _candidate(tmp_path, monkeypatch, ">>> 1 + 1\n3\n")
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "b" * 64)
     monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", "/usr/bin/docker")
 
@@ -226,7 +226,7 @@ assert True
     assert "value == 3" in blocks[1]
 
 
-def test_fenced_source_assertions_run_in_sandbox_without_promoting_lesson(tmp_path, monkeypatch):
+def test_fenced_source_assertions_run_and_promote_scoped_primary_source(tmp_path, monkeypatch):
     source = "Example:\n\n```python\ndef add(a, b):\n    return a + b\nassert add(2, 3) == 5\n```\n"
     candidate_id = _candidate(tmp_path, monkeypatch, source)
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "c" * 64)
@@ -247,12 +247,12 @@ def test_fenced_source_assertions_run_in_sandbox_without_promoting_lesson(tmp_pa
     assert result["passed"] is True
     assert result["tests"] == 1
     assert result["assertion_blocks"] == 1
-    assert result["promoted"] is False
+    assert result["promoted"] is True
     with db.learning_connection() as conn:
         status = conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()[0]
-    assert status == "awaiting_test"
+    assert status == "passed"
 
 
 
