@@ -84,14 +84,11 @@ def run_hybrid_verification(
         from .knowledge_review import promote_candidate_after_evidence_review
         evidence_only_promotion = promote_candidate_after_evidence_review(candidate_id)
     except Exception as exc:
-        try:
-            record_review_attempt(
-                candidate_id, channel="peer_ai", status="failed",
-                details={"error_type": type(exc).__name__, "reason": "evidence_only_promotion_check_failed"},
-            )
-        except Exception:
-            pass
-        evidence_only_promotion = {"promoted": False, "reason": type(exc).__name__}
+        # This is a promotion-policy evaluation error, not a peer-AI channel failure.
+        evidence_only_promotion = {
+            "promoted": False, "reason": type(exc).__name__,
+            "details": "Evidence-only promotion could not be evaluated; candidate remains available for review.",
+        }
 
     try:
         review = get_candidate_review_summary(candidate_id)
