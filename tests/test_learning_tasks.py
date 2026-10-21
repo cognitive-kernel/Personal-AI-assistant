@@ -8,7 +8,7 @@ from app.learning_tasks import (
     handle_learning_job,
     reconcile_queued_learning_tasks,
 )
-from app.task_worker import TaskContext
+from app.task_worker import PermanentTaskError, TaskContext
 
 
 @pytest.fixture
@@ -24,6 +24,13 @@ def _claimed_context(job_id):
     claimed = task_manager.claim_next_task("worker-1")
     assert claimed["id"] == task["id"]
     return TaskContext(task_id=task["id"], worker_id="worker-1"), task
+
+
+def test_learning_task_missing_domain_record_is_permanent(learning_task_store):
+    context, _task = _claimed_context(999999)
+
+    with pytest.raises(PermanentTaskError, match="does not exist"):
+        handle_learning_job({"job_id": 999999}, None, context)
 
 
 def test_learning_task_handler_persists_real_learning_outcome(
