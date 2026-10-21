@@ -551,6 +551,7 @@ def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch)
     db.init_databases()
     url = "https://docs.example.org/python"
     job = learning.create_job("Python source ingestion", source_url=url)
+    monkeypatch.setenv("LEARNING_AUTO_WEB_RESEARCH", "true")
     source_text = "Python documentation explains functions, parameters, and return values with examples."
     monkeypatch.setattr(
         "app.web_sources.fetch_public_document",
