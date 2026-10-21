@@ -467,6 +467,9 @@ def search_retrievable_claims(
     query: str,
     *,
     limit: int = 3,
+    domain: str = "python",
+    environment_name: str | None = None,
+    environment_version: str | None = None,
 ) -> list[dict[str, Any]]:
     """Return query-relevant eligible claims using conservative lexical matching.
 
@@ -485,7 +488,15 @@ def search_retrievable_claims(
     if len(query_tokens) < 2:
         return []
 
-    eligible = list_retrievable_claims(connection, limit=500)
+    if environment_name is None or environment_version is None:
+        return []
+    eligible = list_retrievable_claims(
+        connection,
+        limit=500,
+        domain=domain,
+        environment_name=environment_name,
+        environment_version=environment_version,
+    )
     ranked: list[tuple[int, int, dict[str, Any]]] = []
     for item in eligible:
         claim_tokens = _retrieval_tokens(
