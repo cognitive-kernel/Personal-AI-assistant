@@ -7,7 +7,8 @@ def test_chat_ui_uses_persistent_research_queue_and_polls_task_result():
     )
     assert '"/api/research/tasks"' in page
     assert '"/api/tasks/"+taskId' in page
-    assert 'current.result&&current.result.reply' in page
+    assert 'await refreshConversations({selectId:currentConversationId,createIfEmpty:false});' in page
+    assert 'el("chat-output").textContent="پاسخ ذخیره شد."' in page
     assert 'در حال صف‌بندی پژوهش' in page
     assert 'متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود' in page
     assert 'id="task-manager-section"' in page
