@@ -485,8 +485,10 @@ def test_existing_generic_ollama_preferences_seed_new_profiles(tmp_path, monkeyp
         )
     db.init_databases()
     settings = db.get_settings()
+    assert settings["chat_ollama_model"] == "custom-local-model:latest"
+    assert settings["learning_ollama_model"] == db.SETTING_DEFAULTS["learning_ollama_model"]
+    assert settings["programming_ollama_model"] == db.SETTING_DEFAULTS["programming_ollama_model"]
     for prefix in ("chat", "learning", "programming"):
-        assert settings[f"{prefix}_ollama_model"] == "custom-local-model:latest"
         assert settings[f"{prefix}_ollama_num_ctx"] == 3072
         assert settings[f"{prefix}_ollama_num_thread"] == 3
         assert settings[f"{prefix}_ollama_timeout_seconds"] == 45
