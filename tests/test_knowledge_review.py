@@ -10,6 +10,8 @@ from app.knowledge_review import (
     record_review_evidence,
     research_candidate_online,
     consult_configured_peer_ais,
+    calculate_knowledge_confidence,
+    record_user_application_feedback,
 )
 from app.web_sources import SourceDocument
 
@@ -186,3 +188,63 @@ def test_peer_ai_endpoint_rejects_non_https_remote_hosts(tmp_path, monkeypatch):
     result = consult_configured_peer_ais(candidate_id)
     assert result["consulted"] == 0
     assert result["errors"][0]["error"] == "endpoint_must_be_https_or_loopback_without_credentials"
+
+
+def test_confidence_score_tracks_distinct_methods_and_user_field_results(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    baseline = calculate_knowledge_confidence(candidate_id)
+    assert baseline["score"] == 0
+    assert baseline["verification_status"] == "unverified"
+
+    record_review_evidence(
+        candidate_id, evidence_kind="supporting",
+        source_url="https://docs.example.org/claim",
+        source_title="Primary documentation", excerpt="Supports the exact bounded claim.",
+    )
+    record_peer_consultation(
+        candidate_id, provider="provider-a", model_name="model-a",
+        prompt="Try to falsify this", response="The bounded claim is supported.",
+        stance="supports",
+    )
+    record_user_application_feedback(
+        candidate_id, outcome="worked", application_context="Ran the example in a test project",
+        observed_output="expected result", test_steps="Followed the documented steps",
+    )
+    after = calculate_knowledge_confidence(candidate_id)
+    assert after["score"] > baseline["score"]
+    assert after["verification_methods"] == ["internet_sources", "peer_ai_consultation", "real_world_user_feedback"]
+    assert after["counts"]["supporting_domains"] == 1
+    assert after["counts"]["supporting_peer_providers"] == 1
+    assert after["counts"]["successful_user_contexts"] == 1
+    assert after["verification_status"] == "unverified"
+
+
+def test_failed_real_world_feedback_reduces_score_and_is_reported(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    record_user_application_feedback(
+        candidate_id, outcome="worked", application_context="First project worked",
+        observed_output="ok",
+    )
+    positive = calculate_knowledge_confidence(candidate_id)["score"]
+    record_user_application_feedback(
+        candidate_id, outcome="failed", application_context="Second project failed",
+        observed_output="wrong result",
+    )
+    summary = get_candidate_review_summary(candidate_id)
+    assert summary["confidence"]["score"] < positive
+    assert {item["outcome"] for item in summary["user_application_feedback"]} == {"worked", "failed"}
+
+
+def test_tested_candidate_gets_scope_limited_test_credit_not_universal_truth(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET status='passed', test_results_json='[{"test":"case-1","passed":true}]'
+               WHERE id=?""",
+            (candidate_id,),
+        )
+    score = calculate_knowledge_confidence(candidate_id)
+    assert score["components"]["automated_tests"] == 40
+    assert score["verification_status"] == "tested_in_declared_scope"
+    assert "not a calibrated probability of truth" in score["score_scale"]
