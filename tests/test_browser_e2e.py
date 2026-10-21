@@ -1415,12 +1415,12 @@ def test_learning_lesson_history_survives_refresh_and_shows_task_events():
             route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
 
         page.route("**/api/learning/paths", lambda route: fulfill_json(route, path_data))
-        page.route("**/api/learning/jobs?limit=200", lambda route: fulfill_json(route, job_data))
-        page.route("**/api/tasks?limit=100", lambda route: fulfill_json(route, task_data))
+        page.route("**/api/learning/jobs*", lambda route: fulfill_json(route, job_data))
+        page.route("**/api/tasks*", lambda route: fulfill_json(route, task_data))
         page.route("**/api/tasks/28/events?limit=100", lambda route: fulfill_json(route, events_data))
         page.route("**/api/learning/curricula", lambda route: fulfill_json(route, {"curricula": []}))
-        page.route("**/api/learning/reviews/due?limit=100", lambda route: fulfill_json(route, {"items": []}))
-        page.route("**/api/learning/recommendations?limit=20", lambda route: fulfill_json(route, {"recommendations": []}))
+        page.route("**/api/learning/reviews/due*", lambda route: fulfill_json(route, {"items": []}))
+        page.route("**/api/learning/recommendations*", lambda route: fulfill_json(route, {"recommendations": []}))
 
         _goto_section(page, base_url, "learning-paths-section")
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
