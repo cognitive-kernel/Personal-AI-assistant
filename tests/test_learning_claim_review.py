@@ -113,6 +113,9 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     assert finished["quality"]["claim_review_status"] == (
         "passed_model_assisted" if passed else "needs_review"
     )
+    assert finished["quality"]["evidence_gate"]["accepted"] is False
+    assert finished["quality"]["evidence_gate_status"] == "needs_review"
+    assert finished["quality"]["verification_status"] == "needs_review"
     assert "exact source URLs" in model_payloads[0]["messages"][-1]["content"]
     with db.learning_connection() as connection:
         knowledge = connection.execute(
@@ -122,9 +125,14 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
             "SELECT note FROM learning_evidence WHERE job_id=? AND evidence_type='claim_review'",
             (job["id"],),
         ).fetchone()
+        persisted_quality = connection.execute(
+            "SELECT quality_json FROM learning_jobs WHERE id=?", (job["id"],)
+        ).fetchone()
     assert knowledge["status"] == "unverified"
     assert event is not None
     assert "not an independent verification" in event["note"]
+    assert persisted_quality is not None
+    assert json.loads(persisted_quality["quality_json"])["evidence_gate"]["accepted"] is False
 
 def test_sql_server_claims_are_persisted_unverified_with_version_scope(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
