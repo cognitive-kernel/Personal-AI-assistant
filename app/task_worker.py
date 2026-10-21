@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import sqlite3
 import threading
 from typing import Any, Callable
 
@@ -11,6 +12,26 @@ from .task_manager import TaskManagerError
 
 TaskHandler = Callable[[dict[str, Any], dict[str, Any] | None, "TaskContext"], dict[str, Any]]
 logger = logging.getLogger("personal_ai_assistant.task_worker")
+
+
+class RetryableTaskError(RuntimeError):
+    """Explicit handler contract for a domain failure that may succeed on retry."""
+
+
+class PermanentTaskError(RuntimeError):
+    """Explicit handler contract for a domain failure that must not be retried."""
+
+
+def is_retryable_task_error(error: Exception) -> bool:
+    """Honor explicit handler policy, then preserve the legacy exception fallback."""
+    if isinstance(error, PermanentTaskError):
+        return False
+    if isinstance(error, RetryableTaskError):
+        return True
+    return not isinstance(
+        error,
+        (ValueError, TypeError, KeyError, AssertionError, NotImplementedError, sqlite3.IntegrityError),
+    )
 
 
 class TaskInterrupted(RuntimeError):
@@ -54,6 +75,8 @@ class TaskWorker:
         handlers: dict[str, TaskHandler],
         *,
         lease_seconds: int = 300,
+        restrict_task_types: bool = False,
+        exclude_task_types: tuple[str, ...] | None = None,
     ) -> None:
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("worker_id must be a non-empty string.")
@@ -65,8 +88,15 @@ class TaskWorker:
         ):
             raise ValueError("handlers must map non-empty task types to callable handlers.")
         self.worker_id = worker_id.strip()
+        if exclude_task_types is not None and (
+            not isinstance(exclude_task_types, tuple) or not exclude_task_types
+            or any(not isinstance(item, str) or not item.strip() for item in exclude_task_types)
+        ):
+            raise ValueError("exclude_task_types must be a non-empty tuple of non-empty strings.")
         self.handlers = dict(handlers)
         self.lease_seconds = lease_seconds
+        self.restrict_task_types = bool(restrict_task_types)
+        self.exclude_task_types = exclude_task_types
 
     def _maintain_lease(self, context: TaskContext, stop_event: threading.Event) -> None:
         """Renew a running task lease while its handler is doing long-running work."""
@@ -89,9 +119,12 @@ class TaskWorker:
 
     def run_once(self) -> bool:
         """Claim and process one task. Return False only when no task is ready."""
-        task = task_manager.claim_next_task(
-            self.worker_id, lease_seconds=self.lease_seconds
-        )
+        claim_options: dict[str, Any] = {"lease_seconds": self.lease_seconds}
+        if self.restrict_task_types:
+            claim_options["task_types"] = tuple(self.handlers)
+        if self.exclude_task_types is not None:
+            claim_options["exclude_task_types"] = self.exclude_task_types
+        task = task_manager.claim_next_task(self.worker_id, **claim_options)
         if task is None:
             return False
 
@@ -151,7 +184,7 @@ class TaskWorker:
                         task["id"],
                         self.worker_id,
                         f"{type(exc).__name__}: {exc}",
-                        retry=True,
+                        retry=is_retryable_task_error(exc),
                     )
             except (TaskInterrupted, TaskManagerError):
                 # Control requests and lease loss take precedence over failure writes.

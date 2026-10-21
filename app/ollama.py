@@ -3,18 +3,29 @@ import ipaddress
 import json
 import math
 import socket
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 from .db import get_settings
-from .hardware import detect_hardware, runtime_limits
+from .hardware import detect_hardware, ensure_resource_headroom, runtime_limits
 
 class OllamaError(RuntimeError):
     pass
 
 
+def _ensure_resource_headroom() -> None:
+    try:
+        ensure_resource_headroom(90.0)
+    except RuntimeError as exc:
+        raise OllamaError(str(exc)) from exc
+
+
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+# Keep this process from running multiple model inferences at once across task lanes.
+_INFERENCE_LOCK = threading.Lock()
+_INFERENCE_PATHS = frozenset({"/api/chat", "/api/embed", "/api/generate"})
 
 def _base_url() -> str:
     base = str(get_settings()["ollama_base_url"]).rstrip("/")
@@ -66,7 +77,7 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         headers={"Content-Type": "application/json"},
         method="GET" if payload is None else "POST",
     )
-    try:
+    def perform_request() -> dict[str, Any]:
         # Never let environment-configured proxies forward local prompts elsewhere.
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}),
@@ -82,6 +93,21 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
         if not isinstance(result, dict):
             raise OllamaError("Unexpected Ollama response shape.")
         return result
+
+    try:
+        if path in _INFERENCE_PATHS:
+            # Bound both queue wait and inference time. Recheck resources only after
+            # acquiring the lock so waiting requests cannot all pass a stale preflight.
+            wait_timeout = timeout if timeout is not None else int(settings["ollama_timeout_seconds"])
+            acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, float(wait_timeout)))
+            if not acquired:
+                raise OllamaError("Timed out waiting for the local inference budget.")
+            try:
+                _ensure_resource_headroom()
+                return perform_request()
+            finally:
+                _INFERENCE_LOCK.release()
+        return perform_request()
     except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise OllamaError(f"Ollama request failed: {exc}") from exc
 
@@ -111,20 +137,33 @@ def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
     system_prompt: str | None = None,
+    *,
+    purpose: str = "chat",
 ) -> str:
+    if purpose not in {"chat", "learning", "programming"}:
+        raise ValueError("purpose must be chat, learning, or programming.")
     settings = get_settings()
-    limits = runtime_limits(settings, detect_hardware())
+    prefix = purpose
+    limits = runtime_limits({
+        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
+        "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
+    }, detect_hardware())
+    request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
+    model = str(settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b")))
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
     for item in history or []:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
-    messages.append({"role": "user", "content": message[:12000]})
+    message_limit = 12000
+    if purpose == "programming":
+        message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
+    messages.append({"role": "user", "content": message[:message_limit]})
     response = _request("/api/chat", {
-        "model": str(settings["ollama_model"]), "stream": False, "messages": messages,
+        "model": model, "stream": False, "messages": messages,
         "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
-    })
+    }, timeout=request_timeout)
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
         raise OllamaError("Ollama returned an empty or unexpected chat response.")

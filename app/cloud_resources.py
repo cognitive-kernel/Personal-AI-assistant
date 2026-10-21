@@ -1632,3 +1632,96 @@ def list_oci_limit_snapshots() -> list[dict[str, Any]]:
             (OCI_PROVIDER_ID,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+def add_manual_candidate(*, source_url: str, title: str, description: str) -> dict[str, Any]:
+    """Add a user-supplied cloud compute candidate as unreviewed evidence."""
+    if not isinstance(title, str) or not title.strip() or len(title.strip()) > 300:
+        raise CloudResourceError("Title must contain 1 to 300 characters.")
+    if not isinstance(description, str) or not description.strip() or len(description.strip()) > 4000:
+        raise CloudResourceError("Description must contain 1 to 4000 characters.")
+    normalized_url, domain = _normalize_source_url(source_url.strip())
+    normalized_title = " ".join(title.split())
+    normalized_description = " ".join(description.split())
+    candidate = _candidate_record(
+        web_sources.SourceDocument(
+            url=normalized_url,
+            title=normalized_title,
+            text=normalized_description,
+        ),
+        "manual_user_entry",
+    )
+    if candidate is None:
+        raise CloudResourceError(
+            "The title and description must contain specific cloud-compute and offer evidence."
+        )
+    initialize_store()
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT id FROM cloud_resource_candidates WHERE source_url=?",
+            (candidate["source_url"],),
+        ).fetchone()
+        if existing is not None:
+            raise CloudResourceConflictError(
+                f"A resource with this source URL already exists (ID {existing['id']})."
+            )
+        cursor = connection.execute(
+            """INSERT INTO cloud_resource_candidates(
+                   source_url, provider_domain, title, content_sha256,
+                   resource_signals_json, evidence_excerpt, discovery_query
+               ) VALUES (?, ?, ?, ?, ?, ?, 'manual_user_entry')""",
+            (
+                candidate["source_url"],
+                domain,
+                candidate["title"],
+                candidate["content_sha256"],
+                candidate["resource_signals_json"],
+                candidate["evidence_excerpt"],
+            ),
+        )
+        candidate_id = int(cursor.lastrowid)
+        row = connection.execute(
+            "SELECT * FROM cloud_resource_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        connection.commit()
+    item = _serialize_candidate(row)
+    item["source_authority"] = (
+        "recognized_official_domain"
+        if _is_recognized_provider_domain(domain)
+        else "unverified_domain"
+    )
+    item["source_classification"] = _candidate_source_classification(item)
+    item["observed_claims"] = []
+    item["eligibility_assessment"] = assess_candidate(item, [])
+    return item
+
+
+def delete_candidate(candidate_id: int) -> dict[str, Any]:
+    """Delete a candidate and its dependent claims, but never silently remove plan history."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise CloudResourceError("Candidate ID must be a positive integer.")
+    initialize_store()
+    with closing(_connect()) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            "SELECT id, title, source_url FROM cloud_resource_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if row is None:
+            raise CloudResourceNotFoundError(f"Cloud resource candidate {candidate_id} does not exist.")
+        references = connection.execute(
+            "SELECT COUNT(*) AS count FROM cloud_resource_selection_decisions WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()
+        if references and int(references["count"]) > 0:
+            raise CloudResourceConflictError(
+                "This resource is referenced by saved selection-plan history; keep it for auditability."
+            )
+        connection.execute(
+            "DELETE FROM cloud_resource_candidates WHERE id=?",
+            (candidate_id,),
+        )
+        connection.commit()
+    return {"id": int(row["id"]), "title": str(row["title"]), "source_url": str(row["source_url"])}
+

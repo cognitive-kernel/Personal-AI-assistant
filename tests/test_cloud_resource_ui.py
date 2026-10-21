@@ -11,6 +11,9 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'id="cloud-discover"' in page
     assert 'id="cloud-candidates"' in page
     assert 'id="cloud-candidate-limit"' in page
+    assert 'id="cloud-manual-form"' in page
+    assert 'api("/api/cloud-resources/manual"' in page
+    assert 'method:"DELETE"' in page
     assert 'value="10" selected' in page
     assert 'api("/api/cloud-resources?limit="+candidateLimit)' in page
     assert '/api/cloud-resources/discover' in page
@@ -21,7 +24,7 @@ def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
     assert 'candidate.observed_claims||[]' in page
     assert 'document.createElement("details")' in page
     assert 'summary.textContent="جزئیات شواهد و ادعاها ("' in page
-    assert 'details.append(form); card.append(details); container.append(card);' in page
+    assert 'card.append(details,deleteActions); container.append(card);' in page
     assert 'candidate.eligibility_assessment' in page
     assert 'candidate.source_authority==="recognized_official_domain"' in page
     assert 'دامنهٔ رسمی شناخته‌شده' in page

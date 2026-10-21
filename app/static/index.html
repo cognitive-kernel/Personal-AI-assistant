@@ -8,20 +8,20 @@
 <div class="dashboard-shell">
 <a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
 <nav class="dashboard-nav" aria-label="ناوبری بخش‌های داشبورد">
-  <a href="#storage-health-section">سلامت و پشتیبان</a>
-  <a href="#chat-section">گفتگو و پژوهش</a>
-  <a href="#learning-section">یادگیری</a>
-  <a href="#learning-paths-section">مسیرهای آموزشی</a>
-  <a href="#knowledge-section">دانش ذخیره‌شده</a>
-  <a href="#task-manager-section">وظایف</a>
-  <a href="#experience-memory-section">حافظهٔ تجربه</a>
-  <a href="#cloud-resources-section">منابع پردازشی</a>
-  <a href="#cloud-plan-section">برنامه‌ریزی منابع</a>
-  <a href="#kaggle-quota-section">سهمیهٔ Kaggle</a>
-  <a href="#oci-limits-section">محدودیت‌های OCI</a>
-  <a href="#sandbox-section">محیط ایزوله</a>
-  <a href="#self-improvement-section">بهبود کد</a>
-  <a href="#settings-section">تنظیمات</a>
+  <a href="/page/storage-health-section" data-page="storage-health-section">سلامت و پشتیبان</a>
+  <a href="/" data-page="chat-section">گفتگو و پژوهش</a>
+  <a href="/page/learning-section" data-page="learning-section">یادگیری</a>
+  <a href="/page/learning-paths-section" data-page="learning-paths-section">مسیرهای آموزشی</a>
+  <a href="/page/knowledge-section" data-page="knowledge-section">دانش ذخیره‌شده</a>
+  <a href="/page/task-manager-section" data-page="task-manager-section">وظایف</a>
+  <a href="/page/experience-memory-section" data-page="experience-memory-section">حافظهٔ تجربه</a>
+  <a href="/page/cloud-resources-section" data-page="cloud-resources-section">منابع پردازشی</a>
+  <a href="/page/cloud-plan-section" data-page="cloud-plan-section">برنامه‌ریزی منابع</a>
+  <a href="/page/kaggle-quota-section" data-page="kaggle-quota-section">سهمیهٔ Kaggle</a>
+  <a href="/page/oci-limits-section" data-page="oci-limits-section">محدودیت‌های OCI</a>
+  <a href="/page/sandbox-section" data-page="sandbox-section">محیط ایزوله</a>
+  <a href="/page/self-improvement-section" data-page="self-improvement-section">بهبود کد</a>
+  <a href="/page/settings-section" data-page="settings-section">تنظیمات</a>
 </nav>
 <main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
@@ -46,7 +46,7 @@
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
-<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">پژوهش در صف پایدار محلی اجرا می‌شود؛ متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود. وضعیت، توقف و لغو از پنل مدیریت وظایف قابل دسترسی است.</p><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output"></pre></section>
+<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
@@ -115,9 +115,21 @@
 <div id="experience-list"></div></section>
 <section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
 <p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. نامزدها ابتدا بر اساس دامنه‌های رسمی شناخته‌شده و صفحات رسمی مستندات/قیمت‌گذاری، سپس بر اساس تازگی مرتب می‌شوند. فهرست همچنان فقط نامزدها و شواهد است؛ برچسب دامنه، صحت ادعاها یا ظرفیت زنده را تأیید نمی‌کند و هیچ منبعی صرفاً با دیده‌شدن در این صفحه مجاز به اجرا نمی‌شود.</p>
+<form id="cloud-manual-form" class="cloud-candidate">
+ <h3>افزودن منبع به‌صورت دستی</h3>
+ <p class="muted">منبع به‌عنوان نامزد تأییدنشده ثبت می‌شود. برای جلوگیری از ثبت اطلاعات نامرتبط، عنوان و توضیحات باید شواهد مشخصی دربارهٔ منبع پردازشی ابری و طرح/سهمیهٔ آن داشته باشند. ثبت منبع به معنی تأیید یا مجوز اجرا نیست.</p>
+ <div class="cloud-form-grid">
+  <label>نشانی منبع (HTTPS)<input id="cloud-manual-url" type="url" maxlength="2048" placeholder="https://provider.example/compute" required></label>
+  <label>عنوان منبع<input id="cloud-manual-title" type="text" maxlength="300" required></label>
+  <label>توضیحات و شواهد<textarea id="cloud-manual-description" rows="4" maxlength="4000" required placeholder="نوع ماشین/پردازش، طرح رایگان یا پولی، سهمیه و محدودیت‌های ذکرشده در منبع"></textarea></label>
+ </div>
+ <button id="cloud-manual-submit" type="submit">ثبت منبع</button>
+ <p id="cloud-manual-feedback" class="muted" role="status" aria-live="polite"></p>
+</form>
 <div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button><label for="cloud-candidate-limit">تعداد نامزدهای نمایشی <select id="cloud-candidate-limit"><option value="10" selected>۱۰ مورد اخیر</option><option value="25">۲۵ مورد اخیر</option><option value="50">۵۰ مورد اخیر</option><option value="100">۱۰۰ مورد اخیر</option></select></label></div>
+<div id="cloud-candidates"></div>
 <pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
-<div id="cloud-candidates"></div></section>
+</section>
 <section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
 <p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
 <div class="cloud-form-grid">
@@ -162,6 +174,15 @@
 <pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
 <p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
+<section id="programming-assist-section"><h3>برنامه‌نویسی با مدل محلی</h3>
+<p class="muted">این کار در صف مستقل برنامه‌نویسی اجرا می‌شود و از مدل تنظیم‌شده در بخش «برنامه‌نویسی و تست» استفاده می‌کند. کد تولیدشده خودکار اجرا نمی‌شود و نتیجهٔ آزمون ساختگی گزارش نمی‌شود.</p>
+<form id="programming-assist-form">
+<label>درخواست برنامه‌نویسی<textarea id="programming-instruction" rows="3" maxlength="6000" required placeholder="تغییر موردنظر، خطا یا پروژه را توضیح دهید" aria-label="درخواست برنامه‌نویسی"></textarea></label>
+<label>کد یا متن زمینه (اختیاری)<textarea id="programming-context" dir="auto" rows="7" maxlength="65536" placeholder="کد فعلی، traceback یا مشخصات پروژه" aria-label="کد یا متن زمینه"></textarea></label>
+<button id="programming-assist-submit" type="submit">ارسال به مدل برنامه‌نویسی</button></form>
+<pre id="programming-assist-status" role="status" aria-live="polite">درخواست برنامه‌نویسی هنوز اجرا نشده است.</pre>
+<pre id="programming-assist-output" dir="auto"></pre>
+</section>
 <form id="self-improvement-form">
 <input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر" aria-label="عنوان تغییر">
 <textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر" aria-label="دلیل و هدف تغییر"></textarea>
@@ -172,10 +193,11 @@
 <button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
 <div id="self-improvement-list"></div>
 </section>
-<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
-<label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
-<label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
-<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
+<section id="settings-section"><h2>تنظیمات محلی</h2><p class="muted">فهرست مدل‌ها از Ollama محلی خوانده می‌شود. فیلدهای مدل هم قابل انتخاب از فهرست و هم قابل تایپ دستی هستند؛ نام دستی لازم نیست در فهرست نصب‌شده‌ها باشد. تنظیم هر بخش مستقل ذخیره می‌شود. مدل، context، thread و timeout در درخواست بعدی استفاده می‌شوند؛ تغییر تعداد کارهای هم‌زمان پس از راه‌اندازی مجدد برنامه اعمال می‌شود.</p><datalist id="ollama-model-options"></datalist><button id="refresh-ollama-models" type="button">به‌روزرسانی فهرست مدل‌های نصب‌شده</button><form id="settings-form">
+<fieldset><legend>گفتگو</legend><label>نام مدل Ollama برای چت<input id="chat-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="chat-ctx" type="number" min="512" max="8192" step="512" required></label><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="chat-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="chat-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان گفتگو<input id="chat-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول پیام گفتگو (کاراکتر)<input id="chat-source-limit" type="number" min="1000" max="12000" step="1000" required></label></fieldset>
+<fieldset><legend>یادگیری و آموزش</legend><label>نام مدل Ollama برای یادگیری<input id="learning-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="learning-ctx" type="number" min="512" max="8192" step="512" required></label><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="learning-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="learning-timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="learning-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="learning-source-limit" type="number" min="1000" max="100000" step="1000" required></label></fieldset>
+<fieldset><legend>برنامه‌نویسی و تست</legend><label>نام مدل Ollama برای برنامه‌نویسی<input id="programming-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="programming-ctx" type="number" min="512" max="8192" step="512" required></label><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="programming-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="programming-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان برنامه‌نویسی<input id="programming-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع برنامه‌نویسی (کاراکتر)<input id="programming-source-limit" type="number" min="1000" max="65536" step="1000" required></label></fieldset>
+<button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite"></pre></section>
 <script>
 const el = id => document.getElementById(id);
 async function api(path, options = {}) {
@@ -184,6 +206,118 @@ async function api(path, options = {}) {
  if (!response.ok) throw new Error(data.detail || ("HTTP " + response.status));
  return data;
 }
+let currentConversationId = null;
+let conversationRefreshInProgress = false;
+function renderChatMessages(messages) {
+ const container = el("chat-messages");
+ container.replaceChildren();
+ if (!messages.length) {
+  const empty = document.createElement("p");
+  empty.className = "muted";
+  empty.textContent = "هنوز پیامی در این گفتگو ثبت نشده است.";
+  container.append(empty);
+  return;
+ }
+ for (const message of messages) {
+  const card = document.createElement("article");
+  card.className = "chat-message chat-message-" + message.role;
+  const heading = document.createElement("h3");
+  heading.textContent = message.role === "user" ? "شما" : "دستیار";
+  const body = document.createElement("p");
+  body.dir = "auto";
+  body.style.whiteSpace = "pre-wrap";
+  body.textContent = message.content;
+  const time = document.createElement("small");
+  time.className = "muted";
+  time.textContent = message.created_at || "";
+  card.append(heading, body, time);
+  container.append(card);
+ }
+}
+async function loadConversationMessages(conversationId) {
+ if (!conversationId) { renderChatMessages([]); return; }
+ const result = await api("/api/conversations/" + encodeURIComponent(conversationId) + "/messages");
+ currentConversationId = Number(result.conversation.id);
+ renderChatMessages(result.messages || []);
+}
+async function refreshConversations({selectId=currentConversationId, createIfEmpty=true}={}) {
+ if (conversationRefreshInProgress) return;
+ conversationRefreshInProgress = true;
+ const select = el("chat-conversation-select");
+ try {
+  let result = await api("/api/conversations?limit=200");
+  let conversations = result.conversations || [];
+  if (!conversations.length && createIfEmpty) {
+   const created = await api("/api/conversations", {method:"POST"});
+   conversations = [created.conversation];
+  }
+  select.replaceChildren();
+  if (!conversations.length) {
+   const option = document.createElement("option");
+   option.value = "";
+   option.textContent = "گفتگویی وجود ندارد";
+   select.append(option);
+   currentConversationId = null;
+   el("chat-delete-conversation").disabled = true;
+   renderChatMessages([]);
+   return;
+  }
+  for (const conversation of conversations) {
+   const option = document.createElement("option");
+   option.value = String(conversation.id);
+   option.textContent = (conversation.title || "گفتگوی جدید") + " (" + conversation.message_count + ")";
+   select.append(option);
+  }
+  const target = conversations.some(item => Number(item.id) === Number(selectId))
+   ? Number(selectId) : Number(conversations[0].id);
+  select.value = String(target);
+  currentConversationId = target;
+  el("chat-delete-conversation").disabled = false;
+  await loadConversationMessages(target);
+ } catch(error) {
+  el("chat-output").textContent = "بارگذاری تاریخچهٔ گفتگو ناموفق بود: " + error.message;
+ } finally {
+  conversationRefreshInProgress = false;
+ }
+}
+el("chat-conversation-select").addEventListener("change", async () => {
+ const selected = Number(el("chat-conversation-select").value);
+ if (!Number.isInteger(selected) || selected < 1) return;
+ el("chat-output").textContent = "";
+ try { await loadConversationMessages(selected); }
+ catch(error) { el("chat-output").textContent = "گفتگو بارگذاری نشد: " + error.message; }
+});
+el("chat-new-conversation").addEventListener("click", async () => {
+ const button = el("chat-new-conversation");
+ button.disabled = true;
+ try {
+  const result = await api("/api/conversations", {method:"POST"});
+  currentConversationId = Number(result.conversation.id);
+  el("chat-output").textContent = "";
+  await refreshConversations({selectId:currentConversationId, createIfEmpty:false});
+  el("message").focus();
+ } catch(error) {
+  el("chat-output").textContent = "ایجاد گفتگوی جدید ناموفق بود: " + error.message;
+ } finally { button.disabled = false; }
+});
+el("chat-delete-conversation").addEventListener("click", async () => {
+ const conversationId = currentConversationId;
+ if (!Number.isInteger(conversationId) || conversationId < 1) return;
+ const title = el("chat-conversation-select").selectedOptions[0]?.textContent || "گفتگوی انتخاب‌شده";
+ if (!window.confirm("گفتگوی «" + title + "» و تمام پیام‌های آن برای همیشه حذف شود؟ این کار قابل بازگشت نیست.")) return;
+ const button = el("chat-delete-conversation");
+ button.disabled = true;
+ try {
+  await api("/api/conversations/" + encodeURIComponent(conversationId), {method:"DELETE"});
+  currentConversationId = null;
+  el("chat-output").textContent = "گفتگو حذف شد.";
+  await refreshConversations({selectId:null, createIfEmpty:true});
+ } catch(error) {
+  el("chat-output").textContent = "حذف گفتگو ناموفق بود: " + error.message;
+  button.disabled = !currentConversationId;
+ }
+});
+el("chat-refresh-conversations").addEventListener("click", () => refreshConversations());
 async function refresh() {
  try {
   const health = await api("/api/health");
@@ -199,7 +333,7 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
- try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
+ try { const s = await api("/api/settings"); const fields={"chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","chat-source-limit":"chat_source_max_chars","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; refreshOllamaModels(); } catch(error) { el("settings-output").textContent=error.message; }
 }
 async function refreshStorageHealth() {
  const output=el("storage-health-output");
@@ -625,6 +759,27 @@ function renderTasks(tasks,{append=false}={}) {
   if(["queued","running"].includes(task.status)) addAction("توقف","/api/tasks/"+task.id+"/pause");
   if(task.status==="paused") addAction("ادامه","/api/tasks/"+task.id+"/resume");
   if(["queued","running","pause_requested","paused"].includes(task.status)) addAction("لغو","/api/tasks/"+task.id+"/cancel");
+  if(["queued","paused","cancelled","succeeded","failed"].includes(task.status)) {
+   const deleteButton=document.createElement("button");
+   deleteButton.type="button";
+   deleteButton.className="danger";
+   deleteButton.textContent="حذف وظیفه";
+   deleteButton.setAttribute("aria-label","حذف وظیفه "+task.id);
+   deleteButton.addEventListener("click",async()=>{
+    if(!window.confirm("وظیفهٔ #"+task.id+" («"+task.task_type+"») و تاریخچهٔ رویدادهای وابسته حذف شود؟ این کار قابل بازگشت نیست.")) return;
+    deleteButton.disabled=true;
+    try {
+     await api("/api/tasks/"+encodeURIComponent(task.id),{method:"DELETE"});
+     taskNextCursor=null;
+     await refreshTasks();
+     el("tasks-output").textContent="وظیفهٔ #"+task.id+" حذف شد.";
+    } catch(error) {
+     el("tasks-output").textContent="حذف وظیفه ناموفق بود: "+error.message;
+     deleteButton.disabled=false;
+    }
+   });
+   actions.append(deleteButton);
+  }
   if(actions.childElementCount) card.append(actions);
   container.append(card);
  });
@@ -675,29 +830,38 @@ el("refresh-knowledge").addEventListener("click", async () => {
 el("chat-form").addEventListener("submit", async event => {
  event.preventDefault();
  const button=el("chat-form").querySelector('button[type="submit"]');
- const message=el("message").value;
+ const message=el("message").value.trim();
+ if(!message) return;
  if(button) button.disabled=true;
- el("chat-output").textContent="در حال صف‌بندی پژوهش…";
+ el("chat-output").textContent="در حال ثبت پیام و صف‌بندی پاسخ…";
  try {
-  const queued=await api("/api/research/tasks",{method:"POST",body:JSON.stringify({message})});
+  if(!currentConversationId) {
+   const created=await api("/api/conversations",{method:"POST"});
+   currentConversationId=Number(created.conversation.id);
+  }
+  const queued=await api("/api/research/tasks",{method:"POST",body:JSON.stringify({message,conversation_id:currentConversationId})});
   const taskId=queued.task.id;
-  el("chat-output").textContent="پژوهش در صف قرار گرفت: #"+taskId+" ("+queued.task.status+").";
+  el("message").value="";
+  await refreshConversations({selectId:currentConversationId,createIfEmpty:false});
+  el("chat-output").textContent="پاسخ در صف قرار گرفت: #"+taskId+" ("+queued.task.status+").";
   const poll=async()=>{
    try {
     const current=await api("/api/tasks/"+taskId);
     if(["queued","running","pause_requested","paused","cancel_requested"].includes(current.status)) {
-     el("chat-output").textContent="وضعیت پژوهش #"+taskId+": "+current.status;
+     el("chat-output").textContent="وضعیت پاسخ #"+taskId+": "+current.status;
      setTimeout(poll,1000);
      return;
     }
     if(current.status==="succeeded") {
-     el("chat-output").textContent=(current.result&&current.result.reply)||"پژوهش کامل شد، اما پاسخی در نتیجه ثبت نشده است.";
+     await refreshConversations({selectId:currentConversationId,createIfEmpty:false});
+     el("chat-output").textContent="پاسخ ذخیره شد.";
     } else {
-     el("chat-output").textContent="پژوهش تکمیل نشد: "+(current.error||current.status);
+     await refreshConversations({selectId:currentConversationId,createIfEmpty:false});
+     el("chat-output").textContent="پاسخ تکمیل نشد: "+(current.error||current.status);
     }
     if(button) button.disabled=false;
    } catch(error) {
-    el("chat-output").textContent="وضعیت پژوهش قابل دریافت نیست: "+error.message;
+    el("chat-output").textContent="وضعیت پاسخ قابل دریافت نیست: "+error.message;
     if(button) button.disabled=false;
    }
   };
@@ -741,10 +905,37 @@ el("learning-form").addEventListener("submit", async event => {
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
+async function refreshOllamaModels() {
+ const list=el("ollama-model-options");
+ if(!list) return;
+ list.replaceChildren();
+ try {
+  const result=await api("/api/models");
+  for(const model of result.models||[]) {
+   if(!model.name) continue;
+   const option=document.createElement("option");
+   option.value=model.name;
+   option.label=model.size ? model.name+" — "+Math.round(model.size/1073741824*10)/10+" GiB" : model.name;
+   list.append(option);
+  }
+ } catch(error) {
+  el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
+ }
+}
+el("refresh-ollama-models").addEventListener("click", refreshOllamaModels);
 el("settings-form").addEventListener("submit", async event => {
  event.preventDefault();
- try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
- el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
+ const values={
+  chat_ollama_model:el("chat-model").value.trim(),chat_ollama_num_ctx:Number(el("chat-ctx").value),chat_ollama_num_thread:Number(el("chat-threads").value),chat_ollama_timeout_seconds:Number(el("chat-timeout").value),chat_max_concurrent_jobs:Number(el("chat-concurrency").value),chat_source_max_chars:Number(el("chat-source-limit").value),
+  learning_ollama_model:el("learning-model").value.trim(),learning_ollama_num_ctx:Number(el("learning-ctx").value),learning_ollama_num_thread:Number(el("learning-threads").value),learning_ollama_timeout_seconds:Number(el("learning-timeout").value),learning_max_concurrent_jobs:Number(el("learning-concurrency").value),learning_source_max_chars:Number(el("learning-source-limit").value),
+  programming_ollama_model:el("programming-model").value.trim(),programming_ollama_num_ctx:Number(el("programming-ctx").value),programming_ollama_num_thread:Number(el("programming-threads").value),programming_ollama_timeout_seconds:Number(el("programming-timeout").value),programming_max_concurrent_jobs:Number(el("programming-concurrency").value),programming_source_max_chars:Number(el("programming-source-limit").value)
+ };
+ // Preserve the old generic keys for compatibility with older internal callers.
+ values.ollama_model=values.chat_ollama_model; values.ollama_num_ctx=values.chat_ollama_num_ctx; values.ollama_num_thread=values.chat_ollama_num_thread; values.ollama_timeout_seconds=values.chat_ollama_timeout_seconds;
+ try {
+  const saved=await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})});
+  el("settings-output").textContent="تنظیمات سه پروفایل ذخیره شد.\n"+JSON.stringify(saved,null,2);
+ } catch(error) { el("settings-output").textContent="ذخیره تنظیمات ناموفق بود: "+error.message; }
 });
 
 async function refreshCloudResources() {
@@ -939,9 +1130,53 @@ function renderCloudCandidates(candidates) {
     submit.disabled=candidate.freshness_status==="stale";
    }
   });
-  details.append(form); card.append(details); container.append(card);
+  details.append(form);
+  const deleteButton=document.createElement("button");
+  deleteButton.type="button";
+  deleteButton.className="danger";
+  deleteButton.textContent="حذف منبع";
+  deleteButton.setAttribute("aria-label","حذف منبع "+(candidate.title||candidate.id));
+  deleteButton.addEventListener("click",async()=>{
+   if(!window.confirm("منبع «"+(candidate.title||candidate.source_url)+"» حذف شود؟ اگر در تاریخچهٔ برنامه‌های انتخاب ثبت شده باشد، حذف توسط سرور رد می‌شود.")) return;
+   deleteButton.disabled=true;
+   try {
+    await api("/api/cloud-resources/"+encodeURIComponent(candidate.id),{method:"DELETE"});
+    await refreshCloudResources();
+   } catch(error) {
+    const feedback=appendText(card,"p","حذف منبع انجام نشد: "+error.message,"muted");
+    feedback.setAttribute("role","status");
+    deleteButton.disabled=false;
+   }
+  });
+  const deleteActions=document.createElement("div"); deleteActions.className="cloud-actions";
+  deleteActions.append(deleteButton);
+  card.append(details,deleteActions); container.append(card);
  });
 }
+el("cloud-manual-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=el("cloud-manual-submit");
+ const feedback=el("cloud-manual-feedback");
+ button.disabled=true;
+ feedback.textContent="در حال ثبت منبع…";
+ try {
+  const result=await api("/api/cloud-resources/manual",{
+   method:"POST",
+   body:JSON.stringify({
+    source_url:el("cloud-manual-url").value.trim(),
+    title:el("cloud-manual-title").value.trim(),
+    description:el("cloud-manual-description").value.trim()
+   })
+  });
+  feedback.textContent="منبع #"+result.candidate.id+" ثبت شد و تا بازبینی شما تأییدنشده باقی می‌ماند.";
+  el("cloud-manual-form").reset();
+  await refreshCloudResources();
+ } catch(error) {
+  feedback.textContent="ثبت منبع ناموفق بود: "+error.message;
+ } finally {
+  button.disabled=false;
+ }
+});
 el("cloud-refresh").addEventListener("click",refreshCloudResources);
 el("cloud-candidate-limit").addEventListener("change",refreshCloudResources);
 el("cloud-discover").addEventListener("click",async()=>{
@@ -1733,6 +1968,47 @@ async function refreshSelfImprovement() {
   output.textContent="مدیریت پیشنهادها در دسترس نیست: "+error.message;
  }
 }
+el("programming-assist-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=el("programming-assist-submit");
+ const status=el("programming-assist-status");
+ const output=el("programming-assist-output");
+ button.disabled=true;
+ output.textContent="";
+ status.textContent="درخواست برنامه‌نویسی در حال صف‌بندی است…";
+ try {
+  const queued=await api("/api/programming/tasks",{method:"POST",body:JSON.stringify({
+   instruction:el("programming-instruction").value,
+   context:el("programming-context").value
+  })});
+  const taskId=queued.task.id;
+  status.textContent="وظیفهٔ برنامه‌نویسی #"+taskId+" در صف مستقل برنامه‌نویسی قرار گرفت.";
+  const poll=async()=>{
+   try {
+    const task=await api("/api/tasks/"+taskId);
+    if(["queued","running","pause_requested","paused","cancel_requested"].includes(task.status)) {
+     status.textContent="وضعیت وظیفهٔ برنامه‌نویسی #"+taskId+": "+task.status;
+     setTimeout(poll,1000);
+     return;
+    }
+    if(task.status==="succeeded") {
+     output.textContent=(task.result&&task.result.reply)||"مدل پاسخ متنی برنگرداند.";
+     status.textContent="پاسخ دریافت شد. کد اجرا نشده و هیچ آزمونی اجرا نشده است.";
+    } else {
+     status.textContent="وظیفهٔ برنامه‌نویسی تکمیل نشد: "+(task.error||task.status);
+    }
+    button.disabled=false;
+   } catch(error) {
+    status.textContent="وضعیت وظیفه قابل دریافت نیست: "+error.message;
+    button.disabled=false;
+   }
+  };
+  setTimeout(poll,500);
+ } catch(error) {
+  status.textContent="ارسال درخواست ناموفق بود: "+error.message;
+  button.disabled=false;
+ }
+});
 el("self-improvement-form").addEventListener("submit",async event=>{
  event.preventDefault();
  const output=el("self-improvement-output");
@@ -1776,9 +2052,38 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
  const sections=links.map(link=>document.getElementById(link.hash.slice(1))).filter(Boolean);
  if(!sections.length) return;
  let scheduled=false;
+ let navigationTarget=null;
+ function setCurrentSection(sectionId){
+  const currentHash="#"+sectionId;
+  for(const link of links){
+   if(link.getAttribute('href')===currentHash){
+    link.setAttribute('aria-current','location');
+    link.classList.add('is-current');
+   }else{
+    link.removeAttribute('aria-current');
+    link.classList.remove('is-current');
+   }
+  }
+ }
  function updateCurrentSection(){
   scheduled=false;
   const marker=Math.min(Math.max(window.innerHeight*0.28,120),240);
+  if(navigationTarget){
+   const target=document.getElementById(navigationTarget.slice(1));
+   if(target){
+    const top=target.getBoundingClientRect().top;
+    if(top>marker){
+     setCurrentSection(target.id);
+     return;
+    }
+    if(top>=-window.innerHeight){
+     navigationTarget=null;
+     setCurrentSection(target.id);
+     return;
+    }
+   }
+   navigationTarget=null;
+  }
   let current=sections[0];
   let currentTop=-Infinity;
   let firstVisibleTop=Infinity;
@@ -1790,16 +2095,7 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
    if(top<=marker && top>currentTop){current=section;currentTop=top;}
   }
   if(currentTop===-Infinity) current=firstVisibleSection;
-  const currentHash="#"+current.id;
-  for(const link of links){
-   if(link.getAttribute('href')===currentHash){
-    link.setAttribute('aria-current','location');
-    link.classList.add('is-current');
-   }else{
-    link.removeAttribute('aria-current');
-    link.classList.remove('is-current');
-   }
-  }
+  setCurrentSection(current.id);
  }
  function scheduleUpdate(){
   if(scheduled) return;
@@ -1809,17 +2105,17 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
  navigation.addEventListener('click',event=>{
   const link=event.target.closest('a[href^="#"]');
   if(link && navigation.contains(link)){
-   for(const item of links){
-    const active=item===link;
-    if(active){item.setAttribute('aria-current','location');item.classList.add('is-current');}
-    else{item.removeAttribute('aria-current');item.classList.remove('is-current');}
-   }
+   navigationTarget=link.hash;
+   setCurrentSection(link.hash.slice(1));
   }
  });
+ window.addEventListener('wheel',()=>{navigationTarget=null;},{passive:true});
+ window.addEventListener('touchstart',()=>{navigationTarget=null;},{passive:true});
  window.addEventListener('scroll',scheduleUpdate,{passive:true});
  window.addEventListener('resize',scheduleUpdate,{passive:true});
  window.addEventListener('hashchange',scheduleUpdate);
  updateCurrentSection();
 })();
 refreshTasks();
-</script><script src="/static/learning.js"></script></main></div></body></html>
+refreshConversations();
+</script><script src="/static/page-navigation.js"></script><script src="/static/learning.js"></script></main></div></body></html>

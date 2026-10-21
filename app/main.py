@@ -1,13 +1,15 @@
 from __future__ import annotations
 import ipaddress
+from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -17,16 +19,33 @@ from .cloud_resource_routes import router as cloud_resource_router
 from .sandbox_routes import router as sandbox_router
 from .experience_routes import router as experience_router
 from .research_routes import router as research_router
+from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .schema_migrations import UntrackedSchemaError
 
-app = FastAPI(title="Personal AI Assistant", version="0.1.0", description="Local-first personal assistant; learning storage is isolated from settings.")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Run blocking startup/shutdown work outside the event loop."""
+    try:
+        await run_in_threadpool(startup)
+        yield
+    finally:
+        await run_in_threadpool(shutdown)
+
+
+app = FastAPI(
+    title="Personal AI Assistant",
+    version="0.1.0",
+    description="Local-first personal assistant; learning storage is isolated from settings.",
+    lifespan=lifespan,
+)
 
 app.include_router(task_router)
 app.include_router(cloud_resource_router)
 app.include_router(sandbox_router)
 app.include_router(experience_router)
 app.include_router(research_router)
+app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(storage_routes.router)
 
@@ -113,13 +132,12 @@ async def enforce_loopback_only(request, call_next):
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-_task_runtime: TaskRuntime | None = None
+_task_runtimes: list[TaskRuntime] = []
 _startup_storage_error: str | None = None
 
 
-@app.on_event("startup")
 def startup() -> None:
-    global _task_runtime, _startup_storage_error
+    global _task_runtimes, _startup_storage_error
     _startup_storage_error = None
     try:
         db.init_databases()
@@ -141,45 +159,109 @@ def startup() -> None:
         logger.exception("Cloud resource discovery could not be initialized or scheduled.")
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
-    if _task_runtime is not None and _task_runtime.is_running:
+    if any(runtime.is_running for runtime in _task_runtimes):
         backup_scheduler.start_backup_scheduler()
         return
     settings = db.get_settings()
-    configured_workers = int(settings.get("learning_max_concurrent_jobs", 1))
-    worker_count = max(1, min(8, configured_workers))
-    handlers = {
-        LEARNING_TASK_TYPE: handle_learning_job,
+    chat_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
+    }
+    learning_handlers = {LEARNING_TASK_TYPE: handle_learning_job}
+    programming_handlers: dict[str, Any] = {
+        programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
+    }
+    system_handlers = {
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
     }
     sandbox_handler = sandbox_tasks.handler_from_environment()
     if sandbox_handler is not None:
-        handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
+        programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
-        handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
-    _task_runtime = TaskRuntime(
-        handlers,
-        worker_count=worker_count,
+        programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
+
+    # Each runtime claims only its own task types, so slow learning or code-test
+    # work cannot consume the chat lane's worker slots.
+    runtime_specs: list[tuple[dict[str, Any], int, str, Any]] = [
+        (chat_handlers, int(settings.get("chat_max_concurrent_jobs", 1)), "chat-worker", None),
+        (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", None),
+        (system_handlers, 1, "system-worker", None),
+    ]
+    if programming_handlers:
+        runtime_specs.append((
+            programming_handlers,
+            int(settings.get("programming_max_concurrent_jobs", 1)),
+            "programming-worker",
+            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None,
+        ))
+
+    _task_runtimes = []
+    for lane_handlers, configured_workers, prefix, maintenance in runtime_specs:
+        runtime = TaskRuntime(
+            lane_handlers,
+            worker_count=max(1, min(8, configured_workers)),
+            worker_prefix=prefix,
+            poll_interval=0.5,
+            lease_seconds=300,
+            maintenance_callback=maintenance,
+            maintenance_interval=30.0,
+            restrict_task_types=True,
+        )
+        runtime.start()
+        _task_runtimes.append(runtime)
+
+    # Preserve fail-closed behavior for tasks whose type has no registered handler.
+    known_task_types = tuple(
+        task_type for lane_handlers, _count, _prefix, _maintenance in runtime_specs
+        for task_type in lane_handlers
+    )
+    fallback_placeholder = "__unregistered_task_type__"
+    fallback_runtime = TaskRuntime(
+        {fallback_placeholder: lambda *_args: {"ok": True}},
+        worker_count=1,
+        worker_prefix="dead-letter-worker",
         poll_interval=0.5,
         lease_seconds=300,
-        maintenance_callback=(
-            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None
-        ),
-        maintenance_interval=30.0,
+        exclude_task_types=known_task_types + (fallback_placeholder,),
     )
-    _task_runtime.start()
+    fallback_runtime.start()
+    _task_runtimes.append(fallback_runtime)
     backup_scheduler.start_backup_scheduler()
 
-
-@app.on_event("shutdown")
 def shutdown() -> None:
     backup_scheduler.stop_backup_scheduler(timeout=5.0)
-    if _task_runtime is not None and not _task_runtime.stop(timeout=10.0):
-        logger.warning("Task runtime did not stop before the shutdown deadline.")
+    for runtime in _task_runtimes:
+        if not runtime.stop(timeout=10.0):
+            logger.warning("Task runtime %s did not stop before the shutdown deadline.", runtime.worker_prefix)
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+_DASHBOARD_PAGE_IDS = {
+    "storage-health-section",
+    "chat-section",
+    "learning-section",
+    "learning-paths-section",
+    "knowledge-section",
+    "task-manager-section",
+    "experience-memory-section",
+    "cloud-resources-section",
+    "cloud-plan-section",
+    "kaggle-quota-section",
+    "oci-limits-section",
+    "sandbox-section",
+    "self-improvement-section",
+    "settings-section",
+}
+
+
+@app.get("/page/{page_id}", include_in_schema=False)
+def dashboard_section_page(page_id: str) -> FileResponse:
+    """Serve the shared dashboard shell for one allowlisted, separately addressable section."""
+    if page_id not in _DASHBOARD_PAGE_IDS:
+        raise HTTPException(status_code=404, detail="Dashboard page not found.")
     return FileResponse(STATIC_DIR / "index.html")
 
 class ChatRequest(BaseModel):
@@ -199,14 +281,12 @@ class AssessmentSubmission(BaseModel):
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 class SpacedRepetitionRequest(BaseModel):
     rating: StrictInt = Field(ge=0, le=5)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 class CurriculumEnrollment(BaseModel):
     slug: str = Field(min_length=1, max_length=100)
@@ -270,8 +350,40 @@ def models() -> dict[str, Any]:
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+
+@app.get("/api/conversations")
+def list_chat_conversations(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+    return {"conversations": chat_history.list_conversations(limit=limit)}
+
+
+@app.post("/api/conversations", status_code=201)
+def create_chat_conversation() -> dict[str, Any]:
+    return {"conversation": chat_history.create_conversation()}
+
+
+@app.delete("/api/conversations/{conversation_id}")
+def delete_chat_conversation(conversation_id: int) -> dict[str, Any]:
+    if not chat_history.delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="Chat conversation not found.")
+    return {"deleted": True, "conversation_id": conversation_id}
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+def list_chat_messages(conversation_id: int) -> dict[str, Any]:
+    try:
+        conversation = chat_history.get_conversation(conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Chat conversation not found.")
+        return {"conversation": conversation, "messages": chat_history.list_messages(conversation_id)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat conversation not found.") from exc
+
+
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> dict[str, str]:
+    chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
+    if len(request.message) > chat_limit:
+        raise HTTPException(status_code=422, detail=f"message exceeds the configured chat input limit of {chat_limit} characters.")
     try:
         return {"reply": chat_research.answer(request.message, request.history)}
     except ollama.OllamaError as exc:
@@ -289,17 +401,38 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if not (url.startswith("http://127.0.0.1:") or url.startswith("http://localhost:") or url.startswith("http://[::1]:") or url in {"http://127.0.0.1", "http://localhost", "http://[::1]"}):
             raise HTTPException(status_code=422, detail="Only loopback Ollama URLs are supported.")
         values["ollama_base_url"] = url
-    for key, low, high in [("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
-                           ("ollama_num_thread", 0, 64), ("learning_max_concurrent_jobs", 1, 2), ("learning_source_max_chars", 1000, 100000)]:
+    numeric_ranges = [
+        ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
+        ("ollama_num_thread", 0, 64),
+    ]
+    for prefix in ("chat", "learning", "programming"):
+        numeric_ranges.extend([
+            (f"{prefix}_ollama_timeout_seconds", 5, 600),
+            (f"{prefix}_ollama_num_ctx", 512, 8192),
+            (f"{prefix}_ollama_num_thread", 0, 64),
+            (f"{prefix}_max_concurrent_jobs", 1, 8),
+        ])
+    numeric_ranges.extend([
+        ("chat_source_max_chars", 1000, 12000),
+        ("learning_source_max_chars", 1000, 100000),
+        ("programming_source_max_chars", 1000, 65536),
+    ])
+    for key, low, high in numeric_ranges:
         if key in values:
             try:
-                values[key] = int(values[key])
+                raw_value = values[key]
+                if isinstance(raw_value, bool):
+                    raise ValueError
+                values[key] = int(raw_value)
             except (ValueError, TypeError) as exc:
                 raise HTTPException(status_code=422, detail=f"{key} must be an integer.") from exc
             if not low <= values[key] <= high:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
-    if "ollama_model" in values and (not isinstance(values["ollama_model"], str) or not values["ollama_model"].strip() or len(values["ollama_model"]) > 200):
-        raise HTTPException(status_code=422, detail="ollama_model must be a non-empty string of at most 200 characters.")
+    for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
+        if key in values and (
+            not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
+        ):
+            raise HTTPException(status_code=422, detail=f"{key} must be a non-empty string of at most 200 characters.")
     try:
         return db.update_settings(values)
     except ValueError as exc:

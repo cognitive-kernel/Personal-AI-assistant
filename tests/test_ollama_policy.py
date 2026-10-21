@@ -310,3 +310,63 @@ def test_ollama_model_inventory_handles_missing_or_invalid_digest(tmp_path, monk
         "models": [{"name": "test-model:latest", "digest": 42}]
     })
     assert ollama.list_models()[0]["digest"] is None
+
+def test_ollama_serializes_inference_requests_and_checks_headroom(
+    tmp_path, monkeypatch
+):
+    import json
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    active = 0
+    max_active = 0
+    counts_lock = threading.Lock()
+    headroom_checks = []
+
+    class InferenceHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            nonlocal active, max_active
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            with counts_lock:
+                active += 1
+                max_active = max(max_active, active)
+            time.sleep(0.08)
+            body = json.dumps({"message": {"content": "ok"}}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            with counts_lock:
+                active -= 1
+
+        def log_message(self, format, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), InferenceHandler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            configure_ollama_url(
+                tmp_path, monkeypatch, f"http://127.0.0.1:{server.server_port}"
+            )
+            monkeypatch.setattr(
+                ollama, "_ensure_resource_headroom",
+                lambda: headroom_checks.append(threading.get_ident()),
+            )
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(
+                    lambda _: ollama._request(
+                        "/api/chat", {"model": "test", "messages": []}, timeout=2
+                    ),
+                    range(2),
+                ))
+            assert len(results) == 2
+            assert max_active == 1
+            assert len(headroom_checks) == 2
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+

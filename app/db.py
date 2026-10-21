@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -40,11 +41,41 @@ def init_databases() -> None:
     initialize_database_file(defaults.learning_db_path, LEARNING_MIGRATIONS)
 
     with settings_connection() as conn:
+        existing_rows = conn.execute("SELECT key, value_json FROM settings").fetchall()
+        existing_settings = {
+            row["key"]: json.loads(row["value_json"]) for row in existing_rows
+        }
         for key, value in SETTING_DEFAULTS.items():
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value_json) VALUES (?, ?)",
                 (key, json.dumps(value)),
             )
+        # Preserve a user's pre-profile model and resource choices during upgrade.
+        # Explicit per-purpose environment overrides remain authoritative.
+        if "ollama_model" in existing_settings:
+            legacy_to_profile = {
+                "ollama_num_ctx": "ollama_num_ctx",
+                "ollama_num_thread": "ollama_num_thread",
+                "ollama_timeout_seconds": "ollama_timeout_seconds",
+            }
+            for prefix in ("chat", "learning", "programming"):
+                for suffix, legacy_key in legacy_to_profile.items():
+                    profile_key = f"{prefix}_{suffix}"
+                    if profile_key not in existing_settings and legacy_key in existing_settings:
+                        conn.execute(
+                            "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                            (json.dumps(existing_settings[legacy_key]), profile_key),
+                        )
+            # Keep the legacy model choice for chat. Learning and programming
+            # get their own purpose-specific defaults unless explicitly configured.
+            if (
+                "chat_ollama_model" not in existing_settings
+                and os.getenv("CHAT_OLLAMA_MODEL") is None
+            ):
+                conn.execute(
+                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                    (json.dumps(existing_settings["ollama_model"]), "chat_ollama_model"),
+                )
 
 
 def get_settings() -> dict[str, Any]:

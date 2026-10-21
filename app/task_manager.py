@@ -9,6 +9,7 @@ import base64
 import binascii
 import json
 import sqlite3
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -16,6 +17,8 @@ from . import db
 
 ACTIVE_STATUSES = {"running", "pause_requested", "cancel_requested"}
 TERMINAL_STATUSES = {"cancelled", "succeeded", "failed"}
+RETRY_BASE_DELAY_SECONDS = 2
+RETRY_MAX_DELAY_SECONDS = 300
 
 
 class TaskManagerError(RuntimeError):
@@ -282,12 +285,27 @@ def list_terminal_task_ids(
     return [int(row["id"]) for row in rows]
 
 
-def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, Any] | None:
+def claim_next_task(
+    worker_id: str, *, lease_seconds: int = 300, task_types: list[str] | tuple[str, ...] | None = None,
+    exclude_task_types: list[str] | tuple[str, ...] | None = None
+) -> dict[str, Any] | None:
     """Atomically claim one due task; expired running leases may be reclaimed."""
     if not isinstance(worker_id, str) or not worker_id.strip():
         raise ValueError("worker_id must be a non-empty string.")
     if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or lease_seconds < 1:
         raise ValueError("lease_seconds must be a positive integer.")
+    if task_types is not None and (
+        not isinstance(task_types, (list, tuple)) or not task_types
+        or any(not isinstance(item, str) or not item.strip() for item in task_types)
+    ):
+        raise ValueError("task_types must be a non-empty list of non-empty strings.")
+    if exclude_task_types is not None and (
+        not isinstance(exclude_task_types, (list, tuple)) or not exclude_task_types
+        or any(not isinstance(item, str) or not item.strip() for item in exclude_task_types)
+    ):
+        raise ValueError("exclude_task_types must be a non-empty list of non-empty strings.")
+    normalized_types = tuple(dict.fromkeys(item.strip() for item in task_types)) if task_types is not None else None
+    normalized_excluded = tuple(dict.fromkeys(item.strip() for item in exclude_task_types)) if exclude_task_types is not None else None
     now = _now()
     now_text = _timestamp(now)
     expires = _timestamp(now + timedelta(seconds=lease_seconds))
@@ -311,12 +329,23 @@ def claim_next_task(worker_id: str, *, lease_seconds: int = 300) -> dict[str, An
                WHERE status='running' AND lease_expires_at <= ? AND attempts >= max_attempts""",
             (now_text, now_text),
         )
+        type_clause = ""
+        query_params: tuple[Any, ...] = (now_text, now_text)
+        if normalized_types is not None:
+            placeholders = ",".join("?" for _ in normalized_types)
+            type_clause += f" AND task_type IN ({placeholders})"
+            query_params = (*query_params, *normalized_types)
+        if normalized_excluded is not None:
+            placeholders = ",".join("?" for _ in normalized_excluded)
+            type_clause += f" AND task_type NOT IN ({placeholders})"
+            query_params = (*query_params, *normalized_excluded)
         row = conn.execute(
             """SELECT id FROM task_queue
-               WHERE (status='queued' AND scheduled_at <= ?)
-                  OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts)
-               ORDER BY priority DESC, scheduled_at ASC, id ASC LIMIT 1""",
-            (now_text, now_text),
+               WHERE ((status='queued' AND scheduled_at <= ?)
+                  OR (status='running' AND lease_expires_at <= ? AND attempts < max_attempts))"""
+            + type_clause +
+            " ORDER BY priority DESC, scheduled_at ASC, id ASC LIMIT 1",
+            query_params,
         ).fetchone()
         if row is None:
             return None
@@ -402,19 +431,63 @@ def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[
 def fail_task(
     task_id: int, worker_id: str, error: str, *, retry: bool = True
 ) -> dict[str, Any]:
+    """Record failure and schedule bounded exponential backoff for retryable attempts."""
     if not isinstance(error, str) or not error.strip():
         raise ValueError("error must be a non-empty string.")
-    now = _timestamp()
+    now_dt = _now()
+    now = _timestamp(now_dt)
     with db.learning_connection() as conn:
         row = _owned_running_task(conn, task_id, worker_id)
-        status = "queued" if retry and row["attempts"] < row["max_attempts"] else "failed"
+        should_retry = retry and row["attempts"] < row["max_attempts"]
+        if should_retry:
+            # The attempt that just failed determines a 2s, 4s, 8s... delay, capped at 5m.
+            exponential_delay = min(
+                RETRY_MAX_DELAY_SECONDS,
+                RETRY_BASE_DELAY_SECONDS * (2 ** min(max(int(row["attempts"]) - 1, 0), 8)),
+            )
+            # Add bounded jitter so many failed jobs do not retry in lockstep.
+            # The maximum remains a hard cap even when jitter selects its upper bound.
+            jittered_delay = random.uniform(
+                exponential_delay * 0.8,
+                exponential_delay * 1.2,
+            )
+            delay = min(RETRY_MAX_DELAY_SECONDS, jittered_delay)
+            scheduled_at = _timestamp(now_dt + timedelta(seconds=delay))
+            status = "queued"
+        else:
+            scheduled_at = row["scheduled_at"]
+            status = "failed"
         conn.execute(
-            """UPDATE task_queue SET status=?, error=?, lease_owner=NULL, lease_expires_at=NULL,
-               updated_at=? WHERE id=?""",
-            (status, error[:4000], now, task_id),
+            """UPDATE task_queue SET status=?, error=?, scheduled_at=?,
+               lease_owner=NULL, lease_expires_at=NULL, updated_at=? WHERE id=?""",
+            (status, error[:4000], scheduled_at, now, task_id),
         )
         updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     return _task(updated)  # type: ignore[return-value]
+
+
+def delete_task(task_id: int) -> dict[str, Any]:
+    """Delete a task only when no worker can still be executing it."""
+    now = _timestamp()
+    with db.learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
+        if row["status"] in ACTIVE_STATUSES:
+            raise TaskManagerError(
+                "Active tasks must be cancelled and reach a non-running state before deletion."
+            )
+        if row["status"] not in TERMINAL_STATUSES | {"queued", "paused"}:
+            raise TaskManagerError(f"Tasks with status {row['status']} cannot be deleted.")
+        deleted = {
+            "id": int(row["id"]),
+            "task_type": str(row["task_type"]),
+            "status": str(row["status"]),
+            "deleted_at": now,
+        }
+        conn.execute("DELETE FROM task_queue WHERE id=?", (task_id,))
+    return deleted
 
 
 def request_cancel(task_id: int) -> dict[str, Any]:

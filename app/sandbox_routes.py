@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from . import sandbox_consent, sandbox_tasks, task_manager
+from .db import get_settings
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -73,6 +74,12 @@ def revoke_sandbox_consent() -> dict[str, Any]:
 
 @router.post("/run", status_code=202)
 def queue_sandbox_execution(request: SandboxRunRequest) -> dict[str, Any]:
+    configured_source_limit = int(get_settings().get("programming_source_max_chars", 12000))
+    if len(request.source_code) > configured_source_limit:
+        raise HTTPException(
+            status_code=422,
+            detail=f"source_code exceeds the configured programming source limit of {configured_source_limit} characters.",
+        )
     if "\x00" in request.source_code:
         raise HTTPException(status_code=422, detail="source_code must not contain NUL characters.")
     if len(request.source_code.encode("utf-8")) > 64 * 1024:

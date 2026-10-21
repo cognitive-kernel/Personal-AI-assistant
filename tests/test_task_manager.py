@@ -62,7 +62,11 @@ def test_claim_respects_priority_and_scheduled_time(task_store):
     assert task_manager.get_task(lower["id"])["status"] == "queued"
 
 
-def test_failed_task_retries_only_within_attempt_limit(task_store):
+def test_failed_task_retries_with_bounded_backoff_and_respects_attempt_limit(task_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    # Keep this lifecycle test deterministic; jitter bounds are tested separately.
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("retryable", {}, max_attempts=2)
     first = task_manager.claim_next_task("worker-a")
     assert first["id"] == task["id"]
@@ -70,7 +74,10 @@ def test_failed_task_retries_only_within_attempt_limit(task_store):
     retry = task_manager.fail_task(task["id"], "worker-a", "temporary", retry=True)
     assert retry["status"] == "queued"
     assert retry["attempts"] == 1
+    assert datetime.fromisoformat(retry["scheduled_at"]) == current + timedelta(seconds=2)
+    assert task_manager.claim_next_task("too-early") is None
 
+    current += timedelta(seconds=2)
     second = task_manager.claim_next_task("worker-b")
     assert second["id"] == task["id"]
     failed = task_manager.fail_task(task["id"], "worker-b", "still broken", retry=True)
@@ -393,3 +400,34 @@ def test_abrupt_worker_process_exit_recovers_checkpoint_after_lease_expiry(task_
     assert recovered["checkpoint"] == {"phase": "after_source_fetch", "cursor": 3}
     with pytest.raises(TaskManagerError, match="not owned by this worker"):
         task_manager.save_checkpoint(task["id"], "worker-crashed", {"phase": "stale"})
+
+
+def test_claim_next_task_can_isolate_task_type_queues(task_store):
+    chat = task_manager.create_task("research.answer", {"message": "hello"})
+    learning = task_manager.create_task("learning.run_job", {"job_id": 42})
+
+    claimed_chat = task_manager.claim_next_task("chat-worker", task_types=("research.answer",))
+    assert claimed_chat is not None
+    assert claimed_chat["id"] == chat["id"]
+    assert claimed_chat["task_type"] == "research.answer"
+
+    # The learning task remains queued until the learning lane claims it.
+    assert task_manager.get_task(learning["id"])["status"] == "queued"
+    claimed_learning = task_manager.claim_next_task("learning-worker", task_types=("learning.run_job",))
+    assert claimed_learning is not None
+    assert claimed_learning["id"] == learning["id"]
+    assert claimed_learning["task_type"] == "learning.run_job"
+
+
+def test_claim_next_task_can_exclude_registered_queue_types(task_store):
+    known = task_manager.create_task("research.answer", {"message": "hello"})
+    unknown = task_manager.create_task("unregistered.type", {"payload": "preserve"})
+
+    claimed = task_manager.claim_next_task(
+        "dead-letter-worker",
+        exclude_task_types=("research.answer", "learning.run_job", "unregistered.placeholder"),
+    )
+    assert claimed is not None
+    assert claimed["id"] == unknown["id"]
+    assert claimed["task_type"] == "unregistered.type"
+    assert task_manager.get_task(known["id"])["status"] == "queued"

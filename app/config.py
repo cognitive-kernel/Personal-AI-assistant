@@ -25,6 +25,9 @@ class Defaults:
     ollama_timeout_seconds: int = _int_env("OLLAMA_TIMEOUT_SECONDS", 300)
     ollama_num_ctx: int = _int_env("OLLAMA_NUM_CTX", 2048)
     ollama_num_thread: int = _int_env("OLLAMA_NUM_THREAD", 0)
+    chat_ollama_model: str = os.getenv("CHAT_OLLAMA_MODEL", os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
+    learning_ollama_model: str = os.getenv("LEARNING_OLLAMA_MODEL", "qwen3:8b")
+    programming_ollama_model: str = os.getenv("PROGRAMMING_OLLAMA_MODEL", "qwen3:14b")
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
     cloud_resources_db_path: str = os.getenv("CLOUD_RESOURCES_DB_PATH", "data/cloud_resources.db")
@@ -48,6 +51,22 @@ SETTING_DEFAULTS: dict[str, object] = {
     "ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "ollama_num_ctx": defaults.ollama_num_ctx,
     "ollama_num_thread": defaults.ollama_num_thread,
+    "chat_ollama_model": defaults.chat_ollama_model,
+    "chat_ollama_num_ctx": defaults.ollama_num_ctx,
+    "chat_ollama_num_thread": defaults.ollama_num_thread,
+    "chat_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
+    "chat_max_concurrent_jobs": 1,
+    "chat_source_max_chars": 12000,
+    "learning_ollama_model": defaults.learning_ollama_model,
+    "learning_ollama_num_ctx": defaults.ollama_num_ctx,
+    "learning_ollama_num_thread": defaults.ollama_num_thread,
+    "learning_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "learning_max_concurrent_jobs": 1,
     "learning_source_max_chars": 12000,
+    "programming_ollama_model": defaults.programming_ollama_model,
+    "programming_ollama_num_ctx": defaults.ollama_num_ctx,
+    "programming_ollama_num_thread": defaults.ollama_num_thread,
+    "programming_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
+    "programming_max_concurrent_jobs": 1,
+    "programming_source_max_chars": 12000,
 }

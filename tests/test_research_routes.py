@@ -49,8 +49,58 @@ def test_research_route_queues_validated_persistent_task(tmp_path, monkeypatch):
     assert captured["options"]["max_attempts"] == 1
 
 
+def test_chat_conversation_delete_api_removes_messages_and_returns_404_afterward(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post("/api/conversations")
+        conversation_id = created.json()["conversation"]["id"]
+        listed = client.get(f"/api/conversations/{conversation_id}/messages")
+        assert listed.status_code == 200
+
+        deleted = client.delete(f"/api/conversations/{conversation_id}")
+        assert deleted.status_code == 200
+        assert deleted.json() == {"deleted": True, "conversation_id": conversation_id}
+        assert client.get(f"/api/conversations/{conversation_id}/messages").status_code == 404
+        assert client.delete(f"/api/conversations/{conversation_id}").status_code == 404
+
+
 def test_research_route_rejects_non_loopback_clients(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     with TestClient(app, client=("192.0.2.10", 12345)) as client:
         response = client.post("/api/research/tasks", json={"message": "debug this"})
     assert response.status_code == 403
+
+
+def test_chat_conversation_api_keeps_old_conversations_and_persists_user_turn(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    captured = {}
+
+    def fake_create_task(task_type, payload, **kwargs):
+        captured.update(task_type=task_type, payload=payload, options=kwargs)
+        return {"id": 321, "status": "queued", "task_type": task_type}
+
+    monkeypatch.setattr(task_manager, "create_task", fake_create_task)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        first = client.post("/api/conversations")
+        assert first.status_code == 201
+        first_id = first.json()["conversation"]["id"]
+        queued = client.post(
+            "/api/research/tasks",
+            json={"message": "سلام", "conversation_id": first_id},
+        )
+        assert queued.status_code == 202
+        assert queued.json()["conversation_id"] == first_id
+        assert captured["payload"]["conversation_id"] == first_id
+
+        second = client.post("/api/conversations")
+        assert second.status_code == 201
+        second_id = second.json()["conversation"]["id"]
+        assert second_id != first_id
+
+        history = client.get(f"/api/conversations/{first_id}/messages")
+        assert history.status_code == 200
+        assert [(item["role"], item["content"]) for item in history.json()["messages"]] == [
+            ("user", "سلام")
+        ]
+        conversations = client.get("/api/conversations").json()["conversations"]
+        assert {item["id"] for item in conversations} >= {first_id, second_id}

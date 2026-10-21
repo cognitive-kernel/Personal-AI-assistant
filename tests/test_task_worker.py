@@ -1,10 +1,11 @@
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from app import db, task_manager
 from app.schema_registry import LEARNING_MIGRATIONS
-from app.task_worker import TaskWorker
+from app.task_worker import PermanentTaskError, RetryableTaskError, TaskWorker
 
 
 @pytest.fixture
@@ -42,7 +43,10 @@ def test_worker_fails_unknown_task_type_without_executing_payload(worker_store):
     assert "No registered handler" in saved["error"]
 
 
-def test_worker_retries_handler_failure_then_marks_exhausted(worker_store):
+def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("test.flaky", {}, max_attempts=2)
 
     def fail(_payload, _checkpoint, _context):
@@ -53,11 +57,71 @@ def test_worker_retries_handler_failure_then_marks_exhausted(worker_store):
     first = task_manager.get_task(task["id"])
     assert first["status"] == "queued"
     assert first["error"] == "RuntimeError: transient failure"
+    assert datetime.fromisoformat(first["scheduled_at"]) == current + timedelta(seconds=2)
+    assert worker.run_once() is False
 
+    current += timedelta(seconds=2)
     assert worker.run_once() is True
     second = task_manager.get_task(task["id"])
     assert second["status"] == "failed"
     assert second["attempts"] == 2
+
+
+def test_retry_backoff_uses_jitter_within_bounded_window(worker_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: high)
+    task = task_manager.create_task("test.jitter", {}, max_attempts=2)
+
+    worker = TaskWorker("worker-jitter", {
+        "test.jitter": lambda *_: (_ for _ in ()).throw(RuntimeError("temporary")),
+    })
+    assert worker.run_once() is True
+
+    saved = task_manager.get_task(task["id"])
+    # First retry has a 2s exponential delay and +20% deterministic jitter.
+    assert datetime.fromisoformat(saved["scheduled_at"]) == current + timedelta(seconds=2.4)
+
+
+def test_worker_handler_can_explicitly_mark_domain_error_retryable(worker_store):
+    task = task_manager.create_task("test.domain-retryable", {}, max_attempts=2)
+
+    def reject_once(_payload, _checkpoint, _context):
+        raise RetryableTaskError("upstream service temporarily unavailable")
+
+    worker = TaskWorker("worker-domain-retryable", {"test.domain-retryable": reject_once})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "queued"
+    assert saved["attempts"] == 1
+
+
+def test_worker_handler_can_explicitly_mark_domain_error_permanent(worker_store):
+    task = task_manager.create_task("test.domain-permanent", {}, max_attempts=3)
+
+    def reject(_payload, _checkpoint, _context):
+        raise PermanentTaskError("business rule cannot be satisfied")
+
+    worker = TaskWorker("worker-domain-permanent", {"test.domain-permanent": reject})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "failed"
+    assert saved["attempts"] == 1
+    assert saved["error"] == "PermanentTaskError: business rule cannot be satisfied"
+
+
+def test_worker_does_not_retry_permanent_input_errors(worker_store):
+    task = task_manager.create_task("test.invalid-input", {}, max_attempts=3)
+
+    def reject(_payload, _checkpoint, _context):
+        raise ValueError("invalid task definition")
+
+    worker = TaskWorker("worker-1", {"test.invalid-input": reject})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "failed"
+    assert saved["attempts"] == 1
+    assert saved["error"] == "ValueError: invalid task definition"
 
 
 def test_worker_settles_pause_at_checkpoint(worker_store):

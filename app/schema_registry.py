@@ -85,6 +85,28 @@ SETTINGS_MIGRATIONS = (
                ) VALUES (1, 0, 'experience-auto-capture-v1', CURRENT_TIMESTAMP)""",
         ),
     ),
+    Migration(
+        4,
+        "persistent-chat-conversations",
+        (
+            """CREATE TABLE chat_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT 'گفتگوی جدید',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                task_id INTEGER UNIQUE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id, id)",
+            "CREATE INDEX idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC, id DESC)",
+        ),
+    ),
 )
 
 LEARNING_MIGRATIONS = (
@@ -513,6 +535,139 @@ LEARNING_MIGRATIONS = (
                    OLD.scheduled_at, NEW.scheduled_at
                  );
                END""",
+        ),
+    ),
+    Migration(
+        16,
+        "factual-knowledge-core",
+        (
+            """CREATE TABLE factual_knowledge (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                domain TEXT NOT NULL DEFAULT 'python' CHECK(domain = 'python'),
+                claim TEXT NOT NULL CHECK(length(trim(claim)) > 0),
+                normalized_claim TEXT NOT NULL CHECK(length(trim(normalized_claim)) > 0),
+                claim_hash TEXT NOT NULL,
+                scope_json TEXT NOT NULL DEFAULT '{}',
+                environment_name TEXT NOT NULL DEFAULT 'python',
+                environment_version TEXT NOT NULL,
+                evidence_level TEXT NOT NULL DEFAULT 'L0_raw'
+                    CHECK(evidence_level IN ('L0_raw','L1_sourced','L2_tested','L3_human_verified')),
+                lifecycle_status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(lifecycle_status IN ('unverified','active','conflicting','failed','superseded','needs_review')),
+                risk_level TEXT NOT NULL DEFAULT 'low'
+                    CHECK(risk_level IN ('low','medium','high','critical')),
+                human_verified_by TEXT,
+                human_verified_at TEXT,
+                verified_at TEXT,
+                reverify_after TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(claim_hash, environment_name, environment_version),
+                CHECK((evidence_level = 'L3_human_verified') = (human_verified_at IS NOT NULL AND human_verified_by IS NOT NULL))
+            )""",
+            """CREATE TABLE factual_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE CASCADE,
+                source_type TEXT NOT NULL CHECK(source_type IN ('official_docs','source_code','test_output','human_review','other')),
+                source_ref TEXT NOT NULL CHECK(length(trim(source_ref)) > 0),
+                excerpt TEXT NOT NULL DEFAULT '',
+                source_hash TEXT NOT NULL,
+                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                applicability_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(knowledge_id, source_ref, source_hash)
+            )""",
+            """CREATE TABLE factual_tests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE CASCADE,
+                test_kind TEXT NOT NULL CHECK(test_kind IN ('unit','integration','reproduction','manual')),
+                test_name TEXT NOT NULL,
+                environment_name TEXT NOT NULL,
+                environment_version TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK(outcome IN ('passed','claim_failed','environment_failure','flaky','inconclusive','not_run')),
+                command_hash TEXT,
+                result_summary TEXT NOT NULL DEFAULT '',
+                log_hash TEXT,
+                executed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE knowledge_relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE CASCADE,
+                related_knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
+                relation_type TEXT NOT NULL CHECK(relation_type IN ('supersedes','contradicts','depends_on')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(knowledge_id <> related_knowledge_id),
+                UNIQUE(knowledge_id, related_knowledge_id, relation_type)
+            )""",
+            """CREATE TABLE factual_review_cache (
+                cache_key TEXT PRIMARY KEY,
+                claim_hash TEXT NOT NULL,
+                source_hash TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                scope_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_factual_review_cache_expiry ON factual_review_cache(expires_at)",
+            "CREATE INDEX idx_factual_knowledge_status_domain ON factual_knowledge(lifecycle_status, domain)",
+            "CREATE INDEX idx_factual_evidence_knowledge ON factual_evidence(knowledge_id, id)",
+            "CREATE INDEX idx_factual_tests_knowledge_outcome ON factual_tests(knowledge_id, outcome)",
+            """CREATE TRIGGER factual_knowledge_transition_guard
+               BEFORE UPDATE OF lifecycle_status ON factual_knowledge
+               WHEN NOT (
+                 OLD.lifecycle_status = NEW.lifecycle_status OR
+                 (OLD.lifecycle_status = 'unverified' AND NEW.lifecycle_status IN ('active','needs_review','failed')) OR
+                 (OLD.lifecycle_status = 'active' AND NEW.lifecycle_status IN ('conflicting','failed','superseded','needs_review')) OR
+                 (OLD.lifecycle_status = 'needs_review' AND NEW.lifecycle_status IN ('active','conflicting','failed','superseded')) OR
+                 (OLD.lifecycle_status = 'conflicting' AND NEW.lifecycle_status IN ('active','failed','superseded','needs_review')) OR
+                 (OLD.lifecycle_status = 'failed' AND NEW.lifecycle_status IN ('needs_review','superseded')) OR
+                 (OLD.lifecycle_status = 'superseded' AND NEW.lifecycle_status = 'needs_review')
+               )
+               BEGIN SELECT RAISE(ABORT, 'invalid factual knowledge lifecycle transition'); END""",
+            """CREATE TRIGGER factual_knowledge_level_guard
+               BEFORE UPDATE OF evidence_level ON factual_knowledge
+               WHEN NOT (
+                 OLD.evidence_level = NEW.evidence_level OR
+                 (OLD.evidence_level = 'L0_raw' AND NEW.evidence_level = 'L1_sourced') OR
+                 (OLD.evidence_level = 'L1_sourced' AND NEW.evidence_level = 'L2_tested') OR
+                 (OLD.evidence_level = 'L2_tested' AND NEW.evidence_level = 'L3_human_verified')
+               )
+               BEGIN SELECT RAISE(ABORT, 'invalid factual knowledge evidence-level transition'); END""",
+            """CREATE TRIGGER factual_knowledge_source_required
+               BEFORE UPDATE OF evidence_level ON factual_knowledge
+               WHEN NEW.evidence_level IN ('L1_sourced','L2_tested','L3_human_verified')
+                 AND NOT EXISTS (SELECT 1 FROM factual_evidence WHERE knowledge_id = NEW.id)
+               BEGIN SELECT RAISE(ABORT, 'evidence level requires traceable evidence'); END""",
+            """CREATE TRIGGER factual_knowledge_test_required
+               BEFORE UPDATE OF evidence_level ON factual_knowledge
+               WHEN NEW.evidence_level IN ('L2_tested','L3_human_verified')
+                 AND NOT EXISTS (
+                   SELECT 1 FROM factual_tests
+                   WHERE knowledge_id = NEW.id AND outcome = 'passed'
+                     AND environment_name = NEW.environment_name
+                     AND environment_version = NEW.environment_version
+                 )
+               BEGIN SELECT RAISE(ABORT, 'tested evidence level requires a passing applicable test'); END""",
+            """CREATE TRIGGER factual_knowledge_active_guard
+               BEFORE UPDATE OF lifecycle_status ON factual_knowledge
+               WHEN NEW.lifecycle_status = 'active' AND NEW.evidence_level = 'L0_raw'
+               BEGIN SELECT RAISE(ABORT, 'raw knowledge cannot become active'); END""",
+            """CREATE TRIGGER factual_knowledge_high_risk_guard
+               BEFORE UPDATE OF lifecycle_status ON factual_knowledge
+               WHEN NEW.lifecycle_status = 'active'
+                 AND NEW.risk_level IN ('high','critical')
+                 AND NEW.evidence_level <> 'L3_human_verified'
+               BEGIN SELECT RAISE(ABORT, 'high-risk knowledge requires human verification'); END""",
+            """CREATE TRIGGER factual_knowledge_relation_supersedes_guard
+               BEFORE INSERT ON knowledge_relations
+               WHEN NEW.relation_type = 'supersedes'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM factual_knowledge
+                   WHERE id = NEW.knowledge_id AND evidence_level <> 'L0_raw'
+                     AND lifecycle_status IN ('active','needs_review')
+                 )
+               BEGIN SELECT RAISE(ABORT, 'only reviewed knowledge may supersede another claim'); END""",
         ),
     ),
 )

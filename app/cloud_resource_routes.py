@@ -96,6 +96,43 @@ def plan_cloud_resource_selection(request: ResourcePlanningRequest) -> dict[str,
         raise HTTPException(status_code=503, detail="Cloud resource planning is unavailable.") from exc
 
 
+class ManualCandidateRequest(BaseModel):
+    source_url: StrictStr = Field(min_length=1, max_length=2048)
+    title: StrictStr = Field(min_length=1, max_length=300)
+    description: StrictStr = Field(min_length=1, max_length=4000)
+
+
+@router.post("/manual", status_code=status.HTTP_201_CREATED)
+def add_manual_cloud_resource(request: ManualCandidateRequest) -> dict[str, Any]:
+    try:
+        candidate = cloud_resources.add_manual_candidate(
+            source_url=request.source_url,
+            title=request.title,
+            description=request.description,
+        )
+        return {"candidate": candidate}
+    except cloud_resources.CloudResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (cloud_resources.CloudResourceError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Manual cloud resource could not be saved.") from exc
+
+
+@router.delete("/{candidate_id}")
+def delete_cloud_resource(candidate_id: int) -> dict[str, Any]:
+    try:
+        return {"deleted": True, "candidate": cloud_resources.delete_candidate(candidate_id)}
+    except cloud_resources.CloudResourceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except cloud_resources.CloudResourceConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (cloud_resources.CloudResourceError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Cloud resource could not be deleted.") from exc
+
+
 class CandidateReviewRequest(BaseModel):
     expected_content_sha256: str = Field(min_length=64, max_length=64)
     review_status: str = Field(min_length=1, max_length=20)
