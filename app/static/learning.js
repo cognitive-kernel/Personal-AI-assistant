@@ -550,12 +550,19 @@ async function loadLearningCurricula() {
  } catch (error) { learningEl("paths-output").textContent = error.message; }
 }
 
-async function loadLearningPaths() {
+let learningPathsPage=1;
+async function loadLearningPaths(page=learningPathsPage) {
+ learningPathsPage=Math.max(1,Number(page)||1);
  try {
-  const data = await learningApi("/api/learning/paths");
+  const data = await learningApi("/api/learning/paths?page="+learningPathsPage+"&page_size=25");
+  const p=data.pagination||{page:learningPathsPage,has_previous:learningPathsPage>1,has_next:false,total:(data.paths||[]).length,pages:1};
+  learningPathsPage=p.page;
+  if(learningEl("learning-path-page-prev")) learningEl("learning-path-page-prev").disabled=!p.has_previous;
+  if(learningEl("learning-path-page-next")) learningEl("learning-path-page-next").disabled=!p.has_next;
+  if(learningEl("learning-path-page-status")) learningEl("learning-path-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
   const container = learningEl("paths-container");
   container.replaceChildren();
-  learningEl("paths-output").textContent = "تعداد مسیرهای ثبت‌شده: " + data.paths.length;
+  learningEl("paths-output").textContent = "تعداد کل مسیرهای ثبت‌شده: " + p.total;
   data.paths.forEach(path => {
    const pathCard = document.createElement("div");
    pathCard.className = "path-card";
@@ -803,7 +810,9 @@ document.addEventListener("DOMContentLoaded", () => {
    await loadLearningPaths();
   } catch (error) { learningEl("paths-output").textContent = error.message; }
  });
- learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
+ learningEl("refresh-paths").addEventListener("click",()=>loadLearningPaths(learningPathsPage));
+ learningEl("learning-path-page-prev")?.addEventListener("click",()=>loadLearningPaths(learningPathsPage-1));
+ learningEl("learning-path-page-next")?.addEventListener("click",()=>loadLearningPaths(learningPathsPage+1));
  learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
  learningEl("refresh-learning-recommendations").addEventListener("click", refreshLearningRecommendations);
  loadLearningCurricula();

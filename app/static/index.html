@@ -561,10 +561,25 @@ if (el("storage-health-section")) {
  refreshStorageBackups();
 }
 el("refresh")?.addEventListener("click", refresh);
-el("refresh-knowledge")?.addEventListener("click", async () => {
- try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
- catch(error) { el("knowledge-output").textContent=error.message; }
-});
+let knowledgePage=1;
+async function refreshKnowledge(page=knowledgePage) {
+ knowledgePage=Math.max(1,Number(page)||1);
+ const output=el("knowledge-output");
+ if(!output) return;
+ output.textContent="در حال بارگذاری صفحهٔ دانش…";
+ try {
+  const result=await api("/api/knowledge?page="+knowledgePage+"&page_size=25");
+  const p=result.pagination||{page:knowledgePage,has_previous:knowledgePage>1,has_next:false,total:(result.items||[]).length,pages:1};
+  knowledgePage=p.page;
+  output.textContent=JSON.stringify({items:result.items||[],pagination:p},null,2);
+  if(el("knowledge-page-prev")) el("knowledge-page-prev").disabled=!p.has_previous;
+  if(el("knowledge-page-next")) el("knowledge-page-next").disabled=!p.has_next;
+  if(el("knowledge-page-status")) el("knowledge-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+(p.total??"نامشخص");
+ } catch(error) { output.textContent="بارگذاری دانش ناموفق بود: "+error.message; }
+}
+el("refresh-knowledge")?.addEventListener("click",()=>refreshKnowledge(knowledgePage));
+el("knowledge-page-prev")?.addEventListener("click",()=>refreshKnowledge(knowledgePage-1));
+el("knowledge-page-next")?.addEventListener("click",()=>refreshKnowledge(knowledgePage+1));
 el("chat-form")?.addEventListener("submit", async event => {
  event.preventDefault();
  const button=el("chat-form").querySelector('button[type="submit"]');
@@ -634,12 +649,19 @@ el("learning-form")?.addEventListener("submit", async event => {
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
-async function refreshLearningCandidates(selectedId=null) {
+let learningCandidatePage=1;
+async function refreshLearningCandidates(selectedId=null, requestedPage=learningCandidatePage) {
  const select=el("learning-candidate-select");
  const output=el("learning-candidate-review");
- output.textContent="در حال بارگذاری نامزدهای دانش…";
+ learningCandidatePage=Math.max(1,Number(requestedPage)||1);
+ output.textContent="در حال بارگذاری صفحهٔ نامزدهای دانش…";
  try {
-  const result=await api("/api/learning/candidates?limit=100");
+  const result=await api("/api/learning/candidates?page="+learningCandidatePage+"&page_size=25");
+  const p=result.pagination||{page:learningCandidatePage,has_previous:learningCandidatePage>1,has_next:false,total:(result.candidates||[]).length,pages:1};
+  learningCandidatePage=p.page;
+  if(el("learning-candidate-prev")) el("learning-candidate-prev").disabled=!p.has_previous;
+  if(el("learning-candidate-next")) el("learning-candidate-next").disabled=!p.has_next;
+  if(el("learning-candidate-page")) el("learning-candidate-page").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
   select.replaceChildren();
   (result.candidates||[]).forEach(item=>{
    const option=document.createElement("option");
@@ -668,7 +690,9 @@ async function refreshLearningCandidateReview() {
   output.textContent=JSON.stringify({review,claim_verification_matrix:claimMatrix},null,2);
  } catch(error) { output.textContent="دریافت گزارش شواهد یا ماتریس ادعا ناموفق بود: "+error.message; }
 }
-el("refresh-learning-candidates")?.addEventListener("click",()=>refreshLearningCandidates());
+el("refresh-learning-candidates")?.addEventListener("click",()=>refreshLearningCandidates(null,1));
+el("learning-candidate-prev")?.addEventListener("click",()=>refreshLearningCandidates(null,learningCandidatePage-1));
+el("learning-candidate-next")?.addEventListener("click",()=>refreshLearningCandidates(null,learningCandidatePage+1));
 el("learning-candidate-select")?.addEventListener("change",()=>refreshLearningCandidateReview());
 el("research-learning-candidate")?.addEventListener("click",async()=>{
  const id=el("learning-candidate-select").value;
@@ -707,14 +731,20 @@ el("settings-form")?.addEventListener("submit", async event => {
  el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
 });
 
+let cloudCandidatePage=1;
 async function refreshCloudResources() {
  const output=el("cloud-output");
- output.textContent="در حال بارگذاری نامزدهای منابع…";
+ output.textContent="در حال بارگذاری صفحهٔ نامزدهای منابع…";
  try {
   const limitControl=el("cloud-candidate-limit");
   const requestedLimit=Number(limitControl?.value||10);
   const candidateLimit=[10,25,50,100].includes(requestedLimit)?requestedLimit:10;
-  const result=await api("/api/cloud-resources?limit="+candidateLimit);
+  const result=await api("/api/cloud-resources?page="+cloudCandidatePage+"&page_size="+candidateLimit);
+  const p=result.pagination||{page:cloudCandidatePage,has_previous:cloudCandidatePage>1,has_next:false};
+  cloudCandidatePage=p.page;
+  if(el("cloud-candidate-prev")) el("cloud-candidate-prev").disabled=!p.has_previous;
+  if(el("cloud-candidate-next")) el("cloud-candidate-next").disabled=!p.has_next;
+  if(el("cloud-candidate-page")) el("cloud-candidate-page").textContent="صفحهٔ "+p.page+" | صفحهٔ بعد: "+(p.has_next?"بله":"خیر");
   const run=result.latest_run;
   const runSummary=run
    ? "آخرین اجرا: "+run.status+" | زمان: "+(run.finished_at||run.started_at)+" | منابع دیده‌شده: "+run.sources_seen+" | نامزدهای ذخیره‌شده: "+run.candidates_upserted
@@ -1237,6 +1267,9 @@ el("sandbox-run-form")?.addEventListener("submit",async event=>{
  }
 });
 refresh();
+el("cloud-candidate-prev")?.addEventListener("click",()=>{cloudCandidatePage=Math.max(1,cloudCandidatePage-1);refreshCloudResources();});
+el("cloud-candidate-next")?.addEventListener("click",()=>{cloudCandidatePage+=1;refreshCloudResources();});
+el("cloud-candidate-limit")?.addEventListener("change",()=>{cloudCandidatePage=1;refreshCloudResources();});
 if (el("cloud-resources-section")) refreshCloudResources();
 if (el("kaggle-quota-section")) refreshKaggleQuota();
 if (el("oci-limits-section")) refreshOciLimits();
@@ -1248,12 +1281,19 @@ const experienceStatuses = [
  ["ready_to_test","آمادهٔ آزمون"],["testing","در حال آزمون"],
  ["failed","ناموفق"],["needs_review","نیازمند بازبینی"]
 ];
-async function refreshExperiences() {
+let experiencePage=1;
+async function refreshExperiences(page=experiencePage) {
+ experiencePage=Math.max(1,Number(page)||1);
  const output=el("experience-output");
- output.textContent="در حال بارگذاری تجربه‌ها…";
+ output.textContent="در حال بارگذاری صفحهٔ تجربه‌ها…";
  try {
-  const result=await api("/api/experiences?limit=100");
-  output.textContent="تعداد تجربه‌ها: "+result.count;
+  const result=await api("/api/experiences?page="+experiencePage+"&page_size=25");
+  const p=result.pagination||{page:experiencePage,has_previous:experiencePage>1,has_next:false,total:result.count,pages:1};
+  experiencePage=p.page;
+  if(el("experience-page-prev")) el("experience-page-prev").disabled=!p.has_previous;
+  if(el("experience-page-next")) el("experience-page-next").disabled=!p.has_next;
+  if(el("experience-page-status")) el("experience-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
+  output.textContent="تعداد کل تجربه‌ها: "+result.count;
   renderExperienceItems(result.items||[]);
  } catch(error) {
   output.textContent="بارگذاری تجربه‌ها ناموفق بود: "+error.message;
@@ -1530,7 +1570,9 @@ el("experience-auto-capture-revoke")?.addEventListener("click",async()=>{
 el("experience-auto-capture-refresh")?.addEventListener("click",refreshExperienceAutoCaptureConsent);
 if(el("experience-memory-section")) refreshExperienceAutoCaptureConsent();
 
-el("experience-refresh")?.addEventListener("click",refreshExperiences);
+el("experience-refresh")?.addEventListener("click",()=>refreshExperiences(experiencePage));
+el("experience-page-prev")?.addEventListener("click",()=>refreshExperiences(experiencePage-1));
+el("experience-page-next")?.addEventListener("click",()=>refreshExperiences(experiencePage+1));
 el("experience-create-form")?.addEventListener("submit",async event=>{
  event.preventDefault();
  const button=event.submitter;
@@ -1565,11 +1607,18 @@ el("experience-search-form")?.addEventListener("submit",async event=>{
  }
 });
 
-async function refreshSelfImprovement() {
+let selfImprovementPage=1;
+async function refreshSelfImprovement(page=selfImprovementPage) {
+ selfImprovementPage=Math.max(1,Number(page)||1);
  const output=el("self-improvement-output");
  const list=el("self-improvement-list");
  try {
-  const result=await api("/api/self-improvement/proposals");
+  const result=await api("/api/self-improvement/proposals?page="+selfImprovementPage+"&page_size=25");
+  const p=result.pagination||{page:selfImprovementPage,has_previous:selfImprovementPage>1,has_next:false,total:(result.proposals||[]).length,pages:1};
+  selfImprovementPage=p.page;
+  if(el("self-improvement-page-prev")) el("self-improvement-page-prev").disabled=!p.has_previous;
+  if(el("self-improvement-page-next")) el("self-improvement-page-next").disabled=!p.has_next;
+  if(el("self-improvement-page-status")) el("self-improvement-page-status").textContent="صفحهٔ "+p.page+(p.pages?" از "+p.pages:"")+" | کل: "+p.total;
   list.replaceChildren();
   for (const item of result.proposals || []) {
    const card=document.createElement("article");
@@ -1708,7 +1757,9 @@ el("self-improvement-form")?.addEventListener("submit",async event=>{
   await refreshSelfImprovement();
  } catch(error) { output.textContent=error.message; }
 });
-el("self-improvement-refresh")?.addEventListener("click",refreshSelfImprovement);
+el("self-improvement-refresh")?.addEventListener("click",()=>refreshSelfImprovement(selfImprovementPage));
+el("self-improvement-page-prev")?.addEventListener("click",()=>refreshSelfImprovement(selfImprovementPage-1));
+el("self-improvement-page-next")?.addEventListener("click",()=>refreshSelfImprovement(selfImprovementPage+1));
 // Accessible local theme preference; no network requests or external assets.
 (function initializeDashboardTheme(){
  const button=document.getElementById("theme-toggle");
