@@ -332,7 +332,7 @@ def _active_tested_claim(
         connection,
         knowledge_id,
         source_type="official_docs",
-        source_ref=source_ref,
+        source_ref=f"https://learn.microsoft.com/test/{knowledge_id}",
         source_hash=f"sha256:test-source-{knowledge_id}",
         excerpt=claim,
         applicability={"environment_name": environment_name, "environment_version": environment_version},
