@@ -112,6 +112,8 @@ def run_benchmark(
     model = str(settings.get(f"{purpose}_ollama_model", settings.get("ollama_model", ""))).strip()
     if not model:
         raise RuntimeError(f"No Ollama model is configured for {purpose}.")
+    inventory = ollama.list_models()
+    model_record = next((item for item in inventory if item.get("name") == model), None)
     before = resource_snapshot()
     limits = hardware.runtime_limits({
         "ollama_num_ctx": settings.get(f"{purpose}_ollama_num_ctx", settings.get("ollama_num_ctx", 2048)),
@@ -138,6 +140,8 @@ def run_benchmark(
             started = time.perf_counter()
             response = ollama._request("/api/chat", {
                 "model": model,
+        "model_digest": model_record.get("digest") if isinstance(model_record, dict) else None,
+        "model_size_bytes": model_record.get("size") if isinstance(model_record, dict) and isinstance(model_record.get("size"), int) else None,
                 "stream": False,
                 "keep_alive": keep_alive,
                 "messages": [{"role": "user", "content": prompt}],
