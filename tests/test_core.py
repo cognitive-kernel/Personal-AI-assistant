@@ -466,3 +466,27 @@ def test_settings_accept_independent_model_profiles(tmp_path, monkeypatch):
     assert saved["chat_max_concurrent_jobs"] == 2
     assert saved["learning_max_concurrent_jobs"] == 3
     assert saved["programming_max_concurrent_jobs"] == 1
+
+
+def test_existing_generic_ollama_preferences_seed_new_profiles(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    db.update_settings({
+        "ollama_model": "custom-local-model:latest",
+        "ollama_num_ctx": 3072,
+        "ollama_num_thread": 3,
+        "ollama_timeout_seconds": 45,
+    })
+    with db.settings_connection() as conn:
+        conn.execute(
+            "DELETE FROM settings WHERE key LIKE 'chat_ollama_%' "
+            "OR key LIKE 'learning_ollama_%' OR key LIKE 'programming_ollama_%'"
+        )
+    db.init_databases()
+    settings = db.get_settings()
+    for prefix in ("chat", "learning", "programming"):
+        assert settings[f"{prefix}_ollama_model"] == "custom-local-model:latest"
+        assert settings[f"{prefix}_ollama_num_ctx"] == 3072
+        assert settings[f"{prefix}_ollama_num_thread"] == 3
+        assert settings[f"{prefix}_ollama_timeout_seconds"] == 45
