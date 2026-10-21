@@ -149,3 +149,21 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     assert len(candidate["content_sha256"]) == 64
     assert event is not None
     assert "not an independent verification" in event["note"]
+
+
+def test_explicit_source_serialization_is_parseable_by_claim_review():
+    from types import SimpleNamespace
+
+    excerpt = "This source explains query plans and optimizer behavior. " * 4
+    document = SimpleNamespace(
+        title="SQL Guide",
+        url="https://docs.example.org/sql-guide",
+        text=excerpt,
+    )
+    serialized = learning._format_source_document(document)
+    parsed = learning._claim_review_sources(serialized)
+
+    assert len(parsed) == 1
+    assert parsed[0]["title"] == document.title
+    assert parsed[0]["url"] == document.url
+    assert parsed[0]["content"] == excerpt.strip()
