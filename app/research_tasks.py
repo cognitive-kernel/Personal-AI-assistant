@@ -5,7 +5,7 @@ import hashlib
 from typing import Any
 
 from . import chat_history, chat_research
-from .task_worker import TaskContext
+from .task_worker import PermanentTaskError, TaskContext
 
 RESEARCH_TASK_TYPE = "research.answer"
 _ALLOWED_KEYS = {"message", "history", "conversation_id"}
@@ -39,10 +39,13 @@ def handle_research_task(
     checkpoint: dict[str, Any] | None,
     context: TaskContext,
 ) -> dict[str, Any]:
-    message, history = validate_payload(payload)
+    try:
+        message, history = validate_payload(payload)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise PermanentTaskError(str(exc)) from exc
     conversation_id = payload.get("conversation_id")
     if conversation_id is not None and (isinstance(conversation_id, bool) or not isinstance(conversation_id, int) or conversation_id < 1):
-        raise ValueError("conversation_id must be a positive integer when provided.")
+        raise PermanentTaskError("conversation_id must be a positive integer when provided.")
     message_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
 
     def save_phase(state: dict[str, Any]) -> None:
