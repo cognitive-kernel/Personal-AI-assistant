@@ -1,4 +1,5 @@
 import json
+import platform
 
 import pytest
 
@@ -398,7 +399,7 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
         claim_id = factual_knowledge.create_claim(
             conn,
             "Python lists preserve order and support mutable indexed updates.",
-            environment_version="3.11",
+            environment_version=platform.python_version(),
         )
         factual_knowledge.add_evidence(
             conn,
@@ -414,7 +415,7 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
             claim_id,
             test_kind="unit",
             test_name="list-order-regression",
-            environment_version="3.11",
+            environment_version=platform.python_version(),
             outcome="passed",
             result_summary="Ordering and indexed assignment behaved as expected.",
         )
@@ -424,7 +425,7 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
         raw_id = factual_knowledge.create_claim(
             conn,
             "Python lists are always thread safe.",
-            environment_version="3.11",
+            environment_version=platform.python_version(),
         )
         assert raw_id != claim_id
 
