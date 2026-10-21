@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -295,6 +295,28 @@ def models() -> dict[str, Any]:
         return {"models": ollama.list_models()}
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/conversations")
+def list_chat_conversations(limit: int = Query(default=100, ge=1, le=500)) -> dict[str, Any]:
+    return {"conversations": chat_history.list_conversations(limit=limit)}
+
+
+@app.post("/api/conversations", status_code=201)
+def create_chat_conversation() -> dict[str, Any]:
+    return {"conversation": chat_history.create_conversation()}
+
+
+@app.get("/api/conversations/{conversation_id}/messages")
+def list_chat_messages(conversation_id: int) -> dict[str, Any]:
+    try:
+        conversation = chat_history.get_conversation(conversation_id)
+        if conversation is None:
+            raise HTTPException(status_code=404, detail="Chat conversation not found.")
+        return {"conversation": conversation, "messages": chat_history.list_messages(conversation_id)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Chat conversation not found.") from exc
+
 
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> dict[str, str]:
