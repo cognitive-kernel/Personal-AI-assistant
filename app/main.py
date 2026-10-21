@@ -406,7 +406,7 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
     for purpose in ("chat", "learning", "programming"):
         key = f"{purpose}_model_keep_alive"
-        if key in values and values[key] not in keep_alive_values:
+        if key in values and (not isinstance(values[key], str) or values[key] not in keep_alive_values):
             raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
     numeric_ranges = [
         ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
