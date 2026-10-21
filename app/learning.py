@@ -498,6 +498,7 @@ def record_candidate_test_results(
     if not isinstance(test_results, list) or len(test_results) != len(test_plan):
         raise ValueError("test_results must contain one result for every planned test.")
     plan_names = []
+    from .learning_evidence_gate import is_allowlisted_primary_source
     allowed_oracles = {"curated_reference", "source_example", "regression_fixture"}
     expected_oracle_digests: dict[str, str] = {}
     for item in test_plan:
@@ -510,6 +511,16 @@ def record_candidate_test_results(
         oracle_ref = item.get("oracle_ref")
         if not isinstance(oracle_ref, str) or not oracle_ref.strip() or len(oracle_ref) > 2048:
             raise ValueError("Every promotion test must cite its oracle reference.")
+        oracle_kind = item["oracle_kind"]
+        if oracle_kind in {"curated_reference", "source_example"}:
+            if not is_allowlisted_primary_source(oracle_ref):
+                raise ValueError("Web or source-example oracles must use an allowlisted primary source.")
+        elif (
+            not oracle_ref.startswith("tests/fixtures/")
+            or ".." in oracle_ref.split("/")
+            or not re.fullmatch(r"tests/fixtures/[A-Za-z0-9_.\-/]+", oracle_ref)
+        ):
+            raise ValueError("Regression fixture oracles must point inside tests/fixtures without traversal.")
         if "expected" not in item:
             raise ValueError("Every promotion test must preserve its oracle expected output.")
         expected_digest = hashlib.sha256(
@@ -534,6 +545,24 @@ def record_candidate_test_results(
             raise ValueError("Every test result must identify an approved automated runner.")
         if "expected" not in item or "actual" not in item:
             raise ValueError("Every test result must preserve expected and actual outputs.")
+        planned = next(plan for plan in test_plan if plan["test"].strip() == name.strip())
+        canonical_expected = json.dumps(
+            planned["expected"], ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False,
+        )
+        result_expected = json.dumps(
+            item["expected"], ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False,
+        )
+        if result_expected != canonical_expected:
+            raise ValueError("Test result expected output must match the trusted oracle plan.")
+        if item["passed"] is True:
+            actual_json = json.dumps(
+                item["actual"], ensure_ascii=False, sort_keys=True,
+                separators=(",", ":"), allow_nan=False,
+            )
+            if actual_json != canonical_expected:
+                raise ValueError("A passing test result must exactly match the trusted oracle output.")
         result_names.append(name.strip())
     if result_names != plan_names:
         raise ValueError("Test results must match the planned test names and order.")
@@ -560,6 +589,14 @@ def record_candidate_test_results(
             raise KeyError(candidate_id)
         if candidate["status"] not in {"awaiting_test", "failed"}:
             raise ValueError("Only a candidate awaiting tests or a failed candidate can be tested.")
+        try:
+            candidate_source_urls = json.loads(candidate["source_urls_json"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            candidate_source_urls = []
+        for plan_item in test_plan:
+            if plan_item["oracle_kind"] == "source_example":
+                if plan_item["oracle_ref"] not in candidate_source_urls:
+                    raise ValueError("Source-example oracle must be a URL recorded for this candidate.")
         conn.execute(
             """UPDATE temporary_knowledge_candidates
                SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,
