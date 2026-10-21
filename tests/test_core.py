@@ -560,3 +560,4 @@ def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
     assert saved["cpu_resource_limit_percent"] == 75
     assert saved["ram_resource_limit_percent"] == 80
     assert saved["gpu_resource_limit_percent"] == 65
+    assert saved["gpu_enabled"] is False
