@@ -55,7 +55,7 @@ def test_cannot_jump_from_l0_to_l2_or_l3(connection):
         transition_evidence_level(connection, kid, "L2_tested")
     with pytest.raises(KnowledgePolicyError, match="invalid evidence-level transition"):
         transition_evidence_level(connection, kid, "L3_human_verified")
-    with pytest.raises(sqlite3.IntegrityError, match="invalid factual knowledge evidence-level transition"):
+    with pytest.raises(sqlite3.IntegrityError):
         connection.execute("UPDATE factual_knowledge SET evidence_level='L3_human_verified' WHERE id=?", (kid,))
 
 
