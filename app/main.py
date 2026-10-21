@@ -202,7 +202,8 @@ def shutdown() -> None:
         logger.warning("Task runtime did not stop before the shutdown deadline.")
 
 def _render_dashboard_page(slug: str | None = None) -> str:
-    """Render only the requested top-level section into the returned HTML document."""
+    """Render the navigation shell plus one independently stored dashboard page."""
+    import html
     import re
 
     source = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
@@ -212,44 +213,8 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         raise RuntimeError("ساختار HTML داشبورد معتبر نیست.")
     main_end += len("</main>")
     main = source[main_start:main_end]
-    tag_pattern = re.compile(r"</?section\b[^>]*>", re.IGNORECASE)
-    blocks: list[tuple[int, int, str]] = []
-    depth = 0
-    block_start = -1
-    block_id = ""
-    for match in tag_pattern.finditer(main):
-        tag = match.group(0)
-        if tag.startswith("</"):
-            if depth:
-                depth -= 1
-                if depth == 0 and block_start >= 0:
-                    blocks.append((block_start, match.end(), block_id))
-                    block_start = -1
-                    block_id = ""
-            continue
-        if depth == 0:
-            block_start = match.start()
-            id_match = re.search(r'\bid="([^"]+)"', tag)
-            block_id = id_match.group(1) if id_match else ""
-        depth += 1
-    if depth != 0:
-        raise RuntimeError("تگ‌های section داشبورد بسته نشده‌اند.")
-
-    keep_ids = {"storage-degraded-banner"}
-    if slug is not None:
-        keep_ids.add(DASHBOARD_SECTIONS[slug])
-        if slug == "learning":
-            keep_ids.add("learning-evidence-section")
-    rebuilt: list[str] = []
-    cursor = 0
-    for start, end, section_id in blocks:
-        rebuilt.append(main[cursor:start])
-        if section_id in keep_ids:
-            rebuilt.append(main[start:end])
-        cursor = end
-    rebuilt.append(main[cursor:])
-    filtered_main = "".join(rebuilt)
     page_title: str | None = None
+
     if slug is None:
         overview = (
             '<section id="dashboard-overview"><h2>نمای کلی</h2>'
@@ -277,8 +242,24 @@ def _render_dashboard_page(slug: str | None = None) -> str:
             )
             + "</ul></section>"
         )
-        filtered_main = filtered_main.replace("</header>", "</header>" + overview, 1)
+        main = main.replace("</header>", "</header>" + overview, 1)
     else:
+        if slug not in DASHBOARD_SECTIONS:
+            raise HTTPException(status_code=404, detail="بخش داشبورد پیدا نشد.")
+        sections_dir = Path(__file__).resolve().parent / "dashboard_sections"
+        try:
+            section_html = (sections_dir / f"{slug}.html").read_text(encoding="utf-8")
+            if slug == "learning":
+                section_html += "\\n" + (sections_dir / "learning-evidence.html").read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.exception("Dashboard section template is missing: %s", slug)
+            raise RuntimeError(f"قالب صفحهٔ داشبورد پیدا نشد: {slug}") from exc
+
+        banner_start = main.find('id="storage-degraded-banner"')
+        script_start = main.find("<script>", banner_start)
+        if banner_start < 0 or script_start < 0:
+            raise RuntimeError("محل درج صفحهٔ مستقل در قالب داشبورد پیدا نشد.")
+        main = main[:script_start] + section_html + "\\n" + main[script_start:]
         page_titles = {
             "storage-health": "سلامت ذخیره‌سازی",
             "chat": "گفتگو و پژوهش",
@@ -295,21 +276,20 @@ def _render_dashboard_page(slug: str | None = None) -> str:
             "self-improvement": "بهبود کد",
             "settings": "تنظیمات",
         }
-        import html
         page_title = html.escape(page_titles[slug])
 
-    # Slice before changing the document head so offsets remain valid.
-    rendered = source[:main_start] + filtered_main + source[main_end:]
+    rendered = source[:main_start] + main + source[main_end:]
     if slug is not None:
         page_attributes = f' data-section-page="{slug}" data-section-id="{DASHBOARD_SECTIONS[slug]}"'
-        rendered = rendered.replace('<html lang="fa" dir="rtl">', '<html lang="fa" dir="rtl"' + page_attributes + '>', 1)
+        rendered = rendered.replace(
+            '<html lang="fa" dir="rtl">',
+            '<html lang="fa" dir="rtl"' + page_attributes + '>', 1,
+        )
         rendered = re.sub(
             r"<title>.*?</title>",
             f"<title>{page_title} — دستیار هوش مصنوعی شخصی</title>",
             rendered, count=1, flags=re.DOTALL,
         )
-
-    # The returned page contains only the selected section, not hidden copies of all sections.
     return rendered
 
 
