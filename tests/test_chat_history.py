@@ -36,6 +36,20 @@ def test_conversations_and_messages_persist_independently(tmp_path, monkeypatch)
     ]
 
 
+def test_delete_conversation_removes_only_selected_conversation(tmp_path, monkeypatch):
+    _configure_databases(tmp_path, monkeypatch)
+    first = chat_history.create_conversation()
+    chat_history.append_user_message(first["id"], "این گفتگو حذف شود")
+    second = chat_history.create_conversation()
+    chat_history.append_user_message(second["id"], "این گفتگو بماند")
+
+    assert chat_history.delete_conversation(first["id"]) is True
+    assert chat_history.get_conversation(first["id"]) is None
+    assert [item["id"] for item in chat_history.list_conversations()] == [second["id"]]
+    assert chat_history.list_messages(second["id"])[0]["content"] == "این گفتگو بماند"
+    assert chat_history.delete_conversation(first["id"]) is False
+
+
 def test_assistant_task_result_is_idempotent(tmp_path, monkeypatch):
     _configure_databases(tmp_path, monkeypatch)
     conversation = chat_history.create_conversation()
