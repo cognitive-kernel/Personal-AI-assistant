@@ -2,7 +2,9 @@ import hashlib
 import json
 
 from app import db, sandbox
-from app.learning_verification import count_doctest_examples, run_candidate_source_doctests
+from app.learning_verification import (
+    count_doctest_examples, extract_source_assertion_blocks, run_candidate_source_doctests,
+)
 from app.knowledge_review import get_candidate_review_summary
 
 
@@ -78,7 +80,7 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
         assert kwargs["image"].endswith("a" * 64)
         return sandbox.SandboxResult(
             status="succeeded", exit_code=0,
-            stdout='{"attempted": 1, "failed": 0}\n',
+            stdout='{"doctest_attempted": 1, "doctest_failed": 0, "assertion_blocks_attempted": 0, "assertion_blocks_failed": 0}\n',
             stderr="", duration_ms=12,
         )
 
@@ -152,3 +154,61 @@ def test_failed_source_example_is_saved_as_learning_experience(tmp_path, monkeyp
     assert run["run_status"] == "failed"
     assert experience["status"] == "failed"
     assert "Expected 3 but got 2" in experience["test_results_json"]
+
+
+def test_extract_source_assertion_blocks_rejects_imports_and_unsafe_constructs():
+    source = """
+```python
+def add(left, right):
+    return left + right
+assert add(2, 3) == 5
+```
+
+```python
+import os
+assert os.path.exists("/")
+```
+
+```python
+while True:
+    assert True
+```
+
+```python
+value = 3
+assert value == 3
+```
+"""
+    blocks = extract_source_assertion_blocks(source)
+    assert len(blocks) == 2
+    assert "def add" in blocks[0]
+    assert "value == 3" in blocks[1]
+
+
+def test_fenced_source_assertions_run_in_sandbox_without_promoting_lesson(tmp_path, monkeypatch):
+    source = "Example:\n\n```python\ndef add(a, b):\n    return a + b\nassert add(2, 3) == 5\n```\n"
+    candidate_id = _candidate(tmp_path, monkeypatch, source)
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "c" * 64)
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", "/usr/bin/docker")
+
+    def fake_run_python(source_code, **kwargs):
+        assert "assertion_blocks_attempted" in source_code
+        assert kwargs["timeout_seconds"] == 15
+        return sandbox.SandboxResult(
+            status="succeeded", exit_code=0,
+            stdout='{"doctest_attempted": 0, "doctest_failed": 0, "assertion_blocks_attempted": 1, "assertion_blocks_failed": 0}\n',
+            stderr="", duration_ms=15,
+        )
+
+    monkeypatch.setattr("app.learning_verification.sandbox.run_python", fake_run_python)
+    result = run_candidate_source_doctests(candidate_id)
+
+    assert result["passed"] is True
+    assert result["tests"] == 1
+    assert result["assertion_blocks"] == 1
+    assert result["promoted"] is False
+    with db.learning_connection() as conn:
+        status = conn.execute(
+            "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()[0]
+    assert status == "awaiting_test"
