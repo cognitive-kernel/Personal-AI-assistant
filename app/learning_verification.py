@@ -34,13 +34,19 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     db.init_databases()
     with db.learning_connection() as conn:
         candidate = conn.execute(
-            """SELECT topic, content, source_urls_json, content_sha256 FROM temporary_knowledge_candidates WHERE id=?""",
+            """SELECT c.topic, c.content, c.source_urls_json, c.content_sha256,
+                      s.content AS source_content
+               FROM temporary_knowledge_candidates AS c
+               LEFT JOIN learning_source_text AS s ON s.job_id=c.job_id
+               WHERE c.id=?""",
             (candidate_id,),
         ).fetchone()
     if candidate is None:
         raise KeyError(candidate_id)
-    lesson = candidate["content"]
-    example_count = count_doctest_examples(lesson)
+    # Only execute examples present in the original supplied/retrieved source.
+    # Do not let the generated lesson author its own test oracle.
+    source_text = candidate["source_content"] or ""
+    example_count = count_doctest_examples(source_text)
     if example_count == 0:
         return {"candidate_id": candidate_id, "status": "no_examples", "tests": 0, "promoted": False}
     try:
@@ -56,7 +62,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "tests": 0, "promoted": False}
 
     # Encode the lesson as data; it is interpreted only inside the isolated container.
-    lesson_literal = json.dumps(lesson, ensure_ascii=True)
+    lesson_literal = json.dumps(source_text, ensure_ascii=True)
     runner = (
         "import doctest, json\n"
         f"lesson = json.loads({json.dumps(lesson_literal)})\n"
@@ -76,7 +82,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         actual = {"status": result.status, "stdout": result.stdout[-1000:], "stderr": result.stderr[-1000:]}
     expected = {"attempted": example_count, "failed": 0}
     passed = result.status == "succeeded" and actual == expected
-    suite_digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
+    suite_digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     run_status = "passed" if passed else ("failed" if result.status in {"succeeded", "failed"} else "unavailable")
     actual_json = json.dumps(actual, ensure_ascii=False, sort_keys=True, allow_nan=False)
     expected_json = json.dumps(expected, ensure_ascii=False, sort_keys=True, allow_nan=False)
