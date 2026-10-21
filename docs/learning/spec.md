@@ -82,13 +82,13 @@ Measure against a small human-adjudicated golden set. Track factual precision, f
 ## 10. Implementation checklist
 
 The following are implementation gates, not promises. Mark them complete only after code review and relevant tests pass:
-- [ ] Canonical specification and generated prompts are the single source of truth.
-- [ ] Python-only factual-knowledge slice with SQLite `knowledge`, `evidence`, and `tests` tables.
-- [ ] State transition service rejects invalid trust/lifecycle transitions.
-- [ ] Database constraints cover status enums, evidence-level invariants, foreign keys, and relation uniqueness.
-- [ ] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.
+- [x] Canonical specification and generated prompts are generated from `docs/learning/learning-artifacts.json`; CI checks for drift.
+- [x] Python-only factual-knowledge slice with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables (migration 16).
+- [x] State transition service rejects invalid trust/lifecycle transitions.
+- [x] Database constraints cover status enums, evidence-level invariants, foreign keys, and relation uniqueness.
+- [x] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.
 - [ ] Sandbox verification is bounded and has no network by default.
-- [ ] Evidence applicability, verification timestamp, and re-verification policy are persisted.
-- [ ] Background queue, cache key, retry ceiling, and resource/cost budgets are tested.
+- [x] Evidence applicability and verification timestamps are persisted; re-verification automation remains pending.
+- [ ] Review-result cache is keyed by claim/source/model/prompt/scope and has expiry; a dedicated review worker, retry/resource budgets, and cost controls remain pending.
 - [ ] Golden-set and calibration evaluation are implemented and repeatable.
 - [ ] Existing database upgrade and backup/restore tests pass without data loss.
