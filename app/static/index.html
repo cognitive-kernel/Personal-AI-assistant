@@ -66,14 +66,31 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = !degraded;
   if (degraded) {
-   el("storage-degraded-message").textContent = health.message || "ساختار پایگاه داده نیازمند بررسی است؛ عملیات دیتابیسی مسدود است و هیچ مهاجرت یا تعمیری انجام نشده است.";
+   const message = el("storage-degraded-message");
+   if (message) message.textContent = health.message || "ساختار پایگاه داده نیازمند بررسی است؛ عملیات دیتابیسی مسدود است و هیچ مهاجرت یا تعمیری انجام نشده است.";
   }
  } catch(error) {
-  el("health").textContent = error.message;
+  const output = el("health");
+  if (output) output.textContent = error.message;
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
- try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
+ // Settings are fetched only on the dedicated settings page; the overview and
+ // other feature pages intentionally do not contain settings form controls.
+ if (el("settings-section")) {
+  try {
+   const s = await api("/api/settings");
+   el("model").value=s.ollama_model;
+   el("ctx").value=s.ollama_num_ctx;
+   el("threads").value=s.ollama_num_thread;
+   el("timeout").value=s.ollama_timeout_seconds;
+   el("concurrency").value=s.learning_max_concurrent_jobs;
+   el("source-limit").value=s.learning_source_max_chars;
+  } catch(error) {
+   const output = el("settings-output");
+   if (output) output.textContent=error.message;
+  }
+ }
 }
 async function refreshStorageHealth() {
  const output=el("storage-health-output");
@@ -1218,9 +1235,9 @@ el("sandbox-run-form")?.addEventListener("submit",async event=>{
  }
 });
 refresh();
-refreshCloudResources();
-refreshKaggleQuota();
-refreshOciLimits();
+if (el("cloud-resources-section")) refreshCloudResources();
+if (el("kaggle-quota-section")) refreshKaggleQuota();
+if (el("oci-limits-section")) refreshOciLimits();
 
 
 // Experience memory: untrusted record/source text is always rendered as text.
