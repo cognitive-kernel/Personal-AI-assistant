@@ -250,7 +250,7 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         try:
             section_html = (sections_dir / f"{slug}.html").read_text(encoding="utf-8")
             if slug == "learning":
-                section_html += "\\n" + (sections_dir / "learning-evidence.html").read_text(encoding="utf-8")
+                section_html += "\n" + (sections_dir / "learning-evidence.html").read_text(encoding="utf-8")
         except OSError as exc:
             logger.exception("Dashboard section template is missing: %s", slug)
             raise RuntimeError(f"قالب صفحهٔ داشبورد پیدا نشد: {slug}") from exc
@@ -259,7 +259,7 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         script_start = main.find("<script>", banner_start)
         if banner_start < 0 or script_start < 0:
             raise RuntimeError("محل درج صفحهٔ مستقل در قالب داشبورد پیدا نشد.")
-        main = main[:script_start] + section_html + "\\n" + main[script_start:]
+        main = main[:script_start] + section_html + "\n" + main[script_start:]
         page_titles = {
             "storage-health": "سلامت ذخیره‌سازی",
             "chat": "گفتگو و پژوهش",
