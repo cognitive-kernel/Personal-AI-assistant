@@ -288,3 +288,30 @@ def test_migration_seeds_existing_claims_as_revision_one():
         assert revisions[0]["claim"] == "Existing claim before revision migration"
     finally:
         conn.close()
+
+def test_claim_identity_isolated_by_environment_name(connection):
+    python_claim = create_claim(
+        connection, "The optimizer chooses an execution plan",
+        environment_name="python", environment_version="unspecified",
+    )
+    sql_claim = create_claim(
+        connection, "The optimizer chooses an execution plan",
+        environment_name="sql_server", environment_version="unspecified",
+    )
+    assert python_claim != sql_claim
+    rows = connection.execute(
+        "SELECT id, environment_name FROM factual_knowledge WHERE id IN (?, ?)",
+        (python_claim, sql_claim),
+    ).fetchall()
+    assert {(row[0], row[1]) for row in rows} == {
+        (python_claim, "python"), (sql_claim, "sql_server")
+    }
+
+
+def test_claim_rejects_invalid_environment_name(connection):
+    with pytest.raises(KnowledgePolicyError, match="normalized domain identifier"):
+        create_claim(
+            connection, "A claim", environment_name="SQL Server",
+            environment_version="unspecified",
+        )
+
