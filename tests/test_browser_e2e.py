@@ -1203,6 +1203,22 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
         pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    sections = {
+        "storage-health": "storage-health-section",
+        "chat": "chat-section",
+        "learning": "learning-section",
+        "learning-paths": "learning-paths-section",
+        "knowledge": "knowledge-section",
+        "tasks": "task-manager-section",
+        "experience-memory": "experience-memory-section",
+        "cloud-resources": "cloud-resources-section",
+        "cloud-plan": "cloud-plan-section",
+        "kaggle-quota": "kaggle-quota-section",
+        "oci-limits": "oci-limits-section",
+        "sandbox": "sandbox-section",
+        "self-improvement": "self-improvement-section",
+        "settings": "settings-section",
+    }
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -1214,43 +1230,43 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
         assert navigation.is_visible()
         current_links = navigation.locator('a[aria-current="page"]')
-        assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
+        assert current_links.count() == 1
         assert current_links.get_attribute("href") == "/"
-        for target in (
-            "storage-health-section", "chat-section", "learning-section",
-            "task-manager-section", "experience-memory-section",
-            "cloud-resources-section", "cloud-plan-section", "kaggle-quota-section",
-            "oci-limits-section", "sandbox-section", "self-improvement-section",
-            "learning-paths-section", "knowledge-section", "settings-section",
-        ):
+        assert page.locator("#dashboard-overview").is_visible()
+        for target in sections.values():
+            assert page.locator(f"#{target}").count() == 0
+
+        for slug, target in sections.items():
+            response = page.goto(base_url.rstrip("/") + "/sections/" + slug, wait_until="domcontentloaded")
+            assert response is not None and response.status == 200
             assert page.locator(f"#{target}").count() == 1
-        assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
-        navigation.get_by_role("link", name="وظایف").click()
-        page.wait_for_url("**/sections/tasks", timeout=5000)
-        section_navigation = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد")
-        current_links = section_navigation.locator('a[aria-current="page"]')
-        assert current_links.count() == 1, "Exactly one navigation item should identify the current page"
-        assert current_links.get_attribute("href") == "/sections/tasks"
-        shell = page.locator(".dashboard-shell")
-        assert shell.count() == 1
+            for other_slug, other_target in sections.items():
+                if other_slug != slug:
+                    assert page.locator(f"#{other_target}").count() == 0
+            current = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد").locator('a[aria-current="page"]')
+            assert current.count() == 1
+            assert current.get_attribute("href") == "/sections/" + slug
+            missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
+                "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
+            )
+            assert missing_names == [], f"Controls missing accessible names on {slug}: {missing_names}"
+            if slug == "storage-health":
+                assert page.locator("#storage-health-output").get_attribute("aria-live") == "polite"
+
         stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
         assert stylesheet.status == 200
         assert "prefers-reduced-motion" in stylesheet.text()
         assert "focus-visible" in stylesheet.text()
         assert page.locator("html").get_attribute("dir") == "rtl"
-        missing_names = page.locator("input[placeholder], textarea[placeholder], select[placeholder]").evaluate_all(
-            "nodes => nodes.filter(node => !node.getAttribute('aria-label')).map(node => node.outerHTML)"
-        )
-        assert missing_names == [], f"Controls missing accessible names: {missing_names}"
         for width in (360, 768, 1280):
             page.set_viewport_size({"width": width, "height": 900})
-            nav_direction = navigation.evaluate("node => getComputedStyle(node).flexDirection")
+            nav_direction = page.get_by_role("navigation", name="ناوبری بخش‌های داشبورد").evaluate(
+                "node => getComputedStyle(node).flexDirection"
+            )
             assert nav_direction == ("column" if width > 1000 else "row")
             dimensions = page.evaluate("() => ({viewport: document.documentElement.clientWidth, document: document.documentElement.scrollWidth})")
             assert dimensions["document"] <= dimensions["viewport"] + 1, f"Page overflow at {width}px: {dimensions}"
         browser.close()
-
-
 def test_dashboard_theme_toggle_is_accessible_and_persists():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
@@ -1280,19 +1296,18 @@ def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/chat", wait_until="domcontentloaded")
         message = page.locator("#message")
         assert message.get_attribute("dir") == "auto"
         message.fill("How do SQL execution plans work?")
         assert message.evaluate("node => getComputedStyle(node).direction") == "ltr"
         message.fill("چطور برنامه اجرای SQL کار می‌کند؟")
         assert message.evaluate("node => getComputedStyle(node).direction") == "rtl"
+        page.goto(base_url.rstrip("/") + "/sections/sandbox", wait_until="domcontentloaded")
         assert page.locator("#sandbox-source").get_attribute("dir") == "ltr"
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         assert page.locator("#self-improvement-patch").get_attribute("dir") == "ltr"
         browser.close()
-
-
-
 def test_learning_path_progress_is_derived_and_accessible():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
