@@ -99,7 +99,9 @@ class TaskWorker:
     def run_once(self) -> bool:
         """Claim and process one task. Return False only when no task is ready."""
         task = task_manager.claim_next_task(
-            self.worker_id, lease_seconds=self.lease_seconds
+            self.worker_id,
+            lease_seconds=self.lease_seconds,
+            task_types=tuple(self.handlers),
         )
         if task is None:
             return False
