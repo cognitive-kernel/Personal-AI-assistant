@@ -56,3 +56,31 @@ def test_unknown_conversation_is_not_silently_created(tmp_path, monkeypatch):
         assert exc.args == (999,)
     else:
         raise AssertionError("Unknown conversation must return a not-found signal")
+
+
+def test_research_worker_persists_assistant_reply(tmp_path, monkeypatch):
+    from app import chat_research, research_tasks
+
+    _configure_databases(tmp_path, monkeypatch)
+    conversation = chat_history.create_conversation()
+    chat_history.append_user_message(conversation["id"], "سلام")
+
+    class Context:
+        task_id = 202
+
+        def checkpoint(self, value):
+            return {"checkpoint": value, "status": "running"}
+
+    monkeypatch.setattr(chat_research, "answer", lambda message, history, checkpoint=None: "پاسخ پایدار")
+    result = research_tasks.handle_research_task(
+        {"message": "سلام", "history": [], "conversation_id": conversation["id"]},
+        None,
+        Context(),
+    )
+    assert result["reply"] == "پاسخ پایدار"
+    messages = chat_history.list_messages(conversation["id"])
+    assert [(item["role"], item["content"]) for item in messages] == [
+        ("user", "سلام"),
+        ("assistant", "پاسخ پایدار"),
+    ]
+    assert messages[1]["task_id"] == 202
