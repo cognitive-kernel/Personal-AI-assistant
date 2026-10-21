@@ -163,3 +163,11 @@ Peer-AI review responses now expose their proposed tests, applications, and limi
 The follow-up in [PR #371](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/371) upgrades the lesson evidence gate to `lesson-evidence-v3`. A claim is now counted as explicitly mapped only when it has non-empty claim text, a non-empty rationale, and non-empty evidence URLs that are both present in the retrieved evidence inventory and cited exactly in the lesson. The gate reports `claim_count` and `explicitly_mapped_claim_count`; missing attribution fails closed. This is a traceability gate, not proof that the cited excerpt logically entails the claim.
 
 Validation state at documentation time: regression tests were added but had not yet run; no CI run was visible for the exact head commit when this entry was written. Do not label the change tested until exact-head CI is green. Target-host execution, live model assessment, curated domain-specific trusted oracles, source-level attribution for executable examples spanning multiple pages, false-pass/false-fail calibration, and independent security review remain open.
+
+### Source-example oracle hardening (2026-10-21)
+
+The follow-up branch `feature/source-example-provenance` closes a trust gap in the scoped sandbox test runner: the presence of any HTTPS URL is no longer sufficient to treat source examples as an oracle. A source-example run now requires a URL on the curated primary-source allowlist already used by the lesson evidence gate. A lookalike domain such as `python.org.attacker.example` is not trusted and cannot create a passing test record. The candidate remains temporary when no qualifying oracle exists.
+
+Regression coverage now verifies that an untrusted HTTPS lookalike is rejected before sandbox execution and before a test-run row is written. CI must still run on the exact PR head before the change can be called validated.
+
+Still open: retrieved pages need durable per-example URL attribution (not just candidate-level URLs), and each source example must be linked to the specific claim it tests. Domain allowlisting is a provenance filter, not proof that the example is correct or that it supports every claim in the lesson.
