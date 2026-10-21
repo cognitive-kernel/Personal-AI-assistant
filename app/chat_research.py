@@ -119,6 +119,7 @@ def _memory_context(message: str) -> dict[str, list[dict[str, Any]]]:
     except Exception:
         warnings = []
     return {
+        "verified_factual_knowledge": _factual_knowledge_context(message),
         "verified_experience_guidance": [
             {
                 "id": int(item.get("id", 0)),
