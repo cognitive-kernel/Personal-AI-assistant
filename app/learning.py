@@ -189,11 +189,9 @@ def _persist_factual_review_claims(
                 source_hash=source_hash,
                 excerpt=source["content"][:2500],
                 applicability={
-                    "job_id": job_id,
                     "topic": topic,
-                    "review_verdict": str(item.get("verdict", "insufficient_evidence")),
-                    "review_reason": str(item.get("reason", ""))[:1000],
                     "reviewer": str(review.get("reviewer", "unknown"))[:120],
+                    "model_assisted_review_only": True,
                     "independent_verification": False,
                 },
             )
