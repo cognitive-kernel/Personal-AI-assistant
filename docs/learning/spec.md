@@ -4,10 +4,12 @@
 
 ## 1. Scope and rollout
 
-- Start with one testable domain: Python.
+- Begin verification with Python, while allowing claim records for an explicit allowlist of technical domains. Domain recognition is conservative: ambiguous or unknown topics are skipped rather than assigned a guessed environment.
 - Use the existing SQLite learning database and durable task queue; do not create a parallel database or queue.
 - The initial factual-knowledge slice consists of `knowledge`, `evidence`, and `tests` records. Add consensus, experiences, and advanced metadata only when the first slice is validated.
 - Existing lesson-generation records (`learning_jobs`, `knowledge_items`) serve the current educational workflow. Do not silently reinterpret or migrate them as factual claims.
+- A model-assisted claim review may persist a domain-scoped claim and source provenance, but always leaves it at `L0_raw/unverified`; topic classification and an official-looking hostname never establish truth or authorize retrieval as verified knowledge.
+- `environment_name` is part of claim identity. Python uses the runtime version; other supported domains use a version explicitly named in the topic when recognized, otherwise `unspecified` with that limitation recorded in scope. Ambiguous multi-domain topics are not persisted.
 - All schema changes must be versioned migrations, preserve existing data, and pass fresh-install plus legacy-upgrade tests.
 
 ## 2. Evidence and lifecycle are separate axes
@@ -87,7 +89,7 @@ Measure against a small human-adjudicated golden set. Track factual precision, f
 
 The following are implementation gates, not promises. Mark them complete only after code review and relevant tests pass:
 - [x] Canonical specification and generated prompts are generated from `docs/learning/learning-artifacts.json`; CI checks for drift.
-- [x] Python-only factual-knowledge slice with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables (migration 16); immutable content-revision history for each claim is added in migration 17.
+- [x] Domain-scoped factual-knowledge records with SQLite `factual_knowledge`, `factual_evidence`, and `factual_tests` tables; claim identity includes `environment_name` and `environment_version`, and immutable content-revision history is added in migration 17. Automatic trust promotion remains disabled.
 - [x] State transition service rejects invalid trust/lifecycle transitions.
 - [x] Database constraints cover status enums, evidence-level invariants, foreign keys, and relation uniqueness.
 - [x] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.
