@@ -19,7 +19,7 @@ class OllamaError(RuntimeError):
 
 def _ensure_resource_headroom() -> None:
     try:
-        ensure_resource_headroom(90.0)
+        ensure_resource_headroom(get_settings())
     except RuntimeError as exc:
         raise OllamaError(str(exc), retryable=True) from exc
 
