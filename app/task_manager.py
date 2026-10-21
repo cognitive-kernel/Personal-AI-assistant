@@ -404,7 +404,7 @@ def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[
 def fail_task(
     task_id: int, worker_id: str, error: str, *, retry: bool = True
 ) -> dict[str, Any]:
-    """Record failure and schedule bounded exponential backoff for transient retries."""
+    """Record failure and schedule bounded exponential backoff for retryable attempts."""
     if not isinstance(error, str) or not error.strip():
         raise ValueError("error must be a non-empty string.")
     now_dt = _now()
@@ -413,8 +413,7 @@ def fail_task(
         row = _owned_running_task(conn, task_id, worker_id)
         should_retry = retry and row["attempts"] < row["max_attempts"]
         if should_retry:
-            # attempts is the attempt that just failed: 1s/2s/... are deliberately
-            # avoided here in favor of a small 2s, 4s, 8s... backoff, capped at 5m.
+            # The attempt that just failed determines a 2s, 4s, 8s... delay, capped at 5m.
             delay = min(
                 RETRY_MAX_DELAY_SECONDS,
                 RETRY_BASE_DELAY_SECONDS * (2 ** min(max(int(row["attempts"]) - 1, 0), 8)),
