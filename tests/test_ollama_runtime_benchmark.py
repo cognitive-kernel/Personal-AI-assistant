@@ -42,7 +42,7 @@ def test_run_benchmark_emits_redacted_fixed_workload_report(monkeypatch):
         "chat_ollama_num_ctx": 2048,
         "chat_ollama_num_thread": 2,
         "gpu_enabled": False,
-        "chat_model_keep_alive": "auto",
+        "chat_model_keep_alive": "30m",
     }
     monkeypatch.setattr(benchmark, "get_settings", lambda: settings)
     monkeypatch.setattr(ollama, "list_models", lambda: [
@@ -73,7 +73,7 @@ def test_run_benchmark_emits_redacted_fixed_workload_report(monkeypatch):
         }
     monkeypatch.setattr(ollama, "_request", fake_request)
 
-    report = benchmark.run_benchmark(purpose="chat", repeats=1)
+    report = benchmark.run_benchmark(purpose="chat", repeats=1, keep_alive_override="auto")
     assert report["benchmark"] == "ollama-runtime"
     assert report["model_digest"] == "abc123"
     assert report["model_size_bytes"] == 1234
