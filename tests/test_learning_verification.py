@@ -108,7 +108,7 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
 
 
 def test_allowlisted_source_examples_auto_promote_only_after_sandbox_passes(tmp_path, monkeypatch):
-    lesson = "A runnable example:\\n\\n>>> 1 + 1\\n2\\n"
+    lesson = "A runnable example:\n\n>>> 1 + 1\n2\n"
     candidate_id = _candidate(
         tmp_path, monkeypatch, lesson, source_url="https://docs.python.org/3/tutorial/",
     )
@@ -118,7 +118,7 @@ def test_allowlisted_source_examples_auto_promote_only_after_sandbox_passes(tmp_
     def fake_run_python(source_code, **kwargs):
         return sandbox.SandboxResult(
             status="succeeded", exit_code=0,
-            stdout='{"doctest_attempted": 1, "doctest_failed": 0, "assertion_blocks_attempted": 0, "assertion_blocks_failed": 0}\\n',
+            stdout='{"doctest_attempted": 1, "doctest_failed": 0, "assertion_blocks_attempted": 0, "assertion_blocks_failed": 0}\n',
             stderr="", duration_ms=11,
         )
 
