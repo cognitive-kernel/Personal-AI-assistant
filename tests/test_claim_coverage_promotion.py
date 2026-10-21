@@ -178,7 +178,9 @@ def test_modified_candidate_content_hash_blocks_otherwise_passing_coverage(tmp_p
     assert recorded["content_hash_matches"] is False
     assert recorded["promotion_eligible"] is False
     assert "candidate_content_sha256_mismatch" in recorded["claim_coverage"]["issues"]
-    assert recorded["status"] == "awaiting_test"
+    assert recorded["status"] == "failed"
+    assert recorded["trust_level"] == "L-1"
+    assert recorded["learning_status"] == "conflicting"
     assert recorded["promoted_knowledge_id"] is None
     with db.learning_connection() as conn:
         assert conn.execute(
@@ -255,7 +257,7 @@ def test_changed_candidate_hash_downgrades_l1_and_blocks_l2(tmp_path, monkeypatc
             "SELECT content FROM temporary_knowledge_candidates WHERE id=?",
             (candidate_id,),
         ).fetchone()["content"]
-        changed = original + " A further unreviewed condition changes the claim."
+        changed = original.replace("first claim", "altered first claim", 1)
         conn.execute(
             "UPDATE temporary_knowledge_candidates SET content=? WHERE id=?",
             (changed, candidate_id),
