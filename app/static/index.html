@@ -115,8 +115,6 @@
 <div id="experience-list"></div></section>
 <section id="cloud-resources-section"><h2>کشف منابع پردازشی ابری</h2>
 <p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. نامزدها ابتدا بر اساس دامنه‌های رسمی شناخته‌شده و صفحات رسمی مستندات/قیمت‌گذاری، سپس بر اساس تازگی مرتب می‌شوند. فهرست همچنان فقط نامزدها و شواهد است؛ برچسب دامنه، صحت ادعاها یا ظرفیت زنده را تأیید نمی‌کند و هیچ منبعی صرفاً با دیده‌شدن در این صفحه مجاز به اجرا نمی‌شود.</p>
-<div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button><label for="cloud-candidate-limit">تعداد نامزدهای نمایشی <select id="cloud-candidate-limit"><option value="10" selected>۱۰ مورد اخیر</option><option value="25">۲۵ مورد اخیر</option><option value="50">۵۰ مورد اخیر</option><option value="100">۱۰۰ مورد اخیر</option></select></label></div>
-<pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
 <form id="cloud-manual-form" class="cloud-candidate">
  <h3>افزودن منبع به‌صورت دستی</h3>
  <p class="muted">منبع به‌عنوان نامزد تأییدنشده ثبت می‌شود. برای جلوگیری از ثبت اطلاعات نامرتبط، عنوان و توضیحات باید شواهد مشخصی دربارهٔ منبع پردازشی ابری و طرح/سهمیهٔ آن داشته باشند. ثبت منبع به معنی تأیید یا مجوز اجرا نیست.</p>
@@ -128,7 +126,10 @@
  <button id="cloud-manual-submit" type="submit">ثبت منبع</button>
  <p id="cloud-manual-feedback" class="muted" role="status" aria-live="polite"></p>
 </form>
-<div id="cloud-candidates"></div></section>
+<div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button><label for="cloud-candidate-limit">تعداد نامزدهای نمایشی <select id="cloud-candidate-limit"><option value="10" selected>۱۰ مورد اخیر</option><option value="25">۲۵ مورد اخیر</option><option value="50">۵۰ مورد اخیر</option><option value="100">۱۰۰ مورد اخیر</option></select></label></div>
+<div id="cloud-candidates"></div>
+<pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
+</section>
 <section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
 <p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
 <div class="cloud-form-grid">
