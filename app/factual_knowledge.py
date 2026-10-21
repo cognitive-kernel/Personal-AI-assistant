@@ -275,7 +275,11 @@ def retrieve_verified_claims(
               AND k.lifecycle_status = 'active'
               AND (k.risk_level NOT IN ('high', 'critical') OR k.evidence_level = 'L3_human_verified')
               AND EXISTS (
-                  SELECT 1 FROM factual_evidence e WHERE e.knowledge_id = k.id
+                  SELECT 1 FROM factual_evidence e
+                  WHERE e.knowledge_id = k.id
+                    AND e.source_type IN ('official_docs', 'source_code', 'human_review')
+                    AND length(trim(e.source_ref)) > 0
+                    AND length(trim(e.source_hash)) > 0
               )
               AND NOT EXISTS (
                   SELECT 1
