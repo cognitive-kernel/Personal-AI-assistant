@@ -1,4 +1,5 @@
 from app import db, ollama, programming_tasks
+from app.task_worker import PermanentTaskError
 
 
 class FakeTaskContext:
@@ -58,3 +59,12 @@ def test_programming_payload_obeys_configured_source_limit(tmp_path, monkeypatch
         assert "configured programming source limit" in str(exc)
     else:
         raise AssertionError("Oversized programming context should be rejected")
+
+
+def test_programming_handler_classifies_invalid_payload_as_permanent(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+
+    with pytest.raises(PermanentTaskError, match="instruction must contain"):
+        programming_tasks.handle_programming_task({"instruction": ""}, None, FakeTaskContext())
