@@ -112,11 +112,13 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     # Only execute examples present in the original supplied/retrieved source.
     # Do not let the generated lesson author its own test oracle.
     source_text = candidate["source_content"] or ""
-    example_count = count_doctest_examples(source_text)
+    doctest_count = count_doctest_examples(source_text)
+    assertion_blocks = extract_source_assertion_blocks(source_text)
+    example_count = doctest_count + len(assertion_blocks)
     if example_count == 0:
         from .knowledge_review import record_review_attempt
         record_review_attempt(candidate_id, channel="sandbox", status="no_examples",
-                              details={"tests": 0, "reason": "no_explicit_source_doctests"})
+                              details={"tests": 0, "reason": "no_safe_source_examples"})
         return {"candidate_id": candidate_id, "status": "no_examples", "tests": 0, "promoted": False}
     try:
         source_urls = json.loads(candidate["source_urls_json"] or "[]")
@@ -136,17 +138,27 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
                               details={"tests": 0, "docker_configured": bool(docker), "image_configured": bool(image)})
         return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "tests": 0, "promoted": False}
 
-    # Encode the lesson as data; it is interpreted only inside the isolated container.
+    # Treat original source as data and execute only in the bounded no-network container.
     lesson_literal = json.dumps(source_text, ensure_ascii=True)
+    blocks_literal = json.dumps(assertion_blocks, ensure_ascii=True)
     runner = (
-        "import doctest, json\n"
+        "import ast, doctest, json\n"
         f"lesson = json.loads({json.dumps(lesson_literal)})\n"
+        f"blocks = json.loads({json.dumps(blocks_literal)})\n"
         "parser = doctest.DocTestParser()\n"
         "test = parser.get_doctest(lesson, {}, 'candidate_source_examples', 'lesson.txt', 0)\n"
         "runner = doctest.DocTestRunner(verbose=False)\n"
         "runner.run(test)\n"
-        "print(json.dumps({'attempted': runner.tries, 'failed': runner.failures}, sort_keys=True))\n"
-        "raise SystemExit(0 if runner.tries > 0 and runner.failures == 0 else 1)\n"
+        "block_failures = 0\n"
+        "for index, code in enumerate(blocks):\n"
+        " try:\n"
+        "  tree = ast.parse(code)\n"
+        "  exec(compile(tree, f'<source-assertion-{index}>', 'exec'), {'__name__': '__main__'})\n"
+        " except BaseException:\n"
+        "  block_failures += 1\n"
+        "print(json.dumps({'doctest_attempted': runner.tries, 'doctest_failed': runner.failures, "
+        "'assertion_blocks_attempted': len(blocks), 'assertion_blocks_failed': block_failures}, sort_keys=True))\n"
+        "raise SystemExit(0 if runner.tries + len(blocks) > 0 and runner.failures == 0 and block_failures == 0 else 1)\n"
     )
     from .knowledge_review import record_review_attempt
     try:
@@ -163,14 +175,20 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         actual = json.loads(result.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError, json.JSONDecodeError):
         actual = {"status": result.status, "stdout": result.stdout[-1000:], "stderr": result.stderr[-1000:]}
-    expected = {"attempted": example_count, "failed": 0}
+    expected = {
+        "doctest_attempted": doctest_count,
+        "doctest_failed": 0,
+        "assertion_blocks_attempted": len(assertion_blocks),
+        "assertion_blocks_failed": 0,
+    }
     passed = result.status == "succeeded" and actual == expected
     suite_digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
     run_status = "passed" if passed else ("failed" if result.status in {"succeeded", "failed"} else "unavailable")
     record_review_attempt(
         candidate_id, channel="sandbox",
         status="completed" if run_status in {"passed", "failed"} else "unavailable",
-        details={"tests": example_count, "run_status": run_status,
+        details={"tests": example_count, "doctest_examples": doctest_count,
+                 "assertion_blocks": len(assertion_blocks), "run_status": run_status,
                  "suite_sha256": suite_digest, "duration_ms": result.duration_ms},
     )
     actual_json = json.dumps(actual, ensure_ascii=False, sort_keys=True, allow_nan=False)
