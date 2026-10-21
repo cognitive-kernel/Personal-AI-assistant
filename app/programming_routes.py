@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 from . import programming_tasks, task_manager
 from .task_routes import require_loopback_client
@@ -20,8 +20,7 @@ class ProgrammingTaskRequest(BaseModel):
     instruction: str = Field(min_length=1, max_length=6000)
     context: str = Field(default="", max_length=65536)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 @router.post("/tasks", status_code=202)
