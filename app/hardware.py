@@ -115,7 +115,7 @@ def dynamic_ram_budget_gb(
     settings = settings or {}
     hardware = hardware or detect_hardware()
     available = hardware.get("available_ram_gb")
-    if isinstance(available, bool) or not isinstance(available, (int, float)) or available <= 0:
+    if isinstance(available, bool) or not isinstance(available, (int, float)) or not math.isfinite(available) or available < 0:
         return None
     maximum = settings.get("ram_budget_max_gb", 25)
     reserve = settings.get("ram_safety_reserve_gb", 4)
