@@ -18,7 +18,7 @@ def _failed_candidate(topic, parent_id=None):
                    learning_status, supersedes_candidate_id, failure_reason
                ) VALUES (?, ?, ?, 'user_provided_text', '[]', ?, '{}', 'failed', 'L-1',
                          'conflicting', ?, 'test failure')""",
-            (job["id"], topic, content, parent_id),
+            (job["id"], topic, content, digest, parent_id),
         )
         return int(cursor.lastrowid), digest
 
