@@ -54,6 +54,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "cpu_resource_limit_percent": 90,
     "ram_resource_limit_percent": 90,
     "gpu_resource_limit_percent": 90,
+    "gpu_enabled": False,
     "chat_ollama_model": defaults.chat_ollama_model,
     "chat_ollama_num_ctx": defaults.ollama_num_ctx,
     "chat_ollama_num_thread": defaults.ollama_num_thread,
