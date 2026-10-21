@@ -187,7 +187,7 @@ def test_review_cannot_attach_evidence_from_an_unmatched_url(learning_store):
     assert evidence_count == 0
 
 
-def test_factual_review_integration_remains_scoped_to_python(learning_store):
+def test_factual_review_integration_persists_allowlisted_domains_without_promotion(learning_store):
     job = learning.create_job("Docker container networking")
     review = {
         "reviewer": "local_ollama_model_assisted_not_independent",
@@ -213,5 +213,10 @@ def test_factual_review_integration_remains_scoped_to_python(learning_store):
             "SELECT COUNT(*) FROM factual_knowledge"
         ).fetchone()[0]
 
-    assert stored == 0
-    assert claim_count == 0
+    assert stored == 1
+    assert claim_count == 1
+    with db.learning_connection() as conn:
+        claim = conn.execute(
+            "SELECT environment_name, environment_version, evidence_level, lifecycle_status FROM factual_knowledge"
+        ).fetchone()
+    assert tuple(claim) == ("docker", "unspecified", "L0_raw", "unverified")
