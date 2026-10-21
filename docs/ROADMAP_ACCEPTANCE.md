@@ -172,4 +172,4 @@ The scoped sandbox runner now requires a source URL from the existing curated pr
 
 Regression tests were added for missing claim text/rationale and for lookalike oracle rejection. Exact-head CI is the validation authority; until it completes, these tests are added but not yet confirmed passing.
 
-Remaining gates include durable URL attribution for each example extracted from multiple retrieved pages, mapping each example to the precise claim it tests, target-host execution, live-model and human-adjudicated scientific evaluation, false-pass/false-fail calibration, and independent security review. Do not mark the project production-ready based on these changes alone.
+Remaining gates include durable URL attribution for each example extracted from multiple retrieved pages, mapping each example to the precise claim it tests, target-host execution, live-model evaluation against versioned domain-specific trusted reference cases, false-pass/false-fail calibration, and independent security review. Human scoring is not a runtime acceptance requirement. Do not mark the project production-ready based on these changes alone.
