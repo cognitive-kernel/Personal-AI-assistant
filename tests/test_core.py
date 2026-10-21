@@ -596,6 +596,6 @@ def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch)
             (job["id"],),
         ).fetchone()
     assert evidence["source_ref"] == url
-    assert "does not prove scientific correctness" in evidence["note"]
+    assert "Factual claims still require validation" in evidence["note"]
     assert url in json.loads(candidate["source_urls_json"])
     assert candidate["status"] == "awaiting_test"
