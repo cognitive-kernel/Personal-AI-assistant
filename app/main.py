@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, model_runtime, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -405,12 +405,13 @@ def models() -> dict[str, Any]:
 def chat(request: ChatRequest) -> dict[str, str]:
     try:
         return {"reply": chat_research.answer(request.message, request.history)}
-    except ollama.OllamaError as exc:
+    except (ollama.OllamaError, model_runtime.ModelRuntimeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 @app.get("/api/settings")
 def get_settings() -> dict[str, Any]:
-    return db.get_settings()
+    settings = db.get_settings()
+    return {**settings, **model_runtime.effective_model_configuration(settings)}
 
 @app.patch("/api/settings")
 def patch_settings(request: SettingsPatch) -> dict[str, Any]:
@@ -431,8 +432,20 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
     if "ollama_model" in values and (not isinstance(values["ollama_model"], str) or not values["ollama_model"].strip() or len(values["ollama_model"]) > 200):
         raise HTTPException(status_code=422, detail="ollama_model must be a non-empty string of at most 200 characters.")
+    if "model_profiles" in values or "task_model_assignments" in values:
+        current = db.get_settings()
+        effective = model_runtime.effective_model_configuration(current)
+        profiles = values.get("model_profiles", effective["model_profiles"])
+        assignments = values.get("task_model_assignments", effective["task_model_assignments"])
+        try:
+            profiles, assignments = model_runtime.validate_model_configuration(profiles, assignments)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        values["model_profiles"] = profiles
+        values["task_model_assignments"] = assignments
     try:
-        return db.update_settings(values)
+        saved = db.update_settings(values)
+        return {**saved, **model_runtime.effective_model_configuration(saved)}
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
