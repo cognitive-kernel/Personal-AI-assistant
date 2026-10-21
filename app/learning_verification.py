@@ -14,6 +14,7 @@ import shutil
 from typing import Any
 
 from . import db, sandbox
+from .learning_evidence_gate import is_allowlisted_primary_source
 
 
 def count_doctest_examples(text: str) -> int:
@@ -135,11 +136,11 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         source_urls = json.loads(candidate["source_urls_json"] or "[]")
     except (TypeError, json.JSONDecodeError):
         source_urls = []
-    oracle_url = next((u for u in source_urls if isinstance(u, str) and u.startswith("https://")), None)
+    oracle_url = next((u for u in source_urls if isinstance(u, str) and is_allowlisted_primary_source(u)), None)
     if not oracle_url:
         from .knowledge_review import record_review_attempt
         record_review_attempt(candidate_id, channel="sandbox", status="unavailable",
-                              details={"tests": 0, "reason": "missing_https_source_oracle"})
+                              details={"tests": 0, "reason": "missing_allowlisted_primary_source_oracle"})
         return {"candidate_id": candidate_id, "status": "missing_source_oracle", "tests": 0, "promoted": False}
     image = os.environ.get("SANDBOX_PYTHON_IMAGE", "").strip()
     docker = os.environ.get("SANDBOX_DOCKER_EXECUTABLE", "").strip() or shutil.which("docker") or ""
