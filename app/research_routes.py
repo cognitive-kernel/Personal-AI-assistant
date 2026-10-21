@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from . import chat_history, research_tasks, task_manager
+from . import chat_history, db, research_tasks, task_manager
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -27,6 +27,9 @@ class ResearchTaskRequest(BaseModel):
 
 @router.post("/tasks", status_code=202)
 def queue_research_task(request: ResearchTaskRequest) -> dict[str, Any]:
+    chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
+    if len(request.message) > chat_limit:
+        raise HTTPException(status_code=422, detail=f"message exceeds the configured chat input limit of {chat_limit} characters.")
     try:
         history = request.history
         if request.conversation_id is not None:
