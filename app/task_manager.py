@@ -9,6 +9,7 @@ import base64
 import binascii
 import json
 import sqlite3
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -440,10 +441,17 @@ def fail_task(
         should_retry = retry and row["attempts"] < row["max_attempts"]
         if should_retry:
             # The attempt that just failed determines a 2s, 4s, 8s... delay, capped at 5m.
-            delay = min(
+            exponential_delay = min(
                 RETRY_MAX_DELAY_SECONDS,
                 RETRY_BASE_DELAY_SECONDS * (2 ** min(max(int(row["attempts"]) - 1, 0), 8)),
             )
+            # Add bounded jitter so many failed jobs do not retry in lockstep.
+            # The maximum remains a hard cap even when jitter selects its upper bound.
+            jittered_delay = random.uniform(
+                exponential_delay * 0.8,
+                exponential_delay * 1.2,
+            )
+            delay = min(RETRY_MAX_DELAY_SECONDS, jittered_delay)
             scheduled_at = _timestamp(now_dt + timedelta(seconds=delay))
             status = "queued"
         else:
