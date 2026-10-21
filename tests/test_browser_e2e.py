@@ -1209,6 +1209,18 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
             assert page.locator(f"#{target}").count() == 1
             route = "/" if target == "chat-section" else f"/page/{target}"
             assert page.request.get(base_url.rstrip("/") + route).status == 200
+        page.goto(base_url, wait_until="domcontentloaded")
+        for target in (
+            "storage-health-section", "learning-section", "task-manager-section",
+            "experience-memory-section", "cloud-resources-section", "cloud-plan-section",
+            "kaggle-quota-section", "oci-limits-section", "sandbox-section",
+            "self-improvement-section", "learning-paths-section", "knowledge-section",
+            "settings-section",
+        ):
+            assert not page.locator(f"#{target}").is_visible(), f"{target} should not appear on the chat home page"
+        assert page.locator("#chat-section").is_visible()
+        assert page.locator("#refresh").is_hidden()
+        assert page.locator("#health").is_hidden()
         stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
         assert stylesheet.status == 200
         assert "prefers-reduced-motion" in stylesheet.text()
