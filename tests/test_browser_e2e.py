@@ -1423,13 +1423,17 @@ def test_learning_lesson_history_survives_refresh_and_shows_task_events():
         page.route("**/api/learning/recommendations*", lambda route: fulfill_json(route, {"recommendations": []}))
 
         _goto_section(page, base_url, "learning-paths-section")
+        page.locator(".path-topic-job-history-container > details > summary").click()
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
+        page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").click()
         assert "Quality threshold not met." in page.locator(".path-topic-job-history-container").inner_text()
 
         # Refresh simulates leaving and returning to the section: history must
         # be rebuilt from persisted APIs rather than in-memory JavaScript state.
         page.reload(wait_until="domcontentloaded")
+        page.locator(".path-topic-job-history-container > details > summary").click()
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
+        page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").click()
         page.get_by_role("button", name="بارگذاری تاریخچه رویدادها").click()
         page.get_by_text("running ← succeeded").wait_for(timeout=10000)
         assert "2026-10-21 13:28:44" in page.locator(".path-topic-job-history-container").inner_text()
