@@ -178,3 +178,19 @@ def test_official_documentation_host_matching_rejects_lookalikes():
     assert learning._source_type_for_factual_claim("https://learn.microsoft.com/en-us/sql/") == "official_docs"
     assert learning._source_type_for_factual_claim("https://learn.microsoft.com.attacker.example/sql/") == "other"
 
+@pytest.mark.parametrize(
+    ("topic", "environment_name", "environment_version"),
+    [
+        ("SQL Server 2022 execution plans", "sql_server", "2022"),
+        ("Windows Server 2022 Active Directory", "windows_server", "2022"),
+        ("MikroTik RouterOS 7.15 firewall", "mikrotik_routeros", "7.15"),
+        ("VMware ESXi 8.0 storage", "vmware_esxi", "8.0"),
+        ("Rust 1.82.0 ownership", "rust", "1.82.0"),
+    ],
+)
+def test_factual_domain_detection_keeps_explicit_version_scope(topic, environment_name, environment_version):
+    detected = learning._factual_domain_for_topic(topic)
+    assert detected is not None
+    assert detected[:2] == (environment_name, environment_version)
+    assert detected[2] == "explicit_topic_version"
+
