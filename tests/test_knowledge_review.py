@@ -66,6 +66,7 @@ def test_online_research_persists_source_as_context_not_proof(tmp_path, monkeypa
     assert evidence["source_url"] == "https://example.org/photosynthesis"
     assert len(evidence["source_sha256"]) == 64
     assert "retrieved public page" in evidence["excerpt"]
+    assert get_candidate_review_summary(candidate_id)["verification_status"] == "unverified"
 
 
 def test_peer_consultations_and_disagreements_are_persisted_without_verification(tmp_path, monkeypatch):
