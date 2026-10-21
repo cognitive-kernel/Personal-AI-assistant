@@ -442,3 +442,17 @@ def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_querie
         "How do SQL Server query plans work?"
     ) == []
     assert chat_research._factual_knowledge_context("Python?") == []
+
+    captured = {}
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+
+    def fake_chat(message, history=None, system_prompt=None):
+        captured.update(message=json.loads(message), system_prompt=system_prompt)
+        return "پاسخ با احتیاط"
+
+    monkeypatch.setattr(chat_research.ollama, "chat", fake_chat)
+    reply = chat_research.answer("How do Python lists preserve order and support updates?")
+    assert "منبع بیرونی قابل‌استفاده پیدا نشد" in reply
+    payload = captured["message"]
+    assert payload["memory"]["verified_factual_knowledge"][0]["id"] == claim_id
+    assert "Cite the exact source URLs supporting factual-knowledge records" in payload["instruction"]
