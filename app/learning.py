@@ -3,6 +3,7 @@ import hashlib
 import os
 import json
 import re
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 from .db import learning_connection, get_settings
@@ -478,6 +479,46 @@ def run_job(job_id: int) -> None:
         raise LearningError(f"Learning job {job_id} failed: {exc}") from exc
 
 
+def _load_trusted_fixture_expected(oracle_ref: str, test_name: str) -> Any:
+    """Resolve an oracle only from a real, versioned repository fixture.
+
+    A caller-supplied digest of a caller-supplied expected value is not a trusted
+    oracle. Fixture results are anchored to files inside tests/fixtures and a
+    named case in a schema-versioned JSON document.
+    """
+    repository_root = Path(__file__).resolve().parents[1]
+    fixture_root = (repository_root / "tests" / "fixtures").resolve()
+    fixture_path = (repository_root / oracle_ref).resolve()
+    if not fixture_path.is_relative_to(fixture_root) or not fixture_path.is_file():
+        raise ValueError("Regression fixture oracle must resolve to an existing file inside tests/fixtures.")
+    if fixture_path.suffix.lower() != ".json":
+        raise ValueError("Regression fixture oracle must be a versioned JSON fixture.")
+    def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"Duplicate key in trusted regression fixture: {key}")
+            result[key] = value
+        return result
+    try:
+        fixture = json.loads(
+            fixture_path.read_text(encoding="utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"Non-standard number in trusted regression fixture: {value}")
+            ),
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("Trusted regression fixture could not be decoded.") from exc
+    if not isinstance(fixture, dict) or fixture.get("schema_version") != 1:
+        raise ValueError("Unsupported or invalid trusted regression fixture schema.")
+    cases = fixture.get("cases")
+    case = cases.get(test_name) if isinstance(cases, dict) else None
+    if not isinstance(case, dict) or "expected" not in case:
+        raise ValueError("Named test is missing from the trusted regression fixture.")
+    return case["expected"]
+
+
 def record_candidate_test_results(
     candidate_id: int,
     test_plan: list[dict[str, Any]],
@@ -523,6 +564,18 @@ def record_candidate_test_results(
             raise ValueError("Regression fixture oracles must point inside tests/fixtures without traversal.")
         if "expected" not in item:
             raise ValueError("Every promotion test must preserve its oracle expected output.")
+        if oracle_kind == "regression_fixture":
+            fixture_expected = _load_trusted_fixture_expected(oracle_ref, name)
+            fixture_expected_json = json.dumps(
+                fixture_expected, ensure_ascii=False, sort_keys=True,
+                separators=(",", ":"), allow_nan=False,
+            )
+            plan_expected_json = json.dumps(
+                item["expected"], ensure_ascii=False, sort_keys=True,
+                separators=(",", ":"), allow_nan=False,
+            )
+            if fixture_expected_json != plan_expected_json:
+                raise ValueError("Expected output must exactly match the trusted fixture case.")
         expected_digest = hashlib.sha256(
             json.dumps(item["expected"], ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
         ).hexdigest()
