@@ -840,6 +840,77 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
 
     passed_suites = [item for item in tests if item["run_status"] == "passed"]
     failed_suites = [item for item in tests if item["run_status"] == "failed"]
+    # Build a deterministic next-step plan from recorded evidence and source examples.
+    # It may identify what can be tested, but never invents an expected result/oracle.
+    try:
+        from .learning_verification import count_doctest_examples, extract_source_assertion_blocks
+        from . import sandbox
+        with learning_connection() as conn:
+            source_row = conn.execute(
+                "SELECT content FROM learning_source_text WHERE job_id=(SELECT job_id FROM temporary_knowledge_candidates WHERE id=?)",
+                (candidate_id,),
+            ).fetchone()
+        original_source = str(source_row["content"] or "") if source_row else ""
+        source_doctests = count_doctest_examples(original_source)
+        source_assertions = len(extract_source_assertion_blocks(original_source))
+        sandbox_ready = bool(
+            __import__("os").environ.get("SANDBOX_PYTHON_IMAGE", "").strip()
+            and (
+                __import__("os").environ.get("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+                or __import__("shutil").which("docker")
+            )
+        )
+    except Exception:
+        source_doctests, source_assertions, sandbox_ready = 0, 0, False
+
+    promotion_blockers = []
+    if candidate["status"] != "passed":
+        promotion_blockers.append("candidate_has_not_passed_a_complete_versioned_test_set")
+    if any(item["status"] == "conflicting_evidence" for item in claims):
+        promotion_blockers.append("unresolved_claim_level_source_conflicts")
+    if not tests:
+        promotion_blockers.append("no_recorded_test_run_with_a_trusted_oracle")
+    if source_doctests + source_assertions and not sandbox_ready and not tests:
+        promotion_blockers.append("source_examples_exist_but_isolated_sandbox_is_not_configured")
+    if not source_doctests and not source_assertions and not tests:
+        promotion_blockers.append("no_trusted_executable_examples_or_curated_reference_test_set")
+
+    next_actions = []
+    if any(item["status"] == "conflicting_evidence" for item in claims):
+        next_actions.append("keep_candidate_unverified_and_collect_independent_evidence_for_conflicting_claims")
+    if source_doctests + source_assertions and sandbox_ready and not tests:
+        next_actions.append("run_original_source_examples_in_the_no_network_sandbox")
+    if source_doctests + source_assertions and not sandbox_ready:
+        next_actions.append("configure_the_pinned_no_network_sandbox_before_running_source_examples")
+    if not source_doctests and not source_assertions:
+        next_actions.append("find_a_curated_reference_dataset_or_source_authored_expected_outputs_for_the_claims")
+    if peers and not any(item["evidence_kind"] in {"supporting", "contradicting"} for item in evidence):
+        next_actions.append("treat_peer_reviews_as_advisory_and_seek_citable_source_or_test_oracles")
+    if not next_actions and not promotion_blockers:
+        next_actions.append("retain_verified_scope_and_add_regression_tests_when_new_failures_are_observed")
+
+    verification_plan = {
+        "version": "hybrid-verification-plan-v1",
+        "candidate_sha256": candidate["content_sha256"],
+        "source_examples": {
+            "doctest_examples": source_doctests,
+            "restricted_assertion_blocks": source_assertions,
+            "sandbox_configured": sandbox_ready,
+            "passed_scoped_suites": len(passed_suites),
+            "failed_scoped_suites": len(failed_suites),
+        },
+        "claim_count": len(claims),
+        "claims_with_conflicting_evidence": sum(item["status"] == "conflicting_evidence" for item in claims),
+        "peer_reviews_are_truth_oracles": False,
+        "automatic_promotion_allowed_by_this_plan": False,
+        "promotion_blockers": promotion_blockers,
+        "next_actions": next_actions,
+        "limitation": (
+            "The planner selects available verification paths but does not fabricate expected outputs. "
+            "General factual claims need a domain-specific trusted reference oracle; peer agreement and "
+            "source relevance alone cannot promote the candidate."
+        ),
+    }
     return {
         "candidate_id": candidate_id,
         "topic": candidate["topic"],
@@ -852,6 +923,7 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
         "verification_status": calculate_knowledge_confidence(candidate_id)["verification_status"],
         "confidence": calculate_knowledge_confidence(candidate_id),
         "claims": claims,
+        "verification_plan": verification_plan,
         "verification_channels": {
             "web_evidence": {
                 "count": len(evidence),
