@@ -151,3 +151,43 @@ def test_modified_candidate_content_hash_blocks_otherwise_passing_coverage(tmp_p
         assert conn.execute(
             "SELECT COUNT(*) FROM knowledge_items WHERE status='verified'"
         ).fetchone()[0] == 0
+
+
+
+def test_source_example_oracle_is_evidence_but_never_claim_coverage(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        content = conn.execute(
+            "SELECT content FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()["content"]
+        conn.execute(
+            "UPDATE temporary_knowledge_candidates SET source_urls_json=? WHERE id=?",
+            ('["https://www.python.org/"]', candidate_id),
+        )
+    claim_ids = [claim["claim_id"] for claim in extract_candidate_claims(content, candidate_id)]
+    expected = "source-example-output"
+    oracle_sha256 = hashlib.sha256(
+        json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    plan = [{
+        "test": "source-example-only",
+        "oracle_kind": "source_example",
+        "oracle_ref": "https://www.python.org/",
+        "expected": expected,
+        "oracle_sha256": oracle_sha256,
+        "claim_ids": claim_ids,
+    }]
+    results = [{
+        "test": "source-example-only", "passed": True, "runner": "sandbox",
+        "expected": expected, "actual": expected, "oracle_sha256": oracle_sha256,
+    }]
+
+    recorded = learning.record_candidate_test_results(candidate_id, plan, results)
+
+    assert recorded["tests_passed"] is True
+    assert recorded["claim_coverage"]["complete"] is False
+    assert recorded["claim_coverage"]["promotion_test_count"] == 0
+    assert recorded["claim_coverage"]["missing_claim_ids"] == claim_ids
+    assert recorded["promotion_eligible"] is False
+    assert recorded["status"] == "awaiting_test"
+    assert recorded["promoted_knowledge_id"] is None

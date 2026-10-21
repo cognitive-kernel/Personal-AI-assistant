@@ -658,9 +658,18 @@ def record_candidate_test_results(
         actual_content_sha256 = hashlib.sha256(candidate_content.encode("utf-8")).hexdigest()
         content_hash_matches = actual_content_sha256 == str(candidate["content_sha256"] or "")
         claim_records = extract_candidate_claims(candidate_content, candidate_id)
+        # Source examples and URL-labelled reference opinions are evidence, not
+        # executable proof for durable promotion. Every claim must be covered by
+        # an explicitly mapped test against a versioned repository fixture.
+        promotion_test_plan = [
+            item for item in test_plan if item.get("oracle_kind") == "regression_fixture"
+        ]
         claim_coverage = evaluate_claim_test_coverage(
-            [claim["claim_id"] for claim in claim_records], test_plan
+            [claim["claim_id"] for claim in claim_records], promotion_test_plan
         )
+        claim_coverage["promotion_oracle_kind"] = "versioned_regression_fixture"
+        claim_coverage["promotion_test_count"] = len(promotion_test_plan)
+        claim_coverage["non_fixture_tests_count_as_claim_coverage"] = False
         if not content_hash_matches:
             claim_coverage["complete"] = False
             claim_coverage["issues"] = sorted(set([
