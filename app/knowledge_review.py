@@ -132,18 +132,14 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
         try:
             from .claim_review import review_answer_claims
             reviewed_answer = str(candidate["content"] or "")
-            try:
-                existing_urls = json.loads(candidate["source_urls_json"] or "[]")
-            except (TypeError, json.JSONDecodeError):
-                existing_urls = []
-            # Only append provenance URLs already recorded for this candidate. This makes
-            # source identity explicit but does not make the reviewer verdict authoritative.
-            recorded_urls = [
-                value for value in existing_urls
-                if isinstance(value, str) and value.startswith("https://")
+            # Make retrieved evidence URLs explicit to the reviewer. The excerpts are
+            # still the only permitted factual evidence; URLs alone never earn support.
+            retrieved_urls = [
+                item["url"] for item in review_sources
+                if item["url"].startswith("https://")
             ]
-            if recorded_urls and not any(url in reviewed_answer for url in recorded_urls):
-                reviewed_answer += "\n\nSources attached to this candidate:\n" + "\n".join(recorded_urls)
+            if retrieved_urls:
+                reviewed_answer += "\n\nRetrieved sources under review (not claims of support):\n" + "\n".join(retrieved_urls)
             review = review_answer_claims(
                 str(candidate["topic"] or query)[:3000], reviewed_answer, review_sources[:8]
             )
