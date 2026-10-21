@@ -5,7 +5,7 @@ import pytest
 
 from app import db, task_manager
 from app.schema_registry import LEARNING_MIGRATIONS
-from app.task_worker import TaskWorker
+from app.task_worker import PermanentTaskError, RetryableTaskError, TaskWorker
 
 
 @pytest.fixture
@@ -87,13 +87,27 @@ def test_worker_handler_can_explicitly_mark_domain_error_retryable(worker_store)
     task = task_manager.create_task("test.domain-retryable", {}, max_attempts=2)
 
     def reject_once(_payload, _checkpoint, _context):
-        raise task_manager.RuntimeError("unavailable")  # placeholder
+        raise RetryableTaskError("upstream service temporarily unavailable")
 
     worker = TaskWorker("worker-domain-retryable", {"test.domain-retryable": reject_once})
     assert worker.run_once() is True
     saved = task_manager.get_task(task["id"])
     assert saved["status"] == "queued"
     assert saved["attempts"] == 1
+
+
+def test_worker_handler_can_explicitly_mark_domain_error_permanent(worker_store):
+    task = task_manager.create_task("test.domain-permanent", {}, max_attempts=3)
+
+    def reject(_payload, _checkpoint, _context):
+        raise PermanentTaskError("business rule cannot be satisfied")
+
+    worker = TaskWorker("worker-domain-permanent", {"test.domain-permanent": reject})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "failed"
+    assert saved["attempts"] == 1
+    assert saved["error"] == "PermanentTaskError: business rule cannot be satisfied"
 
 
 def test_worker_does_not_retry_permanent_input_errors(worker_store):
