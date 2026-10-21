@@ -576,6 +576,18 @@ LEARNING_MIGRATIONS = (
                 CHECK(knowledge_id <> related_knowledge_id),
                 UNIQUE(knowledge_id, related_knowledge_id, relation_type)
             )""",
+            """CREATE TABLE factual_review_cache (
+                cache_key TEXT PRIMARY KEY,
+                claim_hash TEXT NOT NULL,
+                source_hash TEXT NOT NULL,
+                model_version TEXT NOT NULL,
+                prompt_version TEXT NOT NULL,
+                scope_hash TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL
+            )""",
+            "CREATE INDEX idx_factual_review_cache_expiry ON factual_review_cache(expires_at)",
             "CREATE INDEX idx_factual_knowledge_status_domain ON factual_knowledge(lifecycle_status, domain)",
             "CREATE INDEX idx_factual_evidence_knowledge ON factual_evidence(knowledge_id, id)",
             "CREATE INDEX idx_factual_tests_knowledge_outcome ON factual_tests(knowledge_id, outcome)",
