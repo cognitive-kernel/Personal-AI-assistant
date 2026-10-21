@@ -540,3 +540,61 @@ def test_failed_explicit_source_url_does_not_trigger_automatic_substitution(tmp_
     assert candidate["status"] == "awaiting_test"
     assert attempt["status"] == "unavailable"
     assert "explicit_requested_url_failed_no_automatic_substitution" in attempt["details_json"]
+
+
+def test_explicit_source_url_success_is_used_and_recorded(tmp_path, monkeypatch):
+    import json
+    from app.web_sources import SourceDocument
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    url = "https://docs.example.org/python"
+    job = learning.create_job("Python source ingestion", source_url=url)
+    source_text = "Python documentation explains functions, parameters, and return values with examples."
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: SourceDocument(url=url, title="Python reference", text=source_text),
+    )
+    monkeypatch.setattr("app.claim_review.review_answer_claims", lambda *_args, **_kwargs: {
+        "passed": False, "overall": "insufficient_evidence", "claims": [], "source_conflicts": [],
+    })
+    research_calls = []
+    monkeypatch.setattr(
+        "app.knowledge_review.research_candidate_online",
+        lambda *args, **kwargs: research_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr("app.knowledge_review.consult_configured_peer_ais", lambda *args, **kwargs: {
+        "status": "unconfigured", "consulted": 0, "errors": [],
+    })
+    monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests", lambda *_args, **_kwargs: {
+        "status": "no_examples", "promoted": False,
+    })
+    payloads = []
+    monkeypatch.setattr(learning, "_request", lambda _path, payload, **_kwargs: (
+        payloads.append(payload) or {"message": {"content": json.dumps({
+            "lesson": "A concise lesson about Python functions.",
+            "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
+            "questions": ["Recall?", "Why?", "Apply to a new case?"],
+            "answer_key": ["One", "Two", "Three"],
+            "answer_rubric": [],
+        })}
+    ))
+
+    learning.run_job(job["id"])
+
+    assert source_text in payloads[0]["messages"][1]["content"]
+    assert research_calls
+    with db.learning_connection() as conn:
+        evidence = conn.execute(
+            "SELECT source_ref, note FROM learning_evidence WHERE job_id=? AND evidence_type='web_page'",
+            (job["id"],),
+        ).fetchone()
+        candidate = conn.execute(
+            "SELECT source_urls_json, status FROM temporary_knowledge_candidates WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+    assert evidence["source_ref"] == url
+    assert "does not prove scientific correctness" in evidence["note"]
+    assert url in json.loads(candidate["source_urls_json"])
+    assert candidate["status"] == "awaiting_test"
