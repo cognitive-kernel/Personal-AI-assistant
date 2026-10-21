@@ -338,5 +338,5 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         "verification_scope": "explicit source doctests and restricted fenced Python assertion blocks only",
         "promoted": promoted_to_knowledge,
         "failure_experience_id": experience_id,
-        "note": "A scoped example test is not sufficient to promote the entire lesson.",
+        "note": "Promotion is limited to the declared source-example scope; this does not establish universal truth or verify every sentence in the lesson.",
     }
