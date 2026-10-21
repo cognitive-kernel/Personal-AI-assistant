@@ -177,8 +177,8 @@ def run_job(job_id: int) -> None:
         try:
             from .web_sources import fetch_public_document
             document = fetch_public_document(requested_url, topic, max_chars=max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000)))))
-            source_chunk = f"Source title: {document.title}\\nSource URL: {document.url}\\nContent:\\n{document.text}"
-            source_text = ((source_text + "\\n\\n" + source_chunk).strip() if source_text else source_chunk)[:max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))]
+            source_chunk = f"Source title: {document.title}\nSource URL: {document.url}\nContent:\n{document.text}"
+            source_text = ((source_text + "\n\n" + source_chunk).strip() if source_text else source_chunk)[:max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))]
             source_kind = "web_retrieved"
             requested_url_fetch_succeeded = True
             digest = hashlib.sha256(document.text.encode("utf-8")).hexdigest()
