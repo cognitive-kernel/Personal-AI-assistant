@@ -664,7 +664,7 @@ def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score:
     supporting_peers = {row["provider"] for row in peers if row["stance"] == "supports"}
     contradicting_peers = {row["provider"] for row in peers if row["stance"] == "contradicts"}
     if contradicting_domains or contradicting_peers or failures:
-        if candidate["status"] == "evidence_reviewed_no_lab":
+        if candidate["promoted_knowledge_id"] is not None:
             # A later contradiction invalidates the no-lab status until a trusted test
             # resolves the scope; never leave stale evidence-only knowledge labeled usable.
             with learning_connection() as conn:
@@ -672,11 +672,6 @@ def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score:
                     """UPDATE knowledge_items SET status='conflicted'
                        WHERE id=? AND status='evidence_reviewed_no_lab'""",
                     (candidate["promoted_knowledge_id"],),
-                )
-                conn.execute(
-                    """UPDATE temporary_knowledge_candidates SET status='conflicted',
-                       updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='evidence_reviewed_no_lab'""",
-                    (candidate_id,),
                 )
         return {"candidate_id": candidate_id, "promoted": False, "reason": "contradicting_evidence_or_failed_field_use"}
     if len(supporting_domains) < 2 or len(supporting_peers) < 2:
@@ -715,7 +710,7 @@ def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score:
             )
             knowledge_id = int(cur.lastrowid)
         conn.execute(
-            "UPDATE temporary_knowledge_candidates SET status='evidence_reviewed_no_lab', promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            "UPDATE temporary_knowledge_candidates SET status='awaiting_test', promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (knowledge_id, candidate_id),
         )
         conn.execute(
