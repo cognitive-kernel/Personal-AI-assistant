@@ -649,6 +649,19 @@ el("learning-form")?.addEventListener("submit", async event => {
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
+async function refreshLearningMetrics() {
+ const output=el("learning-metrics-output");
+ if(!output) return;
+ output.textContent="در حال محاسبهٔ شاخص‌های ثبت‌شدهٔ یادگیری…";
+ try {
+  const metrics=await api("/api/learning/metrics");
+  output.textContent=JSON.stringify(metrics,null,2);
+ } catch(error) {
+  output.textContent="بارگذاری شاخص‌ها ناموفق بود: "+error.message;
+ }
+}
+el("refresh-learning-metrics")?.addEventListener("click",refreshLearningMetrics);
+
 let learningCandidatePage=1;
 async function refreshLearningCandidates(selectedId=null, requestedPage=learningCandidatePage) {
  const select=el("learning-candidate-select");

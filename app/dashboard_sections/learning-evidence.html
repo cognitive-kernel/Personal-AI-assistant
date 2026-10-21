@@ -1,6 +1,7 @@
 <section id="learning-evidence-section"><h2>بازبینی و امتیاز شواهد دانش</h2>
 <p class="muted">برای هر درس، وضعیت تأیید، منابع اینترنتی، مشورت با هوش‌های مصنوعی، آزمون‌های اجراشده و نتیجهٔ کاربرد واقعی را جداگانه ببینید. امتیاز ۰ تا ۱۰۰ شاخص قدرت شواهد است، نه احتمال قطعی درست‌بودن.</p>
-<div class="cloud-actions"><button id="refresh-learning-candidates" type="button">بارگذاری دانش‌های موقت</button>
+<div class="cloud-actions"><button id="refresh-learning-metrics" type="button">بارگذاری شاخص‌های یادگیری</button>
+<button id="refresh-learning-candidates" type="button">بارگذاری دانش‌های موقت</button>
 <label for="learning-candidate-select">نامزد دانش <select id="learning-candidate-select"><option value="">ابتدا فهرست را بارگذاری کنید</option></select></label>
 <button id="research-learning-candidate" type="button" disabled>جست‌وجوی وب و پرس‌وجو از هوش‌های مصنوعی</button>
 <button id="learning-candidate-consensus" type="button" disabled>محاسبه و ثبت اجماع مدل‌ها</button>
@@ -9,6 +10,7 @@
 <input id="learning-human-verify-rationale" aria-label="دلیل تأیید انسانی سطح L3" maxlength="2000" placeholder="دلیل صریح بررسی انسانی">
 <button id="learning-candidate-human-verify" type="button" disabled>تأیید انسانی دانش آزموده‌شده</button>
 <button id="learning-candidate-prev" type="button" disabled>صفحهٔ قبل</button><span id="learning-candidate-page" aria-live="polite">صفحهٔ ۱</span><button id="learning-candidate-next" type="button" disabled>صفحهٔ بعد</button></div>
+<pre id="learning-metrics-output" role="status" aria-live="polite">شاخص‌های یادگیری هنوز بارگذاری نشده‌اند. اعداد، شمارش رویدادهای ثبت‌شده‌اند و احتمال صحت نیستند.</pre>
 <pre id="learning-candidate-review" role="status" aria-live="polite">گزارش شواهد هنوز بارگذاری نشده است.</pre>
 <details><summary>ثبت نتیجهٔ کاربرد در دنیای واقعی</summary>
 <form id="learning-field-feedback-form">

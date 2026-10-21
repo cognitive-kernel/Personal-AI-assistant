@@ -485,6 +485,13 @@ def learning_jobs(
     jobs = learning.list_jobs(limit=size, offset=(page - 1) * size)
     return {"jobs": jobs, "pagination": pagination_metadata(page, size, total)}
 
+@app.get("/api/learning/metrics")
+def learning_metrics_summary() -> dict[str, Any]:
+    """Return read-only counts for trust-level, failures, alternatives, and self-correction."""
+    from .learning_metrics import get_learning_metrics
+    return get_learning_metrics()
+
+
 @app.get("/api/learning/candidates")
 def learning_candidates(
     page: int = Query(default=1, ge=1),
