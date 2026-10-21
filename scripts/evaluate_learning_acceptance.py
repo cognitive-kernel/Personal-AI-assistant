@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Evaluate learning acceptance decisions against a human-adjudicated JSON dataset.
 
-This tool measures a supplied evaluation run; it does not call an LLM, decide truth,
-or turn model self-review into independent evidence. Keep datasets versioned and
-store only cases whose expected decision has been adjudicated by a human.
+The reference dataset and a model/run's observations are separate inputs so the
+gold labels stay immutable across repeated evaluations. This tool does not call
+an LLM, establish truth, or promote knowledge.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import argparse
 import json
 import math
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +20,7 @@ DATASET_SCHEMA_VERSION = 1
 
 
 class EvaluationDataError(ValueError):
-    """Raised when an evaluation dataset is incomplete or ambiguous."""
+    """Raised when evaluation data is incomplete or ambiguous."""
 
 
 def _non_empty_string(value: Any, field: str) -> str:
@@ -28,15 +29,30 @@ def _non_empty_string(value: Any, field: str) -> str:
     return value.strip()
 
 
-def load_dataset(path: str | Path) -> dict[str, Any]:
+def _iso_timestamp(value: Any, field: str) -> str:
+    timestamp = _non_empty_string(value, field)
+    try:
+        datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise EvaluationDataError(f"{field} must be an ISO-8601 timestamp") from exc
+    return timestamp
+
+
+def _read_json(path: str | Path, description: str) -> dict[str, Any]:
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise EvaluationDataError(f"cannot read valid JSON dataset: {exc}") from exc
+        raise EvaluationDataError(f"cannot read valid {description} JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise EvaluationDataError("dataset root must be a JSON object")
-    if data.get("schema_version") != DATASET_SCHEMA_VERSION:
+        raise EvaluationDataError(f"{description} root must be a JSON object")
+    return data
+
+
+def load_dataset(path: str | Path) -> dict[str, Any]:
+    data = _read_json(path, "reference dataset")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != DATASET_SCHEMA_VERSION:
         raise EvaluationDataError(f"schema_version must be {DATASET_SCHEMA_VERSION}")
+    _non_empty_string(data.get("dataset_name"), "dataset_name")
     _non_empty_string(data.get("dataset_version"), "dataset_version")
     cases = data.get("cases")
     if not isinstance(cases, list) or not cases:
@@ -50,12 +66,10 @@ def load_dataset(path: str | Path) -> dict[str, Any]:
         if case_id in seen_ids:
             raise EvaluationDataError(f"duplicate case id: {case_id}")
         seen_ids.add(case_id)
-        for field in ("domain", "language", "expected_decision", "observed_decision"):
+        for field in ("domain", "language", "expected_decision"):
             _non_empty_string(case.get(field), f"{prefix}.{field}")
         if case["expected_decision"] not in DECISIONS:
             raise EvaluationDataError(f"{prefix}.expected_decision must be accept or reject")
-        if case["observed_decision"] not in DECISIONS:
-            raise EvaluationDataError(f"{prefix}.observed_decision must be accept or reject")
         if not isinstance(case.get("source_refs"), list) or any(
             not isinstance(ref, str) or not ref.strip() for ref in case["source_refs"]
         ):
@@ -64,21 +78,60 @@ def load_dataset(path: str | Path) -> dict[str, Any]:
         if not isinstance(adjudication, dict):
             raise EvaluationDataError(f"{prefix}.adjudication is required")
         _non_empty_string(adjudication.get("reviewer"), f"{prefix}.adjudication.reviewer")
-        _non_empty_string(adjudication.get("adjudicated_at"), f"{prefix}.adjudication.adjudicated_at")
+        _iso_timestamp(adjudication.get("adjudicated_at"), f"{prefix}.adjudication.adjudicated_at")
         _non_empty_string(adjudication.get("rationale"), f"{prefix}.adjudication.rationale")
         if adjudication.get("independent_of_model") is not True:
-            raise EvaluationDataError(
-                f"{prefix}.adjudication.independent_of_model must be true"
-            )
+            raise EvaluationDataError(f"{prefix}.adjudication.independent_of_model must be true")
     return data
 
 
-def evaluate(cases: list[dict[str, Any]]) -> dict[str, Any]:
+def load_observations(path: str | Path) -> dict[str, Any]:
+    data = _read_json(path, "observation")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != DATASET_SCHEMA_VERSION:
+        raise EvaluationDataError(f"observation schema_version must be {DATASET_SCHEMA_VERSION}")
+    metadata = data.get("run_metadata")
+    if not isinstance(metadata, dict):
+        raise EvaluationDataError("run_metadata is required")
+    for field in ("model_id", "model_digest", "prompt_version", "application_commit"):
+        _non_empty_string(metadata.get(field), f"run_metadata.{field}")
+    _iso_timestamp(metadata.get("evaluated_at"), "run_metadata.evaluated_at")
+    observations = data.get("observations")
+    if not isinstance(observations, list) or not observations:
+        raise EvaluationDataError("observations must be a non-empty list")
+    seen_ids: set[str] = set()
+    for index, item in enumerate(observations):
+        prefix = f"observations[{index}]"
+        if not isinstance(item, dict):
+            raise EvaluationDataError(f"{prefix} must be an object")
+        case_id = _non_empty_string(item.get("id"), f"{prefix}.id")
+        if case_id in seen_ids:
+            raise EvaluationDataError(f"duplicate observation id: {case_id}")
+        seen_ids.add(case_id)
+        decision = _non_empty_string(item.get("observed_decision"), f"{prefix}.observed_decision")
+        if decision not in DECISIONS:
+            raise EvaluationDataError(f"{prefix}.observed_decision must be accept or reject")
+    return data
+
+
+def evaluate(cases: list[dict[str, Any]], observations: list[dict[str, Any]]) -> dict[str, Any]:
+    expected_ids = {case["id"] for case in cases}
+    observed_by_id = {item["id"]: item["observed_decision"] for item in observations}
+    observed_ids = set(observed_by_id)
+    if expected_ids != observed_ids:
+        missing = sorted(expected_ids - observed_ids)
+        unknown = sorted(observed_ids - expected_ids)
+        details = []
+        if missing:
+            details.append("missing observations: " + ", ".join(missing))
+        if unknown:
+            details.append("unknown observation IDs: " + ", ".join(unknown))
+        raise EvaluationDataError("; ".join(details))
+
     tp = fp = tn = fn = 0
     per_case = []
     for case in cases:
         expected = case["expected_decision"]
-        observed = case["observed_decision"]
+        observed = observed_by_id[case["id"]]
         if expected == "accept" and observed == "accept":
             tp += 1
             outcome = "true_accept"
@@ -134,7 +187,8 @@ def evaluate(cases: list[dict[str, Any]]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dataset", help="path to a versioned, human-adjudicated JSON dataset")
+    parser.add_argument("dataset", help="path to the versioned human-adjudicated reference JSON")
+    parser.add_argument("observations", help="path to the model/run observations JSON")
     parser.add_argument("--max-false-acceptance-rate", type=float, default=None)
     parser.add_argument("--max-false-rejection-rate", type=float, default=None)
     args = parser.parse_args(argv)
@@ -144,12 +198,14 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"--{name.replace('_', '-')} must be between 0 and 1")
     try:
         dataset = load_dataset(args.dataset)
+        observations = load_observations(args.observations)
+        report = evaluate(dataset["cases"], observations["observations"])
     except EvaluationDataError as exc:
         print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 2
-    report = evaluate(dataset["cases"])
+    report["dataset_name"] = dataset["dataset_name"]
     report["dataset_version"] = dataset["dataset_version"]
-    report["dataset_name"] = dataset.get("dataset_name", "")
+    report["run_metadata"] = observations["run_metadata"]
     print(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False))
     metrics = report["metrics"]
     for flag, metric in (
