@@ -106,7 +106,7 @@ def run_hybrid_verification(
         "candidate_id": candidate_id, "candidate_sha256": candidate["content_sha256"],
         "channels": channels, "review": review, "claim_matrix": matrix,
         "evidence_only_promotion": evidence_only_promotion,
-        "promotion_performed": bool(evidence_only_promotion.get("promoted")),
+        "promotion_performed": bool(evidence_only_promotion.get("promoted") or channels.get("sandbox", {}).get("promoted")),
         "policy": (
             "A passing trusted sandbox test promotes only within its declared test scope. "
             "Without lab tests, promotion requires at least two supporting web domains and "
