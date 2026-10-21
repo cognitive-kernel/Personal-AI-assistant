@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 import os
 import subprocess
 from typing import Any
@@ -23,6 +24,7 @@ def detect_hardware() -> dict[str, Any]:
         **gpu,
         "notes": [
             "CPU thread count is capped by the configurable CPU resource percentage.",
+            "RAM budget is computed from currently available memory minus a safety reserve and capped by a configurable maximum; it is not a hard OS quota.",
             "RAM and GPU thresholds are monitored independently; external Ollama memory/compute cannot be hard-capped by this application.",
             "GPU telemetry is currently available for NVIDIA devices through nvidia-smi; unsupported or absent GPUs are reported as unknown.",
         ],
@@ -83,7 +85,13 @@ def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
     if psutil is None:
         raise RuntimeError("CPU/RAM telemetry is unavailable; refusing to start model inference safely.")
     cpu_percent = psutil.cpu_percent(interval=0.1)
-    memory_percent = psutil.virtual_memory().percent
+    memory = psutil.virtual_memory()
+    available_bytes = getattr(memory, "available", None)
+    memory_percent = getattr(memory, "percent", None)
+    if isinstance(available_bytes, bool) or not isinstance(available_bytes, (int, float)) or not math.isfinite(available_bytes) or available_bytes <= 0:
+        raise RuntimeError("RAM availability telemetry is unavailable; refusing to start model inference safely.")
+    if isinstance(memory_percent, bool) or not isinstance(memory_percent, (int, float)) or not 0 <= memory_percent <= 100:
+        raise RuntimeError("RAM utilization telemetry is invalid; refusing to start model inference safely.")
     violations = []
     if cpu_percent >= cpu_limit:
         violations.append(f"CPU {cpu_percent:.1f}% (limit {cpu_limit:.0f}%)")
@@ -99,6 +107,25 @@ def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
         raise RuntimeError("Resource usage is at or above configured limits: " + "; ".join(violations) + ".")
 
 
+def dynamic_ram_budget_gb(
+    settings: dict[str, Any] | None = None,
+    hardware: dict[str, Any] | None = None,
+) -> float | None:
+    """Return a conservative RAM budget from available memory, never installed RAM alone."""
+    settings = settings or {}
+    hardware = hardware or detect_hardware()
+    available = hardware.get("available_ram_gb")
+    if isinstance(available, bool) or not isinstance(available, (int, float)) or not math.isfinite(available) or available < 0:
+        return None
+    maximum = settings.get("ram_budget_max_gb", 25)
+    reserve = settings.get("ram_safety_reserve_gb", 4)
+    if isinstance(maximum, bool) or not isinstance(maximum, (int, float)) or not 1 <= maximum <= 25:
+        maximum = 25
+    if isinstance(reserve, bool) or not isinstance(reserve, (int, float)) or not 1 <= reserve <= 8:
+        reserve = 4
+    return round(max(0.0, min(float(maximum), float(available) - float(reserve))), 2)
+
+
 def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = None) -> dict[str, int]:
     hardware = hardware or detect_hardware()
     cpu_count = max(1, int(hardware.get("logical_cpu_count") or 1))
@@ -108,19 +135,23 @@ def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = N
     thread_ceiling = max(1, int(cpu_count * cpu_limit / 100))
     requested_threads = configured_threads if configured_threads > 0 else thread_ceiling
     threads = min(thread_ceiling, requested_threads)
-    total_ram = hardware.get("total_ram_gb")
+    ram_budget = dynamic_ram_budget_gb(settings, hardware)
     context = int(settings.get("ollama_num_ctx", 2048) or 2048)
-    if total_ram is None or total_ram < 12:
-        # Missing RAM telemetry must not select the largest context budget.
+    if ram_budget is None or ram_budget < 4:
+        # Missing/low available-memory telemetry must not select a large context.
         context = min(context, 2048)
-    elif total_ram < 24:
+    elif ram_budget < 8:
         context = min(context, 4096)
     else:
         context = min(context, 8192)
     return {"cpu_threads": max(1, threads), "num_ctx": max(512, context)}
 
 
-def model_keep_alive(purpose: str, hardware: dict[str, Any] | None = None) -> str:
+def model_keep_alive(
+    purpose: str,
+    hardware: dict[str, Any] | None = None,
+    settings: dict[str, Any] | None = None,
+) -> str:
     """Keep only the interactive chat model warm when measured RAM headroom is ample.
 
     Long-lived learning/programming models can be substantially larger and are unloaded
@@ -129,17 +160,11 @@ def model_keep_alive(purpose: str, hardware: dict[str, Any] | None = None) -> st
     if purpose != "chat":
         return "0"
     hardware = hardware or detect_hardware()
-    total_ram = hardware.get("total_ram_gb")
-    available_ram = hardware.get("available_ram_gb")
-    if (
-        isinstance(total_ram, bool)
-        or not isinstance(total_ram, (int, float))
-        or isinstance(available_ram, bool)
-        or not isinstance(available_ram, (int, float))
-    ):
+    ram_budget = dynamic_ram_budget_gb(settings, hardware)
+    if ram_budget is None:
         return "0"
-    if total_ram >= 16 and available_ram >= 12:
+    if ram_budget >= 12:
         return "5m"
-    if total_ram >= 12 and available_ram >= 8:
+    if ram_budget >= 4:
         return "1m"
     return "0"
