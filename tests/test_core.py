@@ -561,3 +561,22 @@ def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
     assert saved["ram_resource_limit_percent"] == 80
     assert saved["gpu_resource_limit_percent"] == 65
     assert saved["gpu_enabled"] is False
+
+
+def test_gpu_disabled_forces_cpu_option_on_inference_payload(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ollama_base_url": "http://127.0.0.1:11434", "ollama_timeout_seconds": 5, "gpu_enabled": False})
+    monkeypatch.setattr(ollama, "_base_url", lambda: "http://127.0.0.1:11434")
+    captured = {}
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, size): return b'{"message":{"content":"ok"}}'
+    def fake_open(request, timeout):
+        captured["payload"] = __import__("json").loads(request.data.decode("utf-8"))
+        return Response()
+    monkeypatch.setattr(ollama.urllib.request, "build_opener", lambda *args, **kwargs: SimpleNamespace(open=fake_open))
+    monkeypatch.setattr(ollama, "_ensure_resource_headroom", lambda: None)
+    monkeypatch.setattr(ollama, "_INFERENCE_LOCK", __import__("threading").Lock())
+    result = ollama._request("/api/chat", {"model": "test", "options": {"num_ctx": 1024}})
+    assert result["message"]["content"] == "ok"
+    assert captured["payload"]["options"]["num_gpu"] == 0
