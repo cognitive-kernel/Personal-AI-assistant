@@ -1,7 +1,7 @@
 import pytest
 
 from app import research_tasks
-from app.task_worker import TaskInterrupted
+from app.task_worker import PermanentTaskError, TaskInterrupted
 
 
 class FakeContext:
@@ -52,6 +52,11 @@ def test_research_task_runs_answer_with_safe_checkpoints(monkeypatch):
 def test_research_task_rejects_invalid_or_untrusted_payload(payload):
     with pytest.raises(ValueError):
         research_tasks.validate_payload(payload)
+
+
+def test_research_handler_classifies_invalid_payload_as_permanent():
+    with pytest.raises(PermanentTaskError, match="1–12000 characters"):
+        research_tasks.handle_research_task({"message": "", "history": []}, None, FakeContext())
 
 
 def test_research_task_propagates_pause_or_cancel_checkpoint(monkeypatch):
