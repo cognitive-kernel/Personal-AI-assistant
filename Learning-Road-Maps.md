@@ -71,7 +71,8 @@
 - [x] تعریف قرارداد claim، دامنه، نسخه و محیط در `app/factual_knowledge.py` و schema.
 - [x] جدول‌های مستقل `factual_knowledge`، `factual_evidence`، `factual_tests` و روابط.
 - [x] ثبت provenance، هش منبع و محدوده اعتبار.
-- [ ] تکمیل اتصال factual knowledge به مسیر عمومی تولید درس؛ پیاده‌سازی محدود و fail-closed برای topicهای صریحاً پایتون باقی مانده است: ادعاهای claim review همراه hash منبع به‌صورت `L0_raw/unverified` ثبت می‌شوند و هیچ ارتقای خودکار انجام نمی‌شود. PR #382 ادغام شد و آزمون API-to-worker، provenance منبع و حفظ سطح `L0_raw/unverified` در CI موفق شد؛ PR #398 نیز تاریخچهٔ revision غیرقابل‌تغییر claimها را اضافه کرد. اتصال به دامنه‌های دیگر و ادعاهای بدون منبع هنوز باقی است و مسیر `learning_jobs/knowledge_items` همچنان جریان اصلی محصول است.
+- [x] ثبت claim و provenance برای topicهای allowlist‌شده در چند دامنهٔ فنی؛ شناسهٔ محیط و نسخه بخشی از هویت claim است، موضوع مبهم/چنددامنه‌ای رد می‌شود و claimهای مدل‌یار فقط در `L0_raw/unverified` می‌مانند. PR #402 ادغام شد و CI دقیق head موفق بود.
+- [ ] اتصال retrieval دانش factual به پاسخ‌های عادی هنوز جداگانه باید طراحی و آزموده شود؛ فقط claimهای `active` با سطح `L2/L3` مجازند و `failed/conflicting/superseded/unverified` باید حذف شوند. مسیر `learning_jobs/knowledge_items` همچنان جریان اصلی آموزش است.
 
 ## مرحله ۳ — سیاست و انتقال وضعیت
 - [x] state machine در کد و قیود پایگاه داده.
@@ -121,7 +122,7 @@
 
 ## اولویت اجرای بعدی
 1. **پایپ‌لاین factual knowledge:** بررسی اختلاف/تعارض PR #370 با `main` و حل تعارض‌ها به‌صورت مرحله‌ای؛ قبل از ادغام، هر تغییر باید دوباره روی head جدید CI شود.
-2. **پوشش دامنه‌ها:** گسترش ثبت claim و provenance از Python به دامنه‌های دیگر، بدون ارتقای خودکار ادعاهای بی‌مدرک و با فیلتر retrieval سخت برای دانش تأییدنشده.
+2. **بازیابی دانش تأییدشده:** افزودن retrieval read-only با فیلتر سخت `active` و `L2/L3`؛ آزمون شود که `L0/unverified`، تعارض، شکست و نسخه‌های منسوخ هرگز وارد پاسخ نشوند.
 3. **اجرای امن:** اتصال sandbox به آزمون claimهای قابل‌اجرا در pipeline، فقط برای تست‌های allow-listed و با consent/policy صریح.
 4. **کیفیت علمی:** افزودن مجموعهٔ طلایی نسخه‌دار و سنجه‌های precision/false-acceptance/calibration؛ نتایج داوری انسانی و CI از هم جدا گزارش شوند.
 5. **تازگی و بازیابی خطا:** تکمیل re-verification بر اساس تغییر منبع/نسخه/زمان و پوشش retryable/permanent در همهٔ handlerهای دامنه‌ای.
@@ -158,6 +159,7 @@
 - PR #393 ادغام شد؛ روی head دقیق `9ba73dc364878a05ed1e8dc5d5e373bb23e69d26` آزمون‌ها با 737 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند.
 - PR #396 ادغام شد؛ روی head دقیق `50d4b12afc304a8b9e7a061c960e83195bc1581d` آزمون‌ها با 739 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند. هیچ‌یک جایگزین benchmark مدل واقعی یا پذیرش محلی Windows نیست.
 - PR #398 ادغام شد؛ revisionهای immutable برای factual claimها اضافه شد. روی head دقیق `0397afeb702e99b0d4c8a40ccc911ec5c880b92b` تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق شدند.
+- PR #402 ادغام شد؛ ثبت factual claim برای دامنه‌های allowlist‌شده، هویت دامنه/نسخه و رفتار fail-closed برای موضوعات مبهم اضافه شد. روی head دقیق `432da2f8199168efe7d8c9cd06a07dac0b9211f1` آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق شدند.
 - PR #382 ادغام شد؛ آزمون یکپارچهٔ API-to-worker برای provenance و fail-closed بودن سطح اعتماد روی head دقیق `61e45863cd3a3ef75f3eb2e2d694082a39eac588` موفق شد.
 - PR #392 ادغام شد؛ ابزار benchmark محلی Ollama و گزارش redacted روی head دقیق `4e557638577dba7282583031ac6cb8502659fda4` تست‌ها، Browser E2E و ممیزی وابستگی‌ها را گذراند.
 - PR #399 ادغام شد؛ سقف RAM اکنون حاشیهٔ امن را در سقف کل حساب می‌کند. روی head دقیق `c5463fdbfad4edfaff30ef8f45236ea5d444265d` آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق شدند؛ پذیرش محلی Windows هنوز انجام نشده است.
