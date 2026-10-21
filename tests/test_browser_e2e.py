@@ -1432,6 +1432,7 @@ def test_learning_lesson_history_survives_refresh_and_shows_task_events():
         # Refresh simulates leaving and returning to the section: history must
         # be rebuilt from persisted APIs rather than in-memory JavaScript state.
         page.reload(wait_until="domcontentloaded")
+        page.locator(".path-card > details > summary").click()
         page.locator(".path-topic-job-history-container > details > summary").click()
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").click()
