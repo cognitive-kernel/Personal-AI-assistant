@@ -16,6 +16,8 @@ from . import db
 
 ACTIVE_STATUSES = {"running", "pause_requested", "cancel_requested"}
 TERMINAL_STATUSES = {"cancelled", "succeeded", "failed"}
+RETRY_BASE_DELAY_SECONDS = 2
+RETRY_MAX_DELAY_SECONDS = 300
 
 
 class TaskManagerError(RuntimeError):
@@ -402,16 +404,30 @@ def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[
 def fail_task(
     task_id: int, worker_id: str, error: str, *, retry: bool = True
 ) -> dict[str, Any]:
+    """Record failure and schedule bounded exponential backoff for transient retries."""
     if not isinstance(error, str) or not error.strip():
         raise ValueError("error must be a non-empty string.")
-    now = _timestamp()
+    now_dt = _now()
+    now = _timestamp(now_dt)
     with db.learning_connection() as conn:
         row = _owned_running_task(conn, task_id, worker_id)
-        status = "queued" if retry and row["attempts"] < row["max_attempts"] else "failed"
+        should_retry = retry and row["attempts"] < row["max_attempts"]
+        if should_retry:
+            # attempts is the attempt that just failed: 1s/2s/... are deliberately
+            # avoided here in favor of a small 2s, 4s, 8s... backoff, capped at 5m.
+            delay = min(
+                RETRY_MAX_DELAY_SECONDS,
+                RETRY_BASE_DELAY_SECONDS ** min(max(int(row["attempts"]), 1), 9),
+            )
+            scheduled_at = _timestamp(now_dt + timedelta(seconds=delay))
+            status = "queued"
+        else:
+            scheduled_at = row["scheduled_at"]
+            status = "failed"
         conn.execute(
-            """UPDATE task_queue SET status=?, error=?, lease_owner=NULL, lease_expires_at=NULL,
-               updated_at=? WHERE id=?""",
-            (status, error[:4000], now, task_id),
+            """UPDATE task_queue SET status=?, error=?, scheduled_at=?,
+               lease_owner=NULL, lease_expires_at=NULL, updated_at=? WHERE id=?""",
+            (status, error[:4000], scheduled_at, now, task_id),
         )
         updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     return _task(updated)  # type: ignore[return-value]
