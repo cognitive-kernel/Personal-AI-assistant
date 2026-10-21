@@ -577,6 +577,25 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
         ),
     ),
+    Migration(
+        18,
+        "knowledge-user-application-feedback",
+        (
+            """CREATE TABLE knowledge_user_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                outcome TEXT NOT NULL CHECK(outcome IN ('worked','failed','partial','not_tested')),
+                application_context TEXT NOT NULL,
+                observed_output TEXT NOT NULL DEFAULT '',
+                output_sha256 TEXT NOT NULL DEFAULT '',
+                test_steps TEXT NOT NULL DEFAULT '',
+                reporter_kind TEXT NOT NULL DEFAULT 'user'
+                    CHECK(reporter_kind IN ('user','automated_system')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_user_feedback_candidate ON knowledge_user_feedback(candidate_id, outcome, id)",
+        ),
+    ),
 )
 
 
