@@ -4,8 +4,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from . import chat_history, chat_research
-from .task_worker import TaskContext
+from . import chat_history, chat_research, ollama
+from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 RESEARCH_TASK_TYPE = "research.answer"
 _ALLOWED_KEYS = {"message", "history", "conversation_id"}
@@ -39,10 +39,13 @@ def handle_research_task(
     checkpoint: dict[str, Any] | None,
     context: TaskContext,
 ) -> dict[str, Any]:
-    message, history = validate_payload(payload)
+    try:
+        message, history = validate_payload(payload)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise PermanentTaskError(str(exc)) from exc
     conversation_id = payload.get("conversation_id")
     if conversation_id is not None and (isinstance(conversation_id, bool) or not isinstance(conversation_id, int) or conversation_id < 1):
-        raise ValueError("conversation_id must be a positive integer when provided.")
+        raise PermanentTaskError("conversation_id must be a positive integer when provided.")
     message_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
 
     def save_phase(state: dict[str, Any]) -> None:
@@ -60,7 +63,12 @@ def handle_research_task(
         )
 
     context.checkpoint({"phase": "research_task_started", "message_sha256": message_hash})
-    reply = chat_research.answer(message, history, checkpoint=save_phase)
+    try:
+        reply = chat_research.answer(message, history, checkpoint=save_phase)
+    except ollama.OllamaError as exc:
+        if exc.retryable:
+            raise RetryableTaskError("Research model request failed; retry may succeed.") from exc
+        raise PermanentTaskError("Research model configuration or policy is invalid.") from exc
     context.checkpoint({"phase": "research_task_completed", "message_sha256": message_hash})
     if conversation_id is not None:
         chat_history.append_assistant_message(conversation_id, reply, task_id=context.task_id)

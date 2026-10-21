@@ -61,6 +61,22 @@ def test_claim_identity_includes_scope_and_environment_version(connection):
     assert len({row[0] for row in hashes}) == 3
 
 
+def test_claim_and_evidence_writes_are_idempotent(connection):
+    first_id = make_claim(connection, "Python dictionaries preserve key-value associations")
+    second_id = make_claim(connection, "Python dictionaries preserve key-value associations")
+    assert first_id == second_id
+
+    first_evidence = source(connection, first_id)
+    second_evidence = source(connection, first_id)
+    assert first_evidence == second_evidence
+    assert connection.execute(
+        "SELECT COUNT(*) FROM factual_knowledge WHERE id=?", (first_id,)
+    ).fetchone()[0] == 1
+    assert connection.execute(
+        "SELECT COUNT(*) FROM factual_evidence WHERE knowledge_id=?", (first_id,)
+    ).fetchone()[0] == 1
+
+
 def test_fresh_schema_has_separate_knowledge_evidence_tests_and_relations(connection):
     tables = {row[0] for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"

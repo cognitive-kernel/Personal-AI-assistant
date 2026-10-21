@@ -12,14 +12,16 @@ from .db import get_settings
 from .hardware import detect_hardware, ensure_resource_headroom, runtime_limits
 
 class OllamaError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = bool(retryable)
 
 
 def _ensure_resource_headroom() -> None:
     try:
         ensure_resource_headroom(90.0)
     except RuntimeError as exc:
-        raise OllamaError(str(exc)) from exc
+        raise OllamaError(str(exc), retryable=True) from exc
 
 
 _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -101,7 +103,7 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
             wait_timeout = timeout if timeout is not None else int(settings["ollama_timeout_seconds"])
             acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, float(wait_timeout)))
             if not acquired:
-                raise OllamaError("Timed out waiting for the local inference budget.")
+                raise OllamaError("Timed out waiting for the local inference budget.", retryable=True)
             try:
                 _ensure_resource_headroom()
                 return perform_request()
@@ -109,7 +111,7 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
                 _INFERENCE_LOCK.release()
         return perform_request()
     except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise OllamaError(f"Ollama request failed: {exc}") from exc
+        raise OllamaError(f"Ollama request failed: {exc}", retryable=True) from exc
 
 def health() -> dict[str, Any]:
     try:
@@ -166,7 +168,7 @@ def chat(
     }, timeout=request_timeout)
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
-        raise OllamaError("Ollama returned an empty or unexpected chat response.")
+        raise OllamaError("Ollama returned an empty or unexpected chat response.", retryable=True)
     return result
 
 

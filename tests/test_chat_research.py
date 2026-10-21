@@ -160,6 +160,7 @@ def test_unavailable_reviewer_does_not_trigger_an_extra_generation(monkeypatch):
 
 
 def test_chat_api_uses_research_router(monkeypatch):
+    monkeypatch.setattr(main.db, "get_settings", lambda: {"chat_source_max_chars": 12000})
     monkeypatch.setattr(main.chat_research, "answer", lambda message, history: f"routed:{message}")
     assert main.chat(main.ChatRequest(message="hello")) == {"reply": "routed:hello"}
 

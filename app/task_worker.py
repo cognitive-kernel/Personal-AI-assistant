@@ -18,8 +18,12 @@ class RetryableTaskError(RuntimeError):
     """Explicit handler contract for a domain failure that may succeed on retry."""
 
 
-class PermanentTaskError(RuntimeError):
-    """Explicit handler contract for a domain failure that must not be retried."""
+class PermanentTaskError(ValueError):
+    """Explicit handler contract for a domain failure that must not be retried.
+
+    It remains a ValueError subclass for compatibility with callers that already
+    treat invalid domain inputs as validation failures.
+    """
 
 
 def is_retryable_task_error(error: Exception) -> bool:

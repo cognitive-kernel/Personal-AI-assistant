@@ -370,3 +370,12 @@ def test_ollama_serializes_inference_requests_and_checks_headroom(
             server.shutdown()
             thread.join(timeout=2)
 
+
+
+def test_ollama_error_exposes_retryability_without_changing_exception_type():
+    retryable = ollama.OllamaError("connection timed out", retryable=True)
+    permanent = ollama.OllamaError("invalid endpoint")
+
+    assert isinstance(retryable, RuntimeError)
+    assert retryable.retryable is True
+    assert permanent.retryable is False

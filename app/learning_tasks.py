@@ -5,12 +5,14 @@ actual learning outcome instead of treating a swallowed application error as suc
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from . import learning
 from .db import learning_connection
 from . import task_manager
-from .task_worker import TaskContext
+from . import ollama
+from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 LEARNING_TASK_TYPE = "learning.run_job"
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
@@ -86,12 +88,12 @@ def handle_learning_job(
     """Run one persisted learning job under the task queue's lease and controls."""
     job_id = payload.get("job_id")
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
-        raise ValueError("learning task payload requires a positive integer job_id")
+        raise PermanentTaskError("learning task payload requires a positive integer job_id")
 
     try:
         job = learning.get_job(job_id)
     except KeyError as exc:
-        raise ValueError(f"Learning job {job_id} does not exist") from exc
+        raise PermanentTaskError(f"Learning job {job_id} does not exist") from exc
 
     status = job["status"]
     if status in _TERMINAL_LEARNING_STATUSES:
@@ -112,12 +114,22 @@ def handle_learning_job(
         status = job["status"]
 
     if status != "queued":
-        raise learning.LearningError(
+        raise PermanentTaskError(
             f"Learning job {job_id} cannot run from status {status!r}"
         )
 
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
-    learning.run_job(job_id)
+    try:
+        learning.run_job(job_id)
+    except learning.LearningError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, ollama.OllamaError):
+            if cause.retryable:
+                raise RetryableTaskError("Learning model request failed; retry may succeed.") from exc
+            raise PermanentTaskError("Learning model configuration or policy is invalid.") from exc
+        if isinstance(cause, (ValueError, TypeError, KeyError, AssertionError, sqlite3.IntegrityError)):
+            raise PermanentTaskError("Learning job failed because of invalid input or an internal invariant.") from exc
+        raise RetryableTaskError("Learning job execution failed; retry may succeed.") from exc
 
     result = learning.get_job(job_id)
     status = result["status"]
