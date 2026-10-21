@@ -99,7 +99,7 @@ def test_peer_consultations_and_disagreements_are_persisted_without_verification
     summary = get_candidate_review_summary(candidate_id)
 
     assert summary["distinct_peer_providers"] == 2
-    assert summary["verification_status"] == "unverified"
+    assert summary["verification_status"] == "evidence_reviewed_no_lab"
     assert {item["evidence_kind"] for item in summary["evidence"]} == {"supporting", "contradicting"}
     assert {item["stance"] for item in summary["peer_consultations"]} == {"supports", "contradicts"}
 
@@ -216,7 +216,7 @@ def test_confidence_score_tracks_distinct_methods_and_user_field_results(tmp_pat
     assert after["counts"]["supporting_domains"] == 1
     assert after["counts"]["supporting_peer_providers"] == 1
     assert after["counts"]["successful_user_contexts"] == 1
-    assert after["verification_status"] == "unverified"
+    assert after["verification_status"] == "evidence_reviewed_no_lab"
 
 
 def test_failed_real_world_feedback_reduces_score_and_is_reported(tmp_path, monkeypatch):
