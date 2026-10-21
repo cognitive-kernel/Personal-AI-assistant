@@ -289,6 +289,17 @@ def test_migration_seeds_existing_claims_as_revision_one():
                 "a" * 64,
             ),
         ).lastrowid
+        domain_id = conn.execute(
+            """INSERT INTO factual_knowledge(
+                   claim, normalized_claim, claim_hash, scope_json,
+                   environment_name, environment_version, risk_level
+               ) VALUES (?, ?, ?, '{}', 'sql_server', 'unspecified', 'low')""",
+            (
+                "Legacy SQL Server claim",
+                "Legacy SQL Server claim",
+                "b" * 64,
+            ),
+        ).lastrowid
         conn.commit()
         assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 17
         legacy_revision = conn.execute(
@@ -302,6 +313,12 @@ def test_migration_seeds_existing_claims_as_revision_one():
         assert revisions[0]["revision_number"] == 1
         assert revisions[0]["claim"] == "Existing claim before revision migration"
         assert revisions[0]["domain_name"] == "python"
+        domain_revision = list_claim_revisions(conn, domain_id)
+        assert len(domain_revision) == 1
+        assert domain_revision[0]["domain_name"] == "sql_server"
+        assert conn.execute(
+            "SELECT domain_name FROM factual_knowledge WHERE id=?", (domain_id,)
+        ).fetchone()[0] == "sql_server"
     finally:
         conn.close()
 
