@@ -137,7 +137,8 @@ def evaluate_automated_acceptance(
     failed_cases = []
     case_decisions = []
     reference_negative_ids = []
-    false_acceptance_ids = []
+    pre_content_filter_false_acceptance_ids = []
+    final_gate_false_acceptance_ids = []
     for item in results:
         if not isinstance(item, dict):
             failed_cases.append({"case_id": None, "failed_gates": ["result_is_object"]})
@@ -188,8 +189,14 @@ def evaluate_automated_acceptance(
             failed_cases.append({"case_id": case_id, "failed_gates": failed})
         if is_reference_negative:
             reference_negative_ids.append(case_id)
+            non_content_gate_failures = [
+                name for name, passed in gates.items()
+                if name != "no_prohibited_claims" and not passed
+            ]
+            if not non_content_gate_failures:
+                pre_content_filter_false_acceptance_ids.append(case_id)
             if accepted:
-                false_acceptance_ids.append(case_id)
+                final_gate_false_acceptance_ids.append(case_id)
         case_decisions.append({
             "case_id": case_id,
             "accepted": accepted,
@@ -212,22 +219,34 @@ def evaluate_automated_acceptance(
         "false_acceptance": {
             "reference_negative_definition": "A result with one or more exact prohibited-phrase hits from its versioned reference case.",
             "reference_negative_case_count": len(reference_negative_ids),
-            "false_acceptance_count": len(false_acceptance_ids),
-            "false_acceptance_rate": (
-                round(len(false_acceptance_ids) / len(reference_negative_ids), 4)
-                if reference_negative_ids else None
-            ),
-            "false_acceptance_case_ids": false_acceptance_ids,
+            "before_content_filter": {
+                "definition": "Negative cases that would pass every other gate if the direct prohibited-phrase gate were omitted.",
+                "false_acceptance_count": len(pre_content_filter_false_acceptance_ids),
+                "false_acceptance_rate": (
+                    round(len(pre_content_filter_false_acceptance_ids) / len(reference_negative_ids), 4)
+                    if reference_negative_ids else None
+                ),
+                "false_acceptance_case_ids": pre_content_filter_false_acceptance_ids,
+            },
+            "final_gate": {
+                "definition": "Negative cases accepted by the full gate, including the prohibited-phrase check.",
+                "false_acceptance_count": len(final_gate_false_acceptance_ids),
+                "false_acceptance_rate": (
+                    round(len(final_gate_false_acceptance_ids) / len(reference_negative_ids), 4)
+                    if reference_negative_ids else None
+                ),
+                "false_acceptance_case_ids": final_gate_false_acceptance_ids,
+            },
             "interpretation": (
-                "This rate covers only detected reference-listed prohibited phrases; semantic false "
-                "acceptance without a phrase hit remains unmeasured."
+                "Only exact reference-listed prohibited-phrase hits are labeled negative. The before-content-filter "
+                "rate measures the guardrail's contribution; semantic false acceptance without a phrase hit remains unmeasured."
             ),
         },
         "human_scoring_used": False,
         "independent_scientific_verification": False,
         "limitations": [
             "Reference-concept matching is lexical and can miss valid paraphrases.",
-            "The false-accept denominator includes only exact prohibited-phrase hits.",
+            "False-acceptance rates only include exact reference-listed prohibited-phrase hits; the pre-filter rate is counterfactual without the direct prohibited-phrase gate.",
             "A passing benchmark does not prove every factual claim is true.",
             "Claim review is model-assisted and must not be described as independent verification.",
         ],
