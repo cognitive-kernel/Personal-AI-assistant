@@ -436,8 +436,7 @@ def search_retrievable_claims(
         key=lambda entry: (
             -entry[0],
             entry[1],
-            str(entry[2].get("updated_at", "")),
-            int(entry[2]["id"]),
+            -int(entry[2]["id"]),
         ),
         reverse=False,
     )
