@@ -91,7 +91,7 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         assert isinstance(recommendations.get("recommendations"), list)
         assert recommendations.get("autonomous_action_taken") is False
 
-        page.goto(base_url.rstrip("/") + "/sections/learning", wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/learning-paths", wait_until="domcontentloaded")
         page.locator("#refresh-learning-recommendations").click()
         page.wait_for_function(
             """() => {
