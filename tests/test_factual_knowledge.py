@@ -255,6 +255,10 @@ def test_claim_revision_history_tracks_content_not_lifecycle_changes(connection)
     )
     assert len(list_claim_revisions(connection, kid)) == 2
 
+    source(connection, kid)
+    transition_evidence_level(connection, kid, "L1_sourced")
+    assert len(list_claim_revisions(connection, kid)) == 2
+
     with pytest.raises(sqlite3.IntegrityError, match="revisions are immutable"):
         connection.execute(
             "UPDATE factual_claim_revisions SET claim='tampered' WHERE knowledge_id=? AND revision_number=1",
