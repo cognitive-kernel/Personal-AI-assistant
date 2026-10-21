@@ -545,7 +545,11 @@ def record_candidate_test_results(
             raise ValueError("Every test result must identify an approved automated runner.")
         if "expected" not in item or "actual" not in item:
             raise ValueError("Every test result must preserve expected and actual outputs.")
-        planned = next(plan for plan in test_plan if plan["test"].strip() == name.strip())
+        planned = next(
+            (plan for plan in test_plan if plan["test"].strip() == name.strip()), None
+        )
+        if planned is None:
+            raise ValueError("Test results must match the planned test names and order.")
         canonical_expected = json.dumps(
             planned["expected"], ensure_ascii=False, sort_keys=True,
             separators=(",", ":"), allow_nan=False,
