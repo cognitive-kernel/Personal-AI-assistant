@@ -601,18 +601,28 @@ def record_candidate_test_results(
             if plan_item["oracle_kind"] == "source_example":
                 if plan_item["oracle_ref"] not in candidate_source_urls:
                     raise ValueError("Source-example oracle must be a URL recorded for this candidate.")
-        claim_records = extract_candidate_claims(str(candidate["content"] or ""), candidate_id)
+        candidate_content = str(candidate["content"] or "")
+        actual_content_sha256 = hashlib.sha256(candidate_content.encode("utf-8")).hexdigest()
+        content_hash_matches = actual_content_sha256 == str(candidate["content_sha256"] or "")
+        claim_records = extract_candidate_claims(candidate_content, candidate_id)
         claim_coverage = evaluate_claim_test_coverage(
             [claim["claim_id"] for claim in claim_records], test_plan
         )
-        promotion_eligible = tests_passed and claim_coverage["complete"]
+        if not content_hash_matches:
+            claim_coverage["complete"] = False
+            claim_coverage["issues"] = sorted(set([
+                *claim_coverage["issues"], "candidate_content_sha256_mismatch"
+            ]))
+        promotion_eligible = tests_passed and content_hash_matches and claim_coverage["complete"]
         candidate_status = (
             "passed" if promotion_eligible
             else "failed" if not tests_passed
             else "awaiting_test"
         )
         if tests_passed and not claim_coverage["complete"]:
-            blockers = claim_coverage["missing_claim_ids"] or claim_coverage["issues"]
+            blockers = list(dict.fromkeys([
+                *claim_coverage["missing_claim_ids"], *claim_coverage["issues"]
+            ]))
             failure_reason = "Claim test coverage incomplete: " + ", ".join(blockers)
         conn.execute(
             """UPDATE temporary_knowledge_candidates
@@ -713,6 +723,8 @@ def record_candidate_test_results(
         result = dict(final)
         result["claim_coverage"] = claim_coverage
         result["tests_passed"] = tests_passed
+        result["content_hash_matches"] = content_hash_matches
+        result["actual_content_sha256"] = actual_content_sha256
         result["promotion_eligible"] = promotion_eligible
         return result
 
