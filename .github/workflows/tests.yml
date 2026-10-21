@@ -23,6 +23,8 @@ jobs:
         run: python scripts/check_import_cycles.py
       - name: Run deterministic lexical retrieval benchmark
         run: python scripts/evaluate_experience_retrieval.py --lexical-only
+      - name: Run versioned claim-to-test coverage benchmark
+        run: python scripts/run_knowledge_acceptance_eval.py
 
   windows-storage-regressions:
     runs-on: windows-latest
