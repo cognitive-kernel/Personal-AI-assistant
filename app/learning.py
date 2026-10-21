@@ -651,6 +651,27 @@ def record_candidate_test_results(
         candidate_content = str(candidate["content"] or "")
         actual_content_sha256 = hashlib.sha256(candidate_content.encode("utf-8")).hexdigest()
         content_hash_matches = actual_content_sha256 == str(candidate["content_sha256"] or "")
+        consensus_row = conn.execute(
+            """SELECT candidate_sha256, outcome FROM knowledge_consensus_records
+               WHERE candidate_id=? ORDER BY id DESC LIMIT 1""",
+            (candidate_id,),
+        ).fetchone()
+        model_consensus_gate = {
+            "passed": bool(
+                consensus_row is not None
+                and consensus_row["outcome"] == "model_consensus"
+                and str(consensus_row["candidate_sha256"]) == actual_content_sha256
+                and str(candidate["trust_level"]) == "L1"
+                and str(candidate["learning_status"]) == "model_consensus"
+            ),
+            "latest_outcome": str(consensus_row["outcome"]) if consensus_row is not None else "missing",
+            "consensus_hash_matches": bool(
+                consensus_row is not None
+                and str(consensus_row["candidate_sha256"]) == actual_content_sha256
+            ),
+            "required_trust_level": "L1",
+            "interpretation": "Model consensus is required before L2, but is not proof of truth.",
+        }
         claim_records = extract_candidate_claims(candidate_content, candidate_id)
         # Source examples and URL-labelled reference opinions are evidence, not
         # executable proof for durable promotion. Every claim must be covered by
@@ -669,7 +690,11 @@ def record_candidate_test_results(
             claim_coverage["issues"] = sorted(set([
                 *claim_coverage["issues"], "candidate_content_sha256_mismatch"
             ]))
-        promotion_eligible = tests_passed and content_hash_matches and claim_coverage["complete"]
+        claim_coverage["model_consensus_gate"] = model_consensus_gate
+        promotion_eligible = (
+            tests_passed and content_hash_matches and claim_coverage["complete"]
+            and model_consensus_gate["passed"]
+        )
         candidate_status = (
             "passed" if promotion_eligible
             else "failed" if not tests_passed
@@ -680,6 +705,11 @@ def record_candidate_test_results(
                 *claim_coverage["missing_claim_ids"], *claim_coverage["issues"]
             ]))
             failure_reason = "Claim test coverage incomplete: " + ", ".join(blockers)
+        elif tests_passed and not model_consensus_gate["passed"]:
+            failure_reason = (
+                "Model-consensus gate incomplete: at least two distinct supporting models "
+                "and a matching recorded source are required before L2 promotion."
+            )
         # Preserve every validated submission in append-only run history so a
         # later retry does not overwrite earlier passing/failed/blocked attempts.
         suite_digest = hashlib.sha256(plan_json.encode("utf-8")).hexdigest()
@@ -704,6 +734,7 @@ def record_candidate_test_results(
             {
                 "promotion_eligible": promotion_eligible,
                 "content_hash_matches": content_hash_matches,
+                "model_consensus_gate": model_consensus_gate,
                 "claim_coverage": claim_coverage,
                 "runner_labels_source": "reported by the caller; this recorder does not independently attest execution",
                 "duration_attested": False,
@@ -726,13 +757,28 @@ def record_candidate_test_results(
         conn.execute(
             """UPDATE temporary_knowledge_candidates
                SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,
+                   trust_level=CASE WHEN ? THEN 'L-1' WHEN ? THEN 'L2' ELSE trust_level END,
+                   learning_status=CASE
+                       WHEN ? THEN 'failed'
+                       WHEN ? THEN 'tested'
+                       ELSE learning_status
+                   END,
                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-            (candidate_status, plan_json, results_json, failure_reason, candidate_id),
+            (candidate_status, plan_json, results_json, failure_reason,
+             not tests_passed, promotion_eligible, not tests_passed, promotion_eligible, candidate_id),
+        )
+        source_row = conn.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?",
+            (candidate["job_id"],),
+        ).fetchone()
+        raw_source = str(source_row["content"] or "") if source_row else ""
+        source_url_value = next(
+            (url for url in candidate_source_urls if isinstance(url, str) and url.startswith(("https://", "http://"))),
+            "",
         )
         if promotion_eligible:
-            # run_job() already stores the generated lesson as an unverified knowledge row.
-            # Upgrade that row in place so the unique job_id constraint is respected and
-            # we do not create duplicate versions of the same lesson.
+            # A matching L1 consensus plus a complete passing claim-mapped suite
+            # creates L2 tested knowledge; keep the source and version history.
             existing_knowledge = conn.execute(
                 "SELECT id, version FROM knowledge_items WHERE job_id=?",
                 (candidate["job_id"],),
@@ -741,9 +787,12 @@ def record_candidate_test_results(
                 knowledge_id = int(existing_knowledge["id"])
                 conn.execute(
                     """UPDATE knowledge_items
-                       SET topic=?, content=?, source_kind=?, status='verified'
+                       SET topic=?, content=?, source_kind=?, status='verified',
+                           trust_level='L2', learning_status='tested',
+                           source_url=?, raw_content=?
                        WHERE id=?""",
-                    (candidate["topic"], candidate["content"], candidate["source_kind"], knowledge_id),
+                    (candidate["topic"], candidate["content"], candidate["source_kind"],
+                     source_url_value, raw_source, knowledge_id),
                 )
             else:
                 latest = conn.execute(
@@ -751,17 +800,66 @@ def record_candidate_test_results(
                     (candidate["topic"],),
                 ).fetchone()
                 cur = conn.execute(
-                    """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
-                       VALUES (?, ?, ?, ?, 'verified', ?)""",
+                    """INSERT INTO knowledge_items(
+                           topic, content, source_kind, version, status, job_id,
+                           trust_level, learning_status, domain, source_url, raw_content
+                       ) VALUES (?, ?, ?, ?, 'verified', ?, 'L2', 'tested', '', ?, ?)""",
                     (candidate["topic"], candidate["content"], candidate["source_kind"],
-                     int(latest["version"]) + 1, candidate["job_id"]),
+                     int(latest["version"]) + 1, candidate["job_id"], source_url_value, raw_source),
                 )
                 knowledge_id = int(cur.lastrowid)
             conn.execute(
                 """UPDATE temporary_knowledge_candidates
-                   SET promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                   SET promoted_knowledge_id=?, trust_level='L2', learning_status='tested',
+                       updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (knowledge_id, candidate_id),
             )
+            supersedes_candidate_id = candidate["supersedes_candidate_id"]
+            if supersedes_candidate_id is not None:
+                parent = conn.execute(
+                    "SELECT id, topic, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+                    (supersedes_candidate_id,),
+                ).fetchone()
+                if parent is not None:
+                    conn.execute(
+                        """UPDATE temporary_knowledge_candidates
+                           SET learning_status='superseded', replaced_by_candidate_id=?,
+                               updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (candidate_id, int(supersedes_candidate_id)),
+                    )
+                    if parent["promoted_knowledge_id"] is not None:
+                        conn.execute(
+                            """UPDATE knowledge_items
+                               SET status='superseded', learning_status='superseded',
+                                   replacement_knowledge_id=?
+                               WHERE id=?""",
+                            (knowledge_id, parent["promoted_knowledge_id"]),
+                        )
+                        conn.execute(
+                            "UPDATE knowledge_items SET predecessor_knowledge_id=? WHERE id=?",
+                            (parent["promoted_knowledge_id"], knowledge_id),
+                        )
+                    conn.execute(
+                        """INSERT INTO learning_experiences(
+                               topic, problem, hypothesis, status, source_evidence_json,
+                               test_plan_json, test_results_json, takeaway
+                           ) VALUES (?, ?, ?, 'verified', ?, ?, ?, ?)""",
+                        (
+                            str(parent["topic"]),
+                            f"successful_alternative: نامزد {candidate_id} جایگزین نامزد {supersedes_candidate_id} شد.",
+                            "راه‌حل جایگزین پس از اجماع L1 و آزمون‌های نگاشت‌شده پذیرفته شد.",
+                            json.dumps([{"parent_candidate_id": int(supersedes_candidate_id)}], ensure_ascii=False),
+                            plan_json, results_json,
+                            f"دانش جایگزین در knowledge_items id={knowledge_id} ذخیره شد؛ دانش پیشین حفظ و superseded شد.",
+                        ),
+                    )
+                    conn.execute(
+                        """UPDATE knowledge_self_correction_attempts
+                           SET status='resolved', details_json=?
+                           WHERE candidate_id=? AND alternative_candidate_id=? AND status='alternative_created'""",
+                        (json.dumps({"knowledge_id": knowledge_id, "test_suite_sha256": suite_digest}, ensure_ascii=False),
+                         int(supersedes_candidate_id), candidate_id),
+                    )
             conn.execute(
                 """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
                    VALUES (?, 'candidate_test_results', ?, ?, ?)""",
@@ -775,8 +873,9 @@ def record_candidate_test_results(
             # A failed lab test downgrades evidence-only entries to unverified and
             # preserves the concrete failure as a learning experience.
             conn.execute(
-                """UPDATE knowledge_items SET status='unverified'
-                   WHERE job_id=? AND status='evidence_reviewed_no_lab'""",
+                """UPDATE knowledge_items
+                   SET status='unverified', trust_level='L-1', learning_status='failed'
+                   WHERE job_id=? AND status!='superseded'""",
                 (candidate["job_id"],),
             )
             source_urls = json.loads(candidate["source_urls_json"])

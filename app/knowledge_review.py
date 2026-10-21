@@ -46,9 +46,11 @@ def record_review_attempt(
         raise ValueError("details exceed the storage limit.")
     init_databases()
     with learning_connection() as conn:
-        if conn.execute(
-            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
-        ).fetchone() is None:
+        candidate_state = conn.execute(
+            """SELECT trust_level, learning_status, supersedes_candidate_id, replaced_by_candidate_id
+               FROM temporary_knowledge_candidates WHERE id=?""", (candidate_id,)
+        ).fetchone()
+        if candidate_state is None:
             raise KeyError(candidate_id)
         cursor = conn.execute(
             """INSERT INTO knowledge_review_attempts(
@@ -747,8 +749,12 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
             (candidate_id,),
         ).fetchall()
     confidence = calculate_knowledge_confidence(candidate_id)
+    from .learning_consensus import latest_candidate_consensus
+    consensus = latest_candidate_consensus(candidate_id)
     return {
         "candidate_id": candidate_id,
+        "trust": dict(candidate_state),
+        "consensus": consensus,
         "evidence": [dict(row) for row in evidence],
         "peer_consultations": [dict(row) for row in peers],
         "user_application_feedback": [dict(row) for row in feedback],

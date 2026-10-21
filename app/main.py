@@ -327,6 +327,10 @@ class KnowledgeApplicationFeedbackRequest(BaseModel):
     observed_output: str = Field(default="", max_length=12000)
     test_steps: str = Field(default="", max_length=6000)
 
+
+class HumanKnowledgeVerificationRequest(BaseModel):
+    rationale: str = Field(min_length=1, max_length=2000)
+
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
 
@@ -545,6 +549,63 @@ def learning_candidate_feedback(
         raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/consensus")
+def learning_candidate_consensus(candidate_id: int) -> dict[str, Any]:
+    from .learning_consensus import evaluate_candidate_consensus
+    try:
+        return evaluate_candidate_consensus(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/self-correct", status_code=201)
+def self_correct_learning_candidate(candidate_id: int) -> dict[str, Any]:
+    from .learning_consensus import start_self_correction
+    try:
+        return start_self_correction(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/human-verify")
+def human_verify_knowledge(candidate_id: int, request: HumanKnowledgeVerificationRequest) -> dict[str, Any]:
+    rationale = request.rationale.strip()
+    if not rationale:
+        raise HTTPException(status_code=422, detail="Human verification rationale is required.")
+    from .db import init_databases
+    init_databases()
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            """SELECT id, job_id, promoted_knowledge_id, trust_level, learning_status
+               FROM temporary_knowledge_candidates WHERE id=?""", (candidate_id,)
+        ).fetchone()
+        if candidate is None:
+            raise HTTPException(status_code=404, detail="Knowledge candidate not found.")
+        if candidate["promoted_knowledge_id"] is None or candidate["learning_status"] != "tested" or candidate["trust_level"] != "L2":
+            raise HTTPException(status_code=409, detail="Only L2 tested knowledge can be explicitly human-verified.")
+        conn.execute(
+            """UPDATE temporary_knowledge_candidates SET trust_level='L3',
+               learning_status='human_verified', updated_at=CURRENT_TIMESTAMP WHERE id=?""", (candidate_id,)
+        )
+        conn.execute(
+            "UPDATE knowledge_items SET trust_level='L3', learning_status='human_verified' WHERE id=?",
+            (candidate["promoted_knowledge_id"],),
+        )
+        conn.execute(
+            """INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+               SELECT job_id, 'human_verification', ?, content_sha256, ?
+               FROM temporary_knowledge_candidates WHERE id=?""",
+            (f"knowledge_items:{candidate['promoted_knowledge_id']}", rationale, candidate_id),
+        )
+    return {"candidate_id": candidate_id, "knowledge_id": int(candidate["promoted_knowledge_id"]),
+            "trust_level": "L3", "learning_status": "human_verified",
+            "rationale": rationale, "explicit_human_action": True}
 
 
 @app.post("/api/learning/candidates/{candidate_id}/research")
