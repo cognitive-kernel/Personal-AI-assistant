@@ -214,7 +214,7 @@ def record_peer_consultation(
         ("response", response, 30000), ("model_name", model_name, 200),
         ("independence_note", independence_note, 2000), ("prompt_version", prompt_version, 100),
     ):
-        if not isinstance(value, str) or not value.strip() and name in {"provider", "prompt", "response"}:
+        if not isinstance(value, str) or not value.strip() and name in {"provider", "prompt", "response", "prompt_version"}:
             raise ValueError(f"{name} must not be empty.")
         if len(value) > maximum:
             raise ValueError(f"{name} exceeds its size limit.")
@@ -251,8 +251,8 @@ def record_peer_consultation(
         )
         row = conn.execute(
             """SELECT * FROM knowledge_peer_consultations
-               WHERE candidate_id=? AND provider=? AND model_name=? AND response_sha256=?""",
-            (candidate_id, provider.strip(), model_name.strip(), digest),
+               WHERE candidate_id=? AND provider=? AND model_name=? AND response_sha256=? AND prompt_version=?""",
+            (candidate_id, provider.strip(), model_name.strip(), digest, prompt_version.strip()),
         ).fetchone()
     return dict(row)
 

@@ -702,7 +702,37 @@ LEARNING_MIGRATIONS = (
         23,
         "version-learning-peer-prompts",
         (
-            "ALTER TABLE knowledge_peer_consultations ADD COLUMN prompt_version TEXT NOT NULL DEFAULT 'legacy_unversioned' CHECK(length(prompt_version) BETWEEN 1 AND 100)",
+            "DROP INDEX IF EXISTS idx_peer_consultations_candidate",
+            "ALTER TABLE knowledge_peer_consultations RENAME TO knowledge_peer_consultations_legacy_v22",
+            """CREATE TABLE knowledge_peer_consultations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL,
+                response TEXT NOT NULL,
+                claims_json TEXT NOT NULL DEFAULT '[]',
+                citations_json TEXT NOT NULL DEFAULT '[]',
+                stance TEXT NOT NULL DEFAULT 'mixed'
+                    CHECK(stance IN ('supports','contradicts','mixed','insufficient_evidence')),
+                independence_note TEXT NOT NULL DEFAULT '',
+                response_sha256 TEXT NOT NULL CHECK(length(response_sha256) = 64),
+                prompt_version TEXT NOT NULL DEFAULT 'legacy_unversioned'
+                    CHECK(length(prompt_version) BETWEEN 1 AND 100),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, provider, model_name, response_sha256, prompt_version)
+            )""",
+            """INSERT INTO knowledge_peer_consultations(
+                id, candidate_id, provider, model_name, prompt, response, claims_json,
+                citations_json, stance, independence_note, response_sha256,
+                prompt_version, created_at
+            )
+            SELECT id, candidate_id, provider, model_name, prompt, response, claims_json,
+                   citations_json, stance, independence_note, response_sha256,
+                   'legacy_unversioned', created_at
+            FROM knowledge_peer_consultations_legacy_v22""",
+            "DROP TABLE knowledge_peer_consultations_legacy_v22",
+            "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
             "CREATE INDEX idx_knowledge_peer_prompt_version ON knowledge_peer_consultations(candidate_id, prompt_version, id DESC)",
         ),
     ),

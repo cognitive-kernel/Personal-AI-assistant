@@ -93,21 +93,43 @@ def test_model_disagreement_sets_l_minus_one_and_records_failure_experience(tmp_
     assert str(candidate_id) in experience["problem"]
 
 
-def test_legacy_peer_prompt_votes_do_not_count_in_current_consensus(tmp_path, monkeypatch):
+def test_legacy_peer_prompt_votes_are_ignored_until_new_version_is_recorded(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch)
     _vote(candidate_id, "peer-a", "large-model-a", "supports", "Current prompt vote.")
+    shared_response = "Supports this bounded claim for the stated test fixture."
     record_peer_consultation(
         candidate_id, provider="peer-b", model_name="large-model-b",
-        prompt="Legacy unversioned prompt.", response="Supports an older version of the claim.",
+        prompt="Legacy peer-review-v1 prompt.", response=shared_response,
         stance="supports", prompt_version="learning-peer-review-v1",
     )
 
-    result = evaluate_candidate_consensus(candidate_id)
+    insufficient = evaluate_candidate_consensus(candidate_id)
+    assert insufficient["outcome"] == "insufficient_evidence"
+    assert insufficient["supporting_count"] == 1
 
-    assert result["outcome"] == "insufficient_evidence"
-    assert result["supporting_count"] == 1
-    assert result["prompt_version"] == "learning-peer-review-v2"
-    assert all(vote["prompt_version"] == "learning-peer-review-v2" for vote in result["votes"])
+    # The same model may legitimately return the same response under the new prompt.
+    # Both raw records must be preserved; uniqueness includes prompt_version.
+    record_peer_consultation(
+        candidate_id, provider="peer-b", model_name="large-model-b",
+        prompt="PROMPT_VERSION: learning-peer-review-v2\nCurrent prompt.",
+        response=shared_response, stance="supports",
+        prompt_version="learning-peer-review-v2",
+    )
+    current = evaluate_candidate_consensus(candidate_id)
+    assert current["outcome"] == "model_consensus"
+    assert current["supporting_count"] == 2
+    assert current["prompt_version"] == "learning-peer-review-v2"
+    assert all(vote["prompt_version"] == "learning-peer-review-v2" for vote in current["votes"])
+    with db.learning_connection() as connection:
+        history = connection.execute(
+            """SELECT prompt_version FROM knowledge_peer_consultations
+               WHERE candidate_id=? AND provider='peer-b' AND model_name='large-model-b'
+               ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()
+    assert [row["prompt_version"] for row in history] == [
+        "learning-peer-review-v1", "learning-peer-review-v2"
+    ]
 
 
 def test_consensus_requires_a_recorded_original_source(tmp_path, monkeypatch):
