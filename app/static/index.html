@@ -672,6 +672,9 @@ async function refreshLearningCandidates(selectedId=null, requestedPage=learning
   });
   if(selectedId!==null && [...select.options].some(option=>option.value===String(selectedId))) select.value=String(selectedId);
   el("research-learning-candidate").disabled=!select.value;
+  if(el("learning-candidate-consensus")) el("learning-candidate-consensus").disabled=!select.value;
+  if(el("learning-candidate-self-correct")) el("learning-candidate-self-correct").disabled=!select.value;
+  if(el("learning-candidate-human-verify")) el("learning-candidate-human-verify").disabled=!select.value;
   if(select.value) await refreshLearningCandidateReview();
   else output.textContent="نامزد موقتی برای بازبینی وجود ندارد.";
  } catch(error) { output.textContent="بارگذاری نامزدها ناموفق بود: "+error.message; }
@@ -688,12 +691,64 @@ async function refreshLearningCandidateReview() {
    api("/api/learning/candidates/"+encodeURIComponent(id)+"/claims")
   ]);
   output.textContent=JSON.stringify({review,claim_verification_matrix:claimMatrix},null,2);
+  const trust=review.trust||{};
+  if(el("learning-candidate-consensus")) el("learning-candidate-consensus").disabled=!id;
+  if(el("learning-candidate-self-correct")) el("learning-candidate-self-correct").disabled=!(
+   trust.trust_level==="L-1" || ["failed","conflicting"].includes(trust.learning_status)
+  );
+  if(el("learning-candidate-human-verify")) el("learning-candidate-human-verify").disabled=!(
+   trust.trust_level==="L2" && trust.learning_status==="tested"
+  );
  } catch(error) { output.textContent="دریافت گزارش شواهد یا ماتریس ادعا ناموفق بود: "+error.message; }
 }
 el("refresh-learning-candidates")?.addEventListener("click",()=>refreshLearningCandidates(null,1));
 el("learning-candidate-prev")?.addEventListener("click",()=>refreshLearningCandidates(null,learningCandidatePage-1));
 el("learning-candidate-next")?.addEventListener("click",()=>refreshLearningCandidates(null,learningCandidatePage+1));
 el("learning-candidate-select")?.addEventListener("change",()=>refreshLearningCandidateReview());
+el("learning-candidate-consensus")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ if(!id) return;
+ const button=el("learning-candidate-consensus");button.disabled=true;
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/consensus",{method:"POST"});
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="محاسبه اجماع ناموفق بود: "+error.message;
+ } finally {button.disabled=!el("learning-candidate-select").value;}
+});
+el("learning-candidate-self-correct")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ if(!id) return;
+ const button=el("learning-candidate-self-correct");button.disabled=true;
+ el("learning-candidate-review").textContent="در حال ساخت جایگزین؛ خروجی تازه از سطح L0 شروع می‌شود…";
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/self-correct",{method:"POST"});
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(result.alternative_candidate_id||id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="خودتصحیح ناموفق بود: "+error.message;
+ } finally {button.disabled=!el("learning-candidate-select").value;}
+});
+el("learning-candidate-human-verify")?.addEventListener("click",async()=>{
+ const id=el("learning-candidate-select").value;
+ const rationale=el("learning-human-verify-rationale")?.value?.trim()||"";
+ if(!id||!rationale) {
+  el("learning-candidate-review").textContent="برای تأیید انسانی، یک نامزد و دلیل صریح لازم است.";
+  return;
+ }
+ if(!confirm("این اقدام سطح اعتماد دانش را از L2 به L3 تغییر می‌دهد. ادامه می‌دهید؟")) return;
+ const button=el("learning-candidate-human-verify");button.disabled=true;
+ try {
+  const result=await api("/api/learning/candidates/"+encodeURIComponent(id)+"/human-verify",{
+   method:"POST",body:JSON.stringify({rationale})
+  });
+  el("learning-candidate-review").textContent=JSON.stringify(result,null,2);
+  await refreshLearningCandidates(id);
+ } catch(error) {
+  el("learning-candidate-review").textContent="تأیید انسانی ناموفق بود: "+error.message;
+ } finally {button.disabled=!el("learning-candidate-select").value;}
+});
 el("research-learning-candidate")?.addEventListener("click",async()=>{
  const id=el("learning-candidate-select").value;
  if(!id) return;
