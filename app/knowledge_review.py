@@ -368,6 +368,11 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
                WHERE candidate_id=?""",
             (candidate_id,),
         ).fetchall()
+        test_runs = conn.execute(
+            """SELECT suite_sha256, run_status, suite_name, suite_version, oracle_url, duration_ms
+               FROM knowledge_test_runs WHERE candidate_id=?""",
+            (candidate_id,),
+        ).fetchall()
 
     def domain(url: str) -> str:
         try:
@@ -386,20 +391,24 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
     partial_contexts = {row["application_context"] for row in feedback if row["outcome"] == "partial"}
 
     test_score = 40 if candidate["status"] == "passed" and candidate["test_results_json"] else 0
+    passed_scoped_suites = {row["suite_sha256"] for row in test_runs if row["run_status"] == "passed"}
+    failed_scoped_suites = {row["suite_sha256"] for row in test_runs if row["run_status"] == "failed"}
+    scoped_test_score = min(10, 5 * len(passed_scoped_suites))
+    scoped_test_penalty = min(10, 5 * len(failed_scoped_suites))
     source_score = min(20, 10 * len(support_domains))
     peer_score = min(10, 5 * len(peer_supporters))
     user_score = min(30, 15 * len(successful_contexts)) + min(5, 2 * len(partial_contexts))
     contradiction_penalty = min(20, 10 * len(contradiction_domains))
     peer_penalty = min(10, 5 * len(peer_contradictors))
     user_failure_penalty = min(20, 10 * len(failed_contexts))
-    raw_score = test_score + source_score + peer_score + user_score - contradiction_penalty - peer_penalty - user_failure_penalty
+    raw_score = test_score + scoped_test_score + source_score + peer_score + user_score - contradiction_penalty - peer_penalty - user_failure_penalty - scoped_test_penalty
     score = max(0, min(100, raw_score))
     methods = []
     if evidence:
         methods.append("internet_sources")
     if peers:
         methods.append("peer_ai_consultation")
-    if candidate["test_results_json"]:
+    if candidate["test_results_json"] or test_runs:
         methods.append("isolated_or_deterministic_tests")
     if feedback:
         methods.append("real_world_user_feedback")
@@ -410,6 +419,8 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
         "verification_methods": methods,
         "components": {
             "automated_tests": test_score,
+            "scoped_source_example_tests": scoped_test_score,
+            "failed_scoped_test_penalty": scoped_test_penalty,
             "independent_supporting_domains": source_score,
             "peer_ai_support": peer_score,
             "successful_real_world_applications": user_score,
@@ -424,6 +435,8 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
             "contradicting_peer_providers": len(peer_contradictors),
             "successful_user_contexts": len(successful_contexts),
             "failed_user_contexts": len(failed_contexts),
+            "passed_scoped_test_suites": len(passed_scoped_suites),
+            "failed_scoped_test_suites": len(failed_scoped_suites),
         },
         "verification_status": (
             "tested_in_declared_scope" if candidate["status"] == "passed" and test_score
@@ -472,6 +485,7 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
         "evidence": [dict(row) for row in evidence],
         "peer_consultations": [dict(row) for row in peers],
         "user_application_feedback": [dict(row) for row in feedback],
+        "test_runs": [dict(row) for row in test_runs],
         "distinct_peer_providers": int(peer_count),
         "verification_status": confidence["verification_status"],
         "confidence": confidence,
