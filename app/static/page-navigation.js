@@ -26,7 +26,7 @@
   const degradedBanner = document.getElementById("storage-degraded-banner");
   if (refreshButton) refreshButton.hidden = !isStoragePage;
   if (healthOutput) healthOutput.hidden = !isStoragePage;
-  if (degradedBanner) degradedBanner.hidden = !isStoragePage || !degradedBanner.hasAttribute("data-active");
+  if (degradedBanner && !isStoragePage) degradedBanner.hidden = true;
 
   for (const link of links) {
     const id = link.dataset.page;
