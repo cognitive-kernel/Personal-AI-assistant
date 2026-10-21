@@ -374,6 +374,13 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
             (candidate_id,),
         ).fetchall()
 
+    try:
+        full_test_results = json.loads(candidate["test_results_json"] or "[]")
+        if not isinstance(full_test_results, list):
+            full_test_results = []
+    except (TypeError, json.JSONDecodeError):
+        full_test_results = []
+
     def domain(url: str) -> str:
         try:
             return (urllib.parse.urlsplit(url).hostname or "").lower().removeprefix("www.")
@@ -390,7 +397,7 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
     failed_contexts = {row["application_context"] for row in feedback if row["outcome"] == "failed"}
     partial_contexts = {row["application_context"] for row in feedback if row["outcome"] == "partial"}
 
-    test_score = 40 if candidate["status"] == "passed" and candidate["test_results_json"] else 0
+    test_score = 40 if candidate["status"] == "passed" and full_test_results else 0
     passed_scoped_suites = {row["suite_sha256"] for row in test_runs if row["run_status"] == "passed"}
     failed_scoped_suites = {row["suite_sha256"] for row in test_runs if row["run_status"] == "failed"}
     scoped_test_score = min(10, 5 * len(passed_scoped_suites))
@@ -408,7 +415,7 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
         methods.append("internet_sources")
     if peers:
         methods.append("peer_ai_consultation")
-    if candidate["test_results_json"] or test_runs:
+    if full_test_results or test_runs:
         methods.append("isolated_or_deterministic_tests")
     if feedback:
         methods.append("real_world_user_feedback")
@@ -444,7 +451,7 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
             else "partial_scope_tested"
             if passed_scoped_suites
             else "evidence_reviewed_no_lab"
-            if (evidence or peers) and not candidate["test_results_json"]
+            if (evidence or peers) and not full_test_results
             and not any(row["run_status"] in {"passed", "failed"} for row in test_runs)
             else "unverified"
         ),
