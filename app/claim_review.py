@@ -108,7 +108,7 @@ def review_answer_claims(
             ],
             "options": {
                 "temperature": 0,
-                "num_ctx": min(limits["num_ctx"], 4096),
+                "num_ctx": limits["num_ctx"],
                 "num_thread": limits["cpu_threads"],
                 "num_predict": 1000,
             },
