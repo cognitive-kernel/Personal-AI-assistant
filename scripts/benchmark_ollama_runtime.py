@@ -126,11 +126,14 @@ def run_benchmark(
         "total_ram_gb": before["total_ram_gb"],
         "available_ram_gb": before["available_ram_gb"],
     })
+    residency_settings = settings
+    if keep_alive_override == "auto":
+        residency_settings = {**settings, f"{purpose}_model_keep_alive": "auto"}
     keep_alive = (
         hardware.model_keep_alive(purpose, {
             "total_ram_gb": before["total_ram_gb"],
             "available_ram_gb": before["available_ram_gb"],
-        }, settings)
+        }, residency_settings)
         if keep_alive_override in (None, "auto")
         else keep_alive_override
     )
