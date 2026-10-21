@@ -19,3 +19,13 @@ def test_chat_ui_uses_persistent_research_queue_and_polls_task_result():
     assert '"/api/tasks/"+task.id+"/resume"' in page
     assert '"/api/tasks/"+task.id+"/cancel"' in page
     assert 'در حال پاسخ‌گویی' not in page
+
+def test_task_manager_ui_exposes_confirmed_deletion_for_inactive_tasks():
+    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'textContent="حذف وظیفه"' in page
+    assert 'api("/api/tasks/"+encodeURIComponent(task.id),{method:"DELETE"})' in page
+    assert '["queued","paused","cancelled","succeeded","failed"].includes(task.status)' in page
+    assert 'window.confirm("وظیفهٔ #"+task.id' in page
+
