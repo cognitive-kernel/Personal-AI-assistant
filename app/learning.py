@@ -686,6 +686,49 @@ def record_candidate_test_results(
                 *claim_coverage["missing_claim_ids"], *claim_coverage["issues"]
             ]))
             failure_reason = "Claim test coverage incomplete: " + ", ".join(blockers)
+        # Preserve every validated submission in append-only run history so a
+        # later retry does not overwrite earlier passing/failed/blocked attempts.
+        suite_digest = hashlib.sha256(plan_json.encode("utf-8")).hexdigest()
+        runner_labels = sorted({str(item["runner"]) for item in test_results})
+        recorded_oracle_url = next(
+            (
+                item["oracle_ref"] for item in test_plan
+                if isinstance(item.get("oracle_ref"), str)
+                and item["oracle_ref"].startswith("https://")
+            ),
+            "",
+        )
+        expected_run_json = json.dumps(
+            [{"test": item["test"], "expected": item["expected"]} for item in test_results],
+            ensure_ascii=False, allow_nan=False,
+        )
+        actual_run_json = json.dumps(
+            [{"test": item["test"], "actual": item["actual"]} for item in test_results],
+            ensure_ascii=False, allow_nan=False,
+        )
+        run_details = json.dumps(
+            {
+                "promotion_eligible": promotion_eligible,
+                "content_hash_matches": content_hash_matches,
+                "claim_coverage": claim_coverage,
+                "runner_labels_source": "reported by the caller; this recorder does not independently attest execution",
+                "duration_attested": False,
+            },
+            ensure_ascii=False, sort_keys=True,
+        )
+        conn.execute(
+            """INSERT INTO knowledge_test_runs(
+                   candidate_id, suite_name, suite_version, suite_sha256, source_sha256,
+                   oracle_url, runner_name, run_status, expected_json, actual_json,
+                   duration_ms, details
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+            (
+                candidate_id, "claim-mapped-candidate-suite", "claim-test-coverage-v1",
+                suite_digest, actual_content_sha256, recorded_oracle_url,
+                ",".join(runner_labels)[:120], "passed" if tests_passed else "failed",
+                expected_run_json, actual_run_json, run_details,
+            ),
+        )
         conn.execute(
             """UPDATE temporary_knowledge_candidates
                SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,

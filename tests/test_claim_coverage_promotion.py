@@ -105,6 +105,18 @@ def test_all_tests_passing_does_not_promote_when_any_claim_is_unmapped(tmp_path,
         assert conn.execute(
             "SELECT COUNT(*) FROM learning_evidence WHERE evidence_type='candidate_test_coverage_block'"
         ).fetchone()[0] == 1
+        run = conn.execute(
+            """SELECT suite_name, suite_version, source_sha256, run_status, details
+               FROM knowledge_test_runs WHERE candidate_id=? ORDER BY id DESC LIMIT 1""",
+            (candidate_id,),
+        ).fetchone()
+        assert run["suite_name"] == "claim-mapped-candidate-suite"
+        assert run["suite_version"] == "claim-test-coverage-v1"
+        assert run["source_sha256"] == recorded["actual_content_sha256"]
+        assert run["run_status"] == "passed"
+        run_details = json.loads(run["details"])
+        assert run_details["promotion_eligible"] is False
+        assert run_details["runner_labels_source"].startswith("reported by the caller")
 
 
 def test_passing_tests_with_unknown_claim_mapping_cannot_promote(tmp_path, monkeypatch):
