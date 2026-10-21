@@ -49,6 +49,21 @@ def test_research_route_queues_validated_persistent_task(tmp_path, monkeypatch):
     assert captured["options"]["max_attempts"] == 1
 
 
+def test_chat_conversation_delete_api_removes_messages_and_returns_404_afterward(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post("/api/conversations")
+        conversation_id = created.json()["conversation"]["id"]
+        listed = client.get(f"/api/conversations/{conversation_id}/messages")
+        assert listed.status_code == 200
+
+        deleted = client.delete(f"/api/conversations/{conversation_id}")
+        assert deleted.status_code == 200
+        assert deleted.json() == {"deleted": True, "conversation_id": conversation_id}
+        assert client.get(f"/api/conversations/{conversation_id}/messages").status_code == 404
+        assert client.delete(f"/api/conversations/{conversation_id}").status_code == 404
+
+
 def test_research_route_rejects_non_loopback_clients(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     with TestClient(app, client=("192.0.2.10", 12345)) as client:
