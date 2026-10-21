@@ -116,7 +116,11 @@ def evaluate_claim_test_coverage(
         "unknown_claim_ids": unknown_claim_ids,
         "claim_to_tests": mapping,
         "issues": issues,
-        "mapping_is_explicit": True,
+        "mapping_is_explicit": (
+            bool(tests)
+            and "test_has_no_explicit_claim_mapping" not in issues
+            and "mapped_claim_id_must_be_nonempty_string" not in issues
+        ),
         "semantic_test_adequacy_independently_verified": False,
         "interpretation": (
             "A complete mapping is a structural prerequisite only. Test-to-claim relevance "
