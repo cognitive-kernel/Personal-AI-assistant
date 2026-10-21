@@ -10,7 +10,8 @@ from typing import Any
 from . import learning
 from .db import learning_connection
 from . import task_manager
-from .task_worker import PermanentTaskError, TaskContext
+from . import ollama
+from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
 LEARNING_TASK_TYPE = "learning.run_job"
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
@@ -117,7 +118,17 @@ def handle_learning_job(
         )
 
     context.checkpoint({"phase": "learning_queued", "job_id": job_id})
-    learning.run_job(job_id)
+    try:
+        learning.run_job(job_id)
+    except learning.LearningError as exc:
+        cause = exc.__cause__
+        if isinstance(cause, ollama.OllamaError):
+            if cause.retryable:
+                raise RetryableTaskError("Learning model request failed; retry may succeed.") from exc
+            raise PermanentTaskError("Learning model configuration or policy is invalid.") from exc
+        if isinstance(cause, (ValueError, TypeError, KeyError, AssertionError)):
+            raise PermanentTaskError("Learning job failed because of invalid input or an internal invariant.") from exc
+        raise RetryableTaskError("Learning job execution failed; retry may succeed.") from exc
 
     result = learning.get_job(job_id)
     status = result["status"]
