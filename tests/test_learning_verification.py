@@ -8,7 +8,7 @@ from app.learning_verification import (
 from app.knowledge_review import get_candidate_review_summary
 
 
-def _candidate(tmp_path, monkeypatch, lesson, source_text=None, source_url="https://docs.example.org/tutorial"):
+def _candidate(tmp_path, monkeypatch, lesson, source_text=None, source_url="https://docs.python.org/3/tutorial/index.html"):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
@@ -253,3 +253,26 @@ def test_fenced_source_assertions_run_in_sandbox_without_promoting_lesson(tmp_pa
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()[0]
     assert status == "awaiting_test"
+
+
+
+def test_untrusted_https_domain_cannot_be_used_as_source_test_oracle(tmp_path, monkeypatch):
+    candidate_id = _candidate(
+        tmp_path, monkeypatch,
+        "A runnable example:\n\n>>> 1 + 1\n2\n",
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE temporary_knowledge_candidates SET source_urls_json=? WHERE id=?",
+            (json.dumps(["https://python.org.attacker.example/tutorial"]), candidate_id),
+        )
+
+    result = run_candidate_source_doctests(candidate_id)
+
+    assert result["status"] == "missing_source_oracle"
+    assert result["tests"] == 0
+    assert result["promoted"] is False
+    with db.learning_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_test_runs WHERE candidate_id=?", (candidate_id,)
+        ).fetchone()[0] == 0
