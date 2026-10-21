@@ -920,6 +920,7 @@ def record_candidate_test_results(
         ).fetchone()
         result = dict(final)
         result["claim_coverage"] = claim_coverage
+        result["model_consensus_gate"] = model_consensus_gate
         result["tests_passed"] = tests_passed
         result["content_hash_matches"] = content_hash_matches
         result["actual_content_sha256"] = actual_content_sha256
