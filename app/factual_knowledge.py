@@ -325,43 +325,80 @@ def list_retrievable_claims(
     connection: sqlite3.Connection,
     *,
     limit: int = 100,
+    domain: str = "python",
+    environment_name: str | None = None,
+    environment_version: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Return only fresh, active, source-backed L2/L3 claims eligible for RAG.
+    """Return fresh, active, source-backed L2/L3 claims eligible for RAG.
 
-    This is a strict eligibility filter, not a semantic retriever and not proof
-    that a claim is true. Unverified, failed, conflicting, superseded, stale,
-    source-less, or inapplicably tested claims are excluded.
+    Domain is exact. If an environment scope is supplied, both its name and
+    version are required and matched exactly. Unverified, inactive, stale,
+    source-less, untested, or actively contradicted claims fail closed.
     """
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
         raise KnowledgePolicyError("limit must be an integer between 1 and 500")
+    if not isinstance(domain, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", domain):
+        return []
+    if (environment_name is None) != (environment_version is None):
+        return []
+    if environment_name is not None and (
+        not isinstance(environment_name, str)
+        or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", environment_name)
+        or not isinstance(environment_version, str)
+        or not environment_version.strip()
+    ):
+        return []
+
+    conditions = [
+        "k.domain_name = ?",
+        "k.lifecycle_status = 'active'",
+        "k.evidence_level IN ('L2_tested', 'L3_human_verified')",
+        "(k.reverify_after IS NULL OR k.reverify_after > CURRENT_TIMESTAMP)",
+        "(k.risk_level NOT IN ('high', 'critical') OR k.evidence_level = 'L3_human_verified')",
+        """EXISTS (
+            SELECT 1 FROM factual_evidence AS e
+            WHERE e.knowledge_id = k.id
+              AND e.source_type IN ('official_docs', 'source_code', 'human_review')
+              AND length(trim(e.source_ref)) > 0
+              AND length(trim(e.source_hash)) > 0
+        )""",
+        """EXISTS (
+            SELECT 1 FROM factual_tests AS t
+            WHERE t.knowledge_id = k.id
+              AND t.outcome = 'passed'
+              AND t.environment_name = k.environment_name
+              AND t.environment_version = k.environment_version
+        )""",
+        """NOT EXISTS (
+            SELECT 1
+            FROM knowledge_relations AS r
+            JOIN factual_knowledge AS other
+              ON other.id = CASE
+                  WHEN r.knowledge_id = k.id THEN r.related_knowledge_id
+                  ELSE r.knowledge_id
+              END
+            WHERE r.relation_type = 'contradicts'
+              AND (r.knowledge_id = k.id OR r.related_knowledge_id = k.id)
+              AND other.lifecycle_status IN ('active', 'conflicting', 'needs_review')
+        )""",
+    ]
+    params: list[Any] = [domain]
+    if environment_name is not None and environment_version is not None:
+        conditions.extend(["k.environment_name = ?", "k.environment_version = ?"])
+        params.extend([environment_name, environment_version])
+    params.append(limit)
 
     rows = connection.execute(
-        """SELECT k.id, k.claim, k.normalized_claim, k.scope_json, k.environment_name,
-                  k.environment_version, k.evidence_level, k.lifecycle_status,
-                  k.risk_level, k.verified_at, k.reverify_after
+        f"""SELECT k.id, k.claim, k.normalized_claim, k.scope_json, k.domain_name,
+                  k.environment_name, k.environment_version, k.evidence_level,
+                  k.lifecycle_status, k.risk_level, k.verified_at, k.reverify_after
            FROM factual_knowledge AS k
-           WHERE k.domain = 'python'
-             AND k.lifecycle_status = 'active'
-             AND k.evidence_level IN ('L2_tested', 'L3_human_verified')
-             AND (k.reverify_after IS NULL OR k.reverify_after > CURRENT_TIMESTAMP)
-             AND EXISTS (
-                 SELECT 1 FROM factual_evidence AS e
-                 WHERE e.knowledge_id = k.id
-                   AND length(trim(e.source_ref)) > 0
-                   AND length(trim(e.source_hash)) > 0
-             )
-             AND EXISTS (
-                 SELECT 1 FROM factual_tests AS t
-                 WHERE t.knowledge_id = k.id
-                   AND t.outcome = 'passed'
-                   AND t.environment_name = k.environment_name
-                   AND t.environment_version = k.environment_version
-             )
+           WHERE {' AND '.join(conditions)}
            ORDER BY
              CASE k.evidence_level WHEN 'L3_human_verified' THEN 0 ELSE 1 END,
              k.updated_at DESC, k.id DESC
            LIMIT ?""",
-        (limit,),
+        params,
     ).fetchall()
 
     result: list[dict[str, Any]] = []
