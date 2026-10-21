@@ -8,7 +8,7 @@ from app.learning_verification import (
 from app.knowledge_review import get_candidate_review_summary
 
 
-def _candidate(tmp_path, monkeypatch, lesson, source_text=None):
+def _candidate(tmp_path, monkeypatch, lesson, source_text=None, source_url="https://docs.example.org/tutorial"):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
@@ -25,7 +25,7 @@ def _candidate(tmp_path, monkeypatch, lesson, source_text=None):
                    content_sha256, quality_report_json, status
                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'awaiting_test')""",
             (job["id"], job["topic"], lesson, "web_retrieved",
-             json.dumps(["https://docs.example.org/tutorial"]), digest,
+             json.dumps([source_url]), digest,
              json.dumps({"accepted": True})),
         )
     return int(cursor.lastrowid)
@@ -105,6 +105,43 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
     assert summary["confidence"]["components"]["scoped_source_example_tests"] == 5
     assert summary["test_runs"][0]["run_status"] == "passed"
     assert summary["verification_status"] == "partial_scope_tested"
+
+
+def test_allowlisted_source_examples_auto_promote_only_after_sandbox_passes(tmp_path, monkeypatch):
+    lesson = "A runnable example:\\n\\n>>> 1 + 1\\n2\\n"
+    candidate_id = _candidate(
+        tmp_path, monkeypatch, lesson, source_url="https://docs.python.org/3/tutorial/",
+    )
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "d" * 64)
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", "/usr/bin/docker")
+
+    def fake_run_python(source_code, **kwargs):
+        return sandbox.SandboxResult(
+            status="succeeded", exit_code=0,
+            stdout='{"doctest_attempted": 1, "doctest_failed": 0, "assertion_blocks_attempted": 0, "assertion_blocks_failed": 0}\\n',
+            stderr="", duration_ms=11,
+        )
+
+    monkeypatch.setattr("app.learning_verification.sandbox.run_python", fake_run_python)
+    result = run_candidate_source_doctests(candidate_id)
+
+    assert result["passed"] is True
+    assert result["candidate_status"] == "passed"
+    assert result["promoted"] is True
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT promoted_knowledge_id, status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        knowledge = conn.execute(
+            "SELECT status, content FROM knowledge_items WHERE id=?",
+            (candidate["promoted_knowledge_id"],),
+        ).fetchone()
+    assert candidate["status"] == "passed"
+    assert knowledge["status"] == "verified"
+    assert knowledge["content"] == lesson
+    summary = get_candidate_review_summary(candidate_id)
+    assert summary["verification_status"] == "tested_in_declared_scope"
 
 
 def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
