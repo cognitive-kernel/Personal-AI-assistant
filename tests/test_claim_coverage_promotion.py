@@ -39,7 +39,7 @@ def _plan_and_results(candidate_id, mapped_claim_ids):
         plan.append({
             "test": test_name,
             "oracle_kind": "regression_fixture",
-            "oracle_ref": f"tests/fixtures/claim-{index}.json",
+            "oracle_ref": "tests/fixtures/learning/reference-v1.json",
             "expected": expected,
             "oracle_sha256": oracle_sha256,
             "claim_ids": [claim_id],
