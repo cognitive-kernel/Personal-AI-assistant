@@ -199,6 +199,12 @@ class LearningRequest(BaseModel):
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
 
+class KnowledgeApplicationFeedbackRequest(BaseModel):
+    outcome: str = Field(pattern="^(worked|failed|partial|not_tested)$")
+    application_context: str = Field(min_length=1, max_length=3000)
+    observed_output: str = Field(default="", max_length=12000)
+    test_steps: str = Field(default="", max_length=6000)
+
 class SemanticAssessmentReviewRequest(BaseModel):
     confirm: StrictBool
 
@@ -331,6 +337,63 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 @app.get("/api/learning/jobs")
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
+
+
+@app.get("/api/learning/candidates/{candidate_id}/review")
+def learning_candidate_review(candidate_id: int) -> dict[str, Any]:
+    """Return evidence, verification methods, contradictions and confidence breakdown."""
+    from .knowledge_review import get_candidate_review_summary
+    try:
+        return get_candidate_review_summary(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/feedback", status_code=201)
+def learning_candidate_feedback(
+    candidate_id: int, request: KnowledgeApplicationFeedbackRequest
+) -> dict[str, Any]:
+    """Record a user's real-world outcome and return the recalculated evidence score."""
+    from .knowledge_review import record_user_application_feedback, get_candidate_review_summary
+    try:
+        record_user_application_feedback(
+            candidate_id,
+            outcome=request.outcome,
+            application_context=request.application_context,
+            observed_output=request.observed_output,
+            test_steps=request.test_steps,
+        )
+        return get_candidate_review_summary(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/api/learning/candidates/{candidate_id}/research")
+def research_learning_candidate(candidate_id: int) -> dict[str, Any]:
+    """Run best-effort public research and configured peer-AI review for a candidate."""
+    from .knowledge_review import (
+        research_candidate_online, consult_configured_peer_ais, get_candidate_review_summary,
+    )
+    try:
+        with db.learning_connection() as conn:
+            candidate = conn.execute(
+                "SELECT topic, content FROM temporary_knowledge_candidates WHERE id=?",
+                (candidate_id,),
+            ).fetchone()
+        if candidate is None:
+            raise KeyError(candidate_id)
+        query = f"{candidate['topic']} {candidate['content'][:300]}"
+        web_result = research_candidate_online(candidate_id, query, limit=3)
+        peer_result = consult_configured_peer_ais(candidate_id, limit=3)
+        return {
+            "web_research": web_result,
+            "peer_ai_consultation": peer_result,
+            "review": get_candidate_review_summary(candidate_id),
+        }
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
 
 # Backward-compatible status endpoints used by older local UI clients.
 @app.get("/learning/status", include_in_schema=False)
