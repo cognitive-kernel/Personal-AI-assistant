@@ -250,3 +250,42 @@ def test_tested_candidate_gets_scope_limited_test_credit_not_universal_truth(tmp
     assert score["components"]["automated_tests"] == 40
     assert score["verification_status"] == "tested_in_declared_scope"
     assert "not a calibrated probability of truth" in score["score_scale"]
+
+
+def test_claim_matrix_exposes_evidence_channels_without_promoting_context_to_truth(tmp_path, monkeypatch):
+    from app.knowledge_review import build_claim_verification_matrix
+
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    record_review_evidence(
+        candidate_id,
+        evidence_kind="context",
+        source_url="https://example.org/context",
+        source_title="Context page",
+        excerpt="Photosynthesis converts light energy into chemical energy.",
+    )
+    record_peer_consultation(
+        candidate_id,
+        provider="peer-one",
+        model_name="review-model",
+        prompt="Challenge the lesson.",
+        response="The claim may be correct, but I have not checked a primary source.",
+        stance="supports",
+    )
+
+    matrix = build_claim_verification_matrix(candidate_id)
+
+    assert matrix["candidate_id"] == candidate_id
+    assert matrix["verification_channels"]["web_evidence"]["context_only"] == 1
+    assert matrix["verification_channels"]["peer_ai"]["counts_as_truth_oracle"] is False
+    assert matrix["verification_channels"]["peer_ai"]["providers"] == ["peer-one"]
+    assert matrix["claims"]
+    assert all(claim["status"] in {
+        "unverified", "peer_reviewed_not_verified",
+        "source_supported_not_experimentally_verified", "conflicting_evidence",
+    } for claim in matrix["claims"])
+    assert "does not promote knowledge" in matrix["promotion_policy"]
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()
+    assert candidate["status"] == "awaiting_test"
