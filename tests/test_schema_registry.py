@@ -56,7 +56,8 @@ def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
     with sqlite3.connect(":memory:") as connection:
         assert MigrationRunner(SETTINGS_MIGRATIONS[:3]).apply(connection) == 3
         connection.execute(
-            "INSERT INTO settings(key, value_json) VALUES ('ollama_model', '"custom-local-model"')"
+            "INSERT INTO settings(key, value_json) VALUES (?, ?)",
+            ("ollama_model", '"custom-local-model"'),
         )
         assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 4
         assert connection.execute(
