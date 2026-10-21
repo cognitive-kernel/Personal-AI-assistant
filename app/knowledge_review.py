@@ -395,7 +395,7 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
     raw_score = test_score + source_score + peer_score + user_score - contradiction_penalty - peer_penalty - user_failure_penalty
     score = max(0, min(100, raw_score))
     methods = []
-    if support_domains or contradiction_domains:
+    if evidence:
         methods.append("internet_sources")
     if peers:
         methods.append("peer_ai_consultation")
