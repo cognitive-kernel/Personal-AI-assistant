@@ -401,6 +401,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if not (url.startswith("http://127.0.0.1:") or url.startswith("http://localhost:") or url.startswith("http://[::1]:") or url in {"http://127.0.0.1", "http://localhost", "http://[::1]"}):
             raise HTTPException(status_code=422, detail="Only loopback Ollama URLs are supported.")
         values["ollama_base_url"] = url
+    if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
+        raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
     numeric_ranges = [
         ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
         ("ollama_num_thread", 0, 64),
