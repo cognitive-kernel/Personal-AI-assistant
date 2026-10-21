@@ -348,6 +348,13 @@ def create_chat_conversation() -> dict[str, Any]:
     return {"conversation": chat_history.create_conversation()}
 
 
+@app.delete("/api/conversations/{conversation_id}")
+def delete_chat_conversation(conversation_id: int) -> dict[str, Any]:
+    if not chat_history.delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail="Chat conversation not found.")
+    return {"deleted": True, "conversation_id": conversation_id}
+
+
 @app.get("/api/conversations/{conversation_id}/messages")
 def list_chat_messages(conversation_id: int) -> dict[str, Any]:
     try:
