@@ -284,7 +284,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
             with db.learning_connection() as conn:
                 latest_experience = conn.execute(
                     "SELECT id FROM learning_experiences WHERE problem LIKE ? ORDER BY id DESC LIMIT 1",
-                    (f"%candidate {candidate_id}%",),
+                    (f"%{candidate_id}%",),
                 ).fetchone()
                 experience_id = int(latest_experience["id"]) if latest_experience else None
     if run_status == "failed" and not trusted_oracle:
