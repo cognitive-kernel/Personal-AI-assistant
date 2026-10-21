@@ -421,16 +421,6 @@ def test_evidence_only_promotion_requires_two_domains_and_two_peer_providers(tmp
             (candidate["promoted_knowledge_id"],),
         ).fetchone()
     assert candidate["status"] == "awaiting_test"
-    assert knowledge["status"] == "evidence_reviewed_no_lab"0
-    with db.learning_connection() as conn:
-        candidate = conn.execute(
-            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
-            (candidate_id,),
-        ).fetchone()
-        knowledge = conn.execute(
-            "SELECT status FROM knowledge_items WHERE id=?", (candidate["promoted_knowledge_id"],),
-        ).fetchone()
-    assert candidate["status"] == "awaiting_test"
     assert knowledge["status"] == "evidence_reviewed_no_lab"
 
     record_review_evidence(
