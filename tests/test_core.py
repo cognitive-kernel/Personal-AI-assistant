@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from app import db, hardware, learning, ollama
 
 def test_databases_are_separate(tmp_path, monkeypatch):
@@ -492,3 +493,91 @@ def test_existing_generic_ollama_preferences_seed_new_profiles(tmp_path, monkeyp
         assert settings[f"{prefix}_ollama_num_ctx"] == 3072
         assert settings[f"{prefix}_ollama_num_thread"] == 3
         assert settings[f"{prefix}_ollama_timeout_seconds"] == 45
+
+
+
+def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "qwen2.5:7b",
+        "chat_ollama_num_ctx": 4096,
+        "chat_ollama_num_thread": 0,
+        "chat_ollama_timeout_seconds": 120,
+        "ollama_num_ctx": 2048,
+        "ollama_num_thread": 0,
+        "ollama_timeout_seconds": 120,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 25,
+    })
+    def fake_request(path, payload, timeout=None):
+        captured.update(path=path, payload=payload, timeout=timeout)
+        return {"message": {"content": "ok"}}
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    assert ollama.chat("hello", purpose="chat") == "ok"
+    assert captured["payload"]["keep_alive"] == "5m"
+    assert captured["payload"]["options"]["num_ctx"] == 4096
+
+
+def test_ollama_programming_model_is_unloaded_after_request(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "programming_ollama_model": "qwen3:14b",
+        "programming_ollama_num_ctx": 4096,
+        "programming_ollama_num_thread": 0,
+        "programming_ollama_timeout_seconds": 120,
+        "programming_source_max_chars": 12000,
+        "ollama_num_ctx": 2048,
+        "ollama_num_thread": 0,
+        "ollama_timeout_seconds": 120,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 25,
+    })
+    monkeypatch.setattr(
+        ollama, "_request",
+        lambda path, payload, timeout=None: captured.update(payload=payload) or {"message": {"content": "ok"}},
+    )
+
+    assert ollama.chat("review this code", purpose="programming") == "ok"
+    assert captured["payload"]["keep_alive"] == "0"
+
+
+
+def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    saved = db.update_settings({
+        "cpu_resource_limit_percent": 75,
+        "ram_resource_limit_percent": 80,
+        "gpu_resource_limit_percent": 65,
+    })
+    assert saved["cpu_resource_limit_percent"] == 75
+    assert saved["ram_resource_limit_percent"] == 80
+    assert saved["gpu_resource_limit_percent"] == 65
+    assert saved["gpu_enabled"] is False
+
+
+def test_gpu_disabled_forces_cpu_option_on_inference_payload(monkeypatch):
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ollama_base_url": "http://127.0.0.1:11434", "ollama_timeout_seconds": 5, "gpu_enabled": False})
+    monkeypatch.setattr(ollama, "_base_url", lambda: "http://127.0.0.1:11434")
+    captured = {}
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, size): return b'{"message":{"content":"ok"}}'
+    def fake_open(request, timeout):
+        captured["payload"] = __import__("json").loads(request.data.decode("utf-8"))
+        return Response()
+    monkeypatch.setattr(ollama.urllib.request, "build_opener", lambda *args, **kwargs: SimpleNamespace(open=fake_open))
+    monkeypatch.setattr(ollama, "_ensure_resource_headroom", lambda: None)
+    monkeypatch.setattr(ollama, "_INFERENCE_LOCK", __import__("threading").Lock())
+    result = ollama._request("/api/chat", {"model": "test", "options": {"num_ctx": 1024}})
+    assert result["message"]["content"] == "ok"
+    assert captured["payload"]["options"]["num_gpu"] == 0

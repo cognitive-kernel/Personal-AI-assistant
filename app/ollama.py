@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 from .db import get_settings
-from .hardware import detect_hardware, ensure_resource_headroom, runtime_limits
+from .hardware import detect_hardware, ensure_resource_headroom, model_keep_alive, runtime_limits
 
 class OllamaError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False) -> None:
@@ -19,7 +19,7 @@ class OllamaError(RuntimeError):
 
 def _ensure_resource_headroom() -> None:
     try:
-        ensure_resource_headroom(90.0)
+        ensure_resource_headroom(get_settings())
     except RuntimeError as exc:
         raise OllamaError(str(exc), retryable=True) from exc
 
@@ -73,6 +73,12 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
     settings = get_settings()
+    if path in _INFERENCE_PATHS and settings.get("gpu_enabled", False) is not True:
+        payload = dict(payload or {})
+        options = payload.get("options")
+        options = dict(options) if isinstance(options, dict) else {}
+        options["num_gpu"] = 0
+        payload["options"] = options
     request = urllib.request.Request(
         _base_url() + path,
         data=None if payload is None else json.dumps(payload).encode("utf-8"),
@@ -146,10 +152,13 @@ def chat(
         raise ValueError("purpose must be chat, learning, or programming.")
     settings = get_settings()
     prefix = purpose
+    hardware = detect_hardware()
     limits = runtime_limits({
         "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
-    }, detect_hardware())
+        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+    }, hardware)
+    keep_alive = model_keep_alive(purpose, hardware)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     model = str(settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b")))
     messages = []
@@ -163,7 +172,7 @@ def chat(
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
     response = _request("/api/chat", {
-        "model": model, "stream": False, "messages": messages,
+        "model": model, "stream": False, "messages": messages, "keep_alive": keep_alive,
         "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
     }, timeout=request_timeout)
     result = response.get("message", {}).get("content")
