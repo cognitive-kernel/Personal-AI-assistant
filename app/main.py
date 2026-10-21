@@ -409,6 +409,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         ("cpu_resource_limit_percent", 10, 95),
         ("ram_resource_limit_percent", 10, 95),
         ("gpu_resource_limit_percent", 10, 95),
+        ("ram_budget_max_gb", 1, 25),
+        ("ram_safety_reserve_gb", 1, 8),
     ]
     for prefix in ("chat", "learning", "programming"):
         numeric_ranges.extend([
