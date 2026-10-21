@@ -74,7 +74,7 @@ def get_recent_history(conversation_id: int, *, limit: int = 30) -> list[dict[st
                ) ORDER BY id""",
             (conversation_id, limit),
         ).fetchall()
-    return [{"role": row["role"], "content": row["content"]} for row in rows]
+    return [{"role": row["role"], "content": row["content"][:5000]} for row in rows]
 
 
 def append_user_message(conversation_id: int, content: str) -> dict[str, Any]:
