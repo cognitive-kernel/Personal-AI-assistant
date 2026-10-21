@@ -1341,7 +1341,7 @@ def test_learning_path_progress_is_derived_and_accessible():
         assert progress.get_attribute("value") == "33"
         assert progress.get_attribute("aria-valuetext") == "۳۳ درصد تکمیل‌شده"
         assert page.locator(".path-progress-caption").inner_text() == "۱ از ۳ سرفصل تکمیل شده است."
-        assert "33٪ (1/3)" in page.locator("#paths-container summary").inner_text()
+        assert "33٪ (1/3)" in page.locator(".path-card > details > summary").inner_text()
         browser.close()
 
 
@@ -1423,6 +1423,7 @@ def test_learning_lesson_history_survives_refresh_and_shows_task_events():
         page.route("**/api/learning/recommendations*", lambda route: fulfill_json(route, {"recommendations": []}))
 
         _goto_section(page, base_url, "learning-paths-section")
+        page.locator(".path-card > details > summary").click()
         page.locator(".path-topic-job-history-container > details > summary").click()
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").wait_for(timeout=10000)
         page.get_by_text("درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد").click()
