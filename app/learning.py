@@ -697,10 +697,15 @@ def record_candidate_test_results(
         )
         candidate_status = (
             "passed" if promotion_eligible
-            else "failed" if not tests_passed
+            else "failed" if (not tests_passed or not content_hash_matches)
             else "awaiting_test"
         )
-        if tests_passed and not claim_coverage["complete"]:
+        if not content_hash_matches:
+            failure_reason = (
+                "Candidate content SHA-256 mismatch. Previous consensus and test results "
+                "are invalid for the changed content; research and consensus must be repeated."
+            )
+        elif tests_passed and not claim_coverage["complete"]:
             blockers = list(dict.fromkeys([
                 *claim_coverage["missing_claim_ids"], *claim_coverage["issues"]
             ]))
@@ -757,15 +762,18 @@ def record_candidate_test_results(
         conn.execute(
             """UPDATE temporary_knowledge_candidates
                SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,
-                   trust_level=CASE WHEN ? THEN 'L-1' WHEN ? THEN 'L2' ELSE trust_level END,
+                   trust_level=CASE WHEN ? THEN 'L-1' WHEN ? THEN 'L-1'
+                                    WHEN ? THEN 'L2' ELSE trust_level END,
                    learning_status=CASE
                        WHEN ? THEN 'failed'
+                       WHEN ? THEN 'conflicting'
                        WHEN ? THEN 'tested'
                        ELSE learning_status
                    END,
                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (candidate_status, plan_json, results_json, failure_reason,
-             not tests_passed, promotion_eligible, not tests_passed, promotion_eligible, candidate_id),
+             not tests_passed, not content_hash_matches, promotion_eligible,
+             not tests_passed, not content_hash_matches, promotion_eligible, candidate_id),
         )
         source_row = conn.execute(
             "SELECT content FROM learning_source_text WHERE job_id=?",

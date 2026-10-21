@@ -103,3 +103,17 @@ def test_consensus_requires_a_recorded_original_source(tmp_path, monkeypatch):
     assert result["outcome"] == "insufficient_evidence"
     assert result["source_present"] is False
     assert result["trust_level"] == "L0"
+
+
+
+def test_different_provider_aliases_for_same_model_do_not_count_as_independent(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    _vote(candidate_id, "peer-a", "same-model:8b", "supports", "Support from first endpoint.")
+    _vote(candidate_id, "peer-b", "same-model:8b", "supports", "Support from provider alias.")
+
+    result = evaluate_candidate_consensus(candidate_id)
+
+    assert result["outcome"] == "insufficient_evidence"
+    assert result["supporting_count"] == 1
+    assert result["trust_level"] == "L0"
+    assert result["decision_reason"] == "minimum_distinct_supporting_models_not_reached"

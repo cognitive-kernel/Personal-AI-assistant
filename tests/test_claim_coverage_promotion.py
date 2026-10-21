@@ -244,3 +244,36 @@ def test_all_claim_tests_passing_without_l1_consensus_cannot_promote(tmp_path, m
     assert recorded["promoted_knowledge_id"] is None
     with db.learning_connection() as conn:
         assert conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE status='verified'").fetchone()[0] == 0
+
+
+
+def test_changed_candidate_hash_downgrades_l1_and_blocks_l2(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    _establish_l1_consensus(candidate_id)
+    with db.learning_connection() as conn:
+        original = conn.execute(
+            "SELECT content FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()["content"]
+        changed = original + " A further unreviewed condition changes the claim."
+        conn.execute(
+            "UPDATE temporary_knowledge_candidates SET content=? WHERE id=?",
+            (changed, candidate_id),
+        )
+
+    claim_ids = [
+        claim["claim_id"] for claim in extract_candidate_claims(changed, candidate_id)
+    ]
+    plan, results = _plan_and_results(candidate_id, claim_ids)
+    recorded = learning.record_candidate_test_results(candidate_id, plan, results)
+
+    assert recorded["content_hash_matches"] is False
+    assert recorded["promotion_eligible"] is False
+    assert recorded["status"] == "failed"
+    assert recorded["trust_level"] == "L-1"
+    assert recorded["learning_status"] == "conflicting"
+    assert recorded["promoted_knowledge_id"] is None
+    with db.learning_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE status='verified'"
+        ).fetchone()[0] == 0

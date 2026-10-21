@@ -70,16 +70,16 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
     source_text = str(source_text_row["content"] or "") if source_text_row else ""
     source_present = bool(url_sources or (source_text.strip() and candidate["source_kind"] != "model_knowledge_no_external_source"))
 
-    # Keep the latest response for each distinct provider/model pair. Repeated runs
-    # from one model must never be counted as independent votes.
+    # Keep the latest response for each distinct model identity. Repeated runs or
+    # provider aliases for the same model must never count as independent votes.
     unique_votes: list[dict[str, Any]] = []
-    seen: set[tuple[str, str]] = set()
+    seen: set[str] = set()
     for row in peer_rows:
         provider = str(row["provider"] or "").strip()
         model = str(row["model_name"] or "").strip()
         if not provider or not model:
             continue
-        identity = (provider.casefold(), model.casefold())
+        identity = model.casefold()
         if identity in seen:
             continue
         seen.add(identity)
