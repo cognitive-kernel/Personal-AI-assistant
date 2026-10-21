@@ -79,6 +79,20 @@ def run_hybrid_verification(
             details={"reason": "sandbox_channel_disabled_by_caller"})
         channels["sandbox"] = {"status": "unconfigured", "promoted": False}
 
+    evidence_only_promotion: dict[str, Any] = {"promoted": False, "reason": "not_attempted"}
+    try:
+        from .knowledge_review import promote_candidate_after_evidence_review
+        evidence_only_promotion = promote_candidate_after_evidence_review(candidate_id)
+    except Exception as exc:
+        try:
+            record_review_attempt(
+                candidate_id, channel="peer_ai", status="failed",
+                details={"error_type": type(exc).__name__, "reason": "evidence_only_promotion_check_failed"},
+            )
+        except Exception:
+            pass
+        evidence_only_promotion = {"promoted": False, "reason": type(exc).__name__}
+
     try:
         review = get_candidate_review_summary(candidate_id)
     except Exception as exc:
@@ -91,6 +105,12 @@ def run_hybrid_verification(
     return {
         "candidate_id": candidate_id, "candidate_sha256": candidate["content_sha256"],
         "channels": channels, "review": review, "claim_matrix": matrix,
-        "promotion_performed": False,
-        "policy": "Evidence collection and scoped tests only; promotion requires the separate versioned trusted-oracle test gate.",
+        "evidence_only_promotion": evidence_only_promotion,
+        "promotion_performed": bool(evidence_only_promotion.get("promoted")),
+        "policy": (
+            "A passing trusted sandbox test promotes only within its declared test scope. "
+            "Without lab tests, promotion requires at least two supporting web domains and "
+            "two supporting configured peer providers, no known contradictions, and is labeled "
+            "evidence_reviewed_no_lab rather than experimentally verified."
+        ),
     }
