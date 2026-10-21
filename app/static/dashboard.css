@@ -550,3 +550,17 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 :root[data-theme="dark"] .task-select-label { color:#b4c1d4; }
 :root[data-theme="dark"] .task-empty-state p { color:#b4c1d4; }
 :root[data-theme="dark"] .path-progress-bar { color:#a6baff; accent-color:#a6baff; }
+
+
+/* Durable chat transcript and grouped local-model settings. */
+#chat-messages { display: grid; gap: 0.75rem; margin: 1rem 0; }
+.chat-message { border: 1px solid var(--border, #cbd5e1); border-radius: 0.75rem; padding: 0.75rem 1rem; overflow-wrap: anywhere; }
+.chat-message h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+.chat-message p { margin: 0 0 0.5rem; }
+.chat-message-user { border-inline-start: 4px solid var(--accent, #64748b); }
+.chat-message-assistant { border-inline-start: 4px solid var(--success, #15803d); }
+#settings-form fieldset { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid var(--border, #cbd5e1); border-radius: 0.75rem; }
+#settings-form legend { padding: 0 0.4rem; font-weight: 700; }
+#programming-assist-output { white-space: pre-wrap; overflow-wrap: anywhere; }
+:root[data-theme="dark"] .chat-message { border-color: #3b4b62; background: var(--surface-muted, #172338); }
+:root[data-theme="dark"] #settings-form fieldset { border-color: #3b4b62; }
