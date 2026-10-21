@@ -104,8 +104,9 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     """Run explicit expected-output examples from a candidate in the isolated sandbox.
 
     This verifies only the embedded examples, not every factual claim in the lesson.
-    It records pass/fail through the existing candidate-test gate; missing Docker or
-    missing examples leaves the candidate awaiting tests.
+    Passing examples are recorded as scoped evidence and never promote the whole lesson;
+    a separate trusted suite covering the declared claims is required for promotion.
+    Missing Docker or missing examples leaves the candidate awaiting tests.
     """
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
