@@ -168,7 +168,7 @@ def test_configured_peer_ai_is_queried_and_response_is_persisted(tmp_path, monke
     assert result["consulted"] == 1
     summary = get_candidate_review_summary(candidate_id)
     assert summary["distinct_peer_providers"] == 1
-    assert summary["verification_status"] == "unverified"
+    assert summary["verification_status"] == "evidence_reviewed_no_lab"
     with db.learning_connection() as conn:
         saved = conn.execute(
             "SELECT response, independence_note FROM knowledge_peer_consultations"
