@@ -161,6 +161,9 @@ def _factual_domain_for_topic(topic: str) -> tuple[str, str, str] | None:
         return None
     environment_name = matches[0]
     if environment_name == "python":
+        explicit_python = re.search(r"(?i)\bpython\s*(\d+\.\d+(?:\.\d+)?)", topic)
+        if explicit_python:
+            return environment_name, explicit_python.group(1), "explicit_topic_version"
         return environment_name, platform.python_version(), "runtime"
     version_patterns = {
         "sql_server": r"(?i)\bsql\s*server\s*(20(?:16|17|19|22|25))\b",
