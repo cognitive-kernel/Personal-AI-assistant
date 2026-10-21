@@ -130,7 +130,6 @@ def evaluate_automated_acceptance(
     if (
         isinstance(minimum_concept_coverage, bool)
         or not isinstance(minimum_concept_coverage, (int, float))
-        or isinstance(minimum_concept_coverage, bool)
         or not 0 <= minimum_concept_coverage <= 1
     ):
         raise ValueError("minimum_concept_coverage must be between 0 and 1")
