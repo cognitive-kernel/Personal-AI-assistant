@@ -48,7 +48,7 @@
 ### ۵. گیت‌های پذیرش پیش از انتشار
 
 - [x] CI روی commit کد `603ac02f1505`: [آزمون یکپارچهٔ sandbox و تست‌های داخل Docker](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927376)، [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927296)، [ممیزی وابستگی‌ها](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927375) و رگرسیون‌های ذخیره‌سازی Windows موفق شدند.
-- [ ] آزمون واحد استاندارد روی runner اصلی هنوز در حال اجراست؛ تا تکمیل آن، CI کل شاخه را کاملاً سبز در نظر نگیرید: [وضعیت آزمون‌های commit 603ac02](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927414).
+- [x] آزمون واحد استاندارد و رگرسیون‌های Windows روی commit کد `603ac02f1505` موفق شدند: [آزمون‌های واحد](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927414). این اجرا همراه با [sandbox](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927376)، [Browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927296) و [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39562927375) گذشت. این شواهد مربوط به کد همان commit است؛ live-model و target-host پذیرش جداگانه می‌خواهند.
 - [ ] ارزیابی زندهٔ مدل‌های محلی فارسی/انگلیسی، review انسانی مجموعهٔ ارزیابی نسخه‌دار، بررسی مقاومت در برابر prompt injection و سنجش پشتیبانی claimها از منابع.
 - [ ] اجرای مهاجرت/backup/restore، شروع پاک و smoke test روی میزبان Windows/دادهٔ واقعی هدف؛ موفقیت CI جایگزین این پذیرش نیست.
 - [ ] بازبینی مستقل امنیت شبکه و threat model مربوط به [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52).
