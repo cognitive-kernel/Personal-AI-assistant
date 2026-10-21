@@ -596,6 +596,29 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_knowledge_user_feedback_candidate ON knowledge_user_feedback(candidate_id, outcome, id)",
         ),
     ),
+    Migration(
+        19,
+        "scoped-knowledge-test-run-history",
+        (
+            """CREATE TABLE knowledge_test_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                suite_name TEXT NOT NULL,
+                suite_version TEXT NOT NULL,
+                suite_sha256 TEXT NOT NULL CHECK(length(suite_sha256) = 64),
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                oracle_url TEXT NOT NULL DEFAULT '',
+                runner_name TEXT NOT NULL,
+                run_status TEXT NOT NULL CHECK(run_status IN ('passed','failed','unavailable','no_examples','missing_source_oracle')),
+                expected_json TEXT NOT NULL DEFAULT '{}',
+                actual_json TEXT NOT NULL DEFAULT '{}',
+                duration_ms INTEGER NOT NULL DEFAULT 0 CHECK(duration_ms >= 0),
+                details TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_knowledge_test_runs_candidate ON knowledge_test_runs(candidate_id, run_status, id)",
+        ),
+    ),
 )
 
 
