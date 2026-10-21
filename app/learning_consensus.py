@@ -440,12 +440,25 @@ def start_self_correction(candidate_id: int) -> dict[str, Any]:
                     (json.dumps({"rationale": rationale[:3000], "verification_error": type(exc).__name__},
                                 ensure_ascii=False), attempt_id),
                 )
+        with learning_connection() as conn:
+            alternative_state = conn.execute(
+                """SELECT status, trust_level, learning_status, promoted_knowledge_id
+                   FROM temporary_knowledge_candidates WHERE id=?""",
+                (alternative_id,),
+            ).fetchone()
+        alternative_status = dict(alternative_state) if alternative_state is not None else {
+            "status": "missing", "trust_level": "L0",
+            "learning_status": "unverified", "promoted_knowledge_id": None,
+        }
         return {
             "parent_candidate_id": candidate_id, "attempt_id": attempt_id,
             "attempt_no": lineage_attempt_no, "candidate_attempt_no": attempt_no,
             "lineage_root_candidate_id": root_candidate_id, "alternative_candidate_id": alternative_id,
-            "alternative_status": "awaiting_test", "trust_level": "L0",
-            "learning_status": "unverified", "rationale": rationale[:3000],
+            "alternative_status": alternative_status["status"],
+            "trust_level": alternative_status["trust_level"],
+            "learning_status": alternative_status["learning_status"],
+            "alternative_knowledge_id": alternative_status["promoted_knowledge_id"],
+            "rationale": rationale[:3000],
             "verification": verification, "previous_candidate_preserved": True,
         }
     except Exception as exc:

@@ -23,6 +23,42 @@ def _failed_candidate(topic, parent_id=None):
         return int(cursor.lastrowid), digest
 
 
+def test_self_correction_reports_actual_alternative_status(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
+    db.init_databases()
+    candidate_id, _ = _failed_candidate("status root")
+
+    monkeypatch.setattr(
+        "app.model_runtime.chat",
+        lambda *_args, **_kwargs: json.dumps({
+            "lesson": "A corrected alternative with enough detail to be an actual new lesson.",
+            "rationale": "The alternative changes the faulty condition.",
+            "changed_claims": ["Changed condition"],
+            "limitations": ["Requires additional verification"],
+            "suggested_tests": ["Check the edge case"],
+        }),
+    )
+    def fake_verification(alternative_id, **_kwargs):
+        with db.learning_connection() as connection:
+            connection.execute(
+                """UPDATE temporary_knowledge_candidates
+                   SET status='failed', trust_level='L-1', learning_status='failed'
+                   WHERE id=?""",
+                (alternative_id,),
+            )
+        return {"candidate_id": alternative_id, "promotion_performed": False}
+    monkeypatch.setattr("app.hybrid_learning.run_hybrid_verification", fake_verification)
+
+    result = start_self_correction(candidate_id)
+
+    assert result["alternative_status"] == "failed"
+    assert result["trust_level"] == "L-1"
+    assert result["learning_status"] == "failed"
+    assert result["alternative_knowledge_id"] is None
+
+
 def test_self_correction_limit_is_shared_across_candidate_lineage(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))

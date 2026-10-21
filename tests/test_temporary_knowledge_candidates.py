@@ -113,6 +113,65 @@ def test_promotion_upgrades_existing_unverified_knowledge_row_in_place(tmp_path,
     assert tuple(metadata) == ("L2", "tested")
 
 
+def test_promoted_alternative_marks_parent_candidate_and_knowledge_superseded(tmp_path, monkeypatch):
+    parent_job, parent_id, parent_lesson = _setup(tmp_path, monkeypatch)
+    with db.learning_connection() as connection:
+        old_knowledge_id = int(connection.execute(
+            """INSERT INTO knowledge_items(
+                   topic, content, source_kind, version, status, job_id,
+                   trust_level, learning_status, domain, source_url, raw_content
+               ) VALUES (?, ?, ?, 1, 'unverified', ?, 'L-1', 'conflicting', '', '', '')""",
+            (parent_job["topic"], parent_lesson, parent_job["id"]),
+        ).lastrowid)
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET status='failed', trust_level='L-1', learning_status='conflicting',
+                   promoted_knowledge_id=? WHERE id=?""",
+            (old_knowledge_id, parent_id),
+        )
+
+    child_job = learning.create_job("candidate topic", source_text="A retained source for the corrected candidate.")
+    child_lesson = "A corrected alternative lesson that resolves the earlier bounded technical failure."
+    child_digest = hashlib.sha256(child_lesson.encode("utf-8")).hexdigest()
+    with db.learning_connection() as connection:
+        child_id = int(connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json, status, trust_level,
+                   learning_status, supersedes_candidate_id
+               ) VALUES (?, ?, ?, 'user_provided_text', '[]', ?, '{}',
+                         'awaiting_test', 'L0', 'unverified', ?)""",
+            (child_job["id"], child_job["topic"], child_lesson, child_digest, parent_id),
+        ).lastrowid)
+    _establish_l1_consensus(child_id)
+    plan, result = _case("alternative_claim_test", "ok", "ok", "deterministic_assertion")
+    plan["claim_ids"] = [f"{child_id}:1"]
+
+    promoted = learning.record_candidate_test_results(child_id, [plan], [result])
+
+    assert promoted["status"] == "passed"
+    with db.learning_connection() as connection:
+        parent = connection.execute(
+            "SELECT status, trust_level, learning_status, replaced_by_candidate_id FROM temporary_knowledge_candidates WHERE id=?",
+            (parent_id,),
+        ).fetchone()
+        old_knowledge = connection.execute(
+            "SELECT status, learning_status, replacement_knowledge_id FROM knowledge_items WHERE id=?",
+            (old_knowledge_id,),
+        ).fetchone()
+        replacement = connection.execute(
+            "SELECT status, learning_status, predecessor_knowledge_id FROM knowledge_items WHERE id=?",
+            (promoted["promoted_knowledge_id"],),
+        ).fetchone()
+        experience = connection.execute(
+            "SELECT experience_type FROM learning_experiences WHERE problem LIKE 'successful_alternative:%' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    assert tuple(parent) == ("superseded", "L-1", "superseded", child_id)
+    assert tuple(old_knowledge) == ("superseded", "superseded", promoted["promoted_knowledge_id"])
+    assert tuple(replacement) == ("verified", "tested", old_knowledge_id)
+    assert experience["experience_type"] == "successful_alternative"
+
+
 def test_failed_candidate_stays_temporary_and_creates_failure_experience(tmp_path, monkeypatch):
     _job, candidate_id, _lesson = _setup(tmp_path, monkeypatch)
     case = _case("expected_result", "42", "41", "reference_dataset", passed=False)

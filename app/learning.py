@@ -831,8 +831,8 @@ def record_candidate_test_results(
                 if parent is not None:
                     conn.execute(
                         """UPDATE temporary_knowledge_candidates
-                           SET learning_status='superseded', replaced_by_candidate_id=?,
-                               updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                           SET status='superseded', learning_status='superseded',
+                               replaced_by_candidate_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                         (candidate_id, int(supersedes_candidate_id)),
                     )
                     if parent["promoted_knowledge_id"] is not None:
