@@ -3,25 +3,54 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>دستیار هوش مصنوعی شخصی</title>
-<link rel="stylesheet" href="/static/dashboard.css"></head>
+<script>
+(function(){
+ const sections={"storage-health":"storage-health-section","chat":"chat-section","learning":"learning-section","learning-paths":"learning-paths-section","knowledge":"knowledge-section","tasks":"task-manager-section","experience-memory":"experience-memory-section","cloud-resources":"cloud-resources-section","cloud-plan":"cloud-plan-section","kaggle-quota":"kaggle-quota-section","oci-limits":"oci-limits-section","sandbox":"sandbox-section","self-improvement":"self-improvement-section","settings":"settings-section"};
+ const match=window.location.pathname.match(/^\\/sections\\/([^/]+)\\/?$/);
+ const slug=match && match[1];
+ if(slug && Object.prototype.hasOwnProperty.call(sections,slug)){
+  document.documentElement.dataset.sectionPage=slug;
+  document.documentElement.dataset.sectionId=sections[slug];
+  document.title=document.title+" — "+slug;
+ }
+})();
+</script>
+<link rel="stylesheet" href="/static/dashboard.css">
+<style>
+html[data-section-page="storage-health"] #main-content section:not(#storage-health-section){display:none!important}
+html[data-section-page="chat"] #main-content section:not(#chat-section){display:none!important}
+html[data-section-page="learning"] #main-content section:not(#learning-section){display:none!important}
+html[data-section-page="learning-paths"] #main-content section:not(#learning-paths-section){display:none!important}
+html[data-section-page="knowledge"] #main-content section:not(#knowledge-section){display:none!important}
+html[data-section-page="tasks"] #main-content section:not(#task-manager-section){display:none!important}
+html[data-section-page="experience-memory"] #main-content section:not(#experience-memory-section){display:none!important}
+html[data-section-page="cloud-resources"] #main-content section:not(#cloud-resources-section){display:none!important}
+html[data-section-page="cloud-plan"] #main-content section:not(#cloud-plan-section){display:none!important}
+html[data-section-page="kaggle-quota"] #main-content section:not(#kaggle-quota-section){display:none!important}
+html[data-section-page="oci-limits"] #main-content section:not(#oci-limits-section){display:none!important}
+html[data-section-page="sandbox"] #main-content section:not(#sandbox-section){display:none!important}
+html[data-section-page="self-improvement"] #main-content section:not(#self-improvement-section){display:none!important}
+html[data-section-page="settings"] #main-content section:not(#settings-section){display:none!important}
+html[data-section-page] .dashboard-nav a[data-section-slug][aria-current="page"]{font-weight:700;text-decoration:underline;text-underline-offset:5px}
+</style></head>
 <body>
 <div class="dashboard-shell">
 <a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
 <nav class="dashboard-nav" aria-label="ناوبری بخش‌های داشبورد">
-  <a href="#storage-health-section">سلامت و پشتیبان</a>
-  <a href="#chat-section">گفتگو و پژوهش</a>
-  <a href="#learning-section">یادگیری</a>
-  <a href="#learning-paths-section">مسیرهای آموزشی</a>
-  <a href="#knowledge-section">دانش ذخیره‌شده</a>
-  <a href="#task-manager-section">وظایف</a>
-  <a href="#experience-memory-section">حافظهٔ تجربه</a>
-  <a href="#cloud-resources-section">منابع پردازشی</a>
-  <a href="#cloud-plan-section">برنامه‌ریزی منابع</a>
-  <a href="#kaggle-quota-section">سهمیهٔ Kaggle</a>
-  <a href="#oci-limits-section">محدودیت‌های OCI</a>
-  <a href="#sandbox-section">محیط ایزوله</a>
-  <a href="#self-improvement-section">بهبود کد</a>
-  <a href="#settings-section">تنظیمات</a>
+  <a href="/sections/storage-health" data-section-slug="storage-health">سلامت و پشتیبان</a>
+  <a href="/sections/chat" data-section-slug="chat">گفتگو و پژوهش</a>
+  <a href="/sections/learning" data-section-slug="learning">یادگیری</a>
+  <a href="/sections/learning-paths" data-section-slug="learning-paths">مسیرهای آموزشی</a>
+  <a href="/sections/knowledge" data-section-slug="knowledge">دانش ذخیره‌شده</a>
+  <a href="/sections/tasks" data-section-slug="tasks">وظایف</a>
+  <a href="/sections/experience-memory" data-section-slug="experience-memory">حافظهٔ تجربه</a>
+  <a href="/sections/cloud-resources" data-section-slug="cloud-resources">منابع پردازشی</a>
+  <a href="/sections/cloud-plan" data-section-slug="cloud-plan">برنامه‌ریزی منابع</a>
+  <a href="/sections/kaggle-quota" data-section-slug="kaggle-quota">سهمیهٔ Kaggle</a>
+  <a href="/sections/oci-limits" data-section-slug="oci-limits">محدودیت‌های OCI</a>
+  <a href="/sections/sandbox" data-section-slug="sandbox">محیط ایزوله</a>
+  <a href="/sections/self-improvement" data-section-slug="self-improvement">بهبود کد</a>
+  <a href="/sections/settings" data-section-slug="settings">تنظیمات</a>
 </nav>
 <main id="main-content" tabindex="-1">
 <header><h1>دستیار هوش مصنوعی شخصی</h1><p class="muted">نسخه اولیه محلی — گفتگو و هسته یادگیری آزمایشی</p>
@@ -1901,6 +1930,19 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
  window.addEventListener('resize',scheduleUpdate,{passive:true});
  window.addEventListener('hashchange',scheduleUpdate);
  updateCurrentSection();
+})();
+(function initializeSectionPageNavigation(){
+ const slug=document.documentElement.dataset.sectionPage;
+ if(!slug) return;
+ const active=document.querySelector('.dashboard-nav a[data-section-slug="'+slug+'"]');
+ if(active){active.setAttribute('aria-current','page');}
+ const sectionId=document.documentElement.dataset.sectionId;
+ const section=document.getElementById(sectionId);
+ if(section){
+  const heading=section.querySelector('h2');
+  if(heading){document.title=heading.textContent.trim()+" — دستیار هوش مصنوعی شخصی";}
+  section.setAttribute('tabindex','-1');
+ }
 })();
 refreshTasks();
 </script><script src="/static/learning.js"></script></main></div></body></html>
