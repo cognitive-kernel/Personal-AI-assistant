@@ -403,28 +403,15 @@ def learning_candidate_feedback(
 
 @app.post("/api/learning/candidates/{candidate_id}/research")
 def research_learning_candidate(candidate_id: int) -> dict[str, Any]:
-    """Run best-effort public research and configured peer-AI review for a candidate."""
-    from .knowledge_review import (
-        research_candidate_online, consult_configured_peer_ais, get_candidate_review_summary,
-    )
+    """Run independent hybrid verification channels and return their evidence ledger."""
+    from .hybrid_learning import run_hybrid_verification
     try:
-        with db.learning_connection() as conn:
-            candidate = conn.execute(
-                "SELECT topic, content FROM temporary_knowledge_candidates WHERE id=?",
-                (candidate_id,),
-            ).fetchone()
-        if candidate is None:
-            raise KeyError(candidate_id)
-        query = f"{candidate['topic']} {candidate['content'][:300]}"
-        web_result = research_candidate_online(candidate_id, query, limit=3)
-        peer_result = consult_configured_peer_ais(candidate_id, limit=3)
-        return {
-            "web_research": web_result,
-            "peer_ai_consultation": peer_result,
-            "review": get_candidate_review_summary(candidate_id),
-        }
+        return run_hybrid_verification(candidate_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 # Backward-compatible status endpoints used by older local UI clients.
 @app.get("/learning/status", include_in_schema=False)
