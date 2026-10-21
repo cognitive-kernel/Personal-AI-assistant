@@ -119,9 +119,9 @@
  <h3>افزودن منبع به‌صورت دستی</h3>
  <p class="muted">منبع به‌عنوان نامزد تأییدنشده ثبت می‌شود. برای جلوگیری از ثبت اطلاعات نامرتبط، عنوان و توضیحات باید شواهد مشخصی دربارهٔ منبع پردازشی ابری و طرح/سهمیهٔ آن داشته باشند. ثبت منبع به معنی تأیید یا مجوز اجرا نیست.</p>
  <div class="cloud-form-grid">
-  <label>نشانی منبع (HTTPS)<input id="cloud-manual-url" type="url" maxlength="2048" placeholder="https://provider.example/compute" required></label>
+  <label>نشانی منبع (HTTPS)<input id="cloud-manual-url" type="url" maxlength="2048" placeholder="https://provider.example/compute" aria-label="نشانی منبع (HTTPS)" required></label>
   <label>عنوان منبع<input id="cloud-manual-title" type="text" maxlength="300" required></label>
-  <label>توضیحات و شواهد<textarea id="cloud-manual-description" rows="4" maxlength="4000" required placeholder="نوع ماشین/پردازش، طرح رایگان یا پولی، سهمیه و محدودیت‌های ذکرشده در منبع"></textarea></label>
+  <label>توضیحات و شواهد<textarea id="cloud-manual-description" rows="4" maxlength="4000" aria-label="توضیحات و شواهد منبع ابری" required placeholder="نوع ماشین/پردازش، طرح رایگان یا پولی، سهمیه و محدودیت‌های ذکرشده در منبع"></textarea></label>
  </div>
  <button id="cloud-manual-submit" type="submit">ثبت منبع</button>
  <p id="cloud-manual-feedback" class="muted" role="status" aria-live="polite"></p>
