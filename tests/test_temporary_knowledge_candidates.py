@@ -62,6 +62,29 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
     assert listed[0]["test_results"] == results
 
 
+def test_promotion_upgrades_existing_unverified_knowledge_row_in_place(tmp_path, monkeypatch):
+    job, candidate_id, lesson = _setup(tmp_path, monkeypatch)
+    with db.learning_connection() as connection:
+        connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, 1, 'unverified', ?)""",
+            (job["topic"], lesson, "user_provided_text", job["id"]),
+        )
+        original_id = connection.execute(
+            "SELECT id FROM knowledge_items WHERE job_id=?", (job["id"],)
+        ).fetchone()["id"]
+    case = _case("existing_row_upgrade", "ok", "ok", "deterministic_assertion")
+    candidate = learning.record_candidate_test_results(candidate_id, [case[0]], [case[1]])
+    with db.learning_connection() as connection:
+        rows = connection.execute(
+            "SELECT id, status, content FROM knowledge_items WHERE job_id=?", (job["id"],)
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["id"] == original_id == candidate["promoted_knowledge_id"]
+    assert rows[0]["status"] == "verified"
+    assert rows[0]["content"] == lesson
+
+
 def test_failed_candidate_stays_temporary_and_creates_failure_experience(tmp_path, monkeypatch):
     _job, candidate_id, _lesson = _setup(tmp_path, monkeypatch)
     case = _case("expected_result", "42", "41", "reference_dataset", passed=False)
