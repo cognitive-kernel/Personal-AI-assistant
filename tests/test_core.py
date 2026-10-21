@@ -490,3 +490,53 @@ def test_learning_job_rejects_non_https_source_url(tmp_path, monkeypatch):
         assert "HTTPS" in str(exc)
     else:
         raise AssertionError("Non-HTTPS source URL should be rejected")
+
+
+def test_failed_explicit_source_url_does_not_trigger_automatic_substitution(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Requested source must not be silently replaced", source_url="https://unreachable.example/lesson")
+
+    def fail_fetch(*_args, **_kwargs):
+        raise OSError("requested URL unavailable")
+
+    research_calls = []
+    monkeypatch.setattr("app.web_sources.fetch_public_document", fail_fetch)
+    monkeypatch.setattr(
+        "app.knowledge_review.research_candidate_online",
+        lambda *args, **kwargs: research_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr("app.knowledge_review.consult_configured_peer_ais", lambda *args, **kwargs: {
+        "status": "unconfigured", "consulted": 0, "errors": [],
+    })
+    monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests", lambda *_args, **_kwargs: {
+        "status": "no_examples", "promoted": False,
+    })
+    monkeypatch.setattr(learning, "_request", lambda *_args, **_kwargs: {
+        "message": {"content": json.dumps({
+            "lesson": "A concise candidate lesson.",
+            "learning_outcomes": ["Outcome one", "Outcome two", "Outcome three"],
+            "questions": ["Recall?", "Why?", "Apply to a new case?"],
+            "answer_key": ["One", "Two", "Three"],
+            "answer_rubric": [],
+        })}
+    })
+
+    learning.run_job(job["id"])
+
+    assert research_calls == []
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT id, status FROM temporary_knowledge_candidates WHERE job_id=?", (job["id"],)
+        ).fetchone()
+        attempt = conn.execute(
+            "SELECT status, details_json FROM knowledge_review_attempts "
+            "WHERE candidate_id=? AND channel='web_research' ORDER BY id DESC LIMIT 1",
+            (candidate["id"],),
+        ).fetchone()
+    assert candidate["status"] == "awaiting_test"
+    assert attempt["status"] == "unavailable"
+    assert "explicit_requested_url_failed_no_automatic_substitution" in attempt["details_json"]
