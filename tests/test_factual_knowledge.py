@@ -280,6 +280,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
         old_id = create_claim(
             conn, "Existing claim before revision migration", environment_version="3.11"
         )
+        conn.commit()
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
         revisions = list_claim_revisions(conn, old_id)
         assert len(revisions) == 1
