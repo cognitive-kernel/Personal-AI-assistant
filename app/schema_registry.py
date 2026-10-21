@@ -514,8 +514,7 @@ LEARNING_MIGRATIONS = (
                  );
                END""",
         ),
-    ),,
-
+    ),
     Migration(
         16,
         "factual-knowledge-core",
