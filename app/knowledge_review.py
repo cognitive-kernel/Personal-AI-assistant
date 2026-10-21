@@ -597,7 +597,8 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
             (candidate_id,),
         ).fetchall()]
         peers = [dict(row) for row in conn.execute(
-            """SELECT provider, model_name, stance, citations_json, independence_note, created_at
+            """SELECT provider, model_name, stance, citations_json, claims_json, response,
+                      independence_note, created_at
                FROM knowledge_peer_consultations WHERE candidate_id=? ORDER BY id""",
             (candidate_id,),
         ).fetchall()]
@@ -654,11 +655,31 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
                     "reliability_note": item["reliability_note"],
                 })
         kinds = {item["evidence_kind"] for item in relevant}
+        relevant_peers = []
+        for peer in peers:
+            peer_text = str(peer.get("response") or "")
+            try:
+                peer_claims = json.loads(peer.get("claims_json") or "[]")
+            except (TypeError, json.JSONDecodeError):
+                peer_claims = []
+            if isinstance(peer_claims, list):
+                peer_text += " " + " ".join(
+                    str(item.get("claim", item.get("text", "")))
+                    for item in peer_claims if isinstance(item, dict)
+                )
+            peer_tokens = tokens(peer_text)
+            peer_overlap = len(claim_tokens & peer_tokens) / len(claim_tokens) if claim_tokens else 0
+            if peer_overlap >= 0.25:
+                relevant_peers.append({
+                    "provider": peer["provider"], "model": peer["model_name"],
+                    "stance": peer["stance"], "relevance_overlap": round(peer_overlap, 3),
+                    "independence_note": peer["independence_note"],
+                })
         if "contradicting" in kinds:
             status = "conflicting_evidence"
         elif "supporting" in kinds:
             status = "source_supported_not_experimentally_verified"
-        elif peers:
+        elif relevant_peers:
             status = "peer_reviewed_not_verified"
         else:
             status = "unverified"
@@ -667,6 +688,7 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
             "text": sentence,
             "status": status,
             "relevant_evidence": relevant,
+            "relevant_peer_reviews": relevant_peers,
             "interpretation": (
                 "Lexical overlap only suggests relevance; it does not prove entailment or correctness."
             ),
