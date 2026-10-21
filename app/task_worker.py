@@ -100,7 +100,7 @@ class TaskWorker:
 
     def run_once(self) -> bool:
         """Claim and process one task. Return False only when no task is ready."""
-        claim_options = {"lease_seconds": self.lease_seconds}
+        claim_options: dict[str, Any] = {"lease_seconds": self.lease_seconds}
         if self.restrict_task_types:
             claim_options["task_types"] = tuple(self.handlers)
         task = task_manager.claim_next_task(self.worker_id, **claim_options)
