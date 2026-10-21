@@ -519,11 +519,12 @@ def record_candidate_test_results(
             raise ValueError("Every test result must identify an approved automated runner.")
         if "expected" not in item or "actual" not in item:
             raise ValueError("Every test result must preserve expected and actual outputs.")
-        if item.get("oracle_sha256") != expected_oracle_digests.get(name.strip()):
-            raise ValueError("Test result oracle digest does not match its plan.")
         result_names.append(name.strip())
     if result_names != plan_names:
         raise ValueError("Test results must match the planned test names and order.")
+    for item in test_results:
+        if item.get("oracle_sha256") != expected_oracle_digests.get(item["test"].strip()):
+            raise ValueError("Test result oracle digest does not match its plan.")
     try:
         plan_json = json.dumps(test_plan, ensure_ascii=False, allow_nan=False)
         results_json = json.dumps(test_results, ensure_ascii=False, allow_nan=False)
