@@ -344,6 +344,9 @@ def list_chat_messages(conversation_id: int) -> dict[str, Any]:
 
 @app.post("/api/chat")
 def chat(request: ChatRequest) -> dict[str, str]:
+    chat_limit = int(db.get_settings().get("chat_source_max_chars", 12000))
+    if len(request.message) > chat_limit:
+        raise HTTPException(status_code=422, detail=f"message exceeds the configured chat input limit of {chat_limit} characters.")
     try:
         return {"reply": chat_research.answer(request.message, request.history)}
     except ollama.OllamaError as exc:
