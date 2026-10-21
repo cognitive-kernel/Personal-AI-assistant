@@ -353,6 +353,7 @@ def test_language_guard_retries_wrong_language_then_fails_closed(monkeypatch):
 
 
 def test_direct_chat_prompt_treats_user_correction_as_unverified(monkeypatch):
+    monkeypatch.setattr(chat_research, "should_use_research", lambda _message: False)
     captured = {}
 
     def fake_chat(message, history=None, system_prompt=None, **_kwargs):
