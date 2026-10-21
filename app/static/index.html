@@ -1665,7 +1665,7 @@ el("experience-auto-capture-revoke")?.addEventListener("click",async()=>{
  } catch(error) { el("experience-auto-capture-status").textContent="لغو رضایت انجام نشد: "+error.message; }
 });
 el("experience-auto-capture-refresh")?.addEventListener("click",refreshExperienceAutoCaptureConsent);
-refreshExperienceAutoCaptureConsent();
+if(el("experience-memory-section")) refreshExperienceAutoCaptureConsent();
 
 el("experience-refresh")?.addEventListener("click",refreshExperiences);
 el("experience-create-form")?.addEventListener("submit",async event=>{
