@@ -116,7 +116,7 @@ def test_resource_headroom_uses_independent_cpu_and_ram_limits(monkeypatch):
     monkeypatch.setattr(hardware, "detect_gpu", lambda: {"gpu_available": False})
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         cpu_percent=lambda interval: 75.0,
-        virtual_memory=lambda: SimpleNamespace(percent=65.0),
+        virtual_memory=lambda: SimpleNamespace(percent=65.0, available=8 * 1024**3),
     ))
     with pytest.raises(RuntimeError, match="CPU 75.0%"):
         hardware.ensure_resource_headroom({
@@ -129,7 +129,7 @@ def test_resource_headroom_uses_independent_cpu_and_ram_limits(monkeypatch):
 def test_resource_headroom_checks_gpu_compute_and_vram_independently(monkeypatch):
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         cpu_percent=lambda interval: 20.0,
-        virtual_memory=lambda: SimpleNamespace(percent=30.0),
+        virtual_memory=lambda: SimpleNamespace(percent=30.0, available=8 * 1024**3),
     ))
     monkeypatch.setattr(hardware, "detect_gpu", lambda: {
         "gpu_available": True,
@@ -173,6 +173,7 @@ def test_gpu_resource_guard_is_skipped_when_gpu_is_disabled(monkeypatch):
         (6, 25, 4, 2),
         (32, 20, 5, 20),
         (4, 25, 4, 0),
+        (0, 25, 4, 0),
         (None, 25, 4, None),
     ],
 )
