@@ -46,6 +46,7 @@ def test_worker_fails_unknown_task_type_without_executing_payload(worker_store):
 def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("test.flaky", {}, max_attempts=2)
 
     def fail(_payload, _checkpoint, _context):
@@ -64,6 +65,22 @@ def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker
     second = task_manager.get_task(task["id"])
     assert second["status"] == "failed"
     assert second["attempts"] == 2
+
+
+def test_retry_backoff_uses_jitter_within_bounded_window(worker_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: high)
+    task = task_manager.create_task("test.jitter", {}, max_attempts=2)
+
+    worker = TaskWorker("worker-jitter", {
+        "test.jitter": lambda *_: (_ for _ in ()).throw(RuntimeError("temporary")),
+    })
+    assert worker.run_once() is True
+
+    saved = task_manager.get_task(task["id"])
+    # First retry has a 2s exponential delay and +20% deterministic jitter.
+    assert datetime.fromisoformat(saved["scheduled_at"]) == current + timedelta(seconds=2.4)
 
 
 def test_worker_does_not_retry_permanent_input_errors(worker_store):
