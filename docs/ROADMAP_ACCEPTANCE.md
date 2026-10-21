@@ -125,7 +125,7 @@ The learning subsystem must behave as a staged, evidence-carrying learner rather
 
 ### Current implementation status
 
-The branch has the temporary candidate table and gated promotion/failure-experience writer, automatic best-effort web research, configurable OpenAI-compatible peer consultation, provenance/evidence persistence, and unit tests for those storage and integration seams. The critical remaining gap is the end-to-end automated verification planner/runner: peer-suggested tests and source examples are not yet automatically converted into trusted executable tests and run before promotion. Until that exists and exact-head CI passes, candidates must remain temporary and the hybrid learning system must not be described as complete.
+The branch has temporary candidates and gated promotion/failure-experience recording, automatic best-effort web research and configured peer-AI consultation, provenance persistence, user-reported field outcome storage, and an explainable evidence score. An initial isolated runner now executes explicit Python doctest examples with expected outputs, and only records a pass when the configured no-network sandbox succeeds. This verifies those examples only—not the entire lesson or unrelated factual claims. The remaining gap is the general end-to-end verification planner: extraction of arbitrary source examples and claim-specific tests, trusted-oracle selection for non-executable facts, durable versioned test-run history, and integration of all evidence into a claim-level verification state. Until those gaps are closed and exact-head CI passes, the hybrid learning system must not be described as complete.
 
 ### Evidence ledger and confidence score (implemented baseline; calibration remains a release task)
 
