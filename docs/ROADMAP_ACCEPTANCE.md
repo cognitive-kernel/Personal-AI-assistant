@@ -180,3 +180,17 @@ The source-example runner also fails closed when a candidate lists multiple trus
 ### Evidence-only review without promotion
 
 Evidence from multiple primary-source candidates and configured peer-AI providers can improve diagnostics and the evidence-strength index, but it cannot promote a candidate into the durable knowledge table. Peer-provider names do not establish independent model judgments, and URL allowlisting does not prove that a source entails a claim. Without a trusted, passing test suite for the declared scope, the candidate remains in temporary storage with status `awaiting_test` and an explicit `evidence_reviewed_no_lab` review signal. Contradictory evidence blocks promotion and remains visible for retesting. Only the versioned trusted-test gate may promote knowledge.
+
+
+## Dashboard navigation and page separation — 2026-10-21
+
+The dashboard's main route must remain a concise overview. Every operational area must have a dedicated URL and a distinct HTML response containing only that area's markup (plus the shared navigation/header and critical storage warning). CSS-only hiding of unrelated sections is explicitly insufficient because hidden content still ships in the document and remains confusing to users.
+
+Required routes include storage health/backups, chat/research, learning/evidence review, learning paths, durable knowledge, task management, experience memory, cloud resource discovery, cloud planning, Kaggle quota, OCI limits, sandbox, self-improvement, and settings.
+
+Acceptance criteria:
+- `/` contains overview/navigation but no operational section forms or data panels.
+- Each `/sections/{slug}` response includes its intended section and excludes the markup for every unrelated section.
+- All navigation links target their dedicated routes and the active route is accessible via aria-current="page".
+- Shared scripts tolerate absent section controls and do not initialize unrelated subsystem APIs on every page.
+- Browser E2E exercises representative interactions on the corresponding page, and CI passes on the exact branch head.
