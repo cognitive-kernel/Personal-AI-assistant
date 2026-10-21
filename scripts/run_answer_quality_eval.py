@@ -174,12 +174,17 @@ def run_evaluation(
         model_name = str(settings.get("ollama_model", "unknown"))
         model_provider = "ollama"
         model_identity = f"{model_provider}:{model_name}"
-    try:
-        inventory = ollama.list_models()
-    except Exception as exc:
-        inventory = []
-        model_inventory_error = type(exc).__name__
+    if model_provider == "ollama":
+        try:
+            inventory = ollama.list_models()
+        except Exception as exc:
+            inventory = []
+            model_inventory_error = type(exc).__name__
+        else:
+            model_inventory_error = None
     else:
+        # Do not probe Ollama when the selected route is served by another adapter.
+        inventory = []
         model_inventory_error = None
     matching_model = next((item for item in inventory if item.get("name") == model_name), None)
     source_snapshots = [
