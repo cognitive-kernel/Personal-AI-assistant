@@ -418,3 +418,51 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     failed = learning.get_job(job["id"])
     assert failed["status"] == "failed"
     assert "model offline" in failed["error"]
+
+
+def test_ollama_chat_uses_dedicated_profile_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    db.update_settings({
+        "chat_ollama_model": "qwen2.5:7b",
+        "chat_ollama_num_ctx": 4096,
+        "chat_ollama_num_thread": 2,
+        "chat_ollama_timeout_seconds": 17,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 24,
+    })
+    captured = {}
+
+    def fake_request(path, payload, timeout=None):
+        captured.update(path=path, payload=payload, timeout=timeout)
+        return {"message": {"content": "سلام"}}
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    assert ollama.chat("سلام") == "سلام"
+    assert captured["path"] == "/api/chat"
+    assert captured["payload"]["model"] == "qwen2.5:7b"
+    assert captured["payload"]["options"]["num_ctx"] == 4096
+    assert captured["payload"]["options"]["num_thread"] == 2
+    assert captured["timeout"] == 17
+
+
+def test_settings_accept_independent_model_profiles(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    saved = db.update_settings({
+        "chat_ollama_model": "qwen2.5:7b",
+        "learning_ollama_model": "qwen3:8b",
+        "programming_ollama_model": "qwen3:14b",
+        "chat_max_concurrent_jobs": 2,
+        "learning_max_concurrent_jobs": 3,
+        "programming_max_concurrent_jobs": 1,
+    })
+    assert saved["chat_ollama_model"] == "qwen2.5:7b"
+    assert saved["learning_ollama_model"] == "qwen3:8b"
+    assert saved["programming_ollama_model"] == "qwen3:14b"
+    assert saved["chat_max_concurrent_jobs"] == 2
+    assert saved["learning_max_concurrent_jobs"] == 3
+    assert saved["programming_max_concurrent_jobs"] == 1
