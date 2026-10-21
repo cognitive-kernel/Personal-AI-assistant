@@ -175,6 +175,7 @@ def test_gpu_resource_guard_is_skipped_when_gpu_is_disabled(monkeypatch):
         (4, 25, 4, 0),
         (0, 25, 4, 0),
         (None, 25, 4, None),
+        (float("nan"), 25, 4, None),
     ],
 )
 def test_dynamic_ram_budget_uses_available_memory_and_safety_reserve(available, maximum, reserve, expected):
@@ -191,3 +192,7 @@ def test_resource_headroom_fails_closed_when_available_ram_telemetry_is_missing(
     ))
     with pytest.raises(RuntimeError, match="RAM availability telemetry is unavailable"):
         hardware.ensure_resource_headroom()
+
+
+def test_dynamic_ram_budget_rejects_non_finite_telemetry():
+    assert hardware.dynamic_ram_budget_gb({}, {"available_ram_gb": float("nan")}) is None
