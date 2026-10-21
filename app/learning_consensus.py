@@ -158,6 +158,8 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
                FROM temporary_knowledge_candidates WHERE id=?""",
             (candidate_id,),
         ).fetchone()
+        current_trust_level = str(current["trust_level"])
+        current_learning_status = str(current["learning_status"])
         if outcome == "model_consensus":
             conn.execute(
                 """UPDATE temporary_knowledge_candidates
@@ -193,6 +195,22 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
                     "یک یا چند مدل با ادعا مخالفت کردند؛ پاسخ‌های خام در knowledge_peer_consultations نگهداری شده‌اند.",
                 ),
             )
+            current_trust_level = "L-1"
+            current_learning_status = "conflicting"
+        elif (
+            outcome == "insufficient_evidence"
+            and current_trust_level == "L1"
+            and current_learning_status == "model_consensus"
+        ):
+            conn.execute(
+                """UPDATE temporary_knowledge_candidates
+                   SET trust_level='L0', learning_status='unverified',
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND trust_level='L1' AND learning_status='model_consensus'""",
+                (candidate_id,),
+            )
+            current_trust_level = "L0"
+            current_learning_status = "unverified"
         result = {
             "id": consensus_id, "candidate_id": candidate_id, "candidate_sha256": actual_digest,
             "hash_matches": hash_matches, "prompt_version": CONSENSUS_PROMPT_VERSION,
@@ -200,8 +218,8 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
             "supporting_count": supporting, "contradicting_count": contradicting,
             "uncertain_count": uncertain, "consensus_score": score, "source_present": source_present,
             "outcome": outcome, "decision_reason": decision_reason,
-            "trust_level": "L1" if outcome == "model_consensus" else "L-1" if outcome == "conflicting" else str(current["trust_level"]),
-            "learning_status": outcome if outcome in {"model_consensus", "conflicting"} else str(current["learning_status"]),
+            "trust_level": "L1" if outcome == "model_consensus" else "L-1" if outcome == "conflicting" else current_trust_level,
+            "learning_status": outcome if outcome in {"model_consensus", "conflicting"} else current_learning_status,
             "consensus_is_not_proof_of_truth": True,
         }
     return result

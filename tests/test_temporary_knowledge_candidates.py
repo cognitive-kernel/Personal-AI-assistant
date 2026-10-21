@@ -83,6 +83,36 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
     assert listed[0]["test_results"] == results
 
 
+def test_legacy_prompt_consensus_cannot_authorize_l2_promotion(tmp_path, monkeypatch):
+    job, candidate_id, lesson = _setup(tmp_path, monkeypatch)
+    plan, result = _case("legacy_prompt_test", "ok", "ok", "deterministic_assertion")
+    plan["claim_ids"] = [f"{candidate_id}:1"]
+    digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET trust_level='L1', learning_status='model_consensus' WHERE id=?""",
+            (candidate_id,),
+        )
+        connection.execute(
+            """INSERT INTO knowledge_consensus_records(
+                   candidate_id, candidate_sha256, prompt_version, models_used_json,
+                   votes_json, supporting_count, contradicting_count, uncertain_count,
+                   consensus_score, source_present, outcome
+               ) VALUES (?, ?, 'learning-consensus-v1', '[]', '[]', 2, 0, 0, 1.0, 1, 'model_consensus')""",
+            (candidate_id, digest),
+        )
+
+    candidate = learning.record_candidate_test_results(candidate_id, [plan], [result])
+
+    assert candidate["status"] == "awaiting_test"
+    assert candidate["promoted_knowledge_id"] is None
+    assert candidate["model_consensus_gate"]["passed"] is False
+    assert candidate["model_consensus_gate"]["prompt_version_matches"] is False
+    with db.learning_connection() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0] == 0
+
+
 def test_promotion_upgrades_existing_unverified_knowledge_row_in_place(tmp_path, monkeypatch):
     job, candidate_id, lesson = _setup(tmp_path, monkeypatch)
     with db.learning_connection() as connection:

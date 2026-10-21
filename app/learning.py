@@ -651,8 +651,9 @@ def record_candidate_test_results(
         candidate_content = str(candidate["content"] or "")
         actual_content_sha256 = hashlib.sha256(candidate_content.encode("utf-8")).hexdigest()
         content_hash_matches = actual_content_sha256 == str(candidate["content_sha256"] or "")
+        from .learning_consensus import CONSENSUS_PROMPT_VERSION
         consensus_row = conn.execute(
-            """SELECT candidate_sha256, outcome FROM knowledge_consensus_records
+            """SELECT candidate_sha256, outcome, prompt_version FROM knowledge_consensus_records
                WHERE candidate_id=? ORDER BY id DESC LIMIT 1""",
             (candidate_id,),
         ).fetchone()
@@ -660,11 +661,18 @@ def record_candidate_test_results(
             "passed": bool(
                 consensus_row is not None
                 and consensus_row["outcome"] == "model_consensus"
+                and str(consensus_row["prompt_version"]) == CONSENSUS_PROMPT_VERSION
                 and str(consensus_row["candidate_sha256"]) == actual_content_sha256
                 and str(candidate["trust_level"]) == "L1"
                 and str(candidate["learning_status"]) == "model_consensus"
             ),
             "latest_outcome": str(consensus_row["outcome"]) if consensus_row is not None else "missing",
+            "latest_prompt_version": str(consensus_row["prompt_version"]) if consensus_row is not None else "missing",
+            "required_prompt_version": CONSENSUS_PROMPT_VERSION,
+            "prompt_version_matches": bool(
+                consensus_row is not None
+                and str(consensus_row["prompt_version"]) == CONSENSUS_PROMPT_VERSION
+            ),
             "consensus_hash_matches": bool(
                 consensus_row is not None
                 and str(consensus_row["candidate_sha256"]) == actual_content_sha256

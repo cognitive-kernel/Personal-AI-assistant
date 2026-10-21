@@ -132,6 +132,34 @@ def test_legacy_peer_prompt_votes_are_ignored_until_new_version_is_recorded(tmp_
     ]
 
 
+def test_legacy_peer_votes_demote_stale_l1_to_unverified(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    for provider, model in (("peer-old-a", "old-model-a"), ("peer-old-b", "old-model-b")):
+        record_peer_consultation(
+            candidate_id, provider=provider, model_name=model,
+            prompt="Legacy prompt version.", response="Supports the old candidate.",
+            stance="supports", prompt_version="learning-peer-review-v1",
+        )
+    with db.learning_connection() as connection:
+        connection.execute(
+            """UPDATE temporary_knowledge_candidates
+               SET trust_level='L1', learning_status='model_consensus' WHERE id=?""",
+            (candidate_id,),
+        )
+
+    result = evaluate_candidate_consensus(candidate_id)
+
+    assert result["outcome"] == "insufficient_evidence"
+    assert result["trust_level"] == "L0"
+    assert result["learning_status"] == "unverified"
+    with db.learning_connection() as connection:
+        current = connection.execute(
+            "SELECT trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(current) == ("L0", "unverified")
+
+
 def test_consensus_requires_a_recorded_original_source(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch, source=False)
     _vote(candidate_id, "peer-a", "large-model-a", "supports", "Supports.")
