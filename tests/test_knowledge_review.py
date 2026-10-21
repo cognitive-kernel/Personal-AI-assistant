@@ -12,6 +12,7 @@ from app.knowledge_review import (
     consult_configured_peer_ais,
     calculate_knowledge_confidence,
     record_user_application_feedback,
+    build_claim_verification_matrix,
 )
 from app.web_sources import SourceDocument
 
@@ -67,6 +68,10 @@ def test_online_research_persists_source_as_context_not_proof(tmp_path, monkeypa
     assert len(evidence["source_sha256"]) == 64
     assert "retrieved public page" in evidence["excerpt"]
     assert get_candidate_review_summary(candidate_id)["verification_status"] == "unverified"
+    plan = build_claim_verification_matrix(candidate_id)["verification_plan"]
+    assert plan["version"] == "hybrid-verification-plan-v1"
+    assert plan["automatic_promotion_allowed_by_this_plan"] is False
+    assert "no_trusted_executable_examples_or_curated_reference_test_set" in plan["promotion_blockers"]
 
 
 def test_peer_consultations_and_disagreements_are_persisted_without_verification(tmp_path, monkeypatch):
