@@ -13,7 +13,7 @@ from app.factual_knowledge import (
     put_cached_review,
     review_cache_key,
     record_test,
-    retrieve_verified_claims,
+    search_retrievable_claims,
     transition_evidence_level,
     transition_lifecycle,
 )
@@ -25,7 +25,7 @@ from app.schema_migrations import MigrationRunner
 def connection():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 18
     yield conn
     conn.close()
 
@@ -277,18 +277,34 @@ def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 16
-        old_id = create_claim(
-            conn, "Existing claim before revision migration", environment_version="3.11"
-        )
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-2]).apply(conn) == 16
+        old_id = conn.execute(
+            """INSERT INTO factual_knowledge(
+                   claim, normalized_claim, claim_hash, scope_json,
+                   environment_name, environment_version, risk_level
+               ) VALUES (?, ?, ?, '{}', 'python', '3.11', 'low')""",
+            (
+                "Existing claim before revision migration",
+                "Existing claim before revision migration",
+                "legacy-claim-hash",
+            ),
+        ).lastrowid
         conn.commit()
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 17
+        legacy_revision = conn.execute(
+            "SELECT revision_number, claim FROM factual_claim_revisions WHERE knowledge_id=?",
+            (old_id,),
+        ).fetchall()
+        assert legacy_revision == [(1, "Existing claim before revision migration")]
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 18
         revisions = list_claim_revisions(conn, old_id)
         assert len(revisions) == 1
         assert revisions[0]["revision_number"] == 1
         assert revisions[0]["claim"] == "Existing claim before revision migration"
+        assert revisions[0]["domain_name"] == "python"
     finally:
         conn.close()
+
 
 def test_claim_identity_isolated_by_environment_name(connection):
     python_claim = create_claim(
