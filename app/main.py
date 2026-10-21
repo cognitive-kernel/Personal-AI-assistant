@@ -185,6 +185,7 @@ def startup() -> None:
             lease_seconds=300,
             maintenance_callback=maintenance,
             maintenance_interval=30.0,
+            restrict_task_types=True,
         )
         runtime.start()
         _task_runtimes.append(runtime)
