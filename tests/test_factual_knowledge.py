@@ -261,6 +261,12 @@ def test_claim_revision_history_tracks_content_not_lifecycle_changes(connection)
             (kid,),
         )
 
+    with pytest.raises(sqlite3.IntegrityError, match="revisions are immutable"):
+        connection.execute(
+            "DELETE FROM factual_claim_revisions WHERE knowledge_id=? AND revision_number=1",
+            (kid,),
+        )
+
 
 def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
