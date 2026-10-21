@@ -721,10 +721,12 @@ async function loadLearningPaths() {
     stop.type = "button";
     stop.textContent = "توقف درس";
     stop.disabled = true;
+    const historyOutput = document.createElement("div");
+    historyOutput.className = "path-topic-job-history-container";
+    const savedJobs = (jobsByTopicId.get(Number(topic.id)) || []).slice(0, 5);
+    renderTopicJobHistory(historyOutput, topic, savedJobs, tasksByJobId);
     const output = document.createElement("div");
     output.className = "path-topic-lesson";
-    const savedJobs = (jobsByTopicId.get(Number(topic.id)) || []).slice(0, 5);
-    renderTopicJobHistory(output, topic, savedJobs, tasksByJobId);
     const reviewLabel = document.createElement("label");
     reviewLabel.textContent = "میزان یادآوری (۰ تا ۵)";
     const reviewRating = document.createElement("select");
@@ -758,7 +760,7 @@ async function loadLearningPaths() {
     });
     start.addEventListener("click", () => startLesson(path, topic, start, stop, output));
     stop.addEventListener("click", () => stopLesson(path, topic, stop, output));
-    row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, output);
+    row.append(label, status, score, save, start, stop, reviewLabel, reviewButton, reviewOutput, historyOutput, output);
     details.append(row);
    });
    pathCard.append(progressGroup, details);
