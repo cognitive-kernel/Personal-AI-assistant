@@ -103,6 +103,34 @@ def test_model_keep_alive_is_ram_aware_and_profile_safe(purpose, hardware_info, 
     assert hardware.model_keep_alive(purpose, hardware_info) == expected
 
 
+@pytest.mark.parametrize(
+    ("purpose", "setting", "expected"),
+    [
+        ("chat", "0", "0"),
+        ("chat", "10m", "10m"),
+        ("learning", "5m", "5m"),
+        ("programming", "30m", "30m"),
+        ("learning", "auto", "0"),
+        ("programming", "auto", "0"),
+    ],
+)
+def test_model_keep_alive_respects_explicit_profile_setting(purpose, setting, expected):
+    assert hardware.model_keep_alive(
+        purpose,
+        {"available_ram_gb": 25},
+        {f"{purpose}_model_keep_alive": setting},
+    ) == expected
+
+
+def test_chat_model_keep_alive_auto_uses_dynamic_ram_budget():
+    assert hardware.model_keep_alive(
+        "chat", {"available_ram_gb": 25}, {"chat_model_keep_alive": "auto", "ram_safety_reserve_gb": 4}
+    ) == "5m"
+    assert hardware.model_keep_alive(
+        "chat", {"available_ram_gb": 6}, {"chat_model_keep_alive": "auto", "ram_safety_reserve_gb": 4}
+    ) == "0"
+
+
 
 def test_runtime_limits_use_configured_cpu_percentage():
     limits = runtime_limits(
