@@ -15,6 +15,7 @@ from typing import Any
 
 from . import db, sandbox
 from .learning_evidence_gate import is_allowlisted_primary_source
+from .learning_evidence_gate import is_allowlisted_primary_source
 
 
 def count_doctest_examples(text: str) -> int:
@@ -242,7 +243,6 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         ).fetchone()["status"]
     experience_id = None
     promoted_to_knowledge = False
-    from .learning_evidence_gate import is_allowlisted_primary_source
     trusted_oracle = is_allowlisted_primary_source(oracle_url)
     if run_status == "failed":
         with db.learning_connection() as conn:
