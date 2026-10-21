@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, StrictInt
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import llm, backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -393,6 +393,12 @@ def api_storage_health() -> dict[str, Any]:
     """Read-only local diagnostics; never migrate, repair, or expose database paths."""
     return storage_health.check_storage_health()
 
+@app.get("/api/llm/providers")
+def llm_providers() -> dict[str, Any]:
+    """List provider adapters that are actually installed in this application."""
+    return {"providers": llm.supported_providers(), "tasks": llm.TASK_LABELS}
+
+
 @app.get("/api/models")
 def models() -> dict[str, Any]:
     try:
@@ -404,7 +410,7 @@ def models() -> dict[str, Any]:
 def chat(request: ChatRequest) -> dict[str, str]:
     try:
         return {"reply": chat_research.answer(request.message, request.history)}
-    except ollama.OllamaError as exc:
+    except (ollama.OllamaError, llm.LLMRoutingError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 @app.get("/api/settings")
@@ -431,6 +437,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     if "ollama_model" in values and (not isinstance(values["ollama_model"], str) or not values["ollama_model"].strip() or len(values["ollama_model"]) > 200):
         raise HTTPException(status_code=422, detail="ollama_model must be a non-empty string of at most 200 characters.")
     try:
+        if {"llm_models", "llm_task_mapping"} & set(values):
+            llm.validate_routing_settings(values, db.get_settings())
         return db.update_settings(values)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

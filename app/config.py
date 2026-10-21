@@ -43,7 +43,9 @@ class Defaults:
 defaults = Defaults()
 SETTING_DEFAULTS: dict[str, object] = {
     "ollama_base_url": defaults.ollama_base_url,
-    "ollama_model": defaults.ollama_model,
+    "ollama_model": defaults.ollama_model,  # legacy fallback for existing installations
+    "llm_models": [],
+    "llm_task_mapping": {},
     "ollama_embedding_model": defaults.ollama_embedding_model,
     "ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "ollama_num_ctx": defaults.ollama_num_ctx,

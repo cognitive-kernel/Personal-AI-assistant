@@ -1,4 +1,23 @@
-<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
-<label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
+<section id="settings-section">
+<h2>تنظیمات محلی</h2>
+<form id="settings-form">
+<fieldset><legend>مدل‌ها و وظایف</legend>
+<p>برای هر مدل یک پروفایل ثبت کنید و سپس مشخص کنید هر نوع کار از کدام پروفایل استفاده کند. مدل‌های موجود Ollama در فهرست پیشنهادها نمایش داده می‌شوند؛ نام مدل را می‌توان دستی هم وارد کرد.</p>
+<div id="model-profile-list" class="model-profile-list" aria-live="polite"></div>
+<datalist id="installed-model-options"></datalist>
+<button type="button" id="add-model-profile">افزودن پروفایل مدل</button>
+<h3>تخصیص مدل به وظایف</h3>
+<div id="model-task-routing" class="model-task-routing"></div>
+<p class="muted">اکنون adapter ارائه‌دهندهٔ Ollama فعال است. معماری به provider خاصی وابسته نیست؛ برای اتصال LLM اختصاصی، adapter آن باید در برنامه ثبت و پیاده‌سازی شود. کلیدها و اطلاعات محرمانهٔ ارائه‌دهنده در این فرم ذخیره نمی‌شوند.</p>
+</fieldset>
+<fieldset><legend>محدودیت‌های اجرا</legend>
+<label>تعداد توکن زمینهٔ پیش‌فرض<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
 <label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
-<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
+<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label>
+<label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label>
+<label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label>
+<button type="submit">ذخیره تنظیمات</button>
+</fieldset>
+</form>
+<pre id="settings-output" role="status" aria-live="polite"></pre>
+</section>

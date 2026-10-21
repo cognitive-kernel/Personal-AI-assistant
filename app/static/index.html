@@ -80,7 +80,7 @@ async function refresh() {
  if (el("settings-section")) {
   try {
    const s = await api("/api/settings");
-   el("model").value=s.ollama_model;
+   await loadModelRoutingSettings(s);
    el("ctx").value=s.ollama_num_ctx;
    el("threads").value=s.ollama_num_thread;
    el("timeout").value=s.ollama_timeout_seconds;
@@ -701,10 +701,147 @@ el("learning-field-feedback-form")?.addEventListener("submit",async event=>{
   await refreshLearningCandidates(id);
  } catch(error) { el("learning-candidate-review").textContent="ثبت بازخورد ناموفق بود: "+error.message; }
 });
+const MODEL_TASK_LABELS = {
+ simple_chat: "گفتگوی ساده",
+ knowledge_learning: "یادگیری و تولید درس",
+ programming: "برنامه‌نویسی و عیب‌یابی",
+ research: "پژوهش و پاسخ فنی",
+ research_review: "بازبینی ادعاها و شواهد",
+ assessment: "ارزیابی پاسخ‌های یادگیری"
+};
+let settingsModelProfiles = [];
+let settingsModelProviders = [{id:"ollama",label:"Ollama (محلی)"}];
+let settingsTaskMapping = {};
+function escapeModelSettingsValue(value) {
+ return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
+function nextModelProfileId() {
+ let n=1; const existing=new Set(settingsModelProfiles.map(item=>item.id));
+ while(existing.has("model-"+n)) n++;
+ return "model-"+n;
+}
+function renderModelProfiles() {
+ const container=el("model-profile-list");
+ if(!container) return;
+ container.replaceChildren();
+ settingsModelProfiles.forEach((profile,index)=>{
+  const row=document.createElement("div");
+  row.className="model-profile-row";
+  row.dataset.profileId=profile.id;
+  const providerOptions=settingsModelProviders.map(provider =>
+   '<option value="'+escapeModelSettingsValue(provider.id)+'"'+(provider.id===profile.provider?" selected":"")+'>'+escapeModelSettingsValue(provider.label)+'</option>'
+  ).join("");
+  const currentProvider=settingsModelProviders.some(provider=>provider.id===profile.provider)?"":'<option value="'+escapeModelSettingsValue(profile.provider)+'" selected>'+escapeModelSettingsValue(profile.provider)+'</option>';
+  row.innerHTML='<h4>پروفایل '+(index+1)+' <small>'+escapeModelSettingsValue(profile.id)+'</small></h4>'+
+   '<label>نام نمایشی<input class="model-profile-label" maxlength="100" value="'+escapeModelSettingsValue(profile.label||"")+'" placeholder="مثلاً مدل گفتگوی سبک" required></label>'+
+   '<label>ارائه‌دهنده<select class="model-profile-provider" required>'+providerOptions+currentProvider+'</select></label>'+
+   '<label>نام مدل / شناسهٔ مدل<input class="model-profile-name" list="installed-model-options" maxlength="200" value="'+escapeModelSettingsValue(profile.model||"")+'" placeholder="مثلاً qwen2.5:7b" required></label>'+
+   '<label class="inline-check"><input class="model-profile-enabled" type="checkbox"'+(profile.enabled!==false?" checked":"")+'> فعال</label>'+
+   '<button type="button" class="remove-model-profile" data-profile-id="'+escapeModelSettingsValue(profile.id)+'"'+(settingsModelProfiles.length<=1?" disabled":"")+'>حذف پروفایل</button>';
+  container.appendChild(row);
+ });
+ renderTaskModelMapping();
+}
+function renderTaskModelMapping() {
+ const container=el("model-task-routing");
+ if(!container) return;
+ container.replaceChildren();
+ const enabled=settingsModelProfiles.filter(profile=>profile.enabled!==false);
+ for(const [task,label] of Object.entries(MODEL_TASK_LABELS)) {
+  const wrapper=document.createElement("label");
+  wrapper.textContent=label;
+  const select=document.createElement("select");
+  select.dataset.task=task;
+  select.required=true;
+  for(const profile of enabled) {
+   const option=document.createElement("option");
+   option.value=profile.id;
+   option.textContent=(profile.label||profile.id)+" — "+profile.provider+": "+(profile.model||"نام‌گذاری نشده");
+   select.appendChild(option);
+  }
+  const preferred=settingsTaskMapping[task];
+  if(enabled.some(profile=>profile.id===preferred)) select.value=preferred;
+  else if(enabled.length) select.value=enabled[0].id;
+  wrapper.appendChild(select);
+  container.appendChild(wrapper);
+ }
+}
+function collectModelProfiles() {
+ const rows=Array.from(el("model-profile-list")?.querySelectorAll(".model-profile-row")||[]);
+ return rows.map(row=>({
+  id:row.dataset.profileId,
+  label:row.querySelector(".model-profile-label").value.trim(),
+  provider:row.querySelector(".model-profile-provider").value,
+  model:row.querySelector(".model-profile-name").value.trim(),
+  enabled:row.querySelector(".model-profile-enabled").checked
+ }));
+}
+function collectTaskModelMapping() {
+ const result={};
+ for(const select of el("model-task-routing")?.querySelectorAll("select[data-task]")||[]) result[select.dataset.task]=select.value;
+ return result;
+}
+async function loadModelRoutingSettings(settings) {
+ const profileList=Array.isArray(settings.llm_models)&&settings.llm_models.length
+  ?settings.llm_models
+  :[{id:"default-local",label:"مدل پیش‌فرض فعلی",provider:"ollama",model:settings.ollama_model||"qwen2.5:7b",enabled:true}];
+ settingsModelProfiles=profileList.map((profile,index)=>({
+  id:String(profile.id||("model-"+(index+1))),
+  label:String(profile.label||profile.id||("مدل "+(index+1))),
+  provider:String(profile.provider||"ollama"),
+  model:String(profile.model||""),
+  enabled:profile.enabled!==false
+ }));
+ settingsTaskMapping=settings.llm_task_mapping&&typeof settings.llm_task_mapping==="object"?{...settings.llm_task_mapping}:{};
+ try {
+  const providerResponse=await api("/api/llm/providers");
+  if(Array.isArray(providerResponse.providers)&&providerResponse.providers.length) settingsModelProviders=providerResponse.providers;
+ } catch(_error) { /* Keep local settings editable when provider discovery is unavailable. */ }
+ try {
+  const inventory=await api("/api/models");
+  const datalist=el("installed-model-options");
+  if(datalist&&Array.isArray(inventory.models)) {
+   datalist.replaceChildren();
+   for(const model of inventory.models) {
+    if(typeof model.name!=="string"||!model.name) continue;
+    const option=document.createElement("option"); option.value=model.name; datalist.appendChild(option);
+   }
+  }
+ } catch(_error) { /* Manual model names remain available when Ollama is offline. */ }
+ renderModelProfiles();
+}
+el("add-model-profile")?.addEventListener("click",()=>{
+ settingsModelProfiles=collectModelProfiles();
+ const id=nextModelProfileId();
+ settingsModelProfiles.push({id,label:"",provider:"ollama",model:"",enabled:true});
+ renderModelProfiles();
+});
+el("model-profile-list")?.addEventListener("click",event=>{
+ const button=event.target.closest(".remove-model-profile");
+ if(!button||settingsModelProfiles.length<=1) return;
+ settingsModelProfiles=collectModelProfiles().filter(profile=>profile.id!==button.dataset.profileId);
+ const validIds=new Set(settingsModelProfiles.filter(profile=>profile.enabled).map(profile=>profile.id));
+ for(const task of Object.keys(settingsTaskMapping)) if(!validIds.has(settingsTaskMapping[task])) settingsTaskMapping[task]=settingsModelProfiles.find(profile=>profile.enabled)?.id||"";
+ renderModelProfiles();
+});
+el("model-profile-list")?.addEventListener("change",event=>{
+ if(event.target.matches(".model-profile-enabled")) {
+  settingsModelProfiles=collectModelProfiles();
+  const enabledIds=new Set(settingsModelProfiles.filter(profile=>profile.enabled).map(profile=>profile.id));
+  for(const task of Object.keys(settingsTaskMapping)) if(!enabledIds.has(settingsTaskMapping[task])) settingsTaskMapping[task]=settingsModelProfiles.find(profile=>profile.enabled)?.id||"";
+  renderTaskModelMapping();
+ }
+});
 el("settings-form")?.addEventListener("submit", async event => {
  event.preventDefault();
- try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
- el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
+ try {
+  const profiles=collectModelProfiles();
+  const mapping=collectTaskModelMapping();
+  const values={llm_models:profiles,llm_task_mapping:mapping,ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
+  const result=await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})});
+  settingsModelProfiles=profiles; settingsTaskMapping=mapping;
+  el("settings-output").textContent="تنظیمات ذخیره شد.\n"+JSON.stringify({llm_models:result.llm_models,llm_task_mapping:result.llm_task_mapping,ollama_num_ctx:result.ollama_num_ctx,ollama_num_thread:result.ollama_num_thread,ollama_timeout_seconds:result.ollama_timeout_seconds,learning_max_concurrent_jobs:result.learning_max_concurrent_jobs,learning_source_max_chars:result.learning_source_max_chars},null,2);
+ } catch(error) { el("settings-output").textContent="ذخیره تنظیمات ناموفق بود: "+error.message; }
 });
 
 async function refreshCloudResources() {

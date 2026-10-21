@@ -107,30 +107,50 @@ def list_models() -> list[dict[str, Any]]:
         for item in models if isinstance(item, dict)
     ]
 
+def chat_completion(
+    model: str,
+    messages: list[dict[str, str]],
+    *,
+    options: dict[str, Any] | None = None,
+    response_format: str | dict[str, Any] | None = None,
+    timeout: float | None = None,
+) -> dict[str, Any]:
+    """Run one chat completion for an explicitly selected model profile."""
+    selected_model = model.strip() if isinstance(model, str) else ""
+    if not selected_model or len(selected_model) > 200:
+        raise OllamaError("Selected model name is invalid.")
+    if not isinstance(messages, list) or not messages or len(messages) > 64:
+        raise OllamaError("Chat messages must contain between 1 and 64 entries.")
+    settings = get_settings()
+    limits = runtime_limits(settings, detect_hardware())
+    effective_options: dict[str, Any] = {
+        "num_ctx": limits["num_ctx"],
+        "num_thread": limits["cpu_threads"],
+    }
+    if isinstance(options, dict):
+        effective_options.update(options)
+    payload: dict[str, Any] = {
+        "model": selected_model,
+        "stream": False,
+        "messages": messages,
+        "options": effective_options,
+    }
+    if response_format is not None:
+        payload["format"] = response_format
+    return _request("/api/chat", payload, timeout=timeout)
+
+
 def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
     system_prompt: str | None = None,
+    *,
+    task: str = "simple_chat",
 ) -> str:
-    settings = get_settings()
-    limits = runtime_limits(settings, detect_hardware())
-    messages = []
-    if isinstance(system_prompt, str) and system_prompt.strip():
-        messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
-    for item in history or []:
-        if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
-            messages.append({"role": item["role"], "content": item["content"][:12000]})
-    messages.append({"role": "user", "content": message[:12000]})
-    response = _request("/api/chat", {
-        "model": str(settings["ollama_model"]), "stream": False, "messages": messages,
-        "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
-    })
-    result = response.get("message", {}).get("content")
-    if not isinstance(result, str) or not result.strip():
-        raise OllamaError("Ollama returned an empty or unexpected chat response.")
-    return result
+    """Backward-compatible chat facade routed through the configured LLM profile."""
+    from .llm import complete_text
 
-
+    return complete_text(message, history, system_prompt=system_prompt, task=task)
 
 def embed(texts: list[str], model: str | None = None) -> list[list[float]]:
     """Generate bounded local embeddings; reject malformed vectors rather than caching them."""

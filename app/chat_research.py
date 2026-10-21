@@ -296,6 +296,23 @@ def _checkpoint(
         callback({"phase": phase, **details})
 
 
+_PROGRAMMING_MARKERS = (
+    "code", "coding", "programming", "python", "javascript", "typescript",
+    "sql", "query", "function", "script", "debug", "traceback", "stack trace",
+    "powershell", "bash", "api", "compiler", "package", "dependency",
+    "کد", "برنامه نویسی", "برنامه‌نویسی", "پایتون", "جاوااسکریپت", "اس‌کیوال",
+    "کوئری", "تابع", "اسکریپت", "دیباگ", "باگ", "خطای برنامه", "فرمان",
+)
+
+
+def _chat_task_for_message(message: str) -> str:
+    """Select a task profile without changing the research/verification flow."""
+    normalized = message.casefold()
+    if chr(96) * 3 in message or any(marker in normalized for marker in _PROGRAMMING_MARKERS):
+        return "programming"
+    return "research"
+
+
 def answer(
     message: str,
     history: list[dict[str, str]] | None = None,
@@ -305,7 +322,7 @@ def answer(
     """Answer normally for small-talk; use bounded source review for technical queries."""
     if not should_use_research(message):
         _checkpoint(checkpoint, "chat_generation_started")
-        reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
+        reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT, task="simple_chat")
         _checkpoint(checkpoint, "chat_generation_completed")
         return reply
 
@@ -338,9 +355,10 @@ def answer(
             "sources or memory. Return the answer only, not JSON."
         ),
     }
+    model_task = _chat_task_for_message(message)
     _checkpoint(checkpoint, "draft_generation_started")
     try:
-        draft = ollama.chat(json.dumps(payload, ensure_ascii=False), history, system_prompt=_SYSTEM_PROMPT)
+        draft = ollama.chat(json.dumps(payload, ensure_ascii=False), history, system_prompt=_SYSTEM_PROMPT, task=model_task)
     except Exception:
         _record_audit(message, "", sources, "generation_failed", None, memory, started_at)
         raise
@@ -363,6 +381,7 @@ def answer(
                 json.dumps(language_repair_payload, ensure_ascii=False),
                 history,
                 system_prompt=_SYSTEM_PROMPT,
+                task=model_task,
             )
         except Exception as exc:
             logger.warning("Answer language repair failed (%s)", type(exc).__name__)
@@ -460,6 +479,7 @@ def answer(
             json.dumps(repair_payload, ensure_ascii=False),
             history,
             system_prompt=_SYSTEM_PROMPT,
+            task=model_task,
         )
     except Exception:
         _record_audit(message, "", sources, "generation_failed", review, memory, started_at)
