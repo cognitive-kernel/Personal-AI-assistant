@@ -158,7 +158,7 @@ def chat(
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
         "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
     }, hardware)
-    keep_alive = model_keep_alive(purpose, hardware)
+    keep_alive = model_keep_alive(purpose, hardware, settings)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     model = str(settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b")))
     messages = []
