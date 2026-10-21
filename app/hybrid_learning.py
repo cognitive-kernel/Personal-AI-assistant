@@ -14,6 +14,7 @@ from . import db
 def run_hybrid_verification(
     candidate_id: int, *, query: str | None = None,
     web_mode: str = "search", run_sandbox: bool = True,
+    auto_correct: bool | None = None,
 ) -> dict[str, Any]:
     """Run web research, configured peer-AI review, and scoped sandbox tests.
 
@@ -24,6 +25,10 @@ def run_hybrid_verification(
         raise ValueError("candidate_id must be a positive integer.")
     if web_mode not in {"search", "disabled", "skip_requested_url_failed"}:
         raise ValueError("Unsupported web research mode.")
+    if auto_correct is None:
+        auto_correct = os.environ.get("LEARNING_AUTO_SELF_CORRECTION", "true").strip().lower() not in {
+            "0", "false", "no", "off",
+        }
     db.init_databases()
     with db.learning_connection() as conn:
         candidate = conn.execute(
@@ -107,10 +112,45 @@ def run_hybrid_verification(
         matrix = build_claim_verification_matrix(candidate_id)
     except Exception:
         matrix = None
+
+    automatic_correction: dict[str, Any] = {"status": "not_needed"}
+    if auto_correct:
+        with db.learning_connection() as conn:
+            persisted_state = conn.execute(
+                """SELECT status, trust_level, learning_status
+                   FROM temporary_knowledge_candidates WHERE id=?""",
+                (candidate_id,),
+            ).fetchone()
+        should_correct = bool(
+            persisted_state
+            and (
+                str(persisted_state["trust_level"]) == "L-1"
+                or str(persisted_state["learning_status"]) in {"failed", "conflicting"}
+                or str(persisted_state["status"]) in {"failed", "conflicted"}
+            )
+        )
+        if should_correct:
+            try:
+                from .learning_consensus import start_self_correction
+                automatic_correction = start_self_correction(candidate_id)
+                automatic_correction["trigger"] = "persisted_failure_or_conflict"
+            except ValueError as exc:
+                automatic_correction = {"status": "not_started", "reason": str(exc)}
+            except Exception as exc:
+                automatic_correction = {"status": "failed", "error_type": type(exc).__name__}
+                try:
+                    record_review_attempt(
+                        candidate_id, channel="peer_ai", status="failed",
+                        details={"reason": "automatic_self_correction_failed", "error_type": type(exc).__name__},
+                    )
+                except Exception:
+                    pass
+
     return {
         "candidate_id": candidate_id, "candidate_sha256": candidate["content_sha256"],
         "channels": {key: value for key, value in channels.items() if key in {"web_research", "peer_ai", "sandbox"}},
         "consensus": channels.get("consensus"),
+        "automatic_self_correction": automatic_correction,
         "review": review, "claim_matrix": matrix,
         "evidence_only_promotion": evidence_only_promotion,
         "promotion_performed": bool(evidence_only_promotion.get("promoted") or channels.get("sandbox", {}).get("promoted")),

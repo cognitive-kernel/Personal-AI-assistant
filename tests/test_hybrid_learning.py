@@ -108,6 +108,47 @@ def test_disabled_web_channel_does_not_disable_peer_or_sandbox(tmp_path, monkeyp
     assert result["channels"]["web_research"]["status"] == "unconfigured"
     assert calls == {"peer": 1, "sandbox": 1}
 
+def test_persisted_consensus_conflict_starts_automatic_self_correction(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    monkeypatch.setenv("LEARNING_AUTO_WEB_RESEARCH", "false")
+    attempted = []
+
+    def conflicting_consensus(cid):
+        with db.learning_connection() as conn:
+            conn.execute(
+                """UPDATE temporary_knowledge_candidates
+                   SET trust_level='L-1', learning_status='conflicting'
+                   WHERE id=?""",
+                (cid,),
+            )
+        return {"candidate_id": cid, "outcome": "conflicting", "trust_level": "L-1"}
+
+    monkeypatch.setattr("app.knowledge_review.record_review_attempt", lambda *args, **kwargs: {})
+    monkeypatch.setattr("app.knowledge_review.consult_configured_peer_ais",
+                        lambda *_args, **_kwargs: {"status": "unconfigured"})
+    monkeypatch.setattr("app.learning_verification.run_candidate_source_doctests",
+                        lambda *_args, **_kwargs: {"status": "no_examples", "promoted": False})
+    monkeypatch.setattr("app.learning_consensus.evaluate_candidate_consensus", conflicting_consensus)
+    monkeypatch.setattr("app.knowledge_review.get_candidate_review_summary",
+                        lambda _candidate_id: {"verification_status": "conflicting"})
+    monkeypatch.setattr("app.knowledge_review.build_claim_verification_matrix",
+                        lambda _candidate_id: {"claims": []})
+    monkeypatch.setattr(
+        "app.learning_consensus.start_self_correction",
+        lambda cid: attempted.append(cid) or {
+            "status": "alternative_created", "parent_candidate_id": cid,
+            "alternative_candidate_id": 99, "attempt_no": 1,
+        },
+    )
+
+    result = hybrid_learning.run_hybrid_verification(candidate_id)
+
+    assert attempted == [candidate_id]
+    assert result["automatic_self_correction"]["status"] == "alternative_created"
+    assert result["automatic_self_correction"]["trigger"] == "persisted_failure_or_conflict"
+    assert result["promotion_performed"] is False
+
+
 def test_peer_test_suggestions_are_visible_but_never_treated_as_trusted_oracles(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch)
     response = json.dumps({
