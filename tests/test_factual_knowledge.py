@@ -286,7 +286,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
             (
                 "Existing claim before revision migration",
                 "Existing claim before revision migration",
-                "legacy-claim-hash",
+                "a" * 64,
             ),
         ).lastrowid
         conn.commit()
