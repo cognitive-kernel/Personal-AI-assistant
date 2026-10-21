@@ -13,6 +13,7 @@ from app.knowledge_review import (
     calculate_knowledge_confidence,
     record_user_application_feedback,
     build_claim_verification_matrix,
+    promote_candidate_after_evidence_review,
 )
 from app.web_sources import SourceDocument
 
@@ -389,3 +390,51 @@ def test_online_research_classifies_claim_linked_sources_only_after_claim_review
         ).fetchone()
     assert evidence["evidence_kind"] == "supporting"
     assert "not independent proof" in evidence["reliability_note"]
+
+def test_evidence_only_promotion_requires_two_domains_and_two_peer_providers(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    for url in ("https://docs.python.org/3/tutorial/", "https://www.rfc-editor.org/rfc/rfc9110"):
+        record_review_evidence(
+            candidate_id, evidence_kind="supporting", source_url=url,
+            source_title="Primary source", excerpt="Directly supports the bounded candidate claim.",
+        )
+    record_peer_consultation(candidate_id, provider="peer-a", model_name="m1",
+        prompt="Challenge claim", response="Supports with caveats", stance="supports")
+    insufficient = promote_candidate_after_evidence_review(candidate_id)
+    assert insufficient["promoted"] is False
+    assert insufficient["reason"] == "insufficient_independent_support_channels"
+    record_peer_consultation(candidate_id, provider="peer-b", model_name="m2",
+        prompt="Try to falsify", response="Supports within stated scope", stance="supports")
+    promoted = promote_candidate_after_evidence_review(candidate_id)
+    assert promoted["promoted"] is True
+    assert promoted["status"] == "evidence_reviewed_no_lab"
+    assert promoted["score"] >= 30
+    with db.learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        knowledge = conn.execute(
+            "SELECT status FROM knowledge_items WHERE id=?", (candidate["promoted_knowledge_id"],),
+        ).fetchone()
+    assert candidate["status"] == "evidence_reviewed_no_lab"
+    assert knowledge["status"] == "evidence_reviewed_no_lab"
+
+
+def test_evidence_only_promotion_refuses_known_contradictions(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    record_review_evidence(candidate_id, evidence_kind="supporting",
+        source_url="https://docs.python.org/3/tutorial/", excerpt="Supports the bounded claim.")
+    record_review_evidence(candidate_id, evidence_kind="supporting",
+        source_url="https://www.rfc-editor.org/rfc/rfc9110", excerpt="Supports the bounded claim.")
+    record_review_evidence(candidate_id, evidence_kind="contradicting",
+        source_url="https://example.gov/contradiction", excerpt="Contradicts the claim.")
+    record_peer_consultation(candidate_id, provider="peer-a", model_name="m1",
+        prompt="Review", response="Supports", stance="supports")
+    record_peer_consultation(candidate_id, provider="peer-b", model_name="m2",
+        prompt="Review", response="Supports", stance="supports")
+    result = promote_candidate_after_evidence_review(candidate_id)
+    assert result["promoted"] is False
+    assert result["reason"] == "contradicting_evidence_or_failed_field_use"
+    with db.learning_connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0] == 0
