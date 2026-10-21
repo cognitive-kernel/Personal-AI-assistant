@@ -2241,3 +2241,12 @@ A passing doctest or fenced assertion block from a trusted source is now recorde
 - Added the versioned claim-test-coverage-v1 module, a ten-case/five-domain JSONL policy dataset, an offline evaluator, and regression tests for incomplete mappings, unknown claims, duplicate test names, stable claim IDs, false acceptance and false rejection.
 - The bilingual answer-quality gate was versioned to bilingual-answer-gate-v2 and now reports the false-acceptance rate for results containing exact prohibited phrases from the reference dataset. This denominator does not include semantically unsafe paraphrases without a phrase hit.
 - CI validation observed on `3dac1d600fbc76130cc09039647d1acf0246b9ad`: 764 tests passed, 6 skipped, 16 warnings; Windows storage regressions, browser smoke, real Docker sandbox integration, and dependency audit all succeeded. The versioned claim-to-test benchmark is also invoked as a dedicated CI step. Live Ollama evaluation, target-host checks, and an independent security audit have not been performed.
+
+
+## 2026-10-21 — صفحه‌بندی سمت سرور برای فهرست‌های اصلی و معماری چندمدلی
+
+- APIهای فهرست کارهای یادگیری، نامزدهای دانش، دانش ذخیره‌شده، مسیرهای آموزشی، حافظهٔ تجربه و پیشنهادهای خودبهبود صفحه و اندازهٔ صفحه می‌پذیرند؛ کوئری‌های اصلی از `LIMIT/OFFSET` و ترتیب پایدار استفاده می‌کنند. صف وظایف قبلاً cursor pagination داشت.
+- کنترل‌های صفحهٔ قبل/بعد و وضعیت صفحه به UI نامزدهای دانش، دانش ذخیره‌شده، تجربه‌ها، مسیرهای آموزشی، منابع ابری و خودبهبود اضافه شدند. برای کشف منابع ابری چون فیلتر relevance/freshness هنوز در سرویس انجام می‌شود، شمارش کل جعل نمی‌شود و SQL pagination کامل روی ranking باقی است.
+- `app/model_runtime.py` لایهٔ انتخاب پروفایل بر اساس شناسهٔ وظیفه و registry adapterها را اضافه کرد. تنظیمات مدل چندگانه و تخصیص وظیفه در API و UI قابل مدیریت‌اند؛ Ollama تنها adapter اجرایی فعلی است.
+- چت ساده، پژوهش/برنامه‌نویسی، تولید درس، بازبینی ادعا، بازبینی پاسخ یادگیرنده و embedding به تخصیص‌های وظیفه‌محور وصل شدند. کلید cache embedding شامل ارائه‌دهنده و نام مدل است تا خروجی دو مدل با هم اشتباه نشود.
+- تست‌های واحد برای پروفایل‌های سازگار با تنظیم legacy، تخصیص مدل به وظیفه، اعتبارسنجی provider و متادیتای صفحه‌بندی اضافه/به‌روز شده‌اند. وضعیت نهایی CI روی SHA نهایی باید قبل از دریافت نسخه بررسی شود؛ تست‌های محلی روی میزبان هدف اجرا نشده‌اند.
