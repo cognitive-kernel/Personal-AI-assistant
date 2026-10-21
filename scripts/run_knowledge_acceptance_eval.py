@@ -9,10 +9,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 DEFAULT_DATASET = ROOT / "benchmarks" / "knowledge_acceptance" / "v1" / "cases.jsonl"
 DATASET_VERSION = "v1"
 
