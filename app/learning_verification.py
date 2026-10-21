@@ -206,6 +206,8 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         actual = json.loads(result.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError, json.JSONDecodeError):
         actual = {"status": result.status, "stdout": result.stdout[-1000:], "stderr": result.stderr[-1000:]}
+    if run_status == "failed" and isinstance(actual, dict):
+        actual["runner_stderr"] = (result.stderr or result.reason or "sandbox execution failed")[-2000:]
     expected = {
         "doctest_attempted": doctest_count,
         "doctest_failed": 0,
