@@ -88,7 +88,7 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
     result = run_candidate_source_doctests(candidate_id)
     assert result["passed"] is True
     assert result["promoted"] is False
-    assert result["verification_scope"] == "explicit doctest examples in this lesson only"
+    assert result["verification_scope"] == "explicit source doctests and restricted fenced Python assertion blocks only"
     assert "not sufficient to promote" in result["note"]
     with db.learning_connection() as conn:
         row = conn.execute(
