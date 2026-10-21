@@ -26,6 +26,19 @@ def detect_hardware() -> dict[str, Any]:
         ],
     }
 
+def ensure_resource_headroom(limit_percent: float = 90.0) -> None:
+    """Refuse to start new inference when system CPU or RAM is already at the safety threshold."""
+    if psutil is None:
+        raise RuntimeError("Resource telemetry is unavailable; refusing to start model inference safely.")
+    cpu_percent = psutil.cpu_percent(interval=0.1)
+    memory_percent = psutil.virtual_memory().percent
+    if cpu_percent >= limit_percent or memory_percent >= limit_percent:
+        raise RuntimeError(
+            f"System resource usage is too high to start inference safely "
+            f"(CPU {cpu_percent:.1f}%, RAM {memory_percent:.1f}%; limit {limit_percent:.0f}%)."
+        )
+
+
 def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = None) -> dict[str, int]:
     hardware = hardware or detect_hardware()
     cpu_count = max(1, int(hardware.get("logical_cpu_count") or 1))
