@@ -89,5 +89,5 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     assert len(constructed) >= 3
     assert all(runtime.start_count == 1 for runtime in constructed)
     assert {runtime.handlers.keys().__iter__().__next__() for runtime in constructed} >= {
-        "research.answer", "learning.run_job", "cloud.discovery.run"
+        "research.answer", "learning.run_job", "cloud.discover_resources"
     }
