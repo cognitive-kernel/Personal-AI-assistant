@@ -113,7 +113,7 @@ async def enforce_loopback_only(request, call_next):
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-_task_runtime: TaskRuntime | None = None
+_task_runtimes: list[TaskRuntime] = []
 _startup_storage_error: str | None = None
 
 
@@ -141,42 +141,61 @@ def startup() -> None:
         logger.exception("Cloud resource discovery could not be initialized or scheduled.")
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
-    if _task_runtime is not None and _task_runtime.is_running:
+    if any(runtime.is_running for runtime in _task_runtimes):
         backup_scheduler.start_backup_scheduler()
         return
     settings = db.get_settings()
-    configured_workers = int(settings.get("learning_max_concurrent_jobs", 1))
-    worker_count = max(1, min(8, configured_workers))
-    handlers = {
-        LEARNING_TASK_TYPE: handle_learning_job,
+    chat_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
+    }
+    learning_handlers = {LEARNING_TASK_TYPE: handle_learning_job}
+    programming_handlers: dict[str, Any] = {}
+    system_handlers = {
         cloud_resources.CLOUD_DISCOVERY_TASK_TYPE: cloud_resources.handle_discovery_task,
     }
     sandbox_handler = sandbox_tasks.handler_from_environment()
     if sandbox_handler is not None:
-        handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
+        programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
-        handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
-    _task_runtime = TaskRuntime(
-        handlers,
-        worker_count=worker_count,
-        poll_interval=0.5,
-        lease_seconds=300,
-        maintenance_callback=(
-            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None
-        ),
-        maintenance_interval=30.0,
-    )
-    _task_runtime.start()
-    backup_scheduler.start_backup_scheduler()
+        programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
 
+    # Each runtime claims only its own task types, so slow learning or code-test
+    # work cannot consume the chat lane's worker slots.
+    runtime_specs: list[tuple[dict[str, Any], int, str, Any]] = [
+        (chat_handlers, int(settings.get("chat_max_concurrent_jobs", 1)), "chat-worker", None),
+        (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", None),
+        (system_handlers, 1, "system-worker", None),
+    ]
+    if programming_handlers:
+        runtime_specs.append((
+            programming_handlers,
+            int(settings.get("programming_max_concurrent_jobs", 1)),
+            "programming-worker",
+            sandbox_tasks.cleanup_terminal_containers if sandbox_handler is not None else None,
+        ))
+
+    _task_runtimes = []
+    for lane_handlers, configured_workers, prefix, maintenance in runtime_specs:
+        runtime = TaskRuntime(
+            lane_handlers,
+            worker_count=max(1, min(8, configured_workers)),
+            worker_prefix=prefix,
+            poll_interval=0.5,
+            lease_seconds=300,
+            maintenance_callback=maintenance,
+            maintenance_interval=30.0,
+        )
+        runtime.start()
+        _task_runtimes.append(runtime)
+    backup_scheduler.start_backup_scheduler()
 
 @app.on_event("shutdown")
 def shutdown() -> None:
     backup_scheduler.stop_backup_scheduler(timeout=5.0)
-    if _task_runtime is not None and not _task_runtime.stop(timeout=10.0):
-        logger.warning("Task runtime did not stop before the shutdown deadline.")
+    for runtime in _task_runtimes:
+        if not runtime.stop(timeout=10.0):
+            logger.warning("Task runtime %s did not stop before the shutdown deadline.", runtime.worker_prefix)
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
