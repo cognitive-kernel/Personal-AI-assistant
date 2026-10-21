@@ -186,6 +186,7 @@ def test_official_documentation_host_matching_rejects_lookalikes():
         ("MikroTik RouterOS 7.15 firewall", "mikrotik_routeros", "7.15"),
         ("VMware ESXi 8.0 storage", "vmware_esxi", "8.0"),
         ("Rust 1.82.0 ownership", "rust", "1.82.0"),
+        ("Python 3.12 decorators", "python", "3.12"),
     ],
 )
 def test_factual_domain_detection_keeps_explicit_version_scope(topic, environment_name, environment_version):
