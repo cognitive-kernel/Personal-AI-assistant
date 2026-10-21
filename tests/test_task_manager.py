@@ -62,7 +62,9 @@ def test_claim_respects_priority_and_scheduled_time(task_store):
     assert task_manager.get_task(lower["id"])["status"] == "queued"
 
 
-def test_failed_task_retries_only_within_attempt_limit(task_store):
+def test_failed_task_retries_with_bounded_backoff_and_respects_attempt_limit(task_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
     task = task_manager.create_task("retryable", {}, max_attempts=2)
     first = task_manager.claim_next_task("worker-a")
     assert first["id"] == task["id"]
@@ -70,7 +72,10 @@ def test_failed_task_retries_only_within_attempt_limit(task_store):
     retry = task_manager.fail_task(task["id"], "worker-a", "temporary", retry=True)
     assert retry["status"] == "queued"
     assert retry["attempts"] == 1
+    assert datetime.fromisoformat(retry["scheduled_at"]) == current + timedelta(seconds=2)
+    assert task_manager.claim_next_task("too-early") is None
 
+    current += timedelta(seconds=2)
     second = task_manager.claim_next_task("worker-b")
     assert second["id"] == task["id"]
     failed = task_manager.fail_task(task["id"], "worker-b", "still broken", retry=True)
