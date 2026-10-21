@@ -733,7 +733,7 @@ LEARNING_MIGRATIONS = (
                BEFORE DELETE ON factual_claim_revisions
                BEGIN SELECT RAISE(ABORT, 'factual claim revisions are immutable'); END""",
         ),
-    ),,
+    ),
     Migration(
         18,
         "factual-claim-domain-name",
