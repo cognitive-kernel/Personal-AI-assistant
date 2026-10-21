@@ -5,6 +5,7 @@ actual learning outcome instead of treating a swallowed application error as suc
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from . import learning
@@ -126,7 +127,7 @@ def handle_learning_job(
             if cause.retryable:
                 raise RetryableTaskError("Learning model request failed; retry may succeed.") from exc
             raise PermanentTaskError("Learning model configuration or policy is invalid.") from exc
-        if isinstance(cause, (ValueError, TypeError, KeyError, AssertionError)):
+        if isinstance(cause, (ValueError, TypeError, KeyError, AssertionError, sqlite3.IntegrityError)):
             raise PermanentTaskError("Learning job failed because of invalid input or an internal invariant.") from exc
         raise RetryableTaskError("Learning job execution failed; retry may succeed.") from exc
 
