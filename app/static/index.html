@@ -733,11 +733,11 @@ function renderModelProfiles() {
   ).join("");
   const currentProvider=settingsModelProviders.some(provider=>provider.id===profile.provider)?"":'<option value="'+escapeModelSettingsValue(profile.provider)+'" selected>'+escapeModelSettingsValue(profile.provider)+'</option>';
   row.innerHTML='<h4>پروفایل '+(index+1)+' <small>'+escapeModelSettingsValue(profile.id)+'</small></h4>'+
-   '<label>نام نمایشی<input class="model-profile-label" maxlength="100" value="'+escapeModelSettingsValue(profile.label||"")+'" placeholder="مثلاً مدل گفتگوی سبک" required></label>'+
-   '<label>ارائه‌دهنده<select class="model-profile-provider" required>'+providerOptions+currentProvider+'</select></label>'+
-   '<label>نام مدل / شناسهٔ مدل<input class="model-profile-name" list="installed-model-options" maxlength="200" value="'+escapeModelSettingsValue(profile.model||"")+'" placeholder="مثلاً qwen2.5:7b" required></label>'+
-   '<label class="inline-check"><input class="model-profile-enabled" type="checkbox"'+(profile.enabled!==false?" checked":"")+'> فعال</label>'+
-   '<button type="button" class="remove-model-profile" data-profile-id="'+escapeModelSettingsValue(profile.id)+'"'+(settingsModelProfiles.length<=1?" disabled":"")+'>حذف پروفایل</button>';
+   '<label>نام نمایشی<input class="model-profile-label" aria-label="نام نمایشی پروفایل مدل '+(index+1)+'" maxlength="100" value="'+escapeModelSettingsValue(profile.label||"")+'" placeholder="مثلاً مدل گفتگوی سبک" required></label>'+
+   '<label>ارائه‌دهنده<select class="model-profile-provider" aria-label="ارائه‌دهندهٔ پروفایل مدل '+(index+1)+'" required>'+providerOptions+currentProvider+'</select></label>'+
+   '<label>نام مدل / شناسهٔ مدل<input class="model-profile-name" aria-label="نام مدل یا شناسهٔ پروفایل '+(index+1)+'" list="installed-model-options" maxlength="200" value="'+escapeModelSettingsValue(profile.model||"")+'" placeholder="مثلاً qwen2.5:7b" required></label>'+
+   '<label class="inline-check"><input class="model-profile-enabled" aria-label="فعال بودن پروفایل مدل '+(index+1)+'" type="checkbox"'+(profile.enabled!==false?" checked":"")+'> فعال</label>'+
+   '<button type="button" class="remove-model-profile" aria-label="حذف پروفایل مدل '+(index+1)+'" data-profile-id="'+escapeModelSettingsValue(profile.id)+'"'+(settingsModelProfiles.length<=1?" disabled":"")+'>حذف پروفایل</button>';
   container.appendChild(row);
  });
  renderTaskModelMapping();
@@ -753,6 +753,7 @@ function renderTaskModelMapping() {
   wrapper.textContent=label;
   const select=document.createElement("select");
   select.dataset.task=task;
+  select.setAttribute("aria-label","مدل اختصاص‌یافته به وظیفهٔ "+label);
   select.required=true;
   for(const profile of enabled) {
    const option=document.createElement("option");
