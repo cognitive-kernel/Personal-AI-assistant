@@ -34,7 +34,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     db.init_databases()
     with db.learning_connection() as conn:
         candidate = conn.execute(
-            """SELECT content, source_urls_json, content_sha256 FROM temporary_knowledge_candidates WHERE id=?""",
+            """SELECT topic, content, source_urls_json, content_sha256 FROM temporary_knowledge_candidates WHERE id=?""",
             (candidate_id,),
         ).fetchone()
     if candidate is None:
@@ -97,6 +97,43 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         current_status = conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()["status"]
+    experience_id = None
+    if run_status == "failed":
+        # Preserve a failed experiment as a reusable experience, including its oracle and output.
+        try:
+            from .experience import create_experience, update_experience
+            experience = create_experience(
+                candidate["topic"],
+                f"Sandboxed source-example suite failed for temporary knowledge candidate {candidate_id}.",
+                "The candidate's explicit examples should match their cited expected outputs; investigate the first mismatch before retrying.",
+            )
+            update_experience(
+                int(experience["id"]),
+                status="failed",
+                source_evidence=[{
+                    "url": oracle_url,
+                    "claim": f"Source-provided doctest examples for candidate {candidate_id} define the expected behavior tested.",
+                }],
+                test_plan=[{
+                    "test": "source-doctest-suite",
+                    "oracle_kind": "source_example",
+                    "oracle_ref": oracle_url,
+                    "expected": expected,
+                }],
+                test_results=[{
+                    "test": "source-doctest-suite",
+                    "passed": False,
+                    "runner": "docker-doctest",
+                    "expected": expected,
+                    "actual": actual,
+                    "failure_reason": (result.stderr or result.reason or "Example output mismatch")[-2000:],
+                }],
+                takeaway="Failed examples remain recorded for diagnosis; this failure does not by itself disprove unrelated claims in the lesson.",
+            )
+            experience_id = int(experience["id"])
+        except Exception:
+            # The versioned test-run row remains the durable fallback if experience storage fails.
+            experience_id = None
     return {
         "candidate_id": candidate_id,
         "status": result.status,
@@ -105,5 +142,6 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         "candidate_status": current_status,
         "verification_scope": "explicit doctest examples in this lesson only",
         "promoted": False,
+        "failure_experience_id": experience_id,
         "note": "A scoped example test is not sufficient to promote the entire lesson.",
     }
