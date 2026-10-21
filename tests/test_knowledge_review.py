@@ -417,7 +417,7 @@ def test_evidence_only_promotion_requires_two_domains_and_two_peer_providers(tmp
         knowledge = conn.execute(
             "SELECT status FROM knowledge_items WHERE id=?", (candidate["promoted_knowledge_id"],),
         ).fetchone()
-    assert candidate["status"] == "evidence_reviewed_no_lab"
+    assert candidate["status"] == "awaiting_test"
     assert knowledge["status"] == "evidence_reviewed_no_lab"
 
     record_review_evidence(
@@ -436,7 +436,7 @@ def test_evidence_only_promotion_requires_two_domains_and_two_peer_providers(tmp
             "SELECT status FROM knowledge_items WHERE id=?",
             (candidate["promoted_knowledge_id"],),
         ).fetchone()
-    assert candidate["status"] == "conflicted"
+    assert candidate["status"] == "awaiting_test"
     assert knowledge["status"] == "conflicted"
 
 
