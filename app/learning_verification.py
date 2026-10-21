@@ -77,7 +77,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
     expected = {"attempted": example_count, "failed": 0}
     passed = result.status == "succeeded" and actual == expected
     suite_digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
-    run_status = "passed" if passed else "failed"
+    run_status = "passed" if passed else ("failed" if result.status in {"succeeded", "failed"} else "unavailable")
     actual_json = json.dumps(actual, ensure_ascii=False, sort_keys=True, allow_nan=False)
     expected_json = json.dumps(expected, ensure_ascii=False, sort_keys=True, allow_nan=False)
     with db.learning_connection() as conn:
