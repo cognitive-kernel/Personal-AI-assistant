@@ -215,6 +215,10 @@ while True:
 value = 3
 assert value == 3
 ```
+
+```python
+assert True
+```
 """
     blocks = extract_source_assertion_blocks(source)
     assert len(blocks) == 2
