@@ -106,8 +106,7 @@ def run_hybrid_verification(
         "promotion_performed": bool(evidence_only_promotion.get("promoted") or channels.get("sandbox", {}).get("promoted")),
         "policy": (
             "A passing trusted sandbox test promotes only within its declared test scope. "
-            "Without lab tests, promotion requires at least two supporting web domains and "
-            "two supporting configured peer providers, no known contradictions, and is labeled "
-            "evidence_reviewed_no_lab rather than experimentally verified."
+            "Without a trusted passing test suite, evidence and peer-AI reviews remain advisory "
+            "and the candidate stays in temporary storage; they never promote durable knowledge."
         ),
     }
