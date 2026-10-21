@@ -42,7 +42,7 @@ def test_no_doctest_does_not_count_as_a_pass(tmp_path, monkeypatch):
     assert status == "awaiting_test"
 
 
-def test_source_doctest_runs_in_sandbox_and_promotes_only_when_examples_pass(tmp_path, monkeypatch):
+def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path, monkeypatch):
     lesson = "A runnable example:\n\n>>> 1 + 1\n2\n"
     candidate_id = _candidate(tmp_path, monkeypatch, lesson)
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "a" * 64)
@@ -62,14 +62,19 @@ def test_source_doctest_runs_in_sandbox_and_promotes_only_when_examples_pass(tmp
     result = run_candidate_source_doctests(candidate_id)
     assert result["passed"] is True
     assert result["promoted"] is False
-    assert result["verification_scope"] == "explicit doctest examples in this lesson only"\n    assert "not sufficient to promote" in result["note"]
+    assert result["verification_scope"] == "explicit doctest examples in this lesson only"
+    assert "not sufficient to promote" in result["note"]
     with db.learning_connection() as conn:
         row = conn.execute(
-            "SELECT status, test_results_json FROM temporary_knowledge_candidates WHERE id=?",
+            "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()
+        test_run = conn.execute(
+            "SELECT run_status, suite_name FROM knowledge_test_runs WHERE candidate_id=?",
             (candidate_id,),
         ).fetchone()
-    assert row["status"] == "passed"
-    assert "source-doctest-suite" in row["test_results_json"]
+    assert row["status"] == "awaiting_test"
+    assert test_run["run_status"] == "passed"
+    assert test_run["suite_name"] == "source-doctest-suite"
 
 
 def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
