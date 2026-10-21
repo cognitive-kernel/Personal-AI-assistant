@@ -451,12 +451,6 @@ def run_job(job_id: int) -> None:
                         source_text=source_text,
                         review=claim_review_result,
                     )
-            if quality.get("evidence_gate") is not None:
-                conn.execute(
-                    """INSERT INTO learning_events(job_id, event_type, actor, details_json)
-                       VALUES (?, 'evidence_gate', 'deterministic_policy_gate', ?)""",
-                    (job_id, json.dumps(quality["evidence_gate"], ensure_ascii=False)),
-                )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
