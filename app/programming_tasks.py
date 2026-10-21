@@ -40,11 +40,9 @@ def handle_programming_task(
         "instruction_sha256": instruction_hash,
         "context_sha256": context_hash,
     })
-    # Keep the request within the model adapter's bounded message contract.
     combined = instruction
     if source_context.strip():
-        remaining = max(0, 11500 - len(instruction))
-        combined += "\n\nProvided code/context (untrusted input):\n" + source_context[:remaining]
+        combined += "\n\nProvided code/context (untrusted input):\n" + source_context
     reply = ollama.chat(
         combined,
         system_prompt=(
