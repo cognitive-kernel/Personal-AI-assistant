@@ -584,7 +584,7 @@ def record_candidate_test_results(
         ).fetchone()
         if candidate is None:
             raise KeyError(candidate_id)
-        if candidate["status"] not in {"awaiting_test", "failed"}:
+        if candidate["status"] not in {"awaiting_test", "failed", "evidence_reviewed_no_lab"}:
             raise ValueError("Only a candidate awaiting tests or a failed candidate can be tested.")
         try:
             candidate_source_urls = json.loads(candidate["source_urls_json"] or "[]")
@@ -641,6 +641,13 @@ def record_candidate_test_results(
                  "تمام آزمون‌های ثبت‌شده با runner خودکار مجاز موفق شدند؛ ارتقا فقط در محدوده همین آزمون‌هاست، نه اثبات همگانی صحت علمی."),
             )
         else:
+            # A failed later lab test downgrades any evidence-only main-store entry
+            # to unverified; preserve the record and the failure experience.
+            conn.execute(
+                """UPDATE knowledge_items SET status='unverified'
+                   WHERE job_id=? AND status='evidence_reviewed_no_lab'""",
+                (candidate["job_id"],),
+            )
             source_urls = json.loads(candidate["source_urls_json"])
             source_evidence = [
                 {"url": url, "claim": f"منبع نامزد دانشی با شناسه {candidate_id}"}
