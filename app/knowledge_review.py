@@ -17,6 +17,49 @@ from .db import init_databases, learning_connection
 _ALLOWED_EVIDENCE_KINDS = {"supporting", "contradicting", "context", "application"}
 _ALLOWED_STANCES = {"supports", "contradicts", "mixed", "insufficient_evidence"}
 
+_ALLOWED_ATTEMPT_CHANNELS = {"web_research", "peer_ai", "sandbox"}
+_ALLOWED_ATTEMPT_STATUSES = {
+    "completed", "unavailable", "unconfigured", "failed", "no_examples", "sandbox_unconfigured",
+}
+
+
+def record_review_attempt(
+    candidate_id: int, *, channel: str, status: str,
+    provider: str = "", details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Persist an outcome for every verification channel, including unavailable ones."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise ValueError("candidate_id must be a positive integer.")
+    if channel not in _ALLOWED_ATTEMPT_CHANNELS or status not in _ALLOWED_ATTEMPT_STATUSES:
+        raise ValueError("Unsupported verification channel or attempt status.")
+    if not isinstance(provider, str) or len(provider) > 120:
+        raise ValueError("provider exceeds its size limit.")
+    details = {} if details is None else details
+    if not isinstance(details, dict):
+        raise ValueError("details must be an object.")
+    try:
+        details_json = json.dumps(details, ensure_ascii=False, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("details must be finite JSON data.") from exc
+    if len(details_json) > 8000:
+        raise ValueError("details exceed the storage limit.")
+    init_databases()
+    with learning_connection() as conn:
+        if conn.execute(
+            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone() is None:
+            raise KeyError(candidate_id)
+        cursor = conn.execute(
+            """INSERT INTO knowledge_review_attempts(
+                   candidate_id, channel, status, provider, details_json
+               ) VALUES (?, ?, ?, ?, ?)""",
+            (candidate_id, channel, status, provider.strip(), details_json),
+        )
+        row = conn.execute(
+            "SELECT * FROM knowledge_review_attempts WHERE id=?", (cursor.lastrowid,)
+        ).fetchone()
+    return dict(row)
+
 
 def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) -> dict[str, Any]:
     """Search and store bounded public-source evidence for a temporary candidate.
@@ -42,6 +85,10 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
         from .web_sources import discover_sources
         documents = discover_sources(query.strip(), limit=limit)
     except Exception as exc:
+        record_review_attempt(
+            candidate_id, channel="web_research", status="unavailable",
+            details={"query": query.strip(), "error_type": type(exc).__name__},
+        )
         return {
             "candidate_id": candidate_id, "query": query.strip(), "stored": 0,
             "status": "unavailable", "error": type(exc).__name__,
@@ -69,6 +116,10 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
             except Exception:
                 # One malformed/duplicate source must not discard other evidence.
                 continue
+    record_review_attempt(
+        candidate_id, channel="web_research", status="completed",
+        details={"query": query.strip(), "stored": stored, "found": len(documents)},
+    )
     return {
         "candidate_id": candidate_id, "query": query.strip(), "stored": stored,
         "found": len(documents), "status": "completed",
@@ -162,6 +213,10 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
         raise KeyError(candidate_id)
     raw_config = os.environ.get("PEER_AI_PROVIDERS_JSON", "").strip()
     if not raw_config:
+        record_review_attempt(
+            candidate_id, channel="peer_ai", status="unconfigured",
+            details={"consulted": 0, "reason": "PEER_AI_PROVIDERS_JSON_not_set"},
+        )
         return {"candidate_id": candidate_id, "status": "unconfigured", "consulted": 0, "errors": []}
     try:
         providers = json.loads(raw_config)
@@ -290,9 +345,19 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             consulted += 1
         except (OSError, urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError) as exc:
             errors.append({"provider": provider, "error": str(exc)[:300]})
+    peer_status = "completed" if consulted else "unavailable"
+    record_review_attempt(
+        candidate_id, channel="peer_ai", status=peer_status,
+        details={
+            "consulted": consulted,
+            "providers_configured": len(providers[:limit]),
+            "errors": [{"provider": item.get("provider", "unknown"), "error": item.get("error", "unknown")}
+                       for item in errors],
+        },
+    )
     return {
         "candidate_id": candidate_id,
-        "status": "completed" if consulted else "unavailable",
+        "status": peer_status,
         "consulted": consulted,
         "errors": errors,
     }
