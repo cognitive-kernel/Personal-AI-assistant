@@ -8,6 +8,8 @@ The local API is loopback-only and the main local web page now includes a cloud-
 
 - `GET /api/cloud-resources?limit=100` lists recent candidates and the latest discovery run.
 - `POST /api/cloud-resources/discover` queues a manual discovery task and returns HTTP 202.
+- `POST /api/cloud-resources/manual` adds a user-entered candidate from an HTTPS URL, title, and evidence description; the entry always starts unreviewed and requires the same relevance checks as discovered candidates.
+- `DELETE /api/cloud-resources/{id}` deletes a candidate and dependent claim rows only when no saved selection-plan decision references it; plan history is retained for auditability.
 - `PATCH /api/cloud-resources/{id}/review` records an explicit local review only if the submitted content hash still matches; approving a candidate requires an HTTPS terms URL.
 - `PATCH /api/cloud-resources/{candidate_id}/claims/{claim_id}/review` accepts/rejects a single extracted claim only when the claim is current and its source hash matches. Accepting a claim requires the parent source to be approved first.
 
