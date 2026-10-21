@@ -7,7 +7,7 @@
   const links = Array.from(navigation.querySelectorAll("a[data-page]"));
   const pages = new Map();
   for (const section of main.querySelectorAll(":scope > section[id], :scope > .row > section[id]")) {
-    pages.set(section.id, section);
+    if (section.id !== "storage-degraded-banner") pages.set(section.id, section);
   }
   if (!pages.has("chat-section")) return;
 
