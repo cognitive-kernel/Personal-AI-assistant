@@ -587,7 +587,9 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
             "failed_scoped_test_suites": len(failed_scoped_suites),
         },
         "verification_status": (
-            "tested_in_declared_scope"
+            "conflicting_evidence"
+            if contradiction_domains or peer_contradictors
+            else "tested_in_declared_scope"
             if candidate["status"] == "passed" and test_score
             else "partial_scope_tested"
             if passed_scoped_suites
