@@ -5,6 +5,7 @@ and no test never counts as success. Execution uses the existing no-network Dock
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -20,6 +21,71 @@ def count_doctest_examples(text: str) -> int:
     if not isinstance(text, str):
         raise ValueError("text must be a string.")
     return len(re.findall(r"^\s*>>>\s+", text, re.MULTILINE))
+
+
+def extract_source_assertion_blocks(text: str, *, max_blocks: int = 5) -> list[str]:
+    """Extract small fenced Python examples with assertions and a restricted syntax.
+
+    These are source-authored exploratory tests, not trusted proof of factual claims.
+    They run only in the no-network resource-limited Docker sandbox. Imports, loops
+    with unbounded control flow, filesystem/process access, and reflective builtins
+    are excluded to reduce risk from untrusted tutorial pages.
+    """
+    if not isinstance(text, str):
+        raise ValueError("text must be a string.")
+    if isinstance(max_blocks, bool) or not isinstance(max_blocks, int) or not 1 <= max_blocks <= 10:
+        raise ValueError("max_blocks must be between 1 and 10.")
+    dangerous_calls = {
+        "eval", "exec", "compile", "open", "input", "breakpoint", "exit", "quit",
+        "getattr", "setattr", "delattr", "globals", "locals", "vars", "__import__",
+    }
+    rejected_nodes = (
+        ast.Import, ast.ImportFrom, ast.Global, ast.Nonlocal, ast.While,
+        ast.AsyncFor, ast.With, ast.AsyncWith,
+    )
+    blocks: list[str] = []
+    total_chars = 0
+    pattern = re.compile(r"^\s*```(?:python|py)\s*\n(.*?)^\s*```\s*$", re.IGNORECASE | re.MULTILINE | re.DOTALL)
+    for match in pattern.finditer(text):
+        code = match.group(1).strip()
+        if not code or len(code) > 8000:
+            continue
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            continue
+        nodes = list(ast.walk(tree))
+        if not any(isinstance(node, ast.Assert) for node in nodes):
+            continue
+        unsafe = False
+        for node in nodes:
+            if isinstance(node, rejected_nodes):
+                unsafe = True
+                break
+            if isinstance(node, ast.Name) and (
+                node.id.startswith("__") or node.id in dangerous_calls
+            ):
+                unsafe = True
+                break
+            if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+                unsafe = True
+                break
+            if isinstance(node, ast.Call):
+                function_name = (
+                    node.func.id if isinstance(node.func, ast.Name)
+                    else node.func.attr if isinstance(node.func, ast.Attribute)
+                    else ""
+                )
+                if function_name in dangerous_calls:
+                    unsafe = True
+                    break
+        if unsafe:
+            continue
+        if len(blocks) >= max_blocks or total_chars + len(code) > 20000:
+            break
+        blocks.append(code)
+        total_chars += len(code)
+    return blocks
 
 
 def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
