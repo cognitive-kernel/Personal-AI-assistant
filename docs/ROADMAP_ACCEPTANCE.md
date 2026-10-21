@@ -126,3 +126,22 @@ The learning subsystem must behave as a staged, evidence-carrying learner rather
 ### Current implementation status
 
 The branch has the temporary candidate table and gated promotion/failure-experience writer, automatic best-effort web research, configurable OpenAI-compatible peer consultation, provenance/evidence persistence, and unit tests for those storage and integration seams. The critical remaining gap is the end-to-end automated verification planner/runner: peer-suggested tests and source examples are not yet automatically converted into trusted executable tests and run before promotion. Until that exists and exact-head CI passes, candidates must remain temporary and the hybrid learning system must not be described as complete.
+
+### Evidence ledger and confidence score (implemented baseline; calibration remains a release task)
+
+Every candidate must expose **how** it has been checked, not just a single accepted/rejected bit. The evidence ledger separates:
+
+- `internet_sources`: supporting and contradicting sources, distinct hostnames, exact URL and content digest, excerpt and retrieval time;
+- `isolated_or_deterministic_tests`: named/versioned tests, trusted oracle reference, expected/actual output, runner and result;
+- `peer_ai_consultation`: provider and model, prompt/response digests, stance, cited URLs, and whether independence is known or unknown;
+- `real_world_user_feedback`: what the user tried, context, observed output digest, steps, and outcome (`worked`, `failed`, `partial`, `not_tested`).
+
+The baseline confidence index is 0–100 and intentionally explainable: up to 40 points for a passing test set, 20 for distinct explicitly classified supporting web domains, 10 for supporting configured peer providers, 30 for distinct successful real-world application contexts, and small partial-success credit. Contradicting sources, peer disagreement, and failed real-world applications subtract points. Repeated sources and repeated providers do not stack indefinitely. Context-only fetched pages do not earn support points until explicitly classified.
+
+This is an **evidence-strength heuristic, not a calibrated probability**. Its component weights must be versioned and later calibrated against a held-out benchmark of known true/false claims and observed field outcomes. A score never overrides a failed required test, an unresolved high-impact contradiction, or missing trusted oracle. User-reported success is useful field evidence but is not independently audited. AI agreement can be correlated and must not be counted as multiple independent proofs.
+
+The application/API should show the score, component breakdown, evidence inventory, contradictions, missing verification channels, and exact verification scope. When no sandbox is available, web evidence plus peer-AI consultation may raise the evidence index and produce `unverified` / `evidence_reviewed_no_lab`; it must not falsely label the claim experimentally verified. The system can still save and use such a candidate with its status clearly attached.
+
+### Open-source method selection
+
+Prefer mature open-source tools where they improve the loop rather than rebuilding every evaluator: `pytest` for deterministic regression gates, `Hypothesis` for property-based and invariant testing, and evaluate `DeepEval` / `Ragas` for optional model-assisted and retrieval-augmented generation evaluation. These frameworks measure different properties and their LLM-as-judge scores are not factual oracles. Check license, supported Python versions, offline operation, transitive dependencies, model/provider requirements, resource use, and privacy before adding any runtime dependency. Keep core storage, provenance, and deterministic acceptance runnable without external service credentials.
