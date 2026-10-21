@@ -172,10 +172,11 @@
 <button id="self-improvement-refresh" type="button">بارگذاری پیشنهادها</button>
 <div id="self-improvement-list"></div>
 </section>
-<section id="settings-section"><h2>تنظیمات محلی</h2><form id="settings-form">
-<label>نام مدل Ollama<input id="model" required></label><label>تعداد توکن زمینه<input id="ctx" type="number" min="512" max="8192" step="512" required></label>
-<label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="threads" type="number" min="0" max="64" required></label>
-<label>مهلت درخواست (ثانیه)<input id="timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="concurrency" type="number" min="1" max="2" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="source-limit" type="number" min="1000" max="100000" step="1000" required></label><button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output"></pre></section>
+<section id="settings-section"><h2>تنظیمات محلی</h2><p class="muted">فهرست مدل‌ها از Ollama محلی خوانده می‌شود. فیلدهای مدل هم قابل انتخاب از فهرست و هم قابل تایپ دستی هستند؛ نام دستی لازم نیست در فهرست نصب‌شده‌ها باشد. تنظیم هر بخش مستقل ذخیره می‌شود.</p><datalist id="ollama-model-options"></datalist><form id="settings-form">
+<fieldset><legend>گفتگو</legend><label>نام مدل Ollama برای چت<input id="chat-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="chat-ctx" type="number" min="512" max="8192" step="512" required></label><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="chat-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="chat-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان گفتگو<input id="chat-concurrency" type="number" min="1" max="8" required></label></fieldset>
+<fieldset><legend>یادگیری و آموزش</legend><label>نام مدل Ollama برای یادگیری<input id="learning-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="learning-ctx" type="number" min="512" max="8192" step="512" required></label><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="learning-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="learning-timeout" type="number" min="5" max="600" required></label><label>حداکثر یادگیری هم‌زمان<input id="learning-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع یادگیری (کاراکتر)<input id="learning-source-limit" type="number" min="1000" max="100000" step="1000" required></label></fieldset>
+<fieldset><legend>برنامه‌نویسی و تست</legend><label>نام مدل Ollama برای برنامه‌نویسی<input id="programming-model" list="ollama-model-options" required autocomplete="off"></label><label>تعداد توکن زمینه<input id="programming-ctx" type="number" min="512" max="8192" step="512" required></label><label>تعداد thread پردازنده (۰ = تشخیص خودکار)<input id="programming-threads" type="number" min="0" max="64" required></label><label>مهلت درخواست (ثانیه)<input id="programming-timeout" type="number" min="5" max="600" required></label><label>حداکثر کار هم‌زمان برنامه‌نویسی<input id="programming-concurrency" type="number" min="1" max="8" required></label><label>حداکثر طول متن منبع برنامه‌نویسی (کاراکتر)<input id="programming-source-limit" type="number" min="1000" max="100000" step="1000" required></label></fieldset>
+<button type="submit">ذخیره تنظیمات</button></form><pre id="settings-output" role="status" aria-live="polite"></pre></section>
 <script>
 const el = id => document.getElementById(id);
 async function api(path, options = {}) {
@@ -292,7 +293,7 @@ async function refresh() {
   const banner = el("storage-degraded-banner");
   if (banner) banner.hidden = true;
  }
- try { const s = await api("/api/settings"); el("model").value=s.ollama_model; el("ctx").value=s.ollama_num_ctx; el("threads").value=s.ollama_num_thread; el("timeout").value=s.ollama_timeout_seconds; el("concurrency").value=s.learning_max_concurrent_jobs; el("source-limit").value=s.learning_source_max_chars; } catch(error) { el("settings-output").textContent=error.message; }
+ try { const s = await api("/api/settings"); const fields={"chat-model":"chat_ollama_model","chat-ctx":"chat_ollama_num_ctx","chat-threads":"chat_ollama_num_thread","chat-timeout":"chat_ollama_timeout_seconds","chat-concurrency":"chat_max_concurrent_jobs","learning-model":"learning_ollama_model","learning-ctx":"learning_ollama_num_ctx","learning-threads":"learning_ollama_num_thread","learning-timeout":"learning_ollama_timeout_seconds","learning-concurrency":"learning_max_concurrent_jobs","learning-source-limit":"learning_source_max_chars","programming-model":"programming_ollama_model","programming-ctx":"programming_ollama_num_ctx","programming-threads":"programming_ollama_num_thread","programming-timeout":"programming_ollama_timeout_seconds","programming-concurrency":"programming_max_concurrent_jobs","programming-source-limit":"programming_source_max_chars"}; for(const [id,key] of Object.entries(fields)) el(id).value=s[key] ?? s.ollama_model ?? ""; refreshOllamaModels(); } catch(error) { el("settings-output").textContent=error.message; }
 }
 async function refreshStorageHealth() {
  const output=el("storage-health-output");
@@ -843,10 +844,36 @@ el("learning-form").addEventListener("submit", async event => {
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
+async function refreshOllamaModels() {
+ const list=el("ollama-model-options");
+ if(!list) return;
+ list.replaceChildren();
+ try {
+  const result=await api("/api/models");
+  for(const model of result.models||[]) {
+   if(!model.name) continue;
+   const option=document.createElement("option");
+   option.value=model.name;
+   option.label=model.size ? model.name+" — "+Math.round(model.size/1073741824*10)/10+" GiB" : model.name;
+   list.append(option);
+  }
+ } catch(error) {
+  el("settings-output").textContent="فهرست مدل‌های نصب‌شده دریافت نشد؛ نام مدل را می‌توانید دستی وارد کنید. "+error.message;
+ }
+}
 el("settings-form").addEventListener("submit", async event => {
  event.preventDefault();
- try { const values={ollama_model:el("model").value.trim(),ollama_num_ctx:Number(el("ctx").value),ollama_num_thread:Number(el("threads").value),ollama_timeout_seconds:Number(el("timeout").value),learning_max_concurrent_jobs:Number(el("concurrency").value),learning_source_max_chars:Number(el("source-limit").value)};
- el("settings-output").textContent=JSON.stringify(await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})}),null,2); } catch(error) { el("settings-output").textContent=error.message; }
+ const values={
+  chat_ollama_model:el("chat-model").value.trim(),chat_ollama_num_ctx:Number(el("chat-ctx").value),chat_ollama_num_thread:Number(el("chat-threads").value),chat_ollama_timeout_seconds:Number(el("chat-timeout").value),chat_max_concurrent_jobs:Number(el("chat-concurrency").value),
+  learning_ollama_model:el("learning-model").value.trim(),learning_ollama_num_ctx:Number(el("learning-ctx").value),learning_ollama_num_thread:Number(el("learning-threads").value),learning_ollama_timeout_seconds:Number(el("learning-timeout").value),learning_max_concurrent_jobs:Number(el("learning-concurrency").value),learning_source_max_chars:Number(el("learning-source-limit").value),
+  programming_ollama_model:el("programming-model").value.trim(),programming_ollama_num_ctx:Number(el("programming-ctx").value),programming_ollama_num_thread:Number(el("programming-threads").value),programming_ollama_timeout_seconds:Number(el("programming-timeout").value),programming_max_concurrent_jobs:Number(el("programming-concurrency").value),programming_source_max_chars:Number(el("programming-source-limit").value)
+ };
+ // Preserve the old generic keys for compatibility with older internal callers.
+ values.ollama_model=values.chat_ollama_model; values.ollama_num_ctx=values.chat_ollama_num_ctx; values.ollama_num_thread=values.chat_ollama_num_thread; values.ollama_timeout_seconds=values.chat_ollama_timeout_seconds;
+ try {
+  const saved=await api("/api/settings",{method:"PATCH",body:JSON.stringify({values})});
+  el("settings-output").textContent="تنظیمات سه پروفایل ذخیره شد.\n"+JSON.stringify(saved,null,2);
+ } catch(error) { el("settings-output").textContent="ذخیره تنظیمات ناموفق بود: "+error.message; }
 });
 
 async function refreshCloudResources() {
