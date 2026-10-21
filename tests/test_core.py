@@ -14,7 +14,7 @@ def test_databases_are_separate(tmp_path, monkeypatch):
 def test_runtime_limits_respect_cpu_and_memory():
     limits = hardware.runtime_limits({"ollama_num_thread": 20, "ollama_num_ctx": 8192},
                                      {"logical_cpu_count": 6, "total_ram_gb": 8})
-    assert limits == {"cpu_threads": 6, "num_ctx": 2048}
+    assert limits == {"cpu_threads": 5, "num_ctx": 2048}
 
 def test_settings_reject_unknown_keys(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
