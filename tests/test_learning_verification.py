@@ -68,7 +68,7 @@ def test_no_doctest_does_not_count_as_a_pass(tmp_path, monkeypatch):
     assert status == "awaiting_test"
 
 
-def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path, monkeypatch):
+def test_source_doctest_runs_and_promotes_only_declared_scope(tmp_path, monkeypatch):
     lesson = "A runnable example:\n\n>>> 1 + 1\n2\n"
     candidate_id = _candidate(tmp_path, monkeypatch, lesson)
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "a" * 64)
@@ -89,7 +89,7 @@ def test_source_doctest_runs_in_sandbox_without_promoting_whole_lesson(tmp_path,
     assert result["passed"] is True
     assert result["promoted"] is True
     assert result["verification_scope"] == "explicit source doctests and restricted fenced Python assertion blocks only"
-    assert "not sufficient to promote" in result["note"]
+    assert "does not establish universal truth" in result["note"]
     with db.learning_connection() as conn:
         row = conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
