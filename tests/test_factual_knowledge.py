@@ -8,6 +8,9 @@ from app.factual_knowledge import (
     add_relation,
     create_claim,
     get_claim,
+    get_cached_review,
+    put_cached_review,
+    review_cache_key,
     record_test,
     transition_evidence_level,
     transition_lifecycle,
@@ -129,3 +132,53 @@ def test_test_failure_classes_are_distinct_and_claim_normalization_is_conservati
         "SELECT outcome FROM factual_tests WHERE knowledge_id=?", (kid,)
     )}
     assert outcomes == {"environment_failure"}
+
+
+
+def test_review_cache_is_exact_context_versioned_and_expires(connection):
+    common = dict(
+        normalized_claim="Python lists preserve order",
+        source_hash="sha256:source-a",
+        model_version="model-a",
+        prompt_version="prompt-1",
+        scope={"python": "3.11"},
+    )
+    key = review_cache_key(**common)
+    assert key == review_cache_key(**common)
+    assert key != review_cache_key(**{**common, "model_version": "model-b"})
+    assert key != review_cache_key(**{**common, "source_hash": "sha256:source-b"})
+    put_cached_review(
+        connection,
+        cache_key=key,
+        claim_hash="sha256:claim",
+        source_hash=common["source_hash"],
+        model_version=common["model_version"],
+        prompt_version=common["prompt_version"],
+        scope_hash="sha256:scope",
+        result={"judgment": "supported", "confidence": 0.8},
+        ttl_seconds=3600,
+    )
+    assert get_cached_review(connection, key) == {"judgment": "supported", "confidence": 0.8}
+    connection.execute(
+        "UPDATE factual_review_cache SET expires_at = datetime('now', '-1 second') WHERE cache_key = ?",
+        (key,),
+    )
+    assert get_cached_review(connection, key) is None
+    assert connection.execute(
+        "SELECT 1 FROM factual_review_cache WHERE cache_key = ?", (key,)
+    ).fetchone() is None
+
+
+def test_review_cache_rejects_unsafe_ttl_and_non_json_values(connection):
+    with pytest.raises(KnowledgePolicyError, match="ttl_seconds"):
+        put_cached_review(
+            connection, cache_key="key", claim_hash="claim", source_hash="source",
+            model_version="model", prompt_version="prompt", scope_hash="scope",
+            result={"ok": True}, ttl_seconds=0,
+        )
+    with pytest.raises(ValueError):
+        put_cached_review(
+            connection, cache_key="key", claim_hash="claim", source_hash="source",
+            model_version="model", prompt_version="prompt", scope_hash="scope",
+            result={"bad": float("nan")},
+        )
