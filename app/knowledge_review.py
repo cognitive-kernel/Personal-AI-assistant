@@ -681,8 +681,17 @@ def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score:
         }
 
     confidence = calculate_knowledge_confidence(candidate_id)
+    from .learning_consensus import latest_candidate_consensus
+    consensus = latest_candidate_consensus(candidate_id)
+    with learning_connection() as conn:
+        trust = conn.execute(
+            """SELECT trust_level, learning_status, supersedes_candidate_id, replaced_by_candidate_id
+               FROM temporary_knowledge_candidates WHERE id=?""", (candidate_id,)
+        ).fetchone()
     return {
         "candidate_id": candidate_id,
+        "trust": dict(trust) if trust else {"trust_level": "L0", "learning_status": "unverified"},
+        "consensus": consensus,
         "promoted": False,
         "reason": "lab_verification_required",
         "candidate_status": candidate["status"],

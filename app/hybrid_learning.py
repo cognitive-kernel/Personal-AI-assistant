@@ -66,6 +66,14 @@ def run_hybrid_verification(
             details={"error_type": type(exc).__name__})
         channels["peer_ai"] = {"status": "failed", "error_type": type(exc).__name__}
 
+    try:
+        from .learning_consensus import evaluate_candidate_consensus
+        channels["consensus"] = evaluate_candidate_consensus(candidate_id)
+    except Exception as exc:
+        record_review_attempt(candidate_id, channel="peer_ai", status="failed",
+            details={"reason": "consensus_evaluation_failed", "error_type": type(exc).__name__})
+        channels["consensus"] = {"outcome": "insufficient_evidence", "error_type": type(exc).__name__}
+
     if run_sandbox:
         try:
             from .learning_verification import run_candidate_source_doctests
@@ -101,7 +109,9 @@ def run_hybrid_verification(
         matrix = None
     return {
         "candidate_id": candidate_id, "candidate_sha256": candidate["content_sha256"],
-        "channels": channels, "review": review, "claim_matrix": matrix,
+        "channels": {key: value for key, value in channels.items() if key in {"web_research", "peer_ai", "sandbox"}},
+        "consensus": channels.get("consensus"),
+        "review": review, "claim_matrix": matrix,
         "evidence_only_promotion": evidence_only_promotion,
         "promotion_performed": bool(evidence_only_promotion.get("promoted") or channels.get("sandbox", {}).get("promoted")),
         "policy": (
