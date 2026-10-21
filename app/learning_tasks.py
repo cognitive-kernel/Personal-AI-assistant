@@ -10,7 +10,7 @@ from typing import Any
 from . import learning
 from .db import learning_connection
 from . import task_manager
-from .task_worker import TaskContext
+from .task_worker import PermanentTaskError, TaskContext
 
 LEARNING_TASK_TYPE = "learning.run_job"
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
@@ -86,12 +86,12 @@ def handle_learning_job(
     """Run one persisted learning job under the task queue's lease and controls."""
     job_id = payload.get("job_id")
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
-        raise ValueError("learning task payload requires a positive integer job_id")
+        raise PermanentTaskError("learning task payload requires a positive integer job_id")
 
     try:
         job = learning.get_job(job_id)
     except KeyError as exc:
-        raise ValueError(f"Learning job {job_id} does not exist") from exc
+        raise PermanentTaskError(f"Learning job {job_id} does not exist") from exc
 
     status = job["status"]
     if status in _TERMINAL_LEARNING_STATUSES:
@@ -112,7 +112,7 @@ def handle_learning_job(
         status = job["status"]
 
     if status != "queued":
-        raise learning.LearningError(
+        raise PermanentTaskError(
             f"Learning job {job_id} cannot run from status {status!r}"
         )
 
