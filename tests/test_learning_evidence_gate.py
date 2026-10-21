@@ -27,6 +27,8 @@ def test_evidence_gate_passes_only_with_two_cited_hosts_and_supported_claims():
     assert result["accepted"] is True
     assert result["status"] == "evidence_gate_passed_not_proof_of_truth"
     assert result["independent_scientific_verification"] is False
+    assert result["claim_count"] == 1
+    assert result["explicitly_mapped_claim_count"] == 1
     assert result["failed_gates"] == []
 
 
@@ -111,4 +113,20 @@ def test_evidence_gate_fails_closed_on_unhashable_claim_evidence_url():
     )
 
     assert result["accepted"] is False
+    assert "all_claims_supported_by_known_sources" in result["failed_gates"]
+
+
+
+def test_evidence_gate_rejects_claim_without_explicit_text_or_reason():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    review = _review(urls)
+    review["claims"][0]["claim"] = "   "
+    review["claims"][0]["reason"] = ""
+
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls), [_source(url) for url in urls], review
+    )
+
+    assert result["accepted"] is False
+    assert result["explicitly_mapped_claim_count"] == 0
     assert "all_claims_supported_by_known_sources" in result["failed_gates"]
