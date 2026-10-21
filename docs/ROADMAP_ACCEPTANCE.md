@@ -148,3 +148,9 @@ Migration 20 adds durable channel-attempt history for web research, peer-AI cons
 ### Open-source method selection
 
 Use mature open-source tools where they improve the loop rather than rebuilding every evaluator: `pytest` for deterministic regression gates and `Hypothesis` (now a development dependency) for property-based evidence-score invariants. Evaluate `DeepEval` / `Ragas` separately for optional model-assisted and retrieval-augmented generation evaluation. These frameworks measure different properties and their LLM-as-judge scores are not factual oracles. Check license, supported Python versions, offline operation, transitive dependencies, model/provider requirements, resource use, and privacy before adding any runtime dependency. Keep core storage, provenance, and deterministic acceptance runnable without external service credentials.
+
+### Unified hybrid-cycle implementation update (2026-10-21)
+
+`app/hybrid_learning.py` now provides one orchestration entry point for the web, peer-AI, and isolated-sandbox channels. The channels are attempted independently, each channel failure is recorded without suppressing the others, and the result returns the evidence review and claim matrix. Learning jobs and the candidate research API use this same orchestrator. A failed explicitly requested URL is recorded as unavailable and does not silently trigger unrelated web discovery; peer-AI consultation and any available source-example sandbox tests still proceed. The orchestrator itself never promotes knowledge.
+
+Automated tests cover independent channel failures, explicit-URL failure without source substitution, and disabled web research while peer-AI/sandbox checks continue. This is an integration improvement, not closure of the remaining factual-oracle/calibration gaps. Exact-head CI must pass before the change is considered validated.
