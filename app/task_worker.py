@@ -63,6 +63,7 @@ class TaskWorker:
         handlers: dict[str, TaskHandler],
         *,
         lease_seconds: int = 300,
+        restrict_task_types: bool = False,
     ) -> None:
         if not isinstance(worker_id, str) or not worker_id.strip():
             raise ValueError("worker_id must be a non-empty string.")
@@ -76,6 +77,7 @@ class TaskWorker:
         self.worker_id = worker_id.strip()
         self.handlers = dict(handlers)
         self.lease_seconds = lease_seconds
+        self.restrict_task_types = bool(restrict_task_types)
 
     def _maintain_lease(self, context: TaskContext, stop_event: threading.Event) -> None:
         """Renew a running task lease while its handler is doing long-running work."""
@@ -98,11 +100,10 @@ class TaskWorker:
 
     def run_once(self) -> bool:
         """Claim and process one task. Return False only when no task is ready."""
-        task = task_manager.claim_next_task(
-            self.worker_id,
-            lease_seconds=self.lease_seconds,
-            task_types=tuple(self.handlers),
-        )
+        claim_options = {"lease_seconds": self.lease_seconds}
+        if self.restrict_task_types:
+            claim_options["task_types"] = tuple(self.handlers)
+        task = task_manager.claim_next_task(self.worker_id, **claim_options)
         if task is None:
             return False
 
