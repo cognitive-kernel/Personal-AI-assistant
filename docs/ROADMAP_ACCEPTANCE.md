@@ -162,3 +162,14 @@ Peer-AI review responses now expose their proposed tests, applications, and limi
 When a candidate contains source-authored doctests or restricted assertion blocks from an allowlisted HTTPS primary-source domain, the sandbox runner now sends the aggregate expected/actual result through the versioned trusted-oracle gate. A passing suite promotes the existing knowledge row in place (avoiding duplicate job_id rows); a failing trusted-source suite marks the candidate failed and records a reusable failure experience. Examples from unallowlisted sources may still be executed as exploratory tests, but cannot promote the candidate. No examples, missing Docker configuration, or failed retrieval do not count as a pass.
 
 This is deliberately scope-limited: it validates the source examples, not every scientific or explanatory sentence in the lesson. A generic trusted-oracle planner for arbitrary non-executable factual claims, independently calibrated confidence scores, and broader regression datasets remain release gaps. Until those exist, the system must retain the exact verification scope in the evidence ledger and must not infer universal truth from a scoped pass.
+
+
+### Learning evidence acceptance hardening (2026-10-21)
+
+The consolidated follow-up changes the lesson gate contract to `lesson-evidence-v3`. Every accepted claim must contain non-empty claim text, a non-empty rationale, and exact evidence URLs present in both the retrieved evidence inventory and the lesson's citations. The result reports total claims and explicitly mapped claims; missing attribution fails closed. This establishes traceability only and does not prove logical entailment or scientific truth.
+
+The scoped sandbox runner now requires a source URL from the existing curated primary-source allowlist. HTTPS alone is insufficient: lookalike domains such as `python.org.attacker.example` are rejected before sandbox execution and before a test-run record can be written. Candidates remain temporary when no qualifying oracle exists.
+
+Regression tests were added for missing claim text/rationale and for lookalike oracle rejection. Exact-head CI is the validation authority; until it completes, these tests are added but not yet confirmed passing.
+
+Remaining gates include durable URL attribution for each example extracted from multiple retrieved pages, mapping each example to the precise claim it tests, target-host execution, live-model and human-adjudicated scientific evaluation, false-pass/false-fail calibration, and independent security review. Do not mark the project production-ready based on these changes alone.
