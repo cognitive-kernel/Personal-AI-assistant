@@ -105,7 +105,7 @@ def test_source_doctest_pass_is_recorded_without_promoting_the_whole_lesson(tmp_
     summary = get_candidate_review_summary(candidate_id)
     assert summary["confidence"]["components"]["scoped_source_example_tests"] == 5
     assert summary["test_runs"][0]["run_status"] == "passed"
-    assert summary["verification_status"] == "tested_in_declared_scope"
+    assert summary["verification_status"] == "partial_scope_tested"
 
 
 def test_allowlisted_source_examples_do_not_promote_whole_lesson_after_sandbox_passes(tmp_path, monkeypatch):
@@ -141,7 +141,7 @@ def test_allowlisted_source_examples_do_not_promote_whole_lesson_after_sandbox_p
     assert candidate["promoted_knowledge_id"] is None
     assert verified_count == 0
     summary = get_candidate_review_summary(candidate_id)
-    assert summary["verification_status"] == "tested_in_declared_scope"
+    assert summary["verification_status"] == "partial_scope_tested"
 
 
 def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
