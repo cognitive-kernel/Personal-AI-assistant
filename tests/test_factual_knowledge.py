@@ -318,7 +318,7 @@ def test_claim_rejects_invalid_environment_name(connection):
 
 def _active_tested_claim(
     connection, claim, *, environment_name="sql_server", environment_version="2022",
-    level="L2_tested", risk_level="low", source_type="official_docs",
+    level="L2_tested", risk_level="low",
 ):
     knowledge_id = create_claim(
         connection,
@@ -328,15 +328,10 @@ def _active_tested_claim(
         scope={"topic": claim},
         risk_level=risk_level,
     )
-    source_ref = (
-        f"https://learn.microsoft.com/test/{knowledge_id}"
-        if source_type == "official_docs"
-        else f"test-run:{knowledge_id}"
-    )
     add_evidence(
         connection,
         knowledge_id,
-        source_type=source_type,
+        source_type="official_docs",
         source_ref=source_ref,
         source_hash=f"sha256:test-source-{knowledge_id}",
         excerpt=claim,
@@ -369,9 +364,14 @@ def test_verified_retrieval_returns_only_active_source_backed_exact_scope(connec
         connection, "SQL Server query plans for a different version",
         environment_version="2025",
     )
-    _active_tested_claim(
+    test_only_id = _active_tested_claim(
         connection, "SQL Server claim supported only by test output",
-        source_type="test_output",
+    )
+    connection.execute("DELETE FROM factual_evidence WHERE knowledge_id=?", (test_only_id,))
+    add_evidence(
+        connection, test_only_id, source_type="test_output",
+        source_ref=f"test-run:{test_only_id}", source_hash=f"sha256:test-only-{test_only_id}",
+        excerpt="A passing test without source provenance.",
     )
     results = retrieve_verified_claims(
         connection,
