@@ -249,6 +249,7 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         cursor = end
     rebuilt.append(main[cursor:])
     filtered_main = "".join(rebuilt)
+    page_title: str | None = None
     if slug is None:
         overview = (
             '<section id="dashboard-overview"><h2>نمای کلی</h2>'
@@ -296,18 +297,20 @@ def _render_dashboard_page(slug: str | None = None) -> str:
         }
         import html
         page_title = html.escape(page_titles[slug])
-        source = re.sub(
-            r"<title>.*?</title>",
-            f"<title>{page_title} — دستیار هوش مصنوعی شخصی</title>",
-            source, count=1, flags=re.DOTALL,
-        )
 
+    # Slice before changing the document head so offsets remain valid.
+    rendered = source[:main_start] + filtered_main + source[main_end:]
     if slug is not None:
         page_attributes = f' data-section-page="{slug}" data-section-id="{DASHBOARD_SECTIONS[slug]}"'
-        source = source.replace('<html lang="fa" dir="rtl">', '<html lang="fa" dir="rtl"' + page_attributes + '>', 1)
+        rendered = rendered.replace('<html lang="fa" dir="rtl">', '<html lang="fa" dir="rtl"' + page_attributes + '>', 1)
+        rendered = re.sub(
+            r"<title>.*?</title>",
+            f"<title>{page_title} — دستیار هوش مصنوعی شخصی</title>",
+            rendered, count=1, flags=re.DOTALL,
+        )
 
     # The returned page contains only the selected section, not hidden copies of all sections.
-    return source[:main_start] + filtered_main + source[main_end:]
+    return rendered
 
 
 @app.get("/", include_in_schema=False)
