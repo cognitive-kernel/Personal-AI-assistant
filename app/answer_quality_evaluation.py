@@ -99,7 +99,7 @@ def summarize_surface_results(results: list[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
-AUTOMATED_ACCEPTANCE_VERSION = "bilingual-answer-gate-v1"
+AUTOMATED_ACCEPTANCE_VERSION = "bilingual-answer-gate-v2"
 _ACCEPTED_REVIEW_STATUSES = {
     "passed_model_assisted",
     "passed_model_assisted_after_repair",
@@ -112,11 +112,11 @@ def evaluate_automated_acceptance(
     minimum_concept_coverage: float = 0.5,
     maximum_generation_seconds: float = 180.0,
 ) -> dict[str, Any]:
-    """Apply fail-closed benchmark gates without human scoring.
+    """Apply fail-closed benchmark gates and report a reference-negative false-accept rate.
 
-    This is an operational regression gate, not proof of factual truth. The
-    benchmark's expected concepts are curated reference data; lexical coverage
-    can miss paraphrases and source review remains model-assisted.
+    The false-accept denominator is restricted to cases whose output contains a
+    benchmark-listed prohibited phrase. This is an auditable lexical negative label,
+    not a comprehensive semantic gold label or a probability of factual error.
     """
     if not isinstance(results, list) or not results:
         raise ValueError("results must be a non-empty list")
@@ -130,14 +130,23 @@ def evaluate_automated_acceptance(
     if (
         isinstance(minimum_concept_coverage, bool)
         or not isinstance(minimum_concept_coverage, (int, float))
+        or isinstance(minimum_concept_coverage, bool)
         or not 0 <= minimum_concept_coverage <= 1
     ):
         raise ValueError("minimum_concept_coverage must be between 0 and 1")
 
     failed_cases = []
+    case_decisions = []
+    reference_negative_ids = []
+    false_acceptance_ids = []
     for item in results:
         if not isinstance(item, dict):
             failed_cases.append({"case_id": None, "failed_gates": ["result_is_object"]})
+            case_decisions.append({
+                "case_id": None, "accepted": False,
+                "reference_negative_by_prohibited_phrase": False,
+                "decision": "reject", "failed_gates": ["result_is_object"],
+            })
             continue
         gates = {
             "generation_completed": item.get("generation_status") == "completed",
@@ -173,25 +182,53 @@ def evaluate_automated_acceptance(
             ),
         }
         failed = [name for name, passed in gates.items() if not passed]
+        case_id = item.get("case_id")
+        accepted = not failed
+        is_reference_negative = bool(item.get("prohibited_phrase_hits"))
         if failed:
-            failed_cases.append({
-                "case_id": item.get("case_id"),
-                "failed_gates": failed,
-            })
+            failed_cases.append({"case_id": case_id, "failed_gates": failed})
+        if is_reference_negative:
+            reference_negative_ids.append(case_id)
+            if accepted:
+                false_acceptance_ids.append(case_id)
+        case_decisions.append({
+            "case_id": case_id,
+            "accepted": accepted,
+            "reference_negative_by_prohibited_phrase": is_reference_negative,
+            "decision": "accept" if accepted else "reject",
+            "failed_gates": failed,
+        })
 
     return {
         "version": AUTOMATED_ACCEPTANCE_VERSION,
         "status": "passed" if not failed_cases else "failed",
         "passed": not failed_cases,
         "case_count": len(results),
+        "accepted_case_count": len(results) - len(failed_cases),
         "failed_case_count": len(failed_cases),
         "minimum_concept_coverage": float(minimum_concept_coverage),
         "maximum_generation_seconds": float(maximum_generation_seconds),
         "failed_cases": failed_cases,
+        "case_decisions": case_decisions,
+        "false_acceptance": {
+            "reference_negative_definition": "A result with one or more exact prohibited-phrase hits from its versioned reference case.",
+            "reference_negative_case_count": len(reference_negative_ids),
+            "false_acceptance_count": len(false_acceptance_ids),
+            "false_acceptance_rate": (
+                round(len(false_acceptance_ids) / len(reference_negative_ids), 4)
+                if reference_negative_ids else None
+            ),
+            "false_acceptance_case_ids": false_acceptance_ids,
+            "interpretation": (
+                "This rate covers only detected reference-listed prohibited phrases; semantic false "
+                "acceptance without a phrase hit remains unmeasured."
+            ),
+        },
         "human_scoring_used": False,
         "independent_scientific_verification": False,
         "limitations": [
             "Reference-concept matching is lexical and can miss valid paraphrases.",
+            "The false-accept denominator includes only exact prohibited-phrase hits.",
             "A passing benchmark does not prove every factual claim is true.",
             "Claim review is model-assisted and must not be described as independent verification.",
         ],
