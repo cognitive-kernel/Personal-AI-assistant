@@ -68,7 +68,7 @@ def test_no_doctest_does_not_count_as_a_pass(tmp_path, monkeypatch):
     assert status == "awaiting_test"
 
 
-def test_source_doctest_runs_and_promotes_only_declared_scope(tmp_path, monkeypatch):
+def test_source_doctest_pass_is_recorded_without_promoting_the_whole_lesson(tmp_path, monkeypatch):
     lesson = "A runnable example:\n\n>>> 1 + 1\n2\n"
     candidate_id = _candidate(tmp_path, monkeypatch, lesson)
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "a" * 64)
@@ -87,7 +87,8 @@ def test_source_doctest_runs_and_promotes_only_declared_scope(tmp_path, monkeypa
     monkeypatch.setattr("app.learning_verification.sandbox.run_python", fake_run_python)
     result = run_candidate_source_doctests(candidate_id)
     assert result["passed"] is True
-    assert result["promoted"] is True
+    assert result["promoted"] is False
+    assert result["candidate_status"] == "awaiting_test"
     assert result["verification_scope"] == "explicit source doctests and restricted fenced Python assertion blocks only"
     assert "does not establish universal truth" in result["note"]
     with db.learning_connection() as conn:
@@ -98,7 +99,7 @@ def test_source_doctest_runs_and_promotes_only_declared_scope(tmp_path, monkeypa
             "SELECT run_status, suite_name FROM knowledge_test_runs WHERE candidate_id=?",
             (candidate_id,),
         ).fetchone()
-    assert row["status"] == "passed"
+    assert row["status"] == "awaiting_test"
     assert test_run["run_status"] == "passed"
     assert test_run["suite_name"] == "source-doctest-suite"
     summary = get_candidate_review_summary(candidate_id)
@@ -107,7 +108,7 @@ def test_source_doctest_runs_and_promotes_only_declared_scope(tmp_path, monkeypa
     assert summary["verification_status"] == "tested_in_declared_scope"
 
 
-def test_allowlisted_source_examples_auto_promote_only_after_sandbox_passes(tmp_path, monkeypatch):
+def test_allowlisted_source_examples_do_not_promote_whole_lesson_after_sandbox_passes(tmp_path, monkeypatch):
     lesson = "A runnable example:\n\n>>> 1 + 1\n2\n"
     candidate_id = _candidate(
         tmp_path, monkeypatch, lesson, source_url="https://docs.python.org/3/tutorial/",
@@ -126,20 +127,19 @@ def test_allowlisted_source_examples_auto_promote_only_after_sandbox_passes(tmp_
     result = run_candidate_source_doctests(candidate_id)
 
     assert result["passed"] is True
-    assert result["candidate_status"] == "passed"
-    assert result["promoted"] is True
+    assert result["candidate_status"] == "awaiting_test"
+    assert result["promoted"] is False
     with db.learning_connection() as conn:
         candidate = conn.execute(
             "SELECT promoted_knowledge_id, status FROM temporary_knowledge_candidates WHERE id=?",
             (candidate_id,),
         ).fetchone()
-        knowledge = conn.execute(
-            "SELECT status, content FROM knowledge_items WHERE id=?",
-            (candidate["promoted_knowledge_id"],),
-        ).fetchone()
-    assert candidate["status"] == "passed"
-    assert knowledge["status"] == "verified"
-    assert knowledge["content"] == lesson
+        verified_count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE status='verified'"
+        ).fetchone()[0]
+    assert candidate["status"] == "awaiting_test"
+    assert candidate["promoted_knowledge_id"] is None
+    assert verified_count == 0
     summary = get_candidate_review_summary(candidate_id)
     assert summary["verification_status"] == "tested_in_declared_scope"
 
@@ -226,7 +226,7 @@ assert True
     assert "value == 3" in blocks[1]
 
 
-def test_fenced_source_assertions_run_and_promote_scoped_primary_source(tmp_path, monkeypatch):
+def test_fenced_source_assertions_are_recorded_without_promoting_whole_lesson(tmp_path, monkeypatch):
     source = "Example:\n\n```python\ndef add(a, b):\n    return a + b\nassert add(2, 3) == 5\n```\n"
     candidate_id = _candidate(tmp_path, monkeypatch, source)
     monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "c" * 64)
@@ -247,12 +247,13 @@ def test_fenced_source_assertions_run_and_promote_scoped_primary_source(tmp_path
     assert result["passed"] is True
     assert result["tests"] == 1
     assert result["assertion_blocks"] == 1
-    assert result["promoted"] is True
+    assert result["promoted"] is False
+    assert result["candidate_status"] == "awaiting_test"
     with db.learning_connection() as conn:
         status = conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()[0]
-    assert status == "passed"
+    assert status == "awaiting_test"
 
 
 
