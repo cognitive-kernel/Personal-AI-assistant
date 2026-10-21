@@ -123,7 +123,8 @@ def dynamic_ram_budget_gb(
         maximum = 25
     if isinstance(reserve, bool) or not isinstance(reserve, (int, float)) or not 1 <= reserve <= 8:
         reserve = 4
-    return round(max(0.0, min(float(maximum), float(available) - float(reserve))), 2)
+    # The configured ceiling includes the safety reserve; only the remainder is model budget.
+    return round(max(0.0, min(float(maximum), float(available)) - float(reserve)), 2)
 
 
 def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = None) -> dict[str, int]:
