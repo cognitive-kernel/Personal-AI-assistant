@@ -102,7 +102,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   color: #344054; text-decoration: none; font-size: .9rem; font-weight: 650; white-space: nowrap;
 }
 .dashboard-nav a:hover, .dashboard-nav a:focus-visible { background: #edf2ff; border-color: #cbd5ff; color: #243f9e; }
-.dashboard-nav a[aria-current="location"],
+.dashboard-nav a[aria-current="page"],
 .dashboard-nav a.is-current {
   color: #173baf;
   background: #eaf0ff;
@@ -110,7 +110,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   box-shadow: inset 3px 0 0 var(--primary);
   font-weight: 750;
 }
-.dashboard-nav a[aria-current="location"]::after {
+.dashboard-nav a[aria-current="page"]::after {
   content: "";
   width: 6px;
   height: 6px;
@@ -120,8 +120,8 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
   background: currentColor;
 }
 @media (max-width: 1000px) {
-  .dashboard-nav a[aria-current="location"] { box-shadow: inset 0 -3px 0 var(--primary); }
-  .dashboard-nav a[aria-current="location"]::after { display: none; }
+  .dashboard-nav a[aria-current="page"] { box-shadow: inset 0 -3px 0 var(--primary); }
+  .dashboard-nav a[aria-current="page"]::after { display: none; }
 }
 @media (max-width: 800px) {
   body { padding: 12px; }
@@ -522,7 +522,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 :root[data-theme="dark"] .dashboard-nav { background:rgba(17,28,46,.97); border-color:#34445b; }
 :root[data-theme="dark"] .dashboard-nav a { color:#cbd7e8; }
 :root[data-theme="dark"] .dashboard-nav a:hover,:root[data-theme="dark"] .dashboard-nav a:focus-visible,
-:root[data-theme="dark"] .dashboard-nav a[aria-current="location"],:root[data-theme="dark"] .dashboard-nav a.is-current { color:#e4ebff; background:#24365a; border-color:#506da8; }
+:root[data-theme="dark"] .dashboard-nav a[aria-current="page"],:root[data-theme="dark"] .dashboard-nav a.is-current { color:#e4ebff; background:#24365a; border-color:#506da8; }
 :root[data-theme="dark"] .cloud-candidate,:root[data-theme="dark"] .task-diagnostics,
 :root[data-theme="dark"] .task-empty-state,:root[data-theme="dark"] .path-progress { color:var(--text); background:var(--surface-muted); border-color:#3b4b62; }
 :root[data-theme="dark"] .task-summary-item { color:#b4c1d4; background:linear-gradient(145deg,#111c2e,#162338); }
