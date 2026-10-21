@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import curricula, factual_knowledge
+from . import curricula, factual_knowledge, learning_evidence_gate
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
@@ -390,6 +390,25 @@ def run_job(job_id: int) -> None:
                 quality["claim_review"] = claim_review_result
             else:
                 quality["claim_review_status"] = "no_usable_sources"
+            try:
+                evidence_gate = learning_evidence_gate.evaluate_lesson_evidence(
+                    result["lesson"], sources, claim_review_result
+                )
+            except Exception as exc:
+                evidence_gate = {
+                    "version": learning_evidence_gate.GATE_VERSION,
+                    "status": "not_accepted",
+                    "accepted": False,
+                    "independent_scientific_verification": False,
+                    "failed_gates": ["evidence_gate_error"],
+                    "error": type(exc).__name__,
+                }
+            quality["evidence_gate"] = evidence_gate
+            quality["evidence_gate_status"] = (
+                "passed_not_proof_of_truth" if evidence_gate.get("accepted") is True else "needs_review"
+            )
+            if evidence_gate.get("accepted") is not True:
+                quality["verification_status"] = "needs_review"
 
         with learning_connection() as conn:
             current = conn.execute("SELECT status FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
@@ -432,6 +451,12 @@ def run_job(job_id: int) -> None:
                         source_text=source_text,
                         review=claim_review_result,
                     )
+            if quality.get("evidence_gate") is not None:
+                conn.execute(
+                    """INSERT INTO learning_events(job_id, event_type, actor, details_json)
+                       VALUES (?, 'evidence_gate', 'deterministic_policy_gate', ?)""",
+                    (job_id, json.dumps(quality["evidence_gate"], ensure_ascii=False)),
+                )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
