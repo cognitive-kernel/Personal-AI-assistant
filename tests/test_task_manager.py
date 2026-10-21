@@ -65,6 +65,8 @@ def test_claim_respects_priority_and_scheduled_time(task_store):
 def test_failed_task_retries_with_bounded_backoff_and_respects_attempt_limit(task_store, monkeypatch):
     current = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(task_manager, "_now", lambda: current)
+    # Keep this lifecycle test deterministic; jitter bounds are tested separately.
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
     task = task_manager.create_task("retryable", {}, max_attempts=2)
     first = task_manager.claim_next_task("worker-a")
     assert first["id"] == task["id"]
