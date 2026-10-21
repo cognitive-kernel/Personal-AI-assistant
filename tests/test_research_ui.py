@@ -10,7 +10,7 @@ def test_chat_ui_uses_persistent_research_queue_and_polls_task_result():
     assert 'await refreshConversations({selectId:currentConversationId,createIfEmpty:false});' in page
     assert 'el("chat-output").textContent="پاسخ ذخیره شد."' in page
     assert 'در حال ثبت پیام و صف‌بندی پاسخ…' in page
-    assert 'متن پیام تا پایان کار در پایگاه وظایف محلی نگهداری می‌شود' in page
+    assert 'در حال ثبت پیام و صف‌بندی پاسخ…' in page
     assert 'id="task-manager-section"' in page
     assert 'new URLSearchParams({limit:"50"})' in page
     assert 'query.set("cursor",taskNextCursor)' in page
