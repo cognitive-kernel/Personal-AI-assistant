@@ -569,3 +569,149 @@ def record_review_evidence(
             (candidate_id, source_url, digest),
         ).fetchone()
     return dict(row)
+
+
+def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
+    """Build an inspectable per-claim evidence matrix without guessing that a claim is true.
+
+    Sentence splitting and lexical overlap only locate potentially relevant evidence;
+    they are never used as a truth classifier. Whole-candidate test passes are kept
+    at suite scope and are not copied onto every claim.
+    """
+    import re
+
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise ValueError("candidate_id must be a positive integer.")
+    init_databases()
+    with learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT id, topic, content, source_kind, source_urls_json, content_sha256, status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
+            raise KeyError(candidate_id)
+        evidence = [dict(row) for row in conn.execute(
+            """SELECT evidence_kind, source_url, source_title, source_sha256, excerpt,
+                      reliability_note, fetched_at
+               FROM knowledge_review_evidence WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()]
+        peers = [dict(row) for row in conn.execute(
+            """SELECT provider, model_name, stance, citations_json, independence_note, created_at
+               FROM knowledge_peer_consultations WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()]
+        tests = [dict(row) for row in conn.execute(
+            """SELECT suite_name, suite_version, suite_sha256, source_sha256, oracle_url,
+                      runner_name, run_status, expected_json, actual_json, created_at
+               FROM knowledge_test_runs WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()]
+        feedback = [dict(row) for row in conn.execute(
+            """SELECT outcome, application_context, observed_output, output_sha256,
+                      test_steps, reporter_kind, created_at
+               FROM knowledge_user_feedback WHERE candidate_id=? ORDER BY id""",
+            (candidate_id,),
+        ).fetchall()]
+
+    lesson = str(candidate["content"] or "")
+    # Bound output size and ignore fragments too short to be meaningful claims.
+    sentences = [
+        re.sub(r"\s+", " ", part).strip(" \t\r\n•-*")
+        for part in re.split(r"(?<=[.!?؟])\s+|\n+", lesson)
+    ]
+    sentences = [sentence for sentence in sentences if len(sentence) >= 24][:100]
+    stop_words = {
+        "the", "and", "for", "that", "with", "from", "this", "are", "was", "into",
+        "when", "then", "than", "have", "has", "will", "can", "not", "but", "its",
+        "یک", "این", "آن", "برای", "است", "هست", "شود", "می‌شود", "که", "را", "با",
+        "از", "در", "به", "تا", "یا", "اگر", "اما", "هم", "هر", "بر", "اینکه",
+    }
+
+    def tokens(value: str) -> set[str]:
+        return {
+            token.casefold() for token in re.findall(r"[^\W_]+", value, re.UNICODE)
+            if len(token) > 2 and token.casefold() not in stop_words
+        }
+
+    claims = []
+    for index, sentence in enumerate(sentences, start=1):
+        claim_tokens = tokens(sentence)
+        relevant = []
+        for item in evidence:
+            excerpt_tokens = tokens(str(item.get("excerpt") or ""))
+            if not claim_tokens or not excerpt_tokens:
+                continue
+            overlap = len(claim_tokens & excerpt_tokens) / len(claim_tokens)
+            if overlap >= 0.25:
+                relevant.append({
+                    "evidence_kind": item["evidence_kind"],
+                    "source_url": item["source_url"],
+                    "source_title": item["source_title"],
+                    "relevance_overlap": round(overlap, 3),
+                    "source_sha256": item["source_sha256"],
+                    "fetched_at": item["fetched_at"],
+                    "reliability_note": item["reliability_note"],
+                })
+        kinds = {item["evidence_kind"] for item in relevant}
+        if "contradicting" in kinds:
+            status = "conflicting_evidence"
+        elif "supporting" in kinds:
+            status = "source_supported_not_experimentally_verified"
+        elif peers:
+            status = "peer_reviewed_not_verified"
+        else:
+            status = "unverified"
+        claims.append({
+            "claim_id": f"{candidate_id}:{index}",
+            "text": sentence,
+            "status": status,
+            "relevant_evidence": relevant,
+            "interpretation": (
+                "Lexical overlap only suggests relevance; it does not prove entailment or correctness."
+            ),
+        })
+
+    passed_suites = [item for item in tests if item["run_status"] == "passed"]
+    failed_suites = [item for item in tests if item["run_status"] == "failed"]
+    return {
+        "candidate_id": candidate_id,
+        "topic": candidate["topic"],
+        "candidate_status": candidate["status"],
+        "candidate_sha256": candidate["content_sha256"],
+        "verification_status": calculate_knowledge_confidence(candidate_id)["verification_status"],
+        "confidence": calculate_knowledge_confidence(candidate_id),
+        "claims": claims,
+        "verification_channels": {
+            "web_evidence": {
+                "count": len(evidence),
+                "supporting": sum(item["evidence_kind"] == "supporting" for item in evidence),
+                "contradicting": sum(item["evidence_kind"] == "contradicting" for item in evidence),
+                "context_only": sum(item["evidence_kind"] == "context" for item in evidence),
+            },
+            "peer_ai": {
+                "consultations": len(peers),
+                "providers": sorted({item["provider"] for item in peers}),
+                "stances": [{"provider": item["provider"], "model": item["model_name"], "stance": item["stance"],
+                             "independence_note": item["independence_note"]} for item in peers],
+                "counts_as_truth_oracle": False,
+            },
+            "isolated_tests": {
+                "passed_suites": len(passed_suites),
+                "failed_suites": len(failed_suites),
+                "runs": tests,
+                "scope_warning": "A passing suite validates only the cases it executed, not every claim in this candidate.",
+            },
+            "real_world_user_feedback": {
+                "records": len(feedback),
+                "outcomes": [{"outcome": item["outcome"], "context": item["application_context"],
+                              "reporter_kind": item["reporter_kind"], "created_at": item["created_at"]}
+                             for item in feedback],
+                "independently_audited": False,
+            },
+        },
+        "promotion_policy": (
+            "This matrix is diagnostic. It does not promote knowledge. Promotion still requires "
+            "the explicit versioned test gate with trusted oracle references and passing results."
+        ),
+    }
