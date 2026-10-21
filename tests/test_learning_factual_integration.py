@@ -106,7 +106,7 @@ def test_repeated_factual_review_delivery_is_idempotent(learning_store):
         "Python dictionaries map unique keys to values. Keys are used to retrieve "
         "the corresponding values from a mapping."
     )
-    source_chunk = f"Source title: Mapping types\\nSource URL: {url}\\nContent:\\n{excerpt}"
+    source_chunk = f"Source title: Mapping types\nSource URL: {url}\nContent:\n{excerpt}"
     source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
     review = {
         "reviewer": "local_ollama_model_assisted_not_independent",
@@ -152,7 +152,7 @@ def test_review_cannot_attach_evidence_from_an_unmatched_url(learning_store):
         "Python tuples are immutable sequences. Their items cannot be replaced "
         "after the tuple has been created."
     )
-    source_chunk = f"Source title: Sequence types\\nSource URL: {url}\\nContent:\\n{excerpt}"
+    source_chunk = f"Source title: Sequence types\nSource URL: {url}\nContent:\n{excerpt}"
     source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
     review = {
         "reviewer": "local_ollama_model_assisted_not_independent",
@@ -203,9 +203,9 @@ def test_factual_review_integration_remains_scoped_to_python(learning_store):
             job_id=job["id"],
             topic="Docker container networking",
             source_text=(
-                "Source title: Docker networking\\n"
-                "Source URL: https://docs.docker.com/network/\\n"
-                "Content:\\nDocker bridge networks connect containers."
+                "Source title: Docker networking\n"
+                "Source URL: https://docs.docker.com/network/\n"
+                "Content:\nDocker bridge networks connect containers."
             ),
             review=review,
         )
