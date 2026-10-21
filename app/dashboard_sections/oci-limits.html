@@ -1,0 +1,13 @@
+<section id="oci-limits-section"><h2>محدودیت‌های حساب Oracle Cloud (فقط‌خواندنی، اختیاری)</h2>
+<p class="muted">به‌صورت پیش‌فرض غیرفعال است. با رضایت صریح، فقط فرمان رسمی و خواندنیِ فهرست محدودیت‌های Compute اجرا می‌شود. مسیرها، profile، region و شناسهٔ compartment در پایگاه محلی ذخیره می‌شوند؛ کلید خصوصی یا خروجی خام CLI ذخیره نمی‌شود. این داده‌ها اثبات‌کنندهٔ رایگان‌بودن یا ظرفیت فعلی نیستند. هیچ ماشین ساخته یا کدی در ابر اجرا نمی‌شود و مجوز اجرای remote همیشه false است.</p>
+<div class="cloud-form-grid">
+<label>مسیر کامل OCI CLI<input id="oci-cli-path" type="text" maxlength="2048" placeholder="مسیر کامل oci یا oci.exe" aria-label="مسیر کامل oci یا oci.exe"></label>
+<label>مسیر فایل config محلی OCI<input id="oci-config-path" type="text" maxlength="2048" placeholder="مسیر کامل فایل ~/.oci/config" aria-label="مسیر کامل فایل ~/.oci/config"></label>
+<label>Profile<input id="oci-profile" type="text" maxlength="64" value="DEFAULT"></label>
+<label>Region<input id="oci-region" type="text" maxlength="80" placeholder="مثلاً us-ashburn-1" aria-label="مثلاً us-ashburn-1"></label>
+<label>Compartment یا Tenancy OCID<input id="oci-compartment-id" type="text" maxlength="512" placeholder="ocid1.compartment..." aria-label="ocid1.compartment..."></label>
+</div>
+<label><input id="oci-limits-consent" type="checkbox" style="width:auto"> رضایت می‌دهم برنامه فقط با درخواست دستی من، از CLI رسمی و config محلی فعلی برای خواندن محدودیت‌های Compute حساب Oracle استفاده کند.</label>
+<div class="cloud-actions"><button id="oci-limits-enable" type="button">ثبت رضایت و فعال‌سازی</button><button id="oci-limits-revoke" type="button">لغو رضایت و حذف snapshotها</button><button id="oci-limits-refresh" type="button">خواندن محدودیت‌ها اکنون</button></div>
+<pre id="oci-limits-status">خواندن محدودیت‌های OCI غیرفعال است.</pre>
+</section>
