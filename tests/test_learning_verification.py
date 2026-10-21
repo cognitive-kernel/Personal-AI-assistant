@@ -276,3 +276,29 @@ def test_untrusted_https_domain_cannot_be_used_as_source_test_oracle(tmp_path, m
         assert conn.execute(
             "SELECT COUNT(*) FROM knowledge_test_runs WHERE candidate_id=?", (candidate_id,)
         ).fetchone()[0] == 0
+
+
+
+def test_multiple_source_urls_do_not_share_one_unattributed_test_suite(tmp_path, monkeypatch):
+    candidate_id = _candidate(
+        tmp_path, monkeypatch,
+        "A runnable example:\n\n>>> 1 + 1\n2\n",
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE temporary_knowledge_candidates SET source_urls_json=? WHERE id=?",
+            (json.dumps([
+                "https://docs.python.org/3/tutorial/index.html",
+                "https://learn.microsoft.com/en-us/sql/",
+            ]), candidate_id),
+        )
+
+    result = run_candidate_source_doctests(candidate_id)
+
+    assert result["status"] == "source_attribution_ambiguous"
+    assert result["tests"] == 0
+    assert result["promoted"] is False
+    with db.learning_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_test_runs WHERE candidate_id=?", (candidate_id,)
+        ).fetchone()[0] == 0
