@@ -545,3 +545,18 @@ def test_ollama_programming_model_is_unloaded_after_request(monkeypatch):
 
     assert ollama.chat("review this code", purpose="programming") == "ok"
     assert captured["payload"]["keep_alive"] == "0"
+
+
+
+def test_resource_limit_settings_are_persisted(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    saved = db.update_settings({
+        "cpu_resource_limit_percent": 75,
+        "ram_resource_limit_percent": 80,
+        "gpu_resource_limit_percent": 65,
+    })
+    assert saved["cpu_resource_limit_percent"] == 75
+    assert saved["ram_resource_limit_percent"] == 80
+    assert saved["gpu_resource_limit_percent"] == 65
