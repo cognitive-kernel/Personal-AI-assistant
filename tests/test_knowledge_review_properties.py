@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings, strategies as st
 
 from app import db, learning
 from app.knowledge_review import (
@@ -46,7 +46,11 @@ def _candidate(tmp_path, monkeypatch):
         max_size=5,
     ),
 )
-@settings(max_examples=12, deadline=None)
+@settings(
+    max_examples=12,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 def test_evidence_score_is_bounded_and_versioned(
     tmp_path, monkeypatch, evidence_kinds, peer_stances, outcomes
 ):
