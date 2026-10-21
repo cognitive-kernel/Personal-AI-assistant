@@ -111,9 +111,18 @@ def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
     system_prompt: str | None = None,
+    *,
+    model: str | None = None,
+    response_format: str | None = None,
+    options: dict[str, Any] | None = None,
 ) -> str:
     settings = get_settings()
     limits = runtime_limits(settings, detect_hardware())
+    selected_model = str(model or settings["ollama_model"]).strip()
+    if not selected_model or len(selected_model) > 200:
+        raise OllamaError("Model name is invalid.")
+    if response_format not in {None, "json"}:
+        raise OllamaError("Unsupported response format.")
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
@@ -121,10 +130,32 @@ def chat(
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
     messages.append({"role": "user", "content": message[:12000]})
-    response = _request("/api/chat", {
-        "model": str(settings["ollama_model"]), "stream": False, "messages": messages,
-        "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
-    })
+    effective_options: dict[str, Any] = {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]}
+    allowed_options = {"num_ctx", "num_thread", "num_predict", "temperature", "top_p", "seed"}
+    if options is not None:
+        if not isinstance(options, dict) or set(options) - allowed_options:
+            raise OllamaError("Model options contain unsupported fields.")
+        for key, value in options.items():
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise OllamaError("Model option values must be finite numbers.")
+            if key == "num_ctx":
+                effective_options[key] = max(512, min(int(value), int(limits["num_ctx"])))
+            elif key == "num_thread":
+                effective_options[key] = max(0, min(int(value), int(limits["cpu_threads"]))) if int(limits["cpu_threads"]) > 0 else 0
+            elif key == "num_predict":
+                effective_options[key] = max(1, min(int(value), 8192))
+            elif key == "temperature":
+                effective_options[key] = max(0.0, min(float(value), 2.0))
+            elif key == "top_p":
+                effective_options[key] = max(0.01, min(float(value), 1.0))
+            elif key == "seed":
+                effective_options[key] = int(value)
+    payload: dict[str, Any] = {
+        "model": selected_model, "stream": False, "messages": messages, "options": effective_options,
+    }
+    if response_format == "json":
+        payload["format"] = "json"
+    response = _request("/api/chat", payload)
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
         raise OllamaError("Ollama returned an empty or unexpected chat response.")
