@@ -4,7 +4,7 @@ import json
 import platform
 import re
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
 from . import curricula, factual_knowledge
@@ -184,7 +184,7 @@ def _persist_factual_review_claims(
             factual_knowledge.add_evidence(
                 connection,
                 knowledge_id,
-                source_type="other",
+                source_type="official_docs" if urlparse(url).hostname == "docs.python.org" else "other",
                 source_ref=url,
                 source_hash=source_hash,
                 excerpt=source["content"][:2500],
