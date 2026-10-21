@@ -389,9 +389,10 @@ def test_verified_retrieval_returns_only_active_source_backed_exact_scope(connec
         source_ref=f"test-run:{test_only_id}", source_hash=f"sha256:test-only-{test_only_id}",
         excerpt="A passing test without source provenance.",
     )
-    results = retrieve_verified_claims(
+    results = search_retrievable_claims(
         connection,
         "SQL Server",
+        domain="sql_server",
         environment_name="sql_server",
         environment_version="2022",
     )
@@ -429,9 +430,10 @@ def test_verified_retrieval_excludes_unverified_failed_conflicting_superseded_an
     transition_evidence_level(connection, l1, "L1_sourced")
     transition_lifecycle(connection, l1, "active")
 
-    results = retrieve_verified_claims(
+    results = search_retrievable_claims(
         connection,
         "SQL Server query plans",
+        domain="sql_server",
         environment_name="sql_server",
         environment_version="2022",
     )
@@ -447,9 +449,10 @@ def test_verified_retrieval_excludes_both_sides_of_active_contradiction(connecti
     first = _active_tested_claim(connection, "SQL Server isolation level allows phantom reads")
     second = _active_tested_claim(connection, "SQL Server isolation level prevents phantom reads")
     add_relation(connection, first, second, "contradicts")
-    results = retrieve_verified_claims(
+    results = search_retrievable_claims(
         connection,
         "SQL Server isolation level phantom reads",
+        domain="sql_server",
         environment_name="sql_server",
         environment_version="2022",
     )
@@ -459,14 +462,14 @@ def test_verified_retrieval_excludes_both_sides_of_active_contradiction(connecti
 
 def test_verified_retrieval_fails_closed_without_exact_environment_scope(connection):
     _active_tested_claim(connection, "SQL Server query plans expose selected operations")
-    assert retrieve_verified_claims(
+    assert search_retrievable_claims(
         connection, "SQL Server query plans", environment_name="", environment_version="2022"
     ) == []
-    assert retrieve_verified_claims(
+    assert search_retrievable_claims(
         connection, "SQL Server query plans", environment_name="sql_server", environment_version=""
     ) == []
     with pytest.raises(KnowledgePolicyError, match="limit must be an integer"):
-        retrieve_verified_claims(
+        search_retrievable_claims(
             connection, "SQL Server query plans", environment_name="sql_server",
             environment_version="2022", limit=0,
         )
