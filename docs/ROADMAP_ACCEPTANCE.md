@@ -156,3 +156,14 @@ Use mature open-source tools where they improve the loop rather than rebuilding 
 Automated tests cover independent channel failures, explicit-URL failure without source substitution, and disabled web research while peer-AI/sandbox checks continue. This is an integration improvement, not closure of the remaining factual-oracle/calibration gaps. Exact-head CI must pass before the change is considered validated.
 
 Peer-AI review responses now expose their proposed tests, applications, and limitations in the claim matrix. These remain explicitly marked `exploratory_only`, `executed=false`, and `trusted_oracle=false`; they are surfaced for the next verification step but cannot be promoted or run as trusted acceptance tests without an independently established expected result.
+
+
+### Learning evidence acceptance hardening (2026-10-21)
+
+The consolidated follow-up changes the lesson gate contract to `lesson-evidence-v3`. Every accepted claim must contain non-empty claim text, a non-empty rationale, and exact evidence URLs present in both the retrieved evidence inventory and the lesson's citations. The result reports total claims and explicitly mapped claims; missing attribution fails closed. This establishes traceability only and does not prove logical entailment or scientific truth.
+
+The scoped sandbox runner now requires a source URL from the existing curated primary-source allowlist. HTTPS alone is insufficient: lookalike domains such as `python.org.attacker.example` are rejected before sandbox execution and before a test-run record can be written. Candidates remain temporary when no qualifying oracle exists.
+
+Regression tests were added for missing claim text/rationale and for lookalike oracle rejection. Exact-head CI is the validation authority; until it completes, these tests are added but not yet confirmed passing.
+
+Remaining gates include durable URL attribution for each example extracted from multiple retrieved pages, mapping each example to the precise claim it tests, target-host execution, live-model and human-adjudicated scientific evaluation, false-pass/false-fail calibration, and independent security review. Do not mark the project production-ready based on these changes alone.
