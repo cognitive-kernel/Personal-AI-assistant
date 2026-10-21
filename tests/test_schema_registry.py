@@ -19,7 +19,7 @@ from app.schema_registry import (
 def test_settings_schema_can_be_created_from_versioned_migrations():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(SETTINGS_MIGRATIONS)
-        assert runner.apply(connection) == 3
+        assert runner.apply(connection) == 4
         assert runner.apply(connection) == 3
         columns = {row[1] for row in connection.execute("PRAGMA table_info(settings)")}
         assert {"key", "value_json", "updated_at"} <= columns
@@ -39,7 +39,7 @@ def test_settings_schema_can_be_created_from_versioned_migrations():
         ).fetchone() == (0,)
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,)]
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -145,6 +145,7 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     settings_fingerprint = fingerprint_for_version(SETTINGS_MIGRATIONS, 1)
     settings_v2 = fingerprint_for_version(SETTINGS_MIGRATIONS, 2)
     settings_v3 = fingerprint_for_version(SETTINGS_MIGRATIONS, 3)
+    settings_v4 = fingerprint_for_version(SETTINGS_MIGRATIONS, 4)
     learning_v1 = fingerprint_for_version(LEARNING_MIGRATIONS, 1)
     learning_v2 = fingerprint_for_version(LEARNING_MIGRATIONS, 2)
     learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 3)
@@ -162,8 +163,8 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v15 = fingerprint_for_version(LEARNING_MIGRATIONS, 15)
     learning_v16 = fingerprint_for_version(LEARNING_MIGRATIONS, 16)
 
-    assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == 64
-    assert len({settings_fingerprint, settings_v2, settings_v3}) == 3
+    assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
+    assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
     assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16}) == 16
 
