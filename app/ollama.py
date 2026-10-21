@@ -96,11 +96,17 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
 
     try:
         if path in _INFERENCE_PATHS:
-            # Recheck only after acquiring the shared lock, so queued requests cannot
-            # all pass a stale CPU/RAM preflight and then infer concurrently.
-            with _INFERENCE_LOCK:
+            # Bound both queue wait and inference time. Recheck resources only after
+            # acquiring the lock so waiting requests cannot all pass a stale preflight.
+            wait_timeout = timeout if timeout is not None else int(settings["ollama_timeout_seconds"])
+            acquired = _INFERENCE_LOCK.acquire(timeout=max(1.0, float(wait_timeout)))
+            if not acquired:
+                raise OllamaError("Timed out waiting for the local inference budget.")
+            try:
                 _ensure_resource_headroom()
                 return perform_request()
+            finally:
+                _INFERENCE_LOCK.release()
         return perform_request()
     except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise OllamaError(f"Ollama request failed: {exc}") from exc
