@@ -66,6 +66,20 @@ def test_worker_retries_handler_failure_with_backoff_then_marks_exhausted(worker
     assert second["attempts"] == 2
 
 
+def test_worker_does_not_retry_permanent_input_errors(worker_store):
+    task = task_manager.create_task("test.invalid-input", {}, max_attempts=3)
+
+    def reject(_payload, _checkpoint, _context):
+        raise ValueError("invalid task definition")
+
+    worker = TaskWorker("worker-1", {"test.invalid-input": reject})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "failed"
+    assert saved["attempts"] == 1
+    assert saved["error"] == "ValueError: invalid task definition"
+
+
 def test_worker_settles_pause_at_checkpoint(worker_store):
     task = task_manager.create_task("test.pause", {})
 
