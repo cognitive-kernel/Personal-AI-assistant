@@ -94,3 +94,33 @@ def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
         assert conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()[0] == "awaiting_test"
+
+
+def test_failed_source_example_is_saved_as_learning_experience(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch, ">>> 1 + 1\\n3")
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.11-slim@sha256:" + "b" * 64)
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", "/usr/bin/docker")
+
+    def fake_run_python(source_code, **kwargs):
+        return sandbox.SandboxResult(
+            status="failed", exit_code=1,
+            stdout='{"attempted": 1, "failed": 1}\\n',
+            stderr="Expected 3 but got 2", duration_ms=9,
+        )
+
+    monkeypatch.setattr("app.learning_verification.sandbox.run_python", fake_run_python)
+    result = run_candidate_source_doctests(candidate_id)
+    assert result["passed"] is False
+    assert result["promoted"] is False
+    assert result["failure_experience_id"] is not None
+    with db.learning_connection() as conn:
+        run = conn.execute(
+            "SELECT run_status FROM knowledge_test_runs WHERE candidate_id=?", (candidate_id,)
+        ).fetchone()
+        experience = conn.execute(
+            "SELECT status, test_results_json FROM learning_experiences WHERE id=?",
+            (result["failure_experience_id"],),
+        ).fetchone()
+    assert run["run_status"] == "failed"
+    assert experience["status"] == "failed"
+    assert "Expected 3 but got 2" in experience["test_results_json"]
