@@ -85,7 +85,7 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
 
 def test_legacy_prompt_consensus_cannot_authorize_l2_promotion(tmp_path, monkeypatch):
     job, candidate_id, lesson = _setup(tmp_path, monkeypatch)
-    plan, result = _case("legacy_prompt_test", "ok", "ok", "deterministic_assertion")
+    plan, result = _case("existing_row_upgrade", "ok", "ok", "deterministic_assertion")
     plan["claim_ids"] = [f"{candidate_id}:1"]
     digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
     with db.learning_connection() as connection:
@@ -151,7 +151,7 @@ def test_promoted_alternative_marks_parent_candidate_and_knowledge_superseded(tm
                    topic, content, source_kind, version, status, job_id,
                    trust_level, learning_status, domain, source_url, raw_content
                ) VALUES (?, ?, ?, 1, 'unverified', ?, 'L-1', 'conflicting', '', '', '')""",
-            (parent_job["topic"], parent_lesson, parent_job["id"]),
+            (parent_job["topic"], parent_lesson, "user_provided_text", parent_job["id"]),
         ).lastrowid)
         connection.execute(
             """UPDATE temporary_knowledge_candidates
