@@ -404,6 +404,9 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     numeric_ranges = [
         ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
         ("ollama_num_thread", 0, 64),
+        ("cpu_resource_limit_percent", 10, 95),
+        ("ram_resource_limit_percent", 10, 95),
+        ("gpu_resource_limit_percent", 10, 95),
     ]
     for prefix in ("chat", "learning", "programming"):
         numeric_ranges.extend([
