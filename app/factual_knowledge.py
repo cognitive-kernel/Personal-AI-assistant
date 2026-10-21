@@ -1,4 +1,4 @@
-"""Small, policy-enforcing API for the Python factual-knowledge store.
+"""Policy-enforcing API for versioned, domain-scoped factual knowledge.
 
 LLM review output is data only; this module and SQLite constraints own transitions.
 """
@@ -56,16 +56,19 @@ def create_claim(
     claim: str,
     *,
     environment_version: str,
+    environment_name: str = "python",
     scope: dict[str, Any] | None = None,
     risk_level: str = "low",
 ) -> int:
     normalized = normalize_claim(claim)
-    if not environment_version.strip():
+    if not isinstance(environment_version, str) or not environment_version.strip():
         raise KnowledgePolicyError("environment_version is required")
+    if not isinstance(environment_name, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", environment_name):
+        raise KnowledgePolicyError("environment_name must be a normalized domain identifier")
     scope_value = scope or {}
     scope_json = json.dumps(scope_value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     identity = json.dumps(
-        {"claim": normalized.casefold(), "scope": scope_value, "environment_name": "python",
+        {"claim": normalized.casefold(), "scope": scope_value, "environment_name": environment_name,
          "environment_version": environment_version},
         sort_keys=True, ensure_ascii=False, separators=(",", ":"),
     )
@@ -73,15 +76,15 @@ def create_claim(
     connection.execute(
         """INSERT INTO factual_knowledge(
                claim, normalized_claim, claim_hash, scope_json,
-               environment_version, risk_level
-           ) VALUES (?, ?, ?, ?, ?, ?)
+               environment_name, environment_version, risk_level
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(claim_hash, environment_name, environment_version) DO NOTHING""",
-        (claim.strip(), normalized, digest, scope_json, environment_version, risk_level),
+        (claim.strip(), normalized, digest, scope_json, environment_name, environment_version, risk_level),
     )
     row = connection.execute(
         """SELECT id FROM factual_knowledge
-           WHERE claim_hash = ? AND environment_name = 'python' AND environment_version = ?""",
-        (digest, environment_version),
+           WHERE claim_hash = ? AND environment_name = ? AND environment_version = ?""",
+        (digest, environment_name, environment_version),
     ).fetchone()
     if row is None:
         raise KnowledgePolicyError("claim could not be persisted")
