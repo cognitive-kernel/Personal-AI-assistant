@@ -54,6 +54,11 @@ def test_no_doctest_does_not_count_as_a_pass(tmp_path, monkeypatch):
     result = run_candidate_source_doctests(candidate_id)
     assert result["status"] == "no_examples"
     assert result["promoted"] is False
+    review = get_candidate_review_summary(candidate_id)
+    assert any(
+        item["channel"] == "sandbox" and item["status"] == "no_examples"
+        for item in review["channel_attempts"]
+    )
     with db.learning_connection() as conn:
         status = conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
@@ -108,6 +113,11 @@ def test_sandbox_unavailable_keeps_candidate_temporary(tmp_path, monkeypatch):
     result = run_candidate_source_doctests(candidate_id)
     assert result["status"] == "sandbox_unconfigured"
     assert result["promoted"] is False
+    review = get_candidate_review_summary(candidate_id)
+    assert any(
+        item["channel"] == "sandbox" and item["status"] == "sandbox_unconfigured"
+        for item in review["channel_attempts"]
+    )
     with db.learning_connection() as conn:
         assert conn.execute(
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
