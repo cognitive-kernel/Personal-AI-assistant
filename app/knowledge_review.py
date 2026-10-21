@@ -422,7 +422,20 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
     return {
         "candidate_id": candidate_id,
         "score": score,
+        "score_version": "knowledge-evidence-v1",
         "score_scale": "0–100 evidence-strength index; not a calibrated probability of truth",
+        "weighting": {
+            "complete_passing_test_set_max": 40,
+            "distinct_passing_scoped_test_suites_max": 10,
+            "distinct_supporting_web_domains_max": 20,
+            "distinct_supporting_peer_providers_max": 10,
+            "successful_real_world_contexts_max": 30,
+            "partial_real_world_contexts_max": 5,
+            "contradicting_domains_penalty_max": 20,
+            "contradicting_peer_providers_penalty_max": 10,
+            "failed_real_world_contexts_penalty_max": 20,
+            "failed_scoped_test_suites_penalty_max": 10
+        },
         "verification_methods": methods,
         "components": {
             "automated_tests": test_score,
