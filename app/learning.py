@@ -437,22 +437,28 @@ def run_job(job_id: int) -> None:
                 )
             # Preserve source text and evidence even when the generated output is unusable;
             # failed attempts are useful debugging/training data, not disposable noise.
-        if (
-            candidate_id is not None
-            and os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower()
-            not in {"0", "false", "no", "off"}
-        ):
-            # Each verification channel is isolated: one unavailable service must not
-            # suppress other channels or discard the temporary candidate.
-            try:
-                from .knowledge_review import research_candidate_online
-                research_candidate_online(
-                    candidate_id,
-                    f"{topic} {result['lesson'][:300]}",
-                    limit=3,
-                )
-            except Exception:
-                pass
+        if candidate_id is not None:
+            # Each verification channel is independent and its outcome is persisted.
+            if os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower() not in {"0", "false", "no", "off"}:
+                try:
+                    from .knowledge_review import research_candidate_online
+                    research_candidate_online(
+                        candidate_id,
+                        f"{topic} {result['lesson'][:300]}",
+                        limit=3,
+                    )
+                except Exception:
+                    pass
+            else:
+                try:
+                    from .knowledge_review import record_review_attempt
+                    record_review_attempt(
+                        candidate_id, channel="web_research", status="unconfigured",
+                        details={"reason": "LEARNING_AUTO_WEB_RESEARCH_disabled"},
+                    )
+                except Exception:
+                    pass
+            # Peer-AI consultation is configured separately and remains independent of web search.
             try:
                 from .knowledge_review import consult_configured_peer_ais
                 consult_configured_peer_ais(candidate_id, limit=3)
