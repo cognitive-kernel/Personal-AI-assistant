@@ -6,7 +6,7 @@ from typing import Any
 
 from . import ollama
 from .db import get_settings
-from .task_worker import TaskContext
+from .task_worker import PermanentTaskError, TaskContext
 
 PROGRAMMING_TASK_TYPE = "programming.assist"
 _ALLOWED_KEYS = {"instruction", "context"}
@@ -32,7 +32,10 @@ def handle_programming_task(
     checkpoint: dict[str, Any] | None,
     context: TaskContext,
 ) -> dict[str, Any]:
-    instruction, source_context = validate_payload(payload)
+    try:
+        instruction, source_context = validate_payload(payload)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise PermanentTaskError(str(exc)) from exc
     instruction_hash = hashlib.sha256(instruction.encode("utf-8")).hexdigest()
     context_hash = hashlib.sha256(source_context.encode("utf-8")).hexdigest()
     context.checkpoint({
