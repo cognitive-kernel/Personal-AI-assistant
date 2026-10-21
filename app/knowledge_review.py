@@ -609,6 +609,106 @@ def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
     }
 
 
+def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score: int = 30) -> dict[str, Any]:
+    """Promote a candidate as evidence-reviewed (not lab-verified) when independent channels agree.
+
+    Requires at least two supporting web domains and two configured peer providers,
+    no known contradictions or failed field reports, and no passing/failing lab suite.
+    This path lets a candidate become usable when no lab is available while preserving
+    the explicit status ``evidence_reviewed_no_lab`` instead of claiming experimental proof.
+    """
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise ValueError("candidate_id must be a positive integer.")
+    if isinstance(minimum_score, bool) or not isinstance(minimum_score, int) or not 0 <= minimum_score <= 100:
+        raise ValueError("minimum_score must be an integer from 0 to 100.")
+    init_databases()
+    with learning_connection() as conn:
+        candidate = conn.execute(
+            "SELECT id, topic, content, source_kind, job_id, status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
+            raise KeyError(candidate_id)
+        evidence = conn.execute(
+            "SELECT evidence_kind, source_url FROM knowledge_review_evidence WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchall()
+        peers = conn.execute(
+            "SELECT provider, stance FROM knowledge_peer_consultations WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchall()
+        test_runs = conn.execute(
+            "SELECT run_status FROM knowledge_test_runs WHERE candidate_id=?", (candidate_id,),
+        ).fetchall()
+        failures = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_user_feedback WHERE candidate_id=? AND outcome='failed'",
+            (candidate_id,),
+        ).fetchone()[0]
+    if any(row["run_status"] in {"passed", "failed"} for row in test_runs):
+        return {"candidate_id": candidate_id, "promoted": False, "reason": "lab_test_already_recorded"}
+    def host(url: str) -> str:
+        try:
+            return (urllib.parse.urlsplit(url).hostname or "").casefold().removeprefix("www.")
+        except ValueError:
+            return ""
+    supporting_domains = {host(row["source_url"]) for row in evidence
+                          if row["evidence_kind"] == "supporting" and host(row["source_url"])}
+    contradicting_domains = {host(row["source_url"]) for row in evidence
+                             if row["evidence_kind"] == "contradicting" and host(row["source_url"])}
+    supporting_peers = {row["provider"] for row in peers if row["stance"] == "supports"}
+    contradicting_peers = {row["provider"] for row in peers if row["stance"] == "contradicts"}
+    if contradicting_domains or contradicting_peers or failures:
+        return {"candidate_id": candidate_id, "promoted": False, "reason": "contradicting_evidence_or_failed_field_use"}
+    if len(supporting_domains) < 2 or len(supporting_peers) < 2:
+        return {"candidate_id": candidate_id, "promoted": False, "reason": "insufficient_independent_support_channels",
+                "supporting_domains": len(supporting_domains), "supporting_peer_providers": len(supporting_peers)}
+    confidence = calculate_knowledge_confidence(candidate_id)
+    if confidence["score"] < minimum_score:
+        return {"candidate_id": candidate_id, "promoted": False, "reason": "confidence_threshold_not_met",
+                "score": confidence["score"], "minimum_score": minimum_score}
+    with learning_connection() as conn:
+        current = conn.execute(
+            "SELECT status, promoted_knowledge_id, job_id, topic, content, source_kind FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if current["status"] not in {"awaiting_test", "evidence_reviewed_no_lab"}:
+            return {"candidate_id": candidate_id, "promoted": False, "reason": "candidate_not_eligible",
+                    "candidate_status": current["status"]}
+        existing = conn.execute("SELECT id, status FROM knowledge_items WHERE job_id=?", (current["job_id"],)).fetchone()
+        if existing is not None:
+            if existing["status"] == "verified":
+                return {"candidate_id": candidate_id, "promoted": False, "reason": "already_lab_verified",
+                        "knowledge_id": int(existing["id"])}
+            knowledge_id = int(existing["id"])
+            conn.execute(
+                "UPDATE knowledge_items SET topic=?, content=?, source_kind=?, status='evidence_reviewed_no_lab' WHERE id=?",
+                (current["topic"], current["content"], current["source_kind"], knowledge_id),
+            )
+        else:
+            latest = conn.execute(
+                "SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?",
+                (current["topic"],),
+            ).fetchone()
+            cur = conn.execute(
+                "INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'evidence_reviewed_no_lab', ?)",
+                (current["topic"], current["content"], current["source_kind"], int(latest["version"]) + 1, current["job_id"]),
+            )
+            knowledge_id = int(cur.lastrowid)
+        conn.execute(
+            "UPDATE temporary_knowledge_candidates SET status='evidence_reviewed_no_lab', promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (knowledge_id, candidate_id),
+        )
+        conn.execute(
+            "INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'evidence_reviewed_no_lab', ?, ?, ?)",
+            (current["job_id"], f"temporary_knowledge_candidates:{candidate_id}",
+             hashlib.sha256(str(current["content"]).encode("utf-8")).hexdigest(),
+             f"Promoted without a lab after {len(supporting_domains)} supporting web domains and {len(supporting_peers)} supporting peer providers; score={confidence['score']}/100. This is not experimental verification."),
+        )
+    return {"candidate_id": candidate_id, "promoted": True, "knowledge_id": knowledge_id,
+            "status": "evidence_reviewed_no_lab", "score": confidence["score"],
+            "supporting_domains": len(supporting_domains), "supporting_peer_providers": len(supporting_peers),
+            "verification_status": "evidence_reviewed_no_lab"}
+
 def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
     """Return evidence inventory, verification methods, and a transparent confidence index."""
     init_databases()
