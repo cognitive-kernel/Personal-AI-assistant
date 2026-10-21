@@ -377,3 +377,67 @@ def list_retrievable_claims(
         item["passing_tests"] = [dict(test) for test in test_rows]
         result.append(item)
     return result
+
+
+
+_RETRIEVAL_STOP_WORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "because", "by", "can", "do",
+    "for", "from", "has", "have", "how", "in", "is", "it", "of", "on", "or",
+    "the", "their", "this", "to", "what", "when", "which", "with", "why",
+    "پایتون", "چطور", "چگونه", "چیست", "برای", "از", "به", "در", "با", "و",
+    "یا", "را", "این", "آن", "چه", "چرا", "است", "هست", "یک",
+}
+
+
+def _retrieval_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9_]+|[\u0600-\u06FF]+", text.casefold())
+        if len(token) >= 2 and token not in _RETRIEVAL_STOP_WORDS
+    }
+
+
+def search_retrievable_claims(
+    connection: sqlite3.Connection,
+    query: str,
+    *,
+    limit: int = 3,
+) -> list[dict[str, Any]]:
+    """Return query-relevant eligible claims using conservative lexical matching.
+
+    This is a small lexical retrieval layer, not semantic search. At least two
+    distinct query terms must match a claim to avoid injecting broad, irrelevant
+    context. All trust, freshness, source and test gates are enforced by
+    list_retrievable_claims before relevance ranking.
+    """
+    if not isinstance(query, str) or not query.strip():
+        return []
+    if len(query) > 3000:
+        raise KnowledgePolicyError("query must be at most 3000 characters")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 20:
+        raise KnowledgePolicyError("limit must be an integer between 1 and 20")
+    query_tokens = _retrieval_tokens(query)
+    if len(query_tokens) < 2:
+        return []
+
+    eligible = list_retrievable_claims(connection, limit=500)
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for item in eligible:
+        claim_tokens = _retrieval_tokens(
+            str(item.get("normalized_claim", "")) + " " +
+            json.dumps(item.get("scope", {}), ensure_ascii=False, sort_keys=True)
+        )
+        overlap = len(query_tokens & claim_tokens)
+        if overlap < 2:
+            continue
+        level_rank = 0 if item.get("evidence_level") == "L3_human_verified" else 1
+        ranked.append((overlap, level_rank, item))
+    ranked.sort(
+        key=lambda entry: (
+            -entry[0],
+            entry[1],
+            -int(entry[2]["id"]),
+        ),
+        reverse=False,
+    )
+    return [item for _overlap, _level_rank, item in ranked[:limit]]
