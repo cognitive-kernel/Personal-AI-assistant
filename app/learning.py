@@ -584,7 +584,7 @@ def record_candidate_test_results(
         ).fetchone()
         if candidate is None:
             raise KeyError(candidate_id)
-        if candidate["status"] not in {"awaiting_test", "failed", "evidence_reviewed_no_lab"}:
+        if candidate["status"] not in {"awaiting_test", "failed", "evidence_reviewed_no_lab", "conflicted"}:
             raise ValueError("Only a candidate awaiting tests or a failed candidate can be tested.")
         try:
             candidate_source_urls = json.loads(candidate["source_urls_json"] or "[]")
