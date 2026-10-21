@@ -379,3 +379,66 @@ def test_direct_chat_prompt_treats_user_correction_as_unverified(monkeypatch):
 )
 def test_answer_quality_cases_use_research_policy(prompt):
     assert chat_research.should_use_research(prompt), prompt
+
+
+
+def test_verified_factual_knowledge_is_retrieved_only_for_relevant_python_queries(
+    tmp_path, monkeypatch
+):
+    from app import db, factual_knowledge
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(
+        db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
+    )
+    db.init_databases()
+
+    with db.learning_connection() as conn:
+        claim_id = factual_knowledge.create_claim(
+            conn,
+            "Python lists preserve order and support mutable indexed updates.",
+            environment_version="3.11",
+        )
+        factual_knowledge.add_evidence(
+            conn,
+            claim_id,
+            source_type="official_docs",
+            source_ref="https://docs.python.org/3/library/stdtypes.html",
+            source_hash="sha256:python-list-source",
+            excerpt="Lists are mutable sequences.",
+        )
+        factual_knowledge.transition_evidence_level(conn, claim_id, "L1_sourced")
+        factual_knowledge.record_test(
+            conn,
+            claim_id,
+            test_kind="unit",
+            test_name="list-order-regression",
+            environment_version="3.11",
+            outcome="passed",
+            result_summary="Ordering and indexed assignment behaved as expected.",
+        )
+        factual_knowledge.transition_evidence_level(conn, claim_id, "L2_tested")
+        factual_knowledge.transition_lifecycle(conn, claim_id, "active")
+
+        raw_id = factual_knowledge.create_claim(
+            conn,
+            "Python lists are always thread safe.",
+            environment_version="3.11",
+        )
+        assert raw_id != claim_id
+
+    context = chat_research._factual_knowledge_context(
+        "How do Python lists preserve order and support updates?"
+    )
+    assert len(context) == 1
+    assert context[0]["id"] == claim_id
+    assert context[0]["evidence_level"] == "L2_tested"
+    assert context[0]["claim"].startswith("Python lists preserve order")
+    assert context[0]["sources"][0]["url"] == "https://docs.python.org/3/library/stdtypes.html"
+    assert context[0]["passing_tests"][0]["name"] == "list-order-regression"
+
+    assert chat_research._factual_knowledge_context(
+        "How do SQL Server query plans work?"
+    ) == []
+    assert chat_research._factual_knowledge_context("Python?") == []
