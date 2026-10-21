@@ -73,3 +73,10 @@ The task queue now distinguishes a genuinely empty queue from zero matches cause
 ### Dashboard theme preference (2026-10-20)
 
 The dashboard theme preference is implemented and merged in [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365), commit `9702984f236e0c3fdefad16365e1127027e17b87`. Exact-head tests/Windows regressions, browser E2E, and dependency audit passed ([tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288911), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288901), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39369288902)). OS preference fallback and explicit local persistence are covered. Manual contrast, keyboard/screen-reader, and target-host acceptance remain open.
+## 2026-10-21 — lifecycle deprecations and local inference budget
+
+The current development branch replaces FastAPI's deprecated @app.on_event startup/shutdown hooks with an application lifespan context and migrates request-model class Config declarations to Pydantic ConfigDict. Blocking lifecycle work is dispatched through Starlette's thread pool rather than running directly on the event loop.
+
+Local /api/chat, /api/embed, and /api/generate calls routed through app.ollama now share a process-wide inference lock. Resource headroom is checked after the lock is acquired, and waiting for the lock is bounded by the configured request timeout. A focused concurrency regression test verifies that two in-process inference requests do not overlap.
+
+**Important limitation:** this is an application-level concurrency and preflight safeguard, not a hard system-wide 90% CPU/RAM ceiling. It cannot constrain Ollama requests made by other processes or external clients, and CPU/RAM can rise after the preflight check. A true hard ceiling still requires an OS-level resource controller for the Ollama process (with separate Windows-target validation); do not mark the 90% guarantee complete until that is implemented and measured. Exact-head pytest/CI and target-host startup/shutdown checks remain required for these changes.
