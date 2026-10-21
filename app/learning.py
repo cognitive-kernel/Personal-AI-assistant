@@ -103,7 +103,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         body = document.text.strip()[:per_page_limit]
         if not body:
             continue
-        chunk = f"Source title: {document.title}\nSource URL: {document.url}\nContent:\n{body}"
+        chunk = _format_source_document(document, body)
         remaining = max_chars - total
         if remaining <= 0:
             break
@@ -132,7 +132,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
 def _format_source_document(document: Any, content: str | None = None) -> str:
     """Serialize one source in the exact line-oriented format used by the claim parser."""
     body = str(document.text if content is None else content).strip()
-    return f"Source title: {document.title}\\nSource URL: {document.url}\\nContent:\\n{body}"
+    return f"Source title: {document.title}\nSource URL: {document.url}\nContent:\n{body}"
 
 
 def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
@@ -183,7 +183,7 @@ def run_job(job_id: int) -> None:
         try:
             from .web_sources import fetch_public_document
             document = fetch_public_document(requested_url, topic, max_chars=max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000)))))
-            source_chunk = f"Source title: {document.title}\nSource URL: {document.url}\nContent:\n{document.text}"
+            source_chunk = _format_source_document(document)
             source_text = ((source_text + "\n\n" + source_chunk).strip() if source_text else source_chunk)[:max(1000, min(100000, int(get_settings().get("learning_source_max_chars", 12000))))]
             source_kind = "web_retrieved"
             requested_url_fetch_succeeded = True
