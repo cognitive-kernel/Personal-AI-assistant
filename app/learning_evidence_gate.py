@@ -10,7 +10,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-GATE_VERSION = "lesson-evidence-v2"
+GATE_VERSION = "lesson-evidence-v3"
 # Curated primary/official domains only. This is deliberately conservative and
 # must be extended through reviewed code changes, not model-generated trust.
 _TRUSTED_DOMAIN_ROOTS = {
@@ -84,11 +84,13 @@ def evaluate_lesson_evidence(
     one necessary signal, never as independent scientific verification.
     """
     usable: list[tuple[str, str]] = []
+    source_by_url: dict[str, dict[str, Any]] = {}
     seen_urls: set[str] = set()
     for source in sources if isinstance(sources, list) else []:
         parsed = _https_source(source)
         if parsed and parsed[0] not in seen_urls:
             usable.append(parsed)
+            source_by_url[parsed[0]] = source
             seen_urls.add(parsed[0])
 
     cited_tokens = _exact_cited_urls(lesson)
@@ -101,18 +103,30 @@ def evaluate_lesson_evidence(
     review = claim_review if isinstance(claim_review, dict) else {}
     claims = review.get("claims")
     conflicts = review.get("source_conflicts")
-    all_claims_supported = (
-        isinstance(claims, list)
-        and len(claims) > 0
-        and all(
-            isinstance(claim, dict)
-            and claim.get("verdict") == "supported"
-            and isinstance(claim.get("evidence_urls"), list)
-            and len(claim["evidence_urls"]) > 0
-            and all(isinstance(url, str) and url in cited for url in claim["evidence_urls"])
-            for claim in claims
-        )
-    )
+    valid_claims = isinstance(claims, list) and len(claims) > 0
+    mapped_claim_count = 0
+    all_claims_supported = valid_claims
+    if valid_claims:
+        for claim in claims:
+            if not isinstance(claim, dict):
+                all_claims_supported = False
+                continue
+            claim_text = claim.get("claim")
+            reason = claim.get("reason")
+            evidence_urls = claim.get("evidence_urls")
+            mapping_is_explicit = (
+                isinstance(claim_text, str) and bool(claim_text.strip())
+                and isinstance(reason, str) and bool(reason.strip())
+                and isinstance(evidence_urls, list) and len(evidence_urls) > 0
+                and all(isinstance(url, str) and url in cited and url in source_by_url for url in evidence_urls)
+            )
+            if mapping_is_explicit:
+                mapped_claim_count += 1
+            else:
+                all_claims_supported = False
+            if claim.get("verdict") != "supported" or not mapping_is_explicit:
+                all_claims_supported = False
+
     gates = {
         "at_least_two_distinct_https_sources": len(cited) >= 2 and len(hosts) >= 2,
         "at_least_two_source_urls_cited_exactly": len(cited) >= 2,
@@ -131,11 +145,14 @@ def evaluate_lesson_evidence(
         "cited_source_count": len(cited),
         "distinct_cited_host_count": len(hosts),
         "trusted_cited_host_count": len(trusted_cited_hosts),
+        "claim_count": len(claims) if isinstance(claims, list) else 0,
+        "explicitly_mapped_claim_count": mapped_claim_count,
         "gates": gates,
         "failed_gates": [name for name, value in gates.items() if not value],
         "limitations": [
             "Only domains on a conservative, code-reviewed allowlist count as primary-source candidates; allowlisting does not prove relevance or truth.",
             "Claim review is model-assisted and is not an independent proof of truth.",
             "Passing this gate is not a substitute for reproducible domain-specific tests.",
+            "Claim-to-source mapping requires explicit claim text, a rationale, and exact retrieved/cited source URLs; this is traceability, not proof of entailment.",
         ],
     }
