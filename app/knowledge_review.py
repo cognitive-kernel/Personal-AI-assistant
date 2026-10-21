@@ -298,8 +298,149 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
     }
 
 
+def record_user_application_feedback(
+    candidate_id: int,
+    *,
+    outcome: str,
+    application_context: str,
+    observed_output: str = "",
+    test_steps: str = "",
+) -> dict[str, Any]:
+    """Record user-reported real-world use without confusing it with laboratory proof."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise ValueError("candidate_id must be a positive integer.")
+    if outcome not in {"worked", "failed", "partial", "not_tested"}:
+        raise ValueError("outcome must be worked, failed, partial, or not_tested.")
+    for name, value, maximum in (
+        ("application_context", application_context, 3000),
+        ("observed_output", observed_output, 12000),
+        ("test_steps", test_steps, 6000),
+    ):
+        if not isinstance(value, str) or (name == "application_context" and not value.strip()):
+            raise ValueError(f"{name} must not be empty.")
+        if len(value) > maximum:
+            raise ValueError(f"{name} exceeds its size limit.")
+    output_digest = hashlib.sha256(observed_output.encode("utf-8")).hexdigest() if observed_output else ""
+    init_databases()
+    with learning_connection() as conn:
+        if conn.execute(
+            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone() is None:
+            raise KeyError(candidate_id)
+        conn.execute(
+            """INSERT INTO knowledge_user_feedback(
+                   candidate_id, outcome, application_context, observed_output,
+                   output_sha256, test_steps, reporter_kind
+               ) VALUES (?, ?, ?, ?, ?, ?, 'user')""",
+            (candidate_id, outcome, application_context.strip(), observed_output,
+             output_digest, test_steps.strip()),
+        )
+        row = conn.execute(
+            "SELECT * FROM knowledge_user_feedback WHERE id=last_insert_rowid()"
+        ).fetchone()
+    return dict(row)
+
+
+def calculate_knowledge_confidence(candidate_id: int) -> dict[str, Any]:
+    """Compute a transparent 0–100 evidence score, not a probability of truth.
+
+    Evidence types have different weights. Repeated URLs, correlated AI providers,
+    and unsupported user reports do not count as independent scientific proof.
+    """
+    init_databases()
+    with learning_connection() as conn:
+        candidate = conn.execute(
+            """SELECT status, test_results_json FROM temporary_knowledge_candidates WHERE id=?""",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
+            raise KeyError(candidate_id)
+        evidence = conn.execute(
+            "SELECT evidence_kind, source_url FROM knowledge_review_evidence WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchall()
+        peers = conn.execute(
+            "SELECT provider, stance FROM knowledge_peer_consultations WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchall()
+        feedback = conn.execute(
+            """SELECT outcome, application_context FROM knowledge_user_feedback
+               WHERE candidate_id=?""",
+            (candidate_id,),
+        ).fetchall()
+
+    def domain(url: str) -> str:
+        try:
+            return (urllib.parse.urlsplit(url).hostname or "").lower().removeprefix("www.")
+        except ValueError:
+            return ""
+
+    support_domains = {domain(row["source_url"]) for row in evidence
+                       if row["evidence_kind"] == "supporting" and domain(row["source_url"])}
+    contradiction_domains = {domain(row["source_url"]) for row in evidence
+                              if row["evidence_kind"] == "contradicting" and domain(row["source_url"])}
+    peer_supporters = {row["provider"] for row in peers if row["stance"] == "supports"}
+    peer_contradictors = {row["provider"] for row in peers if row["stance"] == "contradicts"}
+    successful_contexts = {row["application_context"] for row in feedback if row["outcome"] == "worked"}
+    failed_contexts = {row["application_context"] for row in feedback if row["outcome"] == "failed"}
+    partial_contexts = {row["application_context"] for row in feedback if row["outcome"] == "partial"}
+
+    test_score = 40 if candidate["status"] == "passed" and candidate["test_results_json"] else 0
+    source_score = min(20, 10 * len(support_domains))
+    peer_score = min(10, 5 * len(peer_supporters))
+    user_score = min(30, 15 * len(successful_contexts)) + min(5, 2 * len(partial_contexts))
+    contradiction_penalty = min(20, 10 * len(contradiction_domains))
+    peer_penalty = min(10, 5 * len(peer_contradictors))
+    user_failure_penalty = min(20, 10 * len(failed_contexts))
+    raw_score = test_score + source_score + peer_score + user_score - contradiction_penalty - peer_penalty - user_failure_penalty
+    score = max(0, min(100, raw_score))
+    methods = []
+    if support_domains or contradiction_domains:
+        methods.append("internet_sources")
+    if peers:
+        methods.append("peer_ai_consultation")
+    if candidate["test_results_json"]:
+        methods.append("isolated_or_deterministic_tests")
+    if feedback:
+        methods.append("real_world_user_feedback")
+    return {
+        "candidate_id": candidate_id,
+        "score": score,
+        "score_scale": "0–100 evidence-strength index; not a calibrated probability of truth",
+        "verification_methods": methods,
+        "components": {
+            "automated_tests": test_score,
+            "independent_supporting_domains": source_score,
+            "peer_ai_support": peer_score,
+            "successful_real_world_applications": user_score,
+            "contradicting_domains_penalty": contradiction_penalty,
+            "peer_ai_contradiction_penalty": peer_penalty,
+            "failed_real_world_applications_penalty": user_failure_penalty,
+        },
+        "counts": {
+            "supporting_domains": len(support_domains),
+            "contradicting_domains": len(contradiction_domains),
+            "supporting_peer_providers": len(peer_supporters),
+            "contradicting_peer_providers": len(peer_contradictors),
+            "successful_user_contexts": len(successful_contexts),
+            "failed_user_contexts": len(failed_contexts),
+        },
+        "verification_status": (
+            "tested_in_declared_scope" if candidate["status"] == "passed" and test_score
+            else "unverified"
+        ),
+        "limitations": [
+            "Score is an explainable heuristic, not a statistical probability.",
+            "Peer providers may share training data; provider count is not proof of independence.",
+            "Web evidence counts only after it is explicitly classified as supporting or contradicting.",
+            "User reports are useful field feedback but are not independently audited.",
+            "A high score never overrides a failed required test or unresolved safety-critical contradiction.",
+        ],
+    }
+
+
 def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
-    """Return a transparent evidence inventory; deliberately does not decide truth."""
+    """Return evidence inventory, verification methods, and a transparent confidence index."""
     init_databases()
     with learning_connection() as conn:
         if conn.execute(
@@ -320,15 +461,23 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
             "SELECT COUNT(DISTINCT provider) FROM knowledge_peer_consultations WHERE candidate_id=?",
             (candidate_id,),
         ).fetchone()[0]
+        feedback = conn.execute(
+            """SELECT outcome, COUNT(*) AS count, COUNT(DISTINCT application_context) AS contexts
+               FROM knowledge_user_feedback WHERE candidate_id=? GROUP BY outcome""",
+            (candidate_id,),
+        ).fetchall()
+    confidence = calculate_knowledge_confidence(candidate_id)
     return {
         "candidate_id": candidate_id,
         "evidence": [dict(row) for row in evidence],
         "peer_consultations": [dict(row) for row in peers],
+        "user_application_feedback": [dict(row) for row in feedback],
         "distinct_peer_providers": int(peer_count),
-        "verification_status": "unverified",
+        "verification_status": confidence["verification_status"],
+        "confidence": confidence,
         "interpretation": (
-            "Web sources and peer-AI responses are review inputs, not votes. "
-            "Correlated providers, unsupported citations, and conflicting evidence require explicit testing."
+            "Score increases with distinct evidence channels and successful tests, while contradictions "
+            "reduce it. It is not a probability of truth and does not replace the required test gate."
         ),
     }
 
