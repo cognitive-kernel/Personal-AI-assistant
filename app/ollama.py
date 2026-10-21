@@ -111,9 +111,19 @@ def chat(
     message: str,
     history: list[dict[str, str]] | None = None,
     system_prompt: str | None = None,
+    *,
+    purpose: str = "chat",
 ) -> str:
+    if purpose not in {"chat", "learning", "programming"}:
+        raise ValueError("purpose must be chat, learning, or programming.")
     settings = get_settings()
-    limits = runtime_limits(settings, detect_hardware())
+    prefix = purpose
+    limits = runtime_limits({
+        "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings["ollama_num_ctx"]),
+        "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings["ollama_num_thread"]),
+    }, detect_hardware())
+    request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
+    model = str(settings.get(f"{prefix}_ollama_model", settings["ollama_model"]))
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
@@ -122,9 +132,9 @@ def chat(
             messages.append({"role": item["role"], "content": item["content"][:12000]})
     messages.append({"role": "user", "content": message[:12000]})
     response = _request("/api/chat", {
-        "model": str(settings["ollama_model"]), "stream": False, "messages": messages,
+        "model": model, "stream": False, "messages": messages,
         "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
-    })
+    }, timeout=request_timeout)
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
         raise OllamaError("Ollama returned an empty or unexpected chat response.")
