@@ -458,6 +458,30 @@ def fail_task(
     return _task(updated)  # type: ignore[return-value]
 
 
+def delete_task(task_id: int) -> dict[str, Any]:
+    """Delete a task only when no worker can still be executing it."""
+    now = _timestamp()
+    with db.learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
+        if row is None:
+            raise TaskNotFoundError(f"Task {task_id} does not exist.")
+        if row["status"] in ACTIVE_STATUSES:
+            raise TaskManagerError(
+                "Active tasks must be cancelled and reach a non-running state before deletion."
+            )
+        if row["status"] not in TERMINAL_STATUSES | {"queued", "paused"}:
+            raise TaskManagerError(f"Tasks with status {row['status']} cannot be deleted.")
+        deleted = {
+            "id": int(row["id"]),
+            "task_type": str(row["task_type"]),
+            "status": str(row["status"]),
+            "deleted_at": now,
+        }
+        conn.execute("DELETE FROM task_queue WHERE id=?", (task_id,))
+    return deleted
+
+
 def request_cancel(task_id: int) -> dict[str, Any]:
     now = _timestamp()
     with db.learning_connection() as conn:
