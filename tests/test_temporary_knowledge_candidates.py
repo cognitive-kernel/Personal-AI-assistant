@@ -43,6 +43,9 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
     case1 = _case("output_matches_reference", "42", "42", "deterministic_assertion")
     case2 = _case("edge_case", [], [], "sandbox")
     plan = [case1[0], case2[0]]
+    # The lesson fixture extracts one claim; map both tests to that claim explicitly.
+    for planned_test in plan:
+        planned_test["claim_ids"] = [f"{candidate_id}:1"]
     results = [case1[1], case2[1]]
 
     candidate = learning.record_candidate_test_results(candidate_id, plan, results)
@@ -74,6 +77,7 @@ def test_promotion_upgrades_existing_unverified_knowledge_row_in_place(tmp_path,
             "SELECT id FROM knowledge_items WHERE job_id=?", (job["id"],)
         ).fetchone()["id"]
     case = _case("existing_row_upgrade", "ok", "ok", "deterministic_assertion")
+    case[0]["claim_ids"] = [f"{candidate_id}:1"]
     candidate = learning.record_candidate_test_results(candidate_id, [case[0]], [case[1]])
     with db.learning_connection() as connection:
         rows = connection.execute(
