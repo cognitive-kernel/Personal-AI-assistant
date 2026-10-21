@@ -76,7 +76,8 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
     init_databases()
     with learning_connection() as conn:
         candidate = conn.execute(
-            "SELECT id FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+            "SELECT id, topic, content, source_urls_json FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
         ).fetchone()
     if candidate is None:
         raise KeyError(candidate_id)
@@ -95,6 +96,8 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
         }
 
     stored = 0
+    review_sources: list[dict[str, str]] = []
+    stored_source_digests: dict[str, str] = {}
     with learning_connection() as conn:
         for document in documents:
             url = str(getattr(document, "url", "")).strip()
@@ -113,16 +116,79 @@ def research_candidate_online(candidate_id: int, query: str, *, limit: int = 3) 
                      "Retrieved automatically from a public web source; not yet classified as supporting or contradicting."),
                 )
                 stored += int(conn.execute("SELECT changes()").fetchone()[0] > 0)
+                stored_source_digests[url] = digest
+                if url.startswith("https://"):
+                    review_sources.append({"url": url, "title": title, "content": body[:4000]})
             except Exception:
                 # One malformed/duplicate source must not discard other evidence.
                 continue
+
+    # Reuse the existing source-constrained local-model claim reviewer. Its verdict is
+    # advisory and only cited URLs with claim-level support/contradiction are classified.
+    # If the lesson has no exact citations or the local model is unavailable, keep sources
+    # as context rather than turning search results into proof.
+    claim_review: dict[str, Any] = {"overall": "insufficient_evidence", "classified_sources": 0}
+    if review_sources:
+        try:
+            from .claim_review import review_answer_claims
+            reviewed_answer = str(candidate["content"] or "")
+            try:
+                existing_urls = json.loads(candidate["source_urls_json"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                existing_urls = []
+            # Only append provenance URLs already recorded for this candidate. This makes
+            # source identity explicit but does not make the reviewer verdict authoritative.
+            recorded_urls = [
+                value for value in existing_urls
+                if isinstance(value, str) and value.startswith("https://")
+            ]
+            if recorded_urls and not any(url in reviewed_answer for url in recorded_urls):
+                reviewed_answer += "\n\nSources attached to this candidate:\n" + "\n".join(recorded_urls)
+            review = review_answer_claims(
+                str(candidate["topic"] or query)[:3000], reviewed_answer, review_sources[:8]
+            )
+            classified: dict[str, set[str]] = {}
+            for item in review.get("claims", []) if isinstance(review, dict) else []:
+                if not isinstance(item, dict):
+                    continue
+                verdict = item.get("verdict")
+                if verdict not in {"supported", "contradicted"}:
+                    continue
+                for url in item.get("evidence_urls", []):
+                    if isinstance(url, str) and url in stored_source_digests:
+                        classified.setdefault(url, set()).add(verdict)
+            with learning_connection() as conn:
+                for url, verdicts in classified.items():
+                    if verdicts == {"supported"}:
+                        kind = "supporting"
+                    elif verdicts == {"contradicted"}:
+                        kind = "contradicting"
+                    else:
+                        kind = "context"
+                    conn.execute(
+                        """UPDATE knowledge_review_evidence SET evidence_kind=?, reliability_note=?
+                           WHERE candidate_id=? AND source_url=? AND source_sha256=?""",
+                        (kind, f"Local claim-to-excerpt review classified this source as {kind}; model-assisted, not independent proof.",
+                         candidate_id, url, stored_source_digests[url]),
+                    )
+            claim_review = {
+                "overall": review.get("overall", "insufficient_evidence"),
+                "passed": bool(review.get("passed", False)),
+                "classified_sources": len(classified),
+                "source_conflicts": len(review.get("source_conflicts", [])) if isinstance(review.get("source_conflicts", []), list) else 0,
+                "error": review.get("error"),
+            }
+        except Exception as exc:
+            claim_review = {"overall": "insufficient_evidence", "classified_sources": 0,
+                            "error": type(exc).__name__}
     record_review_attempt(
         candidate_id, channel="web_research", status="completed",
-        details={"query": query.strip(), "stored": stored, "found": len(documents)},
+        details={"query": query.strip(), "stored": stored, "found": len(documents),
+                 "claim_review": claim_review},
     )
     return {
         "candidate_id": candidate_id, "query": query.strip(), "stored": stored,
-        "found": len(documents), "status": "completed",
+        "found": len(documents), "status": "completed", "claim_review": claim_review,
     }
 
 
