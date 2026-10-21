@@ -61,8 +61,8 @@ def test_source_doctest_runs_in_sandbox_and_promotes_only_when_examples_pass(tmp
     monkeypatch.setattr("app.learning_verification.sandbox.run_python", fake_run_python)
     result = run_candidate_source_doctests(candidate_id)
     assert result["passed"] is True
-    assert result["promoted"] is True
-    assert result["verification_scope"] == "explicit doctest examples in this lesson only"
+    assert result["promoted"] is False
+    assert result["verification_scope"] == "explicit doctest examples in this lesson only"\n    assert "not sufficient to promote" in result["note"]
     with db.learning_connection() as conn:
         row = conn.execute(
             "SELECT status, test_results_json FROM temporary_knowledge_candidates WHERE id=?",
