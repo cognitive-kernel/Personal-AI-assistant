@@ -191,3 +191,102 @@ def get_claim(connection: sqlite3.Connection, knowledge_id: int) -> Claim:
     if row is None:
         raise KnowledgePolicyError(f"unknown knowledge id: {knowledge_id}")
     return Claim(*row)
+
+
+def review_cache_key(
+    *,
+    normalized_claim: str,
+    source_hash: str,
+    model_version: str,
+    prompt_version: str,
+    scope: dict[str, Any] | None = None,
+) -> str:
+    """Cache only exact review contexts; changing source/model/prompt/scope invalidates it."""
+    normalized = normalize_claim(normalized_claim).casefold()
+    payload = {
+        "claim": normalized,
+        "source_hash": source_hash,
+        "model_version": model_version,
+        "prompt_version": prompt_version,
+        "scope": scope or {},
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def get_cached_review(connection: sqlite3.Connection, cache_key: str) -> dict[str, Any] | None:
+    row = connection.execute(
+        "SELECT result_json FROM factual_review_cache WHERE cache_key = ? AND expires_at > CURRENT_TIMESTAMP",
+        (cache_key,),
+    ).fetchone()
+    if row is not None:
+        try:
+            result = json.loads(row[0])
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise KnowledgePolicyError("cached review is not valid JSON") from exc
+        if not isinstance(result, dict):
+            raise KnowledgePolicyError("cached review must be a JSON object")
+        return result
+    connection.execute("DELETE FROM factual_review_cache WHERE cache_key = ?", (cache_key,))
+    return None
+
+
+def put_cached_review(
+    connection: sqlite3.Connection,
+    *,
+    cache_key: str,
+    claim_hash: str,
+    source_hash: str,
+    model_version: str,
+    prompt_version: str,
+    scope_hash: str,
+    result: dict[str, Any],
+    ttl_seconds: int = 86400,
+) -> None:
+    if isinstance(ttl_seconds, bool) or not isinstance(ttl_seconds, int) or not 1 <= ttl_seconds <= 604800:
+        raise KnowledgePolicyError("ttl_seconds must be between 1 and 604800")
+    if not isinstance(result, dict):
+        raise KnowledgePolicyError("cached review result must be a JSON object")
+    encoded = json.dumps(result, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    connection.execute(
+        """INSERT INTO factual_review_cache(
+               cache_key, claim_hash, source_hash, model_version, prompt_version,
+               scope_hash, result_json, expires_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
+           ON CONFLICT(cache_key) DO UPDATE SET
+             claim_hash=excluded.claim_hash,
+             source_hash=excluded.source_hash,
+             model_version=excluded.model_version,
+             prompt_version=excluded.prompt_version,
+             scope_hash=excluded.scope_hash,
+             result_json=excluded.result_json,
+             created_at=CURRENT_TIMESTAMP,
+             expires_at=excluded.expires_at""",
+        (cache_key, claim_hash, source_hash, model_version, prompt_version, scope_hash,
+         encoded, f"+{ttl_seconds} seconds"),
+    )
+
+
+def enqueue_review_task(
+    knowledge_id: int,
+    *,
+    cache_key: str,
+    model_version: str,
+    prompt_version: str,
+) -> dict[str, Any]:
+    """Queue a deduplicated review request; the runtime must explicitly register its handler."""
+    if not cache_key or not model_version or not prompt_version:
+        raise KnowledgePolicyError("cache_key, model_version and prompt_version are required")
+    from . import task_manager
+
+    return task_manager.create_task(
+        "learning.review_factual_claim",
+        {
+            "knowledge_id": knowledge_id,
+            "cache_key": cache_key,
+            "model_version": model_version,
+            "prompt_version": prompt_version,
+        },
+        max_attempts=3,
+        dedupe_key=f"factual-review:{cache_key}",
+    )
