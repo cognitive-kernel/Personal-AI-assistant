@@ -251,17 +251,16 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
                 "UPDATE temporary_knowledge_candidates SET status='failed', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='awaiting_test'",
                 (candidate_id,),
             )
-    if trusted_oracle and run_status in {"passed", "failed"}:
-        # Source-authored expected-output examples from curated primary sources can
-        # automatically pass through the versioned gate. The scope remains these
-        # examples only; peer opinions and generated answer keys are never oracles.
+    if trusted_oracle and run_status == "failed":
+        # A failing source example is useful failure experience, but a passing
+        # example suite only validates those examples; it cannot verify the full lesson.
         from .learning import record_candidate_test_results
         expected_digest = hashlib.sha256(json.dumps(
             expected, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
         ).encode("utf-8")).hexdigest()
         plan = [{
             "test": "source-doctest-suite",
-            "purpose": "Run all safe expected-output examples embedded in the cited primary source.",
+            "purpose": "Record the failure of safe expected-output examples embedded in the cited primary source.",
             "oracle_kind": "source_example",
             "oracle_ref": oracle_url,
             "expected": expected,
@@ -270,23 +269,24 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
         result_record = [{
             "test": "source-doctest-suite",
             "runner": "sandbox",
-            "passed": run_status == "passed",
+            "passed": False,
             "expected": expected,
             "actual": actual,
             "oracle_sha256": expected_digest,
         }]
-        promoted = record_candidate_test_results(candidate_id, plan, result_record)
-        current_status = str(promoted["status"])
-        promoted_to_knowledge = bool(
-            run_status == "passed" and promoted.get("promoted_knowledge_id") is not None
-        )
-        if run_status == "failed":
-            with db.learning_connection() as conn:
-                latest_experience = conn.execute(
-                    "SELECT id FROM learning_experiences WHERE problem LIKE ? ORDER BY id DESC LIMIT 1",
-                    (f"%نامزد دانشی {candidate_id}%",),
-                ).fetchone()
-                experience_id = int(latest_experience["id"]) if latest_experience else None
+        failed_record = record_candidate_test_results(candidate_id, plan, result_record)
+        current_status = str(failed_record["status"])
+        with db.learning_connection() as conn:
+            latest_experience = conn.execute(
+                "SELECT id FROM learning_experiences WHERE problem LIKE ? ORDER BY id DESC LIMIT 1",
+                (f"%نامزد دانشی {candidate_id}%",),
+            ).fetchone()
+            experience_id = int(latest_experience["id"]) if latest_experience else None
+    elif run_status == "passed":
+        # Preserve a successful scoped test as evidence without promoting the entire
+        # generated lesson. A separate claim-complete trusted suite must authorize promotion.
+        current_status = "awaiting_test"
+        promoted_to_knowledge = False
     if run_status == "failed" and not trusted_oracle:
         current_status = "failed"
         # Untrusted-source failures are still durable experiences, but cannot promote
