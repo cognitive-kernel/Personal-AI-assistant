@@ -631,6 +631,12 @@ LEARNING_MIGRATIONS = (
                BEFORE UPDATE OF lifecycle_status ON factual_knowledge
                WHEN NEW.lifecycle_status = 'active' AND NEW.evidence_level = 'L0_raw'
                BEGIN SELECT RAISE(ABORT, 'raw knowledge cannot become active'); END""",
+            """CREATE TRIGGER factual_knowledge_high_risk_guard
+               BEFORE UPDATE OF lifecycle_status ON factual_knowledge
+               WHEN NEW.lifecycle_status = 'active'
+                 AND NEW.risk_level IN ('high','critical')
+                 AND NEW.evidence_level <> 'L3_human_verified'
+               BEGIN SELECT RAISE(ABORT, 'high-risk knowledge requires human verification'); END""",
             """CREATE TRIGGER factual_knowledge_relation_supersedes_guard
                BEFORE INSERT ON knowledge_relations
                WHEN NEW.relation_type = 'supersedes'
