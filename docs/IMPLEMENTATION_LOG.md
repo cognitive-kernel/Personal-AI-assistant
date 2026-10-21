@@ -2223,3 +2223,11 @@ The evidence-only promotion path has been changed to diagnostics-only. Supportin
 ## 2026-10-21 — Scope source-example test results to the examples themselves
 
 A passing doctest or fenced assertion block from a trusted source is now recorded as scoped evidence only. It no longer marks the entire generated lesson as `verified` or promotes it into durable knowledge. The candidate stays `awaiting_test` until a separate trusted suite covers the lesson's declared claim inventory. Failed trusted-source examples still go through the failure-recording path so the mismatch and its experience remain durable. Browser E2E navigation assertions were also updated to match the dashboard's actual route-based navigation, and the root dashboard now marks its current route with `aria-current="page"`.
+
+
+## 2026-10-21 — جداسازی واقعی صفحات داشبورد
+
+- مشکل قبلی: مسیرهای `/sections/{slug}` همان `index.html` کامل را تحویل می‌دادند و فقط با CSS بخش‌های دیگر را مخفی می‌کردند؛ بنابراین داده و فرم همهٔ بخش‌ها همچنان داخل سند بودند.
+- اصلاح: routeها اکنون HTML را در سمت سرور فیلتر می‌کنند؛ صفحهٔ اصلی فقط نمای کلی و پیوندهای بخش‌ها را دارد و هر مسیر فقط markup بخش خودش را برمی‌گرداند. صفحهٔ یادگیری بازبینی شواهد را نیز در همان صفحه نگه می‌دارد.
+- اسکریپت‌های مشترک برای نبود کنترل‌های یک بخش مقاوم‌تر شدند و بارگذاری اولیهٔ وظایف، شواهد ذخیره‌سازی، منابع ابری و رضایت حافظه به صفحات مرتبط محدود شد.
+- آزمون‌های route برای نبود markup بخش‌های دیگر بازنویسی شدند و آزمون مرورگر به مسیرهای واقعی هر قابلیت هدایت می‌شود. نتیجهٔ نهایی CI برای SHA جدید باید بررسی شود.
