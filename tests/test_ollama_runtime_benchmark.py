@@ -80,7 +80,7 @@ def test_run_benchmark_emits_redacted_fixed_workload_report(monkeypatch):
     assert report["summary"]["runs"] == len(benchmark.CASES)
     assert len(calls) == len(benchmark.CASES)
     assert all(call[0] == "/api/chat" for call in calls)
-    assert all(call[1]["options"]["num_gpu"] is not True for call in calls)
+    assert all(call[1]["options"]["num_ctx"] == 2048 for call in calls)
     serialized = __import__("json").dumps(report)
     assert "Explain in two concise sentences" not in serialized
     assert "Write a Python function" not in serialized
