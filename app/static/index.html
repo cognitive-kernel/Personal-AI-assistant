@@ -1934,7 +1934,15 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
 })();
 (function initializeSectionPageNavigation(){
  const slug=document.documentElement.dataset.sectionPage;
- if(!slug) return;
+ if(!slug){
+  const path=window.location.pathname.replace(/\\/+$/,'')||'/';
+  const active=Array.from(document.querySelectorAll('.dashboard-nav a')).find(link=>{
+   const target=new URL(link.href,window.location.origin).pathname.replace(/\\/+$/,'')||'/';
+   return target===path;
+  });
+  if(active){active.setAttribute('aria-current','page');}
+  return;
+ }
  const active=document.querySelector('.dashboard-nav a[data-section-slug="'+slug+'"]');
  if(active){active.setAttribute('aria-current','page');}
  const sectionId=document.documentElement.dataset.sectionId;
