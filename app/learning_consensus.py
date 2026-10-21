@@ -11,7 +11,9 @@ from typing import Any
 
 from .db import init_databases, learning_connection
 
-CONSENSUS_PROMPT_VERSION = "learning-consensus-v1"
+from .knowledge_review import PEER_REVIEW_PROMPT_VERSION
+
+CONSENSUS_PROMPT_VERSION = PEER_REVIEW_PROMPT_VERSION
 _ALLOWED_STANCES = {"supports", "contradicts", "mixed", "insufficient_evidence"}
 
 
@@ -39,9 +41,10 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
             raise KeyError(candidate_id)
         peer_rows = conn.execute(
             """SELECT id, provider, model_name, stance, response, response_sha256,
-                      independence_note, created_at
-               FROM knowledge_peer_consultations WHERE candidate_id=? ORDER BY id DESC""",
-            (candidate_id,),
+                      independence_note, prompt_version, created_at
+               FROM knowledge_peer_consultations
+               WHERE candidate_id=? AND prompt_version=? ORDER BY id DESC""",
+            (candidate_id, CONSENSUS_PROMPT_VERSION),
         ).fetchall()
         source_rows = conn.execute(
             """SELECT source_url, evidence_kind, excerpt
@@ -92,6 +95,7 @@ def evaluate_candidate_consensus(candidate_id: int, *, minimum_models: int = 2) 
             "provider": provider,
             "model_name": model,
             "vote": stance,
+            "prompt_version": str(row["prompt_version"] or ""),
             "response_sha256": str(row["response_sha256"] or ""),
             "response_excerpt": response[:1200],
             "independence_note": str(row["independence_note"] or "")[:1000],

@@ -15,6 +15,8 @@ from typing import Any
 
 from .db import init_databases, learning_connection
 
+PEER_REVIEW_PROMPT_VERSION = "learning-peer-review-v2"
+
 _ALLOWED_EVIDENCE_KINDS = {"supporting", "contradicting", "context", "application"}
 _ALLOWED_STANCES = {"supports", "contradicts", "mixed", "insufficient_evidence"}
 
@@ -202,6 +204,7 @@ def record_peer_consultation(
     citations: list[dict[str, Any]] | None = None,
     stance: str = "mixed",
     independence_note: str = "",
+    prompt_version: str = PEER_REVIEW_PROMPT_VERSION,
 ) -> dict[str, Any]:
     """Persist an external AI's answer and provenance without treating it as truth."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
@@ -209,7 +212,7 @@ def record_peer_consultation(
     for name, value, maximum in (
         ("provider", provider, 120), ("prompt", prompt, 12000),
         ("response", response, 30000), ("model_name", model_name, 200),
-        ("independence_note", independence_note, 2000),
+        ("independence_note", independence_note, 2000), ("prompt_version", prompt_version, 100),
     ):
         if not isinstance(value, str) or not value.strip() and name in {"provider", "prompt", "response"}:
             raise ValueError(f"{name} must not be empty.")
@@ -240,11 +243,11 @@ def record_peer_consultation(
         conn.execute(
             """INSERT OR IGNORE INTO knowledge_peer_consultations(
                    candidate_id, provider, model_name, prompt, response, claims_json,
-                   citations_json, stance, independence_note, response_sha256
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   citations_json, stance, independence_note, response_sha256, prompt_version
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (candidate_id, provider.strip(), model_name.strip(), prompt.strip(),
              response.strip(), claims_json, citations_json, stance,
-             independence_note.strip(), digest),
+             independence_note.strip(), digest, prompt_version.strip()),
         )
         row = conn.execute(
             """SELECT * FROM knowledge_peer_consultations
@@ -290,6 +293,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
     if not isinstance(providers, list) or len(providers) > 10:
         raise ValueError("PEER_AI_PROVIDERS_JSON must be a list of at most 10 providers.")
     prompt = (
+        f"PROMPT_VERSION: {PEER_REVIEW_PROMPT_VERSION}\n"
         "Independently critique the candidate lesson below. Do not assume it is correct. "
         "Identify testable claims, counterexamples, missing conditions, practical uses, and "
         "limitations. Cite direct public URLs for factual claims, distinguish evidence from "
@@ -377,6 +381,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
                 claims=claims[:100],
                 citations=citations[:100],
                 stance=stance,
+                prompt_version=PEER_REVIEW_PROMPT_VERSION,
                 independence_note=(
                     "Automatically consulted through a configured OpenAI-compatible endpoint. "
                     "Training-data and organizational independence have not been established."

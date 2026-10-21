@@ -698,6 +698,14 @@ LEARNING_MIGRATIONS = (
             "UPDATE learning_experience_versions SET experience_type='successful_alternative' WHERE problem LIKE 'successful_alternative:%'",
         ),
     ),
+    Migration(
+        23,
+        "version-learning-peer-prompts",
+        (
+            "ALTER TABLE knowledge_peer_consultations ADD COLUMN prompt_version TEXT NOT NULL DEFAULT 'legacy_unversioned' CHECK(length(prompt_version) BETWEEN 1 AND 100)",
+            "CREATE INDEX idx_knowledge_peer_prompt_version ON knowledge_peer_consultations(candidate_id, prompt_version, id DESC)",
+        ),
+    ),
 )
 
 

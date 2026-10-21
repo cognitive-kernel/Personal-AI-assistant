@@ -93,6 +93,23 @@ def test_model_disagreement_sets_l_minus_one_and_records_failure_experience(tmp_
     assert str(candidate_id) in experience["problem"]
 
 
+def test_legacy_peer_prompt_votes_do_not_count_in_current_consensus(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    _vote(candidate_id, "peer-a", "large-model-a", "supports", "Current prompt vote.")
+    record_peer_consultation(
+        candidate_id, provider="peer-b", model_name="large-model-b",
+        prompt="Legacy unversioned prompt.", response="Supports an older version of the claim.",
+        stance="supports", prompt_version="learning-peer-review-v1",
+    )
+
+    result = evaluate_candidate_consensus(candidate_id)
+
+    assert result["outcome"] == "insufficient_evidence"
+    assert result["supporting_count"] == 1
+    assert result["prompt_version"] == "learning-peer-review-v2"
+    assert all(vote["prompt_version"] == "learning-peer-review-v2" for vote in result["votes"])
+
+
 def test_consensus_requires_a_recorded_original_source(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch, source=False)
     _vote(candidate_id, "peer-a", "large-model-a", "supports", "Supports.")
