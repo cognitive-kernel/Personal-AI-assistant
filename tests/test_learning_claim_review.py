@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -124,3 +125,56 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     assert knowledge["status"] == "unverified"
     assert event is not None
     assert "not an independent verification" in event["note"]
+
+def test_sql_server_claims_are_persisted_unverified_with_version_scope(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    url = "https://learn.microsoft.com/en-us/sql/sql-server/"
+    excerpt = "SQL Server documentation explains query plans and database engine behavior. " * 4
+    source_text = f"Source title: SQL Server docs\nSource URL: {url}\nContent:\n{excerpt}"
+    job = learning.create_job("SQL Server 2022 execution plans")
+    with db.learning_connection() as connection:
+        digest = hashlib.sha256(excerpt.strip().encode("utf-8")).hexdigest()
+        connection.execute(
+            """INSERT INTO learning_evidence(
+                   job_id, evidence_type, source_ref, content_hash, note
+               ) VALUES (?, 'web_page', ?, ?, ?)""",
+            (job["id"], url, digest, "Source content hash for regression test."),
+        )
+        stored = learning._persist_factual_review_claims(
+            connection,
+            job_id=job["id"],
+            topic="SQL Server 2022 execution plans",
+            source_text=source_text,
+            review={
+                "passed": True,
+                "reviewer": "model_assisted_test",
+                "claims": [{
+                    "claim": "An execution plan describes selected query operations.",
+                    "verdict": "supported",
+                    "evidence_urls": [url],
+                }],
+            },
+        )
+        claim = connection.execute(
+            """SELECT environment_name, environment_version, evidence_level, lifecycle_status
+               FROM factual_knowledge WHERE claim = ?""",
+            ("An execution plan describes selected query operations.",),
+        ).fetchone()
+        evidence = connection.execute(
+            "SELECT source_type FROM factual_evidence WHERE source_ref=?",
+            (url,),
+        ).fetchone()
+    assert stored == 1
+    assert tuple(claim) == ("sql_server", "2022", "L0_raw", "unverified")
+    assert evidence["source_type"] == "official_docs"
+
+
+def test_factual_claim_persistence_skips_ambiguous_and_unrecognized_topics():
+    assert learning._factual_domain_for_topic("General study skills") is None
+    assert learning._factual_domain_for_topic("Python and SQL Server integration") is None
+
+
+def test_official_documentation_host_matching_rejects_lookalikes():
+    assert learning._source_type_for_factual_claim("https://learn.microsoft.com/en-us/sql/") == "official_docs"
+    assert learning._source_type_for_factual_claim("https://learn.microsoft.com.attacker.example/sql/") == "other"
+
