@@ -35,7 +35,10 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
             }],
         })}}
 
-    monkeypatch.setattr(claim_review, "_request", fake_request)
+    def fake_llm_complete(_task, messages, options=None, response_format=None, **_kwargs):
+        return fake_request("/api/chat", {"format": response_format, "messages": messages, "options": options})
+
+    monkeypatch.setattr(claim_review, "llm_complete", fake_llm_complete)
     result = claim_review.review_answer_claims(
         "Why can JSON parsing fail?",
         f"Invalid JSON may raise a decoding error. Source: {url}",
@@ -47,7 +50,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
 
 def test_claim_review_fails_closed_on_malformed_json(tmp_path, monkeypatch):
     setup_settings_db(tmp_path, monkeypatch)
-    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+    monkeypatch.setattr(claim_review, "llm_complete", lambda *_args, **_kwargs: {
         "message": {"content": "not JSON"},
     })
     result = claim_review.review_answer_claims(

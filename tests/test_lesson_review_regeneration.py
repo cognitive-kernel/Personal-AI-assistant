@@ -71,7 +71,13 @@ def test_regeneration_uses_only_latest_review_for_same_topic(tmp_path, monkeypat
         captured_prompts.append(json.loads(payload["messages"][-1]["content"]))
         raise RuntimeError("Stop after capturing the generation prompt")
 
-    monkeypatch.setattr(learning, "_request", capture_prompt_then_stop)
+    def capture_llm_prompt(_task, messages, options=None, response_format=None, **_kwargs):
+        return capture_prompt_then_stop(
+            "/api/chat",
+            {"messages": messages, "options": options, "format": response_format},
+        )
+
+    monkeypatch.setattr(learning, "llm_complete", capture_llm_prompt)
     for job in (regenerated_a, regenerated_b):
         with pytest.raises(learning.LearningError, match="Learning job"):
             learning.run_job(job["id"])

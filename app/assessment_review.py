@@ -144,8 +144,10 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
             '"rationale":"short explanation","missing_concepts":["short concept"]}],'
             '"overall_note":"advisory note"}. Include exactly one item per question, in order. '
             "Use uncertain when the provided material is insufficient."
-        ),
-    )
+            ),
+        )
+    except (ollama.OllamaError, LLMRoutingError) as exc:
+        raise SemanticReviewError("The configured LLM is unavailable for semantic review.") from exc
     try:
         review = _parse_review(raw, len(questions))
     except ValueError as exc:

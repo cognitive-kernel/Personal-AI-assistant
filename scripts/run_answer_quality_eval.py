@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app import chat_research, db, ollama
+from app.llm import resolve_model_profile, selected_model_identity
 from app.answer_quality_dataset import DEFAULT_DATASET, DATASET_VERSION, load_cases
 from app.answer_quality_evaluation import (
     evaluate_answer_surface,
@@ -164,7 +165,15 @@ def run_evaluation(
     completed = [item for item in raw_results if item["generation_status"] == "completed"]
     diagnosed = [item for item in completed if item.get("surface_diagnostic_status") == "completed"]
     settings = get_settings()
-    model_name = str(settings.get("ollama_model", "unknown"))
+    try:
+        selected_profile = resolve_model_profile("research", settings)
+        model_name = str(selected_profile["model"])
+        model_provider = str(selected_profile["provider"])
+        model_identity = selected_model_identity("research")
+    except Exception:
+        model_name = str(settings.get("ollama_model", "unknown"))
+        model_provider = "ollama"
+        model_identity = f"{model_provider}:{model_name}"
     try:
         inventory = ollama.list_models()
     except Exception as exc:
@@ -206,6 +215,8 @@ def run_evaluation(
         },
         "model": {
             "configured_name": model_name,
+            "provider": model_provider,
+            "selected_identity": model_identity,
             "matching_local_inventory_entry": matching_model,
             "manifest_digest": matching_model.get("digest") if isinstance(matching_model, dict) else None,
             "inventory_error": model_inventory_error,

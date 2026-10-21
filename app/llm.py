@@ -79,8 +79,12 @@ def normalize_model_profiles(value: Any, *, require_nonempty: bool = True) -> li
             raise ValueError(f"Model name for profile {profile_id} must contain 1–200 characters.")
         if not isinstance(enabled, bool):
             raise ValueError(f"enabled for model profile {profile_id} must be a boolean.")
+        label = item.get("label", profile_id)
+        if not isinstance(label, str) or not label.strip() or len(label.strip()) > 100:
+            raise ValueError(f"Display label for model profile {profile_id} must contain 1–100 characters.")
         profiles.append({
             "id": profile_id,
+            "label": label.strip(),
             "provider": provider,
             "model": model.strip(),
             "enabled": enabled,
@@ -129,7 +133,7 @@ def _effective_profiles(settings: dict[str, Any]) -> list[dict[str, Any]]:
     legacy_model = settings.get("ollama_model", "qwen2.5:7b")
     if not isinstance(legacy_model, str) or not legacy_model.strip():
         raise LLMRoutingError("No model profile is configured.")
-    return [{"id": "default-local", "provider": "ollama", "model": legacy_model.strip(), "enabled": True}]
+    return [{"id": "default-local", "label": "مدل پیش‌فرض فعلی", "provider": "ollama", "model": legacy_model.strip(), "enabled": True}]
 
 
 def resolve_model_profile(task: str, settings: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -102,7 +102,10 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
             ],
         }, ensure_ascii=False)}}
 
-    monkeypatch.setattr(learning, "_request", fake_model)
+    def fake_llm_complete(_task, messages, options=None, response_format=None, **_kwargs):
+        return fake_model("/api/chat", {"messages": messages, "options": options, "format": response_format})
+
+    monkeypatch.setattr(learning, "llm_complete", fake_llm_complete)
     review = {
         "passed": passed,
         "overall": "supported" if passed else "insufficient_evidence",

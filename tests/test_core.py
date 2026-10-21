@@ -411,7 +411,12 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
                 ]},
             ],
         }, ensure_ascii=False)}}
-    monkeypatch.setattr(learning, "_request", fake_request)
+    def fake_llm_complete(_task, messages, options=None, response_format=None, **_kwargs):
+        payloads.append({"format": response_format, "messages": messages, "options": options})
+        return fake_request("/api/chat", {"format": response_format, "messages": messages, "options": options})
+
+    payloads.clear()
+    monkeypatch.setattr(learning, "llm_complete", fake_llm_complete)
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
@@ -432,7 +437,7 @@ def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     def fail_request(*_args, **_kwargs):
         raise RuntimeError("model offline")
 
-    monkeypatch.setattr(learning, "_request", fail_request)
+    monkeypatch.setattr(learning, "llm_complete", fail_request)
     try:
         learning.run_job(job["id"])
     except learning.LearningError as exc:

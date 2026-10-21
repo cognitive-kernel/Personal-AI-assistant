@@ -12,7 +12,7 @@ from typing import Any
 from . import ollama
 from .db import get_settings
 from .hardware import detect_hardware, runtime_limits
-from .ollama import _request
+from .llm import complete as llm_complete, LLMRoutingError
 
 
 _ALLOWED_VERDICTS = {"supported", "contradicted", "insufficient_evidence"}
@@ -86,11 +86,9 @@ def review_answer_claims(
         ),
     }
     try:
-        response = _request("/api/chat", {
-            "model": str(settings["ollama_model"]),
-            "stream": False,
-            "format": "json",
-            "messages": [
+        response = llm_complete(
+            "research_review",
+            [
                 {
                     "role": "system",
                     "content": (
@@ -101,16 +99,17 @@ def review_answer_claims(
                 },
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
-            "options": {
+            options={
                 "temperature": 0,
                 "num_ctx": min(limits["num_ctx"], 4096),
                 "num_thread": limits["cpu_threads"],
                 "num_predict": 1000,
             },
-        })
+            response_format="json",
+        )
         raw = response.get("message", {}).get("content")
         parsed = json.loads(raw) if isinstance(raw, str) else None
-    except (ollama.OllamaError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (ollama.OllamaError, LLMRoutingError, json.JSONDecodeError, TypeError, ValueError) as exc:
         return {
             "passed": False,
             "overall": "insufficient_evidence",
