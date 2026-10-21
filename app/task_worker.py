@@ -14,8 +14,20 @@ TaskHandler = Callable[[dict[str, Any], dict[str, Any] | None, "TaskContext"], d
 logger = logging.getLogger("personal_ai_assistant.task_worker")
 
 
+class RetryableTaskError(RuntimeError):
+    """Explicit handler contract for a domain failure that may succeed on retry."""
+
+
+class PermanentTaskError(RuntimeError):
+    """Explicit handler contract for a domain failure that must not be retried."""
+
+
 def is_retryable_task_error(error: Exception) -> bool:
-    """Avoid spending retries on invalid input, broken assumptions, or integrity conflicts."""
+    """Honor explicit handler policy, then preserve the legacy exception fallback."""
+    if isinstance(error, PermanentTaskError):
+        return False
+    if isinstance(error, RetryableTaskError):
+        return True
     return not isinstance(
         error,
         (ValueError, TypeError, KeyError, AssertionError, NotImplementedError, sqlite3.IntegrityError),
