@@ -104,3 +104,42 @@ def test_candidate_test_results_must_match_plan_and_name_automated_runner(tmp_pa
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()[0]
     assert status == "awaiting_test"
+
+
+def test_passing_result_cannot_disagree_with_trusted_expected_output(tmp_path, monkeypatch):
+    _job, candidate_id, _lesson = _setup(tmp_path, monkeypatch)
+    plan, result = _case("oracle_equality", 42, 42, "deterministic_assertion")
+    forged_result = dict(result, actual=41, passed=True)
+
+    with pytest.raises(ValueError, match="must exactly match the trusted oracle"):
+        learning.record_candidate_test_results(candidate_id, [plan], [forged_result])
+
+    with db.learning_connection() as connection:
+        status = connection.execute(
+            "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()[0]
+        assert connection.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0] == 0
+    assert status == "awaiting_test"
+
+
+def test_source_example_oracle_must_be_allowlisted_and_regression_fixture_cannot_escape(tmp_path, monkeypatch):
+    _job, candidate_id, _lesson = _setup(tmp_path, monkeypatch)
+    digest = hashlib.sha256(b"expected").hexdigest()
+    untrusted_source_plan = [{
+        "test": "untrusted_web_example",
+        "oracle_kind": "source_example",
+        "oracle_ref": "https://example.org/tutorial",
+        "expected": "expected",
+        "oracle_sha256": digest,
+    }]
+    result = [{
+        "test": "untrusted_web_example", "runner": "sandbox", "passed": True,
+        "expected": "expected", "actual": "expected", "oracle_sha256": digest,
+    }]
+    with pytest.raises(ValueError, match="allowlisted primary source"):
+        learning.record_candidate_test_results(candidate_id, untrusted_source_plan, result)
+
+    fixture_plan, fixture_result = _case("path_traversal", "expected", "expected", "sandbox")
+    fixture_plan["oracle_ref"] = "tests/fixtures/../../outside.json"
+    with pytest.raises(ValueError, match="inside tests/fixtures"):
+        learning.record_candidate_test_results(candidate_id, [fixture_plan], [fixture_result])
