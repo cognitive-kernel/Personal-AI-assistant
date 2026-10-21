@@ -337,17 +337,35 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if not (url.startswith("http://127.0.0.1:") or url.startswith("http://localhost:") or url.startswith("http://[::1]:") or url in {"http://127.0.0.1", "http://localhost", "http://[::1]"}):
             raise HTTPException(status_code=422, detail="Only loopback Ollama URLs are supported.")
         values["ollama_base_url"] = url
-    for key, low, high in [("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
-                           ("ollama_num_thread", 0, 64), ("learning_max_concurrent_jobs", 1, 2), ("learning_source_max_chars", 1000, 100000)]:
+    numeric_ranges = [
+        ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
+        ("ollama_num_thread", 0, 64), ("learning_max_concurrent_jobs", 1, 8),
+        ("learning_source_max_chars", 1000, 100000),
+    ]
+    for prefix in ("chat", "learning", "programming"):
+        numeric_ranges.extend([
+            (f"{prefix}_ollama_timeout_seconds", 5, 600),
+            (f"{prefix}_ollama_num_ctx", 512, 8192),
+            (f"{prefix}_ollama_num_thread", 0, 64),
+            (f"{prefix}_max_concurrent_jobs", 1, 8),
+            (f"{prefix}_source_max_chars", 1000, 100000),
+        ])
+    for key, low, high in numeric_ranges:
         if key in values:
             try:
-                values[key] = int(values[key])
+                raw_value = values[key]
+                if isinstance(raw_value, bool):
+                    raise ValueError
+                values[key] = int(raw_value)
             except (ValueError, TypeError) as exc:
                 raise HTTPException(status_code=422, detail=f"{key} must be an integer.") from exc
             if not low <= values[key] <= high:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
-    if "ollama_model" in values and (not isinstance(values["ollama_model"], str) or not values["ollama_model"].strip() or len(values["ollama_model"]) > 200):
-        raise HTTPException(status_code=422, detail="ollama_model must be a non-empty string of at most 200 characters.")
+    for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
+        if key in values and (
+            not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
+        ):
+            raise HTTPException(status_code=422, detail=f"{key} must be a non-empty string of at most 200 characters.")
     try:
         return db.update_settings(values)
     except ValueError as exc:
