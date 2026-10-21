@@ -26,6 +26,9 @@ def _candidate(tmp_path, monkeypatch):
 
 def test_hybrid_verification_attempts_each_channel_after_other_channels_fail(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch)
+    # CI may disable automatic web research globally; this test explicitly exercises
+    # a configured web channel whose provider then fails.
+    monkeypatch.setenv("LEARNING_AUTO_WEB_RESEARCH", "true")
     attempted = []
 
     def record_attempt(candidate_id, *, channel, status, provider="", details=None):
