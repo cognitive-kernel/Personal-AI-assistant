@@ -79,6 +79,7 @@ def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
     cpu_limit = _resource_limit(settings, "cpu_resource_limit_percent")
     ram_limit = _resource_limit(settings, "ram_resource_limit_percent")
     gpu_limit = _resource_limit(settings, "gpu_resource_limit_percent")
+    gpu_enabled = (settings or {}).get("gpu_enabled", False) is True
     if psutil is None:
         raise RuntimeError("CPU/RAM telemetry is unavailable; refusing to start model inference safely.")
     cpu_percent = psutil.cpu_percent(interval=0.1)
@@ -88,7 +89,7 @@ def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
         violations.append(f"CPU {cpu_percent:.1f}% (limit {cpu_limit:.0f}%)")
     if memory_percent >= ram_limit:
         violations.append(f"RAM {memory_percent:.1f}% (limit {ram_limit:.0f}%)")
-    gpu = detect_gpu()
+    gpu = detect_gpu() if gpu_enabled else {"gpu_available": False}
     if gpu["gpu_available"]:
         if gpu["gpu_utilization_percent"] >= gpu_limit:
             violations.append(f"GPU compute {gpu['gpu_utilization_percent']}% (limit {gpu_limit:.0f}%)")
