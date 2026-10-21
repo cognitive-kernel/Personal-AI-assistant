@@ -70,14 +70,22 @@ def create_claim(
         sort_keys=True, ensure_ascii=False, separators=(",", ":"),
     )
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
-    cursor = connection.execute(
+    connection.execute(
         """INSERT INTO factual_knowledge(
                claim, normalized_claim, claim_hash, scope_json,
                environment_version, risk_level
-           ) VALUES (?, ?, ?, ?, ?, ?)""",
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(claim_hash, environment_name, environment_version) DO NOTHING""",
         (claim.strip(), normalized, digest, scope_json, environment_version, risk_level),
     )
-    return int(cursor.lastrowid)
+    row = connection.execute(
+        """SELECT id FROM factual_knowledge
+           WHERE claim_hash = ? AND environment_name = 'python' AND environment_version = ?""",
+        (digest, environment_version),
+    ).fetchone()
+    if row is None:
+        raise KnowledgePolicyError("claim could not be persisted")
+    return int(row[0])
 
 
 def add_evidence(
@@ -92,14 +100,22 @@ def add_evidence(
 ) -> int:
     if not source_hash.strip():
         raise KnowledgePolicyError("source_hash is required")
-    cursor = connection.execute(
+    applicability_json = json.dumps(applicability or {}, sort_keys=True, ensure_ascii=False)
+    connection.execute(
         """INSERT INTO factual_evidence(
                knowledge_id, source_type, source_ref, source_hash, excerpt, applicability_json
-           ) VALUES (?, ?, ?, ?, ?, ?)""",
-        (knowledge_id, source_type, source_ref, source_hash, excerpt,
-         json.dumps(applicability or {}, sort_keys=True)),
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(knowledge_id, source_ref, source_hash) DO NOTHING""",
+        (knowledge_id, source_type, source_ref, source_hash, excerpt, applicability_json),
     )
-    return int(cursor.lastrowid)
+    row = connection.execute(
+        """SELECT id FROM factual_evidence
+           WHERE knowledge_id = ? AND source_ref = ? AND source_hash = ?""",
+        (knowledge_id, source_ref, source_hash),
+    ).fetchone()
+    if row is None:
+        raise KnowledgePolicyError("evidence could not be persisted")
+    return int(row[0])
 
 
 def record_test(
