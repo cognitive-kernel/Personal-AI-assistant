@@ -255,6 +255,7 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
                 ).fetchone()
                 experience_id = int(latest_experience["id"]) if latest_experience else None
     if run_status == "failed" and not trusted_oracle:
+        current_status = "failed"
         # Untrusted-source failures are still durable experiences, but cannot promote
         # knowledge through the trusted-oracle gate.
         # Preserve a failed experiment as a reusable experience, including its oracle and output.
