@@ -46,7 +46,7 @@
 <pre id="storage-backup-output">پشتیبان‌گیری هنوز اجرا نشده است.</pre>
 <div id="storage-backups-list">فهرست پشتیبان‌ها هنوز بارگذاری نشده است.</div></section>
 <div class="row">
-<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
+<section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
 <p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
@@ -246,6 +246,7 @@ async function refreshConversations({selectId=currentConversationId, createIfEmp
    option.textContent = "گفتگویی وجود ندارد";
    select.append(option);
    currentConversationId = null;
+   el("chat-delete-conversation").disabled = true;
    renderChatMessages([]);
    return;
   }
@@ -259,6 +260,7 @@ async function refreshConversations({selectId=currentConversationId, createIfEmp
    ? Number(selectId) : Number(conversations[0].id);
   select.value = String(target);
   currentConversationId = target;
+  el("chat-delete-conversation").disabled = false;
   await loadConversationMessages(target);
  } catch(error) {
   el("chat-output").textContent = "بارگذاری تاریخچهٔ گفتگو ناموفق بود: " + error.message;
@@ -285,6 +287,23 @@ el("chat-new-conversation").addEventListener("click", async () => {
  } catch(error) {
   el("chat-output").textContent = "ایجاد گفتگوی جدید ناموفق بود: " + error.message;
  } finally { button.disabled = false; }
+});
+el("chat-delete-conversation").addEventListener("click", async () => {
+ const conversationId = currentConversationId;
+ if (!Number.isInteger(conversationId) || conversationId < 1) return;
+ const title = el("chat-conversation-select").selectedOptions[0]?.textContent || "گفتگوی انتخاب‌شده";
+ if (!window.confirm("گفتگوی «" + title + "» و تمام پیام‌های آن برای همیشه حذف شود؟ این کار قابل بازگشت نیست.")) return;
+ const button = el("chat-delete-conversation");
+ button.disabled = true;
+ try {
+  await api("/api/conversations/" + encodeURIComponent(conversationId), {method:"DELETE"});
+  currentConversationId = null;
+  el("chat-output").textContent = "گفتگو حذف شد.";
+  await refreshConversations({selectId:null, createIfEmpty:true});
+ } catch(error) {
+  el("chat-output").textContent = "حذف گفتگو ناموفق بود: " + error.message;
+  button.disabled = !currentConversationId;
+ }
 });
 el("chat-refresh-conversations").addEventListener("click", () => refreshConversations());
 async function refresh() {
