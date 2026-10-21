@@ -89,6 +89,7 @@ The following are implementation gates, not promises. Mark them complete only af
 - [x] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.
 - [ ] Sandbox verification is bounded and has no network by default.
 - [x] Evidence applicability and verification timestamps are persisted; re-verification automation remains pending.
-- [ ] Review-result cache is keyed by claim/source/model/prompt/scope and has expiry; a dedicated review worker, retry/resource budgets, and cost controls remain pending.
+- [x] Review-result cache is keyed by claim/source/model/prompt/scope and has expiry.
+- [ ] A dedicated factual-review worker is registered in the task runtime; retry/resource budgets and cost controls are enforced.
 - [ ] Golden-set and calibration evaluation are implemented and repeatable.
 - [ ] Existing database upgrade and backup/restore tests pass without data loss.
