@@ -151,3 +151,14 @@ def test_detect_gpu_fails_closed_to_unknown_when_nvidia_smi_is_missing(monkeypat
     result = hardware.detect_gpu()
     assert result["gpu_available"] is False
     assert result["gpu_utilization_percent"] is None
+
+
+def test_gpu_resource_guard_is_skipped_when_gpu_is_disabled(monkeypatch):
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        cpu_percent=lambda interval: 20.0,
+        virtual_memory=lambda: SimpleNamespace(percent=30.0),
+    ))
+    def unexpected_gpu_probe():
+        raise AssertionError("GPU telemetry should not be queried while GPU is disabled")
+    monkeypatch.setattr(hardware, "detect_gpu", unexpected_gpu_probe)
+    hardware.ensure_resource_headroom({"gpu_enabled": False, "cpu_resource_limit_percent": 90, "ram_resource_limit_percent": 90})
