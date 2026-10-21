@@ -365,9 +365,14 @@ def test_verified_retrieval_returns_only_active_source_backed_exact_scope(connec
         connection, "SQL Server query plans for a different version",
         environment_version="2025",
     )
-    _active_tested_claim(
+    test_only_id = _active_tested_claim(
         connection, "SQL Server claim without retained source evidence",
         with_evidence=False,
+    )
+    add_evidence(
+        connection, test_only_id, source_type="test_output",
+        source_ref="test-run:verified-only-fixture", source_hash="sha256:test-only",
+        excerpt="A passing test without source provenance.",
     )
     results = retrieve_verified_claims(
         connection,
