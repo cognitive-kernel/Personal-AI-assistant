@@ -61,6 +61,29 @@ def test_programming_payload_obeys_configured_source_limit(tmp_path, monkeypatch
         raise AssertionError("Oversized programming context should be rejected")
 
 
+def test_programming_handler_classifies_retryable_model_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    monkeypatch.setattr(
+        ollama, "chat",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            ollama.OllamaError("connection timed out", retryable=True)
+        ),
+    )
+
+    try:
+        programming_tasks.handle_programming_task(
+            {"instruction": "fix this"}, None, FakeTaskContext()
+        )
+    except Exception as exc:
+        from app.task_worker import RetryableTaskError
+        assert isinstance(exc, RetryableTaskError)
+        assert "retry may succeed" in str(exc)
+    else:
+        raise AssertionError("Retryable Ollama failures must use RetryableTaskError")
+
+
 def test_programming_handler_classifies_invalid_payload_as_permanent(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
