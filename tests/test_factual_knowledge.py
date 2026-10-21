@@ -353,6 +353,7 @@ def _active_tested_claim(
     connection, claim, *, environment_name="sql_server", environment_version="2022",
     level="L2_tested", risk_level="low",
 ):
+    connection.row_factory = sqlite3.Row
     knowledge_id = create_claim(
         connection,
         claim,
