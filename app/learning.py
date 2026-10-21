@@ -137,11 +137,11 @@ _FACTUAL_TOPIC_DOMAINS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("python", re.compile(r"(?i)\bpython\b|پایتون")),
     ("rust", re.compile(r"(?i)\brust\b")),
     ("javascript", re.compile(r"(?i)\bjavascript\b|\btypescript\b")),
-    ("docker", re.compile(r"(?i)\bdocker\b|\bcontainer\b|کانتینر")),
+    ("docker", re.compile(r"(?i)\bdocker\b")),
     ("linux", re.compile(r"(?i)\blinux\b|\bubuntu\b|\bdebian\b")),
     ("cisco_networking", re.compile(r"(?i)\bcisco\b|\bios-xe\b")),
     ("android", re.compile(r"(?i)\bandroid\b")),
-    ("ios", re.compile(r"(?i)\bios\b|\bswiftui\b")),
+    ("ios", re.compile(r"(?i)\bios(?:\s|$)|\bswiftui\b")),
     ("forex_metatrader", re.compile(r"(?i)\bforex\b|\bmetatrader\b|\bmql[45]\b")),
 )
 
