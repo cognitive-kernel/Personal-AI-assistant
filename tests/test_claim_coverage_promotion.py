@@ -55,6 +55,21 @@ def _plan_and_results(candidate_id, mapped_claim_ids):
     return plan, results
 
 
+
+def _establish_l1_consensus(candidate_id):
+    from app.knowledge_review import record_peer_consultation
+    from app.learning_consensus import evaluate_candidate_consensus
+    for provider, model in (("peer-fixture-a", "reviewer-model-a"), ("peer-fixture-b", "reviewer-model-b")):
+        record_peer_consultation(
+            candidate_id, provider=provider, model_name=model,
+            prompt="Review the exact candidate against retained source context.",
+            response="Supports the bounded claim for the stated source scope.",
+            stance="supports",
+        )
+    result = evaluate_candidate_consensus(candidate_id)
+    assert result["trust_level"] == "L1"
+    assert result["outcome"] == "model_consensus"
+
 def test_candidate_promotes_only_after_all_claims_have_explicit_passing_tests(tmp_path, monkeypatch):
     candidate_id = _candidate(tmp_path, monkeypatch)
     from app.claim_test_coverage import extract_candidate_claims
@@ -65,6 +80,7 @@ def test_candidate_promotes_only_after_all_claims_have_explicit_passing_tests(tm
     claim_ids = [claim["claim_id"] for claim in extract_candidate_claims(content, candidate_id)]
     assert len(claim_ids) == 2
     plan, results = _plan_and_results(candidate_id, claim_ids)
+    _establish_l1_consensus(candidate_id)
 
     recorded = learning.record_candidate_test_results(candidate_id, plan, results)
 
@@ -74,6 +90,11 @@ def test_candidate_promotes_only_after_all_claims_have_explicit_passing_tests(tm
     assert recorded["status"] == "passed"
     assert recorded["promoted_knowledge_id"] is not None
     with db.learning_connection() as conn:
+        verified = conn.execute(
+            "SELECT status, trust_level, learning_status FROM knowledge_items WHERE id=?",
+            (recorded["promoted_knowledge_id"],),
+        ).fetchone()
+        assert tuple(verified) == ("verified", "L2", "tested")
         assert conn.execute(
             "SELECT COUNT(*) FROM knowledge_items WHERE status='verified'"
         ).fetchone()[0] == 1
@@ -203,3 +224,23 @@ def test_source_example_oracle_is_evidence_but_never_claim_coverage(tmp_path, mo
     assert recorded["promotion_eligible"] is False
     assert recorded["status"] == "awaiting_test"
     assert recorded["promoted_knowledge_id"] is None
+
+
+def test_all_claim_tests_passing_without_l1_consensus_cannot_promote(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        content = conn.execute(
+            "SELECT content FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()["content"]
+    claim_ids = [claim["claim_id"] for claim in extract_candidate_claims(content, candidate_id)]
+    plan, results = _plan_and_results(candidate_id, claim_ids)
+    recorded = learning.record_candidate_test_results(candidate_id, plan, results)
+    assert recorded["tests_passed"] is True
+    assert recorded["claim_coverage"]["complete"] is True
+    assert recorded["model_consensus_gate"]["passed"] is False
+    assert recorded["promotion_eligible"] is False
+    assert recorded["status"] == "awaiting_test"
+    assert recorded["trust_level"] == "L0"
+    assert recorded["promoted_knowledge_id"] is None
+    with db.learning_connection() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM knowledge_items WHERE status='verified'").fetchone()[0] == 0

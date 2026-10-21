@@ -497,7 +497,8 @@ def learning_candidates(
     with db.learning_connection() as conn:
         total = int(conn.execute("SELECT COUNT(*) FROM temporary_knowledge_candidates").fetchone()[0])
         rows = conn.execute(
-            """SELECT id, topic, status, source_kind, updated_at
+            """SELECT id, topic, status, source_kind, trust_level, learning_status,
+                      supersedes_candidate_id, replaced_by_candidate_id, updated_at
                FROM temporary_knowledge_candidates ORDER BY id DESC LIMIT ? OFFSET ?""",
             (size, offset),
         ).fetchall()
@@ -694,7 +695,9 @@ def knowledge_items(
     with db.learning_connection() as conn:
         total = int(conn.execute("SELECT COUNT(*) FROM knowledge_items").fetchone()[0])
         rows = conn.execute(
-            """SELECT id, topic, content, source_kind, version, status, job_id, created_at
+            """SELECT id, topic, content, source_kind, version, status, trust_level,
+                      learning_status, domain, source_url, raw_content,
+                      predecessor_knowledge_id, replacement_knowledge_id, job_id, created_at
                FROM knowledge_items ORDER BY id DESC LIMIT ? OFFSET ?""",
             (size, (page - 1) * size),
         ).fetchall()

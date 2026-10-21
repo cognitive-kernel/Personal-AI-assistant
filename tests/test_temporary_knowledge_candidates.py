@@ -4,6 +4,8 @@ import json
 import pytest
 
 from app import db, learning
+from app.knowledge_review import record_peer_consultation
+from app.learning_consensus import evaluate_candidate_consensus
 
 
 def _setup(tmp_path, monkeypatch):
@@ -26,6 +28,21 @@ def _setup(tmp_path, monkeypatch):
 
 
 
+
+def _establish_l1_consensus(candidate_id):
+    from app.knowledge_review import record_peer_consultation
+    from app.learning_consensus import evaluate_candidate_consensus
+    for provider, model in (("peer-fixture-a", "reviewer-model-a"), ("peer-fixture-b", "reviewer-model-b")):
+        record_peer_consultation(
+            candidate_id, provider=provider, model_name=model,
+            prompt="Review the exact candidate against retained source context.",
+            response="Supports the bounded claim for the stated source scope.",
+            stance="supports",
+        )
+    result = evaluate_candidate_consensus(candidate_id)
+    assert result["trust_level"] == "L1"
+    assert result["outcome"] == "model_consensus"
+
 def _case(name, expected, actual, runner, *, passed=True):
     digest = hashlib.sha256(
         json.dumps(expected, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -47,6 +64,7 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
     for planned_test in plan:
         planned_test["claim_ids"] = [f"{candidate_id}:1"]
     results = [case1[1], case2[1]]
+    _establish_l1_consensus(candidate_id)
 
     candidate = learning.record_candidate_test_results(candidate_id, plan, results)
 
@@ -54,11 +72,11 @@ def test_candidate_is_promoted_only_after_all_declared_tests_pass(tmp_path, monk
     assert candidate["promoted_knowledge_id"] is not None
     with db.learning_connection() as connection:
         knowledge = connection.execute(
-            "SELECT content, status, job_id FROM knowledge_items WHERE id=?",
+            "SELECT content, status, trust_level, learning_status, job_id FROM knowledge_items WHERE id=?",
             (candidate["promoted_knowledge_id"],),
         ).fetchone()
         experiences = connection.execute("SELECT COUNT(*) FROM learning_experiences").fetchone()[0]
-    assert tuple(knowledge) == (lesson, "verified", job["id"])
+    assert tuple(knowledge) == (lesson, "verified", "L2", "tested", job["id"])
     assert experiences == 0
     listed = learning.list_temporary_knowledge_candidates("passed")
     assert listed[0]["id"] == candidate_id
@@ -78,6 +96,7 @@ def test_promotion_upgrades_existing_unverified_knowledge_row_in_place(tmp_path,
         ).fetchone()["id"]
     case = _case("existing_row_upgrade", "ok", "ok", "deterministic_assertion")
     case[0]["claim_ids"] = [f"{candidate_id}:1"]
+    _establish_l1_consensus(candidate_id)
     candidate = learning.record_candidate_test_results(candidate_id, [case[0]], [case[1]])
     with db.learning_connection() as connection:
         rows = connection.execute(
@@ -87,6 +106,11 @@ def test_promotion_upgrades_existing_unverified_knowledge_row_in_place(tmp_path,
     assert rows[0]["id"] == original_id == candidate["promoted_knowledge_id"]
     assert rows[0]["status"] == "verified"
     assert rows[0]["content"] == lesson
+    with db.learning_connection() as connection:
+        metadata = connection.execute(
+            "SELECT trust_level, learning_status FROM knowledge_items WHERE id=?", (original_id,)
+        ).fetchone()
+    assert tuple(metadata) == ("L2", "tested")
 
 
 def test_failed_candidate_stays_temporary_and_creates_failure_experience(tmp_path, monkeypatch):

@@ -711,12 +711,14 @@ def promote_candidate_after_evidence_review(candidate_id: int, *, minimum_score:
 
 
 def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
-    """Return evidence inventory, verification methods, and a transparent confidence index."""
+    """Return evidence inventory, trust level, consensus and confidence."""
     init_databases()
     with learning_connection() as conn:
-        if conn.execute(
-            "SELECT 1 FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
-        ).fetchone() is None:
+        candidate_state = conn.execute(
+            """SELECT trust_level, learning_status, supersedes_candidate_id, replaced_by_candidate_id
+               FROM temporary_knowledge_candidates WHERE id=?""", (candidate_id,)
+        ).fetchone()
+        if candidate_state is None:
             raise KeyError(candidate_id)
         evidence = conn.execute(
             """SELECT evidence_kind, COUNT(*) AS count, COUNT(DISTINCT source_url) AS sources
@@ -768,9 +770,11 @@ def get_candidate_review_summary(candidate_id: int) -> dict[str, Any]:
         "confidence": confidence,
         "interpretation": (
             "Score increases with distinct evidence channels and successful tests, while contradictions "
-            "reduce it. It is not a probability of truth and does not replace the required test gate."
+            "reduce it. It is not a probability of truth and does not replace the mandatory L1/L2 gates."
         ),
     }
+
+
 
 
 def record_review_evidence(
