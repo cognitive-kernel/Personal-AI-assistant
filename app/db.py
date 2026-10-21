@@ -66,15 +66,16 @@ def init_databases() -> None:
                             "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                             (json.dumps(existing_settings[legacy_key]), profile_key),
                         )
-                model_key = f"{prefix}_ollama_model"
-                if (
-                    model_key not in existing_settings
-                    and os.getenv(f"{prefix.upper()}_OLLAMA_MODEL") is None
-                ):
-                    conn.execute(
-                        "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                        (json.dumps(existing_settings["ollama_model"]), model_key),
-                    )
+            # Keep the legacy model choice for chat. Learning and programming
+            # get their own purpose-specific defaults unless explicitly configured.
+            if (
+                "chat_ollama_model" not in existing_settings
+                and os.getenv("CHAT_OLLAMA_MODEL") is None
+            ):
+                conn.execute(
+                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                    (json.dumps(existing_settings["ollama_model"]), "chat_ollama_model"),
+                )
 
 
 def get_settings() -> dict[str, Any]:
