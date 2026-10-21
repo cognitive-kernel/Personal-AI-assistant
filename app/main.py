@@ -119,7 +119,7 @@ _startup_storage_error: str | None = None
 
 @app.on_event("startup")
 def startup() -> None:
-    global _task_runtime, _startup_storage_error
+    global _task_runtimes, _startup_storage_error
     _startup_storage_error = None
     try:
         db.init_databases()
