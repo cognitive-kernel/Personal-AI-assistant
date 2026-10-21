@@ -8,6 +8,7 @@ from app.factual_knowledge import (
     add_relation,
     create_claim,
     get_claim,
+    list_claim_revisions,
     get_cached_review,
     put_cached_review,
     review_cache_key,
@@ -23,7 +24,7 @@ from app.schema_migrations import MigrationRunner
 def connection():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 16
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
     yield conn
     conn.close()
 
@@ -221,3 +222,58 @@ def test_review_cache_rejects_unsafe_ttl_and_non_json_values(connection):
             model_version="model", prompt_version="prompt", scope_hash="scope",
             result={"bad": float("nan")},
         )
+
+
+
+def test_claim_revision_history_tracks_content_not_lifecycle_changes(connection):
+    kid = make_claim(connection, "Python lists are ordered")
+    revisions = list_claim_revisions(connection, kid)
+    assert len(revisions) == 1
+    assert revisions[0]["revision_number"] == 1
+    assert revisions[0]["claim"] == "Python lists are ordered"
+
+    connection.execute(
+        """UPDATE factual_knowledge
+           SET claim=?, normalized_claim=?, claim_hash=?, scope_json=?
+           WHERE id=?""",
+        (
+            "Python lists preserve insertion order",
+            "Python lists preserve insertion order",
+            "updated-content-hash",
+            '{"topic":"sequence"}',
+            kid,
+        ),
+    )
+    revisions = list_claim_revisions(connection, kid)
+    assert [item["revision_number"] for item in revisions] == [1, 2]
+    assert revisions[1]["claim"] == "Python lists preserve insertion order"
+    assert revisions[1]["scope_json"] == '{"topic":"sequence"}'
+
+    connection.execute(
+        "UPDATE factual_knowledge SET lifecycle_status='needs_review' WHERE id=?",
+        (kid,),
+    )
+    assert len(list_claim_revisions(connection, kid)) == 2
+
+    with pytest.raises(sqlite3.IntegrityError, match="revisions are immutable"):
+        connection.execute(
+            "UPDATE factual_claim_revisions SET claim='tampered' WHERE knowledge_id=? AND revision_number=1",
+            (kid,),
+        )
+
+
+def test_migration_seeds_existing_claims_as_revision_one():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 16
+        old_id = create_claim(
+            conn, "Existing claim before revision migration", environment_version="3.11"
+        )
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 17
+        revisions = list_claim_revisions(conn, old_id)
+        assert len(revisions) == 1
+        assert revisions[0]["revision_number"] == 1
+        assert revisions[0]["claim"] == "Existing claim before revision migration"
+    finally:
+        conn.close()
