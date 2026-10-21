@@ -4,11 +4,11 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from . import chat_research
+from . import chat_history, chat_research
 from .task_worker import TaskContext
 
 RESEARCH_TASK_TYPE = "research.answer"
-_ALLOWED_KEYS = {"message", "history"}
+_ALLOWED_KEYS = {"message", "history", "conversation_id"}
 
 
 def validate_payload(payload: dict[str, Any]) -> tuple[str, list[dict[str, str]]]:
@@ -40,6 +40,9 @@ def handle_research_task(
     context: TaskContext,
 ) -> dict[str, Any]:
     message, history = validate_payload(payload)
+    conversation_id = payload.get("conversation_id")
+    if conversation_id is not None and (isinstance(conversation_id, bool) or not isinstance(conversation_id, int) or conversation_id < 1):
+        raise ValueError("conversation_id must be a positive integer when provided.")
     message_hash = hashlib.sha256(message.encode("utf-8")).hexdigest()
 
     def save_phase(state: dict[str, Any]) -> None:
@@ -59,4 +62,6 @@ def handle_research_task(
     context.checkpoint({"phase": "research_task_started", "message_sha256": message_hash})
     reply = chat_research.answer(message, history, checkpoint=save_phase)
     context.checkpoint({"phase": "research_task_completed", "message_sha256": message_hash})
+    if conversation_id is not None:
+        chat_history.append_assistant_message(conversation_id, reply, task_id=context.task_id)
     return {"reply": reply, "message_sha256": message_hash}
