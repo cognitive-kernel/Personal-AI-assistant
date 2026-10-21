@@ -118,6 +118,7 @@ The learning subsystem must behave as a staged, evidence-carrying learner rather
 - Web research persists source provenance and treats retrieved pages as context until claim support is checked.
 - Peer AI calls are tested with mocked providers, missing keys, timeouts, invalid endpoints, conflicting stances, and secret-redaction assertions.
 - Candidate tests cannot pass by omitting expected/actual outputs, changing test order/names, using a model-opinion runner, or passing an empty test list.
+- Promotion rejects fabricated pass flags when actual output differs from the oracle, rejects unallowlisted web/source-example oracles, and confines regression fixture references to tests/fixtures without path traversal.
 - A failing test leaves the candidate in temporary storage and creates a reproducible failure experience.
 - A passing test promotes only within its declared verification scope, with test-set version/digest and provenance attached.
 - Unsupported factual claims remain unverified even if several peer AIs agree.
