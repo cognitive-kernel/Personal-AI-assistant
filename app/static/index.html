@@ -117,6 +117,17 @@
 <p class="muted">سیستم منابع عمومی را خودکار جست‌وجو می‌کند. نامزدها ابتدا بر اساس دامنه‌های رسمی شناخته‌شده و صفحات رسمی مستندات/قیمت‌گذاری، سپس بر اساس تازگی مرتب می‌شوند. فهرست همچنان فقط نامزدها و شواهد است؛ برچسب دامنه، صحت ادعاها یا ظرفیت زنده را تأیید نمی‌کند و هیچ منبعی صرفاً با دیده‌شدن در این صفحه مجاز به اجرا نمی‌شود.</p>
 <div class="cloud-actions"><button id="cloud-refresh" type="button">بارگذاری منابع</button><button id="cloud-discover" type="button">اجرای جست‌وجوی جدید</button><label for="cloud-candidate-limit">تعداد نامزدهای نمایشی <select id="cloud-candidate-limit"><option value="10" selected>۱۰ مورد اخیر</option><option value="25">۲۵ مورد اخیر</option><option value="50">۵۰ مورد اخیر</option><option value="100">۱۰۰ مورد اخیر</option></select></label></div>
 <pre id="cloud-output">هنوز اطلاعات منابع بارگذاری نشده است.</pre>
+<form id="cloud-manual-form" class="cloud-candidate">
+ <h3>افزودن منبع به‌صورت دستی</h3>
+ <p class="muted">منبع به‌عنوان نامزد تأییدنشده ثبت می‌شود. برای جلوگیری از ثبت اطلاعات نامرتبط، عنوان و توضیحات باید شواهد مشخصی دربارهٔ منبع پردازشی ابری و طرح/سهمیهٔ آن داشته باشند. ثبت منبع به معنی تأیید یا مجوز اجرا نیست.</p>
+ <div class="cloud-form-grid">
+  <label>نشانی منبع (HTTPS)<input id="cloud-manual-url" type="url" maxlength="2048" placeholder="https://provider.example/compute" required></label>
+  <label>عنوان منبع<input id="cloud-manual-title" type="text" maxlength="300" required></label>
+  <label>توضیحات و شواهد<textarea id="cloud-manual-description" rows="4" maxlength="4000" required placeholder="نوع ماشین/پردازش، طرح رایگان یا پولی، سهمیه و محدودیت‌های ذکرشده در منبع"></textarea></label>
+ </div>
+ <button id="cloud-manual-submit" type="submit">ثبت منبع</button>
+ <p id="cloud-manual-feedback" class="muted" role="status" aria-live="polite"></p>
+</form>
 <div id="cloud-candidates"></div></section>
 <section id="cloud-plan-section"><h2>برنامه‌ریزی انتخاب منبع (آزمایشی، بدون اجرا)</h2>
 <p class="muted">این بخش نامزدهای ذخیره‌شده را با نیازهای شما مقایسه می‌کند. فقط شواهد فعلی و تأییدشده استفاده می‌شوند. این برنامه‌ریزی هیچ وظیفه‌ای اجرا نمی‌کند، به ارائه‌دهنده وصل نمی‌شود و مجوز اجرای راه دور صادر نمی‌کند.</p>
@@ -747,6 +758,27 @@ function renderTasks(tasks,{append=false}={}) {
   if(["queued","running"].includes(task.status)) addAction("توقف","/api/tasks/"+task.id+"/pause");
   if(task.status==="paused") addAction("ادامه","/api/tasks/"+task.id+"/resume");
   if(["queued","running","pause_requested","paused"].includes(task.status)) addAction("لغو","/api/tasks/"+task.id+"/cancel");
+  if(["queued","paused","cancelled","succeeded","failed"].includes(task.status)) {
+   const deleteButton=document.createElement("button");
+   deleteButton.type="button";
+   deleteButton.className="danger";
+   deleteButton.textContent="حذف وظیفه";
+   deleteButton.setAttribute("aria-label","حذف وظیفه "+task.id);
+   deleteButton.addEventListener("click",async()=>{
+    if(!window.confirm("وظیفهٔ #"+task.id+" («"+task.task_type+"») و تاریخچهٔ رویدادهای وابسته حذف شود؟ این کار قابل بازگشت نیست.")) return;
+    deleteButton.disabled=true;
+    try {
+     await api("/api/tasks/"+encodeURIComponent(task.id),{method:"DELETE"});
+     taskNextCursor=null;
+     await refreshTasks();
+     el("tasks-output").textContent="وظیفهٔ #"+task.id+" حذف شد.";
+    } catch(error) {
+     el("tasks-output").textContent="حذف وظیفه ناموفق بود: "+error.message;
+     deleteButton.disabled=false;
+    }
+   });
+   actions.append(deleteButton);
+  }
   if(actions.childElementCount) card.append(actions);
   container.append(card);
  });
@@ -1097,9 +1129,53 @@ function renderCloudCandidates(candidates) {
     submit.disabled=candidate.freshness_status==="stale";
    }
   });
-  details.append(form); card.append(details); container.append(card);
+  details.append(form);
+  const deleteButton=document.createElement("button");
+  deleteButton.type="button";
+  deleteButton.className="danger";
+  deleteButton.textContent="حذف منبع";
+  deleteButton.setAttribute("aria-label","حذف منبع "+(candidate.title||candidate.id));
+  deleteButton.addEventListener("click",async()=>{
+   if(!window.confirm("منبع «"+(candidate.title||candidate.source_url)+"» حذف شود؟ اگر در تاریخچهٔ برنامه‌های انتخاب ثبت شده باشد، حذف توسط سرور رد می‌شود.")) return;
+   deleteButton.disabled=true;
+   try {
+    await api("/api/cloud-resources/"+encodeURIComponent(candidate.id),{method:"DELETE"});
+    await refreshCloudResources();
+   } catch(error) {
+    const feedback=appendText(card,"p","حذف منبع انجام نشد: "+error.message,"muted");
+    feedback.setAttribute("role","status");
+    deleteButton.disabled=false;
+   }
+  });
+  const deleteActions=document.createElement("div"); deleteActions.className="cloud-actions";
+  deleteActions.append(deleteButton);
+  card.append(details,deleteActions); container.append(card);
  });
 }
+el("cloud-manual-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=el("cloud-manual-submit");
+ const feedback=el("cloud-manual-feedback");
+ button.disabled=true;
+ feedback.textContent="در حال ثبت منبع…";
+ try {
+  const result=await api("/api/cloud-resources/manual",{
+   method:"POST",
+   body:JSON.stringify({
+    source_url:el("cloud-manual-url").value.trim(),
+    title:el("cloud-manual-title").value.trim(),
+    description:el("cloud-manual-description").value.trim()
+   })
+  });
+  feedback.textContent="منبع #"+result.candidate.id+" ثبت شد و تا بازبینی شما تأییدنشده باقی می‌ماند.";
+  el("cloud-manual-form").reset();
+  await refreshCloudResources();
+ } catch(error) {
+  feedback.textContent="ثبت منبع ناموفق بود: "+error.message;
+ } finally {
+  button.disabled=false;
+ }
+});
 el("cloud-refresh").addEventListener("click",refreshCloudResources);
 el("cloud-candidate-limit").addEventListener("change",refreshCloudResources);
 el("cloud-discover").addEventListener("click",async()=>{
