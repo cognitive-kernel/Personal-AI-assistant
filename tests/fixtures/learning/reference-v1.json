@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "fixture_id": "learning-reference-v1",
+  "interpretation": "Deterministic reference values for acceptance-gate regression tests only; these values are not scientific truth or evidence for arbitrary external claims.",
+  "cases": {
+    "output_matches_reference": {"expected": "42"},
+    "edge_case": {"expected": []},
+    "existing_row_upgrade": {"expected": "ok"},
+    "expected_result": {"expected": "42"},
+    "fixed_reference": {"expected": "x"},
+    "oracle_equality": {"expected": 42},
+    "path_traversal": {"expected": "expected"},
+    "test-claim-1": {"expected": {"result": "ok"}},
+    "test-claim-2": {"expected": {"result": "ok"}}
+  }
+}
