@@ -1207,6 +1207,8 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         ):
             assert navigation.locator(f'a[data-page="{target}"]').count() == 1
             assert page.locator(f"#{target}").count() == 1
+            route = "/" if target == "chat-section" else f"/page/{target}"
+            assert page.request.get(base_url.rstrip("/") + route).status == 200
         stylesheet = page.request.get(base_url.rstrip("/") + "/static/dashboard.css")
         assert stylesheet.status == 200
         assert "prefers-reduced-motion" in stylesheet.text()
