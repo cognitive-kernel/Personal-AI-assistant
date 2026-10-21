@@ -117,6 +117,17 @@ def test_candidate_test_results_must_match_plan_and_name_automated_runner(tmp_pa
     mismatched = dict(valid_result, test="different_test")
     with pytest.raises(ValueError, match="match the planned test"):
         learning.record_candidate_test_results(candidate_id, [valid_plan], [mismatched])
+    forged_expected = dict(valid_plan, expected="attacker-controlled")
+    forged_expected["oracle_sha256"] = hashlib.sha256(
+        json.dumps("attacker-controlled", ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    forged_output = dict(
+        valid_result, expected="attacker-controlled", actual="attacker-controlled",
+        oracle_sha256=forged_expected["oracle_sha256"],
+    )
+    with pytest.raises(ValueError, match="exactly match the trusted fixture"):
+        learning.record_candidate_test_results(candidate_id, [forged_expected], [forged_output])
+
     invalid_runner = dict(valid_result, runner="model_opinion")
     with pytest.raises(ValueError, match="approved automated runner"):
         learning.record_candidate_test_results(candidate_id, [valid_plan], [invalid_runner])
