@@ -484,3 +484,89 @@ def test_resource_plan_api_persists_and_lists_dry_run_history(tmp_path, monkeypa
     assert listed.json()["plans"][0]["plan_id"] == plan["plan_id"]
     assert listed.json()["remote_execution_enabled"] is False
     assert missing.status_code == 404
+
+def test_manual_cloud_resource_can_be_added_and_deleted(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post(
+            "/api/cloud-resources/manual",
+            json={
+                "source_url": "https://compute.example.org/free-cloud-server",
+                "title": "Cloud server free plan",
+                "description": (
+                    "Cloud server free plan provides 2 vCPU and monthly usage quotas. "
+                    "Review terms before use. " * 4
+                ),
+            },
+        )
+        assert created.status_code == 201, created.text
+        candidate = created.json()["candidate"]
+        assert candidate["review_status"] == "unreviewed"
+        assert candidate["source_url"] == "https://compute.example.org/free-cloud-server"
+
+        listed = client.get("/api/cloud-resources").json()["candidates"]
+        assert any(item["id"] == candidate["id"] for item in listed)
+
+        deleted = client.delete(f"/api/cloud-resources/{candidate['id']}")
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json()["deleted"] is True
+
+        listed_after_delete = client.get("/api/cloud-resources").json()["candidates"]
+        assert all(item["id"] != candidate["id"] for item in listed_after_delete)
+
+
+def test_manual_cloud_resource_rejects_non_https_and_duplicate_entries(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    payload = {
+        "source_url": "https://compute.example.org/free-cloud-server",
+        "title": "Cloud server free plan",
+        "description": (
+            "Cloud server free plan provides 2 vCPU and monthly usage quotas. "
+            "Review terms before use. " * 4
+        ),
+    }
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        invalid = client.post(
+            "/api/cloud-resources/manual",
+            json={**payload, "source_url": "http://compute.example.org/free-cloud-server"},
+        )
+        assert invalid.status_code == 422
+
+        first = client.post("/api/cloud-resources/manual", json=payload)
+        assert first.status_code == 201, first.text
+        duplicate = client.post("/api/cloud-resources/manual", json=payload)
+        assert duplicate.status_code == 409
+
+
+def test_cloud_resource_delete_preserves_saved_plan_audit_history(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    document = web_sources.SourceDocument(
+        url="https://compute.example.org/free-cloud-server",
+        title="Cloud server free plan",
+        text=("Cloud server free plan provides 2 vCPU and monthly usage quotas. " * 4),
+    )
+    monkeypatch.setattr(web_sources, "discover_sources", lambda query, limit=3: [document])
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+    cloud_resources.save_resource_selection_plan({
+        "plan_version": "provider-neutral-selection-v1",
+        "status": "no_eligible_candidate",
+        "requirements": {"min_cpu_count": 1, "min_memory_gib": 0, "require_gpu": False},
+        "limitations": [],
+        "selected_candidate_id": None,
+        "execution_authorized": False,
+        "remote_execution_enabled": False,
+        "candidates": [{
+            "candidate_id": candidate["id"],
+            "provider_domain": candidate["provider_domain"],
+            "content_sha256": candidate["content_sha256"],
+            "decision": "rejected",
+            "reasons": ["test audit record"],
+        }],
+    })
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.delete(f"/api/cloud-resources/{candidate['id']}")
+    assert response.status_code == 409
+    assert cloud_resources.list_candidates()
+
