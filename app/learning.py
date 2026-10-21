@@ -543,8 +543,8 @@ def record_candidate_test_results(
         ).fetchone()
         if candidate is None:
             raise KeyError(candidate_id)
-        if candidate["status"] != "awaiting_test":
-            raise ValueError("Only a candidate awaiting tests can receive its first test result.")
+        if candidate["status"] not in {"awaiting_test", "failed"}:
+            raise ValueError("Only a candidate awaiting tests or a failed candidate can be tested.")
         conn.execute(
             """UPDATE temporary_knowledge_candidates
                SET status=?, test_plan_json=?, test_results_json=?, failure_reason=?,
