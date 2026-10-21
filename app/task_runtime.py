@@ -24,6 +24,7 @@ class TaskRuntime:
         lease_seconds: int = 300,
         maintenance_callback: Callable[[], None] | None = None,
         maintenance_interval: float = 30.0,
+        restrict_task_types: bool = False,
     ) -> None:
         if isinstance(worker_count, bool) or not isinstance(worker_count, int) or not 1 <= worker_count <= 8:
             raise ValueError("worker_count must be an integer between 1 and 8.")
@@ -44,6 +45,7 @@ class TaskRuntime:
         self.lease_seconds = lease_seconds
         self.maintenance_callback = maintenance_callback
         self.maintenance_interval = float(maintenance_interval)
+        self.restrict_task_types = bool(restrict_task_types)
         self._maintenance_ready = threading.Event()
         self._maintenance_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
@@ -71,6 +73,7 @@ class TaskRuntime:
                     f"{self.worker_prefix}-{index + 1}",
                     self.handlers,
                     lease_seconds=self.lease_seconds,
+                    restrict_task_types=self.restrict_task_types,
                 )
                 thread = threading.Thread(
                     target=self._run_worker,
