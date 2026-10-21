@@ -327,6 +327,12 @@ def retrieve_verified_claims(
             })
         if not evidence:
             continue
+        try:
+            scope = json.loads(row[7]) if row[7] else {}
+        except (json.JSONDecodeError, TypeError):
+            scope = {}
+        if not isinstance(scope, dict):
+            scope = {}
         ranked.append({
             "id": row[0],
             "claim": row[1],
@@ -334,7 +340,7 @@ def retrieve_verified_claims(
             "lifecycle_status": row[4],
             "environment_name": row[5],
             "environment_version": row[6],
-            "scope": json.loads(row[7]) if row[7] else {},
+            "scope": scope,
             "risk_level": row[8],
             "score": score,
             "evidence": evidence,
@@ -343,7 +349,7 @@ def retrieve_verified_claims(
         key=lambda item: (
             -item["score"],
             0 if item["evidence_level"] == "L3_human_verified" else 1,
-            item["id"],
+            -item["id"],
         )
     )
     return ranked[:limit]
