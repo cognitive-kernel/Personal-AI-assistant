@@ -367,6 +367,18 @@ def learning_candidate_review(candidate_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
 
 
+@app.get("/api/learning/candidates/{candidate_id}/claims")
+def learning_candidate_claim_matrix(candidate_id: int) -> dict[str, Any]:
+    """Return claim-by-claim evidence and verification channels without inferring truth from votes."""
+    from .knowledge_review import build_claim_verification_matrix
+    try:
+        return build_claim_verification_matrix(candidate_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Knowledge candidate not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/learning/candidates/{candidate_id}/feedback", status_code=201)
 def learning_candidate_feedback(
     candidate_id: int, request: KnowledgeApplicationFeedbackRequest
