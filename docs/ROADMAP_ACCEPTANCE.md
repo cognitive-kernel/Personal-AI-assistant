@@ -156,3 +156,9 @@ Use mature open-source tools where they improve the loop rather than rebuilding 
 Automated tests cover independent channel failures, explicit-URL failure without source substitution, and disabled web research while peer-AI/sandbox checks continue. This is an integration improvement, not closure of the remaining factual-oracle/calibration gaps. Exact-head CI must pass before the change is considered validated.
 
 Peer-AI review responses now expose their proposed tests, applications, and limitations in the claim matrix. These remain explicitly marked `exploratory_only`, `executed=false`, and `trusted_oracle=false`; they are surfaced for the next verification step but cannot be promoted or run as trusted acceptance tests without an independently established expected result.
+
+### Narrow automatic promotion path added
+
+When a candidate contains source-authored doctests or restricted assertion blocks from an allowlisted HTTPS primary-source domain, the sandbox runner now sends the aggregate expected/actual result through the versioned trusted-oracle gate. A passing suite promotes the existing knowledge row in place (avoiding duplicate job_id rows); a failing trusted-source suite marks the candidate failed and records a reusable failure experience. Examples from unallowlisted sources may still be executed as exploratory tests, but cannot promote the candidate. No examples, missing Docker configuration, or failed retrieval do not count as a pass.
+
+This is deliberately scope-limited: it validates the source examples, not every scientific or explanatory sentence in the lesson. A generic trusted-oracle planner for arbitrary non-executable factual claims, independently calibrated confidence scores, and broader regression datasets remain release gaps. Until those exist, the system must retain the exact verification scope in the evidence ledger and must not infer universal truth from a scoped pass.
