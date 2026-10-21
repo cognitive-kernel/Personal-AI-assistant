@@ -13,6 +13,7 @@ from app.factual_knowledge import (
     put_cached_review,
     review_cache_key,
     record_test,
+    retrieve_verified_claims,
     transition_evidence_level,
     transition_lifecycle,
 )
@@ -313,5 +314,140 @@ def test_claim_rejects_invalid_environment_name(connection):
         create_claim(
             connection, "A claim", environment_name="SQL Server",
             environment_version="unspecified",
+        )
+
+def _active_tested_claim(
+    connection, claim, *, environment_name="sql_server", environment_version="2022",
+    level="L2_tested", risk_level="low", with_evidence=True,
+):
+    knowledge_id = create_claim(
+        connection,
+        claim,
+        environment_name=environment_name,
+        environment_version=environment_version,
+        scope={"topic": claim},
+        risk_level=risk_level,
+    )
+    if with_evidence:
+        add_evidence(
+            connection,
+            knowledge_id,
+            source_type="official_docs",
+            source_ref=f"https://learn.microsoft.com/test/{knowledge_id}",
+            source_hash=f"sha256:test-source-{knowledge_id}",
+            excerpt=claim,
+            applicability={"environment_name": environment_name, "environment_version": environment_version},
+        )
+    transition_evidence_level(connection, knowledge_id, "L1_sourced")
+    record_test(
+        connection,
+        knowledge_id,
+        test_kind="unit",
+        test_name=f"test_claim_{knowledge_id}",
+        environment_name=environment_name,
+        environment_version=environment_version,
+        outcome="passed",
+        result_summary="Deterministic test fixture.",
+    )
+    transition_evidence_level(connection, knowledge_id, "L2_tested")
+    if level == "L3_human_verified":
+        transition_evidence_level(connection, knowledge_id, "L3_human_verified", human_verified_by="test-reviewer")
+    transition_lifecycle(connection, knowledge_id, "active")
+    return knowledge_id
+
+
+def test_verified_retrieval_returns_only_active_source_backed_exact_scope(connection):
+    l2_id = _active_tested_claim(connection, "SQL Server query plans expose selected operations")
+    l3_id = _active_tested_claim(
+        connection, "SQL Server indexes can reduce reads", level="L3_human_verified"
+    )
+    _active_tested_claim(
+        connection, "SQL Server query plans for a different version",
+        environment_version="2025",
+    )
+    _active_tested_claim(
+        connection, "SQL Server claim without retained source evidence",
+        with_evidence=False,
+    )
+    results = retrieve_verified_claims(
+        connection,
+        "SQL Server query plans",
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    assert {item["id"] for item in results} == {l2_id, l3_id}
+    assert results[0]["evidence_level"] == "L3_human_verified"
+    assert results[0]["lifecycle_status"] == "active"
+    assert results[0]["evidence"][0]["source_type"] == "official_docs"
+    assert all(item["environment_version"] == "2022" for item in results)
+
+
+def test_verified_retrieval_excludes_unverified_failed_conflicting_superseded_and_l1(connection):
+    _active_tested_claim(connection, "SQL Server active verified query plans")
+    unverified = create_claim(
+        connection, "SQL Server unverified query plans",
+        environment_name="sql_server", environment_version="2022",
+    )
+    failed = create_claim(
+        connection, "SQL Server failed query plans",
+        environment_name="sql_server", environment_version="2022",
+    )
+    transition_lifecycle(connection, failed, "failed")
+    conflicting = _active_tested_claim(connection, "SQL Server conflicting query plans")
+    transition_lifecycle(connection, conflicting, "conflicting")
+    superseded = _active_tested_claim(connection, "SQL Server superseded query plans")
+    transition_lifecycle(connection, superseded, "superseded")
+    l1 = create_claim(
+        connection, "SQL Server sourced but untested query plans",
+        environment_name="sql_server", environment_version="2022",
+    )
+    add_evidence(
+        connection, l1, source_type="official_docs",
+        source_ref="https://learn.microsoft.com/test/l1",
+        source_hash="sha256:l1", excerpt="Sourced, not tested.",
+    )
+    transition_evidence_level(connection, l1, "L1_sourced")
+    transition_lifecycle(connection, l1, "active")
+
+    results = retrieve_verified_claims(
+        connection,
+        "SQL Server query plans",
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    ids = {item["id"] for item in results}
+    assert unverified not in ids
+    assert failed not in ids
+    assert conflicting not in ids
+    assert superseded not in ids
+    assert l1 not in ids
+
+
+def test_verified_retrieval_excludes_both_sides_of_active_contradiction(connection):
+    first = _active_tested_claim(connection, "SQL Server isolation level allows phantom reads")
+    second = _active_tested_claim(connection, "SQL Server isolation level prevents phantom reads")
+    add_relation(connection, first, second, "contradicts")
+    results = retrieve_verified_claims(
+        connection,
+        "SQL Server isolation level phantom reads",
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    assert first not in {item["id"] for item in results}
+    assert second not in {item["id"] for item in results}
+
+
+def test_verified_retrieval_fails_closed_without_exact_environment_scope(connection):
+    _active_tested_claim(connection, "SQL Server query plans expose selected operations")
+    assert retrieve_verified_claims(
+        connection, "SQL Server query plans", environment_name="", environment_version="2022"
+    ) == []
+    assert retrieve_verified_claims(
+        connection, "SQL Server query plans", environment_name="sql_server", environment_version=""
+    ) == []
+    with pytest.raises(KnowledgePolicyError, match="limit must be an integer"):
+        retrieve_verified_claims(
+            connection, "SQL Server query plans", environment_name="sql_server",
+            environment_version="2022", limit=0,
         )
 
