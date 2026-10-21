@@ -3,6 +3,7 @@ import json
 
 from app import db, learning
 from app import hybrid_learning
+from app.knowledge_review import build_claim_verification_matrix, record_peer_consultation
 
 
 def _candidate(tmp_path, monkeypatch):
@@ -103,3 +104,27 @@ def test_disabled_web_channel_does_not_disable_peer_or_sandbox(tmp_path, monkeyp
 
     assert result["channels"]["web_research"]["status"] == "unconfigured"
     assert calls == {"peer": 1, "sandbox": 1}
+
+def test_peer_test_suggestions_are_visible_but_never_treated_as_trusted_oracles(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    response = json.dumps({
+        "stance": "supports",
+        "testable_tests": ["Check the edge case where input is empty."],
+        "applications": ["Use this in a small data-cleaning task."],
+        "limitations": ["This result may not generalize beyond the stated input range."],
+    })
+    record_peer_consultation(
+        candidate_id, provider="peer-one", model_name="review-model",
+        prompt="Challenge this lesson and propose tests.", response=response, stance="supports",
+    )
+
+    matrix = build_claim_verification_matrix(candidate_id)
+    peer_channel = matrix["verification_channels"]["peer_ai"]
+
+    assert peer_channel["suggested_tests"][0]["proposal"] == "Check the edge case where input is empty."
+    assert peer_channel["suggested_tests"][0]["executed"] is False
+    assert peer_channel["suggested_tests"][0]["trusted_oracle"] is False
+    assert peer_channel["suggested_tests"][0]["status"] == "exploratory_only"
+    assert peer_channel["suggested_applications"]
+    assert peer_channel["suggested_limitations"]
+    assert peer_channel["counts_as_truth_oracle"] is False
