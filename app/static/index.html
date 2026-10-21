@@ -1935,9 +1935,14 @@ el("self-improvement-refresh").addEventListener("click",refreshSelfImprovement);
 (function initializeSectionPageNavigation(){
  const slug=document.documentElement.dataset.sectionPage;
  if(!slug){
-  const path=window.location.pathname.replace(/\\/+$/,'')||'/';
+  const normalizePath=value=>{
+   let path=value||'/';
+   while(path.length>1 && path.endsWith('/')) path=path.slice(0,-1);
+   return path;
+  };
+  const path=normalizePath(window.location.pathname);
   const active=Array.from(document.querySelectorAll('.dashboard-nav a')).find(link=>{
-   const target=new URL(link.href,window.location.origin).pathname.replace(/\\/+$/,'')||'/';
+   const target=normalizePath(new URL(link.href,window.location.origin).pathname);
    return target===path;
   });
   if(active){active.setAttribute('aria-current','page');}
