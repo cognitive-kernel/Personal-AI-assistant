@@ -213,7 +213,50 @@ def run_candidate_source_doctests(candidate_id: int) -> dict[str, Any]:
             "SELECT status FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
         ).fetchone()["status"]
     experience_id = None
+    from .learning_evidence_gate import is_allowlisted_primary_source
+    trusted_oracle = is_allowlisted_primary_source(oracle_url)
     if run_status == "failed":
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE temporary_knowledge_candidates SET status='failed', updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='awaiting_test'",
+                (candidate_id,),
+            )
+    if trusted_oracle and run_status in {"passed", "failed"}:
+        # Source-authored expected-output examples from curated primary sources can
+        # automatically pass through the versioned gate. The scope remains these
+        # examples only; peer opinions and generated answer keys are never oracles.
+        from .learning import record_candidate_test_results
+        expected_digest = hashlib.sha256(json.dumps(
+            expected, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")).hexdigest()
+        plan = [{
+            "test": "source-doctest-suite",
+            "purpose": "Run all safe expected-output examples embedded in the cited primary source.",
+            "oracle_kind": "source_example",
+            "oracle_ref": oracle_url,
+            "expected": expected,
+            "oracle_sha256": expected_digest,
+        }]
+        result_record = [{
+            "test": "source-doctest-suite",
+            "runner": "sandbox",
+            "passed": run_status == "passed",
+            "expected": expected,
+            "actual": actual,
+            "oracle_sha256": expected_digest,
+        }]
+        promoted = record_candidate_test_results(candidate_id, plan, result_record)
+        current_status = str(promoted["status"])
+        if run_status == "failed":
+            with db.learning_connection() as conn:
+                latest_experience = conn.execute(
+                    "SELECT id FROM learning_experiences WHERE problem LIKE ? ORDER BY id DESC LIMIT 1",
+                    (f"%candidate {candidate_id}%",),
+                ).fetchone()
+                experience_id = int(latest_experience["id"]) if latest_experience else None
+    if run_status == "failed" and not trusted_oracle:
+        # Untrusted-source failures are still durable experiences, but cannot promote
+        # knowledge through the trusted-oracle gate.
         # Preserve a failed experiment as a reusable experience, including its oracle and output.
         try:
             from .experience import create_experience, update_experience
