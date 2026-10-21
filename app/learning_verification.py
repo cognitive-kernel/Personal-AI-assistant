@@ -15,7 +15,6 @@ from typing import Any
 
 from . import db, sandbox
 from .learning_evidence_gate import is_allowlisted_primary_source
-from .learning_evidence_gate import is_allowlisted_primary_source
 
 
 def count_doctest_examples(text: str) -> int:
