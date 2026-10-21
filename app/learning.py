@@ -127,6 +127,64 @@ def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
     return sources
 
 
+_FACTUAL_TOPIC_DOMAINS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("sql_server", re.compile(r"(?i)\bsql\s*server\b|\bt-sql\b")),
+    ("windows_server", re.compile(r"(?i)\bwindows server\b|\bmcse\b")),
+    ("mikrotik_routeros", re.compile(r"(?i)\bmikrotik\b|\brouteros\b")),
+    ("vmware_esxi", re.compile(r"(?i)\bvmware\b|\besxi\b")),
+    ("mysql", re.compile(r"(?i)\bmysql\b")),
+    ("sqlite", re.compile(r"(?i)\bsqlite\b")),
+    ("python", re.compile(r"(?i)\bpython\b|پایتون")),
+    ("rust", re.compile(r"(?i)\brust\b")),
+    ("javascript", re.compile(r"(?i)\bjavascript\b|\btypescript\b")),
+    ("docker", re.compile(r"(?i)\bdocker\b|\bcontainer\b|کانتینر")),
+    ("linux", re.compile(r"(?i)\blinux\b|\bubuntu\b|\bdebian\b")),
+    ("cisco_networking", re.compile(r"(?i)\bcisco\b|\bios-xe\b")),
+    ("android", re.compile(r"(?i)\bandroid\b")),
+    ("ios", re.compile(r"(?i)\bios\b|\bswiftui\b")),
+    ("forex_metatrader", re.compile(r"(?i)\bforex\b|\bmetatrader\b|\bmql[45]\b")),
+)
+
+_OFFICIAL_DOCUMENTATION_HOSTS = (
+    "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org",
+    "doc.rust-lang.org", "rust-lang.org", "help.mikrotik.com", "mikrotik.com",
+    "docs.vmware.com", "knowledge.broadcom.com", "developer.android.com",
+    "developer.apple.com", "developer.mozilla.org", "docs.docker.com",
+    "docs.kernel.org", "cisco.com", "metatrader5.com", "metatrader4.com",
+)
+
+
+def _factual_domain_for_topic(topic: str) -> tuple[str, str, str] | None:
+    """Return a conservative domain/version tuple; ambiguous topics are not persisted."""
+    matches = [name for name, pattern in _FACTUAL_TOPIC_DOMAINS if pattern.search(topic)]
+    if len(matches) != 1:
+        return None
+    environment_name = matches[0]
+    if environment_name == "python":
+        return environment_name, platform.python_version(), "runtime"
+    version_patterns = {
+        "sql_server": r"(?i)\bsql\s*server\s*(20(?:16|17|19|22|25))\b",
+        "windows_server": r"(?i)\bwindows server\s*(20(?:16|19|22|25))\b",
+        "mikrotik_routeros": r"(?i)\brouteros\s*(?:v)?(\d+(?:\.\d+)*)",
+        "vmware_esxi": r"(?i)\besxi\s*(?:v)?(\d+(?:\.\d+)*)",
+        "mysql": r"(?i)\bmysql\s*(?:v)?(\d+(?:\.\d+)*)",
+        "sqlite": r"(?i)\bsqlite\s*(?:v)?(\d+(?:\.\d+)*)",
+        "rust": r"(?i)\brust\s*(?:v)?(\d+\.\d+(?:\.\d+)?)",
+        "javascript": r"(?i)\becmascript\s*(20\d{2})",
+    }
+    match = re.search(version_patterns.get(environment_name, r"(?!)"), topic)
+    version = match.group(1) if match else "unspecified"
+    specificity = "explicit_topic_version" if match else "not_specified"
+    return environment_name, version, specificity
+
+
+def _source_type_for_factual_claim(url: str) -> str:
+    host = (urlparse(url).hostname or "").lower().rstrip(".")
+    if any(host == domain or host.endswith("." + domain) for domain in _OFFICIAL_DOCUMENTATION_HOSTS):
+        return "official_docs"
+    return "other"
+
+
 def _persist_factual_review_claims(
     connection,
     *,
@@ -135,13 +193,15 @@ def _persist_factual_review_claims(
     source_text: str,
     review: dict[str, Any],
 ) -> int:
-    """Persist Python-topic review claims as unverified records with source provenance.
+    """Persist allow-listed domain claims as unverified records with source provenance.
 
-    Model-assisted review is stored as metadata only: this function never promotes
-    evidence level or lifecycle status, even when the reviewer reports "supported".
+    Ambiguous or unrecognized topics are skipped. Model-assisted review is metadata
+    only: this function never promotes evidence level or lifecycle status.
     """
-    if not re.search(r"(?i)\bpython\b|پایتون", topic):
+    domain = _factual_domain_for_topic(topic)
+    if domain is None:
         return 0
+    environment_name, environment_version, version_specificity = domain
     claims = review.get("claims")
     if not isinstance(claims, list):
         return 0
@@ -169,8 +229,9 @@ def _persist_factual_review_claims(
         knowledge_id = factual_knowledge.create_claim(
             connection,
             claim_text,
-            environment_version=platform.python_version(),
-            scope={"topic": topic},
+            environment_name=environment_name,
+            environment_version=environment_version,
+            scope={"topic": topic, "version_specificity": version_specificity},
             risk_level="low",
         )
         urls = item.get("evidence_urls", [])
@@ -184,7 +245,7 @@ def _persist_factual_review_claims(
             factual_knowledge.add_evidence(
                 connection,
                 knowledge_id,
-                source_type="official_docs" if urlparse(url).hostname == "docs.python.org" else "other",
+                source_type=_source_type_for_factual_claim(url),
                 source_ref=url,
                 source_hash=source_hash,
                 excerpt=source["content"][:2500],
