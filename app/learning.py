@@ -140,7 +140,7 @@ def _persist_factual_review_claims(
     Model-assisted review is stored as metadata only: this function never promotes
     evidence level or lifecycle status, even when the reviewer reports "supported".
     """
-    if not re.search(r"(?i)\\bpython\\b|پایتون", topic):
+    if not re.search(r"(?i)\bpython\b|پایتون", topic):
         return 0
     claims = review.get("claims")
     if not isinstance(claims, list):
