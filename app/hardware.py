@@ -119,9 +119,9 @@ def dynamic_ram_budget_gb(
         return None
     maximum = settings.get("ram_budget_max_gb", 25)
     reserve = settings.get("ram_safety_reserve_gb", 4)
-    if isinstance(maximum, bool) or not isinstance(maximum, (int, float)) or not 1 <= maximum <= 25:
+    if isinstance(maximum, bool) or not isinstance(maximum, (int, float)) or not math.isfinite(maximum) or not 1 <= maximum <= 25:
         maximum = 25
-    if isinstance(reserve, bool) or not isinstance(reserve, (int, float)) or not 1 <= reserve <= 8:
+    if isinstance(reserve, bool) or not isinstance(reserve, (int, float)) or not math.isfinite(reserve) or not 1 <= reserve <= 8:
         reserve = 4
     return round(max(0.0, min(float(maximum), float(available) - float(reserve))), 2)
 
