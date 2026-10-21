@@ -4,7 +4,7 @@
 
 Only records whose current status is `verified` are candidates for reusable guidance. Failed and `needs_review` records are retrieved through the separate warning path and are never promoted by similarity scores. Legacy chat-loop records without successful semantic claim review are excluded from verified retrieval.
 
-The canonical experience and its immutable version snapshots remain authoritative. Embeddings are derived data stored in `learning_experience_embeddings`, keyed by experience ID, experience version, and model name. A changed experience version cannot reuse an embedding generated for an older version. The cache may be deleted and rebuilt without losing the source record.
+The canonical experience and its immutable version snapshots remain authoritative. Embeddings are derived data stored in `learning_experience_embeddings`, keyed by experience ID, experience version, and model name. A changed experience version or model cannot reuse an old vector: stale versions/models for the same experience are pruned when a replacement is stored. The cache is capped at 5,000 rows (oldest rows are pruned first) and may be deleted and rebuilt without losing the source record.
 
 ## Ranking
 
@@ -51,3 +51,10 @@ The CI run on 2026-10-16 for fixture v2 reported:
 - MRR: 1.000
 
 The regression test currently requires Recall@5 >= 0.90, Precision@5 >= 0.20, and MRR >= 0.90 on this exact synthetic fixture. These are change-detection thresholds only; they are not service-level objectives and must not be presented as real-world quality targets. A fixture change must include a reviewed explanation of relevance labels and a deliberate baseline update. The hybrid/vector mode still has no measured CI baseline because a local embedding model is not available in the standard CI runner.
+
+
+## Cache efficiency observability
+
+The retrieval module exposes process-local aggregate counters for experience-vector cache hits/misses, vector embedding count and elapsed embedding time. It also reports the persistent cache row count and serialized vector bytes. An estimated time-saved value is calculated from the observed average embedding time per vector multiplied by cache hits; this is a rough estimate, not a measured end-to-end latency improvement. Counters reset when the process restarts and intentionally retain no query text or source content. The isolated benchmark includes this snapshot in its JSON report.
+
+Cache correctness and capacity are covered by tests for version invalidation, hit/miss reuse, cache-size bounds, and lexical fallback. Real-model before/after latency and quality still require a configured local embedding model and a controlled workload; synthetic or mocked tests do not prove a real-world speedup.

@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
+import time
 from datetime import datetime, timezone
 from collections import Counter
 from typing import Any, Sequence
@@ -21,6 +23,40 @@ _MIN_COSINE = 0.20
 _MAX_CANDIDATES = 200
 _MAX_VECTOR_RESULTS = 30
 _TOKEN_RE = re.compile(r"[\w-]{2,}", flags=re.UNICODE)
+_MAX_EMBEDDING_CACHE_ROWS = 5000
+_METRICS_LOCK = threading.Lock()
+_CACHE_METRICS: dict[str, float | int] = {
+    "hits": 0, "misses": 0, "embedded_vectors": 0, "embedding_seconds": 0.0,
+}
+
+
+def reset_embedding_cache_metrics() -> None:
+    """Reset process-local aggregate counters; no query text or vectors are retained."""
+    with _METRICS_LOCK:
+        for key in _CACHE_METRICS:
+            _CACHE_METRICS[key] = 0.0 if key == "embedding_seconds" else 0
+
+
+def embedding_cache_metrics() -> dict[str, float | int]:
+    """Return aggregate cache efficiency and persistent derived-index size."""
+    with _METRICS_LOCK:
+        metrics = dict(_CACHE_METRICS)
+    embedded = int(metrics["embedded_vectors"])
+    hits = int(metrics["hits"])
+    average = float(metrics["embedding_seconds"]) / embedded if embedded else 0.0
+    with learning_connection() as connection:
+        row = connection.execute(
+            "SELECT COUNT(*) AS rows, COALESCE(SUM(length(embedding_json)), 0) AS bytes "
+            "FROM learning_experience_embeddings"
+        ).fetchone()
+    return {
+        **metrics,
+        "estimated_seconds_saved": round(average * hits, 6),
+        "persistent_cache_rows": int(row["rows"]),
+        "persistent_cache_bytes": int(row["bytes"]),
+        "cache_row_limit": _MAX_EMBEDDING_CACHE_ROWS,
+    }
+
 
 
 def _tokens(text: str) -> list[str]:
@@ -137,6 +173,12 @@ def _save_embeddings(items: list[dict[str, Any]], vectors: list[list[float]], mo
         raise ValueError("Embedding cache item/vector count mismatch.")
     with learning_connection() as connection:
         for item, vector in zip(items, vectors):
+            # Old versions and old embedding models are derived data and can be rebuilt.
+            connection.execute(
+                "DELETE FROM learning_experience_embeddings "
+                "WHERE experience_id=? AND (experience_version<>? OR model<>?)",
+                (item["id"], item["version"], model),
+            )
             connection.execute(
                 """INSERT OR REPLACE INTO learning_experience_embeddings(
                        experience_id, experience_version, model, dimensions, embedding_json
@@ -144,6 +186,17 @@ def _save_embeddings(items: list[dict[str, Any]], vectors: list[list[float]], mo
                 (item["id"], item["version"], model, len(vector),
                  json.dumps(vector, separators=(",", ":"), allow_nan=False)),
             )
+        # Keep the rebuildable cache bounded even as experiences accumulate over time.
+        connection.execute(
+            """DELETE FROM learning_experience_embeddings
+               WHERE (experience_id, experience_version, model) IN (
+                   SELECT experience_id, experience_version, model
+                   FROM learning_experience_embeddings
+                   ORDER BY created_at DESC, experience_id DESC, experience_version DESC
+                   LIMIT -1 OFFSET ?
+               )""",
+            (_MAX_EMBEDDING_CACHE_ROWS,),
+        )
 
 
 def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> list[tuple[int, float]]:
@@ -161,9 +214,17 @@ def _vector_ranking(items: list[dict[str, Any]], variants: Sequence[str]) -> lis
         item for item in items
         if (int(item["id"]), int(item["version"])) not in cached
     ]
+    with _METRICS_LOCK:
+        _CACHE_METRICS["hits"] = int(_CACHE_METRICS["hits"]) + len(cached)
+        _CACHE_METRICS["misses"] = int(_CACHE_METRICS["misses"]) + len(missing)
     for offset in range(0, len(missing), 32):
         batch = missing[offset:offset + 32]
+        started = time.perf_counter()
         vectors = ollama.embed([_search_text(item)[:6000] for item in batch], model=model)
+        elapsed = max(0.0, time.perf_counter() - started)
+        with _METRICS_LOCK:
+            _CACHE_METRICS["embedded_vectors"] = int(_CACHE_METRICS["embedded_vectors"]) + len(batch)
+            _CACHE_METRICS["embedding_seconds"] = float(_CACHE_METRICS["embedding_seconds"]) + elapsed
         _save_embeddings(batch, vectors, model)
         for item, vector in zip(batch, vectors):
             cached[(int(item["id"]), int(item["version"]))] = vector

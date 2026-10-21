@@ -14,7 +14,11 @@ sys.path.insert(0, str(ROOT))
 
 from app import db, experience, ollama
 from app.db import learning_connection, get_settings
-from app.experience_retrieval import search_relevant_experiences
+from app.experience_retrieval import (
+    embedding_cache_metrics,
+    reset_embedding_cache_metrics,
+    search_relevant_experiences,
+)
 from app.retrieval_evaluation import evaluate_ranked_queries
 
 
@@ -69,6 +73,7 @@ def main() -> int:
             db.defaults.settings_db_path = str(Path(temp_dir) / "settings.db")
             db.defaults.learning_db_path = str(Path(temp_dir) / "learning.db")
             db.init_databases()
+            reset_embedding_cache_metrics()
             id_to_slug = _seed_experiences(dataset)
             result = evaluate_ranked_queries(
                 dataset["queries"],
@@ -83,6 +88,7 @@ def main() -> int:
                     "SELECT COUNT(*) FROM learning_experience_embeddings"
                 ).fetchone()[0])
             result.update({
+                "embedding_cache_metrics": embedding_cache_metrics(),
                 "dataset": str(dataset_path.relative_to(ROOT)),
                 "dataset_type": "synthetic_bilingual",
                 "embedding_model": str(get_settings().get("ollama_embedding_model", "nomic-embed-text")),
