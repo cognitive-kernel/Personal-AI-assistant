@@ -59,3 +59,28 @@ def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = N
     else:
         context = min(context, 8192)
     return {"cpu_threads": max(1, threads), "num_ctx": max(512, context)}
+
+
+def model_keep_alive(purpose: str, hardware: dict[str, Any] | None = None) -> str:
+    """Keep only the interactive chat model warm when measured RAM headroom is ample.
+
+    Long-lived learning/programming models can be substantially larger and are unloaded
+    after each request to avoid accumulating several profile models in Ollama memory.
+    """
+    if purpose != "chat":
+        return "0"
+    hardware = hardware or detect_hardware()
+    total_ram = hardware.get("total_ram_gb")
+    available_ram = hardware.get("available_ram_gb")
+    if (
+        isinstance(total_ram, bool)
+        or not isinstance(total_ram, (int, float))
+        or isinstance(available_ram, bool)
+        or not isinstance(available_ram, (int, float))
+    ):
+        return "0"
+    if total_ram >= 16 and available_ram >= 12:
+        return "5m"
+    if total_ram >= 12 and available_ram >= 8:
+        return "1m"
+    return "0"
