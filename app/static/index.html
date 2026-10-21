@@ -162,6 +162,15 @@
 <pre id="sandbox-run-output">برای شروع، وضعیت محیط را بررسی کنید.</pre></section>
 <section id="self-improvement-section"><h2>پیشنهادهای خودبهبود کد</h2>
 <p class="muted">این بخش diff را ثبت و اعتبارسنجی می‌کند، سپس بررسی نحوی و آزمون‌های رفتاری را در کانتینر Docker ایزوله اجرا می‌کند. کد پیشنهادی فقط داخل کانتینر اجرا می‌شود و خودکار روی checkout اعمال یا مستقر نمی‌شود. «تأیید برای PR» همچنان نیازمند بازبینی انسانی است. برای فعال‌سازی، SELF_IMPROVEMENT_REPO_ROOT، رضایت Sandbox و تصویر آزمون SANDBOX_TEST_IMAGE را تنظیم کنید.</p>
+<section id="programming-assist-section"><h3>برنامه‌نویسی با مدل محلی</h3>
+<p class="muted">این کار در صف مستقل برنامه‌نویسی اجرا می‌شود و از مدل تنظیم‌شده در بخش «برنامه‌نویسی و تست» استفاده می‌کند. کد تولیدشده خودکار اجرا نمی‌شود و نتیجهٔ آزمون ساختگی گزارش نمی‌شود.</p>
+<form id="programming-assist-form">
+<label>درخواست برنامه‌نویسی<textarea id="programming-instruction" rows="3" maxlength="6000" required placeholder="تغییر موردنظر، خطا یا پروژه را توضیح دهید" aria-label="درخواست برنامه‌نویسی"></textarea></label>
+<label>کد یا متن زمینه (اختیاری)<textarea id="programming-context" dir="auto" rows="7" maxlength="65536" placeholder="کد فعلی، traceback یا مشخصات پروژه" aria-label="کد یا متن زمینه"></textarea></label>
+<button id="programming-assist-submit" type="submit">ارسال به مدل برنامه‌نویسی</button></form>
+<pre id="programming-assist-status" role="status" aria-live="polite">درخواست برنامه‌نویسی هنوز اجرا نشده است.</pre>
+<pre id="programming-assist-output" dir="auto"></pre>
+</section>
 <form id="self-improvement-form">
 <input id="self-improvement-title" required maxlength="160" placeholder="عنوان تغییر" aria-label="عنوان تغییر">
 <textarea id="self-improvement-rationale" required maxlength="4000" rows="3" placeholder="دلیل و هدف تغییر" aria-label="دلیل و هدف تغییر"></textarea>
@@ -1862,6 +1871,47 @@ async function refreshSelfImprovement() {
   output.textContent="مدیریت پیشنهادها در دسترس نیست: "+error.message;
  }
 }
+el("programming-assist-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=el("programming-assist-submit");
+ const status=el("programming-assist-status");
+ const output=el("programming-assist-output");
+ button.disabled=true;
+ output.textContent="";
+ status.textContent="درخواست برنامه‌نویسی در حال صف‌بندی است…";
+ try {
+  const queued=await api("/api/programming/tasks",{method:"POST",body:JSON.stringify({
+   instruction:el("programming-instruction").value,
+   context:el("programming-context").value
+  })});
+  const taskId=queued.task.id;
+  status.textContent="وظیفهٔ برنامه‌نویسی #"+taskId+" در صف مستقل برنامه‌نویسی قرار گرفت.";
+  const poll=async()=>{
+   try {
+    const task=await api("/api/tasks/"+taskId);
+    if(["queued","running","pause_requested","paused","cancel_requested"].includes(task.status)) {
+     status.textContent="وضعیت وظیفهٔ برنامه‌نویسی #"+taskId+": "+task.status;
+     setTimeout(poll,1000);
+     return;
+    }
+    if(task.status==="succeeded") {
+     output.textContent=(task.result&&task.result.reply)||"مدل پاسخ متنی برنگرداند.";
+     status.textContent="پاسخ دریافت شد. کد اجرا نشده و هیچ آزمونی اجرا نشده است.";
+    } else {
+     status.textContent="وظیفهٔ برنامه‌نویسی تکمیل نشد: "+(task.error||task.status);
+    }
+    button.disabled=false;
+   } catch(error) {
+    status.textContent="وضعیت وظیفه قابل دریافت نیست: "+error.message;
+    button.disabled=false;
+   }
+  };
+  setTimeout(poll,500);
+ } catch(error) {
+  status.textContent="ارسال درخواست ناموفق بود: "+error.message;
+  button.disabled=false;
+ }
+});
 el("self-improvement-form").addEventListener("submit",async event=>{
  event.preventDefault();
  const output=el("self-improvement-output");
