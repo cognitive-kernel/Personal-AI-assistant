@@ -11,7 +11,7 @@ def test_startup_rejects_unknown_settings_schema_before_starting_workers(tmp_pat
     monkeypatch.setattr(
         main.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db")
     )
-    monkeypatch.setattr(main, "_task_runtime", None)
+    monkeypatch.setattr(main, "_task_runtimes", [])
     constructed = []
 
     class RuntimeStub:
@@ -56,7 +56,7 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
         cloud_resources, "ensure_daily_discovery_scheduled",
         lambda: {"status": "disabled_for_test"},
     )
-    monkeypatch.setattr(main, "_task_runtime", None)
+    monkeypatch.setattr(main, "_task_runtimes", None)
     db.init_databases()
     job = learning.create_job("startup recovery fixture")
     assert task_manager.get_task_by_dedupe_key(f"learning-job:{job['id']}") is None
@@ -86,5 +86,8 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     assert first_task["status"] == "queued"
     assert second_task["id"] == first_task["id"]
     assert len(task_manager.list_tasks(statuses=["queued"])) == 1
-    assert len(constructed) == 1
-    assert constructed[0].start_count == 1
+    assert len(constructed) >= 3
+    assert all(runtime.start_count == 1 for runtime in constructed)
+    assert {runtime.handlers.keys().__iter__().__next__() for runtime in constructed} >= {
+        "research.answer", "learning.run_job", "cloud.discovery.run"
+    }
