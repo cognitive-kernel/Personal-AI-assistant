@@ -13,7 +13,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from app import db, experience, ollama
+from app import db, experience, model_runtime, ollama
 from app.db import learning_connection, get_settings
 from app.experience_retrieval import search_relevant_experiences
 from app.retrieval_evaluation import evaluate_ranked_queries
@@ -130,7 +130,7 @@ def main() -> int:
     if args.lexical_only:
         def _embeddings_disabled(*_args, **_kwargs):
             raise ollama.OllamaError("disabled by --lexical-only")
-        ollama.embed = _embeddings_disabled
+        model_runtime.embed = _embeddings_disabled
 
     dataset_path = ROOT / "tests" / "fixtures" / "experience_retrieval_eval.json"
     dataset = json.loads(dataset_path.read_text(encoding="utf-8"))
@@ -163,7 +163,7 @@ def main() -> int:
             result.update({
                 "dataset": str(dataset_path.relative_to(ROOT)),
                 "dataset_type": "synthetic_bilingual",
-                "embedding_model": str(get_settings().get("ollama_embedding_model", "nomic-embed-text")),
+                "embedding_model": model_runtime.profile_cache_key("embeddings"),
                 "retrieval_mode": "hybrid_vector_and_lexical" if cache_rows else "lexical_fallback_no_vectors_cached",
                 "embedding_cache_rows": cache_rows,
                 "note": (

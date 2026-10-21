@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.db import get_settings
+from app import model_runtime
 from app.hardware import detect_hardware
 from app.ollama import OllamaError, _request
 
@@ -78,7 +79,10 @@ def run_benchmark(
 
     hardware_before = detect_hardware()
     settings = get_settings()
-    model = str(settings["ollama_model"])
+    selected_profile = model_runtime.resolve_model_profile("simple_chat", settings)
+    if selected_profile["provider"] != "ollama":
+        raise ValueError("The local Ollama benchmark currently supports only an Ollama simple-chat profile.")
+    model = str(selected_profile["model"])
     tags = _request("/api/tags")
     models = tags.get("models")
     if not isinstance(models, list):
