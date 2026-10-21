@@ -115,9 +115,9 @@ async def enforce_loopback_only(request, call_next):
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-# Each dashboard area has a stable, directly addressable page URL. The pages reuse
-# the existing dashboard document so all existing controls and their JS/API bindings
-# remain present; the client only hides unrelated sections for the selected page.
+# Each dashboard area has a stable, directly addressable page URL. The server
+# keeps the shared shell and scripts but injects only the selected section template;
+# the root route is a lightweight overview rather than a page containing every form.
 DASHBOARD_SECTIONS: dict[str, str] = {
     "storage-health": "storage-health-section",
     "chat": "chat-section",

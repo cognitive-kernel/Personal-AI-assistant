@@ -115,7 +115,7 @@ def test_learning_ui_exposes_recommendation_panel():
     from pathlib import Path
 
     root = Path(__file__).parents[1] / "app" / "static"
-    index = (root / "index.html").read_text(encoding="utf-8")
+    index = (root / "index.html").read_text(encoding="utf-8") + "\n" + (root.parent / "dashboard_sections" / "learning-paths.html").read_text(encoding="utf-8")
     script = (root / "learning.js").read_text(encoding="utf-8")
     assert 'id="refresh-learning-recommendations"' in index
     assert 'id="learning-recommendations-output"' in index

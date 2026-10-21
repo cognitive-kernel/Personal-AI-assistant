@@ -2,9 +2,8 @@ from pathlib import Path
 
 
 def test_cloud_resource_ui_exposes_discovery_and_review_controls_safely():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "cloud-resources.html").read_text(encoding="utf-8")
 
     assert 'id="cloud-resources-section"' in page
     assert 'id="cloud-refresh"' in page

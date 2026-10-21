@@ -252,9 +252,8 @@ def test_self_improvement_api_is_loopback_guarded_and_uses_explicit_approval(
 
 
 def test_self_improvement_ui_discloses_non_execution_and_explicit_approval():
-    page = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    page = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "self-improvement.html").read_text(encoding="utf-8")
     assert 'id="self-improvement-section"' in page
     assert "SELF_IMPROVEMENT_REPO_ROOT" in page
     assert "کد پیشنهادی فقط داخل کانتینر اجرا می‌شود" in page

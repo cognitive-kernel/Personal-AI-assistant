@@ -90,9 +90,8 @@ def test_learning_ui_exposes_spaced_repetition_controls():
     page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
         encoding="utf-8"
     )
-    index = (Path(__file__).parents[1] / "app" / "static" / "index.html").read_text(
-        encoding="utf-8"
-    )
+    app_root = Path(__file__).parents[1] / "app"
+    index = (app_root / "static" / "index.html").read_text(encoding="utf-8") + "\n" + (app_root / "dashboard_sections" / "learning-paths.html").read_text(encoding="utf-8")
     assert 'id="refresh-due-reviews"' in index
     assert "نمایش مرورهای سررسیدشده" in index
     assert "ثبت مرور و زمان‌بندی بعدی" in page
