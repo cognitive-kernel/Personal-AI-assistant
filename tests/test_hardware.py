@@ -85,3 +85,19 @@ def test_resource_headroom_rejects_ram_at_safety_threshold(monkeypatch):
     ))
     with pytest.raises(RuntimeError, match="RAM 91.0%"):
         hardware.ensure_resource_headroom()
+
+
+
+@pytest.mark.parametrize(
+    ("purpose", "hardware_info", "expected"),
+    [
+        ("chat", {"total_ram_gb": 32, "available_ram_gb": 25}, "5m"),
+        ("chat", {"total_ram_gb": 16, "available_ram_gb": 9}, "1m"),
+        ("chat", {"total_ram_gb": 32, "available_ram_gb": 7}, "0"),
+        ("chat", {"total_ram_gb": None, "available_ram_gb": None}, "0"),
+        ("learning", {"total_ram_gb": 32, "available_ram_gb": 25}, "0"),
+        ("programming", {"total_ram_gb": 32, "available_ram_gb": 25}, "0"),
+    ],
+)
+def test_model_keep_alive_is_ram_aware_and_profile_safe(purpose, hardware_info, expected):
+    assert hardware.model_keep_alive(purpose, hardware_info) == expected

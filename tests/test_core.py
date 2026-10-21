@@ -492,3 +492,56 @@ def test_existing_generic_ollama_preferences_seed_new_profiles(tmp_path, monkeyp
         assert settings[f"{prefix}_ollama_num_ctx"] == 3072
         assert settings[f"{prefix}_ollama_num_thread"] == 3
         assert settings[f"{prefix}_ollama_timeout_seconds"] == 45
+
+
+
+def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "qwen2.5:7b",
+        "chat_ollama_num_ctx": 4096,
+        "chat_ollama_num_thread": 0,
+        "chat_ollama_timeout_seconds": 120,
+        "ollama_num_ctx": 2048,
+        "ollama_num_thread": 0,
+        "ollama_timeout_seconds": 120,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 25,
+    })
+    def fake_request(path, payload, timeout=None):
+        captured.update(path=path, payload=payload, timeout=timeout)
+        return {"message": {"content": "ok"}}
+    monkeypatch.setattr(ollama, "_request", fake_request)
+
+    assert ollama.chat("hello", purpose="chat") == "ok"
+    assert captured["payload"]["keep_alive"] == "5m"
+    assert captured["payload"]["options"]["num_ctx"] == 4096
+
+
+def test_ollama_programming_model_is_unloaded_after_request(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "programming_ollama_model": "qwen3:14b",
+        "programming_ollama_num_ctx": 4096,
+        "programming_ollama_num_thread": 0,
+        "programming_ollama_timeout_seconds": 120,
+        "programming_source_max_chars": 12000,
+        "ollama_num_ctx": 2048,
+        "ollama_num_thread": 0,
+        "ollama_timeout_seconds": 120,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 25,
+    })
+    monkeypatch.setattr(
+        ollama, "_request",
+        lambda path, payload, timeout=None: captured.update(payload=payload) or {"message": {"content": "ok"}},
+    )
+
+    assert ollama.chat("review this code", purpose="programming") == "ok"
+    assert captured["payload"]["keep_alive"] == "0"
