@@ -456,6 +456,13 @@ def run_job(job_id: int) -> None:
                 consult_configured_peer_ais(candidate_id, limit=3)
             except Exception:
                 pass
+            # Run source-provided doctest examples only when the bounded sandbox is configured.
+            try:
+                from .learning_verification import run_candidate_source_doctests
+                run_candidate_source_doctests(candidate_id)
+            except Exception:
+                # Keep the temporary candidate and its evidence if optional sandbox checks fail.
+                pass
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
