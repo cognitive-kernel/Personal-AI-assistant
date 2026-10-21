@@ -2213,3 +2213,8 @@ Do not mark any remaining stage complete without its acceptance tests and eviden
 - اگر آزمایشگاه قابل‌استفاده نباشد، دو دامنهٔ اصلی HTTPS با شواهد موافق، دو ارائه‌دهندهٔ هوش مصنوعی با موضع موافق، امتیاز حداقلی و نبود تناقض/گزارش شکست لازم است تا نامزد با وضعیت `evidence_reviewed_no_lab` به پایگاه اصلی برسد.
 - این وضعیت صریحاً با `verified` فرق دارد؛ آزمون معتبر بعدی می‌تواند آن را به `verified` ارتقا دهد و آزمون ناموفق آن را به `unverified` برمی‌گرداند و تجربهٔ شکست را نگه می‌دارد.
 - دامنه‌ها باید از فهرست منابع اصلی مجاز باشند. تعداد مدل‌ها شاخص کمکی است و استقلال واقعی یا حقیقت قطعی را اثبات نمی‌کند.
+
+
+## 2026-10-21 — Require a trusted test before durable knowledge promotion
+
+The evidence-only promotion path has been changed to diagnostics-only. Supporting web sources, peer-AI agreement, and a confidence score can inform review, but they no longer insert or update a row in the durable `knowledge_items` table. Candidates remain in temporary storage with `awaiting_test`; the API returns `lab_verification_required` until a trusted, versioned test suite passes through the existing acceptance gate. Known contradictions return a blocking reason. Regression tests assert that even two allowlisted source domains and two supporting peer providers cannot promote a candidate without lab tests. The roadmap was updated to match this rule.
