@@ -60,7 +60,7 @@ def should_use_research(message: str) -> bool:
 
 def _factual_knowledge_context(message: str) -> list[dict[str, Any]]:
     """Retrieve eligible, query-relevant factual claims for Python questions only."""
-    if not re.search(r"(?i)\\bpython\\b|پایتون", message):
+    if not re.search(r"(?i)\bpython\b|پایتون", message):
         return []
     try:
         with db.learning_connection() as connection:
