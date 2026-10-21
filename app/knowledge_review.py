@@ -845,7 +845,6 @@ def build_claim_verification_matrix(candidate_id: int) -> dict[str, Any]:
     # It may identify what can be tested, but never invents an expected result/oracle.
     try:
         from .learning_verification import count_doctest_examples, extract_source_assertion_blocks
-        from . import sandbox
         with learning_connection() as conn:
             source_row = conn.execute(
                 "SELECT content FROM learning_source_text WHERE job_id=(SELECT job_id FROM temporary_knowledge_candidates WHERE id=?)",
