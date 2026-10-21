@@ -23,6 +23,40 @@ _MIN_COSINE = 0.20
 _MAX_CANDIDATES = 200
 _MAX_VECTOR_RESULTS = 30
 _TOKEN_RE = re.compile(r"[\w-]{2,}", flags=re.UNICODE)
+_MAX_EMBEDDING_CACHE_ROWS = 5000
+_METRICS_LOCK = threading.Lock()
+_CACHE_METRICS: dict[str, float | int] = {
+    "hits": 0, "misses": 0, "embedded_vectors": 0, "embedding_seconds": 0.0,
+}
+
+
+def reset_embedding_cache_metrics() -> None:
+    """Reset process-local aggregate counters; no query text or vectors are retained."""
+    with _METRICS_LOCK:
+        for key in _CACHE_METRICS:
+            _CACHE_METRICS[key] = 0.0 if key == "embedding_seconds" else 0
+
+
+def embedding_cache_metrics() -> dict[str, float | int]:
+    """Return aggregate cache efficiency and persistent derived-index size."""
+    with _METRICS_LOCK:
+        metrics = dict(_CACHE_METRICS)
+    embedded = int(metrics["embedded_vectors"])
+    hits = int(metrics["hits"])
+    average = float(metrics["embedding_seconds"]) / embedded if embedded else 0.0
+    with learning_connection() as connection:
+        row = connection.execute(
+            "SELECT COUNT(*) AS rows, COALESCE(SUM(length(embedding_json)), 0) AS bytes "
+            "FROM learning_experience_embeddings"
+        ).fetchone()
+    return {
+        **metrics,
+        "estimated_seconds_saved": round(average * hits, 6),
+        "persistent_cache_rows": int(row["rows"]),
+        "persistent_cache_bytes": int(row["bytes"]),
+        "cache_row_limit": _MAX_EMBEDDING_CACHE_ROWS,
+    }
+
 
 
 def _tokens(text: str) -> list[str]:
