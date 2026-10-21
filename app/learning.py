@@ -447,10 +447,24 @@ def run_job(job_id: int) -> None:
                 "skip_requested_url_failed" if requested_url and not requested_url_fetch_succeeded
                 else "search"
             )
-            run_hybrid_verification(
-                candidate_id, query=f"{topic} {result['lesson'][:300]}",
-                web_mode=web_mode, run_sandbox=True,
-            )
+            try:
+                run_hybrid_verification(
+                    candidate_id, query=f"{topic} {result['lesson'][:300]}",
+                    web_mode=web_mode, run_sandbox=True,
+                )
+            except Exception as review_exc:
+                # Candidate creation is the durable learning milestone. A broken optional
+                # review channel must not turn a retained candidate into a failed job.
+                from .knowledge_review import record_review_attempt
+                for channel in ("web_research", "peer_ai", "sandbox"):
+                    try:
+                        record_review_attempt(
+                            candidate_id, channel=channel, status="failed",
+                            details={"error_type": type(review_exc).__name__,
+                                     "reason": "hybrid_orchestration_failed"},
+                        )
+                    except Exception:
+                        pass
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
