@@ -1189,7 +1189,7 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         assert page.locator("#chat-section").is_visible()
         assert not page.locator("#learning-section").is_visible()
         navigation.get_by_role("link", name="وظایف").click()
-        page.wait_for_url("**/?page=task-manager-section", timeout=5000)
+        page.wait_for_url("**/page/task-manager-section", timeout=5000)
         page.wait_for_function(
             "document.querySelector('.dashboard-nav a[aria-current=\\\"page\\\"]')?.dataset.page === 'task-manager-section'",
             timeout=5000,
