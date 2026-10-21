@@ -83,6 +83,19 @@ def test_retry_backoff_uses_jitter_within_bounded_window(worker_store, monkeypat
     assert datetime.fromisoformat(saved["scheduled_at"]) == current + timedelta(seconds=2.4)
 
 
+def test_worker_handler_can_explicitly_mark_domain_error_retryable(worker_store):
+    task = task_manager.create_task("test.domain-retryable", {}, max_attempts=2)
+
+    def reject_once(_payload, _checkpoint, _context):
+        raise task_manager.RuntimeError("unavailable")  # placeholder
+
+    worker = TaskWorker("worker-domain-retryable", {"test.domain-retryable": reject_once})
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "queued"
+    assert saved["attempts"] == 1
+
+
 def test_worker_does_not_retry_permanent_input_errors(worker_store):
     task = task_manager.create_task("test.invalid-input", {}, max_attempts=3)
 
