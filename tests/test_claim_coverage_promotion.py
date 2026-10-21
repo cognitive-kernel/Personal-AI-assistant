@@ -123,3 +123,31 @@ def test_passing_tests_with_unknown_claim_mapping_cannot_promote(tmp_path, monke
     assert recorded["claim_coverage"]["unknown_claim_ids"] == ["unknown:claim"]
     assert recorded["status"] == "awaiting_test"
     assert recorded["promoted_knowledge_id"] is None
+
+
+def test_modified_candidate_content_hash_blocks_otherwise_passing_coverage(tmp_path, monkeypatch):
+    candidate_id = _candidate(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        content = conn.execute(
+            "SELECT content FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()["content"]
+    claim_ids = [claim["claim_id"] for claim in extract_candidate_claims(content, candidate_id)]
+    plan, results = _plan_and_results(candidate_id, claim_ids)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE temporary_knowledge_candidates SET content=? WHERE id=?",
+            (content + " A new untested claim was inserted after the stored digest.", candidate_id),
+        )
+
+    recorded = learning.record_candidate_test_results(candidate_id, plan, results)
+
+    assert recorded["tests_passed"] is True
+    assert recorded["content_hash_matches"] is False
+    assert recorded["promotion_eligible"] is False
+    assert "candidate_content_sha256_mismatch" in recorded["claim_coverage"]["issues"]
+    assert recorded["status"] == "awaiting_test"
+    assert recorded["promoted_knowledge_id"] is None
+    with db.learning_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE status='verified'"
+        ).fetchone()[0] == 0
