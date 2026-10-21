@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+import sqlite3
 import threading
 from typing import Any, Callable
 
@@ -11,6 +12,14 @@ from .task_manager import TaskManagerError
 
 TaskHandler = Callable[[dict[str, Any], dict[str, Any] | None, "TaskContext"], dict[str, Any]]
 logger = logging.getLogger("personal_ai_assistant.task_worker")
+
+
+def is_retryable_task_error(error: Exception) -> bool:
+    """Avoid spending retries on invalid input, broken assumptions, or integrity conflicts."""
+    return not isinstance(
+        error,
+        (ValueError, TypeError, KeyError, AssertionError, NotImplementedError, sqlite3.IntegrityError),
+    )
 
 
 class TaskInterrupted(RuntimeError):
@@ -151,7 +160,7 @@ class TaskWorker:
                         task["id"],
                         self.worker_id,
                         f"{type(exc).__name__}: {exc}",
-                        retry=True,
+                        retry=is_retryable_task_error(exc),
                     )
             except (TaskInterrupted, TaskManagerError):
                 # Control requests and lease loss take precedence over failure writes.
