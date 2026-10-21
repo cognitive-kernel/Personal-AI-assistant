@@ -601,17 +601,33 @@ def record_candidate_test_results(
             ("passed" if passed else "failed", plan_json, results_json, failure_reason, candidate_id),
         )
         if passed:
-            latest = conn.execute(
-                "SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?",
-                (candidate["topic"],),
+            # run_job() already stores the generated lesson as an unverified knowledge row.
+            # Upgrade that row in place so the unique job_id constraint is respected and
+            # we do not create duplicate versions of the same lesson.
+            existing_knowledge = conn.execute(
+                "SELECT id, version FROM knowledge_items WHERE job_id=?",
+                (candidate["job_id"],),
             ).fetchone()
-            cur = conn.execute(
-                """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
-                   VALUES (?, ?, ?, ?, 'verified', ?)""",
-                (candidate["topic"], candidate["content"], candidate["source_kind"],
-                 int(latest["version"]) + 1, candidate["job_id"]),
-            )
-            knowledge_id = int(cur.lastrowid)
+            if existing_knowledge is not None:
+                knowledge_id = int(existing_knowledge["id"])
+                conn.execute(
+                    """UPDATE knowledge_items
+                       SET topic=?, content=?, source_kind=?, status='verified'
+                       WHERE id=?""",
+                    (candidate["topic"], candidate["content"], candidate["source_kind"], knowledge_id),
+                )
+            else:
+                latest = conn.execute(
+                    "SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?",
+                    (candidate["topic"],),
+                ).fetchone()
+                cur = conn.execute(
+                    """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+                       VALUES (?, ?, ?, ?, 'verified', ?)""",
+                    (candidate["topic"], candidate["content"], candidate["source_kind"],
+                     int(latest["version"]) + 1, candidate["job_id"]),
+                )
+                knowledge_id = int(cur.lastrowid)
             conn.execute(
                 """UPDATE temporary_knowledge_candidates
                    SET promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
