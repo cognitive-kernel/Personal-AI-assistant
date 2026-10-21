@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import subprocess
 from typing import Any
 try:
     import psutil
@@ -14,39 +15,96 @@ def detect_hardware() -> dict[str, Any]:
         available_ram_gb = round(memory.available / (1024**3), 2)
     else:
         total_ram_gb = available_ram_gb = None
+    gpu = detect_gpu()
     return {
         "logical_cpu_count": logical_cpus,
         "total_ram_gb": total_ram_gb,
         "available_ram_gb": available_ram_gb,
-        "gpu_policy": "disabled_by_default",
+        **gpu,
         "notes": [
-            "Inference threads are capped at 90% of logical CPU capacity where the OS exposes at least two logical CPUs.",
-            "Context limits reduce memory pressure but cannot guarantee a hard RAM ceiling for an external Ollama process.",
-            "GPU is not forced without verified backend support.",
+            "CPU thread count is capped by the configurable CPU resource percentage.",
+            "RAM and GPU thresholds are monitored independently; external Ollama memory/compute cannot be hard-capped by this application.",
+            "GPU telemetry is currently available for NVIDIA devices through nvidia-smi; unsupported or absent GPUs are reported as unknown.",
         ],
     }
 
-def ensure_resource_headroom(limit_percent: float = 90.0) -> None:
-    """Refuse to start new inference when system CPU or RAM is already at the safety threshold."""
+
+def detect_gpu() -> dict[str, Any]:
+    """Read NVIDIA utilization and VRAM using nvidia-smi without a shell."""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=1.5, check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            raise ValueError("nvidia-smi returned no GPU telemetry")
+        rows = []
+        for line in result.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) != 3:
+                raise ValueError("unexpected nvidia-smi output")
+            utilization, used_mb, total_mb = (int(part) for part in parts)
+            if not (0 <= utilization <= 100 and 0 <= used_mb <= total_mb and total_mb > 0):
+                raise ValueError("invalid GPU telemetry")
+            rows.append({
+                "utilization_percent": utilization,
+                "memory_used_mb": used_mb,
+                "memory_total_mb": total_mb,
+                "memory_percent": round(used_mb * 100 / total_mb, 1),
+            })
+        if not rows:
+            raise ValueError("no NVIDIA GPUs detected")
+        return {
+            "gpu_available": True, "gpu_count": len(rows),
+            "gpu_utilization_percent": max(row["utilization_percent"] for row in rows),
+            "gpu_memory_percent": max(row["memory_percent"] for row in rows),
+            "gpu_devices": rows, "gpu_telemetry": "nvidia-smi",
+        }
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {
+            "gpu_available": False, "gpu_count": 0,
+            "gpu_utilization_percent": None, "gpu_memory_percent": None,
+            "gpu_devices": [], "gpu_telemetry": "unavailable",
+        }
+
+def _resource_limit(settings: dict[str, Any] | None, key: str) -> float:
+    value = (settings or {}).get(key, 90)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 10 <= value <= 95:
+        return 90.0
+    return float(value)
+
+
+def ensure_resource_headroom(settings: dict[str, Any] | None = None) -> None:
+    """Refuse to start inference if any monitored resource reaches its own configured limit."""
+    cpu_limit = _resource_limit(settings, "cpu_resource_limit_percent")
+    ram_limit = _resource_limit(settings, "ram_resource_limit_percent")
+    gpu_limit = _resource_limit(settings, "gpu_resource_limit_percent")
     if psutil is None:
-        raise RuntimeError("Resource telemetry is unavailable; refusing to start model inference safely.")
+        raise RuntimeError("CPU/RAM telemetry is unavailable; refusing to start model inference safely.")
     cpu_percent = psutil.cpu_percent(interval=0.1)
     memory_percent = psutil.virtual_memory().percent
-    if cpu_percent >= limit_percent or memory_percent >= limit_percent:
-        raise RuntimeError(
-            f"System resource usage is too high to start inference safely "
-            f"(CPU {cpu_percent:.1f}%, RAM {memory_percent:.1f}%; limit {limit_percent:.0f}%)."
-        )
+    violations = []
+    if cpu_percent >= cpu_limit:
+        violations.append(f"CPU {cpu_percent:.1f}% (limit {cpu_limit:.0f}%)")
+    if memory_percent >= ram_limit:
+        violations.append(f"RAM {memory_percent:.1f}% (limit {ram_limit:.0f}%)")
+    gpu = detect_gpu()
+    if gpu["gpu_available"]:
+        if gpu["gpu_utilization_percent"] >= gpu_limit:
+            violations.append(f"GPU compute {gpu['gpu_utilization_percent']}% (limit {gpu_limit:.0f}%)")
+        if gpu["gpu_memory_percent"] >= gpu_limit:
+            violations.append(f"GPU memory {gpu['gpu_memory_percent']:.1f}% (limit {gpu_limit:.0f}%)")
+    if violations:
+        raise RuntimeError("Resource usage is at or above configured limits: " + "; ".join(violations) + ".")
 
 
 def runtime_limits(settings: dict[str, Any], hardware: dict[str, Any] | None = None) -> dict[str, int]:
     hardware = hardware or detect_hardware()
     cpu_count = max(1, int(hardware.get("logical_cpu_count") or 1))
     configured_threads = int(settings.get("ollama_num_thread", 0) or 0)
-    # Reserve at least 10% of logical CPU capacity for the operating system and other apps.
-    # A single logical CPU cannot be split into a strict 90% thread budget; one thread is
-    # the minimum Ollama accepts, so this remains a best-effort limit on single-core hosts.
-    thread_ceiling = max(1, int(cpu_count * 0.9))
+    cpu_limit = _resource_limit(settings, "cpu_resource_limit_percent")
+    # Thread count is a best-effort CPU budget, not an OS-level CPU quota.
+    thread_ceiling = max(1, int(cpu_count * cpu_limit / 100))
     requested_threads = configured_threads if configured_threads > 0 else thread_ceiling
     threads = min(thread_ceiling, requested_threads)
     total_ram = hardware.get("total_ram_gb")
