@@ -9,7 +9,6 @@ def _candidate(tmp_path, monkeypatch, lesson):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
-    job_id = db.learning_connection
     from app import learning
     job = learning.create_job("doctest verification", source_text="source lesson")
     digest = hashlib.sha256(lesson.encode("utf-8")).hexdigest()
