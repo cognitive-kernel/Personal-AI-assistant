@@ -157,7 +157,14 @@ def model_keep_alive(
     Long-lived learning/programming models can be substantially larger and are unloaded
     after each request to avoid accumulating several profile models in Ollama memory.
     """
-    if purpose != "chat":
+    if purpose not in {"chat", "learning", "programming"}:
+        return "0"
+    settings = settings or {}
+    configured = settings.get(f"{purpose}_model_keep_alive", "auto" if purpose == "chat" else "0")
+    allowed = {"auto", "0", "1m", "5m", "10m", "30m"}
+    if isinstance(configured, str) and configured in allowed and configured != "auto":
+        return configured
+    if not isinstance(configured, str) or configured != "auto" or purpose != "chat":
         return "0"
     hardware = hardware or detect_hardware()
     ram_budget = dynamic_ram_budget_gb(settings, hardware)
