@@ -492,8 +492,11 @@ def record_user_application_feedback(
                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'usage_failure')""",
                 (
                     str(candidate["topic"]),
-                    f"User-reported {outcome} application for knowledge candidate {candidate_id}: "
-                    + application_context.strip(),
+                    (
+                        f"User-reported {outcome} application for knowledge candidate {candidate_id}: "
+                        + application_context.strip()
+                        + (f"\nReported steps: {test_steps.strip()}" if test_steps.strip() else "")
+                    )[:3000],
                     "Real-world application feedback may expose a missing condition or incorrect claim.",
                     "failed" if outcome == "failed" else "needs_review",
                     json.dumps(source_evidence, ensure_ascii=False),
