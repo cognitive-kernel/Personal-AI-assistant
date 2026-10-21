@@ -442,17 +442,19 @@ def run_job(job_id: int) -> None:
             and os.environ.get("LEARNING_AUTO_WEB_RESEARCH", "true").strip().lower()
             not in {"0", "false", "no", "off"}
         ):
-            # Public web corroboration is best-effort: network failure must not discard a lesson.
+            # Each verification channel is isolated: one unavailable service must not
+            # suppress other channels or discard the temporary candidate.
             try:
-                from .knowledge_review import (
-                    consult_configured_peer_ais,
-                    research_candidate_online,
-                )
+                from .knowledge_review import research_candidate_online
                 research_candidate_online(
                     candidate_id,
                     f"{topic} {result['lesson'][:300]}",
                     limit=3,
                 )
+            except Exception:
+                pass
+            try:
+                from .knowledge_review import consult_configured_peer_ais
                 consult_configured_peer_ais(candidate_id, limit=3)
             except Exception:
                 pass
