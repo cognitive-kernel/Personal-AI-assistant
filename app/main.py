@@ -229,7 +229,7 @@ def _render_dashboard_page(slug: str | None = None) -> str:
             continue
         if depth == 0:
             block_start = match.start()
-            id_match = re.search(r'\\bid=["\\\']([^"\\\']+)["\\\']', tag)
+            id_match = re.search(r'\bid="([^"]+)"', tag)
             block_id = id_match.group(1) if id_match else ""
         depth += 1
     if depth != 0:
