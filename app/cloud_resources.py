@@ -67,6 +67,27 @@ class CloudResourceConflictError(CloudResourceError):
     """Raised when evidence changed or is too stale to review safely."""
 
 
+def _sqlite_candidate_relevant(title: Any, excerpt: Any) -> int:
+    """Reapply the source-evidence relevance predicate inside SQLite."""
+    signals = _resource_signals(str(title or ""), str(excerpt or ""))
+    return int(_has_cloud_compute_relevance(signals))
+
+
+def _sqlite_candidate_rank(source_url: Any, title: Any) -> int:
+    return _candidate_source_rank({
+        "source_url": str(source_url or ""),
+        "title": str(title or ""),
+    })
+
+
+def _sqlite_source_identity(source_url: Any) -> str:
+    url = str(source_url or "")
+    try:
+        return web_sources.result_url_identity(url)
+    except (ValueError, TypeError):
+        return "invalid-source:" + url
+
+
 def _connect() -> sqlite3.Connection:
     target = Path(defaults.cloud_resources_db_path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +95,9 @@ def _connect() -> sqlite3.Connection:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA busy_timeout = 10000")
+    connection.create_function("cloud_candidate_relevant", 2, _sqlite_candidate_relevant, deterministic=True)
+    connection.create_function("cloud_candidate_rank", 2, _sqlite_candidate_rank, deterministic=True)
+    connection.create_function("cloud_source_identity", 1, _sqlite_source_identity, deterministic=True)
     return connection
 
 
@@ -898,6 +922,7 @@ def _serialize_candidate(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
 
 
 def list_candidates(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
+    """Apply relevance, deduplication, ranking, and pagination in SQLite."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
         raise ValueError("limit must be between 1 and 500.")
     if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 50_000:
@@ -905,51 +930,57 @@ def list_candidates(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]
     initialize_store()
     with closing(_connect()) as connection:
         _mark_stale_candidates(connection, max_age_days=30)
-        # Bound the scan while ranking official provider references in SQL. This
-        # avoids loading and parsing the entire historical candidate table on each
-        # dashboard refresh.
         official_domain_conditions = []
         official_domain_params: list[str] = []
         for root in _RECOGNIZED_PROVIDER_DOMAIN_ROOTS:
             official_domain_conditions.append(
-                "(lower(provider_domain)=? OR lower(provider_domain) LIKE ?)"
+                "(lower(c.provider_domain)=? OR lower(c.provider_domain) LIKE ?)"
             )
             official_domain_params.extend((root, f"%.{root}"))
         official_domain_clause = " OR ".join(official_domain_conditions)
         reference_path_clause = " OR ".join(
-            "lower(source_url) LIKE ?" for _ in _OFFICIAL_REFERENCE_PATH_MARKERS
+            "lower(c.source_url) LIKE ?" for _ in _OFFICIAL_REFERENCE_PATH_MARKERS
         )
         reference_path_params = [
             f"%{marker.casefold()}%" for marker in _OFFICIAL_REFERENCE_PATH_MARKERS
         ]
-        scan_limit = min(10000, max((limit + offset) * 20, 200))
+        discovery_rank = (
+            f"CASE WHEN ({official_domain_clause}) THEN "
+            f"CASE WHEN ({reference_path_clause}) THEN 0 ELSE 1 END ELSE 2 END"
+        )
         rows = connection.execute(
-            f"""SELECT * FROM cloud_resource_candidates
-                ORDER BY CASE
-                    WHEN ({official_domain_clause}) THEN
-                        CASE WHEN ({reference_path_clause}) THEN 0 ELSE 1 END
-                    ELSE 2
-                END ASC, last_seen_at DESC, id DESC
-                LIMIT ?""",
-            (*official_domain_params, *reference_path_params, scan_limit),
+            f"""WITH marked AS (
+                    SELECT c.*,
+                           cloud_source_identity(c.source_url) AS _source_identity,
+                           cloud_candidate_rank(c.source_url, c.title) AS _source_rank,
+                           {discovery_rank} AS _discovery_rank,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY cloud_source_identity(c.source_url)
+                               ORDER BY {discovery_rank} ASC, c.last_seen_at DESC, c.id DESC
+                           ) AS _identity_rank
+                    FROM cloud_resource_candidates AS c
+                    WHERE cloud_candidate_relevant(c.title, c.evidence_excerpt)=1
+                ),
+                deduped AS (
+                    SELECT * FROM marked WHERE _identity_rank=1
+                )
+                SELECT * FROM deduped
+                ORDER BY _source_rank ASC, last_seen_at DESC, id DESC
+                LIMIT ? OFFSET ?""",
+            (
+                *official_domain_params, *reference_path_params,
+                *official_domain_params, *reference_path_params,
+                limit, offset,
+            ),
         ).fetchall()
-        eligible: list[dict[str, Any]] = []
-        seen_source_identities: set[str] = set()
+        results: list[dict[str, Any]] = []
         for row in rows:
-            item = _serialize_candidate(row)
-            # Recheck older rows with the stored evidence excerpt; broad-catalog
-            # false positives are hidden without deleting their records.
-            stored_text = item.get("evidence_excerpt") or ""
-            current_signals = _resource_signals(
-                str(item.get("title") or ""), str(stored_text)
-            )
-            if not _has_cloud_compute_relevance(current_signals):
-                continue
-            item["resource_signals"] = current_signals
-            source_identity = web_sources.result_url_identity(item["source_url"])
-            if source_identity in seen_source_identities:
-                continue
-            seen_source_identities.add(source_identity)
+            raw = dict(row)
+            raw.pop("_source_identity", None)
+            raw.pop("_source_rank", None)
+            raw.pop("_discovery_rank", None)
+            raw.pop("_identity_rank", None)
+            item = _serialize_candidate(raw)
             parsed_host = urlparse(str(item.get("source_url") or "")).hostname
             item["source_authority"] = (
                 "recognized_official_domain"
@@ -957,18 +988,6 @@ def list_candidates(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]
                 else "unverified_domain"
             )
             item["source_classification"] = _candidate_source_classification(item)
-            eligible.append(item)
-
-        # Stable two-pass ordering: newest items first within each authority tier,
-        # but never let a newer third-party article displace a known official source.
-        eligible.sort(
-            key=lambda item: (str(item.get("last_seen_at") or ""), int(item.get("id") or 0)),
-            reverse=True,
-        )
-        eligible.sort(key=_candidate_source_rank)
-        results = eligible[offset:offset + limit]
-
-        for item in results:
             claim_rows = connection.execute(
                 """SELECT id, source_content_sha256, claim_type, value_json, unit,
                           evidence_quote, adapter_id, review_status, is_current, extracted_at,
@@ -984,9 +1003,9 @@ def list_candidates(*, limit: int = 100, offset: int = 0) -> list[dict[str, Any]
                 claim_item["value"] = json.loads(claim_item.pop("value_json"))
                 item["observed_claims"].append(claim_item)
             item["eligibility_assessment"] = assess_candidate(item, item["observed_claims"])
+            results.append(item)
         connection.commit()
     return results
-
 
 def save_resource_selection_plan(plan: Any) -> dict[str, Any]:
     """Persist a minimal local snapshot of a dry-run plan and per-candidate decisions."""
