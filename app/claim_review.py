@@ -62,7 +62,12 @@ def review_answer_claims(
         }
 
     settings = get_settings()
-    limits = runtime_limits(settings, detect_hardware())
+    limits = runtime_limits({
+        "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
+        "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
+    }, detect_hardware())
+    model = str(settings.get("learning_ollama_model", settings["ollama_model"]))
+    request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
     payload = {
         "question": question[:3000],
         "answer_to_review": answer[:10000],
@@ -87,7 +92,7 @@ def review_answer_claims(
     }
     try:
         response = _request("/api/chat", {
-            "model": str(settings["ollama_model"]),
+            "model": model,
             "stream": False,
             "format": "json",
             "messages": [
@@ -107,7 +112,7 @@ def review_answer_claims(
                 "num_thread": limits["cpu_threads"],
                 "num_predict": 1000,
             },
-        })
+        }, timeout=request_timeout)
         raw = response.get("message", {}).get("content")
         parsed = json.loads(raw) if isinstance(raw, str) else None
     except (ollama.OllamaError, json.JSONDecodeError, TypeError, ValueError) as exc:
