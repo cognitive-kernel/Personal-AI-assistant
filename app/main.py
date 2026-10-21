@@ -403,6 +403,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         values["ollama_base_url"] = url
     if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
         raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
+    keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
+    for purpose in ("chat", "learning", "programming"):
+        key = f"{purpose}_model_keep_alive"
+        if key in values and values[key] not in keep_alive_values:
+            raise HTTPException(status_code=422, detail=f"{key} must be one of: auto, 0, 1m, 5m, 10m, 30m.")
     numeric_ranges = [
         ("ollama_timeout_seconds", 5, 600), ("ollama_num_ctx", 512, 8192),
         ("ollama_num_thread", 0, 64),
