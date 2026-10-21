@@ -25,10 +25,13 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         response = page.goto(base_url, wait_until="domcontentloaded")
         assert response is not None and response.status == 200
         assert page.get_by_role("heading", name="دستیار هوش مصنوعی شخصی").is_visible()
-        assert page.locator("#chat-form").count() == 1
-        assert page.locator("#task-manager-section").is_visible()
-        assert page.locator("#experience-memory-section").is_visible()
+        assert page.locator("#chat-form").count() == 0
+        assert page.locator("#task-manager-section").count() == 0
+        assert page.locator("#experience-memory-section").count() == 0
+        assert page.locator("#dashboard-overview").is_visible()
 
+        page.goto(base_url.rstrip("/") + "/sections/storage-health", wait_until="domcontentloaded")
+        assert page.locator("#storage-health-section").is_visible()
         storage_output = page.locator("#storage-health-output")
         page.locator("#refresh-storage-health").click()
         page.wait_for_function(
@@ -88,6 +91,7 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
         assert isinstance(recommendations.get("recommendations"), list)
         assert recommendations.get("autonomous_action_taken") is False
 
+        page.goto(base_url.rstrip("/") + "/sections/learning", wait_until="domcontentloaded")
         page.locator("#refresh-learning-recommendations").click()
         page.wait_for_function(
             """() => {
@@ -111,7 +115,7 @@ def test_learning_evidence_review_ui_loads_candidates_without_a_live_model():
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/learning", wait_until="domcontentloaded")
         assert page.locator("#learning-evidence-section").is_visible()
         assert page.locator("#learning-candidate-select").count() == 1
         assert page.locator("#research-learning-candidate").is_disabled()
@@ -135,7 +139,7 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/experience-memory", wait_until="domcontentloaded")
 
         consent_checkbox = page.locator("#experience-auto-capture-confirm")
         assert not consent_checkbox.is_checked()
@@ -290,7 +294,7 @@ def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/cloud-resources", wait_until="domcontentloaded")
         button = page.locator("#cloud-discover")
         button.click()
 
@@ -311,7 +315,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
 
         scheduled_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         response = page.request.post(
@@ -418,7 +422,7 @@ def test_browser_task_audit_history_loads_older_cursor_pages():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(has_text="#424242 — e2e.audit-history")
         card.wait_for(timeout=5000)
@@ -475,7 +479,7 @@ def test_browser_task_filter_and_cursor_pagination_preserve_cards():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         page.get_by_text("#101 — e2e.first-page", exact=True).wait_for(timeout=5000)
         page.locator("#load-more-tasks").click()
@@ -525,7 +529,7 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         cards = page.locator("#tasks-container article")
         page.get_by_text("#6001 — e2e.research", exact=True).wait_for(timeout=5000)
@@ -614,7 +618,7 @@ def test_browser_task_diagnostics_are_collapsed_and_accessibly_disclosed():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(
             has_text="#6201 — e2e.diagnostic-disclosure"
@@ -671,7 +675,7 @@ def test_browser_task_bulk_controls_only_submit_actions_for_eligible_selected_ta
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         page.get_by_text("#6101 — e2e.queued", exact=True).wait_for(timeout=5000)
         page.locator("#task-select-all").check()
@@ -737,7 +741,7 @@ def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(has_text="#5151 — e2e.manage-task")
         card.wait_for(timeout=5000)
@@ -786,7 +790,7 @@ def test_browser_task_priority_and_schedule_controls_hidden_for_running_task():
             route.continue_()
 
         page.route("**/api/**", mock_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
         page.locator("#refresh-tasks").click()
         card = page.locator("#tasks-container article").filter(has_text="#5152 — e2e.running-task")
         card.wait_for(timeout=5000)
@@ -813,7 +817,7 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
             "Verify the local UI records a proposed patch without applying it to the checkout."
@@ -851,7 +855,7 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/chat", wait_until="domcontentloaded")
 
         saved_review = {
             "kind": "model_assisted_advisory",
@@ -961,7 +965,7 @@ def test_browser_reloads_and_recovers_persisted_research_task():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/tasks", wait_until="domcontentloaded")
 
         response = page.request.post(
             base_url.rstrip("/") + "/api/research/tasks",
@@ -1002,7 +1006,7 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         page.on("dialog", lambda dialog: dialog.accept())
         page.locator("#self-improvement-title").fill(title)
         page.locator("#self-improvement-rationale").fill(
@@ -1117,7 +1121,7 @@ def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
                 dialog.accept()
 
         page.on("dialog", handle_dialog)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/self-improvement", wait_until="domcontentloaded")
         page.locator("#self-improvement-refresh").click()
 
         card = page.locator("#self-improvement-list article").filter(
@@ -1149,7 +1153,7 @@ def test_browser_can_review_and_persist_an_unverified_experience():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/experience-memory", wait_until="domcontentloaded")
 
         page.locator("#experience-topic").fill(topic)
         page.locator("#experience-hypothesis").fill(
@@ -1330,7 +1334,7 @@ def test_learning_path_progress_is_derived_and_accessible():
                 route.continue_()
 
         page.route("**/api/learning/**", mock_learning_api)
-        page.goto(base_url, wait_until="domcontentloaded")
+        page.goto(base_url.rstrip("/") + "/sections/learning-paths", wait_until="domcontentloaded")
         progress = page.get_by_role("progressbar", name="پیشرفت مسیر مسیر آزمایشی یادگیری")
         progress.wait_for(state="visible", timeout=10000)
         assert progress.get_attribute("max") == "100"
