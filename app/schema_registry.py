@@ -85,6 +85,28 @@ SETTINGS_MIGRATIONS = (
                ) VALUES (1, 0, 'experience-auto-capture-v1', CURRENT_TIMESTAMP)""",
         ),
     ),
+    Migration(
+        4,
+        "persistent-chat-conversations",
+        (
+            """CREATE TABLE chat_conversations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT 'گفتگوی جدید',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                task_id INTEGER UNIQUE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_chat_messages_conversation_id ON chat_messages(conversation_id, id)",
+            "CREATE INDEX idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC, id DESC)",
+        ),
+    ),
 )
 
 LEARNING_MIGRATIONS = (
