@@ -676,7 +676,7 @@ LEARNING_MIGRATIONS = (
         (
             """CREATE TABLE factual_claim_revisions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE CASCADE,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
                 revision_number INTEGER NOT NULL CHECK(revision_number >= 1),
                 claim TEXT NOT NULL CHECK(length(trim(claim)) > 0),
                 normalized_claim TEXT NOT NULL CHECK(length(trim(normalized_claim)) > 0),
@@ -728,6 +728,9 @@ LEARNING_MIGRATIONS = (
                END""",
             """CREATE TRIGGER factual_claim_revision_immutable
                BEFORE UPDATE ON factual_claim_revisions
+               BEGIN SELECT RAISE(ABORT, 'factual claim revisions are immutable'); END""",
+            """CREATE TRIGGER factual_claim_revision_delete_immutable
+               BEFORE DELETE ON factual_claim_revisions
                BEGIN SELECT RAISE(ABORT, 'factual claim revisions are immutable'); END""",
         ),
     ),
