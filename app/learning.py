@@ -1,12 +1,13 @@
 from __future__ import annotations
 import hashlib
 import json
+import platform
 import re
 from typing import Any
 from urllib.parse import urlencode
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import curricula
+from . import curricula, factual_knowledge
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
@@ -124,6 +125,80 @@ def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
         if len(sources) >= 3:
             break
     return sources
+
+
+def _persist_factual_review_claims(
+    connection,
+    *,
+    job_id: int,
+    topic: str,
+    source_text: str,
+    review: dict[str, Any],
+) -> int:
+    """Persist Python-topic review claims as unverified records with source provenance.
+
+    Model-assisted review is stored as metadata only: this function never promotes
+    evidence level or lifecycle status, even when the reviewer reports "supported".
+    """
+    if not re.search(r"(?i)\\bpython\\b|پایتون", topic):
+        return 0
+    claims = review.get("claims")
+    if not isinstance(claims, list):
+        return 0
+
+    sources = {
+        item["url"]: item
+        for item in _claim_review_sources(source_text)
+        if isinstance(item.get("url"), str)
+    }
+    source_hashes = {
+        row["source_ref"]: row["content_hash"]
+        for row in connection.execute(
+            """SELECT source_ref, content_hash FROM learning_evidence
+               WHERE job_id=? AND evidence_type='web_page' AND content_hash IS NOT NULL""",
+            (job_id,),
+        ).fetchall()
+    }
+    stored = 0
+    for item in claims[:30]:
+        if not isinstance(item, dict) or not isinstance(item.get("claim"), str):
+            continue
+        claim_text = item["claim"].strip()
+        if not claim_text:
+            continue
+        knowledge_id = factual_knowledge.create_claim(
+            connection,
+            claim_text,
+            environment_version=platform.python_version(),
+            scope={"topic": topic},
+            risk_level="low",
+        )
+        urls = item.get("evidence_urls", [])
+        if not isinstance(urls, list):
+            urls = []
+        for url in urls:
+            source = sources.get(url) if isinstance(url, str) else None
+            source_hash = source_hashes.get(url) if isinstance(url, str) else None
+            if source is None or not source_hash:
+                continue
+            factual_knowledge.add_evidence(
+                connection,
+                knowledge_id,
+                source_type="other",
+                source_ref=url,
+                source_hash=source_hash,
+                excerpt=source["content"][:2500],
+                applicability={
+                    "job_id": job_id,
+                    "topic": topic,
+                    "review_verdict": str(item.get("verdict", "insufficient_evidence")),
+                    "review_reason": str(item.get("reason", ""))[:1000],
+                    "reviewer": str(review.get("reviewer", "unknown"))[:120],
+                    "independent_verification": False,
+                },
+            )
+        stored += 1
+    return stored
 
 
 def run_job(job_id: int) -> None:
@@ -287,6 +362,14 @@ def run_job(job_id: int) -> None:
                        ) VALUES (?, 'claim_review', 'local_ollama_model_assisted', NULL, ?)""",
                     (job_id, claim_note),
                 )
+                if quality["accepted"] and source_kind == "web_retrieved":
+                    _persist_factual_review_claims(
+                        conn,
+                        job_id=job_id,
+                        topic=topic,
+                        source_text=source_text,
+                        review=claim_review_result,
+                    )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                 conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
