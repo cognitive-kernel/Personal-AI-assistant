@@ -395,9 +395,9 @@ def run_job(job_id: int) -> None:
         limits = runtime_limits({
             "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
             "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
-        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
-        "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
-        "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
+            "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+            "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+            "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
         }, detect_hardware())
         model = str(settings.get("learning_ollama_model", settings["ollama_model"]))
         request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
