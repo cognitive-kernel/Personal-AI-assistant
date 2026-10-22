@@ -62,6 +62,7 @@ def test_python_lesson_review_persists_claims_as_unverified_factual_knowledge(
                 "claim": "Python lists are mutable sequences.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": excerpt}],
                 "reason": "The source excerpt directly describes list mutability.",
             }],
             "source_conflicts": [],
@@ -114,6 +115,7 @@ def test_repeated_factual_review_delivery_is_idempotent(learning_store):
             "claim": "Python dictionaries map keys to values.",
             "verdict": "supported",
             "evidence_urls": [url],
+            "evidence_quotes": [{"url": url, "quote": excerpt}],
         }],
     }
     job = learning.create_job("Python dictionaries")
