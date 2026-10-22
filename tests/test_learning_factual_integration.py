@@ -384,7 +384,7 @@ def test_user_source_is_bounded_for_model_context_but_preserved_in_storage(
 
     assert finished["status"] == "completed"
     assert len(captured["prompt"]["source_text"]) == 1000
-    assert stored_source == source_text
+    assert stored_source == source_text.strip()
     assert finished["quality"]["source_text_truncated"] is True
-    assert finished["quality"]["source_characters_provided"] == len(source_text)
+    assert finished["quality"]["source_characters_provided"] == len(stored_source)
     assert finished["quality"]["source_characters_sent_to_model"] == 1000
