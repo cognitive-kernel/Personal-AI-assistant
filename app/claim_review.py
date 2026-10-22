@@ -91,11 +91,14 @@ def review_answer_claims(
             "against each other, not only against the answer. Explicitly list material disagreements between "
             "sources, including the exact URLs for both sides. Never silently choose one side of a conflict. "
             "A material source conflict makes the overall review fail closed and requires human review. "
+            "For each supported or contradicted claim, include evidence_quotes: objects with the exact source URL "
+            "and a verbatim quote copied from that source excerpt. Each quote must be a contiguous excerpt, not a "
+            "paraphrase. If no exact supporting quote exists, use insufficient_evidence and an empty evidence_quotes list. "
             "Include one or more exact evidence URLs for supported/contradicted claims. If there are no material "
             "factual claims, return one insufficient_evidence claim explaining that. Return JSON only with this schema: "
             '{"overall":"supported|contradicted|insufficient_evidence","claims":'
             '[{"claim":"...","verdict":"supported|contradicted|insufficient_evidence",'
-            '"evidence_urls":["https://..."],"reason":"..."}],'
+            '"evidence_urls":["https://..."],"evidence_quotes":[{"url":"https://...","quote":"verbatim excerpt"}],"reason":"..."}],'
             '"source_conflicts":[{"topic":"...","source_a_url":"https://...",'
             '"source_b_url":"https://...","description":"..."}]}'
         ),
@@ -149,6 +152,7 @@ def review_answer_claims(
         return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "invalid_claim_list", **provenance}
 
     allowed_urls = {item["url"] for item in evidence}
+    evidence_by_url = {item["url"]: item["excerpt"] for item in evidence}
     if "source_conflicts" not in parsed:
         return {"passed": False, "overall": "insufficient_evidence", "claims": [], "source_conflicts": [], "error": "missing_source_conflicts", **provenance}
     conflicts = parsed.get("source_conflicts")
@@ -182,21 +186,43 @@ def review_answer_claims(
         claim = item.get("claim")
         verdict = item.get("verdict")
         urls = item.get("evidence_urls", [])
+        quotes = item.get("evidence_quotes", [])
         reason = item.get("reason", "")
         if (
             not isinstance(claim, str) or not claim.strip()
             or verdict not in _ALLOWED_VERDICTS
             or not isinstance(urls, list)
             or any(not isinstance(url, str) or url not in allowed_urls for url in urls)
+            or not isinstance(quotes, list) or len(quotes) > 10
             or not isinstance(reason, str)
         ):
             return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "invalid_claim_fields", **provenance}
         if verdict in {"supported", "contradicted"} and not urls:
             return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "claim_missing_evidence_url", **provenance}
+        normalized_quotes = []
+        for quote_item in quotes:
+            if not isinstance(quote_item, dict):
+                return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "invalid_claim_evidence_quote", **provenance}
+            quote_url = quote_item.get("url")
+            quote = quote_item.get("quote")
+            if (
+                not isinstance(quote_url, str) or quote_url not in allowed_urls
+                or quote_url not in urls
+                or not isinstance(quote, str) or not 20 <= len(quote.strip()) <= 1000
+            ):
+                return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "invalid_claim_evidence_quote", **provenance}
+            normalized_source = re.sub(r"\s+", " ", evidence_by_url[quote_url]).strip()
+            normalized_quote = re.sub(r"\s+", " ", quote).strip()
+            if normalized_quote not in normalized_source:
+                return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "claim_quote_not_in_source", **provenance}
+            normalized_quotes.append({"url": quote_url, "quote": quote.strip()})
+        if verdict in {"supported", "contradicted"} and not normalized_quotes:
+            return {"passed": False, "overall": "insufficient_evidence", "claims": [], "error": "claim_missing_evidence_quote", **provenance}
         normalized_claims.append({
             "claim": claim.strip()[:1000],
             "verdict": verdict,
             "evidence_urls": urls,
+            "evidence_quotes": normalized_quotes,
             "reason": reason.strip()[:1000],
         })
 
