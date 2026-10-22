@@ -5,6 +5,7 @@ import ast
 import hashlib
 import json
 import re
+import secrets
 from typing import Any, Callable
 
 from . import factual_knowledge, sandbox_consent, sandbox_tasks
@@ -59,24 +60,29 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
     return item
 
 
-def _wrapped_harness(source_code: str) -> str:
+def _wrapped_harness(source_code: str) -> tuple[str, str]:
     encoded = json.dumps(source_code, ensure_ascii=False)
-    return (
+    completion_marker = "__PAI_TEST_COMPLETED__:" + secrets.token_hex(16)
+    wrapper = (
         "import json as __pai_json, platform as __pai_platform\n"
         "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\n"
         f"__pai_source = __pai_json.loads({json.dumps(encoded)})\n"
         "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\n"
+        f"print({json.dumps(completion_marker)}, flush=True)\n"
     )
+    return wrapper, completion_marker
 
 
-def _runtime_version(stdout: str) -> tuple[str | None, str]:
+def _runtime_version(stdout: str, completion_marker: str) -> tuple[str | None, bool, str]:
     lines = stdout.splitlines()
     if not lines:
-        return None, ""
+        return None, False, ""
     match = _RUNTIME_MARKER.fullmatch(lines[0].strip())
     if match is None:
-        return None, stdout[:2000]
-    return match.group(1), "\n".join(lines[1:])[:2000]
+        return None, False, stdout[:2000]
+    completed = lines[-1].strip() == completion_marker
+    output_lines = lines[1:-1] if completed else lines[1:]
+    return match.group(1), completed, "\n".join(output_lines)[:2000]
 
 
 def _build_handler(
@@ -113,7 +119,7 @@ def _build_handler(
 
         candidate = get_verification_candidate(knowledge_id)
         original_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
-        wrapped = _wrapped_harness(source_code)
+        wrapped, completion_marker = _wrapped_harness(source_code)
         context.checkpoint({
             "phase": "factual_claim_test_started",
             "knowledge_id": knowledge_id,
@@ -133,7 +139,7 @@ def _build_handler(
 
         stdout = str(result.get("stdout", ""))
         stderr = str(result.get("stderr", ""))
-        runtime_version, _bounded_stdout = _runtime_version(stdout)
+        runtime_version, harness_completed, _bounded_stdout = _runtime_version(stdout, completion_marker)
         execution_status = str(result.get("execution_status", "unknown"))
         exit_code = result.get("exit_code")
         log_hash = hashlib.sha256((stdout + "\n" + stderr).encode("utf-8")).hexdigest()
@@ -142,7 +148,7 @@ def _build_handler(
             outcome = "environment_failure"
         elif runtime_version != candidate["environment_version"]:
             outcome = "environment_failure"
-        elif execution_status == "succeeded" and exit_code == 0:
+        elif harness_completed and execution_status == "succeeded" and exit_code == 0:
             outcome = "passed"
 
         summary = {
