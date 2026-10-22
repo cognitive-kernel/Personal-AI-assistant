@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent
+from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
 
 
 class FakeContext:
@@ -328,3 +328,25 @@ def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_
         )
     refreshed = factual_verification_routes.list_factual_test_queue(limit=10)
     assert refreshed["count"] == 0
+
+
+def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
+    knowledge_id = _active_sourced_python_claim()
+    task_manager.initialize_task_store()
+    assert factual_verification_routes.list_factual_test_queue()["count"] == 1
+
+    task_manager.create_task(
+        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
+        {
+            "knowledge_id": knowledge_id,
+            "test_name": "queued test",
+            "source_code": "assert True",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Reviewed against the official Python reference before queueing.",
+        },
+        max_attempts=1,
+        dedupe_key="test-queue-active-task",
+    )
+    assert factual_verification_routes.list_factual_test_queue()["count"] == 0
