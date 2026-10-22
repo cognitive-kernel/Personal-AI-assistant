@@ -390,3 +390,44 @@ def test_user_source_is_bounded_for_model_context_but_preserved_in_storage(
     assert finished["quality"]["source_text_truncated"] is True
     assert finished["quality"]["source_characters_provided"] == len(stored_source)
     assert finished["quality"]["source_characters_sent_to_model"] == 1000
+
+
+
+def test_factual_claim_persistence_does_not_attach_unmatched_source_quotes(learning_store):
+    url = "https://docs.python.org/3/library/stdtypes.html"
+    excerpt = "Python tuples are immutable sequences. Their items cannot be replaced after creation."
+    source_chunk = f"Source title: Sequence types\\nSource URL: {url}\\nContent:\\n{excerpt}"
+    source_hash = hashlib.sha256(source_chunk.encode("utf-8")).hexdigest()
+    job = learning.create_job("Python tuple behavior")
+    with db.learning_connection() as conn:
+        conn.execute(
+            """INSERT INTO learning_evidence(
+                   job_id, evidence_type, source_ref, content_hash, note
+               ) VALUES (?, 'web_page', ?, ?, ?)""",
+            (job["id"], url, source_hash, "Captured source snapshot."),
+        )
+        stored = learning._persist_factual_review_claims(
+            conn,
+            job_id=job["id"],
+            topic="Python tuple behavior",
+            source_text=source_chunk,
+            review={
+                "reviewer": "model_assisted_test",
+                "claims": [{
+                    "claim": "Python tuples are immutable sequences.",
+                    "verdict": "supported",
+                    "evidence_urls": [url],
+                    "evidence_quotes": [{
+                        "url": url,
+                        "quote": "This fabricated quote does not occur in the source snapshot.",
+                    }],
+                }],
+            },
+        )
+        evidence_count = conn.execute("SELECT COUNT(*) FROM factual_evidence").fetchone()[0]
+        claim = conn.execute(
+            "SELECT evidence_level, lifecycle_status FROM factual_knowledge"
+        ).fetchone()
+    assert stored == 1
+    assert evidence_count == 0
+    assert tuple(claim) == ("L0_raw", "unverified")
