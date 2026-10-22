@@ -3,14 +3,14 @@ import ipaddress
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
-from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
+from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from .task_runtime import TaskRuntime
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
@@ -280,6 +280,12 @@ class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
 
+class LearningEscalationResolveRequest(BaseModel):
+    status: Literal["reviewed", "dismissed"]
+    review_note: str = Field(default="", max_length=2000)
+
+    model_config = ConfigDict(extra="forbid")
+
 class AssessmentSubmission(BaseModel):
     answers: list[str] = Field(min_length=1, max_length=3)
 
@@ -478,6 +484,35 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 @app.get("/api/learning/jobs")
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
+
+
+@app.get("/api/learning/escalations")
+def learning_escalations(
+    status: Literal["pending", "reviewed", "dismissed"] = "pending",
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    try:
+        items = list_learning_escalations(status=status, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"escalations": items, "count": len(items), "status": status}
+
+
+@app.patch("/api/learning/escalations/{escalation_id}")
+def update_learning_escalation(
+    escalation_id: int,
+    request: LearningEscalationResolveRequest,
+) -> dict[str, Any]:
+    try:
+        item = resolve_learning_escalation(
+            escalation_id, request.status, request.review_note
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Learning escalation not found.") from exc
+    except ValueError as exc:
+        status_code = 409 if "already been resolved" in str(exc) else 422
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return {"escalation": item}
 
 # Backward-compatible status endpoints used by older local UI clients.
 @app.get("/learning/status", include_in_schema=False)
