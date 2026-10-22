@@ -848,6 +848,29 @@ LEARNING_MIGRATIONS = (
             )""",
             "CREATE INDEX idx_factual_manual_reviews_claim_created ON factual_knowledge_manual_reviews(knowledge_id, created_at DESC, id DESC)",
         ),
+    ),
+    Migration(
+        22,
+        "factual-source-revalidation-history",
+        (
+            """CREATE TABLE factual_source_checks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
+                source_ref TEXT NOT NULL CHECK(length(trim(source_ref)) BETWEEN 1 AND 2048),
+                outcome TEXT NOT NULL
+                    CHECK(outcome IN ('baseline','unchanged','changed','excerpt_missing','unavailable','blocked')),
+                previous_content_sha256 TEXT
+                    CHECK(previous_content_sha256 IS NULL OR length(previous_content_sha256) = 64),
+                current_content_sha256 TEXT
+                    CHECK(current_content_sha256 IS NULL OR length(current_content_sha256) = 64),
+                evidence_excerpt_sha256 TEXT
+                    CHECK(evidence_excerpt_sha256 IS NULL OR length(evidence_excerpt_sha256) = 64),
+                error_kind TEXT NOT NULL DEFAULT '',
+                checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_factual_source_checks_claim_created ON factual_source_checks(knowledge_id, checked_at DESC, id DESC)",
+            "CREATE INDEX idx_factual_source_checks_source_created ON factual_source_checks(source_ref, checked_at DESC, id DESC)",
+        ),
     )
 )
 
