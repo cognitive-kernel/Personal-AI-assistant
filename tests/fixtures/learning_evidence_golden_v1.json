@@ -5,14 +5,14 @@
     {
       "id": "two-cited-hosts-with-supported-claim",
       "expected_accepted": true,
-      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com.attacker.example/sql/",
+      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com/en-us/sql/",
       "sources": [
         {
           "url": "https://docs.python.org/3/tutorial/index.html",
           "content": "This source excerpt contains enough characters for evidence."
         },
         {
-          "url": "https://learn.microsoft.com.attacker.example/sql/",
+          "url": "https://learn.microsoft.com/en-us/sql/",
           "content": "This second source excerpt contains enough characters for evidence."
         }
       ],
@@ -25,7 +25,7 @@
             "verdict": "supported",
             "evidence_urls": [
               "https://docs.python.org/3/tutorial/index.html",
-              "https://learn.microsoft.com.attacker.example/sql/"
+              "https://learn.microsoft.com/en-us/sql/"
             ],
             "reason": "Both excerpts are explicitly mapped."
           }
@@ -43,7 +43,7 @@
           "content": "This source excerpt contains enough characters for evidence."
         },
         {
-          "url": "https://learn.microsoft.com.attacker.example/sql/",
+          "url": "https://learn.microsoft.com/en-us/sql/",
           "content": "This second source excerpt contains enough characters for evidence."
         }
       ],
@@ -56,7 +56,7 @@
             "verdict": "supported",
             "evidence_urls": [
               "https://docs.python.org/3/tutorial/index.html",
-              "https://learn.microsoft.com.attacker.example/sql/"
+              "https://learn.microsoft.com/en-us/sql/"
             ],
             "reason": "Both excerpts are explicitly mapped."
           }
@@ -67,14 +67,14 @@
     {
       "id": "reported-source-conflict",
       "expected_accepted": false,
-      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com.attacker.example/sql/",
+      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com/en-us/sql/",
       "sources": [
         {
           "url": "https://docs.python.org/3/tutorial/index.html",
           "content": "This source excerpt contains enough characters for evidence."
         },
         {
-          "url": "https://learn.microsoft.com.attacker.example/sql/",
+          "url": "https://learn.microsoft.com/en-us/sql/",
           "content": "This second source excerpt contains enough characters for evidence."
         }
       ],
@@ -87,7 +87,7 @@
             "verdict": "supported",
             "evidence_urls": [
               "https://docs.python.org/3/tutorial/index.html",
-              "https://learn.microsoft.com.attacker.example/sql/"
+              "https://learn.microsoft.com/en-us/sql/"
             ],
             "reason": "Both excerpts are explicitly mapped."
           }
@@ -102,14 +102,14 @@
     {
       "id": "unsupported-claim",
       "expected_accepted": false,
-      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com.attacker.example/sql/",
+      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com/en-us/sql/",
       "sources": [
         {
           "url": "https://docs.python.org/3/tutorial/index.html",
           "content": "This source excerpt contains enough characters for evidence."
         },
         {
-          "url": "https://learn.microsoft.com.attacker.example/sql/",
+          "url": "https://learn.microsoft.com/en-us/sql/",
           "content": "This second source excerpt contains enough characters for evidence."
         }
       ],
@@ -122,7 +122,7 @@
             "verdict": "insufficient_evidence",
             "evidence_urls": [
               "https://docs.python.org/3/tutorial/index.html",
-              "https://learn.microsoft.com.attacker.example/sql/"
+              "https://learn.microsoft.com/en-us/sql/"
             ],
             "reason": "Evidence does not entail this claim."
           }
