@@ -102,8 +102,8 @@ def load_dataset(path: str | Path) -> dict[str, Any]:
 
 def load_observations(path: str | Path) -> dict[str, Any]:
     data = _read_json(path, "observation")
-    if type(data.get("schema_version")) is not int or data["schema_version"] != DATASET_SCHEMA_VERSION:
-        raise EvaluationDataError(f"observation schema_version must be {DATASET_SCHEMA_VERSION}")
+    if type(data.get("schema_version")) is not int or data["schema_version"] != OBSERVATION_SCHEMA_VERSION:
+        raise EvaluationDataError(f"observation schema_version must be {OBSERVATION_SCHEMA_VERSION}")
     metadata = data.get("run_metadata")
     if not isinstance(metadata, dict):
         raise EvaluationDataError("run_metadata is required")
