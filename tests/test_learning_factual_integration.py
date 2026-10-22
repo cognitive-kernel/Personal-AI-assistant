@@ -340,9 +340,10 @@ def test_run_job_passes_verified_context_as_data_not_instructions(
 def test_user_source_is_bounded_for_model_context_but_preserved_in_storage(
     learning_store, monkeypatch
 ):
-    source_text = ("Reference paragraph about safe SQL query design. " * 250)
-    db.update_settings({"learning_source_max_chars": 1000})
+    source_text = ("Reference paragraph about safe SQL query design. " * 150)
     job = learning.create_job("General technical topic", source_text=source_text)
+    # Simulate a settings change after the job was submitted but before a worker claims it.
+    db.update_settings({"learning_source_max_chars": 1000})
     captured = {}
 
     monkeypatch.setattr(learning, "_verified_factual_context_for_topic", lambda _topic: [])
