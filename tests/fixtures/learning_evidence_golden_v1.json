@@ -1,0 +1,165 @@
+{
+  "schema_version": 1,
+  "description": "Versioned deterministic acceptance cases for the lesson evidence gate. Passing means policy compliance, not scientific proof.",
+  "cases": [
+    {
+      "id": "two-cited-hosts-with-supported-claim",
+      "expected_accepted": true,
+      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com/en-us/sql/",
+      "sources": [
+        {
+          "url": "https://docs.python.org/3/tutorial/index.html",
+          "content": "This source excerpt contains enough characters for evidence."
+        },
+        {
+          "url": "https://learn.microsoft.com/en-us/sql/",
+          "content": "This second source excerpt contains enough characters for evidence."
+        }
+      ],
+      "claim_review": {
+        "passed": true,
+        "overall": "supported",
+        "claims": [
+          {
+            "claim": "A factual claim",
+            "verdict": "supported",
+            "evidence_urls": [
+              "https://docs.python.org/3/tutorial/index.html",
+              "https://learn.microsoft.com/en-us/sql/"
+            ],
+            "reason": "Both excerpts are explicitly mapped."
+          }
+        ],
+        "source_conflicts": []
+      }
+    },
+    {
+      "id": "missing-exact-citations",
+      "expected_accepted": false,
+      "lesson": "Lesson with no exact URLs.",
+      "sources": [
+        {
+          "url": "https://docs.python.org/3/tutorial/index.html",
+          "content": "This source excerpt contains enough characters for evidence."
+        },
+        {
+          "url": "https://learn.microsoft.com/en-us/sql/",
+          "content": "This second source excerpt contains enough characters for evidence."
+        }
+      ],
+      "claim_review": {
+        "passed": true,
+        "overall": "supported",
+        "claims": [
+          {
+            "claim": "A factual claim",
+            "verdict": "supported",
+            "evidence_urls": [
+              "https://docs.python.org/3/tutorial/index.html",
+              "https://learn.microsoft.com/en-us/sql/"
+            ],
+            "reason": "Both excerpts are explicitly mapped."
+          }
+        ],
+        "source_conflicts": []
+      }
+    },
+    {
+      "id": "reported-source-conflict",
+      "expected_accepted": false,
+      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com/en-us/sql/",
+      "sources": [
+        {
+          "url": "https://docs.python.org/3/tutorial/index.html",
+          "content": "This source excerpt contains enough characters for evidence."
+        },
+        {
+          "url": "https://learn.microsoft.com/en-us/sql/",
+          "content": "This second source excerpt contains enough characters for evidence."
+        }
+      ],
+      "claim_review": {
+        "passed": true,
+        "overall": "supported",
+        "claims": [
+          {
+            "claim": "A factual claim",
+            "verdict": "supported",
+            "evidence_urls": [
+              "https://docs.python.org/3/tutorial/index.html",
+              "https://learn.microsoft.com/en-us/sql/"
+            ],
+            "reason": "Both excerpts are explicitly mapped."
+          }
+        ],
+        "source_conflicts": [
+          {
+            "topic": "A factual claim"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unsupported-claim",
+      "expected_accepted": false,
+      "lesson": "Lesson. Sources: https://docs.python.org/3/tutorial/index.html https://learn.microsoft.com/en-us/sql/",
+      "sources": [
+        {
+          "url": "https://docs.python.org/3/tutorial/index.html",
+          "content": "This source excerpt contains enough characters for evidence."
+        },
+        {
+          "url": "https://learn.microsoft.com/en-us/sql/",
+          "content": "This second source excerpt contains enough characters for evidence."
+        }
+      ],
+      "claim_review": {
+        "passed": true,
+        "overall": "supported",
+        "claims": [
+          {
+            "claim": "A factual claim",
+            "verdict": "insufficient_evidence",
+            "evidence_urls": [
+              "https://docs.python.org/3/tutorial/index.html",
+              "https://learn.microsoft.com/en-us/sql/"
+            ],
+            "reason": "Evidence does not entail this claim."
+          }
+        ],
+        "source_conflicts": []
+      }
+    },
+    {
+      "id": "untrusted-host-cannot-satisfy-primary-source-gate",
+      "expected_accepted": false,
+      "lesson": "Lesson. Sources: https://docs.python.org.attacker.example/a https://learn.microsoft.com/en-us/sql/",
+      "sources": [
+        {
+          "url": "https://docs.python.org.attacker.example/a",
+          "content": "This source excerpt contains enough characters for evidence."
+        },
+        {
+          "url": "https://learn.microsoft.com/en-us/sql/",
+          "content": "This second source excerpt contains enough characters for evidence."
+        }
+      ],
+      "claim_review": {
+        "passed": true,
+        "overall": "supported",
+        "claims": [
+          {
+            "claim": "A factual claim",
+            "verdict": "supported",
+            "evidence_urls": [
+              "https://docs.python.org.attacker.example/a",
+              "https://learn.microsoft.com/en-us/sql/"
+            ],
+            "reason": "The first host is an untrusted lookalike."
+          }
+        ],
+        "source_conflicts": []
+      }
+    }
+  ]
+}
