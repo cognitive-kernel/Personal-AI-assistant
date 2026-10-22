@@ -141,6 +141,61 @@ def list_factual_source_review_queue(
         raise HTTPException(status_code=503, detail="Factual source review queue is unavailable.") from exc
 
 
+@router.get("/test-queue")
+def list_factual_test_queue(
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List sourced, active Python L1 claims that may be manually submitted for testing."""
+    try:
+        with learning_connection() as connection:
+            rows = connection.execute(
+                """SELECT k.id, k.claim, k.domain_name, k.environment_name,
+                          k.environment_version, k.evidence_level, k.lifecycle_status,
+                          k.risk_level, k.updated_at
+                   FROM factual_knowledge AS k
+                   WHERE k.domain_name='python'
+                     AND k.environment_name='python'
+                     AND k.evidence_level='L1_sourced'
+                     AND k.lifecycle_status='active'
+                     AND k.risk_level NOT IN ('high','critical')
+                     AND EXISTS (
+                         SELECT 1 FROM factual_evidence AS e
+                         WHERE e.knowledge_id=k.id
+                           AND e.source_type IN ('official_docs','source_code')
+                           AND e.source_ref LIKE 'https://%'
+                           AND length(trim(e.source_hash)) > 0
+                     )
+                     AND NOT EXISTS (
+                         SELECT 1 FROM factual_tests AS t
+                         WHERE t.knowledge_id=k.id
+                           AND t.outcome='passed'
+                           AND t.environment_name=k.environment_name
+                           AND t.environment_version=k.environment_version
+                     )
+                   ORDER BY k.updated_at DESC, k.id DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                evidence = connection.execute(
+                    """SELECT source_type, source_ref, source_hash, excerpt
+                       FROM factual_evidence
+                       WHERE knowledge_id=?
+                         AND source_type IN ('official_docs','source_code')
+                         AND source_ref LIKE 'https://%'
+                         AND length(trim(source_hash)) > 0
+                       ORDER BY id""",
+                    (item["id"],),
+                ).fetchall()
+                item["evidence"] = [dict(source) for source in evidence]
+                items.append(item)
+        return {"items": items, "count": len(items), "limit": limit}
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual test queue is unavailable.") from exc
+
+
 @router.post("/{knowledge_id}/approve-source")
 def approve_factual_source(
     knowledge_id: int,
