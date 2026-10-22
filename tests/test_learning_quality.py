@@ -66,3 +66,32 @@ def test_sql_server_curriculum_has_curated_reference_links():
     assert refs["W3Schools — SQL Tutorial"] == "https://www.w3schools.com/sql/default.asp"
     assert refs["Microsoft Learn — SQL Server"] == "https://learn.microsoft.com/en-us/sql/sql-server/"
     assert len(course["topics"]) == 19
+
+
+def test_rejects_missing_or_malformed_learning_outcomes():
+    lesson = (
+        "در SQL Server، پرس‌وجوی SELECT داده‌ها را می‌خواند و WHERE ردیف‌ها را فیلتر می‌کند. "
+        "برای مثال، یک شرط WHERE روی CustomerId می‌تواند تعداد ردیف‌های بازگردانده‌شده را کم کند. "
+        "این کار به این دلیل رخ می‌دهد که موتور فقط ردیف‌های منطبق با شرط را در نتیجه قرار می‌دهد. "
+    ) * 4
+    questions = [
+        "SELECT چه کاری انجام می‌دهد؟",
+        "WHERE چگونه نتیجه را تغییر می‌دهد؟",
+        "چرا باید شرط را آزمایش کرد؟",
+    ]
+    answers = [
+        "SELECT ستون‌ها و داده‌های درخواستی را برمی‌گرداند.",
+        "WHERE ردیف‌هایی را نگه می‌دارد که شرط را برآورده می‌کنند.",
+        "برای اطمینان از درستی منطق و نتیجهٔ پرس‌وجو باید آن را آزمایش کرد.",
+    ]
+
+    missing = evaluate_learning_value(lesson, questions, answers, ["هدف اول"])
+    malformed = evaluate_learning_value(lesson, questions, answers, "اهداف اول دوم سوم")
+    valid = evaluate_learning_value(
+        lesson, questions, answers,
+        ["توضیح نقش SELECT در خواندن داده", "شرح اثر WHERE بر ردیف‌ها", "بررسی نتیجهٔ شرط با نمونه"],
+    )
+
+    assert missing["accepted"] is False
+    assert malformed["accepted"] is False
+    assert valid["accepted"] is True
