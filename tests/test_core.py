@@ -533,7 +533,7 @@ def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
         "ollama_num_thread": 0,
         "ollama_timeout_seconds": 120,
         "cpu_resource_limit_percent": 50,
-        "ram_budget_max_gb": 5,
+        "ram_budget_max_gb": 9,
         "ram_safety_reserve_gb": 4,
     })
     monkeypatch.setattr(ollama, "detect_hardware", lambda: {
