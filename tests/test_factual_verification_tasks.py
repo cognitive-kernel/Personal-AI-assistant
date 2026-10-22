@@ -350,3 +350,42 @@ def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
         dedupe_key="test-queue-active-task",
     )
     assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 0
+
+
+def test_factual_test_history_exposes_bounded_results_and_current_claim_state(learning_store):
+    knowledge_id = _active_sourced_python_claim()
+    with db.learning_connection() as connection:
+        factual_knowledge.record_test(
+            connection,
+            knowledge_id,
+            test_kind="integration",
+            test_name="assert false condition",
+            environment_version="3.12.3",
+            outcome="claim_failed",
+            result_summary="The assertion behavior did not match the expected oracle.",
+            command_hash="c" * 64,
+            log_hash="d" * 64,
+        )
+        factual_knowledge.record_test(
+            connection,
+            knowledge_id,
+            test_kind="integration",
+            test_name="assert false condition retry",
+            environment_version="3.12.3",
+            outcome="passed",
+            result_summary="The reviewed assertion test passed.",
+            command_hash="e" * 64,
+            log_hash="f" * 64,
+        )
+
+    result = factual_verification_routes.list_factual_test_history(limit=1)
+    assert result["count"] == 1
+    item = result["items"][0]
+    assert item["knowledge_id"] == knowledge_id
+    assert item["claim"] == "A Python assertion raises an error when its condition is false."
+    assert item["outcome"] == "passed"
+    assert item["evidence_level"] == "L1_sourced"
+    assert item["lifecycle_status"] == "active"
+    assert item["test_environment_version"] == item["current_environment_version"] == "3.12.3"
+    assert item["command_hash"] == "e" * 64
+    assert item["log_hash"] == "f" * 64
