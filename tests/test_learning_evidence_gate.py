@@ -16,6 +16,7 @@ def _review(urls):
             "claim": "A factual claim",
             "verdict": "supported",
             "evidence_urls": urls,
+            "evidence_quotes": [{"url": urls[0], "quote": "This source excerpt contains enough characters for evidence."}],
             "reason": "Directly supported by excerpts",
         }],
         "source_conflicts": [],
