@@ -10,13 +10,15 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 DECISIONS = {"accept", "reject"}
-DATASET_SCHEMA_VERSION = 1
+DATASET_SCHEMA_VERSION = 2
+OBSERVATION_SCHEMA_VERSION = 1
 
 
 class EvaluationDataError(ValueError):
@@ -70,10 +72,23 @@ def load_dataset(path: str | Path) -> dict[str, Any]:
             _non_empty_string(case.get(field), f"{prefix}.{field}")
         if case["expected_decision"] not in DECISIONS:
             raise EvaluationDataError(f"{prefix}.expected_decision must be accept or reject")
-        if not isinstance(case.get("source_refs"), list) or any(
-            not isinstance(ref, str) or not ref.strip() for ref in case["source_refs"]
+        source_refs = case.get("source_refs")
+        if not isinstance(source_refs, list) or any(
+            not isinstance(ref, str) or not ref.strip() for ref in source_refs
         ):
             raise EvaluationDataError(f"{prefix}.source_refs must be a list of non-empty strings")
+        if len(set(source_refs)) != len(source_refs):
+            raise EvaluationDataError(f"{prefix}.source_refs must not contain duplicates")
+        source_hashes = case.get("source_hashes")
+        if not isinstance(source_hashes, dict):
+            raise EvaluationDataError(f"{prefix}.source_hashes must map each source reference to a SHA-256 hash")
+        if set(source_hashes) != set(source_refs):
+            raise EvaluationDataError(f"{prefix}.source_hashes keys must exactly match source_refs")
+        for source_ref, digest in source_hashes.items():
+            if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+                raise EvaluationDataError(
+                    f"{prefix}.source_hashes[{source_ref!r}] must be a lowercase 64-character SHA-256 hex digest"
+                )
         adjudication = case.get("adjudication")
         if not isinstance(adjudication, dict):
             raise EvaluationDataError(f"{prefix}.adjudication is required")
