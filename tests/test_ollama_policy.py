@@ -379,3 +379,48 @@ def test_ollama_error_exposes_retryability_without_changing_exception_type():
     assert isinstance(retryable, RuntimeError)
     assert retryable.retryable is True
     assert permanent.retryable is False
+
+@pytest.mark.parametrize(
+    ("status_code", "retryable"),
+    [
+        (400, False),
+        (401, False),
+        (404, False),
+        (408, True),
+        (425, True),
+        (429, True),
+        (500, True),
+        (502, True),
+        (503, True),
+        (504, True),
+    ],
+)
+def test_ollama_http_status_classifies_retryability(
+    tmp_path, monkeypatch, status_code, retryable
+):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class StatusHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(status_code)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, format, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), StatusHandler) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            configure_ollama_url(
+                tmp_path, monkeypatch, f"http://127.0.0.1:{server.server_port}"
+            )
+            with pytest.raises(ollama.OllamaError, match=f"HTTP {status_code}") as raised:
+                ollama._request("/api/tags", timeout=2)
+            assert raised.value.retryable is retryable
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+
