@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 
@@ -49,7 +50,7 @@ def _active_sourced_python_claim(version="3.12.3"):
     return knowledge_id
 
 
-def _sandbox_result(status="succeeded", exit_code=0, version="3.12.3"):
+def _sandbox_result(status="succeeded", exit_code=0, version="3.12.3", completion_marker="__PAI_TEST_COMPLETED__:test-token"):
     return {
         "execution_status": status,
         "exit_code": exit_code,
@@ -61,6 +62,12 @@ def _sandbox_result(status="succeeded", exit_code=0, version="3.12.3"):
     }
 
 
+def _completion_marker(wrapper_source):
+    match = re.search(r"__PAI_TEST_COMPLETED__:[0-9a-f]{32}", wrapper_source)
+    assert match is not None
+    return match.group(0)
+
+
 def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, monkeypatch):
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
@@ -68,7 +75,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
 
     def sandbox_handler(payload, checkpoint, context):
         captured["payload"] = payload
-        return _sandbox_result()
+        return _sandbox_result(completion_marker=_completion_marker(payload["source_code"]))
 
     handler = factual_verification_tasks._build_handler(sandbox_handler)
     result = handler({
@@ -111,7 +118,7 @@ def test_sandbox_version_mismatch_records_environment_failure_without_promotion(
     knowledge_id = _active_sourced_python_claim(version="3.12.3")
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
     handler = factual_verification_tasks._build_handler(
-        lambda *_args: _sandbox_result(version="3.13.0")
+        lambda payload, *_args: _sandbox_result(version="3.13.0", completion_marker=_completion_marker(payload["source_code"]))
     )
     result = handler({
         "knowledge_id": knowledge_id,
@@ -140,7 +147,7 @@ def test_failed_assertion_is_inconclusive_not_automatic_claim_failure(learning_s
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
     handler = factual_verification_tasks._build_handler(
-        lambda *_args: _sandbox_result(status="failed", exit_code=1)
+        lambda payload, *_args: _sandbox_result(status="failed", exit_code=1, completion_marker=_completion_marker(payload["source_code"]))
     )
     result = handler({
         "knowledge_id": knowledge_id,
@@ -229,10 +236,10 @@ def test_claim_change_during_execution_prevents_promotion(learning_store, monkey
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
 
-    def sandbox_handler(*_args):
+    def sandbox_handler(payload, *_args):
         with db.learning_connection() as connection:
             factual_knowledge.transition_lifecycle(connection, knowledge_id, "needs_review")
-        return _sandbox_result()
+        return _sandbox_result(completion_marker=_completion_marker(payload["source_code"]))
 
     handler = factual_verification_tasks._build_handler(sandbox_handler)
     result = handler({
@@ -268,3 +275,29 @@ def test_route_rejects_missing_independent_oracle_attestation():
     with pytest.raises(HTTPException) as raised:
         factual_verification_routes.queue_factual_claim_test(1, request)
     assert raised.value.status_code == 422
+
+
+
+def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    handler = factual_verification_tasks._build_handler(
+        lambda *_args: _sandbox_result(completion_marker="__PAI_TEST_COMPLETED__:not-the-run-marker")
+    )
+    result = handler({
+        "knowledge_id": knowledge_id,
+        "test_name": "assert semantics",
+        "source_code": "assert True",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+        "oracle_reviewed": True,
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+    }, None, FakeContext())
+
+    assert result["outcome"] == "inconclusive"
+    assert result["evidence_level_promoted"] is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
