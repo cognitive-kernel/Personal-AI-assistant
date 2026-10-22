@@ -122,7 +122,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         ).lastrowid
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 18
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 19
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 18
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
