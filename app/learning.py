@@ -449,7 +449,7 @@ def run_job(job_id: int) -> None:
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
-        raw_outcomes = result.get("learning_outcomes", result["questions"])
+        raw_outcomes = result.get("learning_outcomes")
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
         assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"], assessment["learning_outcomes"])
@@ -503,7 +503,7 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("questions"), list)
                 and isinstance(retry_result.get("answer_key"), list)
             ):
-                retry_raw_outcomes = retry_result.get("learning_outcomes", retry_result["questions"])
+                retry_raw_outcomes = retry_result.get("learning_outcomes")
                 retry_outcomes = retry_raw_outcomes[:3] if isinstance(retry_raw_outcomes, list) else retry_raw_outcomes
                 retry_assessment = {
                     "learning_outcomes": retry_outcomes,
