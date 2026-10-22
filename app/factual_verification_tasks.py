@@ -15,14 +15,14 @@ FACTUAL_VERIFY_TASK_TYPE = "factual.verify_claim"
 _ALLOWED_PAYLOAD_KEYS = {
     "knowledge_id", "test_name", "source_code", "timeout_seconds", "max_output_bytes",
 }
-_RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\\d+\\.\\d+\\.\\d+)$")
+_RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
 
 
 def validate_test_harness(source_code: str) -> None:
     """Accept bounded Python assertions only as an explicitly submitted test harness."""
     if not isinstance(source_code, str) or not source_code.strip():
         raise ValueError("source_code must be non-empty text.")
-    if "\\x00" in source_code or len(source_code.encode("utf-8")) > 64 * 1024:
+    if "\x00" in source_code or len(source_code.encode("utf-8")) > 64 * 1024:
         raise ValueError("source_code exceeds the 64 KiB limit or contains NUL characters.")
     try:
         tree = ast.parse(source_code)
@@ -75,7 +75,7 @@ def _runtime_version(stdout: str) -> tuple[str | None, str]:
     match = _RUNTIME_MARKER.fullmatch(lines[0].strip())
     if match is None:
         return None, stdout[:2000]
-    return match.group(1), "\\n".join(lines[1:])[:2000]
+    return match.group(1), "\n".join(lines[1:])[:2000]
 
 
 def _build_handler(
@@ -130,7 +130,7 @@ def _build_handler(
         runtime_version, _bounded_stdout = _runtime_version(stdout)
         execution_status = str(result.get("execution_status", "unknown"))
         exit_code = result.get("exit_code")
-        log_hash = hashlib.sha256((stdout + "\\n" + stderr).encode("utf-8")).hexdigest()
+        log_hash = hashlib.sha256((stdout + "\n" + stderr).encode("utf-8")).hexdigest()
         outcome = "inconclusive"
         if runtime_version is None or execution_status == "unavailable":
             outcome = "environment_failure"
