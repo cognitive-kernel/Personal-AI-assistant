@@ -310,7 +310,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
             (old_id,),
         ).fetchall()
         assert legacy_revision == [(1, "Existing claim before revision migration")]
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 21
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 22
         revisions = list_claim_revisions(conn, old_id)
         assert len(revisions) == 1
         assert revisions[0]["revision_number"] == 1
