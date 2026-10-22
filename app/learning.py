@@ -23,7 +23,9 @@ class LearningError(RuntimeError):
 def maintain_factual_knowledge() -> int:
     """Scheduled maintenance: quarantine claims whose re-verification deadline elapsed."""
     with learning_connection() as connection:
-        return factual_knowledge.mark_due_claims_for_review(connection, limit=100)
+        source_checks = factual_knowledge.reverify_due_sources(connection, limit=2, extension_days=30)
+        deadline_reviews = factual_knowledge.mark_due_claims_for_review(connection, limit=100)
+        return source_checks + deadline_reviews
 
 
 
