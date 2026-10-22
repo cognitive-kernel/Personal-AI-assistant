@@ -49,6 +49,20 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     tmp_path, monkeypatch, passed
 ):
     _setup(tmp_path, monkeypatch)
+    db.update_settings({
+        "cpu_resource_limit_percent": 55,
+        "ram_budget_max_gb": 6,
+        "ram_safety_reserve_gb": 5,
+    })
+    runtime_settings = {}
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 24,
+    })
+    monkeypatch.setattr(
+        learning,
+        "runtime_limits",
+        lambda settings, hardware: runtime_settings.update(settings) or {"num_ctx": 2048, "cpu_threads": 2},
+    )
     url = "https://docs.example.org/sql-guide"
     source_text = (
         f"Source title: SQL Guide\nSource URL: {url}\nContent:\n"
@@ -109,6 +123,9 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
     learning.run_job(job["id"])
     finished = learning.get_job(job["id"])
     assert finished["status"] == "completed"
+    assert runtime_settings["cpu_resource_limit_percent"] == 55
+    assert runtime_settings["ram_budget_max_gb"] == 6
+    assert runtime_settings["ram_safety_reserve_gb"] == 5
     assert finished["quality"]["accepted"] is True
     assert finished["quality"]["claim_review_status"] == (
         "passed_model_assisted" if passed else "needs_review"
@@ -203,3 +220,37 @@ def test_factual_domain_detection_keeps_explicit_version_scope(topic, environmen
     assert detected[:2] == (environment_name, environment_version)
     assert detected[2] == "explicit_topic_version"
 
+
+
+def test_claim_review_uses_configured_cpu_and_ram_limits(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    db.update_settings({
+        "cpu_resource_limit_percent": 60,
+        "ram_budget_max_gb": 7,
+        "ram_safety_reserve_gb": 6,
+    })
+    runtime_settings = {}
+    monkeypatch.setattr(claim_review, "detect_hardware", lambda: {
+        "logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 20,
+    })
+    monkeypatch.setattr(
+        claim_review,
+        "runtime_limits",
+        lambda settings, hardware: runtime_settings.update(settings) or {"num_ctx": 2048, "cpu_threads": 3},
+    )
+    monkeypatch.setattr(
+        claim_review,
+        "_request",
+        lambda *_args, **_kwargs: {"message": {"content": "{}"}},
+    )
+
+    result = claim_review.review_answer_claims(
+        "SQL Server question",
+        "A factual answer with enough text to trigger claim review.",
+        [{"url": "https://docs.example.org/guide", "content": "A source excerpt long enough to pass the source filter. " * 2}],
+    )
+
+    assert result["passed"] is False
+    assert runtime_settings["cpu_resource_limit_percent"] == 60
+    assert runtime_settings["ram_budget_max_gb"] == 7
+    assert runtime_settings["ram_safety_reserve_gb"] == 6
