@@ -172,6 +172,12 @@ def list_factual_test_queue(
                            AND t.environment_name=k.environment_name
                            AND t.environment_version=k.environment_version
                      )
+                     AND NOT EXISTS (
+                         SELECT 1 FROM task_queue AS q
+                         WHERE q.task_type='factual.verify_claim'
+                           AND json_extract(q.payload_json, '$.knowledge_id')=k.id
+                           AND q.status IN ('queued','running','pause_requested','cancel_requested')
+                     )
                    ORDER BY k.updated_at DESC, k.id DESC
                    LIMIT ?""",
                 (limit,),
