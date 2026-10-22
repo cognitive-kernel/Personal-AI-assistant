@@ -134,3 +134,66 @@ def test_source_review_is_not_repeatable_after_promotion(review_store):
     with pytest.raises(HTTPException) as raised:
         factual_verification_routes.approve_factual_source(knowledge_id, request)
     assert raised.value.status_code == 409
+
+
+def test_explicit_source_rejection_quarantines_without_claiming_false(review_store):
+    knowledge_id = _claim_with_source()
+    request = factual_verification_routes.FactualSourceReviewRequest(
+        confirm=True,
+        source_supports_claim=False,
+        review_note="The excerpt does not establish the exact claim and needs a better source.",
+    )
+    result = factual_verification_routes.reject_factual_source(knowledge_id, request)
+    assert result["evidence_level"] == "L0_raw"
+    assert result["lifecycle_status"] == "needs_review"
+    assert "does not establish that the claim is false" in result["message"]
+
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level, lifecycle_status FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        audit = connection.execute(
+            """SELECT action, evidence_level_before, evidence_level_after,
+                      lifecycle_before, lifecycle_after, source_hashes_json, review_note
+               FROM factual_knowledge_manual_reviews WHERE knowledge_id=?""",
+            (knowledge_id,),
+        ).fetchone()
+    assert tuple(claim) == ("L0_raw", "needs_review")
+    assert audit["action"] == "source_rejected"
+    assert audit["evidence_level_before"] == audit["evidence_level_after"] == "L0_raw"
+    assert audit["lifecycle_before"] == "unverified"
+    assert audit["lifecycle_after"] == "needs_review"
+    assert audit["source_hashes_json"] == '["' + "a" * 64 + '"]'
+    assert "does not establish" in audit["review_note"]
+
+
+def test_source_rejection_requires_explicit_confirmation_and_note(review_store):
+    knowledge_id = _claim_with_source()
+    request = factual_verification_routes.FactualSourceReviewRequest(
+        confirm=False,
+        source_supports_claim=False,
+        review_note="The source is insufficient to support this claim.",
+    )
+    with pytest.raises(HTTPException) as raised:
+        factual_verification_routes.reject_factual_source(knowledge_id, request)
+    assert raised.value.status_code == 422
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level, lifecycle_status FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+    assert tuple(claim) == ("L0_raw", "unverified")
+
+
+def test_source_rejection_cannot_repeat_after_quarantine(review_store):
+    knowledge_id = _claim_with_source()
+    request = factual_verification_routes.FactualSourceReviewRequest(
+        confirm=True,
+        source_supports_claim=False,
+        review_note="The source does not support this exact claim sufficiently.",
+    )
+    factual_verification_routes.reject_factual_source(knowledge_id, request)
+    with pytest.raises(HTTPException) as raised:
+        factual_verification_routes.reject_factual_source(knowledge_id, request)
+    assert raised.value.status_code == 409
