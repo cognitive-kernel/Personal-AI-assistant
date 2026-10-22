@@ -208,3 +208,69 @@ def test_cancel_learning_task_is_safe_when_no_queue_task_exists(learning_task_st
     job = learning.create_job("No queue task yet")
 
     assert cancel_learning_task(job["id"]) is None
+
+
+def test_worker_recovers_when_lesson_commit_precedes_task_completion(
+    learning_task_store, monkeypatch
+):
+    """A crash in the lesson/task dual-write window must not generate a duplicate lesson."""
+    from app.task_worker import TaskWorker
+
+    job = learning.create_job("Crash window recovery")
+    task = enqueue_learning_task(job["id"])
+    generation_calls = []
+
+    def persist_completed_lesson(job_id):
+        generation_calls.append(job_id)
+        with db.learning_connection() as conn:
+            conn.execute(
+                """UPDATE learning_jobs
+                   SET status='completed', lesson='persisted lesson',
+                       assessment_json='{"questions":[],"answer_key":[],"learning_outcomes":[]}',
+                       quality_json='{"accepted":true,"score":90}',
+                       error=NULL, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (job_id,),
+            )
+
+    monkeypatch.setattr(learning, "run_job", persist_completed_lesson)
+    original_complete = task_manager.complete_task
+    complete_calls = {"count": 0}
+
+    def fail_once_after_domain_commit(task_id, worker_id, result):
+        complete_calls["count"] += 1
+        if complete_calls["count"] == 1:
+            raise RetryableTaskError("injected crash after lesson commit")
+        return original_complete(task_id, worker_id, result)
+
+    monkeypatch.setattr(task_manager, "complete_task", fail_once_after_domain_commit)
+    worker = TaskWorker(
+        "learning-recovery-worker",
+        {LEARNING_TASK_TYPE: handle_learning_job},
+        lease_seconds=30,
+    )
+
+    assert worker.run_once() is True
+    after_interruption = task_manager.get_task(task["id"])
+    assert after_interruption["status"] == "queued"
+    assert learning.get_job(job["id"])["status"] == "completed"
+    assert learning.get_job(job["id"])["lesson"] == "persisted lesson"
+    assert generation_calls == [job["id"]]
+
+    # Make the bounded retry immediately eligible without sleeping in the test.
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET scheduled_at='2000-01-01T00:00:00.000000+00:00' WHERE id=?",
+            (task["id"],),
+        )
+
+    assert worker.run_once() is True
+    recovered = task_manager.get_task(task["id"])
+    assert recovered["status"] == "succeeded"
+    assert recovered["result"] == {
+        "job_id": job["id"],
+        "learning_status": "completed",
+        "already_terminal": True,
+    }
+    assert generation_calls == [job["id"]]
+    assert learning.get_job(job["id"])["lesson"] == "persisted lesson"
