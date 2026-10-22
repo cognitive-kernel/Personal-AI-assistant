@@ -279,7 +279,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-5]).apply(conn) == 16
+        assert MigrationRunner(tuple(m for m in LEARNING_MIGRATIONS if m.version <= 16)).apply(conn) == 16
         old_id = conn.execute(
             """INSERT INTO factual_knowledge(
                    claim, normalized_claim, claim_hash, scope_json,
@@ -303,7 +303,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
             ),
         ).lastrowid
         conn.commit()
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-4]).apply(conn) == 17
+        assert MigrationRunner(tuple(m for m in LEARNING_MIGRATIONS if m.version <= 17)).apply(conn) == 17
         legacy_revision = conn.execute(
             "SELECT revision_number, claim FROM factual_claim_revisions WHERE knowledge_id=?",
             (old_id,),
