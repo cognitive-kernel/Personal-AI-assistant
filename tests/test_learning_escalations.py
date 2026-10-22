@@ -145,25 +145,27 @@ def test_learning_escalation_api_lists_and_resolves_items(
         lambda: {"status": "disabled_for_test"},
     )
 
-    with TestClient(app, client=("127.0.0.1", 12345)) as client:
-        job = learning.create_job("API escalation review")
-        task = task_manager.create_task(
-            LEARNING_TASK_TYPE, {"job_id": job["id"]},
-            max_attempts=2, dedupe_key=f"api-escalation:{job['id']}",
+    db.init_databases()
+    task_manager.initialize_task_store()
+    job = learning.create_job("API escalation review")
+    task = task_manager.create_task(
+        LEARNING_TASK_TYPE, {"job_id": job["id"]},
+        max_attempts=2, dedupe_key=f"api-escalation:{job['id']}",
+    )
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE task_queue SET status='failed', attempts=2 WHERE id=?", (task["id"],))
+        conn.execute("UPDATE learning_jobs SET status='failed' WHERE id=?", (job["id"],))
+        conn.execute(
+            """INSERT INTO learning_escalations(
+                   task_id, job_id, reason, attempts, max_attempts, error_summary
+               ) VALUES (?, ?, 'attempts_exhausted', 2, 2, 'retries exhausted')""",
+            (task["id"], job["id"]),
         )
-        with db.learning_connection() as conn:
-            conn.execute("UPDATE task_queue SET status='failed', attempts=2 WHERE id=?", (task["id"],))
-            conn.execute("UPDATE learning_jobs SET status='failed' WHERE id=?", (job["id"],))
-            conn.execute(
-                """INSERT INTO learning_escalations(
-                       task_id, job_id, reason, attempts, max_attempts, error_summary
-                   ) VALUES (?, ?, 'attempts_exhausted', 2, 2, 'retries exhausted')""",
-                (task["id"], job["id"]),
-            )
-            escalation_id = conn.execute(
-                "SELECT id FROM learning_escalations WHERE task_id=?", (task["id"],)
-            ).fetchone()["id"]
+        escalation_id = conn.execute(
+            "SELECT id FROM learning_escalations WHERE task_id=?", (task["id"],)
+        ).fetchone()["id"]
 
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
         listed = client.get("/api/learning/escalations")
         assert listed.status_code == 200
         assert listed.json()["count"] == 1
