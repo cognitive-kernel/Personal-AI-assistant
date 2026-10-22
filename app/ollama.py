@@ -117,11 +117,16 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
                 _INFERENCE_LOCK.release()
         return perform_request()
     except urllib.error.HTTPError as exc:
-        # A malformed request or missing model will not recover by retrying; rate
-        # limits and server-side failures may recover after bounded queue backoff.
+        # Redirects are deliberately not followed by _NoRedirectHandler. Keep their
+        # message generic and permanent; never expose or fetch the redirect target.
+        # Configuration errors are permanent; transient throttling/server errors retry.
         retryable_statuses = {408, 425, 429, 500, 502, 503, 504}
+        if 300 <= exc.code < 400:
+            message = f"Ollama request failed: HTTP {exc.code}."
+        else:
+            message = f"Ollama returned HTTP {exc.code}."
         raise OllamaError(
-            f"Ollama returned HTTP {exc.code}.",
+            message,
             retryable=exc.code in retryable_statuses,
         ) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
