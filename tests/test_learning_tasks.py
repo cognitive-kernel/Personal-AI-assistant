@@ -343,7 +343,7 @@ def test_reconciliation_escalates_instead_of_looping_after_recovery_exhaustion(
     escalations = list_learning_escalations()
     matching = [item for item in escalations if item["job_id"] == job["id"]]
     assert len(matching) == 1
-    assert matching[0]["reason"] == "recovery_exhausted"
+    assert matching[0]["reason"] == "attempts_exhausted"
     assert matching[0]["task_id"] == recovery["id"]
 
     # Further startup reconciliation does not create another recovery generation.
