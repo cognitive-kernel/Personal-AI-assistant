@@ -138,3 +138,19 @@ def test_sources_section_does_not_count_as_instructional_lesson_words():
     )
     assert result["word_count"] < 200
     assert result["accepted"] is False
+
+
+
+def test_persian_lesson_with_many_latin_technical_terms_uses_persian_length_target():
+    lesson = (
+        "SQL Server Database Engine query execution plan index transaction optimizer. " * 40
+        + "در این بخش رفتار موتور پایگاه داده و رابطه علت و معلول را با مثال بررسی می‌کنیم. " * 3
+    )
+    result = evaluate_learning_value(
+        lesson,
+        ["SQL Server چه کاری انجام می‌دهد؟", "چرا execution plan مهم است؟", "نتیجه را چگونه می‌سنجیم؟"],
+        ["موتور پایگاه داده درخواست‌ها را اجرا می‌کند.", "مسیر اجرای query را نشان می‌دهد.", "نتیجه را با معیارهای ثابت مقایسه می‌کنیم."],
+        ["توضیح نقش موتور", "تحلیل مسیر اجرا", "مقایسه نتیجه آزمون"],
+    )
+    assert result["detected_language"] == "fa"
+    assert result["target_words"] == 200

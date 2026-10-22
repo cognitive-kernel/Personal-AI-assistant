@@ -18,7 +18,9 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     # Apply language-aware heuristics: English technical lessons are valid inputs too.
     persian_chars = len(re.findall(r"[\u0600-\u06FF]", normalized))
     latin_chars = len(re.findall(r"[a-z]", normalized))
-    is_english = latin_chars > persian_chars
+    # Latin technical vocabulary is common in Persian lessons; once substantial
+    # Persian script is present, do not misclassify by raw character counts.
+    is_english = persian_chars < 80 and latin_chars > persian_chars
     technical_terms = set(re.findall(
         r"(?iu)\b(?:SQL Server|SQL|T-SQL|SSMS|DMV|CTE|JOIN|SELECT|WHERE|HTTP|API|JSON|Python|Rust|PHP|JavaScript|Android|iOS|Cisco|VLAN|TCP/IP|DNS|DHCP|firewall|RouterOS|ESXi|VMware|Forex|MetaTrader|MQL4|MQL5|execution plan|index|transaction|query|function|variable|pointer|memory|thread|process|database|server|model|test|log|protocol|decorator|callable|functools|wraps|wrapper|metadata|logging|caching|authorization|descriptor|method|parameter|return|argument|class|keyword|exception|module|array|object|endpoint|request|response|authentication|encryption|routing|switching|کلید اصلی|کلید خارجی|ایندکس|تراکنش|قفل|پشتیبان|بازیابی|پرس‌وجو|پرس و جو|تابع|متغیر|اشاره‌گر|حافظه|سرور|پایگاه داده|آزمون|گزارش|پروتکل|مسیر اجرا)\b",
         normalized, flags=re.IGNORECASE
@@ -138,6 +140,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
         "score": score,
         "accepted": accepted,
         "word_count": len(words),
+        "detected_language": "en" if is_english else "fa",
         "minimum_words": minimum_words,
         "target_words": target_words,
         "maximum_words": maximum_words,
