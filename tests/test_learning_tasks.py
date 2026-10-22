@@ -274,3 +274,78 @@ def test_worker_recovers_when_lesson_commit_precedes_task_completion(
     }
     assert generation_calls == [job["id"]]
     assert learning.get_job(job["id"])["lesson"] == "persisted lesson"
+
+
+
+def test_reconciliation_creates_one_bounded_recovery_for_failed_queue_task(
+    learning_task_store,
+):
+    job = learning.create_job("Orphaned learning after terminal queue failure")
+    original = enqueue_learning_task(job["id"])
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET status='failed', error='worker exhausted' WHERE id=?",
+            (original["id"],),
+        )
+        conn.execute(
+            "UPDATE learning_jobs SET status='queued', error=NULL WHERE id=?",
+            (job["id"],),
+        )
+
+    assert reconcile_queued_learning_tasks() == 1
+    recovery_key = f"learning-job:{job['id']}:recovery:1"
+    recovery = task_manager.get_task_by_dedupe_key(recovery_key)
+    assert recovery is not None
+    assert recovery["id"] != original["id"]
+    assert recovery["status"] == "queued"
+    assert task_manager.get_task(original["id"])["status"] == "failed"
+
+    # Reconciliation is idempotent and cannot create a chain of duplicate tasks.
+    assert reconcile_queued_learning_tasks() == 1
+    assert task_manager.get_task_by_dedupe_key(recovery_key)["id"] == recovery["id"]
+    assert len([
+        item for item in task_manager.list_tasks(limit=100)
+        if item["payload"] == {"job_id": job["id"]}
+    ]) == 2
+
+
+def test_reconciliation_escalates_instead_of_looping_after_recovery_exhaustion(
+    learning_task_store,
+):
+    from app.learning_tasks import list_learning_escalations
+
+    job = learning.create_job("Learning recovery budget exhausted")
+    original = enqueue_learning_task(job["id"])
+    recovery = task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": job["id"]},
+        max_attempts=3,
+        dedupe_key=f"learning-job:{job['id']}:recovery:1",
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET status='failed', error='original exhausted' WHERE id=?",
+            (original["id"],),
+        )
+        conn.execute(
+            "UPDATE task_queue SET status='failed', error='recovery exhausted' WHERE id=?",
+            (recovery["id"],),
+        )
+        conn.execute(
+            "UPDATE learning_jobs SET status='queued', error=NULL WHERE id=?",
+            (job["id"],),
+        )
+
+    assert reconcile_queued_learning_tasks() == 1
+    saved_job = learning.get_job(job["id"])
+    assert saved_job["status"] == "failed"
+    assert "recovery exhausted" in saved_job["error"].lower()
+    escalations = list_learning_escalations()
+    matching = [item for item in escalations if item["job_id"] == job["id"]]
+    assert len(matching) == 1
+    assert matching[0]["reason"] == "recovery_exhausted"
+    assert matching[0]["task_id"] == recovery["id"]
+
+    # Further startup reconciliation does not create another recovery generation.
+    assert reconcile_queued_learning_tasks() == 0
+    assert len(task_manager.list_tasks(limit=100)) == 2
