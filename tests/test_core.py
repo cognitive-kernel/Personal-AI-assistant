@@ -375,6 +375,33 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     assert payloads[0]["options"]["num_predict"] >= 1000
     assert finished["status"] == "completed"
     assert finished["quality"]["accepted"] is True
+    provenance = finished["quality"]["generation_provenance"]
+    assert provenance["attempt_count"] == 1
+    assert len(provenance["prompt_sha256"]) == 64
+    assert finished["assessment"]["independently_verified"] is False
+
+    review = learning.submit_lesson_review(
+        job["id"],
+        ["mastered", "partial", "review"],
+        value_rating=4,
+        takeaway="مثال مقایسه logical reads مفید بود.",
+        issues="نیاز به مثال دوم دارم.",
+    )
+    assert review["job_id"] == job["id"]
+
+    # Reinitializing the SQLite stores models a process restart boundary:
+    # lesson, assessment, provenance, evidence and learner feedback must survive.
+    db.init_databases()
+    recovered = learning.get_job(job["id"])
+    assert recovered["status"] == "completed"
+    assert recovered["lesson"] == lesson
+    assert recovered["assessment"]["learning_outcomes"] == [
+        "توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"
+    ]
+    assert recovered["quality"]["generation_provenance"]["prompt_sha256"] == provenance["prompt_sha256"]
+    assert recovered["latest_review"]["value_rating"] == 4
+    assert recovered["latest_review"]["outcomes"] == ["mastered", "partial", "review"]
+    assert any(item["evidence_type"] == "model_output" for item in recovered["evidence"])
 
 
 
