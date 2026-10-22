@@ -828,6 +828,26 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_escalations_status ON learning_escalations(status, created_at DESC, id DESC)",
             "CREATE INDEX idx_learning_escalations_job ON learning_escalations(job_id, created_at DESC, id DESC)",
         ),
+    ),
+    Migration(
+        21,
+        "factual-knowledge-human-source-review",
+        (
+            """CREATE TABLE factual_knowledge_manual_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
+                reviewer TEXT NOT NULL CHECK(reviewer = 'local_user'),
+                action TEXT NOT NULL CHECK(action IN ('source_approved','source_rejected')),
+                evidence_level_before TEXT NOT NULL,
+                evidence_level_after TEXT NOT NULL,
+                lifecycle_before TEXT NOT NULL,
+                lifecycle_after TEXT NOT NULL,
+                source_hashes_json TEXT NOT NULL DEFAULT '[]',
+                review_note TEXT NOT NULL CHECK(length(trim(review_note)) >= 20),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_factual_manual_reviews_claim_created ON factual_knowledge_manual_reviews(knowledge_id, created_at DESC, id DESC)",
+        ),
     )
 )
 
