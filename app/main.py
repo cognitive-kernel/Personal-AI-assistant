@@ -184,7 +184,7 @@ def startup() -> None:
     # work cannot consume the chat lane's worker slots.
     runtime_specs: list[tuple[dict[str, Any], int, str, Any]] = [
         (chat_handlers, int(settings.get("chat_max_concurrent_jobs", 1)), "chat-worker", None),
-        (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", None),
+        (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", learning.maintain_factual_knowledge),
         (system_handlers, 1, "system-worker", None),
     ]
     if programming_handlers:
