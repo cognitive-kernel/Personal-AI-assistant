@@ -6,7 +6,7 @@
 
 The reference dataset and each evaluation run are separate JSON files. Never put observed model decisions into the reference dataset; keeping observations separate allows the same adjudicated cases to be reused across model, prompt, and code versions.
 
-The reference dataset has `schema_version: 2`, a non-empty `dataset_name`, `dataset_version`, and `cases`. Each case requires a unique stable `id`, `domain`, `language`, `expected_decision` (`accept` or `reject`), `source_refs`, `source_hashes`, and a `source_hashes` object whose keys exactly match `source_refs` and whose values are lowercase SHA-256 hex digests of the exact captured source material used for adjudication. `adjudication` contains `reviewer`, ISO-8601 `adjudicated_at`, a non-empty `rationale`, and `independent_of_model: true`.
+The reference dataset has `schema_version: 2`, a non-empty `dataset_name`, `dataset_version`, and `cases`. Each case requires a unique stable `id`, `domain`, `language`, `expected_decision` (`accept` or `reject`), `source_refs`, a `source_hashes` object whose keys exactly match `source_refs` and whose values are lowercase SHA-256 hex digests of the exact captured source material used for adjudication, and `adjudication` containing `reviewer`, ISO-8601 `adjudicated_at`, a non-empty `rationale`, and `independent_of_model: true`.
 
 The observation file remains at `schema_version: 1`, `observations` keyed by the same case IDs, and `run_metadata` containing `model_id`, `model_digest`, `prompt_version`, `application_commit`, and ISO-8601 `evaluated_at`. Every reference case must have exactly one observation; unknown and missing IDs fail closed.
 
