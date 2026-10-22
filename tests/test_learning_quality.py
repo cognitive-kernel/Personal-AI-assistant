@@ -66,3 +66,42 @@ def test_sql_server_curriculum_has_curated_reference_links():
     assert refs["W3Schools — SQL Tutorial"] == "https://www.w3schools.com/sql/default.asp"
     assert refs["Microsoft Learn — SQL Server"] == "https://learn.microsoft.com/en-us/sql/sql-server/"
     assert len(course["topics"]) == 19
+
+
+def test_rejects_missing_or_malformed_learning_outcomes():
+    lesson = (
+        "در SQL Server، دستور SELECT ستون‌های موردنیاز را از جدول می‌خواند و WHERE ردیف‌ها را بر اساس شرط فیلتر می‌کند. "
+        "برای مثال، پرس‌وجوی SELECT CustomerId, Name FROM Customers WHERE CustomerId > 100 فقط مشتریانی را برمی‌گرداند که شناسه‌شان از صد بیشتر است. "
+        "این فیلتر نتیجه را محدود می‌کند، زیرا موتور شرط را برای ردیف‌ها ارزیابی می‌کند؛ با این حال، سرعت اجرای پرس‌وجو به ایندکس، آمار و execution plan نیز وابسته است. "
+        "اگر ستون CustomerId ایندکس مناسبی داشته باشد، موتور ممکن است به‌جای اسکن کامل جدول از جست‌وجوی ایندکس استفاده کند. "
+        "برای بررسی این رفتار، پرس‌وجو را در SSMS اجرا کنید و execution plan و logical reads را پیش و پس از تغییر مقایسه کنید. "
+        "در عمل، داده‌های نمونه باید اندازه و توزیع نزدیک به محیط واقعی داشته باشند، چون نتیجه روی جدول کوچک ممکن است گمراه‌کننده باشد. "
+        "به این دلیل که بهینه‌ساز بر اساس هزینه تخمینی تصمیم می‌گیرد، ایجاد ایندکس به‌تنهایی تضمین نمی‌کند که هر درخواست سریع‌تر شود. "
+        "همچنین باید هزینه فضای ذخیره‌سازی و عملیات INSERT یا UPDATE را بسنجید، زیرا هر ایندکس اضافی نیازمند نگهداری است. "
+        "نمونه‌ای عملی، ثبت زمان اجرا و logical reads برای یک بازه شناسه است و سپس مقایسه نتیجه با همان پارامترها پس از ایجاد ایندکس آزمایشی است. "
+        "این روش رابطه علت‌ومعلولی را روشن می‌کند و از نتیجه‌گیری بر پایه یک عدد یا حدس جلوگیری می‌کند."
+    )
+    questions = [
+        "SELECT چه کاری انجام می‌دهد؟",
+        "WHERE چگونه نتیجه را تغییر می‌دهد؟",
+        "چرا باید شرط را آزمایش کرد؟",
+    ]
+    answers = [
+        "SELECT ستون‌ها و داده‌های درخواستی را برمی‌گرداند.",
+        "WHERE ردیف‌هایی را نگه می‌دارد که شرط را برآورده می‌کنند.",
+        "برای اطمینان از درستی منطق و نتیجهٔ پرس‌وجو باید آن را آزمایش کرد.",
+    ]
+    missing = evaluate_learning_value(lesson, questions, answers, ["هدف اول"])
+    malformed = evaluate_learning_value(lesson, questions, answers, "اهداف اول دوم سوم")
+    null_outcomes = evaluate_learning_value(lesson, questions, answers, None)
+    legacy_without_outcomes = evaluate_learning_value(lesson, questions, answers)
+    valid = evaluate_learning_value(
+        lesson, questions, answers,
+        ["توضیح نقش SELECT در خواندن داده", "شرح اثر WHERE بر ردیف‌ها", "بررسی نتیجهٔ شرط با نمونه"],
+    )
+
+    assert missing["accepted"] is False
+    assert malformed["accepted"] is False
+    assert null_outcomes["accepted"] is False
+    assert legacy_without_outcomes["accepted"] is True
+    assert valid["accepted"] is True

@@ -410,8 +410,10 @@ def run_job(job_id: int) -> None:
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
-        assessment = {"learning_outcomes": result.get("learning_outcomes", result["questions"])[:3], "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
-        quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"])
+        raw_outcomes = result.get("learning_outcomes", result["questions"])
+        outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
+        assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"], assessment["learning_outcomes"])
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
@@ -452,14 +454,16 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("questions"), list)
                 and isinstance(retry_result.get("answer_key"), list)
             ):
+                retry_raw_outcomes = retry_result.get("learning_outcomes", retry_result["questions"])
+                retry_outcomes = retry_raw_outcomes[:3] if isinstance(retry_raw_outcomes, list) else retry_raw_outcomes
                 retry_assessment = {
-                    "learning_outcomes": retry_result.get("learning_outcomes", retry_result["questions"])[:3],
+                    "learning_outcomes": retry_outcomes,
                     "questions": retry_result["questions"][:3],
                     "answer_key": retry_result["answer_key"][:3],
                     "independently_verified": False,
                 }
                 retry_quality = evaluate_learning_value(
-                    retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"]
+                    retry_result["lesson"], retry_assessment["questions"], retry_assessment["answer_key"], retry_assessment["learning_outcomes"]
                 )
                 retry_quality["user_provided_source_available"] = user_provided_source_available
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
