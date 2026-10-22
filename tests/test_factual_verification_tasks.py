@@ -361,7 +361,7 @@ def test_factual_test_history_exposes_bounded_results_and_current_claim_state(le
             test_kind="integration",
             test_name="assert false condition",
             environment_version="3.12.3",
-            outcome="failed",
+            outcome="claim_failed",
             result_summary="The assertion behavior did not match the expected oracle.",
             command_hash="c" * 64,
             log_hash="d" * 64,
