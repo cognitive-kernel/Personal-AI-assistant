@@ -113,9 +113,11 @@ def test_web_sources_are_saved_with_provenance(tmp_path, monkeypatch):
     job = learning.create_job("Python source discovery")
 
     content, source_kind = learning._discover_and_store_sources(job["id"], job["topic"])
+    repeated_content, repeated_kind = learning._discover_and_store_sources(job["id"], job["topic"])
 
     saved = learning.get_job(job["id"])
-    assert source_kind == "web_retrieved"
+    assert source_kind == repeated_kind == "web_retrieved"
+    assert repeated_content == content
     assert "Source URL: https://example.org/python-guide" in content
     assert saved["source_kind"] == "web_retrieved"
     assert any(
@@ -129,6 +131,12 @@ def test_web_sources_are_saved_with_provenance(tmp_path, monkeypatch):
             "SELECT content FROM learning_source_text WHERE job_id=?", (job["id"],)
         ).fetchone()
     assert stored["content"] == content
+    with db.learning_connection() as conn:
+        evidence_count = conn.execute(
+            "SELECT COUNT(*) FROM learning_evidence WHERE job_id=? AND evidence_type='web_page'",
+            (job["id"],),
+        ).fetchone()[0]
+    assert evidence_count == 1
 
 
 def test_web_discovery_failure_is_recorded_without_blocking_model_fallback(
@@ -141,11 +149,13 @@ def test_web_discovery_failure_is_recorded_without_blocking_model_fallback(
     job = learning.create_job("Offline learning topic")
 
     content, source_kind = learning._discover_and_store_sources(job["id"], job["topic"])
+    repeated_content, repeated_kind = learning._discover_and_store_sources(job["id"], job["topic"])
 
     saved = learning.get_job(job["id"])
-    assert content == ""
+    assert content == repeated_content == ""
+    assert source_kind == repeated_kind == "model_knowledge_no_external_source"
     assert source_kind == "model_knowledge_no_external_source"
-    assert any(item["evidence_type"] == "web_search" for item in saved["evidence"])
+    assert sum(item["evidence_type"] == "web_search" for item in saved["evidence"]) == 1
 
 
 
