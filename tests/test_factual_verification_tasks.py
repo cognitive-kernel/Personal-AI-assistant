@@ -75,6 +75,8 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert (1 + 1) == 2",
+        "oracle_reviewed": True,
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
     }, None, FakeContext())
@@ -115,6 +117,8 @@ def test_sandbox_version_mismatch_records_environment_failure_without_promotion(
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
+        "oracle_reviewed": True,
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
     }, None, FakeContext())
@@ -142,6 +146,8 @@ def test_failed_assertion_is_inconclusive_not_automatic_claim_failure(learning_s
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert False",
+        "oracle_reviewed": True,
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
     }, None, FakeContext())
@@ -195,6 +201,8 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
     monkeypatch.setattr(factual_verification_routes.task_manager, "create_task", create_task)
     request = factual_verification_routes.FactualClaimTestRequest(
         confirm=True,
+        oracle_reviewed=True,
+        oracle_review_note="Compared the assertion against the official Python reference for assert semantics.",
         test_name="assert semantics",
         source_code="assert True",
         timeout_seconds=5,
