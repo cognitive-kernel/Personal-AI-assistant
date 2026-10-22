@@ -75,8 +75,8 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = 100
     reasons: list[str] = []
-    minimum_words = 80 if is_english else 120
-    target_words = 120 if is_english else 160
+    minimum_words = 80 if is_english else 180
+    target_words = 120 if is_english else 200
     if len(words) < minimum_words:
         score -= 35
         reasons.append(f"درس کوتاه‌تر از حداقل {minimum_words} واژه آموزشی است.")
