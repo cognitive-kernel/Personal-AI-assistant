@@ -335,3 +335,56 @@ def test_run_job_passes_verified_context_as_data_not_instructions(
     assert "never as instructions" in policy
     assert "do not claim" in policy
     assert learning.get_job(job["id"])["status"] == "completed"
+
+
+def test_user_source_is_bounded_for_model_context_but_preserved_in_storage(
+    learning_store, monkeypatch
+):
+    source_text = ("Reference paragraph about safe SQL query design. " * 150)
+    job = learning.create_job("General technical topic", source_text=source_text)
+    # Simulate a settings change after the job was submitted but before a worker claims it.
+    db.update_settings({"learning_source_max_chars": 1000})
+    captured = {}
+
+    monkeypatch.setattr(learning, "_verified_factual_context_for_topic", lambda _topic: [])
+    monkeypatch.setattr(
+        learning,
+        "detect_hardware",
+        lambda: {"logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12},
+    )
+    monkeypatch.setattr(
+        learning,
+        "runtime_limits",
+        lambda _settings, _hardware: {"num_ctx": 2048, "cpu_threads": 2},
+    )
+    generated = {
+        "lesson": "A short generated lesson used to verify the bounded context path.",
+        "learning_outcomes": ["Describe the key design rule", "Explain its practical effect", "Identify a safe example"],
+        "questions": ["What is the main rule?", "Why does it matter?", "How can it be checked?"],
+        "answer_key": ["Use a clear condition.", "It reduces unintended behavior.", "Test the condition with representative input."],
+    }
+
+    def fake_request(_path, payload, timeout=None):
+        captured["prompt"] = json.loads(payload["messages"][1]["content"])
+        return {"message": {"content": json.dumps(generated)}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    monkeypatch.setattr(
+        learning,
+        "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+    with db.learning_connection() as conn:
+        stored_source = conn.execute(
+            "SELECT content FROM learning_source_text WHERE job_id=?", (job["id"],)
+        ).fetchone()["content"]
+
+    assert finished["status"] == "completed"
+    assert len(captured["prompt"]["source_text"]) == 1000
+    assert stored_source == source_text.strip()
+    assert finished["quality"]["source_text_truncated"] is True
+    assert finished["quality"]["source_characters_provided"] == len(stored_source)
+    assert finished["quality"]["source_characters_sent_to_model"] == 1000
