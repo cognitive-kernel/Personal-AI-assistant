@@ -170,6 +170,8 @@ def chat(
         "ollama_num_ctx": settings.get(f"{prefix}_ollama_num_ctx", settings.get("ollama_num_ctx", 4096)),
         "ollama_num_thread": settings.get(f"{prefix}_ollama_num_thread", settings.get("ollama_num_thread", 0)),
         "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+        "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+        "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
     }, hardware)
     keep_alive = model_keep_alive(purpose, hardware, settings)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
