@@ -333,7 +333,7 @@ def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_
 def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
     knowledge_id = _active_sourced_python_claim()
     task_manager.initialize_task_store()
-    assert factual_verification_routes.list_factual_test_queue()["count"] == 1
+    assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 1
 
     task_manager.create_task(
         factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
@@ -349,4 +349,4 @@ def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
         max_attempts=1,
         dedupe_key="test-queue-active-task",
     )
-    assert factual_verification_routes.list_factual_test_queue()["count"] == 0
+    assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 0
