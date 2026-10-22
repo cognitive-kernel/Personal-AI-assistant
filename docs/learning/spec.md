@@ -93,7 +93,7 @@ The following are implementation gates, not promises. Mark them complete only af
 - [x] State transition service rejects invalid trust/lifecycle transitions.
 - [x] Database constraints cover status enums, evidence-level invariants, foreign keys, and relation uniqueness.
 - [x] Knowledge relation table supports `supersedes`, `contradicts`, and `depends_on`.
-- [x] Sandbox verification is bounded and has no network by default. The factual-claim runner accepts only active `L1_sourced` Python claims, requires explicit current sandbox consent and a human attestation that the test was checked against an independent oracle, records source/log hashes, and permits L2 promotion only on a passing run with an exact runtime-version match. A local UI queue supports manual test submission and hides claims with a passing test or active test task. This remains a manual verification path, not automatic lesson-pipeline execution; real Docker/target-host acceptance is separate.
+- [ ] Sandbox verification is bounded and has no network by default. The initial factual-claim runner accepts only active `L1_sourced` Python claims, requires explicit sandbox consent and a human attestation that the test was checked against an independent oracle, records source/log hashes, and permits L2 promotion only on a passing run with an exact runtime-version match. This runner is a manual verification path, not automatic lesson-pipeline execution.
 - [x] Evidence applicability and verification timestamps are persisted; re-verification automation remains pending.
 - [x] Review-result cache is keyed by claim/source/model/prompt/scope and has expiry.
 - [ ] A dedicated factual-review worker is registered in the task runtime; retry/resource budgets and cost controls are enforced.
