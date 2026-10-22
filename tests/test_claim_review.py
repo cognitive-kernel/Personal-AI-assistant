@@ -31,6 +31,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
                 "claim": "Invalid JSON may raise a decoding error.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": "Invalid JSON input may raise a decoding error."}],
                 "reason": "Directly stated in the excerpt.",
             }],
         })}}
@@ -128,6 +129,7 @@ def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monke
                 "claim": "Invalid JSON may raise a decoding error.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": "Invalid JSON input may raise a decoding error."}],
                 "reason": "Directly stated in the excerpt.",
             }],
         })},
@@ -159,6 +161,7 @@ def test_claim_review_surfaces_source_conflict_and_fails_closed(tmp_path, monkey
                 "claim": "The feature is enabled by default.",
                 "verdict": "supported",
                 "evidence_urls": [first_url],
+                "evidence_quotes": [{"url": first_url, "quote": "The feature is enabled by default in this release."}],
                 "reason": "The first excerpt states it is enabled.",
             }],
             "source_conflicts": [{
@@ -204,6 +207,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
                 "claim": "The statement is supported.",
                 "verdict": "supported",
                 "evidence_urls": [first_url],
+                "evidence_quotes": [{"url": first_url, "quote": "The first excerpt directly supports this test claim."}],
                 "reason": "The first excerpt directly supports it.",
             }],
             "source_conflicts": [conflict],
@@ -259,6 +263,7 @@ def test_claim_review_prompt_fingerprint_changes_with_review_payload(tmp_path, m
                 "claim": "The excerpt supports the claim.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": "The excerpt contains enough text to be usable evidence for this claim."}],
                 "reason": "Directly supported.",
             }],
         })}}
