@@ -27,6 +27,9 @@
               "https://docs.python.org/3/tutorial/index.html",
               "https://learn.microsoft.com/en-us/sql/"
             ],
+            "evidence_quotes": [
+              {"url": "https://docs.python.org/3/tutorial/index.html", "quote": "This source excerpt contains enough characters for evidence."}
+            ],
             "reason": "Both excerpts are explicitly mapped."
           }
         ],
