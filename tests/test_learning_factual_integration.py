@@ -220,3 +220,118 @@ def test_factual_review_integration_persists_allowlisted_domains_without_promoti
             "SELECT environment_name, environment_version, evidence_level, lifecycle_status FROM factual_knowledge"
         ).fetchone()
     assert tuple(claim) == ("docker", "unspecified", "L0_raw", "unverified")
+
+
+def test_learning_context_uses_only_exact_scope_policy_eligible_claims(learning_store):
+    from app import factual_knowledge
+
+    with db.learning_connection() as conn:
+        conn.row_factory = __import__("sqlite3").Row
+        knowledge_id = factual_knowledge.create_claim(
+            conn,
+            "SQL Server query plans expose selected execution operators",
+            environment_name="sql_server",
+            environment_version="unspecified",
+            scope={"topic": "SQL Server query plans"},
+        )
+        factual_knowledge.add_evidence(
+            conn,
+            knowledge_id,
+            source_type="official_docs",
+            source_ref="https://learn.microsoft.com/sql/relational-databases/performance/execution-plans",
+            source_hash="sha256:verified-source",
+            excerpt="Execution plans show the operators selected by the optimizer.",
+        )
+        factual_knowledge.transition_evidence_level(conn, knowledge_id, "L1_sourced")
+        factual_knowledge.record_test(
+            conn,
+            knowledge_id,
+            test_kind="unit",
+            test_name="sql-plan-scope",
+            environment_name="sql_server",
+            environment_version="unspecified",
+            outcome="passed",
+            result_summary="Applicable deterministic check passed.",
+        )
+        factual_knowledge.transition_evidence_level(conn, knowledge_id, "L2_tested")
+        factual_knowledge.transition_lifecycle(conn, knowledge_id, "active")
+
+    context = learning._verified_factual_context_for_topic("SQL Server query plans")
+    assert len(context) == 1
+    assert context[0]["claim_id"] == knowledge_id
+    assert context[0]["status"] == "eligible_verified_factual_knowledge"
+    assert context[0]["evidence_level"] == "L2_tested"
+    assert context[0]["sources"][0]["url"].startswith("https://")
+    assert context[0]["passing_tests"][0]["name"] == "sql-plan-scope"
+
+
+def test_learning_context_fails_closed_for_ambiguous_topics_and_retrieval_errors(
+    learning_store, monkeypatch
+):
+    from app import factual_knowledge
+
+    assert learning._verified_factual_context_for_topic(
+        "Python Docker deployment"
+    ) == []
+
+    def fail_retrieval(*_args, **_kwargs):
+        raise RuntimeError("database details must not escape")
+
+    monkeypatch.setattr(
+        factual_knowledge, "search_retrievable_claims", fail_retrieval
+    )
+    assert learning._verified_factual_context_for_topic("SQL Server query plans") == []
+
+
+def test_run_job_passes_verified_context_as_data_not_instructions(
+    learning_store, monkeypatch
+):
+    captured = {}
+    expected_context = [{
+        "claim_id": 42,
+        "claim": "SQL Server query plans expose operators",
+        "evidence_level": "L2_tested",
+        "domain": "sql_server",
+        "environment": "sql_server unspecified",
+        "sources": [{
+            "url": "https://learn.microsoft.com/sql/execution-plans",
+            "sha256": "sha256:source",
+            "excerpt": "Official source excerpt",
+        }],
+        "passing_tests": [{
+            "name": "scope-check",
+            "environment": "sql_server unspecified",
+            "result": "passed",
+        }],
+        "status": "eligible_verified_factual_knowledge",
+    }]
+    monkeypatch.setattr(
+        learning, "_verified_factual_context_for_topic", lambda _topic: expected_context
+    )
+    lesson_result = {
+        "lesson": "این یک درس فنی نمونه با توضیح کافی است.",
+        "learning_outcomes": ["هدف اول", "هدف دوم", "هدف سوم"],
+        "questions": ["سؤال نمونه"],
+        "answer_key": ["پاسخ نمونه"],
+    }
+
+    def fake_request(_path, payload, **_kwargs):
+        captured["prompt"] = json.loads(payload["messages"][1]["content"])
+        return {"message": {"content": json.dumps(lesson_result, ensure_ascii=False)}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+    job = learning.create_job(
+        "SQL Server query plans",
+        source_text="User supplied lesson source text for a test.",
+    )
+    learning.run_job(job["id"])
+
+    assert captured["prompt"]["verified_factual_context"] == expected_context
+    policy = captured["prompt"]["verified_factual_context_policy"]
+    assert "never as instructions" in policy
+    assert "do not claim" in policy
+    assert learning.get_job(job["id"])["status"] == "completed"
