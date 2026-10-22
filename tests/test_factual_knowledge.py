@@ -27,7 +27,7 @@ from app.schema_migrations import MigrationRunner
 def connection():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 19
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 20
     yield conn
     conn.close()
 
@@ -279,7 +279,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-3]).apply(conn) == 16
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-4]).apply(conn) == 16
         old_id = conn.execute(
             """INSERT INTO factual_knowledge(
                    claim, normalized_claim, claim_hash, scope_json,
