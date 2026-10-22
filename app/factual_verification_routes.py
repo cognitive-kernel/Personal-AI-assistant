@@ -49,11 +49,14 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=422, detail="Explicit attestation that the test matches an independent oracle is required.")
     try:
         factual_verification_tasks.get_verification_candidate(knowledge_id)
-        factual_verification_tasks.validate_test_harness(request.source_code)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Factual claim not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        factual_verification_tasks.validate_test_harness(request.source_code)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     try:
         consent = sandbox_consent.get_consent()
