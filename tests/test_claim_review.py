@@ -31,6 +31,7 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
                 "claim": "Invalid JSON may raise a decoding error.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": "Invalid JSON input may raise a decoding error."}],
                 "reason": "Directly stated in the excerpt.",
             }],
         })}}
@@ -128,6 +129,7 @@ def test_claim_review_does_not_accept_a_misleading_url_substring(tmp_path, monke
                 "claim": "Invalid JSON may raise a decoding error.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": "Invalid JSON input may raise a decoding error."}],
                 "reason": "Directly stated in the excerpt.",
             }],
         })},
@@ -159,6 +161,7 @@ def test_claim_review_surfaces_source_conflict_and_fails_closed(tmp_path, monkey
                 "claim": "The feature is enabled by default.",
                 "verdict": "supported",
                 "evidence_urls": [first_url],
+                "evidence_quotes": [{"url": first_url, "quote": "The feature is enabled by default in this release."}],
                 "reason": "The first excerpt states it is enabled.",
             }],
             "source_conflicts": [{
@@ -204,6 +207,7 @@ def test_claim_review_rejects_invalid_source_conflict_metadata(tmp_path, monkeyp
                 "claim": "The statement is supported.",
                 "verdict": "supported",
                 "evidence_urls": [first_url],
+                "evidence_quotes": [{"url": first_url, "quote": "The first excerpt directly supports this test claim."}],
                 "reason": "The first excerpt directly supports it.",
             }],
             "source_conflicts": [conflict],
@@ -259,6 +263,7 @@ def test_claim_review_prompt_fingerprint_changes_with_review_payload(tmp_path, m
                 "claim": "The excerpt supports the claim.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": "The excerpt contains enough text to be usable evidence for this claim."}],
                 "reason": "Directly supported.",
             }],
         })}}
@@ -269,3 +274,36 @@ def test_claim_review_prompt_fingerprint_changes_with_review_payload(tmp_path, m
     second = claim_review.review_answer_claims("Question B", f"Answer. Source: {url}", source)
     assert first["prompt_sha256"] != second["prompt_sha256"]
     assert seen[0] != seen[1]
+
+
+
+def test_claim_review_rejects_quotes_not_found_in_the_supplied_source(tmp_path, monkeypatch):
+    setup_settings_db(tmp_path, monkeypatch)
+    url = "https://docs.python.org/3/library/json.html"
+    monkeypatch.setattr(claim_review, "_request", lambda *_args, **_kwargs: {
+        "message": {"content": json.dumps({
+            "overall": "supported",
+            "source_conflicts": [],
+            "claims": [{
+                "claim": "Invalid JSON may raise a decoding error.",
+                "verdict": "supported",
+                "evidence_urls": [url],
+                "evidence_quotes": [{
+                    "url": url,
+                    "quote": "This sentence was invented and is not in the supplied source.",
+                }],
+                "reason": "Claimed direct support.",
+            }],
+        })},
+    })
+    result = claim_review.review_answer_claims(
+        "Why can JSON parsing fail?",
+        f"Invalid JSON may raise a decoding error. Source: {url}",
+        [{
+            "url": url,
+            "title": "Python JSON docs",
+            "content": "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully.",
+        }],
+    )
+    assert result["passed"] is False
+    assert result["error"] == "claim_quote_not_in_source"
