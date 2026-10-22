@@ -1440,3 +1440,48 @@ def test_learning_lesson_history_survives_refresh_and_shows_task_events():
         page.get_by_text("running ← succeeded").wait_for(timeout=10000)
         assert "2026-10-21 13:28:44" in page.locator(".path-topic-job-history-container").inner_text()
         browser.close()
+
+
+def test_factual_learning_review_test_queue_and_history_panels_load():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        _goto_section(page, base_url, "learning-section")
+
+        for element_id in (
+            "refresh-factual-review-queue",
+            "refresh-factual-test-queue",
+            "refresh-factual-test-history",
+        ):
+            assert page.locator("#" + element_id).is_visible()
+
+        for endpoint in (
+            "/api/factual-knowledge/review-queue?limit=10",
+            "/api/factual-knowledge/test-queue?limit=10",
+            "/api/factual-knowledge/test-history?limit=10",
+        ):
+            response = page.request.get(base_url.rstrip("/") + endpoint)
+            assert response.status == 200, endpoint
+            body = response.json()
+            assert isinstance(body.get("items"), list)
+            assert body["count"] == len(body["items"])
+
+        page.locator("#refresh-factual-review-queue").click()
+        page.wait_for_function(
+            "() => !document.querySelector('#factual-review-queue').textContent.includes('در حال بارگذاری')"
+        )
+        page.locator("#refresh-factual-test-queue").click()
+        page.wait_for_function(
+            "() => !document.querySelector('#factual-test-queue').textContent.includes('در حال بارگذاری')"
+        )
+        page.locator("#refresh-factual-test-history").click()
+        page.wait_for_function(
+            "() => !document.querySelector('#factual-test-history').textContent.includes('در حال بارگذاری')"
+        )
+        assert not errors, "Uncaught browser errors: " + "; ".join(errors)
+        browser.close()
