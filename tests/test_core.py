@@ -427,6 +427,80 @@ def test_learning_job_rejects_missing_outcomes_instead_of_copying_questions(tmp_
     assert any("هدف یادگیری" in reason for reason in finished["quality"]["reasons"])
     assert finished["lesson"] is None
 
+
+def test_concurrent_run_job_calls_only_claim_queued_job_once(tmp_path, monkeypatch):
+    import json
+    import threading
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    lesson = (
+        "در SQL Server، Database Engine مسئول ذخیره‌سازی و اجرای پرس‌وجوها است. "
+        "درخواست T-SQL ابتدا تجزیه و بهینه‌سازی می‌شود و سپس برنامه اجرایی مناسب انتخاب می‌شود. "
+        "execution plan نشان می‌دهد داده‌ها چگونه خوانده می‌شوند؛ برای نمونه، اسکن جدول ممکن است "
+        "در جدول کوچک مناسب باشد، اما برای جست‌وجوی پرتکرار روی ستون انتخابی، ایندکس مناسب می‌تواند "
+        "تعداد صفحات خوانده‌شده را کاهش دهد. این بهبود قطعی نیست، زیرا هزینه نگهداری ایندکس و "
+        "توزیع داده نیز بر تصمیم بهینه‌ساز اثر می‌گذارند. SSMS ابزار مدیریت و مشاهده برنامه اجرا است، "
+        "در حالی که DMVها اطلاعاتی درباره وضعیت و کارایی نمونه سرور ارائه می‌کنند. در عمل، ابتدا "
+        "پرس‌وجو را با داده نماینده اجرا کنید، سپس execution plan و آمار ورودی/خروجی را بررسی کنید. "
+        "اگر ایندکس جدیدی پیشنهاد شد، اثر آن را با بار کاری واقعی و پس از ثبت خط مبنا بسنجید. "
+        "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
+        "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
+        "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
+        "نه تضمین خودکار برای درست بودن طراحی."
+    )
+    response = {
+        "lesson": lesson,
+        "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
+        "questions": [
+            "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
+            "چرا ایندکس همیشه باعث بهبود عملکرد نمی‌شود؟",
+            "چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
+        ],
+        "answer_key": [
+            "نشان می‌دهد موتور چگونه داده را می‌خواند و چه عملگرهایی را اجرا می‌کند.",
+            "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
+            "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
+        ],
+    }
+    started = threading.Event()
+    release = threading.Event()
+    calls = []
+    errors = []
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
+    })
+
+    def fake_request(*_args, **_kwargs):
+        calls.append(True)
+        started.set()
+        if not release.wait(5):
+            raise RuntimeError("test timed out waiting to release fake model")
+        return {"message": {"content": json.dumps(response, ensure_ascii=False)}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    job = learning.create_job("آموزش execution plan در SQL Server")
+
+    def run_first_worker():
+        try:
+            learning.run_job(job["id"])
+        except Exception as exc:
+            errors.append(exc)
+
+    worker = threading.Thread(target=run_first_worker)
+    worker.start()
+    assert started.wait(5), "first worker did not reach model inference"
+    learning.run_job(job["id"])
+    assert len(calls) == 1, "a second worker must not start inference for an already-running job"
+    release.set()
+    worker.join(10)
+
+    assert not worker.is_alive(), "first worker did not finish"
+    assert not errors, f"learning worker failed: {errors}"
+    assert learning.get_job(job["id"])["status"] == "completed"
+
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
