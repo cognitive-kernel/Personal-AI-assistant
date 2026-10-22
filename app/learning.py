@@ -76,7 +76,11 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
     if not documents:
         with learning_connection() as conn:
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                VALUES (?, 'web_search', ?, NULL, ?)""", (job_id, search_ref, failure_note))
+                SELECT ?, 'web_search', ?, NULL, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM learning_evidence
+                    WHERE job_id=? AND evidence_type='web_search' AND source_ref=? AND content_hash IS NULL
+                )""", (job_id, search_ref, failure_note, job_id, search_ref))
         return "", "model_knowledge_no_external_source"
 
     chunks: list[str] = []
@@ -99,7 +103,11 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
     if not combined:
         with learning_connection() as conn:
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                VALUES (?, 'web_search', ?, NULL, ?)""", (job_id, search_ref, "Retrieved pages contained no usable text; lesson will fall back to model knowledge."))
+                SELECT ?, 'web_search', ?, NULL, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM learning_evidence
+                    WHERE job_id=? AND evidence_type='web_search' AND source_ref=? AND content_hash IS NULL
+                )""", (job_id, search_ref, "Retrieved pages contained no usable text; lesson will fall back to model knowledge.", job_id, search_ref))
         return "", "model_knowledge_no_external_source"
 
     with learning_connection() as conn:
@@ -109,8 +117,13 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
         for document, stored_chunk in stored_documents:
             digest = hashlib.sha256(stored_chunk.encode("utf-8")).hexdigest()
             conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                VALUES (?, 'web_page', ?, ?, ?)""", (job_id, document.url, digest,
-                f"Retrieved public page; title: {document.title}. Content has not been independently verified."))
+                SELECT ?, 'web_page', ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM learning_evidence
+                    WHERE job_id=? AND evidence_type='web_page' AND source_ref=? AND content_hash=?
+                )""", (job_id, document.url, digest,
+                f"Retrieved public page; title: {document.title}. Content has not been independently verified.",
+                job_id, document.url, digest))
     return combined, "web_retrieved"
 
 def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
