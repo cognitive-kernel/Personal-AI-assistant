@@ -122,7 +122,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         ).lastrowid
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 19
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 20
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 19
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
@@ -220,7 +220,7 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
         ).fetchone() is None
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 19
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 20
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -336,7 +336,7 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
             ("preserve me", "queued", "test"),
         )
 
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 19
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 20
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
 
@@ -355,7 +355,7 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
         ).fetchone() == ("preserve me", "queued")
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 19
+        ).fetchone()[0] == 20
 
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
@@ -395,7 +395,7 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
 def test_migration_runner_rejects_out_of_band_schema_drift():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(LEARNING_MIGRATIONS)
-        assert runner.apply(connection) == 19
+        assert runner.apply(connection) == 20
         connection.execute("DROP INDEX idx_task_queue_ready")
         with pytest.raises(MigrationError, match="does not match the registered migration history"):
             runner.apply(connection)
@@ -600,7 +600,7 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
 
     version = initialize_database_file(path, LEARNING_MIGRATIONS)
 
-    assert version == 19
+    assert version == 20
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as backup:
@@ -623,7 +623,7 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
         ).fetchone() == ("verified", "keep")
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(version,) for version in range(1, 20)]
+        ).fetchall() == [(version,) for version in range(1, 21)]
 
 
 def test_legacy_learning_migration_failure_preserves_original_database_bytes(tmp_path):
