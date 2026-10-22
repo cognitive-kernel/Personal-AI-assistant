@@ -522,6 +522,37 @@ def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch)
     assert captured["payload"]["options"]["num_ctx"] == 4096
 
 
+def test_ollama_chat_respects_configured_ram_budget(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {
+        "chat_ollama_model": "qwen2.5:7b",
+        "chat_ollama_num_ctx": 8192,
+        "chat_ollama_num_thread": 0,
+        "chat_ollama_timeout_seconds": 120,
+        "ollama_num_ctx": 2048,
+        "ollama_num_thread": 0,
+        "ollama_timeout_seconds": 120,
+        "cpu_resource_limit_percent": 50,
+        "ram_budget_max_gb": 5,
+        "ram_safety_reserve_gb": 4,
+    })
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {
+        "logical_cpu_count": 8,
+        "total_ram_gb": 32,
+        "available_ram_gb": 25,
+    })
+    monkeypatch.setattr(
+        ollama,
+        "_request",
+        lambda path, payload, timeout=None: captured.update(payload=payload) or {"message": {"content": "ok"}},
+    )
+
+    assert ollama.chat("hello", purpose="chat") == "ok"
+    assert captured["payload"]["keep_alive"] == "1m"
+    assert captured["payload"]["options"]["num_ctx"] == 4096
+    assert captured["payload"]["options"]["num_thread"] == 4
+
+
 def test_ollama_programming_model_is_unloaded_after_request(monkeypatch):
     captured = {}
     monkeypatch.setattr(ollama, "get_settings", lambda: {
