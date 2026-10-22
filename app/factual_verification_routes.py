@@ -49,6 +49,31 @@ def _configured() -> bool:
         return False
 
 
+@router.get("/test-history")
+def list_factual_test_history(
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """Return bounded factual-test outcomes with hashes and current claim state."""
+    try:
+        with learning_connection() as connection:
+            rows = connection.execute(
+                """SELECT t.id AS test_id, t.knowledge_id, k.claim, k.domain_name,
+                          t.test_kind, t.test_name, t.environment_name,
+                          t.environment_version AS test_environment_version,
+                          t.outcome, t.result_summary, t.command_hash, t.log_hash,
+                          t.created_at, k.evidence_level, k.lifecycle_status,
+                          k.environment_version AS current_environment_version
+                   FROM factual_tests AS t
+                   JOIN factual_knowledge AS k ON k.id=t.knowledge_id
+                   ORDER BY t.id DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return {"items": [dict(row) for row in rows], "count": len(rows), "limit": limit}
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual test history is unavailable.") from exc
+
+
 @router.post("/{knowledge_id}/run-test", status_code=status.HTTP_202_ACCEPTED)
 def queue_factual_claim_test(
     knowledge_id: int,
