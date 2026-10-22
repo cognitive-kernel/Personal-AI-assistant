@@ -180,3 +180,36 @@ def test_cli_enforces_explicit_false_acceptance_threshold(tmp_path, capsys):
     assert output["dataset_version"] == "test-v1"
     assert output["run_metadata"]["application_commit"] == "abc123"
     assert output["metrics"]["false_acceptance_rate"] == pytest.approx(0.5)
+
+
+def test_evaluate_rejects_duplicate_observation_ids_instead_of_silently_overwriting():
+    case = _case("same", "accept")
+    with pytest.raises(EvaluationDataError, match="duplicate observation id"):
+        evaluate(
+            [case],
+            [
+                {"id": "same", "observed_decision": "accept"},
+                {"id": "same", "observed_decision": "reject"},
+            ],
+        )
+
+
+def test_evaluate_rejects_invalid_decisions_before_scoring():
+    with pytest.raises(EvaluationDataError, match="observed_decision must be accept or reject"):
+        evaluate(
+            [_case("one", "reject")],
+            [{"id": "one", "observed_decision": "unknown"}],
+        )
+    with pytest.raises(EvaluationDataError, match="expected_decision must be accept or reject"):
+        evaluate(
+            [{"id": "one", "expected_decision": ["accept"]}],
+            [{"id": "one", "observed_decision": "accept"}],
+        )
+
+
+def test_evaluate_rejects_duplicate_reference_case_ids():
+    with pytest.raises(EvaluationDataError, match="duplicate case id"):
+        evaluate(
+            [_case("same", "accept"), _case("same", "reject")],
+            [{"id": "same", "observed_decision": "accept"}],
+        )
