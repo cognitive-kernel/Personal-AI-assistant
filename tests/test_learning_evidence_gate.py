@@ -171,3 +171,23 @@ def test_evidence_gate_rejects_fabricated_claim_quote():
     )
     assert result["accepted"] is False
     assert "all_claims_supported_by_known_sources" in result["failed_gates"]
+
+
+def test_evidence_gate_normalizes_whitespace_in_exact_source_quotes():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    review = _review(urls)
+    review["claims"][0]["evidence_quotes"] = [{
+        "url": urls[0],
+        "quote": "This source excerpt contains enough characters for evidence.",
+    }]
+    sources = [
+        _source(urls[0], "This source excerpt contains enough\ncharacters for evidence."),
+        _source(urls[1]),
+    ]
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls),
+        sources,
+        review,
+    )
+    assert result["accepted"] is True
+    assert result["failed_gates"] == []
