@@ -132,6 +132,13 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         detail = detail_response.json()
         assert detail["quality"]["accepted"] is True
         assert detail["quality"]["score"] == 95
+        generation = detail["quality"]["generation_provenance"]
+        assert generation["prompt_version"] == learning.LESSON_GENERATION_PROMPT_VERSION
+        assert len(generation["prompt_sha256"]) == 64
+        assert generation["repair_prompt_sha256"] is None
+        assert generation["attempt_count"] == 1
+        assert generation["model_id"]
+        assert generation["model_digest"] is None
         assert len(detail["assessment"]["questions"]) == 3
         assert len(detail["assessment"]["learning_outcomes"]) == 3
         # The answer key remains hidden until an assessment attempt exists.
@@ -175,3 +182,43 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         applicability = json.loads(evidence[0]["applicability_json"])
         assert applicability["model_assisted_review_only"] is True
         assert applicability["independent_verification"] is False
+
+
+
+def test_learning_repair_attempt_records_both_prompt_fingerprints(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    monkeypatch.setattr(
+        learning, "detect_hardware",
+        lambda: {"logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12},
+    )
+    generated = {
+        "lesson": "Python decorators wrap callables and can add reusable behavior. A wrapper receives arguments, invokes the original function, and returns its result. The at-sign syntax applies the decorator when a function is defined. The functools.wraps helper preserves useful metadata. For example, a timing decorator can record how long a function takes. This is useful when the same behavior is needed across several functions.",
+        "learning_outcomes": ["Describe a decorator", "Explain wrapper behavior", "Identify a use case"],
+        "questions": ["What does a decorator wrap?", "What does a wrapper do?", "When is a decorator useful?"],
+        "answer_key": ["A callable.", "It calls the original and returns the result.", "For reusable behavior."],
+    }
+    calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, payload, **_kwargs: calls.append(payload) or {
+            "message": {"content": json.dumps(generated, ensure_ascii=False)}
+        },
+    )
+    quality_results = iter([
+        {"accepted": False, "score": 40, "reasons": ["lesson too short"]},
+        {"accepted": True, "score": 90, "reasons": []},
+    ])
+    monkeypatch.setattr(learning, "evaluate_learning_value", lambda *_args, **_kwargs: next(quality_results))
+    job = learning.create_job("Python decorators", source_text="Official source excerpt about decorators.")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+    provenance = finished["quality"]["generation_provenance"]
+    assert finished["status"] == "completed"
+    assert len(calls) == 2
+    assert provenance["prompt_version"] == learning.LESSON_GENERATION_PROMPT_VERSION
+    assert len(provenance["prompt_sha256"]) == 64
+    assert len(provenance["repair_prompt_sha256"]) == 64
+    assert provenance["prompt_sha256"] != provenance["repair_prompt_sha256"]
+    assert provenance["attempt_count"] == 2
