@@ -129,8 +129,41 @@ def load_observations(path: str | Path) -> dict[str, Any]:
 
 
 def evaluate(cases: list[dict[str, Any]], observations: list[dict[str, Any]]) -> dict[str, Any]:
-    expected_ids = {case["id"] for case in cases}
-    observed_by_id = {item["id"]: item["observed_decision"] for item in observations}
+    """Evaluate validated decision data and fail closed on duplicate or malformed IDs."""
+    if not isinstance(cases, list) or not cases:
+        raise EvaluationDataError("cases must be a non-empty list")
+    if not isinstance(observations, list):
+        raise EvaluationDataError("observations must be a list")
+
+    expected_ids: set[str] = set()
+    for index, case in enumerate(cases):
+        prefix = f"cases[{index}]"
+        if not isinstance(case, dict):
+            raise EvaluationDataError(f"{prefix} must be an object")
+        case_id = case.get("id")
+        expected = case.get("expected_decision")
+        if not isinstance(case_id, str) or not case_id.strip() or case_id != case_id.strip():
+            raise EvaluationDataError(f"{prefix}.id must be a non-empty trimmed string")
+        if case_id in expected_ids:
+            raise EvaluationDataError(f"duplicate case id: {case_id}")
+        expected_ids.add(case_id)
+        if not isinstance(expected, str) or expected not in DECISIONS:
+            raise EvaluationDataError(f"{prefix}.expected_decision must be accept or reject")
+
+    observed_by_id: dict[str, str] = {}
+    for index, item in enumerate(observations):
+        prefix = f"observations[{index}]"
+        if not isinstance(item, dict):
+            raise EvaluationDataError(f"{prefix} must be an object")
+        observation_id = item.get("id")
+        decision = item.get("observed_decision")
+        if not isinstance(observation_id, str) or not observation_id.strip() or observation_id != observation_id.strip():
+            raise EvaluationDataError(f"{prefix}.id must be a non-empty trimmed string")
+        if observation_id in observed_by_id:
+            raise EvaluationDataError(f"duplicate observation id: {observation_id}")
+        if not isinstance(decision, str) or decision not in DECISIONS:
+            raise EvaluationDataError(f"{prefix}.observed_decision must be accept or reject")
+        observed_by_id[observation_id] = decision
     observed_ids = set(observed_by_id)
     if expected_ids != observed_ids:
         missing = sorted(expected_ids - observed_ids)
