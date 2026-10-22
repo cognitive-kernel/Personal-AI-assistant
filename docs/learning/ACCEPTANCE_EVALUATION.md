@@ -6,9 +6,9 @@
 
 The reference dataset and each evaluation run are separate JSON files. Never put observed model decisions into the reference dataset; keeping observations separate allows the same adjudicated cases to be reused across model, prompt, and code versions.
 
-The reference dataset has `schema_version: 1`, a non-empty `dataset_name`, `dataset_version`, and `cases`. Each case requires a unique stable `id`, `domain`, `language`, `expected_decision` (`accept` or `reject`), `source_refs`, and `adjudication` containing `reviewer`, ISO-8601 `adjudicated_at`, a non-empty `rationale`, and `independent_of_model: true`.
+The reference dataset has `schema_version: 2`, a non-empty `dataset_name`, `dataset_version`, and `cases`. Each case requires a unique stable `id`, `domain`, `language`, `expected_decision` (`accept` or `reject`), `source_refs`, a `source_hashes` object whose keys exactly match `source_refs` and whose values are lowercase SHA-256 hex digests of the exact captured source material used for adjudication, and `adjudication` containing `reviewer`, ISO-8601 `adjudicated_at`, a non-empty `rationale`, and `independent_of_model: true`.
 
-The observation file has `schema_version: 1`, `observations` keyed by the same case IDs, and `run_metadata` containing `model_id`, `model_digest`, `prompt_version`, `application_commit`, and ISO-8601 `evaluated_at`. Every reference case must have exactly one observation; unknown and missing IDs fail closed.
+The observation file remains at `schema_version: 1`, `observations` keyed by the same case IDs, and `run_metadata` containing `model_id`, `model_digest`, `prompt_version`, `application_commit`, and ISO-8601 `evaluated_at`. Every reference case must have exactly one observation; unknown and missing IDs fail closed.
 
 Do not add generated or synthetic cases and call them golden data. Commit reference cases only after their expected decisions and rationales have been independently reviewed. Keep secrets out of both files.
 
@@ -35,5 +35,5 @@ The command exits with status 1 when a configured threshold is exceeded or canno
 - This harness reports results; it does not generate trusted labels or prove general model quality.
 - No human-adjudicated learning acceptance dataset is bundled yet. The harness must not be described as a completed golden-set evaluation until such a dataset exists and has been reviewed.
 - Add domain-specific cases for source support, unsupported claims, material source conflicts, prompt injection, and ambiguous/inconclusive evidence. Evaluate Persian and English separately.
-- Record the exact source hashes used for adjudication and retain run reports as CI artifacts. A passing result on a small dataset is not sufficient evidence of broad reliability.
+- The version-2 reference schema now requires exact source snapshot hashes for every cited source; retain run reports as CI artifacts. A passing result on a small dataset is not sufficient evidence of broad reliability.
 - Learning-job quality metadata records the versioned prompt contract and SHA-256 fingerprints for the exact generation/repair payloads, attempt count, and model ID. The current Ollama path does not provide a trusted model digest, so that field remains explicitly unavailable; prompt fingerprints do not replace model digests or human-adjudicated labels.

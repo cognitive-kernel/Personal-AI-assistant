@@ -18,6 +18,7 @@ def _case(case_id, expected):
         "language": "en",
         "expected_decision": expected,
         "source_refs": ["https://docs.python.org/3/"],
+        "source_hashes": {"https://docs.python.org/3/": "a" * 64},
         "adjudication": {
             "reviewer": "independent-reviewer",
             "adjudicated_at": "2026-10-21T12:00:00Z",
@@ -29,7 +30,7 @@ def _case(case_id, expected):
 
 def _dataset(cases):
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "dataset_name": "test-learning-acceptance",
         "dataset_version": "test-v1",
         "cases": cases,
@@ -102,6 +103,29 @@ def test_dataset_requires_independent_human_adjudication(tmp_path):
     with pytest.raises(EvaluationDataError, match="independent_of_model"):
         load_dataset(path)
 
+
+
+def test_dataset_requires_exact_source_hashes_for_adjudication(tmp_path):
+    case = _case("one", "accept")
+    del case["source_hashes"]
+    path = tmp_path / "dataset.json"
+    path.write_text(json.dumps(_dataset([case])), encoding="utf-8")
+    with pytest.raises(EvaluationDataError, match="source_hashes must map"):
+        load_dataset(path)
+
+
+def test_dataset_rejects_missing_or_malformed_source_hashes(tmp_path):
+    case = _case("one", "accept")
+    case["source_hashes"] = {}
+    path = tmp_path / "dataset.json"
+    path.write_text(json.dumps(_dataset([case])), encoding="utf-8")
+    with pytest.raises(EvaluationDataError, match="keys must exactly match source_refs"):
+        load_dataset(path)
+
+    case["source_hashes"] = {"https://docs.python.org/3/": "not-a-hash"}
+    path.write_text(json.dumps(_dataset([case])), encoding="utf-8")
+    with pytest.raises(EvaluationDataError, match="64-character SHA-256"):
+        load_dataset(path)
 
 def test_dataset_rejects_duplicate_case_ids(tmp_path):
     path = tmp_path / "dataset.json"
