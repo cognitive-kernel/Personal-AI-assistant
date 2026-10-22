@@ -354,10 +354,18 @@ def _persist_factual_review_claims(
 
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
-        row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
-        if row is None or row["status"] != "queued":
+        # Atomically claim a queued job. Multiple workers may call run_job for the
+        # same ID after a retry/reconciliation race; only one may start inference.
+        claim = conn.execute(
+            "UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status='queued'",
+            (job_id,),
+        )
+        if claim.rowcount != 1:
             return
-        conn.execute("UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
+        row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        if row is None:
+            return
         topic, source_kind = row["topic"], row["source_kind"]
         review_json = row["lesson_review_json"] if "lesson_review_json" in row.keys() else None
         try:
@@ -449,7 +457,7 @@ def run_job(job_id: int) -> None:
         result = json.loads(raw) if isinstance(raw, str) else None
         if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
             raise LearningError("Model response did not match the expected learning format.")
-        raw_outcomes = result.get("learning_outcomes", result["questions"])
+        raw_outcomes = result.get("learning_outcomes")
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
         assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"], assessment["learning_outcomes"])
@@ -503,7 +511,7 @@ def run_job(job_id: int) -> None:
                 and isinstance(retry_result.get("questions"), list)
                 and isinstance(retry_result.get("answer_key"), list)
             ):
-                retry_raw_outcomes = retry_result.get("learning_outcomes", retry_result["questions"])
+                retry_raw_outcomes = retry_result.get("learning_outcomes")
                 retry_outcomes = retry_raw_outcomes[:3] if isinstance(retry_raw_outcomes, list) else retry_raw_outcomes
                 retry_assessment = {
                     "learning_outcomes": retry_outcomes,
