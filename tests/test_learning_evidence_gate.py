@@ -154,3 +154,20 @@ def test_versioned_golden_evidence_gate_cases():
             assert result["status"] == "evidence_gate_passed_not_proof_of_truth"
         else:
             assert result["failed_gates"], case["id"]
+
+
+
+def test_evidence_gate_rejects_fabricated_claim_quote():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    review = _review(urls)
+    review["claims"][0]["evidence_quotes"] = [{
+        "url": urls[0],
+        "quote": "This invented sentence is not present in the source excerpt.",
+    }]
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls),
+        [_source(url) for url in urls],
+        review,
+    )
+    assert result["accepted"] is False
+    assert "all_claims_supported_by_known_sources" in result["failed_gates"]
