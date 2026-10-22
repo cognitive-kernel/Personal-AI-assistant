@@ -222,3 +222,49 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
 def test_factual_claim_test_harness_requires_assertion():
     with pytest.raises(ValueError, match="assert statement"):
         factual_verification_tasks.validate_test_harness("print('not a test')")
+
+
+
+def test_claim_change_during_execution_prevents_promotion(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+
+    def sandbox_handler(*_args):
+        with db.learning_connection() as connection:
+            factual_knowledge.transition_lifecycle(connection, knowledge_id, "needs_review")
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    result = handler({
+        "knowledge_id": knowledge_id,
+        "test_name": "assert semantics",
+        "source_code": "assert True",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+        "oracle_reviewed": True,
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+    }, None, FakeContext())
+
+    assert result["outcome"] == "inconclusive"
+    assert result["evidence_level_promoted"] is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level, lifecycle_status FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+    assert tuple(claim) == ("L1_sourced", "needs_review")
+
+
+def test_route_rejects_missing_independent_oracle_attestation():
+    from fastapi import HTTPException
+
+    request = factual_verification_routes.FactualClaimTestRequest(
+        confirm=True,
+        oracle_reviewed=False,
+        oracle_review_note="This note is long enough for schema validation.",
+        test_name="assert semantics",
+        source_code="assert True",
+    )
+    with pytest.raises(HTTPException) as raised:
+        factual_verification_routes.queue_factual_claim_test(1, request)
+    assert raised.value.status_code == 422
