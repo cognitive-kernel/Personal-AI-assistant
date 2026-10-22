@@ -43,6 +43,11 @@ def test_claim_review_passes_only_when_all_claims_are_supported_and_cited(tmp_pa
     )
     assert result["passed"] is True
     assert result["reviewer"] == "local_ollama_model_assisted_not_independent"
+    assert result["prompt_version"] == claim_review.CLAIM_REVIEW_PROMPT_VERSION
+    assert len(result["prompt_sha256"]) == 64
+    assert result["model_id"]
+    assert result["model_digest"] is None
+    assert result["model_digest_status"] == "unavailable_from_current_ollama_path"
 
 
 def test_claim_review_fails_closed_on_malformed_json(tmp_path, monkeypatch):
@@ -62,6 +67,8 @@ def test_claim_review_fails_closed_on_malformed_json(tmp_path, monkeypatch):
     assert result["passed"] is False
     assert result["claims"] == []
     assert result["error"].startswith("review_unavailable_or_malformed:")
+    assert result["prompt_version"] == claim_review.CLAIM_REVIEW_PROMPT_VERSION
+    assert len(result["prompt_sha256"]) == 64
 
 
 def test_claim_review_rejects_unsupported_claims_and_unknown_urls(tmp_path, monkeypatch):
@@ -235,3 +242,30 @@ def test_claim_review_fails_closed_when_source_conflict_field_is_missing(tmp_pat
     )
     assert result["passed"] is False
     assert result["error"] == "missing_source_conflicts"
+
+
+
+def test_claim_review_prompt_fingerprint_changes_with_review_payload(tmp_path, monkeypatch):
+    setup_settings_db(tmp_path, monkeypatch)
+    url = "https://docs.python.org/3/library/json.html"
+    seen = []
+
+    def fake_request(_path, payload, **_kwargs):
+        seen.append(payload["messages"][-1]["content"])
+        return {"message": {"content": json.dumps({
+            "overall": "supported",
+            "source_conflicts": [],
+            "claims": [{
+                "claim": "The excerpt supports the claim.",
+                "verdict": "supported",
+                "evidence_urls": [url],
+                "reason": "Directly supported.",
+            }],
+        })}}
+
+    monkeypatch.setattr(claim_review, "_request", fake_request)
+    source = [{"url": url, "title": "JSON docs", "content": "The excerpt contains enough text to be usable evidence for this claim."}]
+    first = claim_review.review_answer_claims("Question A", f"Answer. Source: {url}", source)
+    second = claim_review.review_answer_claims("Question B", f"Answer. Source: {url}", source)
+    assert first["prompt_sha256"] != second["prompt_sha256"]
+    assert seen[0] != seen[1]
