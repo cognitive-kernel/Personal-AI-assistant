@@ -185,6 +185,27 @@ def test_dynamic_ram_budget_uses_available_memory_and_safety_reserve(available, 
     ) == expected
 
 
+
+def test_runtime_limits_apply_user_ram_budget_and_safety_reserve():
+    limits = runtime_limits(
+        {
+            "ollama_num_thread": 0,
+            "ollama_num_ctx": 8192,
+            "ram_budget_max_gb": 6,
+            "ram_safety_reserve_gb": 4,
+        },
+        {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25},
+    )
+    assert limits == {"cpu_threads": 7, "num_ctx": 2048}
+
+
+def test_dynamic_ram_budget_rejects_infinite_settings():
+    assert hardware.dynamic_ram_budget_gb(
+        {"ram_budget_max_gb": float("inf"), "ram_safety_reserve_gb": 4},
+        {"available_ram_gb": 20},
+    ) == 16.0
+
+
 def test_resource_headroom_fails_closed_when_available_ram_telemetry_is_missing(monkeypatch):
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         cpu_percent=lambda interval: 20.0,
