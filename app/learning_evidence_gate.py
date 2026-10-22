@@ -114,11 +114,31 @@ def evaluate_lesson_evidence(
             claim_text = claim.get("claim")
             reason = claim.get("reason")
             evidence_urls = claim.get("evidence_urls")
+            evidence_quotes = claim.get("evidence_quotes")
+            valid_quote_found = False
+            if isinstance(evidence_quotes, list) and isinstance(evidence_urls, list):
+                for quote_item in evidence_quotes[:10]:
+                    if not isinstance(quote_item, dict):
+                        continue
+                    quote_url = quote_item.get("url")
+                    quote = quote_item.get("quote")
+                    source = source_by_url.get(quote_url) if isinstance(quote_url, str) else None
+                    if (
+                        source is None or quote_url not in evidence_urls
+                        or not isinstance(quote, str) or not 20 <= len(quote.strip()) <= 1000
+                    ):
+                        continue
+                    normalized_source = re.sub(r"\\s+", " ", str(source.get("content", ""))).strip()
+                    normalized_quote = re.sub(r"\\s+", " ", quote).strip()
+                    if normalized_quote in normalized_source:
+                        valid_quote_found = True
+                        break
             mapping_is_explicit = (
                 isinstance(claim_text, str) and bool(claim_text.strip())
                 and isinstance(reason, str) and bool(reason.strip())
                 and isinstance(evidence_urls, list) and len(evidence_urls) > 0
                 and all(isinstance(url, str) and url in cited and url in source_by_url for url in evidence_urls)
+                and valid_quote_found
             )
             if mapping_is_explicit:
                 mapped_claim_count += 1
