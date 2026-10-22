@@ -9,7 +9,10 @@ _OUTCOMES_NOT_PROVIDED = object()
 def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any], learning_outcomes: Any = _OUTCOMES_NOT_PROVIDED) -> dict[str, Any]:
     """Deterministic content-shape filter; never an independent factual review."""
     text = lesson.strip()
-    normalized = re.sub(r"\s+", " ", text.lower())
+    # Source citations are provenance, not instructional word count.
+    body_match = re.search(r"(?im)^\s*(?:#{1,6}\s*)?(?:sources|منابع)\s*:?\s*$", text)
+    body_text = text[:body_match.start()].strip() if body_match else text
+    normalized = re.sub(r"\s+", " ", body_text.lower())
     words = re.findall(r"[^\W_]+", normalized, flags=re.UNICODE)
     unique_ratio = len(set(words)) / max(1, len(words))
     # Apply language-aware heuristics: English technical lessons are valid inputs too.
@@ -31,7 +34,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     ]
     matched = [signal for signal in signals if signal in normalized]
     # These are conservative warning heuristics for obvious mixed-script or malformed output.
-    mixed_script_tokens = re.findall(r"(?u)\b\w*[А-Яа-яЁё]+\w*\b", text)
+    mixed_script_tokens = re.findall(r"(?u)\b\w*[А-Яа-яЁё]+\w*\b", body_text)
     malformed_phrases = [
         phrase for phrase in (
             "معمایی سیستم مدیریتی",
@@ -75,14 +78,18 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
 
     score = 100
     reasons: list[str] = []
-    minimum_words = 80 if is_english else 180
-    target_words = 120 if is_english else 200
+    minimum_words = 120 if is_english else 180
+    target_words = 140 if is_english else 200
+    maximum_words = 260
     if len(words) < minimum_words:
         score -= 35
         reasons.append(f"درس کوتاه‌تر از حداقل {minimum_words} واژه آموزشی است.")
     elif len(words) < target_words:
         score -= 10
-        reasons.append(f"درس از بازه هدف {target_words} تا {target_words + 60} واژه کوتاه‌تر است.")
+        reasons.append(f"درس از بازه هدف {target_words} تا {maximum_words} واژه کوتاه‌تر است.")
+    if len(words) > maximum_words:
+        score -= 5
+        reasons.append(f"درس از سقف پیشنهادی {maximum_words} واژه بلندتر است.")
     if unique_ratio < 0.48:
         score -= 20
         reasons.append("تکرار متن زیاد است و اطلاعات تازه کمی دارد.")
@@ -116,21 +123,24 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     elif matched:
         score -= 20
         reasons.append("نشانه‌ای از گزارش خطا یا وضعیت اجرایی در متن وجود دارد.")
-    if not text:
+    if not body_text:
         score = 0
         reasons.append("محتوای درس خالی است.")
 
     score = max(0, min(100, score))
     accepted = (
-        score >= 75 and len(words) >= minimum_words and unique_ratio >= 0.48
+        score >= 75 and len(words) >= target_words and len(words) <= maximum_words and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example and has_explanation
         and valid_questions and valid_answers and valid_learning_outcomes and not mixed_script_tokens
-        and not malformed_phrases and len(matched) < 2 and bool(text)
+        and not malformed_phrases and len(matched) < 2 and bool(body_text)
     )
     return {
         "score": score,
         "accepted": accepted,
         "word_count": len(words),
+        "minimum_words": minimum_words,
+        "target_words": target_words,
+        "maximum_words": maximum_words,
         "has_concrete_example": has_example,
         "has_explanatory_reasoning": has_explanation,
         "technical_detail_count": len(technical_terms),
