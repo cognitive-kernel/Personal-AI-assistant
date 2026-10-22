@@ -16,6 +16,15 @@ class LearningError(RuntimeError):
 
 
 
+
+
+def maintain_factual_knowledge() -> int:
+    """Scheduled maintenance: quarantine claims whose re-verification deadline elapsed."""
+    with learning_connection() as connection:
+        return factual_knowledge.mark_due_claims_for_review(connection, limit=100)
+
+
+
 def create_job(
     topic: str,
     source_text: str | None = None,
