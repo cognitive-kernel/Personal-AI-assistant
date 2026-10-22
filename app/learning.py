@@ -495,6 +495,9 @@ def run_job(job_id: int) -> None:
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+        quality["source_text_truncated"] = source_text_truncated
+        quality["source_characters_provided"] = len(source_text)
+        quality["source_characters_sent_to_model"] = len(model_source_text)
         claim_review_result: dict[str, Any] | None = None
         if quality["accepted"] and source_kind == "web_retrieved" and source_text:
             sources = _claim_review_sources(source_text)
@@ -559,10 +562,7 @@ def run_job(job_id: int) -> None:
                 )
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
-            quality["source_text_truncated"] = source_text_truncated
-        quality["source_characters_provided"] = len(source_text)
-        quality["source_characters_sent_to_model"] = len(model_source_text)
-        if claim_review_result is not None:
+            if claim_review_result is not None:
                 claim_note = (
                     f"Model-assisted claim review passed={claim_review_result.get('passed') is True}; "
                     "this is not an independent verification."
