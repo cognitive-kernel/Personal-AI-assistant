@@ -39,7 +39,9 @@ def test_accepts_structured_technical_lesson_with_example_and_explanation():
         "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
         "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
         "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
-        "نه تضمین خودکار برای درست بودن طراحی."
+        "نه تضمین خودکار برای درست بودن طراحی. "
+        "برای ثبت نتیجه، نسخه SQL Server، تنظیمات مرتبط، حجم داده و شرایط اجرای آزمایش را مستند کنید. "
+        "این اطلاعات امکان تکرار آزمایش را فراهم می‌کند و از مقایسه نتایج حاصل از محیط‌های متفاوت جلوگیری می‌کند."
     )
     questions = [
         "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
@@ -79,7 +81,9 @@ def test_rejects_missing_or_malformed_learning_outcomes():
         "به این دلیل که بهینه‌ساز بر اساس هزینه تخمینی تصمیم می‌گیرد، ایجاد ایندکس به‌تنهایی تضمین نمی‌کند که هر درخواست سریع‌تر شود. "
         "همچنین باید هزینه فضای ذخیره‌سازی و عملیات INSERT یا UPDATE را بسنجید، زیرا هر ایندکس اضافی نیازمند نگهداری است. "
         "نمونه‌ای عملی، ثبت زمان اجرا و logical reads برای یک بازه شناسه است و سپس مقایسه نتیجه با همان پارامترها پس از ایجاد ایندکس آزمایشی است. "
-        "این روش رابطه علت‌ومعلولی را روشن می‌کند و از نتیجه‌گیری بر پایه یک عدد یا حدس جلوگیری می‌کند."
+        "این روش رابطه علت‌ومعلولی را روشن می‌کند و از نتیجه‌گیری بر پایه یک عدد یا حدس جلوگیری می‌کند. "
+        "نتیجه را همراه با نسخه موتور، تنظیمات پایگاه داده و مشخصات داده ثبت کنید تا اجرای بعدی قابل مقایسه باشد. "
+        "اگر شرایط آزمایش تغییر کند، تفاوت نتیجه را نباید فقط به ایندکس نسبت داد؛ ابتدا باید متغیرهای محیطی را کنترل کرد."
     )
     questions = [
         "SELECT چه کاری انجام می‌دهد؟",
@@ -105,3 +109,34 @@ def test_rejects_missing_or_malformed_learning_outcomes():
     assert null_outcomes["accepted"] is False
     assert legacy_without_outcomes["accepted"] is True
     assert valid["accepted"] is True
+
+
+
+def test_lesson_below_target_length_is_not_accepted_even_if_other_signals_exist():
+    lesson = (
+        "SQL Server و Database Engine درخواست T-SQL را پردازش می‌کنند. "
+        "برای مثال، execution plan می‌تواند نشان دهد که query از index یا table scan استفاده می‌کند. "
+        "زیرا آمار و توزیع داده بر انتخاب optimizer اثر می‌گذارند، نتیجه باید با logical reads سنجیده شود. "
+    ) * 4
+    result = evaluate_learning_value(
+        lesson,
+        ["execution plan چه چیزی نشان می‌دهد؟", "چرا index همیشه سریع‌تر نیست؟", "نتیجه را چگونه می‌سنجیم؟"],
+        ["عملگرهای اجرای query را نشان می‌دهد.", "هزینه نگهداری و توزیع داده مؤثر است.", "logical reads و زمان را مقایسه می‌کنیم."],
+        ["هدف اول قابل سنجش", "هدف دوم قابل سنجش", "هدف سوم قابل سنجش"],
+    )
+    assert result["target_words"] == 200
+    assert result["accepted"] is False
+    assert any("بازه هدف 200" in reason for reason in result["reasons"])
+
+
+def test_sources_section_does_not_count_as_instructional_lesson_words():
+    body = ("SQL Server Database Engine processes a query and returns results. " * 15)
+    sources = ("source evidence URL reference page Microsoft Learn SQL Server. " * 80)
+    result = evaluate_learning_value(
+        body + "\n\nمنابع:\n" + sources,
+        ["What does Database Engine do?", "Why inspect a query plan?", "How would you test a change?"],
+        ["It processes queries.", "It explains operators and access paths.", "Compare a baseline and measured results."],
+        ["Explain the engine", "Inspect a query plan", "Compare measured results"],
+    )
+    assert result["word_count"] < 200
+    assert result["accepted"] is False
