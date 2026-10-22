@@ -9,7 +9,8 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
+from urllib.parse import urlparse
 
 EVIDENCE_LEVELS = ("L0_raw", "L1_sourced", "L2_tested", "L3_human_verified")
 LIFECYCLE_STATUSES = ("unverified", "active", "conflicting", "failed", "superseded", "needs_review")
@@ -277,6 +278,121 @@ def mark_due_claims_for_review(
         )
         reviewed += 1
     return reviewed
+
+
+def reverify_due_sources(
+    connection: sqlite3.Connection,
+    *,
+    limit: int = 2,
+    extension_days: int = 30,
+    fetch_document: Callable[..., Any] | None = None,
+) -> int:
+    """Re-fetch due public sources and quarantine claims when their supporting excerpt changes.
+
+    This checks source continuity, not claim truth. Network failures and changed
+    excerpts move an active claim to needs_review; they never mark it false.
+    """
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 10:
+        raise KnowledgePolicyError("limit must be an integer between 1 and 10")
+    if (
+        isinstance(extension_days, bool)
+        or not isinstance(extension_days, int)
+        or not 1 <= extension_days <= 365
+    ):
+        raise KnowledgePolicyError("extension_days must be an integer between 1 and 365")
+    if fetch_document is None:
+        from .web_sources import fetch_public_document
+
+        fetch_document = fetch_public_document
+
+    claims = connection.execute(
+        """SELECT id, claim_hash
+           FROM factual_knowledge
+           WHERE lifecycle_status='active'
+             AND reverify_after IS NOT NULL
+             AND datetime(reverify_after) <= CURRENT_TIMESTAMP
+           ORDER BY datetime(reverify_after), id
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    checked_claims = 0
+    for claim_row in claims:
+        knowledge_id, claim_hash = int(claim_row[0]), str(claim_row[1])
+        evidence_rows = connection.execute(
+            """SELECT id, source_ref, source_hash, excerpt
+               FROM factual_evidence
+               WHERE knowledge_id=?
+                 AND source_type IN ('official_docs','source_code','other')
+                 AND source_ref LIKE 'https://%'
+               ORDER BY id
+               LIMIT 2""",
+            (knowledge_id,),
+        ).fetchall()
+        # Claims with no re-fetchable evidence are handled by mark_due_claims_for_review.
+        if not evidence_rows:
+            continue
+
+        outcomes: list[str] = []
+        for evidence in evidence_rows:
+            evidence_id = int(evidence[0])
+            source_ref = str(evidence[1])
+            expected_hash = str(evidence[2])
+            excerpt = str(evidence[3] or "")
+            observed_hash: str | None = None
+            if len(excerpt.strip()) < 40:
+                outcome = "inconclusive"
+                note = "Stored source excerpt is too short for a safe continuity comparison."
+            else:
+                try:
+                    host = urlparse(source_ref).hostname or "public source"
+                    document = fetch_document(source_ref, host, max_chars=6000)
+                    current_text = getattr(document, "text", None)
+                    if not isinstance(current_text, str) or not current_text.strip():
+                        raise ValueError("Fetched source has no readable text.")
+                    observed_hash = hashlib.sha256(current_text.encode("utf-8")).hexdigest()
+                    expected_text = " ".join(excerpt.split())
+                    normalized_current = " ".join(current_text.split())
+                    if expected_text in normalized_current:
+                        outcome = "unchanged"
+                        note = "Stored supporting excerpt is still present in the fetched public source."
+                    else:
+                        outcome = "changed"
+                        note = "Stored supporting excerpt was not found in the current source snapshot."
+                except Exception as exc:
+                    outcome = "unavailable"
+                    note = f"Source re-fetch failed ({type(exc).__name__}); truth was not inferred."
+
+            connection.execute(
+                """INSERT INTO factual_source_checks(
+                       knowledge_id, evidence_id, claim_hash, source_ref,
+                       expected_source_hash, observed_content_hash, outcome, note
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    knowledge_id, evidence_id, claim_hash, source_ref,
+                    expected_hash, observed_hash, outcome, note[:1000],
+                ),
+            )
+            outcomes.append(outcome)
+
+        current = connection.execute(
+            "SELECT claim_hash, lifecycle_status FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        if current is None:
+            continue
+        if outcomes and all(item == "unchanged" for item in outcomes) and current[0] == claim_hash and current[1] == "active":
+            connection.execute(
+                """UPDATE factual_knowledge
+                   SET reverify_after=datetime('now', ?), updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND claim_hash=? AND lifecycle_status='active'
+                     AND reverify_after IS NOT NULL
+                     AND datetime(reverify_after) <= CURRENT_TIMESTAMP""",
+                (f"+{extension_days} days", knowledge_id, claim_hash),
+            )
+        elif current[1] == "active":
+            transition_lifecycle(connection, knowledge_id, "needs_review")
+        checked_claims += 1
+    return checked_claims
 
 
 
