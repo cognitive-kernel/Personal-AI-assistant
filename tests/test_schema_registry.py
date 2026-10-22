@@ -261,7 +261,7 @@ def test_known_v6_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None)]
+        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None)]
 
 
 def test_known_v7_schema_is_baselined_then_upgraded():
