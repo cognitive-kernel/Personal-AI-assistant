@@ -72,7 +72,7 @@ def test_permanent_learning_failure_is_escalated_without_retry(
         raise learning.LearningError("invalid configuration") from ValueError("bad setting")
 
     monkeypatch.setattr(learning, "run_job", fail)
-    with pytest.raises(ValueError, match="configuration or policy is invalid"):
+    with pytest.raises(ValueError, match="invalid input or an internal invariant"):
         handle_learning_job({"job_id": job["id"]}, None, context)
 
     items = list_learning_escalations()
