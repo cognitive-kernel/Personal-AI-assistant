@@ -91,14 +91,13 @@
 - [x] lease، heartbeat، checkpoint، لغو/مکث و سقف تلاش.
 - [x] backoff نمایی محدود برای retryهای صف؛ retry اول ۲ ثانیه و سپس دوبرابر تا سقف ۵ دقیقه.
 - [x] جلوگیری از retry برای خطاهای ورودی/نوع داده و تعارض یکپارچگی پایگاه داده.
-- [ ] تکمیل و پذیرش طبقه‌بندی retryable/permanent در همهٔ handlerهای دامنه‌ای؛ شاخهٔ `work/ollama-http-retry-policy-v3` تفکیک خطاهای HTTP Ollama و آزمون‌های وضعیت مرزی را اضافه می‌کند. CI دقیق head باید سبز شود؛ redirect همچنان مسدود و غیرقابل retry است.
 - [x] تأیید محلی سیاست retry با jitter؛ آزمون‌های task manager/worker و کل مجموعه pytest روی commit `b484f76` موفق شدند. CI هنوز جداگانه نیاز به تأیید دارد.
 - [ ] تضمین idempotency در سطح عملیات دامنه‌ای که ممکن است پس از crash دوباره اجرا شوند.
 
 ## مرحله ۵ — اجرای امن و تازگی دانش
 - [x] sandbox مبتنی بر Docker، بدون شبکه، با image digest ثابت، محدودیت منابع و بدون fallback اجرای کد روی میزبان.
 - [x] handler allow-listed و consent صریح برای اجرای sandbox؛ غیرفعال به‌صورت پیش‌فرض.
-- [ ] اتصال sandbox به بررسی ادعاهای قابل‌اجرا در pipeline یادگیری؛ وجود sandbox به‌تنهایی به معنی استفاده شدن آن برای اعتبارسنجی دانش نیست.
+- [ ] اتصال خودکار sandbox به pipeline تولید درس همچنان انجام نشده است. شاخهٔ `work/factual-claim-sandbox-verification-v2` مسیر جداگانهٔ اجرای دستی و consent-gated آزمون claimهای Python با oracle انسانی و تطبیق دقیق نسخه را اضافه می‌کند؛ CI دقیق head باید پیش از پذیرش موفق شود.
 - [ ] طبقه‌بندی خطر و کنترل امنیتی جامع برای محتوای وب، prompt injection و ورودی‌های خصمانه.
 - [x] زمان‌بندی re-verification بر اساس deadline صریح `reverify_after`: claim فعال منقضی به `needs_review` منتقل می‌شود، رویداد audit و hash منابع ثبت می‌شود و claim/evidence حذف نمی‌شوند. تغییر منبع/نسخه به‌صورت خودکار کشف نمی‌شود و همچنان باقی است.
 - [ ] سقف بودجه/هزینه و concurrency در سطح کل pipeline، نه فقط تعداد workerها.
@@ -158,13 +157,12 @@
 
 ## وضعیت پذیرش
 - آخرین بازبینی: 2026-10-22.
-- PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
+- PR #417 ادغام شد؛ طبقه‌بندی خطاهای HTTP Ollama و جلوگیری از retry روی redirect اضافه شد. روی head دقیق `c1e905ff18e653df3af84582ec23e0aa1d0c441a` آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق شدند.
+- PR #412 ادغام شد؛ زمان‌بندی re-verification با deadline صریح و audit trail اضافه شد؛ آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها روی head دقیق موفق بودند.
+- PR #415 ادغام شد؛ مجموعهٔ طلایی نسخه‌دار گیت شواهد اضافه شد؛ آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها روی head دقیق موفق بودند.
+- شاخهٔ `work/factual-claim-sandbox-verification-v2`: مسیر دستی اجرای آزمون claimهای Python با رضایت، oracle انسانی و تطبیق نسخه پیاده‌سازی شده؛ CI هنوز باید تأیید شود. تست محلی Windows اجرا نشده است.
 - PR #415 ادغام شد؛ مجموعهٔ طلایی نسخه‌دار گیت شواهد اضافه شد. CI دقیق head روی آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
-- شاخهٔ `work/ollama-http-retry-policy-v3`: طبقه‌بندی HTTP Ollama و اصلاح رگرسیون redirect اضافه شده؛ CI دقیق head در انتظار است. تست محلی Windows اجرا نشده است.
-- PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
-- شاخهٔ `work/versioned-learning-evidence-golden-v2`: مجموعهٔ طلایی نسخه‌دار اضافه شد؛ CI دقیق head باید بررسی شود. تست محلی Windows اجرا نشده است.
 - PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود؛ این مکانیزم فقط ارجاع برای بازبینی است و حکم دروغ‌بودن claim نمی‌دهد.
-- PR جاری `work/verified-knowledge-learning-context`: افزودن context دانش factual تأییدشده به تولید درس و سه آزمون رگرسیون (دامنه/نسخه و منبع/تست، fail-closed و عدم تبدیل context به دستور). تا دریافت نتیجهٔ CI دقیق head، این تغییر در وضعیت «در انتظار اعتبارسنجی» است؛ تست محلی Windows اجرا نشده است.
 - PR #393 ادغام شد؛ روی head دقیق `9ba73dc364878a05ed1e8dc5d5e373bb23e69d26` آزمون‌ها با 737 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند.
 - PR #396 ادغام شد؛ روی head دقیق `50d4b12afc304a8b9e7a061c960e83195bc1581d` آزمون‌ها با 739 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند. هیچ‌یک جایگزین benchmark مدل واقعی یا پذیرش محلی Windows نیست.
 - PR #398 ادغام شد؛ revisionهای immutable برای factual claimها اضافه شد. روی head دقیق `0397afeb702e99b0d4c8a40ccc911ec5c880b92b` تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق شدند.
