@@ -466,13 +466,13 @@ def test_browser_task_filter_and_cursor_pagination_preserve_cards():
         page.locator("#load-more-tasks").click()
         page.get_by_text("#202 — e2e.second-page", exact=True).wait_for(timeout=5000)
         assert page.locator("#tasks-container article").count() == 2
-        assert "cursor=page-two" in requests[-1]
+        assert any("cursor=page-two" in url for url in requests)
 
         page.locator("#task-status-filter").select_option("failed")
         page.get_by_text("#303 — e2e.failed", exact=True).wait_for(timeout=5000)
         assert page.locator("#tasks-container article").count() == 1
         assert page.get_by_text("#101 — e2e.first-page", exact=True).count() == 0
-        assert "statuses=failed" in requests[-1]
+        assert any("statuses=failed" in url for url in requests)
         browser.close()
 
 

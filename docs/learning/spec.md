@@ -54,7 +54,7 @@ Relations need foreign keys, a uniqueness constraint, a no-self-link check, time
 
 ## 5. Evidence and test contracts
 
-Each evidence record should retain source URL/type, a bounded excerpt or content hash, capture time, applicability/version, and verification method. For L1, require a specific source excerpt or reference that supports the claim; model votes are not source evidence.
+Each evidence record should retain source URL/type, a bounded excerpt or content hash, capture time, applicability/version, and verification method. For L1, require a traceable source snapshot and a verbatim, contiguous quote that matches the captured excerpt after whitespace normalization; a URL or model vote alone is not source evidence. Store only the matched quote as claim evidence.
 
 Each test record should include test type, input/command, expected and actual result, exit status, environment/runtime version, start/end time, outcome classification, and bounded logs. Test definitions should be reviewed or derived from an independent oracle where possible; do not let one model author both a claim and its only proof.
 
