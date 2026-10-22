@@ -123,6 +123,7 @@ def review_answer_claims(
             "messages": [
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {"role": "user", "content": serialized_payload},
+            ],
             "options": {
                 "temperature": 0,
                 "num_ctx": limits["num_ctx"],
