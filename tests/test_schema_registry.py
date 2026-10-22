@@ -123,7 +123,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         connection.commit()
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 19
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 18
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 19
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}
@@ -194,11 +194,12 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v16 = fingerprint_for_version(LEARNING_MIGRATIONS, 16)
     learning_v17 = fingerprint_for_version(LEARNING_MIGRATIONS, 17)
     learning_v18 = fingerprint_for_version(LEARNING_MIGRATIONS, 18)
+    learning_v19 = fingerprint_for_version(LEARNING_MIGRATIONS, 19)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18}) == 18
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19}) == 19
 
 
 
@@ -223,7 +224,7 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == list(range(1, 19))
+        assert [row[0] for row in history] == list(range(1, 20))
         assert len(history[0][1]) == 64
         assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -237,7 +238,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(4, expected_v4), (5, None), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None)]
+        assert history == [(4, expected_v4), (5, None), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None)]
 
 
 def test_known_v5_schema_is_baselined_then_upgraded():
