@@ -68,7 +68,7 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
             ("Learning task recovery exhausted; human review is required.", job_id),
         )
     _record_learning_escalation(
-        int(recovery["id"]), job_id, "recovery_exhausted",
+        int(recovery["id"]), job_id, "attempts_exhausted",
         "The original task and its single recovery task are terminal while the learning job remains non-terminal.",
     )
     return recovery
