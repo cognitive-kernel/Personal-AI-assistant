@@ -128,7 +128,7 @@ def evaluate_lesson_evidence(
                         or not isinstance(quote, str) or not 20 <= len(quote.strip()) <= 1000
                     ):
                         continue
-                    normalized_source = re.sub(r"\\s+", " ", str(source.get("content", ""))).strip()
+                    normalized_source = re.sub(r"\s+", " ", str(source.get("content", ""))).strip()
                     normalized_quote = re.sub(r"\\s+", " ", quote).strip()
                     if normalized_quote in normalized_source:
                         valid_quote_found = True
