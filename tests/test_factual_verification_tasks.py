@@ -184,6 +184,8 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
             "source_code": "assert True",
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         }, None, FakeContext())
     assert called is False
 
