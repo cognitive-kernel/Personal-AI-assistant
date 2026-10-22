@@ -354,10 +354,18 @@ def _persist_factual_review_claims(
 
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
-        row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
-        if row is None or row["status"] != "queued":
+        # Atomically claim a queued job. Multiple workers may call run_job for the
+        # same ID after a retry/reconciliation race; only one may start inference.
+        claim = conn.execute(
+            "UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status='queued'",
+            (job_id,),
+        )
+        if claim.rowcount != 1:
             return
-        conn.execute("UPDATE learning_jobs SET status='running', updated_at=CURRENT_TIMESTAMP WHERE id=?", (job_id,))
+        row = conn.execute("SELECT * FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        if row is None:
+            return
         topic, source_kind = row["topic"], row["source_kind"]
         review_json = row["lesson_review_json"] if "lesson_review_json" in row.keys() else None
         try:
