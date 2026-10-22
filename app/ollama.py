@@ -116,8 +116,16 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
             finally:
                 _INFERENCE_LOCK.release()
         return perform_request()
+    except urllib.error.HTTPError as exc:
+        # A malformed request or missing model will not recover by retrying; rate
+        # limits and server-side failures may recover after bounded queue backoff.
+        retryable_statuses = {408, 425, 429, 500, 502, 503, 504}
+        raise OllamaError(
+            f"Ollama returned HTTP {exc.code}.",
+            retryable=exc.code in retryable_statuses,
+        ) from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise OllamaError(f"Ollama request failed: {exc}", retryable=True) from exc
+        raise OllamaError(f"Ollama request failed: {type(exc).__name__}", retryable=True) from exc
 
 def health() -> dict[str, Any]:
     try:
