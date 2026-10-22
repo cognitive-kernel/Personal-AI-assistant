@@ -368,6 +368,10 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
                 "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
             ],
         }, ensure_ascii=False)}}
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
+    })
     monkeypatch.setattr(learning, "_request", fake_request)
     job = learning.create_job("معماری SQL Server و ابزارهای مدیریت")
     learning.run_job(job["id"])
