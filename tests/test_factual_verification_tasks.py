@@ -318,7 +318,7 @@ def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_
         factual_knowledge.record_test(
             connection,
             knowledge_id,
-            test_kind="sandbox",
+            test_kind="integration",
             test_name="existing passing test",
             environment_version="3.12.3",
             outcome="passed",
