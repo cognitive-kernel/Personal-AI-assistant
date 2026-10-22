@@ -5,7 +5,6 @@ actual learning outcome instead of treating a swallowed application error as suc
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 from typing import Any
 
