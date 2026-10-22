@@ -5,6 +5,7 @@ proof of truth. Malformed, incomplete, or unsupported reviews fail closed.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -100,7 +101,6 @@ def review_answer_claims(
         ),
     }
     serialized_payload = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    import hashlib
     prompt_sha256 = hashlib.sha256(
         json.dumps({
             "version": CLAIM_REVIEW_PROMPT_VERSION,
