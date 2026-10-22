@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from app.learning_evidence_gate import evaluate_lesson_evidence
 
 
@@ -130,3 +133,23 @@ def test_evidence_gate_rejects_claim_without_explicit_text_or_reason():
     assert result["accepted"] is False
     assert result["explicitly_mapped_claim_count"] == 0
     assert "all_claims_supported_by_known_sources" in result["failed_gates"]
+
+
+def test_versioned_golden_evidence_gate_cases():
+    fixture_path = Path(__file__).parent / "fixtures" / "learning_evidence_golden_v1.json"
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+    assert fixture["schema_version"] == 1
+    cases = fixture["cases"]
+    assert len(cases) >= 5
+    assert len({case["id"] for case in cases}) == len(cases)
+
+    for case in cases:
+        result = evaluate_lesson_evidence(
+            case["lesson"], case["sources"], case["claim_review"]
+        )
+        assert result["accepted"] is case["expected_accepted"], case["id"]
+        if result["accepted"]:
+            assert result["independent_scientific_verification"] is False
+            assert result["status"] == "evidence_gate_passed_not_proof_of_truth"
+        else:
+            assert result["failed_gates"], case["id"]
