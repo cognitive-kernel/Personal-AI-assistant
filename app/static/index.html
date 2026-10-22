@@ -964,15 +964,16 @@ async function refreshFactualReviewQueue() {
    }
    const note=document.createElement("textarea");
    note.rows=3; note.maxLength=1000; note.required=true;
-   note.placeholder="یادداشت بازبینی: دقیقاً کدام بخش منبع این ادعا را پشتیبانی می‌کند؟ (حداقل ۲۰ نویسه)";
+   note.placeholder="یادداشت بازبینی: منبع چه چیزی را پشتیبانی می‌کند یا چرا کافی نیست؟ (حداقل ۲۰ نویسه)";
    const confirmLabel=document.createElement("label");
    const confirm=document.createElement("input");
    confirm.type="checkbox";
    const confirmText=document.createElement("span");
-   confirmText.textContent="من منبع را بررسی کردم و این منبع از همین ادعا پشتیبانی می‌کند.";
+   confirmText.textContent="من منبع و ادعای دقیق را بررسی کردم و تصمیم ثبت‌شده بازتاب بررسی من است.";
    confirmLabel.append(confirm,confirmText);
    const submit=document.createElement("button");
-   submit.type="button"; submit.textContent="ثبت بازبینی منبع";
+   submit.type="button"; submit.textContent="تأیید پشتیبانی منبع (L1)";
+   const reject=document.createElement("button"); reject.type="button"; reject.className="danger"; reject.textContent="رد منبع و انتقال به نیازمند بازبینی";
    const status=document.createElement("p");
    submit.addEventListener("click",async()=>{
     if(!confirm.checked) { status.textContent="برای ثبت، تأیید صریح لازم است."; return; }
@@ -984,7 +985,17 @@ async function refreshFactualReviewQueue() {
      await refreshFactualReviewQueue();
     } catch(error) { status.textContent=error.message; submit.disabled=false; }
    });
-   card.append(heading,claim,meta,sources,note,confirmLabel,submit,status);
+   reject.addEventListener("click",async()=>{
+    if(!confirm.checked) { status.textContent="برای ثبت، تأیید صریح لازم است."; return; }
+    if(note.value.trim().length<20) { status.textContent="یادداشت بازبینی باید حداقل ۲۰ نویسه داشته باشد."; return; }
+    reject.disabled=true; status.textContent="در حال ثبت رد منبع…";
+    try {
+     const response=await api("/api/factual-knowledge/"+item.id+"/reject-source",{method:"POST",body:JSON.stringify({confirm:true,source_supports_claim:false,review_note:note.value.trim()})});
+     status.textContent=response.message||("ثبت شد؛ وضعیت: "+response.lifecycle_status);
+     await refreshFactualReviewQueue();
+    } catch(error) { status.textContent=error.message; reject.disabled=false; }
+   });
+   card.append(heading,claim,meta,sources,note,confirmLabel,submit,reject,status);
    container.append(card);
   }
  } catch(error) { container.textContent="بارگذاری صف منبع ناموفق بود: "+error.message; }
