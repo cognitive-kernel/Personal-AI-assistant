@@ -160,9 +160,7 @@
 - آخرین بازبینی: 2026-10-22.
 - PR #417 ادغام شد؛ طبقه‌بندی خطاهای HTTP Ollama و جلوگیری از retry روی redirect اضافه شد. روی head دقیق `c1e905ff18e653df3af84582ec23e0aa1d0c441a` آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق شدند.
 - شاخهٔ `work/factual-claim-sandbox-verification`: API و worker برای اجرای دستی آزمون claimهای Python در Docker، ثبت hash و تطبیق دقیق نسخه اضافه شده‌اند؛ CI هنوز اجرا/تأیید نشده است. تست محلی Windows اجرا نشده است.
-- PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
 - PR #415 ادغام شد؛ مجموعهٔ طلایی نسخه‌دار گیت شواهد اضافه شد. CI دقیق head روی آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
-- PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
 - PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود؛ این مکانیزم فقط ارجاع برای بازبینی است و حکم دروغ‌بودن claim نمی‌دهد.
 - PR #393 ادغام شد؛ روی head دقیق `9ba73dc364878a05ed1e8dc5d5e373bb23e69d26` آزمون‌ها با 737 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند.
 - PR #396 ادغام شد؛ روی head دقیق `50d4b12afc304a8b9e7a061c960e83195bc1581d` آزمون‌ها با 739 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند. هیچ‌یک جایگزین benchmark مدل واقعی یا پذیرش محلی Windows نیست.
