@@ -208,3 +208,55 @@ def test_cancel_learning_task_is_safe_when_no_queue_task_exists(learning_task_st
     job = learning.create_job("No queue task yet")
 
     assert cancel_learning_task(job["id"]) is None
+
+def test_learning_retry_after_lesson_commit_does_not_generate_or_store_twice(
+    learning_task_store, monkeypatch
+):
+    """Simulate a worker crash after the lesson transaction commits but before task completion."""
+    job = learning.create_job("Crash after durable lesson commit")
+    calls = {"count": 0}
+
+    def commit_then_crash(job_id):
+        calls["count"] += 1
+        with db.learning_connection() as conn:
+            conn.execute(
+                """UPDATE learning_jobs
+                   SET status='completed', lesson=?, assessment_json='{}',
+                       quality_json='{}', error=NULL
+                   WHERE id=?""",
+                ("Durably saved lesson", job_id),
+            )
+            conn.execute(
+                """INSERT INTO knowledge_items
+                   (topic, content, source_kind, version, status, job_id)
+                   VALUES (?, ?, 'model_knowledge_no_external_source', 1, 'unverified', ?)""",
+                ("Crash after durable lesson commit", "Durably saved lesson", job_id),
+            )
+        # Simulate process loss after the domain transaction committed.
+        raise learning.LearningError("simulated worker interruption after lesson commit")
+
+    monkeypatch.setattr(learning, "run_job", commit_then_crash)
+    context, task = _claimed_context(job["id"])
+
+    with pytest.raises(RetryableTaskError, match="retry may succeed"):
+        handle_learning_job({"job_id": job["id"]}, None, context)
+
+    assert learning.get_job(job["id"])["status"] == "completed"
+    assert task_manager.get_task(task["id"])["status"] == "running"
+
+    # A reclaimed task must observe the terminal domain record and acknowledge it,
+    # rather than invoking the model or inserting a second knowledge version.
+    retry_result = handle_learning_job(
+        {"job_id": job["id"]},
+        None,
+        TaskContext(task_id=task["id"], worker_id="worker-reclaimed"),
+    )
+
+    assert retry_result["already_terminal"] is True
+    assert retry_result["learning_status"] == "completed"
+    assert calls["count"] == 1
+    with db.learning_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE job_id=?", (job["id"],)
+        ).fetchone()[0] == 1
+
