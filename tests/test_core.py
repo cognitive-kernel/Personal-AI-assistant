@@ -528,6 +528,21 @@ def test_concurrent_path_topic_job_creation_returns_one_active_job(tmp_path, mon
         ).fetchall()
     assert len(active) == 1
 
+
+def test_path_topic_idempotency_does_not_discard_different_source_text(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("sql-server")
+    topic_id = path["topics"][0]["id"]
+    first = learning.create_job("Topic source", "Source text A", path_topic_id=topic_id)
+    repeated = learning.create_job("Topic source", "Source text A", path_topic_id=topic_id)
+    assert repeated["id"] == first["id"]
+    with pytest.raises(ValueError, match="different source text"):
+        learning.create_job("Topic source", "Source text B", path_topic_id=topic_id)
+
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
