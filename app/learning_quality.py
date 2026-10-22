@@ -3,7 +3,7 @@ import re
 from typing import Any
 
 
-def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any]) -> dict[str, Any]:
+def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any], learning_outcomes: Any = None) -> dict[str, Any]:
     """Deterministic content-shape filter; never an independent factual review."""
     text = lesson.strip()
     normalized = re.sub(r"\s+", " ", text.lower())
@@ -51,13 +51,23 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     if vague_architecture and "معماری سطح‌بندی‌شده نامعتبر" not in malformed_phrases:
         malformed_phrases.append("معماری سطح‌بندی‌شده نامعتبر")
     valid_questions = (
-        len(questions) == 3
+        isinstance(questions, list)
+        and len(questions) == 3
         and all(isinstance(item, str) and len(item.strip()) >= 12 for item in questions)
     )
     minimum_answer_chars = 5 if is_english else 15
     valid_answers = (
-        len(answer_key) == 3
+        isinstance(answer_key, list)
+        and len(answer_key) == 3
         and all(isinstance(item, str) and len(item.strip()) >= minimum_answer_chars for item in answer_key)
+    )
+    valid_learning_outcomes = (
+        learning_outcomes is None
+        or (
+            isinstance(learning_outcomes, list)
+            and len(learning_outcomes) == 3
+            and all(isinstance(item, str) and len(item.strip()) >= 12 for item in learning_outcomes)
+        )
     )
 
     score = 100
@@ -88,6 +98,9 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     if not valid_answers:
         score -= 15
         reasons.append("باید برای هر سؤال یک پاسخ کلیدی کامل وجود داشته باشد.")
+    if not valid_learning_outcomes:
+        score -= 15
+        reasons.append("باید دقیقاً سه هدف یادگیری مشخص و قابل سنجش وجود داشته باشد.")
     if mixed_script_tokens:
         score -= 35
         reasons.append("واژه‌های دارای حروف سیریلیک در متن فارسی دیده شد؛ احتمال خطای زبانی وجود دارد.")
@@ -108,7 +121,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
     accepted = (
         score >= 75 and len(words) >= minimum_words and unique_ratio >= 0.48
         and len(technical_terms) >= 3 and has_example and has_explanation
-        and valid_questions and valid_answers and not mixed_script_tokens
+        and valid_questions and valid_answers and valid_learning_outcomes and not mixed_script_tokens
         and not malformed_phrases and len(matched) < 2 and bool(text)
     )
     return {
