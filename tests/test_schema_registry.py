@@ -122,8 +122,8 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         ).lastrowid
         connection.commit()
 
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 20
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 20
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 21
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 21
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}
@@ -196,12 +196,13 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v18 = fingerprint_for_version(LEARNING_MIGRATIONS, 18)
     learning_v19 = fingerprint_for_version(LEARNING_MIGRATIONS, 19)
     learning_v20 = fingerprint_for_version(LEARNING_MIGRATIONS, 20)
+    learning_v21 = fingerprint_for_version(LEARNING_MIGRATIONS, 21)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len(learning_v20) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20}) == 20
+    assert len(learning_v20) == len(learning_v21) == 64
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20}) == 21
 
 
 
@@ -222,11 +223,11 @@ def test_known_legacy_v1_schema_is_baselined_then_upgraded():
         assert connection.execute(
             "SELECT 1 FROM sqlite_master WHERE name='schema_migrations'"
         ).fetchone() is None
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 20
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in history] == list(range(1, 21))
+        assert [row[0] for row in history] == list(range(1, 22))
         assert len(history[0][1]) == 64
         assert all(row[1] is None for row in history[1:])
         assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -236,7 +237,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 4) as connection:
         expected_v4 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
         assert schema_fingerprint(connection) == expected_v4
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 20
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -246,7 +247,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
 def test_known_v5_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 5) as connection:
         expected_v5 = fingerprint_for_version(LEARNING_MIGRATIONS, 5)
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 20
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -256,7 +257,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
 def test_known_v6_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 6) as connection:
         expected_v6 = fingerprint_for_version(LEARNING_MIGRATIONS, 6)
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 20
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -266,7 +267,7 @@ def test_known_v6_schema_is_baselined_then_upgraded():
 def test_known_v7_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 7) as connection:
         expected_v7 = fingerprint_for_version(LEARNING_MIGRATIONS, 7)
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 20
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -338,7 +339,7 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
             ("preserve me", "queued", "test"),
         )
 
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 20
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
 
@@ -357,13 +358,13 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
         ).fetchone() == ("preserve me", "queued")
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 20
+        ).fetchone()[0] == 21
 
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
     path = tmp_path / "learning.db"
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 20
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 20
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
     assert list(tmp_path.glob("learning.db.pre-migration-*.bak")) == []
 
 
@@ -397,7 +398,7 @@ def test_file_initializer_backs_up_but_does_not_adopt_unknown_schema(tmp_path):
 def test_migration_runner_rejects_out_of_band_schema_drift():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(LEARNING_MIGRATIONS)
-        assert runner.apply(connection) == 20
+        assert runner.apply(connection) == 21
         connection.execute("DROP INDEX idx_task_queue_ready")
         with pytest.raises(MigrationError, match="does not match the registered migration history"):
             runner.apply(connection)
@@ -417,7 +418,7 @@ def test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file(tm
     # Windows cannot replace a database file while this connection remains open.
     connection.close()
 
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 20
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
     backup = next(tmp_path.glob("learning.db.pre-migration-*.bak"))
     with pytest.raises(FileExistsError, match="overwrite=True"):
         restore_database_backup(backup, path)
@@ -602,7 +603,7 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
 
     version = initialize_database_file(path, LEARNING_MIGRATIONS)
 
-    assert version == 20
+    assert version == 21
     backups = list(tmp_path.glob("learning.db.pre-migration-*.bak"))
     assert len(backups) == 1
     with sqlite3.connect(backups[0]) as backup:
@@ -662,7 +663,7 @@ def test_application_database_initializer_migrates_observed_legacy_learning_stor
     with sqlite3.connect(learning_path) as connection:
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 20
+        ).fetchone()[0] == 21
         assert connection.execute(
             "SELECT content FROM knowledge_items"
         ).fetchone() == ("legacy lesson",)
