@@ -466,6 +466,7 @@ def run_job(job_id: int) -> None:
     ).hexdigest()
     repair_prompt_hash: str | None = None
     generation_attempts = 1
+    repair_response_valid: bool | None = None
     try:
         limits = runtime_limits({
             "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
@@ -485,9 +486,25 @@ def run_job(job_id: int) -> None:
             "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 1200},
         }, timeout=request_timeout)
         raw = response.get("message", {}).get("content")
-        result = json.loads(raw) if isinstance(raw, str) else None
-        if not isinstance(result, dict) or not isinstance(result.get("lesson"), str) or not isinstance(result.get("questions"), list) or not isinstance(result.get("answer_key"), list):
-            raise LearningError("Model response did not match the expected learning format.")
+        try:
+            result = json.loads(raw) if isinstance(raw, str) else None
+        except (TypeError, json.JSONDecodeError):
+            result = None
+        initial_response_malformed = not (
+            isinstance(result, dict)
+            and isinstance(result.get("lesson"), str)
+            and isinstance(result.get("questions"), list)
+            and isinstance(result.get("answer_key"), list)
+        )
+        if initial_response_malformed:
+            # Route malformed output through the existing single repair attempt
+            # instead of failing the whole learning job before self-correction.
+            result = {
+                "lesson": "",
+                "learning_outcomes": None,
+                "questions": [],
+                "answer_key": [],
+            }
         raw_outcomes = result.get("learning_outcomes")
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
         assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
@@ -536,12 +553,13 @@ def run_job(job_id: int) -> None:
                 retry_result = json.loads(retry_raw) if isinstance(retry_raw, str) else None
             except (TypeError, json.JSONDecodeError):
                 retry_result = None
-            if (
+            repair_response_valid = (
                 isinstance(retry_result, dict)
                 and isinstance(retry_result.get("lesson"), str)
                 and isinstance(retry_result.get("questions"), list)
                 and isinstance(retry_result.get("answer_key"), list)
-            ):
+            )
+            if repair_response_valid:
                 retry_raw_outcomes = retry_result.get("learning_outcomes")
                 retry_outcomes = retry_raw_outcomes[:3] if isinstance(retry_raw_outcomes, list) else retry_raw_outcomes
                 retry_assessment = {
@@ -565,6 +583,8 @@ def run_job(job_id: int) -> None:
             "model_id": model[:200],
             "model_digest": None,
             "model_digest_status": "unavailable_from_current_ollama_path",
+            "initial_response_malformed": initial_response_malformed,
+            "repair_response_valid": repair_response_valid,
         }
         quality["source_text_truncated"] = source_text_truncated
         quality["source_characters_provided"] = len(source_text)

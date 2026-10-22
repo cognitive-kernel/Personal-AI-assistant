@@ -543,6 +543,67 @@ def test_path_topic_idempotency_does_not_discard_different_source_text(tmp_path,
     with pytest.raises(ValueError, match="different source text"):
         learning.create_job("Topic source", "Source text B", path_topic_id=topic_id)
 
+
+def test_learning_job_repairs_malformed_initial_json_response(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    lesson = (
+        "در SQL Server، Database Engine مسئول ذخیره‌سازی و اجرای پرس‌وجوها است. "
+        "درخواست T-SQL ابتدا تجزیه و بهینه‌سازی می‌شود و سپس برنامه اجرایی مناسب انتخاب می‌شود. "
+        "execution plan نشان می‌دهد داده‌ها چگونه خوانده می‌شوند؛ برای نمونه، اسکن جدول ممکن است "
+        "در جدول کوچک مناسب باشد، اما برای جست‌وجوی پرتکرار روی ستون انتخابی، ایندکس مناسب می‌تواند "
+        "تعداد صفحات خوانده‌شده را کاهش دهد. این بهبود قطعی نیست، زیرا هزینه نگهداری ایندکس و "
+        "توزیع داده نیز بر تصمیم بهینه‌ساز اثر می‌گذارند. SSMS ابزار مدیریت و مشاهده برنامه اجرا است، "
+        "در حالی که DMVها اطلاعاتی درباره وضعیت و کارایی نمونه سرور ارائه می‌کنند. در عمل، ابتدا "
+        "پرس‌وجو را با داده نماینده اجرا کنید، سپس execution plan و آمار ورودی/خروجی را بررسی کنید. "
+        "اگر ایندکس جدیدی پیشنهاد شد، اثر آن را با بار کاری واقعی و پس از ثبت خط مبنا بسنجید. "
+        "به این دلیل که یک شاخص منفرد تمام شرایط را نشان نمی‌دهد، نتیجه‌گیری باید بر چند شاهد تکیه کند. "
+        "مثال عملی این است که برای فیلتر مکرر روی CustomerId، ایندکس آزمایشی بسازید و پیش و پس از "
+        "تغییر logical reads و زمان اجرا را مقایسه کنید. در نتیجه، ابزارها شواهد تشخیصی می‌دهند، "
+        "نه تضمین خودکار برای درست بودن طراحی."
+    )
+    valid_response = {
+        "lesson": lesson,
+        "learning_outcomes": ["توضیح مسیر اجرای پرس‌وجو", "مقایسه اثر ایندکس", "اندازه‌گیری logical reads"],
+        "questions": [
+            "execution plan چه اطلاعاتی درباره اجرای پرس‌وجو می‌دهد؟",
+            "چرا ایندکس همیشه باعث بهبود عملکرد نمی‌شود؟",
+            "چطور اثر یک ایندکس آزمایشی را بررسی می‌کنیم؟",
+        ],
+        "answer_key": [
+            "نشان می‌دهد موتور چگونه داده را می‌خواند و چه عملگرهایی را اجرا می‌کند.",
+            "زیرا هزینه نگهداری، توزیع داده و انتخاب بهینه‌ساز بر نتیجه اثر می‌گذارند.",
+            "با ثبت خط مبنا و مقایسه logical reads و زمان اجرا روی داده نماینده.",
+        ],
+    }
+    calls = []
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
+    })
+
+    def fake_request(*_args, **_kwargs):
+        calls.append(True)
+        content = "{malformed JSON" if len(calls) == 1 else json.dumps(valid_response, ensure_ascii=False)
+        return {"message": {"content": content}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
+    job = learning.create_job("آموزش execution plan در SQL Server")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert len(calls) == 2
+    assert finished["status"] == "completed"
+    assert finished["quality"]["accepted"] is True
+    provenance = finished["quality"]["generation_provenance"]
+    assert provenance["attempt_count"] == 2
+    assert provenance["initial_response_malformed"] is True
+    assert provenance["repair_response_valid"] is True
+    assert len(provenance["repair_prompt_sha256"]) == 64
+
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
