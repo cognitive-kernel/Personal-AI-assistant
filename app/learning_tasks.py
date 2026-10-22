@@ -116,7 +116,7 @@ def resolve_learning_escalation(
         if row is None:
             raise KeyError(escalation_id)
         if row["status"] != "pending":
-            if row["status"] == status and row["review_note"] == review_note:
+            if row["status"] == status and row["review_note"] == review_note.strip():
                 return dict(row)
             raise ValueError("Escalation has already been resolved.")
         conn.execute(
