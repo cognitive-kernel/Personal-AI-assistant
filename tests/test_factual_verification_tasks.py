@@ -54,7 +54,7 @@ def _sandbox_result(status="succeeded", exit_code=0, version="3.12.3", completio
     return {
         "execution_status": status,
         "exit_code": exit_code,
-        "stdout": f"__PAI_PYTHON_VERSION__:{version}\nassertion harness completed\n",
+        "stdout": f"__PAI_PYTHON_VERSION__:{version}\nassertion harness completed\n{completion_marker}\n",
         "stderr": "",
         "duration_ms": 23,
         "image": "python:3.12-slim@sha256:" + "a" * 64,
