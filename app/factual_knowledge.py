@@ -220,6 +220,66 @@ def get_claim(connection: sqlite3.Connection, knowledge_id: int) -> Claim:
     return Claim(*row)
 
 
+
+
+def mark_due_claims_for_review(
+    connection: sqlite3.Connection, *, limit: int = 100
+) -> int:
+    """Move active claims past their explicit re-verification deadline to review.
+
+    This is a conservative freshness gate, not an automatic truth judgment. It
+    records an audit event and never deletes claims or downgrades evidence level.
+    """
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 500:
+        raise KnowledgePolicyError("limit must be an integer between 1 and 500")
+    rows = connection.execute(
+        """SELECT id, reverify_after
+           FROM factual_knowledge
+           WHERE lifecycle_status = 'active'
+             AND reverify_after IS NOT NULL
+             AND datetime(reverify_after) <= CURRENT_TIMESTAMP
+           ORDER BY datetime(reverify_after), id
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    reviewed = 0
+    for row in rows:
+        knowledge_id, due_at = int(row[0]), str(row[1])
+        source_hashes = [
+            str(item[0])
+            for item in connection.execute(
+                """SELECT DISTINCT source_hash FROM factual_evidence
+                   WHERE knowledge_id = ? ORDER BY source_hash""",
+                (knowledge_id,),
+            ).fetchall()
+        ]
+        cursor = connection.execute(
+            """UPDATE factual_knowledge
+               SET lifecycle_status = 'needs_review', updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND lifecycle_status = 'active'
+                 AND reverify_after IS NOT NULL
+                 AND datetime(reverify_after) <= CURRENT_TIMESTAMP""",
+            (knowledge_id,),
+        )
+        if cursor.rowcount != 1:
+            continue
+        connection.execute(
+            """INSERT INTO factual_knowledge_review_events(
+                   knowledge_id, event_type, status_before, status_after,
+                   due_at, source_hashes_json, reason
+               ) VALUES (?, 'reverification_due', 'active', 'needs_review', ?, ?, ?)""",
+            (
+                knowledge_id,
+                due_at,
+                json.dumps(source_hashes, ensure_ascii=False, separators=(",", ":")),
+                "Re-verification deadline elapsed; claim excluded from retrieval pending review.",
+            ),
+        )
+        reviewed += 1
+    return reviewed
+
+
+
 def list_claim_revisions(
     connection: sqlite3.Connection, knowledge_id: int
 ) -> list[dict[str, Any]]:
