@@ -49,7 +49,7 @@
 <section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div></section></div>
+<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -936,6 +936,61 @@ async function refreshLearningEscalations() {
   }
  } catch(error) { container.textContent="بارگذاری صف بازبینی ناموفق بود: "+error.message; }
 }
+async function refreshFactualReviewQueue() {
+ const container=el("factual-review-queue");
+ container.textContent="در حال بارگذاری صف منبع…";
+ try {
+  const result=await api("/api/factual-knowledge/review-queue?limit=100");
+  container.replaceChildren();
+  const items=result.items||[];
+  if(!items.length) { container.textContent="ادعای خام دارای منبع برای بازبینی وجود ندارد."; return; }
+  for(const item of items) {
+   const card=document.createElement("article");
+   const heading=document.createElement("h4");
+   heading.textContent="#"+item.id+" — "+item.domain_name+" / "+item.environment_version;
+   const claim=document.createElement("p");
+   claim.textContent=item.claim;
+   const meta=document.createElement("p");
+   meta.textContent="سطح: "+item.evidence_level+" | وضعیت: "+item.lifecycle_status+" | ریسک: "+item.risk_level;
+   const sources=document.createElement("ul");
+   for(const evidence of (item.evidence||[])) {
+    const li=document.createElement("li");
+    const title=document.createElement("p");
+    title.textContent=(evidence.source_type||"source")+" — "+(evidence.source_ref||"بدون نشانی");
+    li.append(title);
+    if(evidence.excerpt) { const excerpt=document.createElement("p"); excerpt.textContent=evidence.excerpt; li.append(excerpt); }
+    if(evidence.source_hash) { const hash=document.createElement("small"); hash.textContent="SHA-256: "+evidence.source_hash; li.append(hash); }
+    sources.append(li);
+   }
+   const note=document.createElement("textarea");
+   note.rows=3; note.maxLength=1000; note.required=true;
+   note.placeholder="یادداشت بازبینی: دقیقاً کدام بخش منبع این ادعا را پشتیبانی می‌کند؟ (حداقل ۲۰ نویسه)";
+   const confirmLabel=document.createElement("label");
+   const confirm=document.createElement("input");
+   confirm.type="checkbox";
+   const confirmText=document.createElement("span");
+   confirmText.textContent="من منبع را بررسی کردم و این منبع از همین ادعا پشتیبانی می‌کند.";
+   confirmLabel.append(confirm,confirmText);
+   const submit=document.createElement("button");
+   submit.type="button"; submit.textContent="ثبت بازبینی منبع";
+   const status=document.createElement("p");
+   submit.addEventListener("click",async()=>{
+    if(!confirm.checked) { status.textContent="برای ثبت، تأیید صریح لازم است."; return; }
+    if(note.value.trim().length<20) { status.textContent="یادداشت بازبینی باید حداقل ۲۰ نویسه داشته باشد."; return; }
+    submit.disabled=true; status.textContent="در حال ثبت بازبینی…";
+    try {
+     const response=await api("/api/factual-knowledge/"+item.id+"/approve-source",{method:"POST",body:JSON.stringify({confirm:true,source_supports_claim:true,review_note:note.value.trim()})});
+     status.textContent=response.message||("ثبت شد؛ سطح فعلی: "+response.evidence_level+"، وضعیت: "+response.lifecycle_status);
+     await refreshFactualReviewQueue();
+    } catch(error) { status.textContent=error.message; submit.disabled=false; }
+   });
+   card.append(heading,claim,meta,sources,note,confirmLabel,submit,status);
+   container.append(card);
+  }
+ } catch(error) { container.textContent="بارگذاری صف منبع ناموفق بود: "+error.message; }
+}
+el("refresh-factual-review-queue").addEventListener("click",refreshFactualReviewQueue);
+refreshFactualReviewQueue();
 el("refresh-learning-escalations").addEventListener("click",refreshLearningEscalations);
 refreshLearningEscalations();
 async function refreshOllamaModels() {
