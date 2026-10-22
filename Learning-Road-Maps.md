@@ -160,7 +160,7 @@
 - آخرین بازبینی: 2026-10-22.
 - PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
 - شاخهٔ `work/versioned-learning-evidence-golden-v2`: مجموعهٔ طلایی نسخه‌دار اضافه شد؛ CI دقیق head باید بررسی شود. تست محلی Windows اجرا نشده است.
-- PR #412: زمان‌بندی re-verification با migration 19 و audit trail پیاده‌سازی شده است؛ پس از همگام‌سازی نقشه‌راه با main، CI دقیق head باید دوباره سبز شود. این مکانیزم فقط ارجاع برای بازبینی است و حکم دروغ‌بودن claim نمی‌دهد.
+- PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود؛ این مکانیزم فقط ارجاع برای بازبینی است و حکم دروغ‌بودن claim نمی‌دهد.
 - PR جاری `work/verified-knowledge-learning-context`: افزودن context دانش factual تأییدشده به تولید درس و سه آزمون رگرسیون (دامنه/نسخه و منبع/تست، fail-closed و عدم تبدیل context به دستور). تا دریافت نتیجهٔ CI دقیق head، این تغییر در وضعیت «در انتظار اعتبارسنجی» است؛ تست محلی Windows اجرا نشده است.
 - PR #393 ادغام شد؛ روی head دقیق `9ba73dc364878a05ed1e8dc5d5e373bb23e69d26` آزمون‌ها با 737 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند.
 - PR #396 ادغام شد؛ روی head دقیق `50d4b12afc304a8b9e7a061c960e83195bc1581d` آزمون‌ها با 739 passed و 5 skipped، Browser E2E، ممیزی وابستگی‌ها و آزمون‌های ذخیره‌سازی Windows در CI همگی موفق شدند. هیچ‌یک جایگزین benchmark مدل واقعی یا پذیرش محلی Windows نیست.
