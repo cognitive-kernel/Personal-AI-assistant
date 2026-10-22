@@ -786,6 +786,7 @@ LEARNING_MIGRATIONS = (
                  FROM factual_claim_revisions WHERE knowledge_id = NEW.id;
                END""",
         ),
+    ),
     Migration(
         19,
         "factual-reverification-events",
