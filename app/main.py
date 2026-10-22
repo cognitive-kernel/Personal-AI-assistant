@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, reconcile_queued_learning_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -21,6 +21,7 @@ from .experience_routes import router as experience_router
 from .research_routes import router as research_router
 from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
+from .factual_verification_routes import router as factual_verification_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -47,6 +48,7 @@ app.include_router(experience_router)
 app.include_router(research_router)
 app.include_router(programming_router)
 app.include_router(self_improvement_router)
+app.include_router(factual_verification_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
@@ -179,6 +181,9 @@ def startup() -> None:
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
         programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
+    factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_handler)
+    if factual_verification_handler is not None:
+        programming_handlers[factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE] = factual_verification_handler
 
     # Each runtime claims only its own task types, so slow learning or code-test
     # work cannot consume the chat lane's worker slots.
