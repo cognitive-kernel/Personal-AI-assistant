@@ -20,6 +20,8 @@ router = APIRouter(
 
 class FactualClaimTestRequest(BaseModel):
     confirm: StrictBool
+    oracle_reviewed: StrictBool
+    oracle_review_note: str = Field(min_length=20, max_length=1000)
     test_name: str = Field(min_length=1, max_length=300)
     source_code: str = Field(min_length=1, max_length=65536)
     timeout_seconds: StrictInt = Field(default=10, ge=1, le=120)
@@ -43,6 +45,8 @@ def queue_factual_claim_test(
 ) -> dict[str, Any]:
     if request.confirm is not True:
         raise HTTPException(status_code=422, detail="Explicit confirmation to execute this test harness is required.")
+    if request.oracle_reviewed is not True:
+        raise HTTPException(status_code=422, detail="Explicit attestation that the test matches an independent oracle is required.")
     try:
         factual_verification_tasks.get_verification_candidate(knowledge_id)
         factual_verification_tasks.validate_test_harness(request.source_code)
@@ -63,6 +67,8 @@ def queue_factual_claim_test(
     source_hash = hashlib.sha256(request.source_code.encode("utf-8")).hexdigest()
     payload = {
         "knowledge_id": knowledge_id,
+        "oracle_reviewed": request.oracle_reviewed,
+        "oracle_review_note": request.oracle_review_note.strip(),
         "test_name": request.test_name.strip(),
         "source_code": request.source_code,
         "timeout_seconds": request.timeout_seconds,
@@ -80,5 +86,5 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=503, detail="Factual claim test could not be queued.") from exc
     return {
         "task": task,
-        "message": "Factual claim test queued in the isolated sandbox; promotion is possible only for an exact Python-version match.",
+        "message": "Factual claim test queued in the isolated sandbox; any L2 promotion requires the reviewed independent oracle and an exact Python-version match.",
     }
