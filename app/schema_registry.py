@@ -805,6 +805,29 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_factual_review_events_claim_created ON factual_knowledge_review_events(knowledge_id, created_at DESC, id DESC)",
             "CREATE INDEX idx_factual_review_events_created ON factual_knowledge_review_events(created_at DESC, id DESC)",
         ),
+    ),
+    Migration(
+        20,
+        "learning-human-escalation-queue",
+        (
+            """CREATE TABLE learning_escalations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL UNIQUE REFERENCES task_queue(id) ON DELETE RESTRICT,
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE RESTRICT,
+                reason TEXT NOT NULL CHECK(reason IN ('attempts_exhausted','permanent_failure','quality_rejected')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(status IN ('pending','reviewed','dismissed')),
+                attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+                max_attempts INTEGER NOT NULL DEFAULT 1 CHECK(max_attempts >= 1),
+                error_summary TEXT NOT NULL DEFAULT '',
+                review_note TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TEXT
+            )""",
+            "CREATE INDEX idx_learning_escalations_status ON learning_escalations(status, created_at DESC, id DESC)",
+            "CREATE INDEX idx_learning_escalations_job ON learning_escalations(job_id, created_at DESC, id DESC)",
+        ),
     )
 )
 

@@ -49,7 +49,7 @@
 <section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">نسخه اولیه هنوز جست‌وجوی وب و اعتبارسنجی مستقل علمی ندارد. نمره آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div></section></div>
+<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -901,10 +901,43 @@ el("learning-form").addEventListener("submit", async event => {
  el("assessment-form-container").replaceChildren();
  try {
   const job=await api("/api/learning/jobs",{method:"POST",body:JSON.stringify({topic:el("topic").value,source_text:el("source-text").value||null})});
-  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);};
+  const poll=async()=>{const result=await api("/api/learning/jobs/"+job.id);showLearningJob(result);if(["queued","running"].includes(result.status))setTimeout(poll,1500);else refreshLearningEscalations();};
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
+async function refreshLearningEscalations() {
+ const container=el("learning-escalations");
+ try {
+  const result=await api("/api/learning/escalations?limit=50");
+  container.replaceChildren();
+  const items=result.escalations||[];
+  if(!items.length) { container.textContent="صف بازبینی انسانی خالی است."; return; }
+  for(const item of items) {
+   const card=document.createElement("article");
+   const heading=document.createElement("h4");
+   heading.textContent="#"+item.id+" — "+item.topic;
+   const details=document.createElement("p");
+   const reasonLabels={attempts_exhausted:"اتمام تلاش‌ها",permanent_failure:"خطای غیرقابل‌تکرار",quality_rejected:"رد کیفیت درس"};
+   details.textContent=(reasonLabels[item.reason]||item.reason)+" | تلاش "+item.attempts+" از "+item.max_attempts+" | وضعیت درس: "+item.learning_status;
+   const error=document.createElement("p");
+   error.textContent=item.error_summary||"جزئیات خطا ثبت نشده است.";
+   const note=document.createElement("textarea");
+   note.maxLength=2000; note.rows=2; note.placeholder="یادداشت بازبینی (اختیاری)";
+   const actions=document.createElement("div"); actions.className="cloud-actions";
+   const detailsButton=document.createElement("button"); detailsButton.type="button"; detailsButton.textContent="نمایش جزئیات درس";
+   detailsButton.addEventListener("click",async()=>{try{showLearningJob(await api("/api/learning/jobs/"+item.job_id));}catch(error){el("learning-output").textContent=error.message;}});
+   const reviewedButton=document.createElement("button"); reviewedButton.type="button"; reviewedButton.textContent="بازبینی شد";
+   reviewedButton.addEventListener("click",async()=>{try{await api("/api/learning/escalations/"+item.id,{method:"PATCH",body:JSON.stringify({status:"reviewed",review_note:note.value})});await refreshLearningEscalations();}catch(error){details.textContent=error.message;}});
+   const dismissButton=document.createElement("button"); dismissButton.type="button"; dismissButton.className="danger"; dismissButton.textContent="بایگانی";
+   dismissButton.addEventListener("click",async()=>{try{await api("/api/learning/escalations/"+item.id,{method:"PATCH",body:JSON.stringify({status:"dismissed",review_note:note.value})});await refreshLearningEscalations();}catch(error){details.textContent=error.message;}});
+   actions.append(detailsButton,reviewedButton,dismissButton);
+   card.append(heading,details,error,note,actions);
+   container.append(card);
+  }
+ } catch(error) { container.textContent="بارگذاری صف بازبینی ناموفق بود: "+error.message; }
+}
+el("refresh-learning-escalations").addEventListener("click",refreshLearningEscalations);
+refreshLearningEscalations();
 async function refreshOllamaModels() {
  const list=el("ollama-model-options");
  if(!list) return;
