@@ -352,9 +352,23 @@ def run_job(job_id: int) -> None:
         source_row = conn.execute("SELECT content FROM learning_source_text WHERE job_id=?", (job_id,)).fetchone()
         source_text = source_row["content"] if source_row else ""
     user_provided_source_available = bool(source_text) and source_kind == "user_provided_text"
-    if not source_text and source_kind == "model_knowledge_no_external_source":
-        source_text, source_kind = _discover_and_store_sources(job_id, topic)
-    verified_factual_context = _verified_factual_context_for_topic(topic)
+    try:
+        # These preparation steps run before model inference, but they can still fail
+        # (for example, SQLite errors while persisting web evidence). Keep the job
+        # terminally observable instead of leaving it stuck in "running" forever.
+        if not source_text and source_kind == "model_knowledge_no_external_source":
+            source_text, source_kind = _discover_and_store_sources(job_id, topic)
+        verified_factual_context = _verified_factual_context_for_topic(topic)
+    except Exception as exc:
+        safe_error = f"Learning preparation failed ({type(exc).__name__})."
+        with learning_connection() as conn:
+            conn.execute(
+                """UPDATE learning_jobs
+                   SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='running'""",
+                (safe_error, job_id),
+            )
+        raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prompt = {
         "topic": topic,
         "source_text": source_text,
