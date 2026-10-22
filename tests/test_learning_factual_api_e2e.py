@@ -127,7 +127,32 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         job = next(item for item in finished.json()["jobs"] if item["id"] == created["id"])
         assert job["status"] == "completed"
 
+        detail_response = client.get(f"/api/learning/jobs/{created['id']}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["quality"]["accepted"] is True
+        assert detail["quality"]["score"] == 95
+        assert len(detail["assessment"]["questions"]) == 3
+        assert len(detail["assessment"]["learning_outcomes"]) == 3
+        # The answer key remains hidden until an assessment attempt exists.
+        assert "answer_key" not in detail["assessment"]
+        evidence_types = {item["evidence_type"] for item in detail["evidence"]}
+        assert {"web_page", "model_output"} <= evidence_types
+
+        attempt_response = client.post(
+            f"/api/learning/jobs/{created['id']}/assessment",
+            json={"answers": generated_lesson["answer_key"]},
+        )
+        assert attempt_response.status_code == 200
+        assert attempt_response.json()["score"] == 100
+        refreshed = client.get(f"/api/learning/jobs/{created['id']}").json()
+        assert refreshed["assessment_attempts"][0]["score"] == 100
+
         with db.learning_connection() as conn:
+            stored_source = conn.execute(
+                "SELECT content FROM learning_source_text WHERE job_id=?",
+                (created["id"],),
+            ).fetchone()
             claims = conn.execute(
                 """SELECT id, claim, evidence_level, lifecycle_status
                    FROM factual_knowledge WHERE claim=?""",
@@ -139,6 +164,7 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
                 (claims[0]["id"],),
             ).fetchall() if claims else []
 
+        assert stored_source["content"] == source_chunk
         assert len(claims) == 1
         assert claims[0]["evidence_level"] == "L0_raw"
         assert claims[0]["lifecycle_status"] == "unverified"
