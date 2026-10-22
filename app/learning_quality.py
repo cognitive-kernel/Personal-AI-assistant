@@ -3,7 +3,10 @@ import re
 from typing import Any
 
 
-def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any], learning_outcomes: Any = None) -> dict[str, Any]:
+_OUTCOMES_NOT_PROVIDED = object()
+
+
+def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[Any], learning_outcomes: Any = _OUTCOMES_NOT_PROVIDED) -> dict[str, Any]:
     """Deterministic content-shape filter; never an independent factual review."""
     text = lesson.strip()
     normalized = re.sub(r"\s+", " ", text.lower())
@@ -62,7 +65,7 @@ def evaluate_learning_value(lesson: str, questions: list[Any], answer_key: list[
         and all(isinstance(item, str) and len(item.strip()) >= minimum_answer_chars for item in answer_key)
     )
     valid_learning_outcomes = (
-        learning_outcomes is None
+        learning_outcomes is _OUTCOMES_NOT_PROVIDED
         or (
             isinstance(learning_outcomes, list)
             and len(learning_outcomes) == 3
