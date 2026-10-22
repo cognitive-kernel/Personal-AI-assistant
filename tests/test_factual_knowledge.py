@@ -1,3 +1,4 @@
+import json
 import sqlite3
 
 import pytest
@@ -9,6 +10,7 @@ from app.factual_knowledge import (
     create_claim,
     get_claim,
     list_claim_revisions,
+    mark_due_claims_for_review,
     get_cached_review,
     put_cached_review,
     review_cache_key,
@@ -25,7 +27,7 @@ from app.schema_migrations import MigrationRunner
 def connection():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 18
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 19
     yield conn
     conn.close()
 
@@ -277,7 +279,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-2]).apply(conn) == 16
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-3]).apply(conn) == 16
         old_id = conn.execute(
             """INSERT INTO factual_knowledge(
                    claim, normalized_claim, claim_hash, scope_json,
@@ -301,13 +303,13 @@ def test_migration_seeds_existing_claims_as_revision_one():
             ),
         ).lastrowid
         conn.commit()
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 17
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-2]).apply(conn) == 17
         legacy_revision = conn.execute(
             "SELECT revision_number, claim FROM factual_claim_revisions WHERE knowledge_id=?",
             (old_id,),
         ).fetchall()
         assert legacy_revision == [(1, "Existing claim before revision migration")]
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 18
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 19
         revisions = list_claim_revisions(conn, old_id)
         assert len(revisions) == 1
         assert revisions[0]["revision_number"] == 1
@@ -492,3 +494,89 @@ def test_verified_retrieval_fails_closed_without_exact_environment_scope(connect
             environment_version="2022", limit=0,
         )
 
+
+
+def _active_claim_with_reverification_date(
+    connection, claim_text, due_at
+):
+    knowledge_id = create_claim(
+        connection,
+        claim_text,
+        environment_name="sql_server",
+        environment_version="2022",
+    )
+    add_evidence(
+        connection,
+        knowledge_id,
+        source_type="official_docs",
+        source_ref=f"https://learn.microsoft.com/sql/test/{knowledge_id}",
+        source_hash=f"sha256:reverify-{knowledge_id}",
+        excerpt="A source excerpt captured for the re-verification regression test.",
+    )
+    transition_evidence_level(connection, knowledge_id, "L1_sourced")
+    record_test(
+        connection,
+        knowledge_id,
+        test_kind="integration",
+        test_name=f"reverify-test-{knowledge_id}",
+        environment_name="sql_server",
+        environment_version="2022",
+        outcome="passed",
+        result_summary="Applicable test passed.",
+    )
+    transition_evidence_level(connection, knowledge_id, "L2_tested")
+    transition_lifecycle(connection, knowledge_id, "active")
+    connection.execute(
+        "UPDATE factual_knowledge SET reverify_after=? WHERE id=?",
+        (due_at, knowledge_id),
+    )
+    return knowledge_id
+
+
+def test_due_active_claims_are_quarantined_and_audited_once(connection):
+    due = _active_claim_with_reverification_date(
+        connection, "SQL Server due claim", "2000-01-01 00:00:00"
+    )
+    future = _active_claim_with_reverification_date(
+        connection, "SQL Server future claim", "2999-01-01 00:00:00"
+    )
+    no_deadline = _active_claim_with_reverification_date(
+        connection, "SQL Server claim without deadline", None
+    )
+
+    assert mark_due_claims_for_review(connection) == 1
+    assert mark_due_claims_for_review(connection) == 0
+
+    statuses = {
+        row[0]: row[1]
+        for row in connection.execute(
+            "SELECT id, lifecycle_status FROM factual_knowledge WHERE id IN (?, ?, ?)",
+            (due, future, no_deadline),
+        )
+    }
+    assert statuses == {
+        due: "needs_review",
+        future: "active",
+        no_deadline: "active",
+    }
+    event = connection.execute(
+        """SELECT event_type, status_before, status_after, due_at,
+                  source_hashes_json, reason
+           FROM factual_knowledge_review_events WHERE knowledge_id=?""",
+        (due,),
+    ).fetchone()
+    assert event[0:4] == (
+        "reverification_due", "active", "needs_review", "2000-01-01 00:00:00"
+    )
+    assert json.loads(event[4]) == [f"sha256:reverify-{due}"]
+    assert "excluded from retrieval" in event[5]
+    assert connection.execute(
+        "SELECT COUNT(*) FROM factual_knowledge_review_events WHERE knowledge_id=?",
+        (due,),
+    ).fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("limit", [0, -1, 501, True])
+def test_due_claim_review_rejects_invalid_batch_limits(connection, limit):
+    with pytest.raises(KnowledgePolicyError, match="limit"):
+        mark_due_claims_for_review(connection, limit=limit)

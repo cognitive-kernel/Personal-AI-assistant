@@ -786,6 +786,25 @@ LEARNING_MIGRATIONS = (
                  FROM factual_claim_revisions WHERE knowledge_id = NEW.id;
                END""",
         ),
+    ),
+    Migration(
+        19,
+        "factual-reverification-events",
+        (
+            """CREATE TABLE factual_knowledge_review_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
+                event_type TEXT NOT NULL CHECK(event_type = 'reverification_due'),
+                status_before TEXT NOT NULL CHECK(status_before = 'active'),
+                status_after TEXT NOT NULL CHECK(status_after = 'needs_review'),
+                due_at TEXT NOT NULL,
+                source_hashes_json TEXT NOT NULL DEFAULT '[]',
+                reason TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_factual_review_events_claim_created ON factual_knowledge_review_events(knowledge_id, created_at DESC, id DESC)",
+            "CREATE INDEX idx_factual_review_events_created ON factual_knowledge_review_events(created_at DESC, id DESC)",
+        ),
     )
 )
 
