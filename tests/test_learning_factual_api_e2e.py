@@ -132,6 +132,13 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         detail = detail_response.json()
         assert detail["quality"]["accepted"] is True
         assert detail["quality"]["score"] == 95
+        generation = detail["quality"]["generation_provenance"]
+        assert generation["prompt_version"] == learning.LESSON_GENERATION_PROMPT_VERSION
+        assert len(generation["prompt_sha256"]) == 64
+        assert generation["repair_prompt_sha256"] is None
+        assert generation["attempt_count"] == 1
+        assert generation["model_id"]
+        assert generation["model_digest"] is None
         assert len(detail["assessment"]["questions"]) == 3
         assert len(detail["assessment"]["learning_outcomes"]) == 3
         # The answer key remains hidden until an assessment attempt exists.
