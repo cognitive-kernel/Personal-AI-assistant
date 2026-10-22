@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from typing import Any
+from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from . import factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
+from . import factual_knowledge, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
+from .db import learning_connection
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -16,6 +19,14 @@ router = APIRouter(
     tags=["factual-knowledge"],
     dependencies=[Depends(require_loopback_client)],
 )
+
+
+class FactualSourceReviewRequest(BaseModel):
+    confirm: StrictBool
+    source_supports_claim: StrictBool
+    review_note: str = Field(min_length=20, max_length=1000)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class FactualClaimTestRequest(BaseModel):
@@ -91,3 +102,125 @@ def queue_factual_claim_test(
         "task": task,
         "message": "Factual claim test queued in the isolated sandbox; any L2 promotion requires the reviewed independent oracle and an exact Python-version match.",
     }
+
+
+@router.get("/review-queue")
+def list_factual_source_review_queue(
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List bounded L0 claims with traceable sources awaiting explicit human review."""
+    try:
+        with learning_connection() as connection:
+            rows = connection.execute(
+                """SELECT k.id, k.claim, k.domain_name, k.environment_name,
+                          k.environment_version, k.evidence_level, k.lifecycle_status,
+                          k.risk_level, k.created_at
+                   FROM factual_knowledge AS k
+                   WHERE k.evidence_level='L0_raw'
+                     AND k.lifecycle_status='unverified'
+                     AND EXISTS (
+                         SELECT 1 FROM factual_evidence AS e
+                         WHERE e.knowledge_id=k.id
+                     )
+                   ORDER BY k.created_at, k.id
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            items = []
+            for row in rows:
+                item = dict(row)
+                evidence = connection.execute(
+                    """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
+                       FROM factual_evidence WHERE knowledge_id=? ORDER BY id""",
+                    (item["id"],),
+                ).fetchall()
+                item["evidence"] = [dict(source) for source in evidence]
+                items.append(item)
+        return {"items": items, "count": len(items), "limit": limit}
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual source review queue is unavailable.") from exc
+
+
+@router.post("/{knowledge_id}/approve-source")
+def approve_factual_source(
+    knowledge_id: int,
+    request: FactualSourceReviewRequest,
+) -> dict[str, Any]:
+    """Record explicit local-human review before allowing L0 -> L1 source promotion."""
+    if request.confirm is not True or request.source_supports_claim is not True:
+        raise HTTPException(
+            status_code=422,
+            detail="Explicit confirmation that the listed source supports this exact claim is required.",
+        )
+    note = request.review_note.strip()
+    if len(note) < 20:
+        raise HTTPException(status_code=422, detail="A meaningful human review note is required.")
+
+    try:
+        with learning_connection() as connection:
+            row = connection.execute(
+                """SELECT id, claim, evidence_level, lifecycle_status, risk_level,
+                          environment_name, environment_version
+                   FROM factual_knowledge WHERE id=?""",
+                (knowledge_id,),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Factual claim not found.")
+            if row["evidence_level"] != "L0_raw" or row["lifecycle_status"] != "unverified":
+                raise HTTPException(status_code=409, detail="Only unreviewed L0 claims can be source-approved.")
+            evidence = connection.execute(
+                """SELECT source_type, source_ref, source_hash
+                   FROM factual_evidence WHERE knowledge_id=? ORDER BY id""",
+                (knowledge_id,),
+            ).fetchall()
+            eligible = []
+            for source in evidence:
+                parsed = urlparse(source["source_ref"])
+                if (
+                    source["source_type"] in {"official_docs", "source_code"}
+                    and parsed.scheme == "https"
+                    and bool(parsed.hostname)
+                    and not parsed.username
+                    and not parsed.password
+                    and isinstance(source["source_hash"], str)
+                    and source["source_hash"].strip()
+                ):
+                    eligible.append(source)
+            if not eligible:
+                raise HTTPException(
+                    status_code=409,
+                    detail="At least one traceable HTTPS official-documentation or source-code reference is required.",
+                )
+
+            before_level = row["evidence_level"]
+            before_status = row["lifecycle_status"]
+            factual_knowledge.transition_evidence_level(connection, knowledge_id, "L1_sourced")
+            after_status = "needs_review" if row["risk_level"] in {"high", "critical"} else "active"
+            factual_knowledge.transition_lifecycle(connection, knowledge_id, after_status)
+            source_hashes = sorted({source["source_hash"] for source in eligible})
+            connection.execute(
+                """INSERT INTO factual_knowledge_manual_reviews(
+                       knowledge_id, reviewer, action, evidence_level_before,
+                       evidence_level_after, lifecycle_before, lifecycle_after,
+                       source_hashes_json, review_note
+                   ) VALUES (?, 'local_user', 'source_approved', ?, 'L1_sourced', ?, ?, ?, ?)""",
+                (
+                    knowledge_id, before_level, before_status, after_status,
+                    json.dumps(source_hashes, ensure_ascii=False, separators=(",", ":")), note,
+                ),
+            )
+        return {
+            "knowledge_id": knowledge_id,
+            "evidence_level": "L1_sourced",
+            "lifecycle_status": after_status,
+            "message": (
+                "Source review recorded. This is not proof from an independent test; "
+                "L2 promotion still requires a passing applicable test."
+            ),
+        }
+    except HTTPException:
+        raise
+    except factual_knowledge.KnowledgePolicyError as exc:
+        raise HTTPException(status_code=409, detail="Source review could not be applied under current knowledge policy.") from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual source review could not be saved.") from exc

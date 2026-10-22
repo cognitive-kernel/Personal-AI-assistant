@@ -27,7 +27,7 @@ from app.schema_migrations import MigrationRunner
 def connection():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
-    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 20
+    assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 21
     yield conn
     conn.close()
 
@@ -279,7 +279,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
     conn = sqlite3.connect(":memory:")
     conn.execute("PRAGMA foreign_keys = ON")
     try:
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-4]).apply(conn) == 16
+        assert MigrationRunner(tuple(m for m in LEARNING_MIGRATIONS if m.version <= 16)).apply(conn) == 16
         old_id = conn.execute(
             """INSERT INTO factual_knowledge(
                    claim, normalized_claim, claim_hash, scope_json,
@@ -303,13 +303,13 @@ def test_migration_seeds_existing_claims_as_revision_one():
             ),
         ).lastrowid
         conn.commit()
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-3]).apply(conn) == 17
+        assert MigrationRunner(tuple(m for m in LEARNING_MIGRATIONS if m.version <= 17)).apply(conn) == 17
         legacy_revision = conn.execute(
             "SELECT revision_number, claim FROM factual_claim_revisions WHERE knowledge_id=?",
             (old_id,),
         ).fetchall()
         assert legacy_revision == [(1, "Existing claim before revision migration")]
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 20
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(conn) == 21
         revisions = list_claim_revisions(conn, old_id)
         assert len(revisions) == 1
         assert revisions[0]["revision_number"] == 1
