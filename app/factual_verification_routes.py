@@ -61,7 +61,7 @@ def list_factual_test_history(
                           t.test_kind, t.test_name, t.environment_name,
                           t.environment_version AS test_environment_version,
                           t.outcome, t.result_summary, t.command_hash, t.log_hash,
-                          t.created_at, k.evidence_level, k.lifecycle_status,
+                          t.executed_at AS created_at, k.evidence_level, k.lifecycle_status,
                           k.environment_version AS current_environment_version
                    FROM factual_tests AS t
                    JOIN factual_knowledge AS k ON k.id=t.knowledge_id
