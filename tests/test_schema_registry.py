@@ -195,11 +195,13 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v17 = fingerprint_for_version(LEARNING_MIGRATIONS, 17)
     learning_v18 = fingerprint_for_version(LEARNING_MIGRATIONS, 18)
     learning_v19 = fingerprint_for_version(LEARNING_MIGRATIONS, 19)
+    learning_v20 = fingerprint_for_version(LEARNING_MIGRATIONS, 20)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19}) == 19
+    assert len(learning_v20) == 64
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20}) == 20
 
 
 
