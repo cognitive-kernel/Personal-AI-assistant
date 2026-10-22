@@ -224,3 +224,74 @@ def approve_factual_source(
         raise HTTPException(status_code=409, detail="Source review could not be applied under current knowledge policy.") from exc
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Factual source review could not be saved.") from exc
+
+
+@router.post("/{knowledge_id}/reject-source")
+def reject_factual_source(
+    knowledge_id: int,
+    request: FactualSourceReviewRequest,
+) -> dict[str, Any]:
+    """Quarantine a reviewed source/claim without asserting that the claim is false."""
+    if request.confirm is not True or request.source_supports_claim is not False:
+        raise HTTPException(
+            status_code=422,
+            detail="Explicit confirmation that the current evidence does not adequately support this claim is required.",
+        )
+    note = request.review_note.strip()
+    if len(note) < 20:
+        raise HTTPException(status_code=422, detail="A meaningful human review note is required.")
+
+    try:
+        with learning_connection() as connection:
+            row = connection.execute(
+                """SELECT id, evidence_level, lifecycle_status
+                   FROM factual_knowledge WHERE id=?""",
+                (knowledge_id,),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Factual claim not found.")
+            if row["evidence_level"] != "L0_raw" or row["lifecycle_status"] != "unverified":
+                raise HTTPException(status_code=409, detail="Only unreviewed L0 claims can be source-rejected.")
+            evidence = connection.execute(
+                """SELECT source_hash FROM factual_evidence
+                   WHERE knowledge_id=? ORDER BY id""",
+                (knowledge_id,),
+            ).fetchall()
+            if not evidence:
+                raise HTTPException(status_code=409, detail="The claim has no evidence to review.")
+            source_hashes = sorted({
+                str(item["source_hash"]).strip()
+                for item in evidence
+                if isinstance(item["source_hash"], str) and item["source_hash"].strip()
+            })
+            factual_knowledge.transition_lifecycle(connection, knowledge_id, "needs_review")
+            connection.execute(
+                """INSERT INTO factual_knowledge_manual_reviews(
+                       knowledge_id, reviewer, action, evidence_level_before,
+                       evidence_level_after, lifecycle_before, lifecycle_after,
+                       source_hashes_json, review_note
+                   ) VALUES (?, 'local_user', 'source_rejected', ?, ?, ?, 'needs_review', ?, ?)""",
+                (
+                    knowledge_id,
+                    row["evidence_level"],
+                    row["evidence_level"],
+                    row["lifecycle_status"],
+                    json.dumps(source_hashes, ensure_ascii=False, separators=(",", ":")),
+                    note,
+                ),
+            )
+        return {
+            "knowledge_id": knowledge_id,
+            "evidence_level": "L0_raw",
+            "lifecycle_status": "needs_review",
+            "message": (
+                "Source review recorded. The claim remains unverified and is quarantined "
+                "from normal retrieval; this does not establish that the claim is false."
+            ),
+        }
+    except HTTPException:
+        raise
+    except factual_knowledge.KnowledgePolicyError as exc:
+        raise HTTPException(status_code=409, detail="Source rejection could not be applied under current knowledge policy.") from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Source rejection could not be saved.") from exc
