@@ -91,7 +91,7 @@
 - [x] lease، heartbeat، checkpoint، لغو/مکث و سقف تلاش.
 - [x] backoff نمایی محدود برای retryهای صف؛ retry اول ۲ ثانیه و سپس دوبرابر تا سقف ۵ دقیقه.
 - [x] جلوگیری از retry برای خطاهای ورودی/نوع داده و تعارض یکپارچگی پایگاه داده.
-- [ ] تکمیل طبقه‌بندی خطاهای دامنه‌ای به retryable/permanent؛ handlerهای یادگیری/پژوهش/برنامه‌نویسی خطاهای ورودی و وضعیت‌های نامعتبر را صریحاً دائمی اعلام می‌کنند و خطاهای Ollama اکنون metadata retryability دارند. CI مربوط به commit ادغام PR #378 موفق بوده است؛ تعیین سیاست برای همهٔ خطاهای دامنه‌ای و تست رفتارهای مرزی هنوز باقی است.
+- [ ] تکمیل و پذیرش طبقه‌بندی retryable/permanent در همهٔ handlerهای دامنه‌ای؛ شاخهٔ `work/ollama-http-retry-policy-v3` تفکیک خطاهای HTTP Ollama و آزمون‌های وضعیت مرزی را اضافه می‌کند. CI دقیق head باید سبز شود؛ redirect همچنان مسدود و غیرقابل retry است.
 - [x] تأیید محلی سیاست retry با jitter؛ آزمون‌های task manager/worker و کل مجموعه pytest روی commit `b484f76` موفق شدند. CI هنوز جداگانه نیاز به تأیید دارد.
 - [ ] تضمین idempotency در سطح عملیات دامنه‌ای که ممکن است پس از crash دوباره اجرا شوند.
 
@@ -158,6 +158,9 @@
 
 ## وضعیت پذیرش
 - آخرین بازبینی: 2026-10-22.
+- PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
+- PR #415 ادغام شد؛ مجموعهٔ طلایی نسخه‌دار گیت شواهد اضافه شد. CI دقیق head روی آزمون‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
+- شاخهٔ `work/ollama-http-retry-policy-v3`: طبقه‌بندی HTTP Ollama و اصلاح رگرسیون redirect اضافه شده؛ CI دقیق head در انتظار است. تست محلی Windows اجرا نشده است.
 - PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود.
 - شاخهٔ `work/versioned-learning-evidence-golden-v2`: مجموعهٔ طلایی نسخه‌دار اضافه شد؛ CI دقیق head باید بررسی شود. تست محلی Windows اجرا نشده است.
 - PR #412 ادغام شد؛ زمان‌بندی re-verification برای deadline صریح با migration 19 و audit trail اضافه شد. CI دقیق head روی تست‌ها، Browser E2E و ممیزی وابستگی‌ها موفق بود؛ این مکانیزم فقط ارجاع برای بازبینی است و حکم دروغ‌بودن claim نمی‌دهد.
