@@ -14,6 +14,7 @@ from .task_worker import TaskContext
 FACTUAL_VERIFY_TASK_TYPE = "factual.verify_claim"
 _ALLOWED_PAYLOAD_KEYS = {
     "knowledge_id", "test_name", "source_code", "timeout_seconds", "max_output_bytes",
+    "oracle_reviewed", "oracle_review_note",
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
 
@@ -91,6 +92,11 @@ def _build_handler(
         knowledge_id = payload.get("knowledge_id")
         if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int) or knowledge_id < 1:
             raise ValueError("knowledge_id must be a positive integer.")
+        if payload.get("oracle_reviewed") is not True:
+            raise ValueError("A human must explicitly attest that this test is checked against an independent oracle.")
+        oracle_review_note = payload.get("oracle_review_note")
+        if not isinstance(oracle_review_note, str) or len(oracle_review_note.strip()) < 20 or len(oracle_review_note) > 1000:
+            raise ValueError("oracle_review_note must explain the independent reference review in 20–1000 characters.")
         test_name = payload.get("test_name")
         if not isinstance(test_name, str) or not test_name.strip() or len(test_name) > 300:
             raise ValueError("test_name must contain 1–300 characters.")
@@ -148,6 +154,8 @@ def _build_handler(
             "duration_ms": result.get("duration_ms"),
             "claim_hash_at_start": candidate["claim_hash"],
             "test_source_sha256": original_hash,
+            "oracle_reviewed": True,
+            "oracle_review_note": oracle_review_note.strip(),
             "output_hash": log_hash,
         }
         summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))[:2000]
