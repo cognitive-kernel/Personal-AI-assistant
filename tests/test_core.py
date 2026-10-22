@@ -377,6 +377,56 @@ def test_lesson_generation_sets_explicit_output_budget(tmp_path, monkeypatch):
     assert finished["quality"]["accepted"] is True
 
 
+
+def test_learning_job_rejects_missing_outcomes_instead_of_copying_questions(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    lesson = (
+        "در SQL Server، Database Engine درخواست‌های T-SQL را تجزیه و بهینه‌سازی می‌کند. "
+        "execution plan نشان می‌دهد موتور برای خواندن داده از چه عملگرهایی استفاده می‌کند. "
+        "برای مثال، شرط WHERE روی CustomerId می‌تواند تعداد ردیف‌های خروجی را کاهش دهد. "
+        "اگر ایندکس مناسب وجود داشته باشد، موتور ممکن است به‌جای اسکن کامل جدول از جست‌وجوی ایندکس استفاده کند. "
+        "این نتیجه قطعی نیست، زیرا توزیع داده و آمار نیز بر انتخاب برنامه اثر می‌گذارند. "
+        "در عمل، پرس‌وجو را با پارامترهای ثابت اجرا کنید و logical reads و زمان اجرا را ثبت کنید. "
+        "سپس همان اندازه‌گیری را پس از تغییر ایندکس تکرار کنید تا تفاوت قابل مقایسه باشد. "
+        "مثال عملی این است که هزینه خواندن داده را پیش و پس از افزودن ایندکس روی CustomerId بسنجید. "
+        "به این دلیل که ایندکس هزینه نگهداری و فضای ذخیره‌سازی دارد، تصمیم نهایی باید بر اساس بار واقعی باشد."
+    )
+    response_without_outcomes = {
+        "lesson": lesson,
+        "questions": [
+            "execution plan چه چیزی را نشان می‌دهد؟",
+            "چرا ایندکس همیشه سریع‌تر نیست؟",
+            "چگونه اثر ایندکس را می‌سنجیم؟",
+        ],
+        "answer_key": [
+            "عملگرهای مورد استفاده برای خواندن داده را نشان می‌دهد.",
+            "زیرا توزیع داده و هزینه نگهداری بر نتیجه اثر دارند.",
+            "با ثبت و مقایسه logical reads و زمان اجرا.",
+        ],
+    }
+    calls = []
+    monkeypatch.setattr(learning, "_discover_and_store_sources", lambda *_args: ("", "model_knowledge_no_external_source"))
+    monkeypatch.setattr(learning, "detect_hardware", lambda: {
+        "logical_cpu_count": 4, "total_ram_gb": 16, "available_ram_gb": 12,
+    })
+    monkeypatch.setattr(learning, "_request", lambda *_args, **_kwargs: (
+        calls.append(True) or {"message": {"content": json.dumps(response_without_outcomes, ensure_ascii=False)}}
+    ))
+
+    job = learning.create_job("آموزش execution plan در SQL Server")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert len(calls) == 2, "missing outcomes must trigger the repair attempt"
+    assert finished["status"] == "rejected"
+    assert finished["quality"]["accepted"] is False
+    assert any("هدف یادگیری" in reason for reason in finished["quality"]["reasons"])
+    assert finished["lesson"] is None
+
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
