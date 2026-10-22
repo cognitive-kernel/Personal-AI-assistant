@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent
+from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
 
 
 class FakeContext:
@@ -301,3 +301,52 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
             "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
         ).fetchone()
     assert claim["evidence_level"] == "L1_sourced"
+
+
+def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_test(learning_store):
+    knowledge_id = _active_sourced_python_claim()
+    result = factual_verification_routes.list_factual_test_queue(limit=10)
+    assert result["count"] == 1
+    item = result["items"][0]
+    assert item["id"] == knowledge_id
+    assert item["domain_name"] == "python"
+    assert item["evidence_level"] == "L1_sourced"
+    assert item["lifecycle_status"] == "active"
+    assert item["evidence"][0]["source_ref"].startswith("https://")
+
+    with db.learning_connection() as connection:
+        factual_knowledge.record_test(
+            connection,
+            knowledge_id,
+            test_kind="integration",
+            test_name="existing passing test",
+            environment_version="3.12.3",
+            outcome="passed",
+            result_summary="Previously passed against the exact Python version.",
+            command_hash="a" * 64,
+            log_hash="b" * 64,
+        )
+    refreshed = factual_verification_routes.list_factual_test_queue(limit=10)
+    assert refreshed["count"] == 0
+
+
+def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
+    knowledge_id = _active_sourced_python_claim()
+    task_manager.initialize_task_store()
+    assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 1
+
+    task_manager.create_task(
+        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE,
+        {
+            "knowledge_id": knowledge_id,
+            "test_name": "queued test",
+            "source_code": "assert True",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Reviewed against the official Python reference before queueing.",
+        },
+        max_attempts=1,
+        dedupe_key="test-queue-active-task",
+    )
+    assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 0
