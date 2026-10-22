@@ -19,16 +19,59 @@ _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
 
 
 def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
-    """Enqueue one learning job idempotently; the durable queue stores no source text."""
+    """Enqueue or boundedly recover a learning job without discarding queue history."""
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
         raise ValueError("job_id must be a positive integer")
-    return task_manager.create_task(
-        LEARNING_TASK_TYPE,
-        {"job_id": job_id},
-        priority=priority,
-        max_attempts=3,
-        dedupe_key=f"learning-job:{job_id}",
+
+    payload = {"job_id": job_id}
+    base_key = f"learning-job:{job_id}"
+    existing = task_manager.get_task_by_dedupe_key(base_key)
+    if existing is None:
+        return task_manager.create_task(
+            LEARNING_TASK_TYPE, payload, priority=priority, max_attempts=3,
+            dedupe_key=base_key,
+        )
+    if existing["status"] not in task_manager.TERMINAL_STATUSES:
+        return existing
+
+    try:
+        job = learning.get_job(job_id)
+    except KeyError:
+        return existing
+    if job["status"] in _TERMINAL_LEARNING_STATUSES:
+        return existing
+    # Explicit cancellation must not be undone by startup reconciliation.
+    if existing["status"] == "cancelled":
+        return existing
+
+    # A terminal queue record can coexist with a non-terminal learning record if
+    # the worker died before the domain handler got a chance to settle it. Preserve
+    # the original task as history and allow exactly one durable recovery task.
+    recovery_key = f"{base_key}:recovery:1"
+    recovery = task_manager.get_task_by_dedupe_key(recovery_key)
+    if recovery is None:
+        return task_manager.create_task(
+            LEARNING_TASK_TYPE, payload, priority=priority, max_attempts=3,
+            dedupe_key=recovery_key,
+        )
+    if recovery["status"] not in task_manager.TERMINAL_STATUSES:
+        return recovery
+
+    # Never create an unbounded chain of recovery tasks. Once the one recovery
+    # task is terminal but the learning record is still non-terminal, fail visibly
+    # and leave an auditable human-review item instead of looping on every restart.
+    with learning_connection() as conn:
+        conn.execute(
+            """UPDATE learning_jobs
+               SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status IN ('queued', 'running', 'failed')""",
+            ("Learning task recovery exhausted; human review is required.", job_id),
+        )
+    _record_learning_escalation(
+        int(recovery["id"]), job_id, "attempts_exhausted",
+        "The original task and its single recovery task are terminal while the learning job remains non-terminal.",
     )
+    return recovery
 
 
 def reconcile_queued_learning_tasks() -> int:
