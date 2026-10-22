@@ -501,6 +501,48 @@ def test_concurrent_run_job_calls_only_claim_queued_job_once(tmp_path, monkeypat
     assert not errors, f"learning worker failed: {errors}"
     assert learning.get_job(job["id"])["status"] == "completed"
 
+
+def test_concurrent_path_topic_job_creation_returns_one_active_job(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("sql-server")
+    topic_id = path["topics"][0]["id"]
+    barrier = threading.Barrier(2)
+
+    def create_same_topic_job():
+        barrier.wait(timeout=5)
+        return learning.create_job("Concurrent path-topic lesson", path_topic_id=topic_id)["id"]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        job_ids = list(executor.map(lambda _index: create_same_topic_job(), range(2)))
+
+    assert job_ids[0] == job_ids[1]
+    with db.learning_connection() as conn:
+        active = conn.execute(
+            "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running')",
+            (topic_id,),
+        ).fetchall()
+    assert len(active) == 1
+
+
+def test_path_topic_idempotency_does_not_discard_different_source_text(tmp_path, monkeypatch):
+    import pytest
+
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    path = learning.enroll_curriculum("sql-server")
+    topic_id = path["topics"][0]["id"]
+    first = learning.create_job("Topic source", "Source text A", path_topic_id=topic_id)
+    repeated = learning.create_job("Topic source", "Source text A", path_topic_id=topic_id)
+    assert repeated["id"] == first["id"]
+    with pytest.raises(ValueError, match="different source text"):
+        learning.create_job("Topic source", "Source text B", path_topic_id=topic_id)
+
 def test_learning_job_failure_is_recorded_and_propagated(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))

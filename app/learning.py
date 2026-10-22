@@ -41,23 +41,54 @@ def create_job(
     if len(source_text) > source_limit:
         raise ValueError(f"Source text is too large (current limit: {source_limit} characters).")
     source_kind = "user_provided_text" if source_text else "model_knowledge_no_external_source"
+    existing_job_id: int | None = None
+    existing_source_mismatch = False
+    job_id: int | None = None
     with learning_connection() as conn:
-        cursor = conn.execute(
-            "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json) "
-            "VALUES (?, 'queued', ?, ?, ?)",
-            (
-                topic,
-                source_kind,
-                path_topic_id,
-                json.dumps(lesson_review, ensure_ascii=False) if lesson_review else None,
-            ),
-        )
-        job_id = int(cursor.lastrowid)
-        if source_text:
-            digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
-            conn.execute("INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)", (job_id, source_text))
-            conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
-                VALUES (?, 'user_text', 'user-provided', ?, 'متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است.')""", (job_id, digest))
+        # Path-topic creation is idempotent under concurrent start/resume requests.
+        # Acquire the SQLite write reservation before checking for an active job.
+        if path_topic_id is not None:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
+                "ORDER BY id DESC LIMIT 1",
+                (path_topic_id,),
+            ).fetchone()
+            if existing is not None:
+                existing_job_id = int(existing["id"])
+                if source_text:
+                    existing_source = conn.execute(
+                        "SELECT content FROM learning_source_text WHERE job_id=?",
+                        (existing_job_id,),
+                    ).fetchone()
+                    existing_source_mismatch = (
+                        existing_source is None or existing_source["content"] != source_text
+                    )
+        if existing_job_id is None:
+            cursor = conn.execute(
+                "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, lesson_review_json) "
+                "VALUES (?, 'queued', ?, ?, ?)",
+                (
+                    topic,
+                    source_kind,
+                    path_topic_id,
+                    json.dumps(lesson_review, ensure_ascii=False) if lesson_review else None,
+                ),
+            )
+            job_id = int(cursor.lastrowid)
+            if source_text:
+                digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
+                conn.execute("INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)", (job_id, source_text))
+                conn.execute("""INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note)
+                    VALUES (?, 'user_text', 'user-provided', ?, 'متن ورودی کاربر؛ اعتبار مستقل منبع بررسی نشده است.')""", (job_id, digest))
+    if existing_job_id is not None:
+        if existing_source_mismatch:
+            raise ValueError(
+                "An active learning job already exists for this path topic with different source text."
+            )
+        return get_job(existing_job_id)
+    if job_id is None:
+        raise LearningError("Learning job could not be created.")
     return get_job(job_id)
 
 def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
