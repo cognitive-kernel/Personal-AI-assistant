@@ -302,7 +302,7 @@ def test_migration_seeds_existing_claims_as_revision_one():
             ),
         ).lastrowid
         conn.commit()
-        assert MigrationRunner(LEARNING_MIGRATIONS[:-1]).apply(conn) == 17
+        assert MigrationRunner(LEARNING_MIGRATIONS[:-2]).apply(conn) == 17
         legacy_revision = conn.execute(
             "SELECT revision_number, claim FROM factual_claim_revisions WHERE knowledge_id=?",
             (old_id,),
