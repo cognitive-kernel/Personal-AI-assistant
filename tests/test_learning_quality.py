@@ -94,6 +94,7 @@ def test_rejects_missing_or_malformed_learning_outcomes():
     missing = evaluate_learning_value(lesson, questions, answers, ["هدف اول"])
     malformed = evaluate_learning_value(lesson, questions, answers, "اهداف اول دوم سوم")
     null_outcomes = evaluate_learning_value(lesson, questions, answers, None)
+    legacy_without_outcomes = evaluate_learning_value(lesson, questions, answers)
     valid = evaluate_learning_value(
         lesson, questions, answers,
         ["توضیح نقش SELECT در خواندن داده", "شرح اثر WHERE بر ردیف‌ها", "بررسی نتیجهٔ شرط با نمونه"],
@@ -101,5 +102,6 @@ def test_rejects_missing_or_malformed_learning_outcomes():
 
     assert missing["accepted"] is False
     assert malformed["accepted"] is False
-    assert null_outcomes["accepted"] is True  # Legacy callers may omit the optional field.
+    assert null_outcomes["accepted"] is False
+    assert legacy_without_outcomes["accepted"] is True
     assert valid["accepted"] is True
