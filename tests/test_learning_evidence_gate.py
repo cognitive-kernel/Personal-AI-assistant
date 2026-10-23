@@ -16,6 +16,7 @@ def _review(urls):
             "claim": "A factual claim",
             "verdict": "supported",
             "evidence_urls": urls,
+            "evidence_quotes": [{"url": urls[0], "quote": "This source excerpt contains enough characters for evidence."}],
             "reason": "Directly supported by excerpts",
         }],
         "source_conflicts": [],
@@ -153,3 +154,40 @@ def test_versioned_golden_evidence_gate_cases():
             assert result["status"] == "evidence_gate_passed_not_proof_of_truth"
         else:
             assert result["failed_gates"], case["id"]
+
+
+
+def test_evidence_gate_rejects_fabricated_claim_quote():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    review = _review(urls)
+    review["claims"][0]["evidence_quotes"] = [{
+        "url": urls[0],
+        "quote": "This invented sentence is not present in the source excerpt.",
+    }]
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls),
+        [_source(url) for url in urls],
+        review,
+    )
+    assert result["accepted"] is False
+    assert "all_claims_supported_by_known_sources" in result["failed_gates"]
+
+
+def test_evidence_gate_normalizes_whitespace_in_exact_source_quotes():
+    urls = ["https://docs.python.org/3/tutorial/index.html", "https://learn.microsoft.com/en-us/sql/"]
+    review = _review(urls)
+    review["claims"][0]["evidence_quotes"] = [{
+        "url": urls[0],
+        "quote": "This source excerpt contains enough characters for evidence.",
+    }]
+    sources = [
+        _source(urls[0], "This source excerpt contains enough\ncharacters for evidence."),
+        _source(urls[1]),
+    ]
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls),
+        sources,
+        review,
+    )
+    assert result["accepted"] is True
+    assert result["failed_gates"] == []
