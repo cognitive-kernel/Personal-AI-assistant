@@ -3,6 +3,7 @@ import pytest
 from app import db, learning, ollama, task_manager
 from app.learning_tasks import (
     LEARNING_TASK_TYPE,
+    cancel_learning_job,
     cancel_learning_task,
     enqueue_learning_task,
     handle_learning_job,
@@ -208,6 +209,31 @@ def test_cancel_learning_task_is_safe_when_no_queue_task_exists(learning_task_st
     job = learning.create_job("No queue task yet")
 
     assert cancel_learning_task(job["id"]) is None
+
+
+def test_cancel_learning_job_cancels_active_recovery_task(learning_task_store):
+    job = learning.create_job("Cancel recovery task")
+    original = enqueue_learning_task(job["id"])
+    recovery = task_manager.create_task(
+        LEARNING_TASK_TYPE,
+        {"job_id": job["id"]},
+        max_attempts=3,
+        dedupe_key=f"learning-job:{job['id']}:recovery:1",
+    )
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE task_queue SET status='failed', error='original exhausted' WHERE id=?",
+            (original["id"],),
+        )
+
+    claimed = task_manager.claim_next_task("recovery-worker")
+    assert claimed["id"] == recovery["id"]
+    cancelled = cancel_learning_job(job["id"])
+
+    assert cancelled is not None
+    assert cancelled["id"] == recovery["id"]
+    assert cancelled["status"] == "cancel_requested"
+    assert learning.get_job(job["id"])["status"] == "cancelled"
 
 
 def test_worker_recovers_when_lesson_commit_precedes_task_completion(
