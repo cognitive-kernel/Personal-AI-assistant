@@ -11,6 +11,7 @@ from app.factual_knowledge import (
     get_claim,
     list_claim_revisions,
     mark_due_claims_for_review,
+    reverify_due_sources,
     get_cached_review,
     put_cached_review,
     review_cache_key,
@@ -580,3 +581,86 @@ def test_due_active_claims_are_quarantined_and_audited_once(connection):
 def test_due_claim_review_rejects_invalid_batch_limits(connection, limit):
     with pytest.raises(KnowledgePolicyError, match="limit"):
         mark_due_claims_for_review(connection, limit=limit)
+
+
+def test_reverify_due_source_extends_deadline_when_excerpt_is_unchanged(connection):
+    from types import SimpleNamespace
+
+    knowledge_id = _active_claim_with_reverification_date(
+        connection, "SQL Server unchanged source", "2000-01-01 00:00:00"
+    )
+    fetches = []
+
+    def fetch_document(url, title_hint, *, max_chars):
+        fetches.append((url, title_hint, max_chars))
+        return SimpleNamespace(
+            text="Introduction. A source excerpt captured for the re-verification regression test. Additional current material."
+        )
+
+    assert reverify_due_sources(connection, fetch_document=fetch_document) == 1
+    assert fetches == [(
+        f"https://learn.microsoft.com/sql/test/{knowledge_id}",
+        "learn.microsoft.com",
+        6000,
+    )]
+    assert get_claim(connection, knowledge_id).lifecycle_status == "active"
+    due_at = connection.execute(
+        "SELECT reverify_after FROM factual_knowledge WHERE id=?", (knowledge_id,)
+    ).fetchone()[0]
+    assert due_at > "2000-01-01 00:00:00"
+    check = connection.execute(
+        "SELECT outcome, expected_source_hash, observed_content_hash FROM factual_source_checks WHERE knowledge_id=?",
+        (knowledge_id,),
+    ).fetchone()
+    assert check[0] == "unchanged"
+    assert check[1] == f"sha256:reverify-{knowledge_id}"
+    assert len(check[2]) == 64
+
+
+def test_reverify_due_source_quarantines_changed_excerpt_without_calling_it_false(connection):
+    from types import SimpleNamespace
+
+    knowledge_id = _active_claim_with_reverification_date(
+        connection, "SQL Server changed source", "2000-01-01 00:00:00"
+    )
+
+    def fetch_document(_url, _title_hint, *, max_chars):
+        assert max_chars == 6000
+        return SimpleNamespace(text="The page changed and no longer contains the stored supporting excerpt.")
+
+    assert reverify_due_sources(connection, fetch_document=fetch_document) == 1
+    assert get_claim(connection, knowledge_id).lifecycle_status == "needs_review"
+    check = connection.execute(
+        "SELECT outcome, note FROM factual_source_checks WHERE knowledge_id=?",
+        (knowledge_id,),
+    ).fetchone()
+    assert check[0] == "changed"
+    assert "not found" in check[1]
+    assert connection.execute(
+        "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+    ).fetchone()[0] == "L2_tested"
+
+
+def test_reverify_due_source_quarantines_unavailable_source(connection):
+    knowledge_id = _active_claim_with_reverification_date(
+        connection, "SQL Server unavailable source", "2000-01-01 00:00:00"
+    )
+
+    def fetch_document(*_args, **_kwargs):
+        raise TimeoutError("network details must not be persisted")
+
+    assert reverify_due_sources(connection, fetch_document=fetch_document) == 1
+    assert get_claim(connection, knowledge_id).lifecycle_status == "needs_review"
+    check = connection.execute(
+        "SELECT outcome, note FROM factual_source_checks WHERE knowledge_id=?",
+        (knowledge_id,),
+    ).fetchone()
+    assert check[0] == "unavailable"
+    assert "TimeoutError" in check[1]
+    assert "network details" not in check[1]
+
+
+@pytest.mark.parametrize("limit", [0, 11, True])
+def test_source_reverification_rejects_invalid_limits(connection, limit):
+    with pytest.raises(KnowledgePolicyError, match="limit"):
+        reverify_due_sources(connection, limit=limit)
