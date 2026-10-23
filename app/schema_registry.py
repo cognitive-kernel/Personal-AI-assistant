@@ -876,7 +876,9 @@ LEARNING_MIGRATIONS = (
         ),
     )
 )
-ic on
+
+
+# This exact fingerprint was captured by the read-only target-host diagnostic on
 # 2026-10-18. It is accepted only as a migration source, never as an already
 # current schema. The fixture and row-preserving conversion are regression-tested.
 LEGACY_LEARNING_SCHEMA_FINGERPRINT = "8932fae6e02d89dfb8230f4dc9becce3cc0e86c53d4b6b90c49652b1c6b9b83b"
