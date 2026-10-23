@@ -71,7 +71,6 @@ def queue_candidate_review(candidate_id: int, request: CandidateReviewRequest) -
             "candidate_id": candidate_id,
             "task_id": task["id"],
             "task_status": task["status"],
-            "deduplicated": task["created_at"] != task.get("updated_at"),
             "note": "Review runs in the durable background queue. Web and peer responses are not proof and do not promote knowledge.",
         }
     except HTTPException:
