@@ -177,15 +177,24 @@ def resolve_learning_escalation(
 
 
 def cancel_learning_task(job_id: int) -> dict[str, Any] | None:
-    """Propagate a learning-domain stop request to its durable queue task."""
+    """Cancel whichever durable queue task currently owns this learning job."""
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
         raise ValueError("job_id must be a positive integer")
-    task = task_manager.get_task_by_dedupe_key(f"learning-job:{job_id}")
-    if task is None:
-        return None
-    if task["status"] not in task_manager.TERMINAL_STATUSES:
-        return task_manager.request_cancel(int(task["id"]))
-    return task
+
+    base_key = f"learning-job:{job_id}"
+    candidates = [
+        task_manager.get_task_by_dedupe_key(base_key),
+        task_manager.get_task_by_dedupe_key(f"{base_key}:recovery:1"),
+    ]
+    active = [
+        task for task in candidates
+        if task is not None and task["status"] not in task_manager.TERMINAL_STATUSES
+    ]
+    # A recovery task may be active after the original task has failed. Cancelling
+    # only the historical base task would leave the recovery worker running.
+    if active:
+        return task_manager.request_cancel(int(active[-1]["id"]))
+    return candidates[0] or candidates[1]
 
 
 def cancel_learning_job(job_id: int) -> dict[str, Any] | None:
