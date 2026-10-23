@@ -182,6 +182,20 @@ def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
     return sources
 
 
+def _matching_source_quote(source_content: str, quote: Any) -> str | None:
+    """Accept only a bounded verbatim quote found in the captured source excerpt."""
+    if not isinstance(source_content, str) or not isinstance(quote, str):
+        return None
+    candidate = quote.strip()
+    if not 20 <= len(candidate) <= 1000:
+        return None
+    normalized_source = re.sub(r"\s+", " ", source_content).strip()
+    normalized_quote = re.sub(r"\s+", " ", candidate).strip()
+    if normalized_quote not in normalized_source:
+        return None
+    return candidate
+
+
 _FACTUAL_TOPIC_DOMAINS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("sql_server", re.compile(r"(?i)\bsql\s*server\b|\bt-sql\b")),
     ("windows_server", re.compile(r"(?i)\bwindows server\b|\bmcse\b")),
@@ -360,10 +374,27 @@ def _persist_factual_review_claims(
         urls = item.get("evidence_urls", [])
         if not isinstance(urls, list):
             urls = []
+        quote_items = item.get("evidence_quotes", [])
+        if not isinstance(quote_items, list):
+            quote_items = []
+        quotes_by_url: dict[str, str] = {}
+        for quote_item in quote_items[:10]:
+            if not isinstance(quote_item, dict):
+                continue
+            quote_url = quote_item.get("url")
+            source = sources.get(quote_url) if isinstance(quote_url, str) else None
+            if source is None or quote_url not in urls:
+                continue
+            matched_quote = _matching_source_quote(source["content"], quote_item.get("quote"))
+            if matched_quote is not None:
+                quotes_by_url[quote_url] = matched_quote
         for url in urls:
             source = sources.get(url) if isinstance(url, str) else None
             source_hash = source_hashes.get(url) if isinstance(url, str) else None
-            if source is None or not source_hash:
+            quote = quotes_by_url.get(url) if isinstance(url, str) else None
+            # A URL/model verdict alone is not a source excerpt. Keep the claim
+            # unverified and do not attach evidence unless a quote matches the snapshot.
+            if source is None or not source_hash or quote is None:
                 continue
             factual_knowledge.add_evidence(
                 connection,
@@ -371,10 +402,11 @@ def _persist_factual_review_claims(
                 source_type=_source_type_for_factual_claim(url),
                 source_ref=url,
                 source_hash=source_hash,
-                excerpt=source["content"][:2500],
+                excerpt=quote,
                 applicability={
                     "topic": topic,
                     "reviewer": str(review.get("reviewer", "unknown"))[:120],
+                    "quote_match": "whitespace_normalized_exact_substring",
                     "model_assisted_review_only": True,
                     "independent_verification": False,
                 },
