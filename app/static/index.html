@@ -929,6 +929,25 @@ async function refreshLearningCandidates() {
      pre.textContent=detail.candidate.content;
     }catch(error){meta.textContent=error.message;}
    });
+   const reviewButton=document.createElement("button"); reviewButton.type="button"; reviewButton.textContent="شروع بررسی وب و peer-AI";
+   reviewButton.disabled=!item.integrity_valid;
+   reviewButton.addEventListener("click",async()=>{
+    reviewButton.disabled=true; meta.textContent="در حال ثبت کار بررسی در صف پایدار…";
+    try{
+     const requestId=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==="function")?globalThis.crypto.randomUUID():(Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));
+     const queued=await api("/api/learning/candidates/"+item.id+"/review",{method:"POST",body:JSON.stringify({confirm:true,request_id:requestId,query:item.topic,web_mode:"search"})});
+     meta.textContent="کار بررسی ثبت شد؛ شناسهٔ کار: "+queued.task_id+"؛ وضعیت: "+queued.task_status+". نتیجه به‌تنهایی دانش را تأیید نمی‌کند.";
+    }catch(error){meta.textContent=error.message;reviewButton.disabled=false;}
+   });
+   const historyButton=document.createElement("button"); historyButton.type="button"; historyButton.textContent="نمایش سوابق وب و peer-AI";
+   historyButton.addEventListener("click",async()=>{
+    try{
+     const history=await api("/api/learning/candidates/"+item.id+"/review-history");
+     let pre=card.querySelector(".candidate-review-history");
+     if(!pre){pre=document.createElement("pre");pre.className="candidate-review-history";card.append(pre);}
+     pre.textContent=JSON.stringify(history,null,2);
+    }catch(error){meta.textContent=error.message;}
+   });
    const planExists=Array.isArray(item.test_plan)?item.test_plan.length>0:Object.keys(item.test_plan||{}).length>0;
    const planButton=document.createElement("button"); planButton.type="button";
    planButton.textContent=planExists?"طرح آزمون ثبت شده":"ثبت طرح آزمون";
@@ -955,7 +974,7 @@ async function refreshLearningCandidates() {
     });
     card.append(form);
    });
-   actions.append(detailButton,planButton);
+   actions.append(detailButton,reviewButton,historyButton,planButton);
    card.append(heading,meta,preview,actions);
    container.append(card);
   }
