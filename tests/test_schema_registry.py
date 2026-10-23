@@ -123,7 +123,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
         connection.commit()
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 21
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}
@@ -238,7 +238,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 4) as connection:
         expected_v4 = fingerprint_for_version(LEARNING_MIGRATIONS, 4)
         assert schema_fingerprint(connection) == expected_v4
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -248,7 +248,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
 def test_known_v5_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 5) as connection:
         expected_v5 = fingerprint_for_version(LEARNING_MIGRATIONS, 5)
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -258,7 +258,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
 def test_known_v6_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 6) as connection:
         expected_v6 = fingerprint_for_version(LEARNING_MIGRATIONS, 6)
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -268,7 +268,7 @@ def test_known_v6_schema_is_baselined_then_upgraded():
 def test_known_v7_schema_is_baselined_then_upgraded():
     with _create_untracked_schema(LEARNING_MIGRATIONS, 7) as connection:
         expected_v7 = fingerprint_for_version(LEARNING_MIGRATIONS, 7)
-        assert initialize_connection(connection, LEARNING_MIGRATIONS) == 21
+        assert initialize_connection(connection, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -364,8 +364,8 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
     path = tmp_path / "learning.db"
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
     assert list(tmp_path.glob("learning.db.pre-migration-*.bak")) == []
 
 
@@ -419,7 +419,7 @@ def test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file(tm
     # Windows cannot replace a database file while this connection remains open.
     connection.close()
 
-    assert initialize_database_file(path, LEARNING_MIGRATIONS) == 21
+    assert initialize_database_file(path, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
     backup = next(tmp_path.glob("learning.db.pre-migration-*.bak"))
     with pytest.raises(FileExistsError, match="overwrite=True"):
         restore_database_backup(backup, path)
@@ -627,7 +627,7 @@ def test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservati
         ).fetchone() == ("verified", "keep")
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(version,) for version in range(1, version + 1)]
+        ).fetchall() == [(migration_version,) for migration_version in range(1, version + 1)]
 
 
 def test_legacy_learning_migration_failure_preserves_original_database_bytes(tmp_path):
@@ -664,7 +664,7 @@ def test_application_database_initializer_migrates_observed_legacy_learning_stor
     with sqlite3.connect(learning_path) as connection:
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 21
+        ).fetchone()[0] == LEARNING_MIGRATIONS[-1].version
         assert connection.execute(
             "SELECT content FROM knowledge_items"
         ).fetchone() == ("legacy lesson",)
