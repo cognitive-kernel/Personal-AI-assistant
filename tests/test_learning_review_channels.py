@@ -1,0 +1,252 @@
+import hashlib
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app import db, learning, learning_review_channels as review, task_manager
+from app.learning_review_tasks import handle_candidate_review
+from app.main import app
+from app.task_worker import TaskContext
+
+
+@pytest.fixture
+def review_store(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    return TestClient(app, client=("127.0.0.1", 12345))
+
+
+def _candidate(*, topic="Python candidate review", content="A temporary lesson with a specific testable claim."):
+    job = learning.create_job(topic, source_text="Original user source with enough text for a stored evidence context.")
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    with db.learning_connection() as connection:
+        cursor = connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (job["id"], topic, content, "user_provided_text",
+             json.dumps(["https://docs.python.org/3/"]), digest, json.dumps({"accepted": True})),
+        )
+        return int(cursor.lastrowid), job["id"]
+
+
+def test_web_research_persists_context_without_promoting_candidate(review_store, monkeypatch):
+    from app import web_sources
+    candidate_id, _job_id = _candidate()
+    monkeypatch.setattr(
+        web_sources,
+        "discover_sources",
+        lambda query, limit: [
+            web_sources.SourceDocument(
+                url="https://docs.python.org/3/library/stdtypes.html",
+                title="Python built-in types",
+                text="A bounded source excerpt that gives context for the candidate lesson and its conditions.",
+            )
+        ],
+    )
+
+    result = review.research_candidate_online(candidate_id, "Python built-in types", limit=1)
+
+    assert result["status"] == "completed"
+    assert result["stored"] == 1
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        evidence = connection.execute(
+            "SELECT evidence_kind, source_url, source_sha256 FROM knowledge_review_evidence WHERE candidate_id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
+    assert evidence["evidence_kind"] == "context"
+    assert evidence["source_url"].startswith("https://")
+    assert len(evidence["source_sha256"]) == 64
+
+
+def test_missing_peer_configuration_is_recorded_without_failure_or_promotion(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    monkeypatch.delenv("PEER_AI_PROVIDERS_JSON", raising=False)
+
+    result = review.consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "unconfigured"
+    assert result["consulted"] == 0
+    with db.learning_connection() as connection:
+        attempt = connection.execute(
+            "SELECT channel, status FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
+            (candidate_id,),
+        ).fetchone()
+        candidate = connection.execute(
+            "SELECT trust_level, learning_status, status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(attempt) == ("peer_ai", "unconfigured")
+    assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
+
+
+def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "local-test-provider",
+        "base_url": "http://127.0.0.1:8000/v1",
+        "model": "review-model-a",
+    }]))
+    answer = json.dumps({
+        "stance": "supports",
+        "claims": [{"claim": "Example claim", "confidence": 0.7}],
+        "citations": [],
+        "limitations": ["This is model opinion only."],
+        "applications": [],
+        "testable_tests": [],
+    })
+    body = json.dumps({"choices": [{"message": {"content": answer}}]}).encode("utf-8")
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self, size): return body
+
+    captured = {}
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(review.urllib.request, "urlopen", fake_urlopen)
+    result = review.consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "completed"
+    assert result["consulted"] == 1
+    assert captured["url"] == "http://127.0.0.1:8000/v1/chat/completions"
+    assert captured["timeout"] == 15
+    with db.learning_connection() as connection:
+        peer = connection.execute(
+            """SELECT provider, model_name, prompt_version, stance, response_sha256
+               FROM knowledge_peer_consultations WHERE candidate_id=?""",
+            (candidate_id,),
+        ).fetchone()
+        candidate = connection.execute(
+            "SELECT trust_level, learning_status, status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert peer["provider"] == "local-test-provider"
+    assert peer["model_name"] == "review-model-a"
+    assert peer["prompt_version"] == review.PEER_REVIEW_PROMPT_VERSION
+    assert peer["stance"] == "supports"
+    assert len(peer["response_sha256"]) == 64
+    assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
+
+
+def test_peer_provider_rejects_plain_http_non_loopback(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "unsafe-provider",
+        "base_url": "http://example.com/v1",
+        "model": "review-model",
+    }]))
+    monkeypatch.setattr(
+        review.urllib.request, "urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("network call must not happen")),
+    )
+
+    result = review.consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "unavailable"
+    assert result["consulted"] == 0
+    assert result["errors"][0]["error"] == "endpoint_must_be_https_or_loopback_without_credentials"
+
+
+def test_candidate_review_queue_is_idempotent_and_hash_gated(review_store):
+    candidate_id, _job_id = _candidate()
+    request = {
+        "confirm": True,
+        "request_id": "d25e9f80-7c5e-4ed0-9a55-4f12718b5f89",
+        "query": "Python candidate review",
+        "web_mode": "disabled",
+    }
+    first = review_store.post(f"/api/learning/candidates/{candidate_id}/review", json=request)
+    second = review_store.post(f"/api/learning/candidates/{candidate_id}/review", json=request)
+    assert first.status_code == 202
+    assert second.status_code == 202
+    assert first.json()["task_id"] == second.json()["task_id"]
+    task = task_manager.get_task(first.json()["task_id"])
+    assert task["task_type"] == "learning.review_candidate"
+    assert task["payload"] == {
+        "candidate_id": candidate_id,
+        "query": "Python candidate review",
+        "web_mode": "disabled",
+    }
+
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET content='tampered' WHERE id=?",
+            (candidate_id,),
+        )
+    blocked = review_store.post(
+        f"/api/learning/candidates/{candidate_id}/review",
+        json={**request, "request_id": "8f9dba44-2a10-4b20-bbcb-7a0fbe2fda15"},
+    )
+    assert blocked.status_code == 409
+
+
+def test_candidate_review_history_returns_audit_and_never_claims_promotion(review_store):
+    candidate_id, _job_id = _candidate()
+    review.record_review_attempt(
+        candidate_id, channel="web_research", status="unconfigured",
+        details={"reason": "test"},
+    )
+    review.record_review_evidence(
+        candidate_id,
+        evidence_kind="context",
+        source_url="https://docs.python.org/3/",
+        source_title="Python docs",
+        excerpt="A source excerpt used for context; support has not been independently adjudicated.",
+        reliability_note="Fetched for review only.",
+    )
+
+    response = review_store.get(f"/api/learning/candidates/{candidate_id}/review-history")
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["promoted"] is False
+    assert result["attempts"][0]["channel"] == "web_research"
+    assert result["evidence"][0]["evidence_kind"] == "context"
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT trust_level, learning_status, status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
+
+
+def test_candidate_review_worker_runs_channels_independently_and_never_promotes(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    checkpoints = []
+    class Context:
+        task_id = 101
+        def checkpoint(self, value): checkpoints.append(value)
+
+    monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: {"status": "unavailable"})
+    monkeypatch.setattr(review, "consult_configured_peer_ais", lambda *args, **kwargs: {"status": "unconfigured"})
+    result = handle_candidate_review(
+        {"candidate_id": candidate_id, "query": "Python candidate review", "web_mode": "search"},
+        None,
+        Context(),
+    )
+
+    assert result["channels"]["web_research"]["status"] == "unavailable"
+    assert result["channels"]["peer_ai"]["status"] == "unconfigured"
+    assert result["promoted"] is False
+    assert [item["phase"] for item in checkpoints] == [
+        "candidate_review_started", "candidate_review_peer_ai", "candidate_review_completed"
+    ]
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT trust_level, learning_status, status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
