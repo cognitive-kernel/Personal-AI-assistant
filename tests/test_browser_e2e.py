@@ -1485,3 +1485,33 @@ def test_factual_learning_review_test_queue_and_history_panels_load():
         )
         assert not errors, "Uncaught browser errors: " + "; ".join(errors)
         browser.close()
+
+
+def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        _goto_section(page, base_url, "learning-section")
+        assert page.locator("#refresh-learning-candidates").count() == 1
+        response = page.request.get(
+            base_url.rstrip("/") + "/api/learning/candidates?status=awaiting_test&limit=10"
+        )
+        assert response.status == 200
+        result = response.json()
+        assert isinstance(result.get("items"), list)
+        page.locator("#refresh-learning-candidates").click()
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#learning-candidates');
+                return node && node.textContent.trim() &&
+                    !node.textContent.includes('در حال بارگذاری');
+            }""",
+            timeout=10000,
+        )
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
