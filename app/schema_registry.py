@@ -874,7 +874,6 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_temporary_candidates_status ON temporary_knowledge_candidates(status, id DESC)",
             "CREATE INDEX idx_temporary_candidates_topic ON temporary_knowledge_candidates(topic, id DESC)",
         ),
-    )
     ),
     Migration(
         23,
@@ -894,7 +893,9 @@ LEARNING_MIGRATIONS = (
             )""",
             "CREATE INDEX idx_factual_source_checks_claim_checked ON factual_source_checks(knowledge_id, checked_at DESC, id DESC)",
             "CREATE INDEX idx_factual_source_checks_outcome_checked ON factual_source_checks(outcome, checked_at DESC)",
-        ),)
+        ),
+    )
+)
 
 
 # This exact fingerprint was captured by the read-only target-host diagnostic on
