@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
+from . import learning_review_tasks
 from .task_runtime import TaskRuntime
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
@@ -23,6 +24,7 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
+from .learning_review_routes import router as learning_review_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -51,6 +53,7 @@ app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
 app.include_router(learning_candidate_router)
+app.include_router(learning_review_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
@@ -170,7 +173,10 @@ def startup() -> None:
     chat_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
     }
-    learning_handlers = {LEARNING_TASK_TYPE: handle_learning_job}
+    learning_handlers = {
+        LEARNING_TASK_TYPE: handle_learning_job,
+        learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
+    }
     programming_handlers: dict[str, Any] = {
         programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
     }
