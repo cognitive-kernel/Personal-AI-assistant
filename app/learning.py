@@ -674,7 +674,7 @@ def run_job(job_id: int) -> None:
                     )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
-                knowledge_cursor = conn.execute(
+                conn.execute(
                     "INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
                     (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id),
                 )
