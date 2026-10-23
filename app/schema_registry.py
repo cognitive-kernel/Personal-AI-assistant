@@ -903,7 +903,7 @@ LEARNING_MIGRATIONS = (
             "ALTER TABLE temporary_knowledge_candidates ADD COLUMN learning_status TEXT NOT NULL DEFAULT 'unverified' CHECK(learning_status IN ('unverified','model_consensus','tested','human_verified','failed','conflicting','superseded'))",
             "ALTER TABLE temporary_knowledge_candidates ADD COLUMN supersedes_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL",
             "ALTER TABLE temporary_knowledge_candidates ADD COLUMN replaced_by_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL",
-            \"\"\"CREATE TABLE knowledge_review_evidence (
+            """CREATE TABLE knowledge_review_evidence (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
                 evidence_kind TEXT NOT NULL CHECK(evidence_kind IN ('supporting','contradicting','context','application')),
@@ -914,8 +914,8 @@ LEARNING_MIGRATIONS = (
                 reliability_note TEXT NOT NULL DEFAULT '',
                 fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(candidate_id, source_url, source_sha256)
-            )\"\"\",
-            \"\"\"CREATE TABLE knowledge_peer_consultations (
+            )""",
+            """CREATE TABLE knowledge_peer_consultations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
                 provider TEXT NOT NULL,
@@ -931,8 +931,8 @@ LEARNING_MIGRATIONS = (
                 response_sha256 TEXT NOT NULL CHECK(length(response_sha256) = 64),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(candidate_id, provider, model_name, response_sha256, prompt_version)
-            )\"\"\",
-            \"\"\"CREATE TABLE knowledge_review_attempts (
+            )""",
+            """CREATE TABLE knowledge_review_attempts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
                 channel TEXT NOT NULL CHECK(channel IN ('web_research','peer_ai','sandbox')),
@@ -940,7 +940,7 @@ LEARNING_MIGRATIONS = (
                 provider TEXT NOT NULL DEFAULT '',
                 details_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            )\"\"\",
+            )""",
             "CREATE INDEX idx_review_evidence_candidate ON knowledge_review_evidence(candidate_id, evidence_kind, id)",
             "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
             "CREATE INDEX idx_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)",
