@@ -49,7 +49,7 @@
 <section id="chat-section"><h2>گفتگو و پژوهش</h2><p class="muted">گفتگوها در پایگاه دادهٔ محلی ذخیره می‌شوند و با رفتن به صفحه‌های دیگر یا تازه‌سازی حذف نمی‌شوند. ایجاد گفتگوی جدید، گفتگوهای قبلی را نگه می‌دارد.</p><div class="cloud-actions"><label for="chat-conversation-select">تاریخچهٔ گفتگو<select id="chat-conversation-select"><option value="">در حال بارگذاری…</option></select></label><button id="chat-new-conversation" type="button">گفتگوی جدید</button><button id="chat-delete-conversation" type="button" class="danger" disabled>حذف گفتگوی انتخاب‌شده</button><button id="chat-refresh-conversations" type="button">به‌روزرسانی تاریخچه</button></div><div id="chat-messages" aria-live="polite" aria-label="پیام‌های گفتگو"></div><form id="chat-form"><textarea id="message" dir="auto" rows="4" required maxlength="12000" placeholder="پیام خود را بنویسید" aria-label="پیام خود را بنویسید"></textarea><button type="submit">ارسال به Ollama</button></form><pre id="chat-output" role="status" aria-live="polite"></pre></section>
 <section id="learning-section"><h2>یادگیری</h2><form id="learning-form"><input id="topic" required maxlength="300" placeholder="موضوع یادگیری" aria-label="موضوع یادگیری">
 <textarea id="source-text" rows="4" maxlength="100000" placeholder="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد" aria-label="متن منبع اختیاری؛ در صورت خالی بودن، خروجی بر دانش مدل تکیه دارد"></textarea><button type="submit">ایجاد کار یادگیری</button></form>
-<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
+<p class="muted">درس می‌تواند از منابع وب استفاده کند، اما بررسی مدل به‌تنهایی تأیید علمی مستقل نیست. نتیجهٔ آزمون فعلاً تطبیق متنی دقیق است.</p><pre id="learning-output"></pre><h3>نامزدهای موقت درس</h3><p class="muted">درس‌های پذیرفته‌شده تا پیش از اجرای آزمون مستقل در وضعیت موقت می‌مانند. ثبت طرح آزمون به‌معنی اجرای آزمون یا ارتقای دانش نیست.</p><button id="refresh-learning-candidates" type="button">بارگذاری نامزدهای موقت</button><div id="learning-candidates" aria-live="polite">نامزدها هنوز بارگذاری نشده‌اند.</div><div id="assessment-form-container"></div><h3>صف بازبینی انسانی</h3><p class="muted">کارهای یادگیری با خطای نهایی یا رد کیفیت در این صف ثبت می‌شوند. بازبینی، حذف یا ارتقای خودکار دانش انجام نمی‌دهد.</p><button id="refresh-learning-escalations" type="button">به‌روزرسانی صف بازبینی</button><div id="learning-escalations" aria-live="polite">صف بازبینی هنوز بارگذاری نشده است.</div><h3>بازبینی منبع دانش factual</h3><p class="muted">فقط ادعاهای خام دارای منبع در این صف هستند. تأیید شما ادعا را حداکثر به سطح L1 می‌رساند؛ برای L2 همچنان آزمون مستقل لازم است. ادعاهای پرخطر برای بررسی بیشتر فعال نمی‌شوند.</p><button id="refresh-factual-review-queue" type="button">بارگذاری ادعاهای نیازمند بازبینی منبع</button><div id="factual-review-queue" aria-live="polite">صف منبع هنوز بارگذاری نشده است.</div><h3>آزمون کنترل‌شدهٔ ادعاهای Python</h3><p class="muted">فقط ادعاهای Python در سطح L1 با منبع قابل‌ردیابی نمایش داده می‌شوند. اجرای آزمون به رضایت جاری sandbox، test harness بررسی‌شده توسط انسان، oracle مستقل و تطبیق دقیق نسخه نیاز دارد؛ شکست یا نتیجهٔ نامشخص ادعا را به L2 ارتقا نمی‌دهد.</p><button id="refresh-factual-test-queue" type="button">بارگذاری ادعاهای آمادهٔ آزمون</button><div id="factual-test-queue" aria-live="polite">صف آزمون هنوز بارگذاری نشده است.</div><h3>تاریخچهٔ نتایج آزمون factual</h3><p class="muted">نتیجه، نسخهٔ محیط، hash کد/گزارش و سطح اعتماد فعلی ادعا را نشان می‌دهد. ثبت یا اجرای وظیفه به‌تنهایی به معنی موفقیت یا ارتقای دانش نیست.</p><button id="refresh-factual-test-history" type="button">به‌روزرسانی تاریخچهٔ آزمون‌ها</button><div id="factual-test-history" aria-live="polite">تاریخچهٔ آزمون هنوز بارگذاری نشده است.</div></section></div>
 <section id="task-manager-section"><h2>مدیریت وظایف</h2>
 <p class="muted">وظایف صف‌شده در این بخش باقی می‌مانند و پس از بارگذاری مجدد قابل مشاهده‌اند. متن payload نمایش داده نمی‌شود. می‌توانید وظایف در حال اجرا را متوقف یا لغو کنید و وظایف متوقف‌شده را ادامه دهید.</p>
 <div class="cloud-actions">
@@ -905,6 +905,63 @@ el("learning-form").addEventListener("submit", async event => {
   showLearningJob(job);setTimeout(poll,1000);
  } catch(error) { el("learning-output").textContent=error.message; }
 });
+async function refreshLearningCandidates() {
+ const container=el("learning-candidates");
+ container.textContent="در حال بارگذاری نامزدهای موقت…";
+ try {
+  const result=await api("/api/learning/candidates?status=awaiting_test&limit=50");
+  container.replaceChildren();
+  const items=result.items||[];
+  if(!items.length){container.textContent="نامزد موقتی برای آزمون وجود ندارد.";return;}
+  for(const item of items){
+   const card=document.createElement("article");
+   const heading=document.createElement("h4"); heading.textContent="#"+item.id+" — "+item.topic;
+   const meta=document.createElement("p");
+   meta.textContent="وضعیت: "+item.status+" | صحت hash: "+(item.integrity_valid?"تأیید شد":"نامعتبر")+" | منابع: "+(item.source_urls||[]).length;
+   const preview=document.createElement("p"); preview.textContent=item.content_preview||"پیش‌نمایش موجود نیست.";
+   const actions=document.createElement("div"); actions.className="cloud-actions";
+   const detailButton=document.createElement("button"); detailButton.type="button"; detailButton.textContent="نمایش متن کامل";
+   detailButton.addEventListener("click",async()=>{
+    try{
+     const detail=await api("/api/learning/candidates/"+item.id);
+     let pre=card.querySelector("pre");
+     if(!pre){pre=document.createElement("pre");card.append(pre);}
+     pre.textContent=detail.candidate.content;
+    }catch(error){meta.textContent=error.message;}
+   });
+   const planExists=Array.isArray(item.test_plan)?item.test_plan.length>0:Object.keys(item.test_plan||{}).length>0;
+   const planButton=document.createElement("button"); planButton.type="button";
+   planButton.textContent=planExists?"طرح آزمون ثبت شده":"ثبت طرح آزمون";
+   planButton.disabled=planExists||!item.integrity_valid;
+   planButton.addEventListener("click",()=>{
+    if(card.querySelector("form"))return;
+    const form=document.createElement("form");
+    const name=document.createElement("input"); name.required=true; name.maxLength=120; name.placeholder="نام آزمون";
+    const objective=document.createElement("textarea"); objective.required=true; objective.minLength=10; objective.maxLength=1000; objective.rows=2; objective.placeholder="هدف آزمون";
+    const expected=document.createElement("textarea"); expected.required=true; expected.minLength=10; expected.maxLength=1000; expected.rows=2; expected.placeholder="نتیجهٔ مورد انتظار از oracle مستقل";
+    const note=document.createElement("textarea"); note.required=true; note.minLength=20; note.maxLength=1000; note.rows=2; note.placeholder="یادداشت بررسی انسانی oracle (حداقل ۲۰ نویسه)";
+    const confirmLabel=document.createElement("label"); const confirm=document.createElement("input"); confirm.type="checkbox"; confirm.required=true; confirmLabel.append(confirm,document.createTextNode("ثبت این طرح را تأیید می‌کنم"));
+    const oracleLabel=document.createElement("label"); const oracle=document.createElement("input"); oracle.type="checkbox"; oracle.required=true; oracleLabel.append(oracle,document.createTextNode("نتیجهٔ مورد انتظار با مرجع مستقل بررسی شده است"));
+    const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ذخیرهٔ طرح بدون اجرای آزمون";
+    const status=document.createElement("p"); status.setAttribute("role","status");
+    form.append(name,objective,expected,note,confirmLabel,oracleLabel,submit,status);
+    form.addEventListener("submit",async event=>{
+     event.preventDefault(); submit.disabled=true;
+     try{
+      const saved=await api("/api/learning/candidates/"+item.id+"/test-plan",{method:"POST",body:JSON.stringify({confirm:confirm.checked,oracle_reviewed:oracle.checked,review_note:note.value,tests:[{name:name.value,objective:objective.value,expected_result:expected.value}]})});
+      status.textContent=saved.note||"طرح آزمون ذخیره شد؛ آزمون اجرا نشده است.";
+      await refreshLearningCandidates();
+     }catch(error){status.textContent=error.message;submit.disabled=false;}
+    });
+    card.append(form);
+   });
+   actions.append(detailButton,planButton);
+   card.append(heading,meta,preview,actions);
+   container.append(card);
+  }
+ }catch(error){container.textContent="بارگذاری نامزدهای موقت ناموفق بود: "+error.message;}
+}
+el("refresh-learning-candidates").addEventListener("click",refreshLearningCandidates);
 async function refreshLearningEscalations() {
  const container=el("learning-escalations");
  try {

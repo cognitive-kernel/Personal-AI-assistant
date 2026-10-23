@@ -22,6 +22,7 @@ from .research_routes import router as research_router
 from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
+from .learning_candidate_routes import router as learning_candidate_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -49,6 +50,7 @@ app.include_router(research_router)
 app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
+app.include_router(learning_candidate_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
