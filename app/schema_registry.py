@@ -848,11 +848,35 @@ LEARNING_MIGRATIONS = (
             )""",
             "CREATE INDEX idx_factual_manual_reviews_claim_created ON factual_knowledge_manual_reviews(knowledge_id, created_at DESC, id DESC)",
         ),
+    ),
+    Migration(
+        22,
+        "temporary-knowledge-candidate-staging",
+        (
+            """CREATE TABLE temporary_knowledge_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL UNIQUE REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                topic TEXT NOT NULL,
+                content TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                source_urls_json TEXT NOT NULL DEFAULT '[]',
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                quality_report_json TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'awaiting_test'
+                    CHECK(status IN ('awaiting_test','passed','failed')),
+                test_plan_json TEXT NOT NULL DEFAULT '[]',
+                test_results_json TEXT NOT NULL DEFAULT '[]',
+                failure_reason TEXT NOT NULL DEFAULT '',
+                promoted_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_temporary_candidates_status ON temporary_knowledge_candidates(status, id DESC)",
+            "CREATE INDEX idx_temporary_candidates_topic ON temporary_knowledge_candidates(topic, id DESC)",
+        ),
     )
 )
-
-
-# This exact fingerprint was captured by the read-only target-host diagnostic on
+ic on
 # 2026-10-18. It is accepted only as a migration source, never as an already
 # current schema. The fixture and row-preserving conversion are regression-tested.
 LEGACY_LEARNING_SCHEMA_FINGERPRINT = "8932fae6e02d89dfb8230f4dc9becce3cc0e86c53d4b6b90c49652b1c6b9b83b"
