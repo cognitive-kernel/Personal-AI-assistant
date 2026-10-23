@@ -437,3 +437,14 @@
 - [x] آزمون‌های واحد برای منبع بدون تغییر، منبع تغییرکرده، خطای fetch و اعتبارسنجی سقف batch اضافه شدند.
 - [ ] CI روی head جدید پس از ادغام roadmap باید سبز شود؛ head قبلی `b7c3acfe3332df3919ce2ab91a0f06273b6fbd9b` در tests، Browser E2E و dependency audit موفق شد.
 - **محدودیت:** وجود excerpt در صفحه فقط تداوم منبع را بررسی می‌کند، نه حقیقت ادعا. بررسی دقیق تغییرات معنایی، redirect/domain policy و adjudication انسانی همچنان گیت‌های جداگانه‌اند.
+
+## تحقیق وب و بازبینی peer-AI برای نامزدهای موقت — 2026-10-23
+
+- [ ] Migration 24 سوابق جداگانهٔ web evidence، peer consultations و channel attempts را اضافه می‌کند؛ trust/status اولیهٔ نامزد حفظ می‌شود.
+- [ ] تحقیق وب excerpt محدود و hashدار ذخیره می‌کند؛ evidence به‌صورت `context` ثبت می‌شود و به‌تنهایی ادعای factual را تأیید نمی‌کند.
+- [ ] peer-AI فقط از endpointهای پیکربندی‌شدهٔ `PEER_AI_PROVIDERS_JSON` استفاده می‌کند؛ حداکثر سه provider، HTTPS به‌جز loopback، کلید API فقط از environment و بدون ذخیرهٔ کلید.
+- [ ] کار بررسی در صف پایدار learning اجرا می‌شود؛ خطای هر کانال جداگانه ثبت می‌شود و مانع اجرای کانال دیگر نمی‌شود.
+- [ ] UI شروع بررسی، شناسهٔ task و تاریخچهٔ evidence/peer را نشان می‌دهد؛ hash نامعتبر یا candidate غیرموقت، صف‌گذاری را متوقف می‌کند.
+- [ ] آزمون‌های migration، ذخیرهٔ evidence، provider ناامن، پاسخ peer، idempotency صف و عدم ارتقای خودکار اضافه شده‌اند؛ CI دقیق head باید سبز شود.
+- **مرز ایمنی:** peer vote و web fetch حقیقت محسوب نمی‌شوند؛ این مرحله sandbox اجرا نمی‌کند و trust/status را ارتقا نمی‌دهد. گام بعدی اتصال sandbox محدود به طرح آزمون تأییدشدهٔ انسانی، ثبت expected/actual و oracle، سپس سنجهٔ کیفیت/false-acceptance است.
+
