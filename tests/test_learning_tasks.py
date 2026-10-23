@@ -374,4 +374,9 @@ def test_reconciliation_escalates_instead_of_looping_after_recovery_exhaustion(
 
     # Further startup reconciliation does not create another recovery generation.
     assert reconcile_queued_learning_tasks() == 0
-    assert len(task_manager.list_tasks(limit=100)) == 2
+    matching_tasks = [
+        item for item in task_manager.list_tasks(limit=100)
+        if item["task_type"] == LEARNING_TASK_TYPE
+        and item["payload"] == {"job_id": job["id"]}
+    ]
+    assert len(matching_tasks) == 2
