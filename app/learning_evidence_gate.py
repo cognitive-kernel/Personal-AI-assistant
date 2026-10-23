@@ -129,7 +129,7 @@ def evaluate_lesson_evidence(
                     ):
                         continue
                     normalized_source = re.sub(r"\s+", " ", str(source.get("content", ""))).strip()
-                    normalized_quote = re.sub(r"\\s+", " ", quote).strip()
+                    normalized_quote = re.sub(r"\s+", " ", quote).strip()
                     if normalized_quote in normalized_source:
                         valid_quote_found = True
                         break
