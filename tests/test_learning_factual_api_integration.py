@@ -65,6 +65,7 @@ def test_learning_api_job_to_factual_claim_preserves_provenance_without_promotio
                 "claim": "Python lists are mutable sequences.",
                 "verdict": "supported",
                 "evidence_urls": [url],
+                "evidence_quotes": [{"url": url, "quote": excerpt}],
                 "reason": "The cited excerpt describes list mutability.",
             }],
             "source_conflicts": [],
