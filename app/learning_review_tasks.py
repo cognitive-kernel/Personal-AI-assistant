@@ -62,7 +62,7 @@ def handle_candidate_review(
     try:
         with channels.learning_connection() as connection:
             row = connection.execute(
-                "SELECT content, content_sha256, topic FROM temporary_knowledge_candidates WHERE id=?",
+                "SELECT content, content_sha256, topic, status FROM temporary_knowledge_candidates WHERE id=?",
                 (candidate_id,),
             ).fetchone()
         if row is None:
@@ -70,6 +70,8 @@ def handle_candidate_review(
         content_hash = hashlib.sha256(str(row["content"]).encode("utf-8")).hexdigest()
         if content_hash != str(row["content_sha256"]):
             raise PermanentTaskError("Candidate content hash mismatch; review is blocked.")
+        if row["status"] != "awaiting_test":
+            raise PermanentTaskError("Only temporary candidates awaiting tests can be reviewed.")
     except PermanentTaskError:
         raise
     except (OSError, sqlite3.Error) as exc:
