@@ -674,8 +674,40 @@ def run_job(job_id: int) -> None:
                     )
             if quality["accepted"]:
                 latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
-                conn.execute("INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
-                    (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id))
+                conn.execute(
+                    "INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
+                    (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id),
+                )
+                # Stage accepted lessons as temporary candidates. This is a separate
+                # review lifecycle: a structural quality pass must not promote durable
+                # factual knowledge or imply independent verification.
+                source_urls = [
+                    str(item["source_ref"])
+                    for item in conn.execute(
+                        """SELECT source_ref FROM learning_evidence
+                           WHERE job_id=? AND evidence_type='web_page'
+                           ORDER BY id""",
+                        (job_id,),
+                    ).fetchall()
+                    if isinstance(item["source_ref"], str)
+                    and item["source_ref"].startswith("https://")
+                ]
+                conn.execute(
+                    """INSERT INTO temporary_knowledge_candidates(
+                           job_id, topic, content, source_kind, source_urls_json,
+                           content_sha256, quality_report_json
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                       ON CONFLICT(job_id) DO NOTHING""",
+                    (
+                        job_id,
+                        topic,
+                        result["lesson"],
+                        source_kind,
+                        json.dumps(list(dict.fromkeys(source_urls)), ensure_ascii=False),
+                        hashlib.sha256(result["lesson"].encode("utf-8")).hexdigest(),
+                        json.dumps(quality, ensure_ascii=False),
+                    ),
+                )
             else:
                 conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
