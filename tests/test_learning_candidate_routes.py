@@ -140,3 +140,10 @@ def test_candidate_detail_fails_closed_when_content_hash_is_corrupt(candidate_st
     response = candidate_store.get(f"/api/learning/candidates/{candidate_id}")
     assert response.status_code == 409
     assert "hash mismatch" in response.json()["detail"]
+
+
+def test_candidate_api_rejects_unknown_status_and_missing_candidate(candidate_store):
+    invalid_filter = candidate_store.get("/api/learning/candidates?status=verified")
+    assert invalid_filter.status_code == 422
+    missing = candidate_store.get("/api/learning/candidates/999999")
+    assert missing.status_code == 404
