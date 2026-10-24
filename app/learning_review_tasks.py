@@ -224,7 +224,7 @@ def handle_candidate_sandbox_review(
                 or not test["name"].strip()
                 or not isinstance(test.get("python_test_code"), str)
                 or not test["python_test_code"].strip()
-                or "\\x00" in test["python_test_code"]
+                or "\x00" in test["python_test_code"]
                 or len(test["python_test_code"].encode("utf-8")) > 8192
                 or not isinstance(test.get("expected_stdout"), str)
                 or len(test["expected_stdout"]) > 1000
