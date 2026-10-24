@@ -1,16 +1,16 @@
 # وضعیت آمادگی ماژول یادگیری — 2026-10-24
 
-مبنای این گزارش commit `8a9779b655ed5c82585142f7688db65a0ae4dde7` در PR #459 است.
+مبنای ارزیابی اولیه commit `8a9779b655ed5c82585142f7688db65a0ae4dde7` بود؛ تکمیل بودجهٔ سراسری در commitهای بعدی همین شاخه انجام شده و CI آن در حال اجراست.
 
 ## پیاده‌سازی و CI
 
-CI روی همین commit موفق است: 930 تست موفق، 5 تست skip، بدون warning؛ Browser E2E، Windows storage regressions و dependency audit نیز موفق‌اند. این نتایج جای تست محلی کاربر یا پذیرش زندهٔ Ollama/Docker را نمی‌گیرند.
+CI روی commit کدنویسی قبلی `8a9779b655ed5c82585142f7688db65a0ae4dde7` موفق بود: 930 تست موفق، 5 تست skip، بدون warning؛ Browser E2E، Windows storage regressions و dependency audit نیز موفق بودند. تغییر بودجهٔ سراسری و رگرسیون‌های آن پس از آن اضافه شده‌اند و باید از CI جدید عبور کنند. این نتایج جای تست محلی کاربر یا پذیرش زندهٔ Ollama/Docker را نمی‌گیرند.
 
-موارد پیاده‌سازی‌شده در شاخه شامل بودجهٔ durable و رزرو idempotent در سطح هر job، چرخهٔ اصلاح محدود و حفظ بهترین خروجی، provenance و شمارنده‌های usage/timing گزارش‌شده توسط Ollama، ارزیاب Oracle با معیارهای per-version و اعتبارسنجی snapshot/hash، ledger idempotent کانال‌های وب/peer/sandbox، تست retry و رقابت بودجه، و HTTP(S) با IP pinning، TLS hostname verification، redirect validation و bypass کردن proxy محیطی است. پاسخ وب/peer و موفقیت sandbox به‌تنهایی دانش را ارتقا نمی‌دهند.
+موارد پیاده‌سازی‌شده در شاخه شامل بودجهٔ durable و رزرو idempotent در سطح هر job **و سقف روزانهٔ سراسری بین jobها**، چرخهٔ اصلاح محدود و حفظ بهترین خروجی، provenance و شمارنده‌های usage/timing گزارش‌شده توسط Ollama، ارزیاب Oracle با معیارهای per-version و اعتبارسنجی snapshot/hash، ledger idempotent کانال‌های وب/peer/sandbox، تست retry و رقابت بودجه، و HTTP(S) با IP pinning، TLS hostname verification، redirect validation و bypass کردن proxy محیطی است. پاسخ وب/peer و موفقیت sandbox به‌تنهایی دانش را ارتقا نمی‌دهند.
 
 ## گیت‌های باقی‌مانده که کد یا CI به‌تنهایی اثبات نمی‌کند
 
-1. **بودجهٔ سراسری و هزینهٔ مالی:** محدودیت فعلی per-job و بر مبنای درخواست/توکن خروجی رزروشده است. هزینهٔ پولی providerها و سقف سراسری بین jobهای هم‌زمان enforce نمی‌شود؛ usage Ollama صورت‌حساب مالی نیست.
+1. **هزینهٔ مالی:** سقف روزانهٔ سراسری اکنون به‌صورت durable و اتمیک enforce می‌شود؛ پیش‌فرض آن ۱۰۰۰ slot درخواست/اجرا و ۱٬۰۰۰٬۰۰۰ توکن خروجی درخواستی در روز UTC است و سقف همان روز پس از ایجاد قابل افزایش نیست. هزینهٔ پولی providerها هنوز محاسبه نمی‌شود؛ usage Ollama صورت‌حساب مالی نیست.
 2. **اعتبار علمی Oracleها:** catalog فعلی provisional است. هنوز dataset واقعی با داوری انسانی مستقل وجود ندارد؛ fixture مصنوعی تنها منطق evaluator را می‌آزماید.
 3. **Prompt injection زنده و شبکهٔ واقعی:** تست‌های policy/transport رفتار مدل هدف و همهٔ حالات واقعی DNS/TLS/redirect را اثبات نمی‌کنند.
 4. **پذیرش محیط هدف:** اجرای واقعی Ollama/Docker و تست‌های محلی Windows انجام نشده‌اند و طبق درخواست به پس از پایان کدنویسی موکول‌اند.
