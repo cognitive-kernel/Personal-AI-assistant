@@ -375,19 +375,6 @@ def handle_candidate_sandbox_review(
                 raise RetryableTaskError("Sandbox failure exists, but its learning experience could not be persisted.") from exc
         return {**saved, "failure_experience": failure_experience, "promoted": False}
 
-    try:
-        sandbox_budget = learning_durable_budget.reserve_job_budget(
-            int(row["job_id"]), f"sandbox_execution_{actual_plan_hash[:16]}",
-            calls=1, predict_tokens=0,
-        )
-    except learning_durable_budget.LearningBudgetError as exc:
-        raise RetryableTaskError("Shared learning pipeline budget is temporarily unavailable.") from exc
-    if not sandbox_budget["reserved"]:
-        return skip_sandbox(
-            "budget_exhausted",
-            "Sandbox execution was skipped because the shared learning pipeline request budget is exhausted.",
-        )
-
     def skip_sandbox(reason: str, note: str) -> dict[str, Any]:
         try:
             channels.record_review_attempt(
@@ -411,6 +398,19 @@ def handle_candidate_sandbox_review(
         except ValueError as exc:
             raise PermanentTaskError("Sandbox ledger rejected the unavailable result.") from exc
         return {**skipped_result, "failure_experience": None}
+
+    try:
+        sandbox_budget = learning_durable_budget.reserve_job_budget(
+            int(row["job_id"]), f"sandbox_execution_{actual_plan_hash[:16]}",
+            calls=1, predict_tokens=0,
+        )
+    except learning_durable_budget.LearningBudgetError as exc:
+        raise RetryableTaskError("Shared learning pipeline budget is temporarily unavailable.") from exc
+    if not sandbox_budget["reserved"]:
+        return skip_sandbox(
+            "budget_exhausted",
+            "Sandbox execution was skipped because the shared learning pipeline request budget is exhausted.",
+        )
 
     if not sandbox_consent.is_enabled():
         return skip_sandbox("consent_missing", "Sandbox execution was skipped because explicit consent is not active.")
