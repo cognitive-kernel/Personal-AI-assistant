@@ -38,11 +38,30 @@ def _valid_payload(lesson="Python decorators wrap callables and can add reusable
     }
 
 
+def test_ollama_usage_summary_accepts_only_nonnegative_integer_counters():
+    summary = learning._ollama_usage_summary({
+        "prompt_eval_count": 123,
+        "eval_count": 45,
+        "total_duration": 9000,
+        "eval_duration": -1,
+        "load_duration": True,
+        "billing_cost": 123.45,
+        "message": {"content": "ignored"},
+    })
+
+    assert summary == {
+        "prompt_eval_count": 123,
+        "eval_count": 45,
+        "total_duration": 9000,
+    }
+    assert learning._ollama_usage_summary(None) == {}
+
+
 def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, monkeypatch):
     calls = []
     responses = iter([
-        {"message": {"content": "not valid json"}},
-        {"message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}},
+        {"message": {"content": "not valid json"}, "prompt_eval_count": 800, "eval_count": 120, "total_duration": 900000},
+        {"message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}, "prompt_eval_count": 1100, "eval_count": 900, "eval_duration": 500000},
     ])
     monkeypatch.setattr(
         learning, "_request",
@@ -74,6 +93,10 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert quality["generation_provenance"]["repair_response_valid"] is True
     assert quality["generation_provenance"]["attempt_count"] == 2
     assert len(quality["generation_provenance"]["repair_prompt_sha256"]) == 64
+    assert quality["generation_provenance"]["provider_usage"] == {
+        "initial_generation": {"prompt_eval_count": 800, "eval_count": 120, "total_duration": 900000},
+        "quality_repair": {"prompt_eval_count": 1100, "eval_count": 900, "eval_duration": 500000},
+    }
 
 
 def test_lower_scoring_repair_does_not_replace_best_initial_quality(learning_store, monkeypatch):
