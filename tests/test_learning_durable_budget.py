@@ -110,3 +110,39 @@ def test_concurrent_budget_reservations_never_exceed_shared_ceiling(learning_sto
     assert snapshot["predict_tokens_reserved"] == 7000
     assert snapshot["calls_used"] <= snapshot["max_calls"]
     assert snapshot["predict_tokens_reserved"] <= snapshot["max_predict_tokens"]
+
+def test_daily_global_budget_is_shared_across_distinct_learning_jobs(learning_store):
+    first_job = learning.create_job("First daily budget job")["id"]
+    second_job = learning.create_job("Second daily budget job")["id"]
+
+    accepted = reserve_job_budget(
+        first_job, "initial_generation", calls=1, predict_tokens=1200,
+        max_global_calls_per_day=1, max_global_predict_tokens_per_day=1200,
+    )
+    denied = reserve_job_budget(
+        second_job, "initial_generation", calls=1, predict_tokens=1200,
+        max_global_calls_per_day=1, max_global_predict_tokens_per_day=1200,
+    )
+
+    assert accepted["reserved"] is True
+    assert accepted["global_calls_reserved_today"] == 1
+    assert accepted["global_predict_tokens_reserved_today"] == 1200
+    assert denied["reserved"] is False
+    assert denied["reason"] == "global_budget_exhausted"
+    assert denied["global_budget_exhausted"] is True
+    assert denied["global_calls_reserved_today"] == 1
+    assert get_job_budget(second_job)["calls_used"] == 0
+
+
+def test_daily_global_budget_ceilings_cannot_be_raised_midday(learning_store):
+    job_id = learning.create_job("Global budget immutable")["id"]
+    reserve_job_budget(
+        job_id, "initial_generation", calls=1, predict_tokens=1200,
+        max_global_calls_per_day=2, max_global_predict_tokens_per_day=3000,
+    )
+
+    with pytest.raises(LearningBudgetError, match="Daily global budget ceilings are immutable"):
+        reserve_job_budget(
+            job_id, "quality_repair", calls=1, predict_tokens=1400,
+            max_global_calls_per_day=3, max_global_predict_tokens_per_day=4000,
+        )
