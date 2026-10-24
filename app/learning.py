@@ -553,8 +553,10 @@ def run_job(job_id: int) -> None:
     durable_initial_budget = reserve_job_budget(
         job_id, "initial_generation", calls=1, predict_tokens=1200
     )
-    if not durable_initial_budget["reserved"]:
-        raise LearningError("Learning job request/token budget is exhausted before initial generation.")
+    if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
+        raise LearningError(
+            "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
+        )
     try:
         limits = runtime_limits({
             "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
@@ -608,6 +610,7 @@ def run_job(job_id: int) -> None:
         if (
             not quality["accepted"]
             and durable_repair_budget.get("reserved")
+            and not durable_repair_budget.get("already_reserved")
             and generation_budget.reserve("quality_repair", predict_tokens=1400)
         ):
             retry_prompt = dict(prompt)
