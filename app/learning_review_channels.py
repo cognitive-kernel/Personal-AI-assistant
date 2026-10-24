@@ -393,7 +393,10 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             if api_key:
                 headers["Authorization"] = "Bearer " + api_key
             request = urllib.request.Request(endpoint, data=payload, headers=headers, method="POST")
-            with urllib.request.urlopen(request, timeout=15) as response:
+            # Do not let ambient HTTP(S)_PROXY settings route a validated peer
+            # request through a proxy that can change its effective destination.
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            with opener.open(request, timeout=15) as response:
                 body = response.read(200001)
             if len(body) > 200000:
                 raise ValueError("peer_response_too_large")
