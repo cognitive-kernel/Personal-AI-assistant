@@ -211,6 +211,7 @@ def handle_candidate_sandbox_review(
             raise PermanentTaskError("Candidate test plan is invalid.") from exc
         if (
             not isinstance(plan, dict)
+            or plan.get("version") != 2
             or plan.get("oracle_reviewed") is not True
             or not isinstance(plan.get("tests"), list)
             or not 1 <= len(plan["tests"]) <= 3
