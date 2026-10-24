@@ -6,7 +6,6 @@ import json
 import os
 import re
 import sqlite3
-import time
 from pathlib import Path
 from typing import Any
 
@@ -154,7 +153,7 @@ _ALLOWED_SANDBOX_REVIEW_KEYS = {"candidate_id", "content_sha256", "request_id"}
 def enqueue_candidate_sandbox_review(
     candidate_id: int, *, content_sha256: str, request_id: str
 ) -> dict[str, Any]:
-    """Queue an explicitly consented, bounded smoke-run of candidate Python examples."""
+    """Queue an explicitly consented, bounded run of human-reviewed candidate tests."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
     if not isinstance(content_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", content_sha256) is None:
@@ -175,10 +174,7 @@ def handle_candidate_sandbox_review(
     checkpoint: dict[str, Any] | None,
     context: TaskContext,
 ) -> dict[str, Any]:
-    """Execute only fenced Python examples in the consented, no-network sandbox.
-
-    This is a smoke check, not an oracle: results never pass/promote the candidate.
-    """
+    """Execute versioned human-reviewed tests and compare stdout without promoting knowledge."""
     if not isinstance(payload, dict) or set(payload) != _ALLOWED_SANDBOX_REVIEW_KEYS:
         raise PermanentTaskError("Sandbox review payload contains unsupported or missing fields.")
     candidate_id = payload.get("candidate_id")
