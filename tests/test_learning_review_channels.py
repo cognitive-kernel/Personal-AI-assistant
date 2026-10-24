@@ -253,7 +253,7 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
 
 
 def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_plan(review_store, monkeypatch, tmp_path):
-    candidate_id, _job_id = _candidate(content="A candidate example.\\n\\n```python\\nprint('safe example')\\n```")
+    candidate_id, _job_id = _candidate(content="A candidate example.\n\n```python\nprint('safe example')\n```")
     request = {"confirm": True, "request_id": "8a1f3e2a-1f3d-4b7e-9d11-2d2e2fba7c88"}
     path = f"/api/learning/candidates/{candidate_id}/sandbox-test"
 
@@ -277,7 +277,7 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     task = task_manager.get_task(queued.json()["task_id"])
     assert task["task_type"] == "learning.sandbox_candidate"
     assert task["payload"]["content_sha256"] == hashlib.sha256(
-        "A candidate example.\\n\\n```python\\nprint('safe example')\\n```".encode()
+        "A candidate example.\n\n```python\nprint('safe example')\n```".encode()
     ).hexdigest()
     duplicate = review_store.post(path, json=request)
     assert duplicate.status_code == 202
@@ -288,7 +288,7 @@ def test_candidate_sandbox_worker_runs_only_fenced_examples_and_never_promotes(r
     from app.learning_review_tasks import handle_candidate_sandbox_review
     from app.sandbox import SandboxResult
 
-    content = "Example lesson.\\n\\n```python\\nprint('safe example')\\n```"
+    content = "Example lesson.\n\n```python\nprint('safe example')\n```"
     candidate_id, _job_id = _candidate(content=content)
     digest = hashlib.sha256(content.encode()).hexdigest()
     with db.learning_connection() as connection:
