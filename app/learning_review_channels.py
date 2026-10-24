@@ -6,8 +6,10 @@ never promotes trust or changes a candidate's lifecycle/status.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -258,6 +260,59 @@ def record_peer_consultation(
 
 
 
+def _validate_peer_endpoint(base_url: str) -> tuple[str, str]:
+    """Validate a configured peer URL before making an outbound request.
+
+    Loopback HTTP is permitted for explicit local development. Every other
+    endpoint must use HTTPS and resolve exclusively to globally routable IPs.
+    This prevents a peer configuration from becoming an SSRF path into private
+    networks or cloud metadata services.
+    """
+    if not isinstance(base_url, str) or len(base_url) > 2048:
+        raise ValueError("endpoint_url_invalid")
+    try:
+        parsed = urllib.parse.urlsplit(base_url)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("endpoint_url_invalid") from exc
+    if (
+        not hostname or parsed.username or parsed.password
+        or parsed.query or parsed.fragment or parsed.scheme not in {"https", "http"}
+        or not parsed.path.startswith("/")
+    ):
+        raise ValueError("endpoint_url_invalid")
+    try:
+        literal_ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal_ip = None
+    loopback = hostname == "localhost" or (literal_ip is not None and literal_ip.is_loopback)
+    if loopback:
+        if parsed.scheme != "http":
+            raise ValueError("loopback_peer_must_use_http")
+        return parsed.scheme, hostname
+    if parsed.scheme != "https":
+        raise ValueError("endpoint_must_be_https_or_loopback_without_credentials")
+    if port not in {None, 443}:
+        raise ValueError("peer_endpoint_port_not_allowed")
+    try:
+        if literal_ip is not None:
+            addresses = [literal_ip]
+        else:
+            records = socket.getaddrinfo(
+                hostname, port or 443, type=socket.SOCK_STREAM
+            )
+            addresses = [
+                ipaddress.ip_address(record[4][0].split("%", 1)[0])
+                for record in records
+            ]
+    except (OSError, ValueError) as exc:
+        raise ValueError("peer_endpoint_host_not_resolvable") from exc
+    if not addresses or any(not address.is_global for address in addresses):
+        raise ValueError("peer_endpoint_must_resolve_only_to_public_addresses")
+    return parsed.scheme, hostname
+
+
 def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[str, Any]:
     """Ask configured OpenAI-compatible peer endpoints to critique a candidate.
 
@@ -319,15 +374,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             continue
         seen_providers.add(provider)
         try:
-            parsed = urllib.parse.urlsplit(base_url)
-            hostname = (parsed.hostname or "").lower()
-            loopback = hostname in {"localhost", "127.0.0.1", "::1"}
-            if (
-                parsed.scheme != "https" and not (parsed.scheme == "http" and loopback)
-                or not hostname or parsed.username or parsed.password
-                or parsed.query or parsed.fragment or len(base_url) > 2048
-            ):
-                raise ValueError("endpoint_must_be_https_or_loopback_without_credentials")
+            _validate_peer_endpoint(base_url)
             endpoint = base_url.rstrip("/")
             if not endpoint.endswith("/chat/completions"):
                 endpoint += "/chat/completions"
