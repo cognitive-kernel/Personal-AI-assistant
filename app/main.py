@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from . import learning_review_tasks
+from .learning_observability import collect_learning_operational_metrics
 from .task_runtime import TaskRuntime
 from .config import defaults
 from .hardware import detect_hardware, runtime_limits
@@ -320,6 +321,19 @@ class LessonReviewSubmission(BaseModel):
 class PathTopicProgress(BaseModel):
     status: str = Field(min_length=1, max_length=30)
     latest_score: float | None = Field(default=None, ge=0, le=100)
+
+@app.get("/api/learning/operational-metrics", dependencies=[Depends(require_loopback_client)])
+def learning_operational_metrics() -> dict[str, Any]:
+    """Expose durable failure rates, budget pressure, and explicit release guardrails."""
+    if _startup_storage_error:
+        raise HTTPException(status_code=503, detail="Learning storage is blocked pending reviewed recovery.")
+    try:
+        with db.learning_connection() as connection:
+            return collect_learning_operational_metrics(connection)
+    except (OSError, sqlite3.Error, KeyError) as exc:
+        logger.warning("Learning operational metrics unavailable (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Learning operational metrics are temporarily unavailable.") from exc
+
 
 @app.get("/api/health")
 def api_health() -> dict[str, Any]:
