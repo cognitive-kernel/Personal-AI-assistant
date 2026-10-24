@@ -24,7 +24,7 @@ jobs:
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
       - name: Upgrade build tooling to patched releases
-        run: python -m pip install --upgrade "setuptools>=83.0.0,<84"
+        run: python -m pip install --upgrade "setuptools>=84.1.0,<85"
       - name: Audit resolved Python environment
         run: |
           python -m pip install pip-audit
