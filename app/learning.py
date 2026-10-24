@@ -547,8 +547,14 @@ def run_job(job_id: int) -> None:
     # One per-job budget is shared by initial generation and its single repair.
     # This is a deterministic request/token ceiling, not provider billing.
     from .learning_pipeline_budget import LearningPipelineBudget
+    from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=2600)
     generation_budget.reserve("initial_generation", predict_tokens=1200)
+    durable_initial_budget = reserve_job_budget(
+        job_id, "initial_generation", calls=1, predict_tokens=1200
+    )
+    if not durable_initial_budget["reserved"]:
+        raise LearningError("Learning job request/token budget is exhausted before initial generation.")
     try:
         limits = runtime_limits({
             "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
@@ -594,7 +600,16 @@ def run_job(job_id: int) -> None:
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
-        if not quality["accepted"] and generation_budget.reserve("quality_repair", predict_tokens=1400):
+        durable_repair_budget = {"reserved": False, "reason": "quality_accepted"}
+        if not quality["accepted"]:
+            durable_repair_budget = reserve_job_budget(
+                job_id, "quality_repair", calls=1, predict_tokens=1400
+            )
+        if (
+            not quality["accepted"]
+            and durable_repair_budget.get("reserved")
+            and generation_budget.reserve("quality_repair", predict_tokens=1400)
+        ):
             retry_prompt = dict(prompt)
             retry_prompt["instruction"] = (
                 "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ این بار با توجه به دلیل‌های مشخص زیر، آن را کامل بازنویسی کن: "
@@ -658,6 +673,8 @@ def run_job(job_id: int) -> None:
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
         quality["generation_budget"] = generation_budget.snapshot()
+        from .learning_durable_budget import get_job_budget
+        quality["pipeline_budget"] = get_job_budget(job_id)
         quality["generation_provenance"] = {
             "prompt_version": LESSON_GENERATION_PROMPT_VERSION,
             "prompt_sha256": prompt_fingerprint,
