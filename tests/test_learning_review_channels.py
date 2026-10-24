@@ -121,12 +121,17 @@ def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_sto
         def read(self, size): return body
 
     captured = {}
-    def fake_urlopen(request, timeout):
-        captured["url"] = request.full_url
-        captured["timeout"] = timeout
-        return Response()
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            return Response()
 
-    monkeypatch.setattr(review.urllib.request, "urlopen", fake_urlopen)
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return FakeOpener()
+
+    monkeypatch.setattr(review.urllib.request, "build_opener", fake_build_opener)
     result = review.consult_configured_peer_ais(candidate_id)
 
     assert result["status"] == "completed"
