@@ -47,7 +47,7 @@ def record_candidate_test_failure(
     for item in outcomes:
         if not isinstance(item, dict) or not isinstance(item.get("test"), str) or not item["test"].strip():
             raise ValueError("Every outcome must name its test.")
-        if item.get("passed") not in (True, False):
+        if type(item.get("passed")) is not bool:
             raise ValueError("Every outcome must have a boolean passed field.")
         bounded.append({
             "test": item["test"][:120],
