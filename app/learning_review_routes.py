@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from .db import learning_connection
-from .learning_review_tasks import enqueue_candidate_review
+from . import sandbox_consent, sandbox_tasks
+from .learning_review_tasks import enqueue_candidate_review, enqueue_candidate_sandbox_review
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -26,6 +27,14 @@ class CandidateReviewRequest(BaseModel):
     request_id: UUID
     query: str | None = Field(default=None, max_length=1000)
     web_mode: Literal["search", "disabled"] = "search"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+
+class CandidateSandboxReviewRequest(BaseModel):
+    confirm: StrictBool
+    request_id: UUID
 
     model_config = ConfigDict(extra="forbid")
 
@@ -143,3 +152,54 @@ def get_candidate_review_history(candidate_id: int) -> dict[str, Any]:
         raise
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Candidate review history is unavailable.") from exc
+
+
+@router.post("/{candidate_id}/sandbox-test", status_code=202)
+def queue_candidate_sandbox_review(
+    candidate_id: int, request: CandidateSandboxReviewRequest
+) -> dict[str, Any]:
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit confirmation to execute candidate examples is required.")
+    if isinstance(candidate_id, bool) or candidate_id < 1:
+        raise HTTPException(status_code=422, detail="candidate_id must be a positive integer.")
+    try:
+        if not sandbox_consent.is_enabled():
+            raise HTTPException(status_code=409, detail="Sandbox execution requires current explicit user consent.")
+        if sandbox_tasks.handler_from_environment() is None:
+            raise HTTPException(status_code=409, detail="Sandbox runtime is not configured.")
+        with learning_connection() as connection:
+            row = connection.execute(
+                """SELECT id, content, content_sha256, status, test_plan_json
+                   FROM temporary_knowledge_candidates WHERE id=?""",
+                (candidate_id,),
+            ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Learning candidate not found.")
+        actual_hash = hashlib.sha256(str(row["content"]).encode("utf-8")).hexdigest()
+        if actual_hash != str(row["content_sha256"]):
+            raise HTTPException(status_code=409, detail="Candidate content hash mismatch; sandbox execution is blocked.")
+        if row["status"] != "awaiting_test":
+            raise HTTPException(status_code=409, detail="Only temporary candidates awaiting tests can be sandbox-reviewed.")
+        try:
+            plan = json.loads(row["test_plan_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=503, detail="Stored candidate test plan is invalid.") from exc
+        if not isinstance(plan, dict) or plan.get("oracle_reviewed") is not True or not plan.get("tests"):
+            raise HTTPException(status_code=409, detail="A human-reviewed test plan is required before sandbox execution.")
+        task = enqueue_candidate_sandbox_review(
+            candidate_id, content_sha256=actual_hash, request_id=str(request.request_id)
+        )
+        return {
+            "candidate_id": candidate_id,
+            "task_id": task["id"],
+            "task_status": task["status"],
+            "content_sha256": actual_hash,
+            "promoted": False,
+            "note": "This runs fenced Python examples only; the result is a smoke check, not an oracle or knowledge promotion.",
+        }
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Candidate sandbox review could not be queued.") from exc
