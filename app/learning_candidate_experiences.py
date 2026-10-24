@@ -58,8 +58,6 @@ def record_candidate_test_failure(
         raise ValueError("topic is required.")
     related_knowledge_id = _validate_relationship_id(related_knowledge_id, "related_knowledge_id")
     related_consensus_id = _validate_relationship_id(related_consensus_id, "related_consensus_id")
-    init_databases()
-    related_knowledge_id = _resolve_related_knowledge_id(candidate_id, related_knowledge_id)
     for digest in (content_sha256, test_plan_sha256):
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise ValueError("Content and plan hashes must be lowercase SHA-256 digests.")
@@ -80,6 +78,8 @@ def record_candidate_test_failure(
             "stderr_sha256": str(item.get("stderr_sha256", ""))[:64],
             "reason": str(item.get("reason", ""))[:160],
         })
+    init_databases()
+    related_knowledge_id = _resolve_related_knowledge_id(candidate_id, related_knowledge_id)
     canonical = json.dumps(bounded, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
     failure_sha256 = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     title = ("Test failure: " + topic.strip())[:300]
@@ -107,7 +107,6 @@ def record_candidate_test_failure(
         f"Review candidate {candidate_id} and its test plan before reuse. "
         "A failed sandbox check must remain a warning; do not promote or automatically rewrite the lesson."
     )
-    init_databases()
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         existing = connection.execute(
@@ -148,8 +147,6 @@ def record_candidate_channel_failure(
         raise ValueError("topic is required.")
     related_knowledge_id = _validate_relationship_id(related_knowledge_id, "related_knowledge_id")
     related_consensus_id = _validate_relationship_id(related_consensus_id, "related_consensus_id")
-    init_databases()
-    related_knowledge_id = _resolve_related_knowledge_id(candidate_id, related_knowledge_id)
     if not isinstance(content_sha256, str) or len(content_sha256) != 64 or any(
         char not in "0123456789abcdef" for char in content_sha256
     ):
@@ -163,6 +160,8 @@ def record_candidate_channel_failure(
         if isinstance(error_type, str)
         else "unknown"
     )
+    init_databases()
+    related_knowledge_id = _resolve_related_knowledge_id(candidate_id, related_knowledge_id)
     identity = {
         "candidate_id": candidate_id,
         "content_sha256": content_sha256,
@@ -203,7 +202,6 @@ def record_candidate_channel_failure(
         f"Treat the {channel_label} result for candidate {candidate_id} as unavailable evidence. "
         "Do not infer truth or falsity, and do not promote the candidate because another channel failed."
     )
-    init_databases()
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         existing = connection.execute(
