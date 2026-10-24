@@ -279,7 +279,6 @@ def _validate_peer_endpoint(base_url: str) -> tuple[str, str]:
     if (
         not hostname or parsed.username or parsed.password
         or parsed.query or parsed.fragment or parsed.scheme not in {"https", "http"}
-        or not parsed.path.startswith("/")
     ):
         raise ValueError("endpoint_url_invalid")
     try:
