@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from .learning_oracles import evaluate_candidate_claim
+from .learning_oracles import evaluate_candidate_claim, list_oracles
 
 
 class OracleEvaluationError(ValueError):
@@ -31,6 +31,10 @@ def validate_oracle_dataset(dataset: Any) -> list[dict[str, Any]]:
     if not isinstance(cases, list) or not cases:
         raise OracleEvaluationError("cases must be a non-empty list.")
     seen: set[str] = set()
+    catalog_sources = {
+        (item["oracle_id"], item["version"]): item["source_url"]
+        for item in list_oracles()
+    }
     for index, case in enumerate(cases):
         prefix = f"cases[{index}]"
         if not isinstance(case, dict):
@@ -49,6 +53,11 @@ def validate_oracle_dataset(dataset: Any) -> list[dict[str, Any]]:
         source_url = _nonempty(case.get("source_url"), f"{prefix}.source_url")
         if not source_url.startswith("https://"):
             raise OracleEvaluationError(f"{prefix}.source_url must use HTTPS.")
+        registered_source = catalog_sources.get((case["oracle_id"], case["oracle_version"]))
+        if registered_source is None:
+            raise OracleEvaluationError(f"{prefix} references an unknown Oracle version.")
+        if source_url != registered_source:
+            raise OracleEvaluationError(f"{prefix}.source_url does not match the versioned Oracle catalog.")
         if not isinstance(case.get("source_sha256"), str) or re.fullmatch(r"[0-9a-f]{64}", case["source_sha256"]) is None:
             raise OracleEvaluationError(f"{prefix}.source_sha256 must be a lowercase SHA-256 digest.")
         adjudication = case.get("adjudication")
