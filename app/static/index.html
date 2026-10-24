@@ -984,7 +984,7 @@ async function refreshLearningCandidates() {
      }
      claimSelect.required=Boolean(oracleSelect.value);
     });
-    const oracleHelp=document.createElement("p"); oracleHelp.textContent="Oracle فقط ادعای canonical نسخه‌دار را با متن نامزد تطبیق می‌دهد؛ این تطبیق، درستی معنایی کل درس را ثابت نمی‌کند.";
+    const oracleHelp=document.createElement("p"); oracleHelp.textContent="کاتالوگ Oracle موقت است و به بازبینی مستقل انسانی نیاز دارد. تطبیق فقط ادعای canonical نسخه‌دار را با متن نامزد مقایسه می‌کند؛ درستی معنایی کل درس را ثابت نمی‌کند و دانش را ارتقا نمی‌دهد.";
     const testCode=document.createElement("textarea"); testCode.maxLength=8192; testCode.rows=4; testCode.placeholder="کد آزمون Python اختیاری؛ برای اجرای sandbox لازم است";
     const expectedStdout=document.createElement("textarea"); expectedStdout.maxLength=1000; expectedStdout.rows=2; expectedStdout.placeholder="stdout دقیق مورد انتظار؛ print معمولی newline پایانی دارد";
     const note=document.createElement("textarea"); note.required=true; note.minLength=20; note.maxLength=1000; note.rows=2; note.placeholder="یادداشت بررسی انسانی oracle (حداقل ۲۰ نویسه)";
