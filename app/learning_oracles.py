@@ -12,7 +12,8 @@ import re
 from typing import Any
 
 
-ORACLE_CATALOG_VERSION = 1\nORACLE_CATALOG_STATUS = "provisional_requires_independent_human_review"
+ORACLE_CATALOG_VERSION = 1
+ORACLE_CATALOG_STATUS = "provisional_requires_independent_human_review"
 
 _ORACLES: dict[tuple[str, int], dict[str, Any]] = {
     ("python.json-decode-error", 1): {
