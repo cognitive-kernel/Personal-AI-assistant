@@ -720,3 +720,53 @@ def test_peer_provider_blocks_public_hostname_resolving_to_private_ip(review_sto
     assert result["status"] == "unavailable"
     assert result["consulted"] == 0
     assert result["errors"][0]["error"] == "peer_endpoint_must_resolve_only_to_public_addresses"
+
+
+def test_review_retry_reclaims_running_channel_and_charges_each_attempt_once(review_store, monkeypatch):
+    from app import learning_candidate_channels, learning_durable_budget
+    from app.task_worker import RetryableTaskError
+
+    candidate_id, job_id = _candidate()
+    calls = {"web": 0, "peer": 0, "finish": 0}
+    monkeypatch.setattr(
+        review, "research_candidate_online",
+        lambda *args, **kwargs: calls.__setitem__("web", calls["web"] + 1) or {"status": "completed"},
+    )
+    monkeypatch.setattr(
+        review, "consult_configured_peer_ais",
+        lambda *args, **kwargs: calls.__setitem__("peer", calls["peer"] + 1) or {"status": "unconfigured"},
+    )
+    original_finish = learning_candidate_channels.finish_channel_run
+
+    def fail_first_finish(*args, **kwargs):
+        calls["finish"] += 1
+        if calls["finish"] == 1:
+            raise learning_candidate_channels.CandidateChannelStorageError("simulated crash before durable completion")
+        return original_finish(*args, **kwargs)
+
+    monkeypatch.setattr(learning_candidate_channels, "finish_channel_run", fail_first_finish)
+
+    class Context:
+        task_id = 909
+        def checkpoint(self, value): pass
+
+    payload = {"candidate_id": candidate_id, "query": "Python retry recovery", "web_mode": "search"}
+    with pytest.raises(RetryableTaskError, match="ledger is temporarily unavailable"):
+        handle_candidate_review(payload, None, Context())
+
+    # A retry reclaims the unfinished web run with a new attempt generation.
+    # Its budget reservation is distinct, bounded, and durable.
+    result = handle_candidate_review(payload, None, Context())
+    assert result["promoted"] is False
+    assert calls == {"web": 2, "peer": 1, "finish": 3}
+    budget_after_retry = learning_durable_budget.get_job_budget(job_id)
+    assert budget_after_retry["calls_used"] == 5
+    assert budget_after_retry["predict_tokens_reserved"] == 8100
+
+    # Re-delivery after both terminal results is idempotent: no action or charge repeats.
+    repeated = handle_candidate_review(payload, None, Context())
+    assert repeated["channels"] == result["channels"]
+    assert calls == {"web": 2, "peer": 1, "finish": 3}
+    budget_after_repeat = learning_durable_budget.get_job_budget(job_id)
+    assert budget_after_repeat["calls_used"] == 5
+    assert budget_after_repeat["predict_tokens_reserved"] == 8100
