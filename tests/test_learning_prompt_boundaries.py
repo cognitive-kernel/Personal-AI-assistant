@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 from app import learning
 
 
@@ -21,6 +23,7 @@ def test_retrieval_context_fails_closed_for_ambiguous_topic(monkeypatch):
 
 
 def test_retrieval_context_requires_https_source_hash_and_passing_test(monkeypatch):
+    monkeypatch.setattr(learning, "learning_connection", lambda: nullcontext(object()))
     monkeypatch.setattr(learning, "_factual_domain_for_topic", lambda _topic: ("python", "3.12", "explicit"))
     monkeypatch.setattr(
         learning.factual_knowledge,
