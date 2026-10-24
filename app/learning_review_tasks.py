@@ -149,7 +149,6 @@ def handle_candidate_review(
 
 LEARNING_SANDBOX_REVIEW_TASK_TYPE = "learning.sandbox_candidate"
 _ALLOWED_SANDBOX_REVIEW_KEYS = {"candidate_id", "content_sha256", "request_id"}
-_CODE_BLOCK = re.compile(r"^\s*```(?:python|py)\s*\n(.*?)^\s*```\s*$", re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
 
 def enqueue_candidate_sandbox_review(
@@ -210,8 +209,26 @@ def handle_candidate_sandbox_review(
             plan = json.loads(row["test_plan_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise PermanentTaskError("Candidate test plan is invalid.") from exc
-        if not isinstance(plan, dict) or plan.get("oracle_reviewed") is not True or not isinstance(plan.get("tests"), list) or not plan["tests"]:
-            raise PermanentTaskError("A human-reviewed test plan is required before sandbox execution.")
+        if (
+            not isinstance(plan, dict)
+            or plan.get("oracle_reviewed") is not True
+            or not isinstance(plan.get("tests"), list)
+            or not 1 <= len(plan["tests"]) <= 3
+        ):
+            raise PermanentTaskError("A human-reviewed plan with 1–3 executable tests is required before sandbox execution.")
+        for test in plan["tests"]:
+            if (
+                not isinstance(test, dict)
+                or not isinstance(test.get("name"), str)
+                or not test["name"].strip()
+                or not isinstance(test.get("python_test_code"), str)
+                or not test["python_test_code"].strip()
+                or "\\x00" in test["python_test_code"]
+                or len(test["python_test_code"].encode("utf-8")) > 8192
+                or not isinstance(test.get("expected_stdout"), str)
+                or len(test["expected_stdout"]) > 1000
+            ):
+                raise PermanentTaskError("Every sandbox test must include bounded Python code and an expected stdout string.")
     except PermanentTaskError:
         raise
     except (OSError, sqlite3.Error) as exc:
@@ -240,24 +257,16 @@ def handle_candidate_sandbox_review(
                                         details={"reason": "invalid_docker_path_or_image_digest", "request_id": request_id})
         return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "executed": 0, "promoted": False}
 
-    blocks = [match.group(1).strip() for match in _CODE_BLOCK.finditer(str(row["content"]))]
-    blocks = [block for block in blocks if block][:3]
-    if not blocks:
-        channels.record_review_attempt(candidate_id, channel="sandbox", status="no_examples",
-                                        details={"request_id": request_id, "reason": "no_fenced_python_examples"})
-        return {"candidate_id": candidate_id, "status": "no_examples", "executed": 0, "promoted": False}
-
     outcomes: list[dict[str, Any]] = []
-    for index, source in enumerate(blocks, start=1):
-        if len(source.encode("utf-8")) > 8192:
-            outcomes.append({"example": index, "status": "skipped", "reason": "example_exceeds_8KiB"})
-            continue
+    for index, test in enumerate(plan["tests"], start=1):
+        source = test["python_test_code"].strip()
+        expected_stdout = test["expected_stdout"]
         if not sandbox_consent.is_enabled():
-            outcomes.append({"example": index, "status": "cancelled", "reason": "consent_revoked"})
+            outcomes.append({"test": test["name"], "status": "cancelled", "reason": "consent_revoked"})
             break
-        context.checkpoint({"phase": "candidate_sandbox_example", "candidate_id": candidate_id,
-                            "content_sha256": actual_hash, "example": index, "total": len(blocks)})
-        started = time.monotonic()
+        context.checkpoint({"phase": "candidate_sandbox_test", "candidate_id": candidate_id,
+                            "content_sha256": actual_hash, "test": test["name"],
+                            "index": index, "total": len(plan["tests"])})
         def control_check() -> str:
             status = context.control_status()
             if status != "running":
@@ -267,20 +276,24 @@ def handle_candidate_sandbox_review(
             source, docker_executable=executable, image=image, timeout_seconds=10,
             max_output_bytes=8192, control_check=control_check, task_id=context.task_id,
         )
+        passed = result.status == "succeeded" and result.stdout == expected_stdout
         outcomes.append({
-            "example": index,
+            "test": test["name"],
             "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+            "expected_stdout_sha256": hashlib.sha256(expected_stdout.encode("utf-8")).hexdigest(),
+            "actual_stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+            "expected_stdout": expected_stdout[:300],
+            "actual_stdout": result.stdout[:300],
             "status": result.status,
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
-            "stdout": result.stdout[:300],
-            "stderr": result.stderr[:300],
-            "reason": (result.reason or "")[:300],
+            "passed": passed,
+            "reason": (result.reason or "")[:200],
         })
         if result.status == "unavailable":
             break
 
-    successful = bool(outcomes) and all(item.get("status") == "succeeded" for item in outcomes)
+    successful = bool(outcomes) and len(outcomes) == len(plan["tests"]) and all(item.get("passed") is True for item in outcomes)
     terminal_status = (
         "unavailable" if any(item.get("status") == "unavailable" for item in outcomes)
         else "completed" if successful else "failed"
@@ -292,12 +305,13 @@ def handle_candidate_sandbox_review(
     channels.record_review_attempt(
         candidate_id, channel="sandbox", status=terminal_status,
         details={"request_id": request_id, "content_sha256": actual_hash, "image": image,
-                 "executed": executed_count, "outcomes": outcomes,
-                 "interpretation": "Smoke checks only; not an independent oracle and not candidate acceptance."},
+                 "executed": executed_count, "passed": sum(item.get("passed") is True for item in outcomes),
+                 "outcomes": outcomes,
+                 "interpretation": "Human-attested expected stdout was compared exactly; this is bounded evidence, not universal truth and never promotes the candidate."},
     )
     return {
         "candidate_id": candidate_id, "content_sha256": actual_hash,
         "status": terminal_status, "executed": executed_count, "outcomes": outcomes,
         "promoted": False,
-        "note": "Sandbox smoke checks do not prove lesson correctness and never promote candidate knowledge.",
+        "note": "Sandbox tests compare exact stdout against a human-attested expectation; results never promote candidate knowledge.",
     }
