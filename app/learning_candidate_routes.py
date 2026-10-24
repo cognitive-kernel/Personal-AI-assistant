@@ -29,6 +29,9 @@ class CandidateTestPlanItem(BaseModel):
     expected_result: str = Field(min_length=10, max_length=1000)
     python_test_code: str | None = Field(default=None, max_length=8192)
     expected_stdout: str | None = Field(default=None, max_length=1000)
+    oracle_id: str | None = Field(default=None, min_length=1, max_length=120)
+    oracle_version: int | None = Field(default=None, ge=1, le=1000)
+    claim: str | None = Field(default=None, min_length=10, max_length=1000)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -146,8 +149,14 @@ def save_candidate_test_plan(
             or len(item.python_test_code.encode("utf-8")) > 8192
         ):
             raise HTTPException(status_code=422, detail="python_test_code must be non-empty, NUL-free, and at most 8 KiB.")
+    has_oracle_reference = False
+    for item in request.tests:
+        oracle_fields = (item.oracle_id is not None, item.oracle_version is not None, item.claim is not None)
+        if any(oracle_fields) and not all(oracle_fields):
+            raise HTTPException(status_code=422, detail="oracle_id, oracle_version, and claim must be provided together.")
+        has_oracle_reference = has_oracle_reference or all(oracle_fields)
     plan = {
-        "version": 2,
+        "version": 3 if has_oracle_reference else 2,
         "oracle_reviewed": True,
         "review_note": request.review_note.strip(),
         "tests": [item.model_dump() for item in request.tests],
@@ -163,6 +172,22 @@ def save_candidate_test_plan(
             if row is None:
                 raise HTTPException(status_code=404, detail="Learning candidate not found.")
             candidate = _candidate(row, include_content=True)
+            if has_oracle_reference:
+                from .learning_oracles import evaluate_candidate_claim
+                for item in plan["tests"]:
+                    if item.get("oracle_id") is None:
+                        continue
+                    oracle_result = evaluate_candidate_claim(
+                        candidate["content"],
+                        oracle_id=item["oracle_id"],
+                        oracle_version=item["oracle_version"],
+                        claim=item["claim"],
+                    )
+                    if oracle_result.get("status") != "matched":
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Curated oracle check failed closed: {oracle_result.get('reason', 'unknown')}.",
+                        )
             if candidate["status"] != "awaiting_test":
                 raise HTTPException(status_code=409, detail="Only candidates awaiting tests can receive a test plan.")
             existing = candidate["test_plan"]
