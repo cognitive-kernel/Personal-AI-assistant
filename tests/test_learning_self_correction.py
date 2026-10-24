@@ -93,6 +93,7 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert quality["generation_provenance"]["repair_response_valid"] is True
     assert quality["generation_provenance"]["attempt_count"] == 2
     assert len(quality["generation_provenance"]["repair_prompt_sha256"]) == 64
+    assert quality["generation_provenance"]["prompt_registry_version"] == 1
     assert quality["generation_provenance"]["prompt_version"] == "learning-lesson-v1"
     assert quality["generation_provenance"]["repair_prompt_version"] == "learning-lesson-repair-v1"
     assert quality["generation_provenance"]["provider_usage"] == {
