@@ -550,14 +550,14 @@ def run_job(job_id: int) -> None:
     from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=2600)
     generation_budget.reserve("initial_generation", predict_tokens=1200)
-    durable_initial_budget = reserve_job_budget(
-        job_id, "initial_generation", calls=1, predict_tokens=1200
-    )
-    if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
-        raise LearningError(
-            "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
-        )
     try:
+        durable_initial_budget = reserve_job_budget(
+            job_id, "initial_generation", calls=1, predict_tokens=1200
+        )
+        if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
+            raise LearningError(
+                "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
+            )
         limits = runtime_limits({
             "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
             "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
