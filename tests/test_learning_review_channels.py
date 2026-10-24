@@ -254,6 +254,11 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
     assert [item["phase"] for item in checkpoints] == [
         "candidate_review_started", "candidate_review_peer_ai", "candidate_review_completed"
     ]
+    from app import learning_candidate_channels
+    channel_runs = learning_candidate_channels.list_candidate_channel_runs(candidate_id)
+    assert {item["channel"]: item["status"] for item in channel_runs} == {
+        "research_web": "skipped", "peer_ai": "skipped"
+    }
     with db.learning_connection() as connection:
         candidate = connection.execute(
             "SELECT trust_level, learning_status, status FROM temporary_knowledge_candidates WHERE id=?",
@@ -358,8 +363,13 @@ def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(rev
             "SELECT channel, status, details_json FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
             (candidate_id,),
         ).fetchone()
+        ledger_run = connection.execute(
+            "SELECT channel, status FROM learning_candidate_channel_runs WHERE candidate_id=? AND channel='sandbox'",
+            (candidate_id,),
+        ).fetchone()
     assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
     assert tuple(attempt[:2]) == ("sandbox", "completed")
+    assert tuple(ledger_run) == ("sandbox", "succeeded")
     assert json.loads(attempt["details_json"])["interpretation"].startswith("Human-attested expected stdout")
 
 
@@ -445,12 +455,17 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
             "SELECT status FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
             (candidate_id,),
         ).fetchone()
+        ledger_run = connection.execute(
+            "SELECT channel, status FROM learning_candidate_channel_runs WHERE candidate_id=? AND channel='sandbox'",
+            (candidate_id,),
+        ).fetchone()
         experience = connection.execute(
             "SELECT status, problem, test_results_json FROM learning_experiences WHERE id=?",
             (result["failure_experience"]["experience_id"],),
         ).fetchone()
     assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
     assert attempt["status"] == "failed"
+    assert tuple(ledger_run) == ("sandbox", "failed")
     assert experience["status"] == "failed"
     assert f"Candidate {candidate_id}" in experience["problem"]
     assert json.loads(experience["test_results_json"])[0]["passed"] is False
