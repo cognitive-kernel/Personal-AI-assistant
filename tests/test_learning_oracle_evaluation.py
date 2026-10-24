@@ -49,6 +49,10 @@ def test_oracle_evaluation_reports_false_acceptance_and_false_rejection():
     assert report["metrics"]["recall"] == pytest.approx(0.5)
     assert report["metrics"]["false_acceptance_rate"] == pytest.approx(0.5)
     assert report["metrics"]["false_rejection_rate"] == pytest.approx(0.5)
+    per_oracle = report["per_oracle"]["python.dict-get-default@1"]
+    assert per_oracle["case_count"] == 4
+    assert per_oracle["metrics"]["false_acceptance_rate"] == pytest.approx(0.5)
+    assert {case["oracle_id"] for case in report["per_case"]} == {"python.dict-get-default"}
     assert "not a domain-wide scientific factuality score" in report["interpretation"]
 
 
@@ -101,4 +105,17 @@ def test_oracle_evaluation_rejects_boolean_version_and_duplicate_case_ids():
         validate_oracle_dataset({
             "schema_version": 1, "dataset_name": "test", "dataset_version": "v1",
             "cases": [case, dict(case)],
+        })
+
+
+def test_oracle_evaluation_rejects_adjudication_timestamp_without_timezone():
+    canonical = "Python dict.get returns the default value when the key is absent."
+    case = _case("naive-time", "match", content=canonical, claim=canonical)
+    case["adjudication"]["adjudicated_at"] = "2026-10-24T06:00:00"
+    with pytest.raises(OracleEvaluationError, match="explicit timezone"):
+        validate_oracle_dataset({
+            "schema_version": 1,
+            "dataset_name": "test",
+            "dataset_version": "v1",
+            "cases": [case],
         })
