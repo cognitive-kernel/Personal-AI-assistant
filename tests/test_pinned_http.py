@@ -52,7 +52,7 @@ def test_https_connection_pins_tcp_ip_but_keeps_hostname_for_tls(monkeypatch):
     monkeypatch.setattr(pinned_http.socket, "create_connection", fake_create_connection)
     connection = pinned_http._PinnedHTTPSConnection(
         "docs.example", pinned_ip="93.184.216.34", timeout=5,
-        context=FakeContext(), check_hostname=True,
+        context=FakeContext(),
     )
     connection.connect()
 
