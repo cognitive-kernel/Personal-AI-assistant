@@ -333,7 +333,7 @@ def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(rev
         ).fetchone()
     assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
     assert tuple(attempt[:2]) == ("sandbox", "completed")
-    assert json.loads(attempt["details_json"])["interpretation"].startswith("Smoke checks only")
+    assert json.loads(attempt["details_json"])["interpretation"].startswith("Human-attested expected stdout")
 
 
 def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(review_store, monkeypatch, tmp_path):
