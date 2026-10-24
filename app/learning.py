@@ -707,7 +707,7 @@ def run_job(job_id: int) -> None:
             "model_digest": None,
             "model_digest_status": "unavailable_from_current_ollama_path",
             "provider_usage": provider_usage,
-            "usage_cost_estimate": __import__("app.learning_costs", fromlist=["estimate_usage_cost"]).estimate_usage_cost(model, provider_usage),
+            "usage_cost_estimate": __import__("app.learning_costs", fromlist=["estimate_usage_cost"]).estimate_usage_cost(model, provider_usage, get_settings().get("learning_model_pricing_json")),
             "usage_note": "Token-based USD costs are estimates only and require LEARNING_MODEL_PRICING_JSON with exact model ID and pricing_version; missing usage is unknown. Estimates are not provider invoices.",
             "initial_response_malformed": initial_response_malformed,
             "repair_response_valid": repair_response_valid,
