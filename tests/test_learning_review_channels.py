@@ -373,3 +373,49 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
             (candidate_id,),
         ).fetchone()
     assert attempt["status"] == "unavailable"
+
+
+def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_store, monkeypatch, tmp_path):
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.sandbox import SandboxResult
+
+    content = "Lesson under test."
+    candidate_id, _job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps({"version": 2, "oracle_reviewed": True, "tests": [{
+                "name": "exact-output", "python_test_code": "print('actual')", "expected_stdout": "expected",
+            }]}), candidate_id),
+        )
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+    monkeypatch.setattr(sandbox, "run_python", lambda *args, **kwargs: SandboxResult("succeeded", 0, "actual", "", 1))
+
+    class Context:
+        task_id = 204
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    result = handle_candidate_sandbox_review(
+        {"candidate_id": candidate_id, "content_sha256": digest, "request_id": "sandbox-mismatch"},
+        None, Context(),
+    )
+    assert result["status"] == "failed"
+    assert result["outcomes"][0]["passed"] is False
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        attempt = connection.execute(
+            "SELECT status FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
+    assert attempt["status"] == "failed"
