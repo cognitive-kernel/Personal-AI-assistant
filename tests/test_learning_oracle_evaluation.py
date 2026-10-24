@@ -5,6 +5,7 @@ from app.learning_oracle_evaluation import (
     evaluate_oracle_cases,
     validate_oracle_dataset,
 )
+from app.learning_oracles import list_oracles
 
 
 def _case(case_id, expected, *, content, claim):
@@ -17,6 +18,10 @@ def _case(case_id, expected, *, content, claim):
         "expected_decision": expected,
         "source_url": "https://docs.python.org/3/library/stdtypes.html#dict.get",
         "source_sha256": "a" * 64,
+        "source_summary_sha256": next(
+            item["source_summary_sha256"] for item in list_oracles()
+            if item["oracle_id"] == "python.dict-get-default" and item["version"] == 1
+        ),
         "adjudication": {
             "reviewer": "independent-human-reviewer",
             "adjudicated_at": "2026-10-24T06:00:00Z",
@@ -83,6 +88,19 @@ def test_oracle_evaluation_requires_independent_adjudication_and_source_hash():
     case["adjudication"]["independent_of_model"] = True
     case["source_sha256"] = "not-a-hash"
     with pytest.raises(OracleEvaluationError, match="SHA-256"):
+        validate_oracle_dataset({
+            "schema_version": 1,
+            "dataset_name": "test",
+            "dataset_version": "v1",
+            "cases": [case],
+        })
+
+
+def test_oracle_evaluation_rejects_unregistered_source_summary_fingerprint():
+    canonical = "Python dict.get returns the default value when the key is absent."
+    case = _case("wrong-source-fingerprint", "match", content=canonical, claim=canonical)
+    case["source_summary_sha256"] = "b" * 64
+    with pytest.raises(OracleEvaluationError, match="source_summary_sha256"):
         validate_oracle_dataset({
             "schema_version": 1,
             "dataset_name": "test",
