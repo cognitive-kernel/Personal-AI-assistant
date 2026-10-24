@@ -294,6 +294,22 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     assert duplicate.status_code == 202
     assert duplicate.json()["task_id"] == queued.json()["task_id"]
 
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.task_worker import PermanentTaskError
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps({"version": 2, "oracle_reviewed": True, "tests": [{
+                "name": "tampered", "python_test_code": "print('changed')", "expected_stdout": "changed",
+            }]}), candidate_id),
+        )
+    class Context:
+        task_id = 205
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+    with pytest.raises(PermanentTaskError, match="test plan changed"):
+        handle_candidate_sandbox_review(task["payload"], None, Context())
+
 
 def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(review_store, monkeypatch, tmp_path):
     from app.learning_review_tasks import handle_candidate_sandbox_review
