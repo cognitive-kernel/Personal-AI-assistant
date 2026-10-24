@@ -279,15 +279,32 @@ def handle_candidate_sandbox_review(
             raise PermanentTaskError("Candidate test plan changed after sandbox review was queued.")
         if (
             not isinstance(plan, dict)
-            or plan.get("version") != 2
+            or plan.get("version") not in {2, 3}
             or plan.get("oracle_reviewed") is not True
             or not isinstance(plan.get("tests"), list)
             or not 1 <= len(plan["tests"]) <= 3
         ):
             raise PermanentTaskError("A human-reviewed plan with 1–3 executable tests is required before sandbox execution.")
+        oracle_test_count = 0
         for test in plan["tests"]:
+            if not isinstance(test, dict):
+                raise PermanentTaskError("Every sandbox test must be an object.")
+            oracle_fields = (test.get("oracle_id") is not None, test.get("oracle_version") is not None, test.get("claim") is not None)
+            if any(oracle_fields) and not all(oracle_fields):
+                raise PermanentTaskError("Oracle test metadata is incomplete.")
+            if all(oracle_fields):
+                oracle_test_count += 1
+                from .learning_oracles import evaluate_candidate_claim
+                oracle_result = evaluate_candidate_claim(
+                    str(row["content"]),
+                    oracle_id=test["oracle_id"],
+                    oracle_version=test["oracle_version"],
+                    claim=test["claim"],
+                )
+                if oracle_result.get("status") != "matched":
+                    raise PermanentTaskError("Curated oracle validation failed closed.")
             if (
-                not isinstance(test, dict)
+                not isinstance(test.get("name"), str)
                 or not isinstance(test.get("name"), str)
                 or not test["name"].strip()
                 or not isinstance(test.get("python_test_code"), str)
@@ -298,6 +315,8 @@ def handle_candidate_sandbox_review(
                 or len(test["expected_stdout"]) > 1000
             ):
                 raise PermanentTaskError("Every sandbox test must include bounded Python code and an expected stdout string.")
+        if (plan.get("version") == 3 and oracle_test_count == 0) or (plan.get("version") == 2 and oracle_test_count > 0):
+            raise PermanentTaskError("Sandbox test plan version does not match its curated oracle metadata.")
     except PermanentTaskError:
         raise
     except (OSError, sqlite3.Error) as exc:
