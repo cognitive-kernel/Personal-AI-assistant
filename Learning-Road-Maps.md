@@ -453,7 +453,7 @@
 
 ## اتصال کنترل‌شدهٔ sandbox به نامزدهای درس — 2026-10-24
 
-- [x] افزودن task نوع `learning.sandbox_candidate` به صف پایدار learning؛ اجرای نمونه‌ها فقط پس از بررسی hash، وضعیت `awaiting_test`، وجود طرح آزمون دارای attestation انسانی، پیکربندی Docker با image digest ثابت و رضایت فعال sandbox مجاز است.
+- [x] افزودن task نوع `learning.sandbox_candidate` به صف پایدار learning؛ اجرای آزمون‌ها فقط پس از بررسی hash، وضعیت `awaiting_test`، وجود طرح آزمون دارای attestation انسانی، پیکربندی Docker با image digest ثابت و رضایت فعال sandbox مجاز است.
 - [x] endpoint loopback `POST /api/learning/candidates/{id}/sandbox-test` با تأیید صریح و `request_id` برای idempotency اضافه شد؛ درخواست تکراری با همان کلید از ساخت task تکراری جلوگیری می‌کند.
 - [x] رابط یادگیری دکمهٔ اجرای آزمون‌های Python ثبت‌شده دارد؛ پیش از صف‌گذاری هشدار صریح نشان داده می‌شود و رضایت جاری sandbox همچنان در سمت سرور بررسی می‌شود.
 - [x] طرح آزمون نسخهٔ ۲ می‌تواند کد آزمون Python و `expected_stdout` دقیق را نگه دارد؛ worker حداکثر سه آزمون را در sandbox اجرا و خروجی را دقیق مقایسه می‌کند. سقف ۸ KiB کد هر آزمون، ۱۰ ثانیه اجرا، ۸ KiB خروجی، شبکهٔ قطع، image از پیش نصب‌شده و بدون fallback به اجرای host حفظ می‌شوند.
