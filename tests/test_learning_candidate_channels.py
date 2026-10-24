@@ -101,9 +101,15 @@ def test_channel_run_result_size_and_status_are_validated(candidate_store, chann
         channels.finish_channel_run(run["id"], "running")
     with pytest.raises(channels.CandidateChannelError, match="16 KiB"):
         channels.finish_channel_run(run["id"], "succeeded", result={"payload": "x" * 17000})
+    with pytest.raises(channels.CandidateChannelError, match="invalid Unicode"):
+        channels.finish_channel_run(run["id"], "succeeded", result={"payload": "\ud800"})
 
 
 def test_channel_reservation_rejects_invalid_keys_channels_and_missing_candidates(candidate_store):
+    with pytest.raises(channels.CandidateChannelError, match="candidate_id"):
+        channels.reserve_channel_run(True, "research_web", "valid-key")
+    with pytest.raises(channels.CandidateChannelError, match="candidate_id"):
+        channels.reserve_channel_run(0, "research_web", "valid-key")
     with pytest.raises(channels.CandidateChannelError, match="Idempotency key"):
         channels.reserve_channel_run(candidate_store, "research_web", "   ")
     with pytest.raises(channels.CandidateChannelError, match="Unsupported"):
