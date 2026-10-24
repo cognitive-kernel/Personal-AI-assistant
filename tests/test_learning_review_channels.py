@@ -770,3 +770,49 @@ def test_review_retry_reclaims_running_channel_and_charges_each_attempt_once(rev
     budget_after_repeat = learning_durable_budget.get_job_budget(job_id)
     assert budget_after_repeat["calls_used"] == 5
     assert budget_after_repeat["predict_tokens_reserved"] == 8100
+
+
+def test_peer_request_bypasses_ambient_proxy_configuration(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "public-peer",
+        "base_url": "https://peer.example.test/v1",
+        "model": "review-model",
+    }]))
+    monkeypatch.setattr(
+        review.socket, "getaddrinfo",
+        lambda *_args, **_kwargs: [(2, 1, 6, "", ("8.8.8.8", 443))],
+    )
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, _limit):
+            answer = json.dumps({"stance": "mixed", "claims": [], "citations": []})
+            return json.dumps({"choices": [{"message": {"content": answer}}]}).encode()
+
+    class FakeOpener:
+        def open(self, request, *, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return FakeResponse()
+
+    def fake_build_opener(*handlers):
+        captured["handlers"] = handlers
+        return FakeOpener()
+
+    monkeypatch.setattr(review.urllib.request, "build_opener", fake_build_opener)
+
+    result = review.consult_configured_peer_ais(candidate_id)
+
+    assert result["consulted"] == 1
+    assert captured["timeout"] == 15
+    proxy_handlers = [
+        handler for handler in captured["handlers"]
+        if isinstance(handler, review.urllib.request.ProxyHandler)
+    ]
+    assert len(proxy_handlers) == 1
+    assert proxy_handlers[0].proxies == {}
