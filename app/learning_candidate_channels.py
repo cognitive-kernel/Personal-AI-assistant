@@ -25,6 +25,10 @@ class CandidateChannelError(ValueError):
     """A channel run cannot safely be created or finalized."""
 
 
+class CandidateChannelStorageError(CandidateChannelError):
+    """The channel ledger could not be accessed; the durable task may retry."""
+
+
 def _encoded_result(result: dict[str, Any] | None) -> tuple[str, str]:
     if result is None:
         result = {}
@@ -132,7 +136,7 @@ def reserve_channel_run(
     except CandidateChannelError:
         raise
     except sqlite3.Error as exc:
-        raise CandidateChannelError("Candidate channel reservation failed safely.") from exc
+        raise CandidateChannelStorageError("Candidate channel reservation failed safely.") from exc
 
 
 def finish_channel_run(
@@ -203,7 +207,7 @@ def finish_channel_run(
     except CandidateChannelError:
         raise
     except sqlite3.Error as exc:
-        raise CandidateChannelError("Candidate channel result could not be recorded.") from exc
+        raise CandidateChannelStorageError("Candidate channel result could not be recorded.") from exc
 
 
 def list_candidate_channel_runs(candidate_id: int) -> list[dict[str, Any]]:
@@ -227,4 +231,4 @@ def list_candidate_channel_runs(candidate_id: int) -> list[dict[str, Any]]:
     except CandidateChannelError:
         raise
     except sqlite3.Error as exc:
-        raise CandidateChannelError("Candidate channel history is unavailable.") from exc
+        raise CandidateChannelStorageError("Candidate channel history is unavailable.") from exc
