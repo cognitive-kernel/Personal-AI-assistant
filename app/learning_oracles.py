@@ -12,7 +12,7 @@ import re
 from typing import Any
 
 
-ORACLE_CATALOG_VERSION = 1
+ORACLE_CATALOG_VERSION = 1\nORACLE_CATALOG_STATUS = "provisional_requires_independent_human_review"
 
 _ORACLES: dict[tuple[str, int], dict[str, Any]] = {
     ("python.json-decode-error", 1): {
@@ -62,6 +62,7 @@ def list_oracles() -> list[dict[str, Any]]:
         items.append({
             "oracle_id": oracle_id,
             "version": version,
+            "catalog_status": ORACLE_CATALOG_STATUS,
             "domain": oracle["domain"],
             "canonical_claims": list(oracle["canonical_claims"]),
             "source_url": oracle["source_url"],
@@ -108,6 +109,7 @@ def evaluate_candidate_claim(
     summary = str(oracle["source_summary"])
     return {
         "status": "matched",
+        "catalog_status": ORACLE_CATALOG_STATUS,
         "reason": "exact_curated_claim_present",
         "oracle_id": oracle_id,
         "oracle_version": oracle_version,
