@@ -897,7 +897,7 @@ LEARNING_MIGRATIONS = (
     ),
     Migration(
         24,
-        "candidate-web-research-and-peer-review",
+        "candidate-review-channels-and-idempotent-ledger",
         (
             "ALTER TABLE temporary_knowledge_candidates ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'L0' CHECK(trust_level IN ('L0','L1','L2','L3','L-1'))",
             "ALTER TABLE temporary_knowledge_candidates ADD COLUMN learning_status TEXT NOT NULL DEFAULT 'unverified' CHECK(learning_status IN ('unverified','model_consensus','tested','human_verified','failed','conflicting','superseded'))",
@@ -944,6 +944,30 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_review_evidence_candidate ON knowledge_review_evidence(candidate_id, evidence_kind, id)",
             "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
             "CREATE INDEX idx_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)",
+            """CREATE TABLE learning_candidate_channel_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL
+                    REFERENCES temporary_knowledge_candidates(id) ON DELETE RESTRICT,
+                channel TEXT NOT NULL CHECK(channel IN ('research_web','peer_ai','sandbox')),
+                idempotency_key TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 1 AND 128),
+                candidate_content_sha256 TEXT NOT NULL CHECK(length(candidate_content_sha256) = 64),
+                status TEXT NOT NULL DEFAULT 'running'
+                    CHECK(status IN ('running','succeeded','failed','skipped')),
+                result_json TEXT NOT NULL DEFAULT '{}',
+                result_sha256 TEXT,
+                error_code TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, channel, idempotency_key),
+                CHECK(
+                    (status = 'running' AND finished_at IS NULL) OR
+                    (status != 'running' AND finished_at IS NOT NULL)
+                )
+            )""",
+            "CREATE INDEX idx_learning_candidate_channel_status ON learning_candidate_channel_runs(candidate_id, status, id)",
+            "CREATE INDEX idx_learning_candidate_channel_finished ON learning_candidate_channel_runs(channel, finished_at DESC, id DESC)",
         ),
     )
 )
