@@ -188,9 +188,20 @@ def queue_candidate_sandbox_review(
             not isinstance(plan, dict)
             or plan.get("oracle_reviewed") is not True
             or not isinstance(plan.get("tests"), list)
-            or not plan["tests"]
+            or not 1 <= len(plan["tests"]) <= 3
         ):
-            raise HTTPException(status_code=409, detail="A human-reviewed test plan is required before sandbox execution.")
+            raise HTTPException(status_code=409, detail="A human-reviewed plan with 1–3 executable tests is required.")
+        for test in plan["tests"]:
+            if (
+                not isinstance(test, dict)
+                or not isinstance(test.get("python_test_code"), str)
+                or not test["python_test_code"].strip()
+                or "\x00" in test["python_test_code"]
+                or len(test["python_test_code"].encode("utf-8")) > 8192
+                or not isinstance(test.get("expected_stdout"), str)
+                or len(test["expected_stdout"]) > 1000
+            ):
+                raise HTTPException(status_code=409, detail="Each sandbox test needs bounded Python code and expected stdout.")
         task = enqueue_candidate_sandbox_review(
             candidate_id, content_sha256=actual_hash, request_id=str(request.request_id)
         )
