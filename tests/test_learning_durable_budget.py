@@ -195,3 +195,62 @@ def test_concurrent_global_budget_reservations_never_exceed_daily_ceiling(learni
     assert snapshot["global_predict_tokens_reserved_today"] == 3000
     assert snapshot["global_calls_reserved_today"] <= snapshot["global_max_calls_per_day"]
     assert snapshot["global_predict_tokens_reserved_today"] <= snapshot["global_max_predict_tokens_per_day"]
+
+
+
+def test_multiprocess_global_budget_reservations_never_exceed_daily_ceiling(learning_store):
+    import multiprocessing
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("This process-level SQLite race test requires fork support.")
+
+    job_ids = [
+        learning.create_job(f"Multiprocess global budget {index}")["id"]
+        for index in range(8)
+    ]
+    context = multiprocessing.get_context("fork")
+    result_queue = context.Queue()
+
+    def reserve_in_process(job_id):
+        try:
+            result_queue.put(reserve_job_budget(
+                job_id,
+                "initial_generation",
+                calls=1,
+                predict_tokens=1000,
+                max_global_calls_per_day=3,
+                max_global_predict_tokens_per_day=3000,
+            ))
+        except BaseException as exc:
+            result_queue.put({"worker_error": type(exc).__name__, "message": str(exc)})
+
+    workers = [
+        context.Process(target=reserve_in_process, args=(job_id,))
+        for job_id in job_ids
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=30)
+
+    still_running = [worker for worker in workers if worker.is_alive()]
+    for worker in still_running:
+        worker.terminate()
+        worker.join(timeout=5)
+    assert not still_running, "Concurrent budget workers did not terminate."
+    assert all(worker.exitcode == 0 for worker in workers)
+
+    outcomes = [result_queue.get(timeout=5) for _ in workers]
+    result_queue.close()
+    assert not any("worker_error" in item for item in outcomes), outcomes
+    accepted = [item for item in outcomes if item["reserved"]]
+    denied = [item for item in outcomes if not item["reserved"]]
+    assert len(accepted) == 3
+    assert len(denied) == 5
+    assert all(item["reason"] == "global_budget_exhausted" for item in denied)
+
+    snapshot = get_job_budget(job_ids[-1])
+    assert snapshot["global_calls_reserved_today"] == 3
+    assert snapshot["global_predict_tokens_reserved_today"] == 3000
+    assert snapshot["global_calls_reserved_today"] <= snapshot["global_max_calls_per_day"]
+    assert snapshot["global_predict_tokens_reserved_today"] <= snapshot["global_max_predict_tokens_per_day"]
