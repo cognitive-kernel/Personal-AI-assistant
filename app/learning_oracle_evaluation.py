@@ -67,9 +67,13 @@ def validate_oracle_dataset(dataset: Any) -> list[dict[str, Any]]:
         _nonempty(adjudication.get("rationale"), f"{prefix}.adjudication.rationale")
         timestamp = _nonempty(adjudication.get("adjudicated_at"), f"{prefix}.adjudication.adjudicated_at")
         try:
-            datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except ValueError as exc:
             raise OracleEvaluationError(f"{prefix}.adjudication.adjudicated_at must be ISO-8601.") from exc
+        if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+            raise OracleEvaluationError(
+                f"{prefix}.adjudication.adjudicated_at must include an explicit timezone."
+            )
         if adjudication.get("independent_of_model") is not True:
             raise OracleEvaluationError(f"{prefix}.adjudication.independent_of_model must be true.")
     return cases
@@ -87,47 +91,73 @@ def evaluate_oracle_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "dataset_version": "in-memory",
         "cases": cases,
     })
-    true_match = false_match = true_nonmatch = false_nonmatch = 0
+
+    def new_counts() -> dict[str, int]:
+        return {
+            "true_match": 0,
+            "false_match": 0,
+            "true_nonmatch": 0,
+            "false_nonmatch": 0,
+        }
+
+    def record(counts: dict[str, int], expected: str, predicted: str) -> None:
+        if expected == "match" and predicted == "match":
+            counts["true_match"] += 1
+        elif expected == "no_match" and predicted == "match":
+            counts["false_match"] += 1
+        elif expected == "no_match" and predicted == "no_match":
+            counts["true_nonmatch"] += 1
+        else:
+            counts["false_nonmatch"] += 1
+
+    def metrics(counts: dict[str, int]) -> dict[str, float | None]:
+        tp, fp = counts["true_match"], counts["false_match"]
+        tn, fn = counts["true_nonmatch"], counts["false_nonmatch"]
+        total = tp + fp + tn + fn
+        return {
+            "accuracy": _rate(tp + tn, total),
+            "precision": _rate(tp, tp + fp),
+            "recall": _rate(tp, tp + fn),
+            "false_acceptance_rate": _rate(fp, fp + tn),
+            "false_rejection_rate": _rate(fn, fn + tp),
+        }
+
+    aggregate = new_counts()
+    by_oracle: dict[str, dict[str, Any]] = {}
     per_case = []
     for case in checked:
+        oracle_key = f"{case['oracle_id']}@{case['oracle_version']}"
         result = evaluate_candidate_claim(
             case["content"], oracle_id=case["oracle_id"],
             oracle_version=case["oracle_version"], claim=case["claim"],
         )
         predicted = "match" if result.get("status") == "matched" else "no_match"
         expected = case["expected_decision"]
-        if expected == "match" and predicted == "match":
-            true_match += 1
-        elif expected == "no_match" and predicted == "match":
-            false_match += 1
-        elif expected == "no_match" and predicted == "no_match":
-            true_nonmatch += 1
-        else:
-            false_nonmatch += 1
+        record(aggregate, expected, predicted)
+        oracle_report = by_oracle.setdefault(
+            oracle_key, {"oracle_id": case["oracle_id"], "oracle_version": case["oracle_version"],
+                         "case_count": 0, "confusion_matrix": new_counts()},
+        )
+        oracle_report["case_count"] += 1
+        record(oracle_report["confusion_matrix"], expected, predicted)
         per_case.append({
             "id": case["id"],
+            "oracle_id": case["oracle_id"],
+            "oracle_version": case["oracle_version"],
             "expected_decision": expected,
             "predicted_decision": predicted,
             "oracle_status": result.get("status"),
             "oracle_reason": result.get("reason"),
             "correct": expected == predicted,
         })
-    count = len(per_case)
+
+    for oracle_report in by_oracle.values():
+        oracle_report["metrics"] = metrics(oracle_report["confusion_matrix"])
     return {
-        "case_count": count,
-        "confusion_matrix": {
-            "true_match": true_match,
-            "false_match": false_match,
-            "true_nonmatch": true_nonmatch,
-            "false_nonmatch": false_nonmatch,
-        },
-        "metrics": {
-            "accuracy": _rate(true_match + true_nonmatch, count),
-            "precision": _rate(true_match, true_match + false_match),
-            "recall": _rate(true_match, true_match + false_nonmatch),
-            "false_acceptance_rate": _rate(false_match, false_match + true_nonmatch),
-            "false_rejection_rate": _rate(false_nonmatch, false_nonmatch + true_match),
-        },
+        "case_count": len(per_case),
+        "confusion_matrix": aggregate,
+        "metrics": metrics(aggregate),
+        "per_oracle": by_oracle,
         "per_case": per_case,
         "interpretation": (
             "Agreement with the supplied independent human labels for the exact-match policy only; "
