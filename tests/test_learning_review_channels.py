@@ -676,3 +676,47 @@ def test_sandbox_worker_revalidates_curated_oracle_before_execution(review_store
             None,
             Context(),
         )
+
+
+def test_peer_provider_blocks_https_private_ip_before_network_request(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "private-endpoint",
+        "base_url": "https://10.20.30.40/v1",
+        "model": "review-model",
+    }]))
+    monkeypatch.setattr(
+        review.urllib.request, "urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("private endpoint must never be contacted")),
+    )
+
+    result = review.consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "unavailable"
+    assert result["consulted"] == 0
+    assert result["errors"][0]["error"] == "peer_endpoint_must_resolve_only_to_public_addresses"
+
+
+def test_peer_provider_blocks_public_hostname_resolving_to_private_ip(review_store, monkeypatch):
+    candidate_id, _job_id = _candidate()
+    monkeypatch.setenv("PEER_AI_PROVIDERS_JSON", json.dumps([{
+        "provider": "rebinding-endpoint",
+        "base_url": "https://peer.example.test/v1",
+        "model": "review-model",
+    }]))
+    monkeypatch.setattr(
+        review.socket, "getaddrinfo",
+        lambda *args, **kwargs: [
+            (2, 1, 6, "", ("192.168.1.9", 443)),
+        ],
+    )
+    monkeypatch.setattr(
+        review.urllib.request, "urlopen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("private resolution must never be contacted")),
+    )
+
+    result = review.consult_configured_peer_ais(candidate_id)
+
+    assert result["status"] == "unavailable"
+    assert result["consulted"] == 0
+    assert result["errors"][0]["error"] == "peer_endpoint_must_resolve_only_to_public_addresses"
