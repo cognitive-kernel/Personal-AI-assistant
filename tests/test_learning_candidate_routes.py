@@ -171,6 +171,7 @@ def test_curated_oracle_catalog_is_versioned_and_fails_closed(review_store):
     catalog = list_oracles()
     assert catalog
     assert all(item["version"] == 1 and len(item["source_summary_sha256"]) == 64 for item in catalog)
+    assert all(item["catalog_status"] == "provisional_requires_independent_human_review" for item in catalog)
     claim = "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document."
     matched = evaluate_candidate_claim(
         f"Python JSON handling. {claim}",
@@ -180,6 +181,7 @@ def test_curated_oracle_catalog_is_versioned_and_fails_closed(review_store):
     )
     assert matched["status"] == "matched"
     assert matched["promoted"] is False
+    assert matched["catalog_status"] == "provisional_requires_independent_human_review"
     assert matched["source_url"] == "https://docs.python.org/3/library/json.html"
 
     assert evaluate_candidate_claim(
