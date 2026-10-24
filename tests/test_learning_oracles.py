@@ -64,3 +64,17 @@ def test_boolean_or_invalid_version_is_rejected():
     )
     assert result["status"] == "inconclusive"
     assert result["reason"] == "invalid_oracle_version"
+
+
+
+def test_docker_oracle_uses_official_domain_reference_and_remains_provisional():
+    claim = "Docker's none network driver disables container networking for the container."
+    oracle = next(item for item in list_oracles() if item["oracle_id"] == "docker.none-network")
+    assert oracle["domain"] == "docker"
+    assert oracle["source_url"] == "https://docs.docker.com/engine/network/drivers/none/"
+    result = evaluate_candidate_claim(
+        claim, oracle_id="docker.none-network", oracle_version=1, claim=claim,
+    )
+    assert result["status"] == "matched"
+    assert result["catalog_status"] == "provisional_requires_independent_human_review"
+    assert result["promoted"] is False
