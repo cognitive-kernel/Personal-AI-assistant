@@ -109,6 +109,17 @@ def list_learning_candidates(
         raise HTTPException(status_code=503, detail="Learning candidates are unavailable.") from exc
 
 
+@router.get("/oracles")
+def list_learning_oracles() -> dict[str, Any]:
+    from .learning_oracles import ORACLE_CATALOG_VERSION, list_oracles
+
+    return {
+        "catalog_version": ORACLE_CATALOG_VERSION,
+        "items": list_oracles(),
+        "promoted": False,
+    }
+
+
 @router.get("/{candidate_id}")
 def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
     try:
