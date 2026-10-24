@@ -14,6 +14,14 @@ from typing import Any
 from .db import init_databases, learning_connection
 
 
+def _validate_relationship_id(value: Any, field: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} must be a positive integer or None.")
+    return value
+
+
 def record_candidate_test_failure(
     candidate_id: int,
     *,
@@ -21,11 +29,15 @@ def record_candidate_test_failure(
     content_sha256: str,
     test_plan_sha256: str,
     outcomes: list[dict[str, Any]],
+    related_knowledge_id: int | None = None,
+    related_consensus_id: int | None = None,
 ) -> dict[str, Any]:
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
     if not isinstance(topic, str) or not topic.strip():
         raise ValueError("topic is required.")
+    related_knowledge_id = _validate_relationship_id(related_knowledge_id, "related_knowledge_id")
+    related_consensus_id = _validate_relationship_id(related_consensus_id, "related_consensus_id")
     for digest in (content_sha256, test_plan_sha256):
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise ValueError("Content and plan hashes must be lowercase SHA-256 digests.")
@@ -52,7 +64,8 @@ def record_candidate_test_failure(
     problem = (
         f"Candidate {candidate_id} failed a human-reviewed sandbox test. "
         f"content_sha256={content_sha256}; test_plan_sha256={test_plan_sha256}; "
-        f"failure_sha256={failure_sha256}. This is a warning record, not proof that the lesson is false."
+        f"failure_sha256={failure_sha256}; related_knowledge_id={related_knowledge_id}; "
+        f"related_consensus_id={related_consensus_id}. This is a warning record, not proof that the lesson is false."
     )
     hypothesis = "The reviewed test output did not match its human-attested expected output or execution policy."
     plan = [{
@@ -103,12 +116,16 @@ def record_candidate_channel_failure(
     channel: str,
     status: str,
     error_type: str = "unknown",
+    related_knowledge_id: int | None = None,
+    related_consensus_id: int | None = None,
 ) -> dict[str, Any]:
     """Persist an idempotent web/peer channel failure as a cautionary, searchable experience."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
     if not isinstance(topic, str) or not topic.strip():
         raise ValueError("topic is required.")
+    related_knowledge_id = _validate_relationship_id(related_knowledge_id, "related_knowledge_id")
+    related_consensus_id = _validate_relationship_id(related_consensus_id, "related_consensus_id")
     if not isinstance(content_sha256, str) or len(content_sha256) != 64 or any(
         char not in "0123456789abcdef" for char in content_sha256
     ):
@@ -128,6 +145,8 @@ def record_candidate_channel_failure(
         "channel": channel,
         "status": status,
         "error_type": safe_error_type,
+        "related_knowledge_id": related_knowledge_id,
+        "related_consensus_id": related_consensus_id,
     }
     failure_sha256 = hashlib.sha256(
         json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
