@@ -74,5 +74,4 @@ class PinnedHTTPSHandler(urllib.request.HTTPSHandler):
             ),
             req,
             context=self._context,
-            check_hostname=self._check_hostname,
         )
