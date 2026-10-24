@@ -9,7 +9,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from . import learning_review_channels as channels, sandbox, sandbox_consent, learning_candidate_experiences, learning_candidate_channels
+from . import learning_review_channels as channels, sandbox, sandbox_consent, learning_candidate_experiences, learning_candidate_channels, learning_durable_budget
 from .task_manager import create_task
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
@@ -66,7 +66,7 @@ def handle_candidate_review(
     try:
         with channels.learning_connection() as connection:
             row = connection.execute(
-                "SELECT content, content_sha256, topic, status FROM temporary_knowledge_candidates WHERE id=?",
+                "SELECT content, content_sha256, topic, status, job_id FROM temporary_knowledge_candidates WHERE id=?",
                 (candidate_id,),
             ).fetchone()
         if row is None:
@@ -122,6 +122,33 @@ def handle_candidate_review(
             if isinstance(cached, dict):
                 persist_failure(cached)
             return cached
+        budget_calls, budget_tokens = (
+            (1, 1800) if channel == "research_web" else
+            (3, 4500) if channel == "peer_ai" else (1, 0)
+        )
+        try:
+            budget = learning_durable_budget.reserve_job_budget(
+                int(row["job_id"]), f"candidate_review_{channel}",
+                calls=budget_calls, predict_tokens=budget_tokens,
+            )
+        except learning_durable_budget.LearningBudgetError as exc:
+            raise RetryableTaskError("Shared learning pipeline budget is temporarily unavailable.") from exc
+        if not budget["reserved"]:
+            skipped = {
+                "status": "skipped", "reason": "shared_pipeline_budget_exhausted",
+                "budget": {key: budget.get(key) for key in ("max_calls", "calls_used", "max_predict_tokens", "predict_tokens_reserved")},
+            }
+            try:
+                learning_candidate_channels.finish_channel_run(
+                    reservation["id"], "skipped", result=skipped,
+                    error_code="budget_exhausted",
+                    attempt_generation=reservation["attempt_generation"],
+                )
+            except learning_candidate_channels.CandidateChannelStorageError as exc:
+                raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
+            except ValueError as exc:
+                raise PermanentTaskError("Candidate channel ledger rejected the budget skip.") from exc
+            return skipped
         try:
             value = action()
             if not isinstance(value, dict):
@@ -255,7 +282,7 @@ def handle_candidate_sandbox_review(
     try:
         with channels.learning_connection() as connection:
             row = connection.execute(
-                """SELECT content, content_sha256, topic, status, test_plan_json
+                """SELECT content, content_sha256, topic, status, test_plan_json, job_id
                    FROM temporary_knowledge_candidates WHERE id=?""",
                 (candidate_id,),
             ).fetchone()
@@ -347,6 +374,19 @@ def handle_candidate_sandbox_review(
             except Exception as exc:
                 raise RetryableTaskError("Sandbox failure exists, but its learning experience could not be persisted.") from exc
         return {**saved, "failure_experience": failure_experience, "promoted": False}
+
+    try:
+        sandbox_budget = learning_durable_budget.reserve_job_budget(
+            int(row["job_id"]), f"sandbox_execution_{actual_plan_hash[:16]}",
+            calls=1, predict_tokens=0,
+        )
+    except learning_durable_budget.LearningBudgetError as exc:
+        raise RetryableTaskError("Shared learning pipeline budget is temporarily unavailable.") from exc
+    if not sandbox_budget["reserved"]:
+        return skip_sandbox(
+            "budget_exhausted",
+            "Sandbox execution was skipped because the shared learning pipeline request budget is exhausted.",
+        )
 
     def skip_sandbox(reason: str, note: str) -> dict[str, Any]:
         try:
