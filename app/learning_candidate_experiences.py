@@ -115,7 +115,11 @@ def record_candidate_channel_failure(
         raise ValueError("Only web and peer-AI review failures are supported.")
     if status not in {"failed", "unavailable"}:
         raise ValueError("Only failed or unavailable channel outcomes may be recorded.")
-    safe_error_type = re.sub(r"[^A-Za-z0-9_.-]", "_", error_type)[:80] or "unknown" if isinstance(error_type, str) else "unknown"
+    safe_error_type = (
+        (re.sub(r"[^A-Za-z0-9_.-]", "_", error_type)[:80] or "unknown")
+        if isinstance(error_type, str)
+        else "unknown"
+    )
     identity = {
         "candidate_id": candidate_id,
         "content_sha256": content_sha256,
