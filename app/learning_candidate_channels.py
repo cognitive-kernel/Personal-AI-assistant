@@ -62,6 +62,8 @@ def reserve_channel_run(
     candidate_id: int,
     channel: Channel,
     idempotency_key: str,
+    *,
+    reclaim_running: bool = False,
 ) -> dict[str, Any]:
     """Atomically reserve one channel run; only the first caller may execute it."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
@@ -93,6 +95,21 @@ def reserve_channel_run(
             if existing is not None:
                 if existing["candidate_content_sha256"] != actual_hash:
                     raise CandidateChannelError("Idempotency key is bound to a different candidate content hash.")
+                if existing["status"] == "running" and reclaim_running:
+                    connection.execute(
+                        """UPDATE learning_candidate_channel_runs
+                           SET attempt_generation=attempt_generation+1,
+                               started_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                           WHERE id=? AND status='running'""",
+                        (int(existing["id"]),),
+                    )
+                    reclaimed = connection.execute(
+                        "SELECT * FROM learning_candidate_channel_runs WHERE id=?",
+                        (int(existing["id"]),),
+                    ).fetchone()
+                    if reclaimed is None:
+                        raise CandidateChannelError("Channel run could not be reclaimed.")
+                    return _run(reclaimed, should_execute=True)
                 return _run(existing, should_execute=False)
 
             if candidate["status"] != "awaiting_test":
@@ -124,6 +141,7 @@ def finish_channel_run(
     *,
     result: dict[str, Any] | None = None,
     error_code: str | None = None,
+    attempt_generation: int | None = None,
 ) -> dict[str, Any]:
     """Record immutable terminal metadata; repeated identical completion is idempotent."""
     if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
@@ -147,6 +165,15 @@ def finish_channel_run(
             ).fetchone()
             if row is None:
                 raise CandidateChannelError("Learning candidate channel run does not exist.")
+            if attempt_generation is not None and (
+                isinstance(attempt_generation, bool)
+                or not isinstance(attempt_generation, int)
+                or attempt_generation < 1
+            ):
+                raise CandidateChannelError("attempt_generation must be a positive integer.")
+            if row["status"] == "running" and attempt_generation is not None:
+                if int(row["attempt_generation"]) != attempt_generation:
+                    raise CandidateChannelError("A stale channel worker cannot finish a reclaimed run.")
             if row["status"] != "running":
                 same_completion = (
                     row["status"] == status
