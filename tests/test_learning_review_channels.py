@@ -520,3 +520,70 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
     )
     assert repeated["created"] is False
     assert repeated["experience_id"] == result["failure_experience"]["experience_id"]
+
+
+
+def test_failed_web_and_peer_channels_become_idempotent_searchable_warnings(review_store, monkeypatch):
+    from app import learning_candidate_experiences
+    from app.experience import search_relevant_failures
+
+    candidate_id, _job_id = _candidate(topic="Python HTTP retry review")
+    checkpoints = []
+
+    class Context:
+        task_id = 901
+        def checkpoint(self, value): checkpoints.append(value)
+
+    monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: {
+        "status": "failed", "error_type": "SourceFetchError"
+    })
+    monkeypatch.setattr(review, "consult_configured_peer_ais", lambda *args, **kwargs: {
+        "status": "unavailable", "error_type": "ProviderTimeout"
+    })
+
+    result = handle_candidate_review(
+        {"candidate_id": candidate_id, "query": "Python HTTP retry", "web_mode": "search"},
+        None,
+        Context(),
+    )
+
+    assert result["promoted"] is False
+    assert result["channels"]["web_research"]["status"] == "failed"
+    assert result["channels"]["peer_ai"]["status"] == "unavailable"
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        experiences = connection.execute(
+            "SELECT id, topic, problem, status FROM learning_experiences WHERE problem LIKE ? ORDER BY id",
+            (f"Candidate {candidate_id} %",),
+        ).fetchall()
+    assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
+    assert len(experiences) == 2
+    assert all(item["status"] == "failed" for item in experiences)
+    assert any("web research failure" in item["topic"].lower() for item in experiences)
+    assert any("peer-ai review failure" in item["topic"].lower() for item in experiences)
+    warnings = search_relevant_failures("Python HTTP retry review peer AI web research", limit=3)
+    assert {item["id"] for item in warnings}.issuperset({int(item["id"]) for item in experiences})
+
+    digest = hashlib.sha256(b"content").hexdigest()
+    duplicate = learning_candidate_experiences.record_candidate_channel_failure(
+        candidate_id,
+        topic="Python HTTP retry review",
+        content_sha256=digest,
+        channel="research_web",
+        status="failed",
+        error_type="SourceFetchError",
+    )
+    repeated = learning_candidate_experiences.record_candidate_channel_failure(
+        candidate_id,
+        topic="Python HTTP retry review",
+        content_sha256=digest,
+        channel="research_web",
+        status="failed",
+        error_type="SourceFetchError",
+    )
+    assert duplicate["created"] is True
+    assert repeated["created"] is False
+    assert duplicate["experience_id"] == repeated["experience_id"]
