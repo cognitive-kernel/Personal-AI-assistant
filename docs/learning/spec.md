@@ -60,6 +60,14 @@ Each test record should include test type, input/command, expected and actual re
 
 L2 applies only when a domain has a reproducible verification method. Do not assign L2 to vague `documentation_check` or `practical_usage` labels without explicit pass criteria. If a domain cannot be tested, keep its evidence level honest and mark it for a separately defined verification policy.
 
+## 5.1 Temporary-candidate review channels
+
+Web research and peer-AI consultations are separate, auditable channels attached to a temporary candidate. Store bounded source excerpts and hashes, provider/model identity, prompt version, response hash, stance, and an attempt record even when a channel is unavailable or unconfigured. A channel failure must not erase a candidate or evidence collected by another channel.
+
+Fetched pages and peer responses are contextual review material, not proof of a claim. They cannot change trust level, candidate status, or promote knowledge. Only the deterministic exact-source-quote gate may attach a matched quote to a factual claim, and that gate still does not prove semantic entailment. Peer provider endpoints are operator-configured through `PEER_AI_PROVIDERS_JSON`, limited to three calls per run, HTTPS-only except loopback development endpoints; API keys are read from named environment variables and never persisted.
+
+This phase queues research and peer review in the durable learning worker. It does not run a sandbox, execute source-provided code, or mark test plans as passed. Sandbox execution remains a separate explicit-consent step requiring a human-attested independent oracle and bounded no-network execution.
+
 ## 6. Security and execution
 
 - Treat fetched web pages, user text, and model output as untrusted data, never as executable instructions.
