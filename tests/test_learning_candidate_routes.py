@@ -230,3 +230,16 @@ def test_test_plan_curated_oracle_must_match_candidate_content(review_store):
         json={**request, "tests": [{**request["tests"][0], "claim": "Python can parse JSON."}]},
     )
     assert bad.status_code == 422
+
+
+def test_oracle_catalog_api_is_read_only(review_store):
+    response = review_store.get("/api/learning/candidates/oracles")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["catalog_version"] == 1
+    assert body["promoted"] is False
+    assert {item["oracle_id"] for item in body["items"]} >= {
+        "python.json-decode-error",
+        "python.dict-get-default",
+        "sqlite.foreign-key-check",
+    }
