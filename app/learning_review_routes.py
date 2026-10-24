@@ -151,6 +151,8 @@ def get_candidate_review_history(candidate_id: int) -> dict[str, Any]:
         }
     except HTTPException:
         raise
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="Candidate channel history is invalid or unavailable.") from exc
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Candidate review history is unavailable.") from exc
 
