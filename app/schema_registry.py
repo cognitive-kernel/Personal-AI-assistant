@@ -970,6 +970,28 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_candidate_channel_status ON learning_candidate_channel_runs(candidate_id, status, id)",
             "CREATE INDEX idx_learning_candidate_channel_finished ON learning_candidate_channel_runs(channel, finished_at DESC, id DESC)",
         ),
+    ),
+    Migration(
+        25,
+        "durable-learning-pipeline-budget",
+        (
+            """CREATE TABLE learning_pipeline_budgets (
+                job_id INTEGER PRIMARY KEY REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                max_calls INTEGER NOT NULL CHECK(max_calls BETWEEN 1 AND 20),
+                max_predict_tokens INTEGER NOT NULL CHECK(max_predict_tokens BETWEEN 1 AND 100000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE learning_pipeline_budget_reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL REFERENCES learning_pipeline_budgets(job_id) ON DELETE CASCADE,
+                stage TEXT NOT NULL CHECK(length(stage) BETWEEN 1 AND 80),
+                calls_reserved INTEGER NOT NULL CHECK(calls_reserved BETWEEN 0 AND 20),
+                predict_tokens_reserved INTEGER NOT NULL CHECK(predict_tokens_reserved BETWEEN 0 AND 100000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(job_id, stage)
+            )""",
+            "CREATE INDEX idx_learning_budget_reservations_job ON learning_pipeline_budget_reservations(job_id, id)",
+        ),
     )
 )
 
