@@ -146,3 +146,23 @@ def test_daily_global_budget_ceilings_cannot_be_raised_midday(learning_store):
             job_id, "quality_repair", calls=1, predict_tokens=1400,
             max_global_calls_per_day=3, max_global_predict_tokens_per_day=4000,
         )
+
+def test_daily_global_token_ceiling_is_shared_across_jobs(learning_store):
+    first_job = learning.create_job("First global token budget job")["id"]
+    second_job = learning.create_job("Second global token budget job")["id"]
+
+    accepted = reserve_job_budget(
+        first_job, "initial_generation", calls=1, predict_tokens=800,
+        max_global_calls_per_day=10, max_global_predict_tokens_per_day=1000,
+    )
+    denied = reserve_job_budget(
+        second_job, "initial_generation", calls=1, predict_tokens=300,
+        max_global_calls_per_day=10, max_global_predict_tokens_per_day=1000,
+    )
+
+    assert accepted["reserved"] is True
+    assert denied["reserved"] is False
+    assert denied["reason"] == "global_budget_exhausted"
+    assert denied["global_calls_reserved_today"] == 1
+    assert denied["global_predict_tokens_reserved_today"] == 800
+    assert denied["global_budget_exhausted"] is False
