@@ -95,6 +95,8 @@ def handle_candidate_review(
             reservation = learning_candidate_channels.reserve_channel_run(
                 candidate_id, channel, channel_key, reclaim_running=True
             )
+        except learning_candidate_channels.CandidateChannelStorageError as exc:
+            raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
         except ValueError as exc:
             raise PermanentTaskError("Candidate channel ledger rejected the review.") from exc
         if not reservation["should_execute"]:
@@ -117,8 +119,10 @@ def handle_candidate_review(
                 error_code="channel_failed" if terminal == "failed" else None,
                 attempt_generation=reservation["attempt_generation"],
             )
+        except learning_candidate_channels.CandidateChannelStorageError as exc:
+            raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
         except ValueError as exc:
-            raise RetryableTaskError("Candidate channel ledger could not finalize the review.") from exc
+            raise PermanentTaskError("Candidate channel ledger rejected the result.") from exc
         return value
 
     def review_web() -> dict[str, Any]:
@@ -306,6 +310,8 @@ def handle_candidate_sandbox_review(
             f"sandbox:{request_id}:{actual_hash[:12]}:{actual_plan_hash[:12]}",
             reclaim_running=True,
         )
+    except learning_candidate_channels.CandidateChannelStorageError as exc:
+        raise RetryableTaskError("Candidate sandbox ledger is temporarily unavailable.") from exc
     except ValueError as exc:
         raise PermanentTaskError("Candidate sandbox ledger rejected this test run.") from exc
 
@@ -395,8 +401,10 @@ def handle_candidate_sandbox_review(
             error_code="sandbox_test_failed" if terminal_status == "failed" else None,
             attempt_generation=reservation["attempt_generation"],
         )
+    except learning_candidate_channels.CandidateChannelStorageError as exc:
+        raise RetryableTaskError("Sandbox ledger is temporarily unavailable.") from exc
     except ValueError as exc:
-        raise RetryableTaskError("Sandbox result could not be finalized in the candidate ledger.") from exc
+        raise PermanentTaskError("Sandbox ledger rejected the terminal result.") from exc
 
     failure_experience = None
     if terminal_status == "failed":
