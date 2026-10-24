@@ -84,10 +84,12 @@ def record_candidate_test_failure(
         cursor = connection.execute(
             """INSERT INTO learning_experiences(
                    topic, problem, hypothesis, status, source_evidence_json,
-                   test_plan_json, test_results_json, takeaway, version
-               ) VALUES (?, ?, ?, 'failed', '[]', ?, ?, ?, 1)""",
+                   test_plan_json, test_results_json, takeaway, version,
+                   related_knowledge_id, related_consensus_id
+               ) VALUES (?, ?, ?, 'failed', '[]', ?, ?, ?, 1, ?, ?)""",
             (title, problem, hypothesis, json.dumps(plan, ensure_ascii=False),
-             json.dumps(results, ensure_ascii=False), takeaway),
+             json.dumps(results, ensure_ascii=False), takeaway,
+             related_knowledge_id, related_consensus_id),
         )
         experience_id = int(cursor.lastrowid)
     return {"experience_id": experience_id, "created": True, "failure_sha256": failure_sha256}
@@ -170,10 +172,12 @@ def record_candidate_channel_failure(
         cursor = connection.execute(
             """INSERT INTO learning_experiences(
                    topic, problem, hypothesis, status, source_evidence_json,
-                   test_plan_json, test_results_json, takeaway, version
-               ) VALUES (?, ?, ?, 'failed', '[]', ?, ?, ?, 1)""",
+                   test_plan_json, test_results_json, takeaway, version,
+                   related_knowledge_id, related_consensus_id
+               ) VALUES (?, ?, ?, 'failed', '[]', ?, ?, ?, 1, ?, ?)""",
             (title, problem, hypothesis, json.dumps(plan, ensure_ascii=False),
-             json.dumps(results, ensure_ascii=False), takeaway),
+             json.dumps(results, ensure_ascii=False), takeaway,
+             related_knowledge_id, related_consensus_id),
         )
         experience_id = int(cursor.lastrowid)
     return {"experience_id": experience_id, "created": True, "failure_sha256": failure_sha256}
