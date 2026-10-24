@@ -99,7 +99,7 @@ def reserve_channel_run(
             if existing is not None:
                 if existing["candidate_content_sha256"] != actual_hash:
                     raise CandidateChannelError("Idempotency key is bound to a different candidate content hash.")
-                if existing["status"] == "running" and candidate["status"] != "awaiting_test":
+                if existing["status"] == "running" and reclaim_running and candidate["status"] != "awaiting_test":
                     raise CandidateChannelError("Only candidates awaiting independent tests can resume channel runs.")
                 if existing["status"] == "running" and reclaim_running:
                     connection.execute(
