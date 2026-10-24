@@ -200,7 +200,7 @@ def enqueue_candidate_sandbox_review(
         {"candidate_id": candidate_id, "content_sha256": content_sha256,
          "test_plan_sha256": test_plan_sha256, "request_id": request_id.strip()},
         priority=0,
-        max_attempts=1,
+        max_attempts=2,
         dedupe_key=f"learning-sandbox-review:{candidate_id}:{content_sha256}:{test_plan_sha256}:{request_id.strip()}",
     )
 
@@ -300,6 +300,31 @@ def handle_candidate_sandbox_review(
                                         details={"reason": "invalid_docker_path_or_image_digest", "request_id": request_id})
         return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "executed": 0, "promoted": False}
 
+    try:
+        reservation = learning_candidate_channels.reserve_channel_run(
+            candidate_id, "sandbox",
+            f"sandbox:{request_id}:{actual_hash[:12]}:{actual_plan_hash[:12]}",
+            reclaim_running=True,
+        )
+    except ValueError as exc:
+        raise PermanentTaskError("Candidate sandbox ledger rejected this test run.") from exc
+
+    if not reservation["should_execute"]:
+        saved = reservation["result"]
+        if not isinstance(saved, dict) or saved.get("status") not in {"completed", "failed", "unavailable"}:
+            raise RetryableTaskError("A previous sandbox result is not yet available.")
+        failure_experience = None
+        if saved.get("status") == "failed":
+            try:
+                failure_experience = learning_candidate_experiences.record_candidate_test_failure(
+                    candidate_id, topic=str(row["topic"] or f"Candidate {candidate_id}"),
+                    content_sha256=actual_hash, test_plan_sha256=actual_plan_hash,
+                    outcomes=saved.get("outcomes", []),
+                )
+            except Exception as exc:
+                raise RetryableTaskError("Sandbox failure exists, but its learning experience could not be persisted.") from exc
+        return {**saved, "failure_experience": failure_experience, "promoted": False}
+
     outcomes: list[dict[str, Any]] = []
     for index, test in enumerate(plan["tests"], start=1):
         source = test["python_test_code"].strip()
@@ -354,6 +379,25 @@ def handle_candidate_sandbox_review(
                  "outcomes": outcomes,
                  "interpretation": "Human-attested expected stdout was compared exactly; this is bounded evidence, not universal truth and never promotes the candidate."},
     )
+    ledger_result = {
+        "candidate_id": candidate_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash,
+        "status": terminal_status, "executed": executed_count, "outcomes": outcomes,
+        "promoted": False,
+        "note": "Sandbox tests compare exact stdout against a human-attested expectation; results never promote candidate knowledge.",
+    }
+    try:
+        learning_candidate_channels.finish_channel_run(
+            reservation["id"],
+            "succeeded" if terminal_status == "completed" else (
+                "failed" if terminal_status == "failed" else "skipped"
+            ),
+            result=ledger_result,
+            error_code="sandbox_test_failed" if terminal_status == "failed" else None,
+            attempt_generation=reservation["attempt_generation"],
+        )
+    except ValueError as exc:
+        raise RetryableTaskError("Sandbox result could not be finalized in the candidate ledger.") from exc
+
     failure_experience = None
     if terminal_status == "failed":
         try:
@@ -366,10 +410,4 @@ def handle_candidate_sandbox_review(
             )
         except Exception as exc:
             raise RetryableTaskError("Sandbox failure was recorded, but its learning experience could not be persisted.") from exc
-    return {
-        "candidate_id": candidate_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash,
-        "status": terminal_status, "executed": executed_count, "outcomes": outcomes,
-        "failure_experience": failure_experience,
-        "promoted": False,
-        "note": "Sandbox tests compare exact stdout against a human-attested expectation; results never promote candidate knowledge.",
-    }
+    return {**ledger_result, "failure_experience": failure_experience}
