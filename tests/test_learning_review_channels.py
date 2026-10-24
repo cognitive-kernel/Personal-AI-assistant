@@ -334,3 +334,42 @@ def test_candidate_sandbox_worker_runs_only_fenced_examples_and_never_promotes(r
     assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
     assert tuple(attempt[:2]) == ("sandbox", "completed")
     assert json.loads(attempt["details_json"])["interpretation"].startswith("Smoke checks only")
+
+
+def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(review_store, monkeypatch, tmp_path):
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.sandbox import SandboxResult
+
+    content = "Example lesson.\\n\\n```python\\nprint('safe example')\\n```"
+    candidate_id, _job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps({"version": 1, "oracle_reviewed": True, "tests": [{"name": "reviewed"}]}), candidate_id),
+        )
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+    monkeypatch.setattr(sandbox, "run_python", lambda *args, **kwargs: SandboxResult("unavailable", None, "", "", 1))
+
+    class Context:
+        task_id = 203
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    result = handle_candidate_sandbox_review(
+        {"candidate_id": candidate_id, "content_sha256": digest, "request_id": "sandbox-unavailable"},
+        None, Context(),
+    )
+    assert result["status"] == "unavailable"
+    assert result["executed"] == 0
+    with db.learning_connection() as connection:
+        attempt = connection.execute(
+            "SELECT status FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
+            (candidate_id,),
+        ).fetchone()
+    assert attempt["status"] == "unavailable"
