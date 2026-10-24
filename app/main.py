@@ -1,5 +1,6 @@
 from __future__ import annotations
 import ipaddress
+import sqlite3
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
