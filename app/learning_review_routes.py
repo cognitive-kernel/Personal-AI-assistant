@@ -184,7 +184,12 @@ def queue_candidate_sandbox_review(
             plan = json.loads(row["test_plan_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=503, detail="Stored candidate test plan is invalid.") from exc
-        if not isinstance(plan, dict) or plan.get("oracle_reviewed") is not True or not plan.get("tests"):
+        if (
+            not isinstance(plan, dict)
+            or plan.get("oracle_reviewed") is not True
+            or not isinstance(plan.get("tests"), list)
+            or not plan["tests"]
+        ):
             raise HTTPException(status_code=409, detail="A human-reviewed test plan is required before sandbox execution.")
         task = enqueue_candidate_sandbox_review(
             candidate_id, content_sha256=actual_hash, request_id=str(request.request_id)
