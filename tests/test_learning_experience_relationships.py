@@ -108,3 +108,30 @@ def test_test_failure_rejects_invalid_relationship_ids(candidate_store, field, v
             outcomes=[{"test": "sample", "passed": False}],
             **kwargs,
         )
+
+
+def test_failure_experience_auto_links_to_same_job_lesson(candidate_store):
+    candidate_id, content = candidate_store
+    with db.learning_connection() as connection:
+        job_id = connection.execute(
+            "SELECT job_id FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()["job_id"]
+        knowledge_id = connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES ('Relationship test', 'Staged lesson body', 'user_provided_text', 1, 'unverified', ?)""",
+            (job_id,),
+        ).lastrowid
+
+    result = learning_candidate_experiences.record_candidate_channel_failure(
+        candidate_id,
+        topic="Relationship test",
+        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        channel="peer_ai",
+        status="unavailable",
+    )
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT related_knowledge_id FROM learning_experiences WHERE id=?",
+            (result["experience_id"],),
+        ).fetchone()
+    assert row["related_knowledge_id"] == knowledge_id
