@@ -281,16 +281,23 @@ def handle_candidate_sandbox_review(
             break
 
     successful = bool(outcomes) and all(item.get("status") == "succeeded" for item in outcomes)
-    terminal_status = "completed" if successful else "failed"
+    terminal_status = (
+        "unavailable" if any(item.get("status") == "unavailable" for item in outcomes)
+        else "completed" if successful else "failed"
+    )
+    executed_count = sum(
+        item.get("status") in {"succeeded", "failed", "timed_out", "paused", "cancelled", "output_limit_exceeded"}
+        for item in outcomes
+    )
     channels.record_review_attempt(
         candidate_id, channel="sandbox", status=terminal_status,
         details={"request_id": request_id, "content_sha256": actual_hash, "image": image,
-                 "executed": sum(item.get("status") in {"succeeded", "failed", "timed_out", "output_limit_exceeded"} for item in outcomes),
-                 "outcomes": outcomes, "interpretation": "Smoke checks only; not an independent oracle and not candidate acceptance."},
+                 "executed": executed_count, "outcomes": outcomes,
+                 "interpretation": "Smoke checks only; not an independent oracle and not candidate acceptance."},
     )
     return {
         "candidate_id": candidate_id, "content_sha256": actual_hash,
-        "status": terminal_status, "executed": len(outcomes), "outcomes": outcomes,
+        "status": terminal_status, "executed": executed_count, "outcomes": outcomes,
         "promoted": False,
         "note": "Sandbox smoke checks do not prove lesson correctness and never promote candidate knowledge.",
     }
