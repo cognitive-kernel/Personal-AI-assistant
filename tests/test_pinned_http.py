@@ -1,4 +1,4 @@
-import urllib.parse
+import urllib.request
 
 from app import pinned_http
 
@@ -63,7 +63,12 @@ def test_https_connection_pins_tcp_ip_but_keeps_hostname_for_tls(monkeypatch):
 
 def test_pinned_https_handler_resolves_each_request_url(monkeypatch):
     captured = {}
-    handler = pinned_http.PinnedHTTPSHandler(lambda url: captured.setdefault("url", url) or "93.184.216.34")
+
+    def resolver(url):
+        captured["url"] = url
+        return "93.184.216.34"
+
+    handler = pinned_http.PinnedHTTPSHandler(resolver)
 
     def fake_do_open(factory, req, **kwargs):
         captured["request_url"] = req.full_url
@@ -71,8 +76,8 @@ def test_pinned_https_handler_resolves_each_request_url(monkeypatch):
         return "opened"
 
     monkeypatch.setattr(handler, "do_open", fake_do_open)
-    request = __import__("urllib.request").request.Request("https://docs.example/page")
+    request = urllib.request.Request("https://docs.example/page")
 
     assert handler.https_open(request) == "opened"
     assert captured["url"] == "https://docs.example/page"
-    assert captured["connection"]._pinned_ip == "https://docs.example/page"
+    assert captured["connection"]._pinned_ip == "93.184.216.34"
