@@ -587,3 +587,54 @@ def test_failed_web_and_peer_channels_become_idempotent_searchable_warnings(revi
     assert duplicate["created"] is True
     assert repeated["created"] is False
     assert duplicate["experience_id"] == repeated["experience_id"]
+
+
+def test_sandbox_worker_revalidates_curated_oracle_before_execution(review_store, monkeypatch):
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.task_worker import PermanentTaskError
+
+    content = "Python can parse JSON."
+    candidate_id, _job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    plan = {
+        "version": 3,
+        "oracle_reviewed": True,
+        "review_note": "A previously saved plan has an oracle reference.",
+        "tests": [{
+            "name": "tampered-oracle-claim",
+            "objective": "Check a curated Python reference claim.",
+            "expected_result": "The curated claim must be present in the candidate.",
+            "python_test_code": "print('reviewed')",
+            "expected_stdout": "reviewed",
+            "oracle_id": "python.json-decode-error",
+            "oracle_version": 1,
+            "claim": "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document.",
+        }],
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps(plan), candidate_id),
+        )
+    monkeypatch.setattr(
+        sandbox,
+        "run_python",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("sandbox must not run")),
+    )
+
+    class Context:
+        task_id = 902
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    with pytest.raises(PermanentTaskError, match="Curated oracle validation failed closed"):
+        handle_candidate_sandbox_review(
+            {
+                "candidate_id": candidate_id,
+                "content_sha256": digest,
+                "test_plan_sha256": _test_plan_hash(candidate_id),
+                "request_id": "oracle-worker-recheck",
+            },
+            None,
+            Context(),
+        )
