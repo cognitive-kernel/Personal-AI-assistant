@@ -412,6 +412,43 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
     assert attempt["status"] == "unavailable"
 
 
+def test_cancelled_sandbox_run_does_not_create_test_failure_experience(review_store, monkeypatch, tmp_path):
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.sandbox import SandboxResult
+
+    content = "Lesson stopped by user."
+    candidate_id, _job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps({"version": 2, "oracle_reviewed": True, "tests": [{
+                "name": "cancelled", "python_test_code": "print('not-run')", "expected_stdout": "not-run",
+            }]}), candidate_id),
+        )
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+    monkeypatch.setattr(sandbox, "run_python", lambda *args, **kwargs: SandboxResult("cancelled", None, "", "", 1))
+
+    class Context:
+        task_id = 206
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    result = handle_candidate_sandbox_review(
+        {"candidate_id": candidate_id, "content_sha256": digest, "test_plan_sha256": _test_plan_hash(candidate_id), "request_id": "sandbox-cancelled"},
+        None, Context(),
+    )
+    assert result["status"] == "unavailable"
+    assert result["failure_experience"] is None
+    from app.experience import list_experiences
+    assert not any(f"Candidate {candidate_id}" in item["problem"] for item in list_experiences(status="failed"))
+
+
 def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_store, monkeypatch, tmp_path):
     from app.learning_review_tasks import handle_candidate_sandbox_review
     from app.sandbox import SandboxResult
