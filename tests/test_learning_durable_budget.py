@@ -84,3 +84,29 @@ def test_job_budget_rejects_invalid_reservations(learning_store, kwargs):
     job_id = learning.create_job("Budget invalid")["id"]
     with pytest.raises(LearningBudgetError):
         reserve_job_budget(job_id, "bad-stage", **kwargs)
+
+
+def test_concurrent_budget_reservations_never_exceed_shared_ceiling(learning_store):
+    from concurrent.futures import ThreadPoolExecutor
+
+    job_id = learning.create_job("Concurrent budget reservations")["id"]
+
+    def reserve(index):
+        return reserve_job_budget(
+            job_id, f"concurrent-stage-{index}", calls=1, predict_tokens=1000
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(reserve, range(8)))
+
+    accepted = [item for item in outcomes if item["reserved"]]
+    denied = [item for item in outcomes if not item["reserved"]]
+    snapshot = get_job_budget(job_id)
+
+    assert len(accepted) == 7
+    assert len(denied) == 1
+    assert all(item["reason"] == "budget_exhausted" for item in denied)
+    assert snapshot["calls_used"] == 7
+    assert snapshot["predict_tokens_reserved"] == 7000
+    assert snapshot["calls_used"] <= snapshot["max_calls"]
+    assert snapshot["predict_tokens_reserved"] <= snapshot["max_predict_tokens"]
