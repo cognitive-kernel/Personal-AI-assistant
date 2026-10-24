@@ -424,6 +424,22 @@ def _persist_factual_review_claims(
     return stored
 
 
+def _ollama_usage_summary(response: Any) -> dict[str, int]:
+    """Extract only non-negative integer usage/timing counters reported by Ollama."""
+    if not isinstance(response, dict):
+        return {}
+    allowed = (
+        "prompt_eval_count", "eval_count", "total_duration",
+        "load_duration", "prompt_eval_duration", "eval_duration",
+    )
+    summary: dict[str, int] = {}
+    for key in allowed:
+        value = response.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            summary[key] = value
+    return summary
+
+
 def _failure_warnings_for_topic(topic: str, *, limit: int = 3) -> list[dict[str, Any]]:
     """Return bounded failed-experience warnings for self-correction, never as factual proof."""
     try:
@@ -575,6 +591,9 @@ def run_job(job_id: int) -> None:
             ],
             "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 1200},
         }, timeout=request_timeout)
+        provider_usage: dict[str, dict[str, int]] = {
+            "initial_generation": _ollama_usage_summary(response)
+        }
         raw = response.get("message", {}).get("content")
         try:
             result = json.loads(raw) if isinstance(raw, str) else None
@@ -648,6 +667,7 @@ def run_job(job_id: int) -> None:
                 ],
                 "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"], "num_predict": 1400},
             }, timeout=request_timeout)
+            provider_usage["quality_repair"] = _ollama_usage_summary(retry_response)
             retry_raw = retry_response.get("message", {}).get("content")
             try:
                 retry_result = json.loads(retry_raw) if isinstance(retry_raw, str) else None
@@ -686,6 +706,8 @@ def run_job(job_id: int) -> None:
             "model_id": model[:200],
             "model_digest": None,
             "model_digest_status": "unavailable_from_current_ollama_path",
+            "provider_usage": provider_usage,
+            "usage_note": "Counters are reported by Ollama when present; absent counters are unknown, not zero. These are not monetary billing data.",
             "initial_response_malformed": initial_response_malformed,
             "repair_response_valid": repair_response_valid,
         }
