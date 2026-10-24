@@ -263,7 +263,7 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
-            (json.dumps({"version": 1, "oracle_reviewed": True, "tests": [{"name": "reviewed"}]}), candidate_id),
+            (json.dumps({"version": 2, "oracle_reviewed": True, "tests": [{"name": "reviewed", "python_test_code": "print('safe example')", "expected_stdout": "ok"}]}), candidate_id),
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
@@ -284,7 +284,7 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     assert duplicate.json()["task_id"] == queued.json()["task_id"]
 
 
-def test_candidate_sandbox_worker_runs_only_fenced_examples_and_never_promotes(review_store, monkeypatch, tmp_path):
+def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(review_store, monkeypatch, tmp_path):
     from app.learning_review_tasks import handle_candidate_sandbox_review
     from app.sandbox import SandboxResult
 
@@ -294,7 +294,7 @@ def test_candidate_sandbox_worker_runs_only_fenced_examples_and_never_promotes(r
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
-            (json.dumps({"version": 1, "oracle_reviewed": True, "tests": [{"name": "reviewed"}]}), candidate_id),
+            (json.dumps({"version": 2, "oracle_reviewed": True, "tests": [{"name": "reviewed", "python_test_code": "print('safe example')", "expected_stdout": "ok"}]}), candidate_id),
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
@@ -346,7 +346,7 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
     with db.learning_connection() as connection:
         connection.execute(
             "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
-            (json.dumps({"version": 1, "oracle_reviewed": True, "tests": [{"name": "reviewed"}]}), candidate_id),
+            (json.dumps({"version": 2, "oracle_reviewed": True, "tests": [{"name": "reviewed", "python_test_code": "print('safe example')", "expected_stdout": "ok"}]}), candidate_id),
         )
     docker = tmp_path / "docker"
     docker.write_text("test executable", encoding="utf-8")
