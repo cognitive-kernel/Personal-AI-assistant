@@ -9,7 +9,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from . import learning_review_channels as channels, sandbox, sandbox_consent, learning_candidate_experiences
+from . import learning_review_channels as channels, sandbox, sandbox_consent, learning_candidate_experiences, learning_candidate_channels
 from .task_manager import create_task
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
@@ -88,21 +88,48 @@ def handle_candidate_review(
         "web_mode": web_mode,
     })
     results: dict[str, Any] = {}
-    if web_mode == "disabled":
+    channel_key = f"task:{context.task_id}:{content_hash[:16]}"
+
+    def run_channel(channel: str, action) -> dict[str, Any]:
         try:
-            results["web_research"] = channels.record_review_attempt(
-                candidate_id,
-                channel="web_research",
-                status="unconfigured",
-                details={"reason": "disabled_by_local_user"},
+            reservation = learning_candidate_channels.reserve_channel_run(
+                candidate_id, channel, channel_key, reclaim_running=True
             )
+        except ValueError as exc:
+            raise PermanentTaskError("Candidate channel ledger rejected the review.") from exc
+        if not reservation["should_execute"]:
+            return reservation["result"]
+        try:
+            value = action()
+            if not isinstance(value, dict):
+                value = {"status": "failed", "error_type": "invalid_channel_result"}
         except Exception as exc:
-            raise RetryableTaskError("Could not record disabled web-review state.") from exc
-    else:
+            value = {"status": "failed", "error_type": type(exc).__name__}
+        channel_status = str(value.get("status", "failed"))
+        terminal = "succeeded" if channel_status == "completed" else (
+            "failed" if channel_status == "failed" else "skipped"
+        )
         try:
-            results["web_research"] = channels.research_candidate_online(
-                candidate_id, query.strip(), limit=3
+            learning_candidate_channels.finish_channel_run(
+                reservation["id"], terminal, result=value,
+                error_code="channel_failed" if terminal == "failed" else None,
+                attempt_generation=reservation["attempt_generation"],
             )
+        except ValueError as exc:
+            raise RetryableTaskError("Candidate channel ledger could not finalize the review.") from exc
+        return value
+
+    def review_web() -> dict[str, Any]:
+        if web_mode == "disabled":
+            try:
+                return channels.record_review_attempt(
+                    candidate_id, channel="web_research", status="unconfigured",
+                    details={"reason": "disabled_by_local_user"},
+                )
+            except Exception as exc:
+                raise RetryableTaskError("Could not record disabled web-review state.") from exc
+        try:
+            return channels.research_candidate_online(candidate_id, query.strip(), limit=3)
         except Exception as exc:
             try:
                 channels.record_review_attempt(
@@ -111,24 +138,28 @@ def handle_candidate_review(
                 )
             except Exception as db_exc:
                 raise RetryableTaskError("Could not persist web-review failure.") from db_exc
-            results["web_research"] = {"status": "failed", "error_type": type(exc).__name__}
+            return {"status": "failed", "error_type": type(exc).__name__}
 
+    def review_peer() -> dict[str, Any]:
+        try:
+            return channels.consult_configured_peer_ais(candidate_id, limit=3)
+        except Exception as exc:
+            try:
+                channels.record_review_attempt(
+                    candidate_id, channel="peer_ai", status="failed",
+                    details={"error_type": type(exc).__name__},
+                )
+            except Exception as db_exc:
+                raise RetryableTaskError("Could not persist peer-review failure.") from db_exc
+            return {"status": "failed", "error_type": type(exc).__name__}
+
+    results["web_research"] = run_channel("research_web", review_web)
     context.checkpoint({
         "phase": "candidate_review_peer_ai",
         "candidate_id": candidate_id,
         "content_sha256": content_hash,
     })
-    try:
-        results["peer_ai"] = channels.consult_configured_peer_ais(candidate_id, limit=3)
-    except Exception as exc:
-        try:
-            results["peer_ai"] = channels.record_review_attempt(
-                candidate_id, channel="peer_ai", status="failed",
-                details={"error_type": type(exc).__name__},
-            )
-            results["peer_ai"]["status"] = "failed"
-        except Exception as db_exc:
-            raise RetryableTaskError("Could not persist peer-review failure.") from db_exc
+    results["peer_ai"] = run_channel("peer_ai", review_peer)
 
     context.checkpoint({
         "phase": "candidate_review_completed",
