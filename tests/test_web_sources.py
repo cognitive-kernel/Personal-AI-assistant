@@ -490,6 +490,8 @@ def test_url_validation_rejects_hostname_with_mixed_public_and_private_dns(monke
     )
     with pytest.raises(web_sources.SourceFetchError, match="non-public"):
         web_sources._validate_public_url("https://mixed-dns.example/docs")
+    with pytest.raises(web_sources.SourceFetchError, match="non-public"):
+        web_sources._resolve_public_ip("https://mixed-dns.example/docs")
 
 
 def test_redirect_handler_revalidates_private_redirect_targets():
@@ -499,3 +501,15 @@ def test_redirect_handler_revalidates_private_redirect_targets():
         handler.redirect_request(
             request, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data/"
         )
+
+
+def test_public_source_resolver_returns_a_validated_literal_for_ip_pinning(monkeypatch):
+    monkeypatch.setattr(
+        web_sources.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+            (2, 1, 6, "", ("1.1.1.1", 443)),
+        ],
+    )
+    assert web_sources._resolve_public_ip("https://public.example/docs") == "93.184.216.34"
