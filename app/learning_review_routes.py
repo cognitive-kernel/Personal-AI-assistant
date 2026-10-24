@@ -212,7 +212,7 @@ def queue_candidate_sandbox_review(
             "task_status": task["status"],
             "content_sha256": actual_hash,
             "promoted": False,
-            "note": "This runs fenced Python examples only; the result is a smoke check, not an oracle or knowledge promotion.",
+            "note": "Runs the human-reviewed test code and compares stdout exactly; it never promotes knowledge.",
         }
     except HTTPException:
         raise
