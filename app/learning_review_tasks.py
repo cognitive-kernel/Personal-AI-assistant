@@ -128,7 +128,7 @@ def handle_candidate_review(
         )
         try:
             budget = learning_durable_budget.reserve_job_budget(
-                int(row["job_id"]), f"candidate_review_{channel}",
+                int(row["job_id"]), f"candidate_review_{channel}_{hashlib.sha256(channel_key.encode()).hexdigest()[:16]}",
                 calls=budget_calls, predict_tokens=budget_tokens,
             )
         except learning_durable_budget.LearningBudgetError as exc:
@@ -401,7 +401,7 @@ def handle_candidate_sandbox_review(
 
     try:
         sandbox_budget = learning_durable_budget.reserve_job_budget(
-            int(row["job_id"]), f"sandbox_execution_{actual_plan_hash[:16]}",
+            int(row["job_id"]), f"sandbox_execution_{hashlib.sha256(request_id.strip().encode()).hexdigest()[:16]}_{actual_plan_hash[:16]}",
             calls=1, predict_tokens=0,
         )
     except learning_durable_budget.LearningBudgetError as exc:
