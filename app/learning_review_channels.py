@@ -15,7 +15,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from .db import init_databases, learning_connection
+from .db import get_settings, init_databases, learning_connection
 from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 
 PEER_REVIEW_PROMPT_VERSION = "learning-peer-review-v2"
@@ -372,6 +372,9 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
     )
     consulted = 0
     errors: list[dict[str, str]] = []
+    provider_usage: dict[str, dict[str, Any]] = {}
+    provider_cost_estimates: dict[str, dict[str, Any]] = {}
+    pricing_json = get_settings().get("learning_model_pricing_json")
     seen_providers: set[str] = set()
     for item in providers[:limit]:
         if not isinstance(item, dict):
@@ -420,6 +423,38 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             if len(body) > 200000:
                 raise ValueError("peer_response_too_large")
             result = json.loads(body.decode("utf-8"))
+            usage = result.get("usage") if isinstance(result, dict) else None
+            prompt_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+            completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+            valid_usage = all(
+                isinstance(value, int) and not isinstance(value, bool) and value >= 0
+                for value in (prompt_tokens, completion_tokens)
+            )
+            if valid_usage:
+                provider_usage[provider] = {
+                    "model_id": model,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "usage_available": True,
+                }
+                from .learning_costs import estimate_usage_cost
+                provider_cost_estimates[provider] = estimate_usage_cost(
+                    model,
+                    {"peer_review": {
+                        "prompt_eval_count": prompt_tokens,
+                        "eval_count": completion_tokens,
+                    }},
+                    pricing_json,
+                )
+            else:
+                provider_usage[provider] = {
+                    "model_id": model,
+                    "prompt_tokens": None,
+                    "completion_tokens": None,
+                    "usage_available": False,
+                }
+                from .learning_costs import estimate_usage_cost
+                provider_cost_estimates[provider] = estimate_usage_cost(model, {}, pricing_json)
             choices = result.get("choices") if isinstance(result, dict) else None
             message = choices[0].get("message") if isinstance(choices, list) and choices else None
             answer = message.get("content") if isinstance(message, dict) else None
@@ -492,6 +527,8 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             "providers_configured": len(providers[:limit]),
             "errors": [{"provider": item.get("provider", "unknown"), "error": item.get("error", "unknown")}
                        for item in errors],
+            "provider_usage": provider_usage,
+            "provider_cost_estimates": provider_cost_estimates,
         },
     )
     return {
@@ -499,6 +536,8 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
         "status": peer_status,
         "consulted": consulted,
         "errors": errors,
+        "provider_usage": provider_usage,
+        "provider_cost_estimates": provider_cost_estimates,
     }
 
 
