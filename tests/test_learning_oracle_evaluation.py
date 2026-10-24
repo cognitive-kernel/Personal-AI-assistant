@@ -30,9 +30,9 @@ def test_oracle_evaluation_reports_false_acceptance_and_false_rejection():
     canonical = "Python dict.get returns the default value when the key is absent."
     cases = [
         _case("true-match", "match", content=canonical, claim=canonical),
-        _case("false-accept", "no_match", content=canonical, claim=canonical),
+        _case("false-accept", "no_match", content=canonical + " This statement is false in this context.", claim=canonical),
         _case("true-nonmatch", "no_match", content="A lesson about lists.", claim=canonical),
-        _case("false-reject", "match", content="A lesson about lists.", claim=canonical),
+        _case("false-reject", "match", content="The dict.get method yields the fallback if a key is missing.", claim=canonical),
     ]
 
     report = evaluate_oracle_cases(cases)
