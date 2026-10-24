@@ -76,9 +76,6 @@ def reserve_channel_run(
             actual_hash = hashlib.sha256(candidate["content"].encode("utf-8")).hexdigest()
             if actual_hash != candidate["content_sha256"]:
                 raise CandidateChannelError("Candidate content hash mismatch; channel execution is blocked.")
-            if candidate["status"] != "awaiting_test":
-                raise CandidateChannelError("Only candidates awaiting independent tests can start channel runs.")
-
             existing = connection.execute(
                 """SELECT * FROM learning_candidate_channel_runs
                    WHERE candidate_id=? AND channel=? AND idempotency_key=?""",
@@ -88,6 +85,9 @@ def reserve_channel_run(
                 if existing["candidate_content_sha256"] != actual_hash:
                     raise CandidateChannelError("Idempotency key is bound to a different candidate content hash.")
                 return _run(existing, should_execute=False)
+
+            if candidate["status"] != "awaiting_test":
+                raise CandidateChannelError("Only candidates awaiting independent tests can start channel runs.")
 
             cursor = connection.execute(
                 """INSERT INTO learning_candidate_channel_runs(
