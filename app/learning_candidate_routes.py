@@ -27,6 +27,8 @@ class CandidateTestPlanItem(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     objective: str = Field(min_length=10, max_length=1000)
     expected_result: str = Field(min_length=10, max_length=1000)
+    python_test_code: str | None = Field(default=None, max_length=8192)
+    expected_stdout: str | None = Field(default=None, max_length=1000)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -133,8 +135,19 @@ def save_candidate_test_plan(
             status_code=422,
             detail="A human must attest that the proposed tests use an independent oracle.",
         )
+    for item in request.tests:
+        has_code = item.python_test_code is not None
+        has_expected_stdout = item.expected_stdout is not None
+        if has_code != has_expected_stdout:
+            raise HTTPException(status_code=422, detail="Executable tests must provide both python_test_code and expected_stdout.")
+        if has_code and (
+            not item.python_test_code.strip()
+            or "\\x00" in item.python_test_code
+            or len(item.python_test_code.encode("utf-8")) > 8192
+        ):
+            raise HTTPException(status_code=422, detail="python_test_code must be non-empty, NUL-free, and at most 8 KiB.")
     plan = {
-        "version": 1,
+        "version": 2,
         "oracle_reviewed": True,
         "review_note": request.review_note.strip(),
         "tests": [item.model_dump() for item in request.tests],
