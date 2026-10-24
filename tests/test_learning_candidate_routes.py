@@ -165,7 +165,7 @@ def test_candidate_api_rejects_unknown_status_and_missing_candidate(candidate_st
     assert missing.status_code == 404
 
 
-def test_curated_oracle_catalog_is_versioned_and_fails_closed(review_store):
+def test_curated_oracle_catalog_is_versioned_and_fails_closed():
     from app.learning_oracles import evaluate_candidate_claim, list_oracles
 
     catalog = list_oracles()
@@ -204,9 +204,10 @@ def test_curated_oracle_catalog_is_versioned_and_fails_closed(review_store):
     )["reason"] == "claim_not_in_curated_reference_set"
 
 
-def test_test_plan_curated_oracle_must_match_candidate_content(review_store):
+def test_test_plan_curated_oracle_must_match_candidate_content(candidate_store):
     candidate_claim = "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document."
-    candidate_id, _job_id = _candidate(content=f"JSON parsing behavior. {candidate_claim}")
+    job = learning.create_job("Curated oracle candidate")
+    candidate_id = _candidate(job["id"], content=f"JSON parsing behavior. {candidate_claim}")
     request = {
         "confirm": True,
         "oracle_reviewed": True,
@@ -222,20 +223,21 @@ def test_test_plan_curated_oracle_must_match_candidate_content(review_store):
             "claim": candidate_claim,
         }],
     }
-    saved = review_store.post(f"/api/learning/candidates/{candidate_id}/test-plan", json=request)
+    saved = candidate_store.post(f"/api/learning/candidates/{candidate_id}/test-plan", json=request)
     assert saved.status_code == 201
     assert saved.json()["test_plan"]["version"] == 3
 
-    other_id, _job_id = _candidate(content="Python can parse JSON.")
-    bad = review_store.post(
+    other_job = learning.create_job("Unmatched curated oracle candidate")
+    other_id = _candidate(other_job["id"], content="Python can parse JSON.")
+    bad = candidate_store.post(
         f"/api/learning/candidates/{other_id}/test-plan",
         json={**request, "tests": [{**request["tests"][0], "claim": "Python can parse JSON."}]},
     )
     assert bad.status_code == 422
 
 
-def test_oracle_catalog_api_is_read_only(review_store):
-    response = review_store.get("/api/learning/candidates/oracles")
+def test_oracle_catalog_api_is_read_only(candidate_store):
+    response = candidate_store.get("/api/learning/candidates/oracles")
     assert response.status_code == 200
     body = response.json()
     assert body["catalog_version"] == 1
