@@ -1,3 +1,4 @@
+import ssl
 import urllib.request
 
 from app import pinned_http
@@ -36,6 +37,7 @@ def test_https_connection_pins_tcp_ip_but_keeps_hostname_for_tls(monkeypatch):
 
     class FakeContext:
         check_hostname = True
+        verify_mode = ssl.CERT_REQUIRED
         def wrap_socket(self, sock, *, server_hostname):
             captured["server_hostname"] = server_hostname
             captured["wrapped_socket"] = sock
