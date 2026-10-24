@@ -700,6 +700,7 @@ def run_job(job_id: int) -> None:
         from .learning_durable_budget import get_job_budget
         quality["pipeline_budget"] = get_job_budget(job_id)
         quality["generation_provenance"] = {
+            "prompt_registry_version": PROMPT_REGISTRY_VERSION,
             "prompt_version": LESSON_GENERATION_PROMPT_VERSION,
             "prompt_sha256": prompt_fingerprint,
             "repair_prompt_version": LESSON_REPAIR_PROMPT_VERSION if generation_attempts == 2 else None,
