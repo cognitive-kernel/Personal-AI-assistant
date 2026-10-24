@@ -620,6 +620,9 @@ def run_job(job_id: int) -> None:
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"], assessment["learning_outcomes"])
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
+        initial_quality_score = quality["score"]
+        repair_quality_score = None
+        repair_selected = False
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
         durable_repair_budget = {"reserved": False, "reason": "quality_accepted"}
         if not quality["accepted"]:
@@ -693,8 +696,10 @@ def run_job(job_id: int) -> None:
                 )
                 retry_quality["user_provided_source_available"] = user_provided_source_available
                 retry_quality["verification_status"] = "needs_review" if source_text else "unverified"
+                repair_quality_score = retry_quality["score"]
                 if retry_quality["score"] > quality["score"] or retry_quality["accepted"]:
                     result, assessment, quality = retry_result, retry_assessment, retry_quality
+                    repair_selected = True
         quality["generation_budget"] = generation_budget.snapshot()
         from .learning_durable_budget import get_job_budget
         quality["pipeline_budget"] = get_job_budget(job_id)
@@ -711,6 +716,15 @@ def run_job(job_id: int) -> None:
             "usage_note": "Token-based USD costs are estimates only and require LEARNING_MODEL_PRICING_JSON with exact model ID and pricing_version; missing usage is unknown. Estimates are not provider invoices.",
             "initial_response_malformed": initial_response_malformed,
             "repair_response_valid": repair_response_valid,
+            "self_correction_effect": {
+                "initial_quality_score": initial_quality_score,
+                "repair_quality_score": repair_quality_score,
+                "final_quality_score": quality["score"],
+                "score_delta": quality["score"] - initial_quality_score,
+                "repair_selected": repair_selected,
+                "repair_attempted": generation_attempts == 2,
+                "interpretation": "Internal lesson-quality heuristic only; not an independent scientific correctness measure.",
+            },
         }
         quality["source_text_truncated"] = source_text_truncated
         quality["source_characters_provided"] = len(source_text)
