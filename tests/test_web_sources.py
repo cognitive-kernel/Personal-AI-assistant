@@ -1,5 +1,6 @@
 import base64
 import urllib.parse
+import urllib.request
 
 import pytest
 
@@ -493,7 +494,7 @@ def test_url_validation_rejects_hostname_with_mixed_public_and_private_dns(monke
 
 def test_redirect_handler_revalidates_private_redirect_targets():
     handler = web_sources._SafeRedirectHandler()
-    request = __import__("urllib.request").request.Request("https://public.example/docs")
+    request = urllib.request.Request("https://public.example/docs")
     with pytest.raises(web_sources.SourceFetchError):
         handler.redirect_request(
             request, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data/"
