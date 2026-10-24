@@ -281,29 +281,6 @@ def handle_candidate_sandbox_review(
     except (OSError, sqlite3.Error) as exc:
         raise RetryableTaskError("Candidate storage is temporarily unavailable.") from exc
 
-    if not sandbox_consent.is_enabled():
-        try:
-            channels.record_review_attempt(candidate_id, channel="sandbox", status="sandbox_unconfigured",
-                                            details={"reason": "explicit_sandbox_consent_missing", "request_id": request_id})
-        except Exception as exc:
-            raise RetryableTaskError("Could not persist sandbox consent state.") from exc
-        return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "executed": 0, "promoted": False}
-
-    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
-    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
-    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
-    if enabled not in {"1", "true", "yes", "on"} or not executable_value:
-        channels.record_review_attempt(candidate_id, channel="sandbox", status="sandbox_unconfigured",
-                                        details={"reason": "sandbox_runtime_not_configured", "request_id": request_id})
-        return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "executed": 0, "promoted": False}
-    executable = Path(executable_value).expanduser()
-    if not executable.is_absolute() or not executable.is_file() or re.fullmatch(
-        r"(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}", image
-    ) is None:
-        channels.record_review_attempt(candidate_id, channel="sandbox", status="sandbox_unconfigured",
-                                        details={"reason": "invalid_docker_path_or_image_digest", "request_id": request_id})
-        return {"candidate_id": candidate_id, "status": "sandbox_unconfigured", "executed": 0, "promoted": False}
-
     try:
         reservation = learning_candidate_channels.reserve_channel_run(
             candidate_id, "sandbox",
@@ -330,6 +307,44 @@ def handle_candidate_sandbox_review(
             except Exception as exc:
                 raise RetryableTaskError("Sandbox failure exists, but its learning experience could not be persisted.") from exc
         return {**saved, "failure_experience": failure_experience, "promoted": False}
+
+    def skip_sandbox(reason: str, note: str) -> dict[str, Any]:
+        try:
+            channels.record_review_attempt(
+                candidate_id, channel="sandbox", status="sandbox_unconfigured",
+                details={"reason": reason, "request_id": request_id},
+            )
+        except Exception as exc:
+            raise RetryableTaskError("Could not persist sandbox unavailability.") from exc
+        skipped_result = {
+            "candidate_id": candidate_id, "content_sha256": actual_hash,
+            "test_plan_sha256": actual_plan_hash, "status": "unavailable",
+            "executed": 0, "outcomes": [], "promoted": False, "note": note,
+        }
+        try:
+            learning_candidate_channels.finish_channel_run(
+                reservation["id"], "skipped", result=skipped_result,
+                error_code=reason, attempt_generation=reservation["attempt_generation"],
+            )
+        except learning_candidate_channels.CandidateChannelStorageError as exc:
+            raise RetryableTaskError("Sandbox ledger is temporarily unavailable.") from exc
+        except ValueError as exc:
+            raise PermanentTaskError("Sandbox ledger rejected the unavailable result.") from exc
+        return {**skipped_result, "failure_experience": None}
+
+    if not sandbox_consent.is_enabled():
+        return skip_sandbox("consent_missing", "Sandbox execution was skipped because explicit consent is not active.")
+
+    enabled = os.getenv("SANDBOX_ENABLED", "").strip().lower()
+    executable_value = os.getenv("SANDBOX_DOCKER_EXECUTABLE", "").strip()
+    image = os.getenv("SANDBOX_PYTHON_IMAGE", "").strip()
+    if enabled not in {"1", "true", "yes", "on"} or not executable_value:
+        return skip_sandbox("runtime_unconfigured", "Sandbox runtime is not configured.")
+    executable = Path(executable_value).expanduser()
+    if not executable.is_absolute() or not executable.is_file() or re.fullmatch(
+        r"(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}", image
+    ) is None:
+        return skip_sandbox("invalid_runtime_configuration", "Sandbox Docker path or pinned image configuration is invalid.")
 
     outcomes: list[dict[str, Any]] = []
     for index, test in enumerate(plan["tests"], start=1):
