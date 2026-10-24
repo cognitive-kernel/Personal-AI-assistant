@@ -133,3 +133,30 @@ def test_lower_scoring_repair_does_not_replace_best_initial_quality(learning_sto
     assert finished["quality"]["generation_budget"]["calls_used"] == 2
     assert finished["quality"]["generation_provenance"]["attempt_count"] == 2
     assert finished["lesson"] is None
+
+def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store, monkeypatch):
+    payload = _valid_payload()
+    calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, request, **_kwargs: calls.append(request) or {
+            "message": {"content": json.dumps(payload, ensure_ascii=False)}
+        },
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+
+    job = learning.create_job("Python decorators", source_text="Reference text for the lesson.")
+    learning.run_job(job["id"])
+    finished = learning.get_job(job["id"])
+
+    assert finished["status"] == "completed"
+    assert len(calls) == 1
+    provenance = finished["quality"]["generation_provenance"]
+    assert provenance["prompt_version"] == "learning-lesson-v1"
+    assert provenance["repair_prompt_version"] is None
+    assert provenance["repair_prompt_sha256"] is None
+    assert provenance["attempt_count"] == 1
+
