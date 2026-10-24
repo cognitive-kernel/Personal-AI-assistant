@@ -59,7 +59,7 @@ def test_oracle_evaluation_uses_null_for_missing_metric_denominators():
     ])
 
     assert report["metrics"]["precision"] is None
-    assert report["metrics"]["recall"] == 0
+    assert report["metrics"]["recall"] is None
     assert report["metrics"]["false_acceptance_rate"] == 0
     assert report["metrics"]["false_rejection_rate"] is None
 
