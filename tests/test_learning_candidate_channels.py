@@ -150,6 +150,10 @@ def test_duplicate_reservation_remains_idempotent_after_candidate_status_changes
     assert repeated["id"] == first["id"]
     assert repeated["should_execute"] is False
     assert repeated["status"] == "running"
+    with pytest.raises(channels.CandidateChannelError, match="resume channel runs"):
+        channels.reserve_channel_run(
+            candidate_store, "research_web", "stable-key", reclaim_running=True
+        )
 
     with pytest.raises(channels.CandidateChannelError, match="awaiting independent tests"):
         channels.reserve_channel_run(candidate_store, "research_web", "new-key")
