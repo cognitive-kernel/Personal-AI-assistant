@@ -23,8 +23,8 @@ def enqueue_candidate_review(
 ) -> dict[str, Any]:
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
-    if not isinstance(content_sha256, str) or len(content_sha256) != 64:
-        raise ValueError("content_sha256 must be a SHA-256 hex digest.")
+    if not isinstance(content_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", content_sha256) is None:
+        raise ValueError("content_sha256 must be a lowercase SHA-256 digest.")
     if not isinstance(query, str) or not query.strip() or len(query) > 1000:
         raise ValueError("query must contain 1–1000 characters.")
     if web_mode not in {"search", "disabled"}:
