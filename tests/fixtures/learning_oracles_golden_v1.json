@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "description": "Deterministic policy regression cases for the provisional exact-text oracle. Synthetic cases only; not a human-adjudicated factuality benchmark.",
+  "cases": [
+    {
+      "id": "canonical-claim-present",
+      "oracle_id": "python.dict-get-default",
+      "oracle_version": 1,
+      "claim": "Python dict.get returns the default value when the key is absent.",
+      "content": "The mapping API includes this rule: Python dict.get returns the default value when the key is absent.",
+      "expected_status": "matched",
+      "expected_reason": "exact_curated_claim_present",
+      "expected_promoted": false
+    },
+    {
+      "id": "canonical-claim-absent",
+      "oracle_id": "python.dict-get-default",
+      "oracle_version": 1,
+      "claim": "Python dict.get returns the default value when the key is absent.",
+      "content": "This lesson describes mappings but omits the default-value behavior.",
+      "expected_status": "inconclusive",
+      "expected_reason": "claim_not_present_in_candidate",
+      "expected_promoted": null
+    },
+    {
+      "id": "unsupported-claim",
+      "oracle_id": "python.dict-get-default",
+      "oracle_version": 1,
+      "claim": "dict.get always returns None even when a default is supplied.",
+      "content": "dict.get always returns None even when a default is supplied.",
+      "expected_status": "inconclusive",
+      "expected_reason": "claim_not_in_curated_reference_set",
+      "expected_promoted": null
+    },
+    {
+      "id": "unknown-oracle-version",
+      "oracle_id": "python.dict-get-default",
+      "oracle_version": 999,
+      "claim": "Python dict.get returns the default value when the key is absent.",
+      "content": "Python dict.get returns the default value when the key is absent.",
+      "expected_status": "inconclusive",
+      "expected_reason": "unknown_oracle_version",
+      "expected_promoted": null
+    },
+    {
+      "id": "malformed-version-bool",
+      "oracle_id": "python.json-decode-error",
+      "oracle_version": true,
+      "claim": "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document.",
+      "content": "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document.",
+      "expected_status": "inconclusive",
+      "expected_reason": "invalid_oracle_version",
+      "expected_promoted": null
+    }
+  ]
+}
