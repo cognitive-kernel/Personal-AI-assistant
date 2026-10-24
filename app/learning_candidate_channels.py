@@ -36,17 +36,24 @@ def _encoded_result(result: dict[str, Any] | None) -> tuple[str, str]:
         )
     except (TypeError, ValueError) as exc:
         raise CandidateChannelError("Channel result must contain finite JSON values only.") from exc
-    if len(encoded.encode("utf-8")) > _MAX_RESULT_BYTES:
+    try:
+        encoded_bytes = encoded.encode("utf-8")
+    except UnicodeError as exc:
+        raise CandidateChannelError("Channel result contains invalid Unicode text.") from exc
+    if len(encoded_bytes) > _MAX_RESULT_BYTES:
         raise CandidateChannelError("Channel result exceeds the 16 KiB metadata limit.")
-    return encoded, hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return encoded, hashlib.sha256(encoded_bytes).hexdigest()
 
 
 def _run(row: sqlite3.Row, *, should_execute: bool = False) -> dict[str, Any]:
     result = dict(row)
     try:
-        result["result"] = json.loads(result.pop("result_json"))
+        decoded = json.loads(result.pop("result_json"))
     except (TypeError, json.JSONDecodeError) as exc:
         raise CandidateChannelError("Stored channel result is invalid.") from exc
+    if not isinstance(decoded, dict):
+        raise CandidateChannelError("Stored channel result must be a JSON object.")
+    result["result"] = decoded
     result["should_execute"] = should_execute
     return result
 
@@ -57,7 +64,9 @@ def reserve_channel_run(
     idempotency_key: str,
 ) -> dict[str, Any]:
     """Atomically reserve one channel run; only the first caller may execute it."""
-    if channel not in _ALLOWED_CHANNELS:
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise CandidateChannelError("candidate_id must be a positive integer.")
+    if not isinstance(channel, str) or channel not in _ALLOWED_CHANNELS:
         raise CandidateChannelError("Unsupported candidate review channel.")
     if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key.strip()) <= 128:
         raise CandidateChannelError("Idempotency key must contain 1–128 non-whitespace characters.")
@@ -117,7 +126,9 @@ def finish_channel_run(
     error_code: str | None = None,
 ) -> dict[str, Any]:
     """Record immutable terminal metadata; repeated identical completion is idempotent."""
-    if status not in _ALLOWED_TERMINAL:
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
+        raise CandidateChannelError("run_id must be a positive integer.")
+    if not isinstance(status, str) or status not in _ALLOWED_TERMINAL:
         raise CandidateChannelError("Channel runs may finish only as succeeded, failed, or skipped.")
     if error_code is not None and (
         not isinstance(error_code, str) or _ERROR_CODE.fullmatch(error_code) is None
@@ -170,6 +181,8 @@ def finish_channel_run(
 
 def list_candidate_channel_runs(candidate_id: int) -> list[dict[str, Any]]:
     """Return bounded audit metadata in creation order; never return candidate text."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise CandidateChannelError("candidate_id must be a positive integer.")
     try:
         with learning_connection() as connection:
             candidate = connection.execute(
