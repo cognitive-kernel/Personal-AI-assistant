@@ -1016,6 +1016,16 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_global_budget_date ON learning_global_budget_reservations(budget_date, id)",
             "CREATE INDEX idx_learning_global_budget_job ON learning_global_budget_reservations(job_id, id)",
         ),
+    ),
+    Migration(
+        27,
+        "learning-experience-direct-relationships",
+        (
+            "ALTER TABLE learning_experiences ADD COLUMN related_knowledge_id INTEGER CHECK(related_knowledge_id IS NULL OR related_knowledge_id > 0)",
+            "ALTER TABLE learning_experiences ADD COLUMN related_consensus_id INTEGER CHECK(related_consensus_id IS NULL OR related_consensus_id > 0)",
+            "CREATE INDEX idx_learning_experiences_related_knowledge ON learning_experiences(related_knowledge_id, id DESC)",
+            "CREATE INDEX idx_learning_experiences_related_consensus ON learning_experiences(related_consensus_id, id DESC)",
+        ),
     )
 )
 
