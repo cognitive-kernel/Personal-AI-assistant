@@ -436,7 +436,7 @@ def _failure_warnings_for_topic(topic: str, *, limit: int = 3) -> list[dict[str,
                     continue
                 test_results.append({
                     "test": str(result.get("test", ""))[:120],
-                    "passed": result.get("passed") if result.get("passed") in (True, False) else None,
+                    "passed": result.get("passed") if (result.get("passed") is True or result.get("passed") is False) else None,
                     "status": str(result.get("status", ""))[:40],
                     "reason": str(result.get("reason", ""))[:160],
                 })
