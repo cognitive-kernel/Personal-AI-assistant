@@ -49,6 +49,28 @@ _ORACLES: dict[tuple[str, int], dict[str, Any]] = {
         "source_url": "https://www.sqlite.org/pragma.html#pragma_foreign_key_check",
         "source_summary": "The SQLite PRAGMA documentation describes foreign_key_check output for foreign-key violations.",
     },
+    ("docker.none-network", 1): {
+        "oracle_id": "docker.none-network",
+        "version": 1,
+        "domain": "docker",
+        "canonical_claims": [
+            "Docker's none network driver disables container networking for the container.",
+            "درایور شبکه none در Docker شبکه‌بندی کانتینر را غیرفعال می‌کند.",
+        ],
+        "source_url": "https://docs.docker.com/engine/network/drivers/none/",
+        "source_summary": "The official Docker networking documentation describes the none network driver as disabling networking.",
+    },
+    ("python.urllib-urlsplit", 1): {
+        "oracle_id": "python.urllib-urlsplit",
+        "version": 1,
+        "domain": "python",
+        "canonical_claims": [
+            "Python urllib.parse.urlsplit splits a URL into scheme, network location, path, query, and fragment components.",
+            "تابع urllib.parse.urlsplit در پایتون نشانی را به اجزای scheme، network location، path، query و fragment تقسیم می‌کند.",
+        ],
+        "source_url": "https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlsplit",
+        "source_summary": "The Python urllib.parse documentation describes the components returned by urlsplit.",
+    },
 }
 
 
