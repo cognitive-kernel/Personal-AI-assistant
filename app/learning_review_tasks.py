@@ -211,7 +211,10 @@ def handle_candidate_sandbox_review(
             plan = json.loads(row["test_plan_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise PermanentTaskError("Candidate test plan is invalid.") from exc
-        canonical_plan = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        try:
+            canonical_plan = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise PermanentTaskError("Candidate test plan contains invalid JSON values.") from exc
         actual_plan_hash = hashlib.sha256(canonical_plan.encode("utf-8")).hexdigest()
         if actual_plan_hash != expected_plan_hash:
             raise PermanentTaskError("Candidate test plan changed after sandbox review was queued.")
@@ -283,7 +286,7 @@ def handle_candidate_sandbox_review(
             source, docker_executable=executable, image=image, timeout_seconds=10,
             max_output_bytes=8192, control_check=control_check, task_id=context.task_id,
         )
-        passed = result.status == "succeeded" and result.stdout == expected_stdout
+        passed = result.status == "succeeded" and not result.stderr and result.stdout == expected_stdout
         outcomes.append({
             "test": test["name"],
             "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
