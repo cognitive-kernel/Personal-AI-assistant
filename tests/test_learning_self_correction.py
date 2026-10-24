@@ -67,6 +67,9 @@ def test_malformed_initial_response_enters_bounded_repair_cycle(learning_store, 
     assert quality["generation_budget"]["calls_used"] == 2
     assert quality["generation_budget"]["predict_tokens_reserved"] == 2600
     assert quality["generation_budget"]["budget_exhausted"] is True
+    assert quality["pipeline_budget"]["calls_used"] == 2
+    assert quality["pipeline_budget"]["predict_tokens_reserved"] == 2600
+    assert quality["pipeline_budget"]["scope"] == "durable_single_learning_job_across_generation_and_review_channels"
     assert quality["generation_provenance"]["initial_response_malformed"] is True
     assert quality["generation_provenance"]["repair_response_valid"] is True
     assert quality["generation_provenance"]["attempt_count"] == 2
