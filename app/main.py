@@ -176,6 +176,7 @@ def startup() -> None:
     learning_handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
+        learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
     }
     programming_handlers: dict[str, Any] = {
         programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
