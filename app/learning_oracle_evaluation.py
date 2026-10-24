@@ -5,6 +5,7 @@ truth. The dataset loader requires independent human adjudication and source has
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime
 from typing import Any
@@ -58,8 +59,12 @@ def validate_oracle_dataset(dataset: Any) -> list[dict[str, Any]]:
             raise OracleEvaluationError(f"{prefix} references an unknown Oracle version.")
         if source_url != registered_source["source_url"]:
             raise OracleEvaluationError(f"{prefix}.source_url does not match the versioned Oracle catalog.")
+        source_snapshot = _nonempty(case.get("source_snapshot"), f"{prefix}.source_snapshot")
+        expected_source_hash = hashlib.sha256(source_snapshot.encode("utf-8")).hexdigest()
         if not isinstance(case.get("source_sha256"), str) or re.fullmatch(r"[0-9a-f]{64}", case["source_sha256"]) is None:
             raise OracleEvaluationError(f"{prefix}.source_sha256 must be a lowercase SHA-256 digest.")
+        if case["source_sha256"] != expected_source_hash:
+            raise OracleEvaluationError(f"{prefix}.source_sha256 does not match source_snapshot.")
         # The page snapshot hash is retained as human-adjudication provenance, while
         # this second fingerprint binds the dataset to the exact source summary
         # shipped with the registered Oracle version. A well-formed arbitrary hash
