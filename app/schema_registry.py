@@ -992,6 +992,30 @@ LEARNING_MIGRATIONS = (
             )""",
             "CREATE INDEX idx_learning_budget_reservations_job ON learning_pipeline_budget_reservations(job_id, id)",
         ),
+    ),
+    Migration(
+        26,
+        "daily-global-learning-budget",
+        (
+            """CREATE TABLE learning_global_daily_budgets (
+                budget_date TEXT PRIMARY KEY CHECK(length(budget_date) = 10),
+                max_calls INTEGER NOT NULL CHECK(max_calls BETWEEN 1 AND 100000),
+                max_predict_tokens INTEGER NOT NULL CHECK(max_predict_tokens BETWEEN 1 AND 100000000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE learning_global_budget_reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                budget_date TEXT NOT NULL REFERENCES learning_global_daily_budgets(budget_date) ON DELETE RESTRICT,
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                stage TEXT NOT NULL CHECK(length(stage) BETWEEN 1 AND 80),
+                calls_reserved INTEGER NOT NULL CHECK(calls_reserved BETWEEN 0 AND 20),
+                predict_tokens_reserved INTEGER NOT NULL CHECK(predict_tokens_reserved BETWEEN 0 AND 100000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(budget_date, job_id, stage)
+            )""",
+            "CREATE INDEX idx_learning_global_budget_date ON learning_global_budget_reservations(budget_date, id)",
+            "CREATE INDEX idx_learning_global_budget_job ON learning_global_budget_reservations(job_id, id)",
+        ),
     )
 )
 
