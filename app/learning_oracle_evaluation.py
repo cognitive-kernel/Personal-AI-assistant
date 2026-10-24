@@ -32,7 +32,7 @@ def validate_oracle_dataset(dataset: Any) -> list[dict[str, Any]]:
         raise OracleEvaluationError("cases must be a non-empty list.")
     seen: set[str] = set()
     catalog_sources = {
-        (item["oracle_id"], item["version"]): item["source_url"]
+        (item["oracle_id"], item["version"]): item
         for item in list_oracles()
     }
     for index, case in enumerate(cases):
@@ -56,10 +56,18 @@ def validate_oracle_dataset(dataset: Any) -> list[dict[str, Any]]:
         registered_source = catalog_sources.get((case["oracle_id"], case["oracle_version"]))
         if registered_source is None:
             raise OracleEvaluationError(f"{prefix} references an unknown Oracle version.")
-        if source_url != registered_source:
+        if source_url != registered_source["source_url"]:
             raise OracleEvaluationError(f"{prefix}.source_url does not match the versioned Oracle catalog.")
         if not isinstance(case.get("source_sha256"), str) or re.fullmatch(r"[0-9a-f]{64}", case["source_sha256"]) is None:
             raise OracleEvaluationError(f"{prefix}.source_sha256 must be a lowercase SHA-256 digest.")
+        # The page snapshot hash is retained as human-adjudication provenance, while
+        # this second fingerprint binds the dataset to the exact source summary
+        # shipped with the registered Oracle version. A well-formed arbitrary hash
+        # must not be mistaken for a matching catalog record.
+        if case.get("source_summary_sha256") != registered_source["source_summary_sha256"]:
+            raise OracleEvaluationError(
+                f"{prefix}.source_summary_sha256 does not match the versioned Oracle catalog."
+            )
         adjudication = case.get("adjudication")
         if not isinstance(adjudication, dict):
             raise OracleEvaluationError(f"{prefix}.adjudication is required.")
