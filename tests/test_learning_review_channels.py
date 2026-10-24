@@ -340,7 +340,7 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
     from app.learning_review_tasks import handle_candidate_sandbox_review
     from app.sandbox import SandboxResult
 
-    content = "Example lesson.\\n\\n```python\\nprint('safe example')\\n```"
+    content = "Example lesson.\n\n```python\nprint('safe example')\n```"
     candidate_id, _job_id = _candidate(content=content)
     digest = hashlib.sha256(content.encode()).hexdigest()
     with db.learning_connection() as connection:
