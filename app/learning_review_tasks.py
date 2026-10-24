@@ -273,8 +273,8 @@ def handle_candidate_sandbox_review(
             "status": result.status,
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
-            "stdout": result.stdout[:1000],
-            "stderr": result.stderr[:1000],
+            "stdout": result.stdout[:300],
+            "stderr": result.stderr[:300],
             "reason": (result.reason or "")[:300],
         })
         if result.status == "unavailable":
