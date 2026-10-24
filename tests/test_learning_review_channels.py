@@ -956,3 +956,104 @@ def test_sandbox_retry_after_terminal_ledger_write_failure_is_bounded_and_idempo
             (candidate_id,),
         ).fetchone()
     assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
+
+
+
+def test_sandbox_failure_experience_persistence_retries_without_rerunning_test(
+    review_store, monkeypatch, tmp_path
+):
+    from app import learning_candidate_channels, learning_candidate_experiences, learning_durable_budget
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.sandbox import SandboxResult
+    from app.task_worker import RetryableTaskError
+
+    content = "A candidate with a deterministic failing test."
+    candidate_id, job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    plan = {
+        "version": 2,
+        "oracle_reviewed": True,
+        "tests": [{
+            "name": "expected-mismatch",
+            "python_test_code": "print('actual')",
+            "expected_stdout": "expected",
+        }],
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps(plan), candidate_id),
+        )
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+    sandbox_calls = []
+    monkeypatch.setattr(
+        sandbox, "run_python",
+        lambda source, **kwargs: (
+            sandbox_calls.append(source) or SandboxResult("succeeded", 0, "actual", "", 1)
+        ),
+    )
+
+    original_record = learning_candidate_experiences.record_candidate_test_failure
+    experience_calls = []
+
+    def fail_first_experience_write(*args, **kwargs):
+        experience_calls.append(1)
+        if len(experience_calls) == 1:
+            raise OSError("simulated storage interruption after terminal test result")
+        return original_record(*args, **kwargs)
+
+    monkeypatch.setattr(
+        learning_candidate_experiences,
+        "record_candidate_test_failure",
+        fail_first_experience_write,
+    )
+
+    class Context:
+        task_id = 992
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    payload = {
+        "candidate_id": candidate_id,
+        "content_sha256": digest,
+        "test_plan_sha256": _test_plan_hash(candidate_id),
+        "request_id": "sandbox-experience-recovery",
+    }
+    with pytest.raises(RetryableTaskError, match="failure was recorded"):
+        handle_candidate_sandbox_review(payload, None, Context())
+
+    # The test result is already terminal. Retry must repair the missing
+    # experience record without repeating the sandbox side effect.
+    recovered = handle_candidate_sandbox_review(payload, None, Context())
+    assert recovered["status"] == "failed"
+    assert recovered["failure_experience"]["created"] is True
+    assert sandbox_calls == ["print('actual')"]
+    assert len(experience_calls) == 2
+    assert learning_durable_budget.get_job_budget(job_id)["calls_used"] == 1
+
+    repeated = handle_candidate_sandbox_review(payload, None, Context())
+    assert repeated["failure_experience"]["created"] is False
+    assert sandbox_calls == ["print('actual')"]
+    assert learning_durable_budget.get_job_budget(job_id)["calls_used"] == 1
+
+    with db.learning_connection() as connection:
+        ledger = connection.execute(
+            "SELECT status FROM learning_candidate_channel_runs WHERE candidate_id=? AND channel='sandbox'",
+            (candidate_id,),
+        ).fetchone()
+        experiences = connection.execute(
+            "SELECT COUNT(*) AS n FROM learning_experiences WHERE problem LIKE ?",
+            (f"Candidate {candidate_id} %",),
+        ).fetchone()
+        candidate = connection.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert ledger["status"] == "failed"
+    assert experiences["n"] == 1
+    assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
