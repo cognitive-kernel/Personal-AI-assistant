@@ -22,6 +22,26 @@ def _validate_relationship_id(value: Any, field: str) -> int | None:
     return value
 
 
+def _resolve_related_knowledge_id(candidate_id: int, supplied_id: int | None) -> int | None:
+    """Link a failure to its same-job lesson record when the caller did not supply one."""
+    if supplied_id is not None:
+        return supplied_id
+    with learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT job_id, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        if candidate is None:
+            raise KeyError(candidate_id)
+        if candidate["promoted_knowledge_id"] is not None:
+            return int(candidate["promoted_knowledge_id"])
+        lesson = connection.execute(
+            "SELECT id FROM knowledge_items WHERE job_id=? ORDER BY id DESC LIMIT 1",
+            (candidate["job_id"],),
+        ).fetchone()
+        return int(lesson["id"]) if lesson is not None else None
+
+
 def record_candidate_test_failure(
     candidate_id: int,
     *,
@@ -38,6 +58,8 @@ def record_candidate_test_failure(
         raise ValueError("topic is required.")
     related_knowledge_id = _validate_relationship_id(related_knowledge_id, "related_knowledge_id")
     related_consensus_id = _validate_relationship_id(related_consensus_id, "related_consensus_id")
+    init_databases()
+    related_knowledge_id = _resolve_related_knowledge_id(candidate_id, related_knowledge_id)
     for digest in (content_sha256, test_plan_sha256):
         if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
             raise ValueError("Content and plan hashes must be lowercase SHA-256 digests.")
@@ -126,6 +148,8 @@ def record_candidate_channel_failure(
         raise ValueError("topic is required.")
     related_knowledge_id = _validate_relationship_id(related_knowledge_id, "related_knowledge_id")
     related_consensus_id = _validate_relationship_id(related_consensus_id, "related_consensus_id")
+    init_databases()
+    related_knowledge_id = _resolve_related_knowledge_id(candidate_id, related_knowledge_id)
     if not isinstance(content_sha256, str) or len(content_sha256) != 64 or any(
         char not in "0123456789abcdef" for char in content_sha256
     ):
