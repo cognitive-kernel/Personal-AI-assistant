@@ -859,3 +859,100 @@ def test_peer_request_bypasses_ambient_proxy_configuration(review_store, monkeyp
     assert redirect_handlers[0].redirect_request(
         None, None, 302, "Found", {}, "https://other.example/"
     ) is None
+
+
+
+def test_sandbox_retry_after_terminal_ledger_write_failure_is_bounded_and_idempotent(
+    review_store, monkeypatch, tmp_path
+):
+    from app import learning_candidate_channels, learning_durable_budget
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.sandbox import SandboxResult
+    from app.task_worker import RetryableTaskError
+
+    content = "A candidate whose sandbox result must survive a worker crash."
+    candidate_id, job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    plan = {
+        "version": 2,
+        "oracle_reviewed": True,
+        "tests": [{
+            "name": "recovery",
+            "python_test_code": "print('ok')",
+            "expected_stdout": "ok",
+        }],
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps(plan), candidate_id),
+        )
+
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+    sandbox_calls = []
+    monkeypatch.setattr(
+        sandbox, "run_python",
+        lambda source, **kwargs: (
+            sandbox_calls.append(source) or SandboxResult("succeeded", 0, "ok", "", 1)
+        ),
+    )
+
+    original_finish = learning_candidate_channels.finish_channel_run
+    finish_calls = []
+
+    def fail_first_terminal_write(*args, **kwargs):
+        finish_calls.append(1)
+        if len(finish_calls) == 1:
+            raise learning_candidate_channels.CandidateChannelStorageError(
+                "simulated worker crash before terminal ledger commit"
+            )
+        return original_finish(*args, **kwargs)
+
+    monkeypatch.setattr(
+        learning_candidate_channels, "finish_channel_run", fail_first_terminal_write
+    )
+
+    class Context:
+        task_id = 991
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    payload = {
+        "candidate_id": candidate_id,
+        "content_sha256": digest,
+        "test_plan_sha256": _test_plan_hash(candidate_id),
+        "request_id": "sandbox-crash-recovery",
+    }
+
+    with pytest.raises(RetryableTaskError, match="ledger is temporarily unavailable"):
+        handle_candidate_sandbox_review(payload, None, Context())
+
+    # The unfinished ledger entry is reclaimed with a new generation. The
+    # repeat execution is charged separately, so crashes cannot bypass budget.
+    recovered = handle_candidate_sandbox_review(payload, None, Context())
+    assert recovered["status"] == "completed"
+    assert recovered["promoted"] is False
+    assert sandbox_calls == ["print('ok')", "print('ok')"]
+    assert len(finish_calls) == 2
+    budget = learning_durable_budget.get_job_budget(job_id)
+    assert budget["calls_used"] == 2
+
+    # A terminal redelivery reuses the durable result and spends nothing.
+    repeated = handle_candidate_sandbox_review(payload, None, Context())
+    assert repeated["status"] == "completed"
+    assert repeated["outcomes"] == recovered["outcomes"]
+    assert sandbox_calls == ["print('ok')", "print('ok')"]
+    assert len(finish_calls) == 2
+    assert learning_durable_budget.get_job_budget(job_id)["calls_used"] == 2
+
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
