@@ -234,7 +234,7 @@ def test_candidate_review_history_returns_audit_and_never_claims_promotion(revie
 
 
 def test_candidate_review_worker_runs_channels_independently_and_never_promotes(review_store, monkeypatch):
-    candidate_id, _job_id = _candidate()
+    candidate_id, job_id = _candidate()
     checkpoints = []
     class Context:
         task_id = 101
@@ -266,6 +266,18 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
         ).fetchone()
     assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
 
+    from app.learning_durable_budget import get_job_budget
+    first_budget = get_job_budget(job_id)
+    assert first_budget["calls_used"] == 4
+    assert first_budget["predict_tokens_reserved"] == 6300
+    repeated = handle_candidate_review(
+        {"candidate_id": candidate_id, "query": "Python candidate review", "web_mode": "search"},
+        None,
+        Context(),
+    )
+    assert repeated["channels"] == result["channels"]
+    assert get_job_budget(job_id)["calls_used"] == first_budget["calls_used"]
+    assert get_job_budget(job_id)["predict_tokens_reserved"] == first_budget["predict_tokens_reserved"]
 
 
 def test_shared_pipeline_budget_blocks_review_actions_when_job_budget_is_exhausted(review_store, monkeypatch):
