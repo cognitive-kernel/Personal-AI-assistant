@@ -10,7 +10,7 @@ from .ollama import _request
 from . import curricula, factual_knowledge, learning_evidence_gate
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
-from .learning_prompt_registry import fingerprint_prompt, prompt_version
+from .learning_prompt_registry import PROMPT_REGISTRY_VERSION, fingerprint_prompt, prompt_version
 
 LESSON_GENERATION_PROMPT_VERSION = prompt_version("lesson_generation")
 LESSON_REPAIR_PROMPT_VERSION = prompt_version("lesson_repair")
