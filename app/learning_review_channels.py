@@ -16,6 +16,7 @@ import urllib.request
 from typing import Any
 
 from .db import init_databases, learning_connection
+from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 
 PEER_REVIEW_PROMPT_VERSION = "learning-peer-review-v2"
 _ALLOWED_EVIDENCE_KINDS = {"supporting", "contradicting", "context", "application"}
@@ -260,7 +261,7 @@ def record_peer_consultation(
 
 
 
-def _validate_peer_endpoint(base_url: str) -> tuple[str, str]:
+def _validate_peer_endpoint(base_url: str) -> tuple[str, str, str]:
     """Validate a configured peer URL before making an outbound request.
 
     Loopback HTTP is permitted for explicit local development. Every other
@@ -289,7 +290,12 @@ def _validate_peer_endpoint(base_url: str) -> tuple[str, str]:
     if loopback:
         if parsed.scheme != "http":
             raise ValueError("loopback_peer_must_use_http")
-        return parsed.scheme, hostname
+        # Resolve localhost to a literal loopback address before opening the
+        # socket so DNS cannot redirect this development exception elsewhere.
+        pinned_ip = (
+            literal_ip.compressed if literal_ip is not None else "127.0.0.1"
+        )
+        return parsed.scheme, hostname, pinned_ip
     if parsed.scheme != "https":
         raise ValueError("endpoint_must_be_https_or_loopback_without_credentials")
     if port not in {None, 443}:
@@ -309,7 +315,14 @@ def _validate_peer_endpoint(base_url: str) -> tuple[str, str]:
         raise ValueError("peer_endpoint_host_not_resolvable") from exc
     if not addresses or any(not address.is_global for address in addresses):
         raise ValueError("peer_endpoint_must_resolve_only_to_public_addresses")
-    return parsed.scheme, hostname
+    return parsed.scheme, hostname, addresses[0].compressed
+
+
+class _RejectPeerRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Peer API redirects are rejected to avoid cross-host credential forwarding."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[str, Any]:
@@ -373,7 +386,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             continue
         seen_providers.add(provider)
         try:
-            _validate_peer_endpoint(base_url)
+            _scheme, _hostname, pinned_ip = _validate_peer_endpoint(base_url)
             endpoint = base_url.rstrip("/")
             if not endpoint.endswith("/chat/completions"):
                 endpoint += "/chat/completions"
@@ -395,7 +408,13 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             request = urllib.request.Request(endpoint, data=payload, headers=headers, method="POST")
             # Do not let ambient HTTP(S)_PROXY settings route a validated peer
             # request through a proxy that can change its effective destination.
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            pinned_resolver = lambda _url: pinned_ip
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}),
+                _RejectPeerRedirectHandler(),
+                PinnedHTTPHandler(pinned_resolver),
+                PinnedHTTPSHandler(pinned_resolver),
+            )
             with opener.open(request, timeout=15) as response:
                 body = response.read(200001)
             if len(body) > 200000:
