@@ -149,7 +149,7 @@ def handle_candidate_review(
 
 LEARNING_SANDBOX_REVIEW_TASK_TYPE = "learning.sandbox_candidate"
 _ALLOWED_SANDBOX_REVIEW_KEYS = {"candidate_id", "content_sha256", "request_id"}
-_CODE_BLOCK = re.compile(r"^\\s*```(?:python|py)\\s*\\n(.*?)^\\s*```\\s*$", re.IGNORECASE | re.MULTILINE | re.DOTALL)
+_CODE_BLOCK = re.compile(r"^\s*```(?:python|py)\s*\n(.*?)^\s*```\s*$", re.IGNORECASE | re.MULTILINE | re.DOTALL)
 
 
 def enqueue_candidate_sandbox_review(
