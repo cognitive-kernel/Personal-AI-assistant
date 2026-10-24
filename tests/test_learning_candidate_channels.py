@@ -54,6 +54,26 @@ def test_channel_run_reservation_is_idempotent_and_does_not_promote(candidate_st
     assert runs == 1
 
 
+def test_reclaimed_channel_run_fences_out_stale_worker(candidate_store):
+    first = channels.reserve_channel_run(candidate_store, "sandbox", "recoverable-run")
+    second = channels.reserve_channel_run(
+        candidate_store, "sandbox", "recoverable-run", reclaim_running=True
+    )
+    assert second["id"] == first["id"]
+    assert second["attempt_generation"] == first["attempt_generation"] + 1
+    assert second["should_execute"] is True
+    with pytest.raises(channels.CandidateChannelError, match="stale channel worker"):
+        channels.finish_channel_run(
+            first["id"], "succeeded", result={"status": "completed"},
+            attempt_generation=first["attempt_generation"],
+        )
+    completed = channels.finish_channel_run(
+        second["id"], "succeeded", result={"status": "completed"},
+        attempt_generation=second["attempt_generation"],
+    )
+    assert completed["status"] == "succeeded"
+
+
 def test_channel_run_terminal_result_is_immutable_and_completion_is_idempotent(candidate_store):
     run = channels.reserve_channel_run(candidate_store, "peer_ai", "peer-v1")
     result = {"provider_count": 2, "responses_hashed": True}
