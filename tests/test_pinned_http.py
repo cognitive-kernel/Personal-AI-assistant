@@ -85,4 +85,5 @@ def test_pinned_https_handler_resolves_each_request_url(monkeypatch):
     assert captured["url"] == "https://docs.example/page"
     assert captured["connection"]._pinned_ip == "93.184.216.34"
     assert "check_hostname" not in captured["connection_kwargs"]
-    assert captured["connection_kwargs"]["context"].check_hostname is True
+    assert captured["connection"]._context.check_hostname is True
+    assert captured["connection"]._context.verify_mode == ssl.CERT_REQUIRED
