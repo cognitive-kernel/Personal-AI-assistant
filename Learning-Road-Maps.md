@@ -440,12 +440,13 @@
 
 ## تحقیق وب و بازبینی peer-AI برای نامزدهای موقت — 2026-10-23
 
-- [ ] Migration 24 سوابق جداگانهٔ web evidence، peer consultations و channel attempts را اضافه می‌کند؛ trust/status اولیهٔ نامزد حفظ می‌شود.
-- [ ] تحقیق وب excerpt محدود و hashدار ذخیره می‌کند؛ evidence به‌صورت `context` ثبت می‌شود و به‌تنهایی ادعای factual را تأیید نمی‌کند.
-- [ ] peer-AI فقط از endpointهای پیکربندی‌شدهٔ `PEER_AI_PROVIDERS_JSON` استفاده می‌کند؛ حداکثر سه provider، HTTPS به‌جز loopback، کلید API فقط از environment و بدون ذخیرهٔ کلید.
-- [ ] کار بررسی در صف پایدار learning اجرا می‌شود؛ خطای هر کانال جداگانه ثبت می‌شود و مانع اجرای کانال دیگر نمی‌شود.
-- [ ] UI شروع بررسی، شناسهٔ task و تاریخچهٔ evidence/peer را نشان می‌دهد؛ hash نامعتبر یا candidate غیرموقت، صف‌گذاری را متوقف می‌کند.
-- [ ] آزمون‌های migration، ذخیرهٔ evidence، provider ناامن، پاسخ peer، idempotency صف و عدم ارتقای خودکار اضافه شده‌اند؛ CI دقیق head باید سبز شود.
+- [x] Migration 24 سوابق جداگانهٔ web evidence، peer consultations و channel attempts را اضافه می‌کند؛ trust/status اولیهٔ نامزد حفظ می‌شود.
+- [x] تحقیق وب excerpt محدود و hashدار ذخیره می‌کند؛ evidence به‌صورت `context` ثبت می‌شود و به‌تنهایی ادعای factual را تأیید نمی‌کند.
+- [x] peer-AI فقط از endpointهای پیکربندی‌شدهٔ `PEER_AI_PROVIDERS_JSON` استفاده می‌کند؛ حداکثر سه provider، HTTPS به‌جز loopback، کلید API فقط از environment و بدون ذخیرهٔ کلید.
+- [x] کار بررسی در صف پایدار learning اجرا می‌شود؛ خطای هر کانال جداگانه ثبت می‌شود و مانع اجرای کانال دیگر نمی‌شود.
+- [x] UI شروع بررسی، شناسهٔ task و تاریخچهٔ evidence/peer را نشان می‌دهد؛ hash نامعتبر یا candidate غیرموقت، صف‌گذاری را متوقف می‌کند.
+- [x] آزمون‌های migration، ذخیرهٔ evidence، provider ناامن، پاسخ peer، idempotency صف و عدم ارتقای خودکار اضافه شده‌اند.
+- [ ] CI دقیق head شامل اتصال sandbox هنوز باید در tests، Browser E2E و dependency audit سبز شود.
 - **مرز ایمنی:** peer vote و web fetch حقیقت محسوب نمی‌شوند؛ این مرحله sandbox اجرا نمی‌کند و trust/status را ارتقا نمی‌دهد. گام بعدی اتصال sandbox محدود به طرح آزمون تأییدشدهٔ انسانی، ثبت expected/actual و oracle، سپس سنجهٔ کیفیت/false-acceptance است.
 
 
