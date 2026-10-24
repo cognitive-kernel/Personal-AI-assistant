@@ -974,7 +974,18 @@ async function refreshLearningCandidates() {
     });
     card.append(form);
    });
-   actions.append(detailButton,reviewButton,historyButton,planButton);
+   const sandboxButton=document.createElement("button"); sandboxButton.type="button"; sandboxButton.textContent="اجرای نمونه‌های Python در sandbox";
+   sandboxButton.disabled=!item.integrity_valid||!planExists||item.test_plan?.oracle_reviewed!==true;
+   sandboxButton.addEventListener("click",async()=>{
+    if(!window.confirm("فقط بلوک‌های کد Python داخل درس در محیط Docker بدون شبکه اجرا می‌شوند. این بررسی smoke-test است و دانش را تأیید یا ارتقا نمی‌دهد. ادامه می‌دهید؟"))return;
+    sandboxButton.disabled=true; meta.textContent="در حال ثبت آزمون محدود sandbox در صف پایدار…";
+    try{
+     const requestId=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==="function")?globalThis.crypto.randomUUID():(Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));
+     const queued=await api("/api/learning/candidates/"+item.id+"/sandbox-test",{method:"POST",body:JSON.stringify({confirm:true,request_id:requestId})});
+     meta.textContent="آزمون sandbox در صف ثبت شد؛ شناسهٔ کار: "+queued.task_id+". نتیجه فقط smoke-test است و دانش ارتقا نمی‌یابد.";
+    }catch(error){meta.textContent=error.message;sandboxButton.disabled=false;}
+   });
+   actions.append(detailButton,reviewButton,historyButton,planButton,sandboxButton);
    card.append(heading,meta,preview,actions);
    container.append(card);
   }
