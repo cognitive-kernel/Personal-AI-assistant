@@ -953,6 +953,7 @@ LEARNING_MIGRATIONS = (
                 candidate_content_sha256 TEXT NOT NULL CHECK(length(candidate_content_sha256) = 64),
                 status TEXT NOT NULL DEFAULT 'running'
                     CHECK(status IN ('running','succeeded','failed','skipped')),
+                attempt_generation INTEGER NOT NULL DEFAULT 1 CHECK(attempt_generation >= 1),
                 result_json TEXT NOT NULL DEFAULT '{}',
                 result_sha256 TEXT,
                 error_code TEXT,
