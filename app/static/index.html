@@ -959,7 +959,7 @@ async function refreshLearningCandidates() {
     const objective=document.createElement("textarea"); objective.required=true; objective.minLength=10; objective.maxLength=1000; objective.rows=2; objective.placeholder="هدف آزمون";
     const expected=document.createElement("textarea"); expected.required=true; expected.minLength=10; expected.maxLength=1000; expected.rows=2; expected.placeholder="توضیح نتیجهٔ مورد انتظار از oracle مستقل";
     const testCode=document.createElement("textarea"); testCode.maxLength=8192; testCode.rows=4; testCode.placeholder="کد آزمون Python اختیاری؛ برای اجرای sandbox لازم است";
-    const expectedStdout=document.createElement("textarea"); expectedStdout.maxLength=1000; expectedStdout.rows=2; expectedStdout.placeholder="stdout دقیق مورد انتظار (می‌تواند خالی باشد)";
+    const expectedStdout=document.createElement("textarea"); expectedStdout.maxLength=1000; expectedStdout.rows=2; expectedStdout.placeholder="stdout دقیق مورد انتظار؛ print معمولی newline پایانی دارد";
     const note=document.createElement("textarea"); note.required=true; note.minLength=20; note.maxLength=1000; note.rows=2; note.placeholder="یادداشت بررسی انسانی oracle (حداقل ۲۰ نویسه)";
     const confirmLabel=document.createElement("label"); const confirm=document.createElement("input"); confirm.type="checkbox"; confirm.required=true; confirmLabel.append(confirm,document.createTextNode("ثبت این طرح را تأیید می‌کنم"));
     const oracleLabel=document.createElement("label"); const oracle=document.createElement("input"); oracle.type="checkbox"; oracle.required=true; oracleLabel.append(oracle,document.createTextNode("نتیجهٔ مورد انتظار با مرجع مستقل بررسی شده است"));
