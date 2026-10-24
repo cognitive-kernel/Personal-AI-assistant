@@ -20,7 +20,10 @@ from app.learning_oracle_evaluation import (  # noqa: E402
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dataset", help="JSON dataset with independent human adjudication and source hashes")
+    parser.add_argument(
+        "dataset",
+        help="JSON dataset with independent human adjudication, page snapshot hashes, and the registered source-summary fingerprint",
+    )
     parser.add_argument("--max-false-acceptance-rate", type=float, default=None)
     parser.add_argument("--min-precision", type=float, default=None)
     args = parser.parse_args(argv)
