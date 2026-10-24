@@ -110,3 +110,20 @@ def test_channel_reservation_rejects_invalid_keys_channels_and_missing_candidate
         channels.reserve_channel_run(candidate_store, "unknown", "valid-key")
     with pytest.raises(channels.CandidateChannelError, match="does not exist"):
         channels.reserve_channel_run(999999, "research_web", "valid-key")
+
+
+def test_duplicate_reservation_remains_idempotent_after_candidate_status_changes(candidate_store):
+    first = channels.reserve_channel_run(candidate_store, "research_web", "stable-key")
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET status='passed' WHERE id=?",
+            (candidate_store,),
+        )
+
+    repeated = channels.reserve_channel_run(candidate_store, "research_web", "stable-key")
+    assert repeated["id"] == first["id"]
+    assert repeated["should_execute"] is False
+    assert repeated["status"] == "running"
+
+    with pytest.raises(channels.CandidateChannelError, match="awaiting independent tests"):
+        channels.reserve_channel_run(candidate_store, "research_web", "new-key")
