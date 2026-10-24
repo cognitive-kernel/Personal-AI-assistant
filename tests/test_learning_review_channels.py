@@ -289,6 +289,7 @@ def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_pl
     assert task["payload"]["content_sha256"] == hashlib.sha256(
         "A candidate example.\n\n```python\nprint('safe example')\n```".encode()
     ).hexdigest()
+    assert task["payload"]["test_plan_sha256"] == _test_plan_hash(candidate_id)
     duplicate = review_store.post(path, json=request)
     assert duplicate.status_code == 202
     assert duplicate.json()["task_id"] == queued.json()["task_id"]
