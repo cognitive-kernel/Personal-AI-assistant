@@ -113,7 +113,10 @@ def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_sto
         "applications": [],
         "testable_tests": [],
     })
-    body = json.dumps({"choices": [{"message": {"content": answer}}]}).encode("utf-8")
+    body = json.dumps({
+        "choices": [{"message": {"content": answer}}],
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 500, "total_tokens": 1500},
+    }).encode("utf-8")
 
     class Response:
         def __enter__(self): return self
@@ -132,16 +135,35 @@ def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_sto
         return FakeOpener()
 
     monkeypatch.setattr(review.urllib.request, "build_opener", fake_build_opener)
+    monkeypatch.setattr(
+        review, "get_settings",
+        lambda: {"learning_model_pricing_json": json.dumps({
+            "review-model-a": {
+                "input_usd_per_million_tokens": "0.10",
+                "output_usd_per_million_tokens": "0.20",
+                "pricing_version": "test-pricing-v1",
+            }
+        })},
+    )
     result = review.consult_configured_peer_ais(candidate_id)
 
     assert result["status"] == "completed"
     assert result["consulted"] == 1
+    assert result["provider_usage"]["local-test-provider"]["prompt_tokens"] == 1000
+    assert result["provider_usage"]["local-test-provider"]["completion_tokens"] == 500
+    assert result["provider_cost_estimates"]["local-test-provider"]["total_usd"] == "0.00020000"
+    assert result["provider_cost_estimates"]["local-test-provider"]["is_invoice"] is False
     assert captured["url"] == "http://127.0.0.1:8000/v1/chat/completions"
     assert captured["timeout"] == 15
     with db.learning_connection() as connection:
         peer = connection.execute(
             """SELECT provider, model_name, prompt_version, stance, response_sha256
                FROM knowledge_peer_consultations WHERE candidate_id=?""",
+            (candidate_id,),
+        ).fetchone()
+        attempt = connection.execute(
+            """SELECT details_json FROM knowledge_review_attempts
+               WHERE candidate_id=? AND channel='peer_ai' ORDER BY id DESC LIMIT 1""",
             (candidate_id,),
         ).fetchone()
         candidate = connection.execute(
@@ -153,6 +175,8 @@ def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_sto
     assert peer["prompt_version"] == review.PEER_REVIEW_PROMPT_VERSION
     assert peer["stance"] == "supports"
     assert len(peer["response_sha256"]) == 64
+    assert json.loads(attempt["details_json"])["provider_usage"]["local-test-provider"]["usage_available"] is True
+    assert json.loads(attempt["details_json"])["provider_cost_estimates"]["local-test-provider"]["pricing_version"] == "test-pricing-v1"
     assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
 
 
