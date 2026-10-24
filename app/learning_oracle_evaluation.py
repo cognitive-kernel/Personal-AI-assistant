@@ -10,6 +10,8 @@ import re
 from datetime import datetime
 from typing import Any
 
+from .learning_prompt_registry import PROMPT_REGISTRY_VERSION, prompt_version
+
 from .learning_oracles import evaluate_candidate_claim, list_oracles
 
 
@@ -167,6 +169,8 @@ def evaluate_oracle_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     for oracle_report in by_oracle.values():
         oracle_report["metrics"] = metrics(oracle_report["confusion_matrix"])
     return {
+        "evaluator_version": prompt_version("oracle_evaluation"),
+        "prompt_registry_version": PROMPT_REGISTRY_VERSION,
         "case_count": len(per_case),
         "confusion_matrix": aggregate,
         "metrics": metrics(aggregate),
