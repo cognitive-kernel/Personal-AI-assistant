@@ -371,7 +371,7 @@ def handle_candidate_sandbox_review(
 
     successful = bool(outcomes) and len(outcomes) == len(plan["tests"]) and all(item.get("passed") is True for item in outcomes)
     terminal_status = (
-        "unavailable" if any(item.get("status") == "unavailable" for item in outcomes)
+        "unavailable" if any(item.get("status") in {"unavailable", "cancelled", "paused"} for item in outcomes)
         else "completed" if successful else "failed"
     )
     executed_count = sum(
