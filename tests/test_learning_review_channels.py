@@ -454,6 +454,9 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
     assert experience["status"] == "failed"
     assert f"Candidate {candidate_id}" in experience["problem"]
     assert json.loads(experience["test_results_json"])[0]["passed"] is False
+    from app.experience import search_relevant_failures
+    warnings = search_relevant_failures("sandbox test candidate", limit=5)
+    assert any(item["id"] == result["failure_experience"]["experience_id"] for item in warnings)
 
     from app import learning_candidate_experiences
     repeated = learning_candidate_experiences.record_candidate_test_failure(
