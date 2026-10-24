@@ -15,6 +15,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
+
 
 SEARCH_ENDPOINT = "https://html.duckduckgo.com/html/"
 DUCKDUCKGO_LITE_SEARCH_ENDPOINT = "https://lite.duckduckgo.com/lite/"
@@ -124,6 +126,29 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def _resolve_public_ip(url: str) -> str:
+    """Resolve and validate the exact address that the socket transport will use."""
+    parsed = _validate_public_url(url)
+    hostname = (parsed.hostname or "").rstrip(".").lower()
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        literal = ipaddress.ip_address(hostname)
+    except ValueError:
+        try:
+            records = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+            addresses = [
+                ipaddress.ip_address(record[4][0].split("%", 1)[0])
+                for record in records
+            ]
+        except (OSError, ValueError) as exc:
+            raise SourceFetchError("URL host could not be resolved safely.") from exc
+    else:
+        addresses = [literal]
+    if not addresses or any(not address.is_global for address in addresses):
+        raise SourceFetchError("Local, private, or non-public network destinations are blocked.")
+    return addresses[0].compressed
+
+
 def _open(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_bytes: int = MAX_RESPONSE_BYTES):
     _validate_public_url(url)
     # Ignore environment proxy settings so a proxy cannot silently change the
@@ -131,6 +156,8 @@ def _open(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_bytes: int 
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
         _SafeRedirectHandler(),
+        PinnedHTTPHandler(_resolve_public_ip),
+        PinnedHTTPSHandler(_resolve_public_ip),
     )
     request = urllib.request.Request(
         url,
