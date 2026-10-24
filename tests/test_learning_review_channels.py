@@ -267,6 +267,32 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
     assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
 
 
+
+def test_shared_pipeline_budget_blocks_review_actions_when_job_budget_is_exhausted(review_store, monkeypatch):
+    from app.learning_durable_budget import reserve_job_budget
+    candidate_id, job_id = _candidate()
+    reserve_job_budget(job_id, "preexisting_budget_usage", calls=7, predict_tokens=1)
+    called = []
+    monkeypatch.setattr(review, "research_candidate_online", lambda *args, **kwargs: called.append("web") or {"status": "completed"})
+    monkeypatch.setattr(review, "consult_configured_peer_ais", lambda *args, **kwargs: called.append("peer") or {"status": "completed"})
+
+    class Context:
+        task_id = 808
+        def checkpoint(self, value): pass
+
+    result = handle_candidate_review(
+        {"candidate_id": candidate_id, "query": "Python candidate review", "web_mode": "search"},
+        None,
+        Context(),
+    )
+
+    assert result["channels"]["web_research"]["reason"] == "shared_pipeline_budget_exhausted"
+    assert result["channels"]["peer_ai"]["reason"] == "shared_pipeline_budget_exhausted"
+    assert called == []
+    from app.learning_durable_budget import get_job_budget
+    assert get_job_budget(job_id)["calls_used"] == 7
+
+
 def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_plan(review_store, monkeypatch, tmp_path):
     candidate_id, _job_id = _candidate(content="A candidate example.\n\n```python\nprint('safe example')\n```")
     request = {"confirm": True, "request_id": "8a1f3e2a-1f3d-4b7e-9d11-2d2e2fba7c88"}
