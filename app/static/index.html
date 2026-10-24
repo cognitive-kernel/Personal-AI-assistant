@@ -957,32 +957,34 @@ async function refreshLearningCandidates() {
     const form=document.createElement("form");
     const name=document.createElement("input"); name.required=true; name.maxLength=120; name.placeholder="نام آزمون";
     const objective=document.createElement("textarea"); objective.required=true; objective.minLength=10; objective.maxLength=1000; objective.rows=2; objective.placeholder="هدف آزمون";
-    const expected=document.createElement("textarea"); expected.required=true; expected.minLength=10; expected.maxLength=1000; expected.rows=2; expected.placeholder="نتیجهٔ مورد انتظار از oracle مستقل";
+    const expected=document.createElement("textarea"); expected.required=true; expected.minLength=10; expected.maxLength=1000; expected.rows=2; expected.placeholder="توضیح نتیجهٔ مورد انتظار از oracle مستقل";
+    const testCode=document.createElement("textarea"); testCode.maxLength=8192; testCode.rows=4; testCode.placeholder="کد آزمون Python اختیاری؛ برای اجرای sandbox لازم است";
+    const expectedStdout=document.createElement("textarea"); expectedStdout.maxLength=1000; expectedStdout.rows=2; expectedStdout.placeholder="stdout دقیق مورد انتظار (می‌تواند خالی باشد)";
     const note=document.createElement("textarea"); note.required=true; note.minLength=20; note.maxLength=1000; note.rows=2; note.placeholder="یادداشت بررسی انسانی oracle (حداقل ۲۰ نویسه)";
     const confirmLabel=document.createElement("label"); const confirm=document.createElement("input"); confirm.type="checkbox"; confirm.required=true; confirmLabel.append(confirm,document.createTextNode("ثبت این طرح را تأیید می‌کنم"));
     const oracleLabel=document.createElement("label"); const oracle=document.createElement("input"); oracle.type="checkbox"; oracle.required=true; oracleLabel.append(oracle,document.createTextNode("نتیجهٔ مورد انتظار با مرجع مستقل بررسی شده است"));
     const submit=document.createElement("button"); submit.type="submit"; submit.textContent="ذخیرهٔ طرح بدون اجرای آزمون";
     const status=document.createElement("p"); status.setAttribute("role","status");
-    form.append(name,objective,expected,note,confirmLabel,oracleLabel,submit,status);
+    form.append(name,objective,expected,testCode,expectedStdout,note,confirmLabel,oracleLabel,submit,status);
     form.addEventListener("submit",async event=>{
      event.preventDefault(); submit.disabled=true;
      try{
-      const saved=await api("/api/learning/candidates/"+item.id+"/test-plan",{method:"POST",body:JSON.stringify({confirm:confirm.checked,oracle_reviewed:oracle.checked,review_note:note.value,tests:[{name:name.value,objective:objective.value,expected_result:expected.value}]})});
+      const saved=await api("/api/learning/candidates/"+item.id+"/test-plan",{method:"POST",body:JSON.stringify({confirm:confirm.checked,oracle_reviewed:oracle.checked,review_note:note.value,tests:[{name:name.value,objective:objective.value,expected_result:expected.value,python_test_code:testCode.value.trim()||null,expected_stdout:testCode.value.trim()?expectedStdout.value:null}]})});
       status.textContent=saved.note||"طرح آزمون ذخیره شد؛ آزمون اجرا نشده است.";
       await refreshLearningCandidates();
      }catch(error){status.textContent=error.message;submit.disabled=false;}
     });
     card.append(form);
    });
-   const sandboxButton=document.createElement("button"); sandboxButton.type="button"; sandboxButton.textContent="اجرای نمونه‌های Python در sandbox";
-   sandboxButton.disabled=!item.integrity_valid||!planExists||item.test_plan?.oracle_reviewed!==true;
+   const sandboxButton=document.createElement("button"); sandboxButton.type="button"; sandboxButton.textContent="اجرای آزمون‌های Python در sandbox";
+   sandboxButton.disabled=!item.integrity_valid||!planExists||item.test_plan?.oracle_reviewed!==true||!Array.isArray(item.test_plan?.tests)||item.test_plan.tests.length<1||item.test_plan.tests.length>3||item.test_plan.tests.some(test=>typeof test.python_test_code!=="string"||!test.python_test_code.trim()||typeof test.expected_stdout!=="string");
    sandboxButton.addEventListener("click",async()=>{
-    if(!window.confirm("فقط بلوک‌های کد Python داخل درس در محیط Docker بدون شبکه اجرا می‌شوند. این بررسی smoke-test است و دانش را تأیید یا ارتقا نمی‌دهد. ادامه می‌دهید؟"))return;
+    if(!window.confirm("کد آزمون ثبت‌شده در محیط Docker بدون شبکه اجرا و stdout دقیق مقایسه می‌شود. نتیجه به‌تنهایی درستی علمی را ثابت نمی‌کند و دانش را ارتقا نمی‌دهد. ادامه می‌دهید؟"))return;
     sandboxButton.disabled=true; meta.textContent="در حال ثبت آزمون محدود sandbox در صف پایدار…";
     try{
      const requestId=(globalThis.crypto&&typeof globalThis.crypto.randomUUID==="function")?globalThis.crypto.randomUUID():(Date.now().toString(36)+"-"+Math.random().toString(36).slice(2));
      const queued=await api("/api/learning/candidates/"+item.id+"/sandbox-test",{method:"POST",body:JSON.stringify({confirm:true,request_id:requestId})});
-     meta.textContent="آزمون sandbox در صف ثبت شد؛ شناسهٔ کار: "+queued.task_id+". نتیجه فقط smoke-test است و دانش ارتقا نمی‌یابد.";
+     meta.textContent="آزمون sandbox در صف ثبت شد؛ شناسهٔ کار: "+queued.task_id+". نتیجهٔ آزمون ثبت شد؛ دانش ارتقا نمی‌یابد.";
     }catch(error){meta.textContent=error.message;sandboxButton.disabled=false;}
    });
    actions.append(detailButton,reviewButton,historyButton,planButton,sandboxButton);
