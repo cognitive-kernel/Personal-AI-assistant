@@ -4,7 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, learning_review_channels as review, task_manager
+from app import db, learning, learning_review_channels as review, task_manager, sandbox, sandbox_consent
 from app.learning_review_tasks import handle_candidate_review
 from app.main import app
 from app.task_worker import TaskContext
@@ -250,3 +250,87 @@ def test_candidate_review_worker_runs_channels_independently_and_never_promotes(
             (candidate_id,),
         ).fetchone()
     assert tuple(candidate) == ("L0", "unverified", "awaiting_test")
+
+
+def test_candidate_sandbox_review_requires_consent_configuration_and_reviewed_plan(review_store, monkeypatch, tmp_path):
+    candidate_id, _job_id = _candidate(content="A candidate example.\\n\\n```python\\nprint('safe example')\\n```")
+    request = {"confirm": True, "request_id": "8a1f3e2a-1f3d-4b7e-9d11-2d2e2fba7c88"}
+    path = f"/api/learning/candidates/{candidate_id}/sandbox-test"
+
+    denied = review_store.post(path, json=request)
+    assert denied.status_code == 409
+
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps({"version": 1, "oracle_reviewed": True, "tests": [{"name": "reviewed"}]}), candidate_id),
+        )
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+
+    queued = review_store.post(path, json=request)
+    assert queued.status_code == 202
+    task = task_manager.get_task(queued.json()["task_id"])
+    assert task["task_type"] == "learning.sandbox_candidate"
+    assert task["payload"]["content_sha256"] == hashlib.sha256(
+        "A candidate example.\\n\\n```python\\nprint('safe example')\\n```".encode()
+    ).hexdigest()
+    duplicate = review_store.post(path, json=request)
+    assert duplicate.status_code == 202
+    assert duplicate.json()["task_id"] == queued.json()["task_id"]
+
+
+def test_candidate_sandbox_worker_runs_only_fenced_examples_and_never_promotes(review_store, monkeypatch, tmp_path):
+    from app.learning_review_tasks import handle_candidate_sandbox_review
+    from app.sandbox import SandboxResult
+
+    content = "Example lesson.\\n\\n```python\\nprint('safe example')\\n```"
+    candidate_id, _job_id = _candidate(content=content)
+    digest = hashlib.sha256(content.encode()).hexdigest()
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET test_plan_json=? WHERE id=?",
+            (json.dumps({"version": 1, "oracle_reviewed": True, "tests": [{"name": "reviewed"}]}), candidate_id),
+        )
+    docker = tmp_path / "docker"
+    docker.write_text("test executable", encoding="utf-8")
+    monkeypatch.setenv("SANDBOX_ENABLED", "true")
+    monkeypatch.setenv("SANDBOX_DOCKER_EXECUTABLE", str(docker))
+    monkeypatch.setenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim@sha256:" + "a" * 64)
+    sandbox_consent.grant_consent()
+    calls = []
+    monkeypatch.setattr(
+        sandbox, "run_python",
+        lambda source, **kwargs: (calls.append(source) or SandboxResult("succeeded", 0, "ok", "", 1)),
+    )
+
+    class Context:
+        task_id = 202
+        def checkpoint(self, value): pass
+        def control_status(self): return "running"
+
+    result = handle_candidate_sandbox_review(
+        {"candidate_id": candidate_id, "content_sha256": digest, "request_id": "sandbox-request"},
+        None,
+        Context(),
+    )
+
+    assert calls == ["print('safe example')"]
+    assert result["status"] == "completed"
+    assert result["promoted"] is False
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        attempt = connection.execute(
+            "SELECT channel, status, details_json FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
+            (candidate_id,),
+        ).fetchone()
+    assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
+    assert tuple(attempt[:2]) == ("sandbox", "completed")
+    assert json.loads(attempt["details_json"])["interpretation"].startswith("Smoke checks only")
