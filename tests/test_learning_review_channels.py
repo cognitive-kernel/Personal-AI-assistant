@@ -821,3 +821,17 @@ def test_peer_request_bypasses_ambient_proxy_configuration(review_store, monkeyp
     ]
     assert len(proxy_handlers) == 1
     assert proxy_handlers[0].proxies == {}
+    pinned_handlers = [
+        handler for handler in captured["handlers"]
+        if isinstance(handler, review.PinnedHTTPSHandler)
+    ]
+    assert len(pinned_handlers) == 1
+    assert pinned_handlers[0]._resolver("https://peer.example.test/v1/chat/completions") == "8.8.8.8"
+    redirect_handlers = [
+        handler for handler in captured["handlers"]
+        if isinstance(handler, review._RejectPeerRedirectHandler)
+    ]
+    assert len(redirect_handlers) == 1
+    assert redirect_handlers[0].redirect_request(
+        None, None, 302, "Found", {}, "https://other.example/"
+    ) is None
