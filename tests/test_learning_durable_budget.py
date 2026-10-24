@@ -166,3 +166,32 @@ def test_daily_global_token_ceiling_is_shared_across_jobs(learning_store):
     assert denied["global_calls_reserved_today"] == 1
     assert denied["global_predict_tokens_reserved_today"] == 800
     assert denied["global_budget_exhausted"] is False
+
+
+def test_concurrent_global_budget_reservations_never_exceed_daily_ceiling(learning_store):
+    from concurrent.futures import ThreadPoolExecutor
+
+    job_ids = [
+        learning.create_job(f"Concurrent global budget {index}")["id"]
+        for index in range(8)
+    ]
+
+    def reserve(job_id):
+        return reserve_job_budget(
+            job_id, "initial_generation", calls=1, predict_tokens=1000,
+            max_global_calls_per_day=3, max_global_predict_tokens_per_day=3000,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(reserve, job_ids))
+
+    accepted = [item for item in outcomes if item["reserved"]]
+    denied = [item for item in outcomes if not item["reserved"]]
+    assert len(accepted) == 3
+    assert len(denied) == 5
+    assert all(item["reason"] == "global_budget_exhausted" for item in denied)
+    snapshot = get_job_budget(job_ids[-1])
+    assert snapshot["global_calls_reserved_today"] == 3
+    assert snapshot["global_predict_tokens_reserved_today"] == 3000
+    assert snapshot["global_calls_reserved_today"] <= snapshot["global_max_calls_per_day"]
+    assert snapshot["global_predict_tokens_reserved_today"] <= snapshot["global_max_predict_tokens_per_day"]
