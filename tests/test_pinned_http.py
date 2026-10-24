@@ -74,6 +74,7 @@ def test_pinned_https_handler_resolves_each_request_url(monkeypatch):
 
     def fake_do_open(factory, req, **kwargs):
         captured["request_url"] = req.full_url
+        captured["connection_kwargs"] = dict(kwargs)
         captured["connection"] = factory("docs.example", **kwargs)
         return "opened"
 
@@ -83,3 +84,5 @@ def test_pinned_https_handler_resolves_each_request_url(monkeypatch):
     assert handler.https_open(request) == "opened"
     assert captured["url"] == "https://docs.example/page"
     assert captured["connection"]._pinned_ip == "93.184.216.34"
+    assert "check_hostname" not in captured["connection_kwargs"]
+    assert captured["connection_kwargs"]["context"].check_hostname is True
