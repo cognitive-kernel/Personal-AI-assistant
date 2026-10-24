@@ -435,6 +435,7 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
     )
     assert result["status"] == "failed"
     assert result["outcomes"][0]["passed"] is False
+    assert result["failure_experience"]["created"] is True
     with db.learning_connection() as connection:
         candidate = connection.execute(
             "SELECT status, trust_level, learning_status FROM temporary_knowledge_candidates WHERE id=?",
@@ -444,5 +445,23 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
             "SELECT status FROM knowledge_review_attempts WHERE candidate_id=? ORDER BY id DESC LIMIT 1",
             (candidate_id,),
         ).fetchone()
+        experience = connection.execute(
+            "SELECT status, problem, test_results_json FROM learning_experiences WHERE id=?",
+            (result["failure_experience"]["experience_id"],),
+        ).fetchone()
     assert tuple(candidate) == ("awaiting_test", "L0", "unverified")
     assert attempt["status"] == "failed"
+    assert experience["status"] == "failed"
+    assert f"Candidate {candidate_id}" in experience["problem"]
+    assert json.loads(experience["test_results_json"])[0]["passed"] is False
+
+    from app import learning_candidate_experiences
+    repeated = learning_candidate_experiences.record_candidate_test_failure(
+        candidate_id,
+        topic="Python candidate review",
+        content_sha256=digest,
+        test_plan_sha256=_test_plan_hash(candidate_id),
+        outcomes=result["outcomes"],
+    )
+    assert repeated["created"] is False
+    assert repeated["experience_id"] == result["failure_experience"]["experience_id"]
