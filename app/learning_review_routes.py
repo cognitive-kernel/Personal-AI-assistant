@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from .db import learning_connection
-from . import sandbox_consent, sandbox_tasks
+from . import sandbox_consent, sandbox_tasks, learning_candidate_channels
 from .learning_review_tasks import enqueue_candidate_review, enqueue_candidate_sandbox_review
 from .task_routes import require_loopback_client
 
@@ -123,6 +123,7 @@ def get_candidate_review_history(candidate_id: int) -> dict[str, Any]:
             ).fetchall()
         return {
             "candidate_id": candidate_id,
+            "channel_runs": learning_candidate_channels.list_candidate_channel_runs(candidate_id),
             "attempts": [
                 {**dict(row), "details": _decode(row["details_json"], "attempt details")}
                 for row in attempts
