@@ -90,3 +90,85 @@ def record_candidate_test_failure(
         )
         experience_id = int(cursor.lastrowid)
     return {"experience_id": experience_id, "created": True, "failure_sha256": failure_sha256}
+
+
+def record_candidate_channel_failure(
+    candidate_id: int,
+    *,
+    topic: str,
+    content_sha256: str,
+    channel: str,
+    status: str,
+    error_type: str = "unknown",
+) -> dict[str, Any]:
+    """Persist an idempotent web/peer channel failure as a cautionary, searchable experience."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise ValueError("candidate_id must be a positive integer.")
+    if not isinstance(topic, str) or not topic.strip():
+        raise ValueError("topic is required.")
+    if not isinstance(content_sha256, str) or len(content_sha256) != 64 or any(
+        char not in "0123456789abcdef" for char in content_sha256
+    ):
+        raise ValueError("content_sha256 must be a lowercase SHA-256 digest.")
+    if channel not in {"research_web", "peer_ai"}:
+        raise ValueError("Only web and peer-AI review failures are supported.")
+    if status not in {"failed", "unavailable"}:
+        raise ValueError("Only failed or unavailable channel outcomes may be recorded.")
+    safe_error_type = error_type[:80] if isinstance(error_type, str) else "unknown"
+    identity = {
+        "candidate_id": candidate_id,
+        "content_sha256": content_sha256,
+        "channel": channel,
+        "status": status,
+        "error_type": safe_error_type,
+    }
+    failure_sha256 = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    channel_label = "web research" if channel == "research_web" else "peer-AI review"
+    title = (f"{channel_label} failure: {topic.strip()}")[:300]
+    problem = (
+        f"Candidate {candidate_id} {channel_label} returned {status}; "
+        f"content_sha256={content_sha256}; failure_sha256={failure_sha256}. "
+        "This is an operational review warning, not evidence that the lesson is false."
+    )
+    hypothesis = (
+        f"The {channel_label} channel did not produce usable review evidence "
+        f"(error_type={safe_error_type}); retry or inspect channel configuration before relying on its absence."
+    )
+    plan = [{
+        "channel": channel,
+        "status": status,
+        "error_type": safe_error_type,
+        "content_sha256": content_sha256,
+        "failure_sha256": failure_sha256,
+    }]
+    results = [{
+        "channel": channel,
+        "status": status,
+        "error_type": safe_error_type,
+        "usable_evidence": False,
+    }]
+    takeaway = (
+        f"Treat the {channel_label} result for candidate {candidate_id} as unavailable evidence. "
+        "Do not infer truth or falsity, and do not promote the candidate because another channel failed."
+    )
+    init_databases()
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        existing = connection.execute(
+            "SELECT id FROM learning_experiences WHERE topic=? AND problem=? AND hypothesis=?",
+            (title, problem, hypothesis),
+        ).fetchone()
+        if existing is not None:
+            return {"experience_id": int(existing["id"]), "created": False, "failure_sha256": failure_sha256}
+        cursor = connection.execute(
+            """INSERT INTO learning_experiences(
+                   topic, problem, hypothesis, status, source_evidence_json,
+                   test_plan_json, test_results_json, takeaway, version
+               ) VALUES (?, ?, ?, 'failed', '[]', ?, ?, ?, 1)""",
+            (title, problem, hypothesis, json.dumps(plan, ensure_ascii=False),
+             json.dumps(results, ensure_ascii=False), takeaway),
+        )
+        experience_id = int(cursor.lastrowid)
+    return {"experience_id": experience_id, "created": True, "failure_sha256": failure_sha256}
