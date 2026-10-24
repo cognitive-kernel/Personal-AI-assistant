@@ -9,7 +9,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from . import learning_review_channels as channels, sandbox, sandbox_consent
+from . import learning_review_channels as channels, sandbox, sandbox_consent, learning_candidate_experiences
 from .task_manager import create_task
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
 
@@ -196,7 +196,7 @@ def handle_candidate_sandbox_review(
     try:
         with channels.learning_connection() as connection:
             row = connection.execute(
-                """SELECT content, content_sha256, status, test_plan_json
+                """SELECT content, content_sha256, topic, status, test_plan_json
                    FROM temporary_knowledge_candidates WHERE id=?""",
                 (candidate_id,),
             ).fetchone()
@@ -321,9 +321,22 @@ def handle_candidate_sandbox_review(
                  "outcomes": outcomes,
                  "interpretation": "Human-attested expected stdout was compared exactly; this is bounded evidence, not universal truth and never promotes the candidate."},
     )
+    failure_experience = None
+    if terminal_status == "failed":
+        try:
+            failure_experience = learning_candidate_experiences.record_candidate_test_failure(
+                candidate_id,
+                topic=str(row["topic"] or f"Candidate {candidate_id}"),
+                content_sha256=actual_hash,
+                test_plan_sha256=actual_plan_hash,
+                outcomes=outcomes,
+            )
+        except Exception as exc:
+            raise RetryableTaskError("Sandbox failure was recorded, but its learning experience could not be persisted.") from exc
     return {
         "candidate_id": candidate_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash,
         "status": terminal_status, "executed": executed_count, "outcomes": outcomes,
+        "failure_experience": failure_experience,
         "promoted": False,
         "note": "Sandbox tests compare exact stdout against a human-attested expectation; results never promote candidate knowledge.",
     }
