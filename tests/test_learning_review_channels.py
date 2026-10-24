@@ -154,7 +154,7 @@ def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_sto
     assert result["provider_cost_estimates"]["local-test-provider"]["total_usd"] == "0.00020000"
     assert result["provider_cost_estimates"]["local-test-provider"]["is_invoice"] is False
     assert captured["url"] == "http://127.0.0.1:8000/v1/chat/completions"
-    assert captured["timeout"] == 15
+    assert captured["timeout"] == 6
     with db.learning_connection() as connection:
         peer = connection.execute(
             """SELECT provider, model_name, prompt_version, stance, response_sha256
