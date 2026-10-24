@@ -203,14 +203,18 @@ def queue_candidate_sandbox_review(
                 or len(test["expected_stdout"]) > 1000
             ):
                 raise HTTPException(status_code=409, detail="Each sandbox test needs bounded Python code and expected stdout.")
+        canonical_plan = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        plan_hash = hashlib.sha256(canonical_plan.encode("utf-8")).hexdigest()
         task = enqueue_candidate_sandbox_review(
-            candidate_id, content_sha256=actual_hash, request_id=str(request.request_id)
+            candidate_id, content_sha256=actual_hash, test_plan_sha256=plan_hash,
+            request_id=str(request.request_id)
         )
         return {
             "candidate_id": candidate_id,
             "task_id": task["id"],
             "task_status": task["status"],
             "content_sha256": actual_hash,
+            "test_plan_sha256": plan_hash,
             "promoted": False,
             "note": "Runs the human-reviewed test code and compares stdout exactly; it never promotes knowledge.",
         }
