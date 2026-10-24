@@ -4,7 +4,7 @@ The learning pipeline records Ollama-reported prompt/output token counts and tim
 
 ## Optional exact-model USD estimates
 
-Set `LEARNING_MODEL_PRICING_JSON` in the process environment only when a reviewed rate card is available. The JSON object must key each entry by the exact model identifier recorded in learning provenance:
+Set the `learning_model_pricing_json` application setting only when a reviewed rate card is available. Its value must be a JSON object keyed by the exact model identifier recorded in learning provenance:
 
 ```json
 {
