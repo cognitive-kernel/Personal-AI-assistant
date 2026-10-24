@@ -15,7 +15,7 @@ def _case(case_id, expected, *, content, claim):
         "content": content,
         "claim": claim,
         "expected_decision": expected,
-        "source_url": "https://docs.python.org/3/library/stdtypes.html",
+        "source_url": "https://docs.python.org/3/library/stdtypes.html#dict.get",
         "source_sha256": "a" * 64,
         "adjudication": {
             "reviewer": "independent-human-reviewer",
