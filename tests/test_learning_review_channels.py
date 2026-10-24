@@ -33,6 +33,16 @@ def _candidate(*, topic="Python candidate review", content="A temporary lesson w
         return int(cursor.lastrowid), job["id"]
 
 
+def _test_plan_hash(candidate_id: int) -> str:
+    with db.learning_connection() as connection:
+        raw = connection.execute(
+            "SELECT test_plan_json FROM temporary_knowledge_candidates WHERE id=?", (candidate_id,)
+        ).fetchone()["test_plan_json"]
+    plan = json.loads(raw)
+    canonical = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def test_web_research_persists_context_without_promoting_candidate(review_store, monkeypatch):
     from app import web_sources
     candidate_id, _job_id = _candidate()
@@ -314,7 +324,7 @@ def test_candidate_sandbox_worker_runs_reviewed_test_code_and_never_promotes(rev
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
-        {"candidate_id": candidate_id, "content_sha256": digest, "request_id": "sandbox-request"},
+        {"candidate_id": candidate_id, "content_sha256": digest, "test_plan_sha256": _test_plan_hash(candidate_id), "request_id": "sandbox-request"},
         None,
         Context(),
     )
@@ -362,7 +372,7 @@ def test_candidate_sandbox_records_missing_docker_as_unavailable_not_failed(revi
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
-        {"candidate_id": candidate_id, "content_sha256": digest, "request_id": "sandbox-unavailable"},
+        {"candidate_id": candidate_id, "content_sha256": digest, "test_plan_sha256": _test_plan_hash(candidate_id), "request_id": "sandbox-unavailable"},
         None, Context(),
     )
     assert result["status"] == "unavailable"
@@ -403,7 +413,7 @@ def test_candidate_sandbox_expected_stdout_mismatch_is_a_failed_test(review_stor
         def control_status(self): return "running"
 
     result = handle_candidate_sandbox_review(
-        {"candidate_id": candidate_id, "content_sha256": digest, "request_id": "sandbox-mismatch"},
+        {"candidate_id": candidate_id, "content_sha256": digest, "test_plan_sha256": _test_plan_hash(candidate_id), "request_id": "sandbox-mismatch"},
         None, Context(),
     )
     assert result["status"] == "failed"
