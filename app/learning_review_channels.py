@@ -17,8 +17,9 @@ from typing import Any
 
 from .db import get_settings, init_databases, learning_connection
 from .pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
+from .learning_prompt_registry import prompt_version
 
-PEER_REVIEW_PROMPT_VERSION = "learning-peer-review-v2"
+PEER_REVIEW_PROMPT_VERSION = prompt_version("peer_review")
 _ALLOWED_EVIDENCE_KINDS = {"supporting", "contradicting", "context", "application"}
 _ALLOWED_STANCES = {"supports", "contradicts", "mixed", "insufficient_evidence"}
 _ALLOWED_ATTEMPT_CHANNELS = {"web_research", "peer_ai", "sandbox"}
