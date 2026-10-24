@@ -338,6 +338,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
                     {"role": "user", "content": prompt},
                 ],
                 "temperature": 0,
+                "max_tokens": 1500,
             }, ensure_ascii=False).encode("utf-8")
             headers = {"Content-Type": "application/json", "Accept": "application/json"}
             api_key = os.environ.get(key_env, "").strip() if key_env else ""
