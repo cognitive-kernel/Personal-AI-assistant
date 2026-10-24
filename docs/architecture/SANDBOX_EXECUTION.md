@@ -89,3 +89,12 @@ The normal CI suite uses mocked Docker execution for deterministic unit tests. T
 The manual workflow, `.github/workflows/sandbox-integration.yml`, remains available for an operator-selected, official Python image digest. Use **Actions → Sandbox integration → Run workflow** and supply a verified digest-pinned reference. Both workflows check non-root execution, read-only root/mounts, no network, resource limits, timeout behavior, output limits, and absence of host-execution fallback.
 
 The automated job makes real-container behavior a repeatable acceptance gate for relevant code changes; it does not replace a local deployment test. Passing unit tests alone does not prove Docker runtime behavior. The Ollama network-boundary issue #52 remains open pending an independent security review.
+
+
+## Learning-candidate smoke review
+
+The learning review pipeline can queue `learning.sandbox_candidate` through the durable learning worker. Submission is loopback-only and requires all of the following: explicit request confirmation, current sandbox consent, valid local Docker configuration with a digest-pinned official Python image, an intact candidate content hash, candidate status `awaiting_test`, and a previously saved test plan with human oracle-review attestation.
+
+The handler runs at most three fenced `python`/`py` code examples from the candidate text, with an 8 KiB per-example source limit, 10-second execution timeout, and 8 KiB output cap. Each run remains network-isolated and does not pull an image or fall back to host execution. Consent is rechecked between examples and during execution.
+
+These runs are smoke checks only. The current test-plan schema stores expected results as prose and is not an executable oracle contract. Therefore even a successful example is not evidence that the lesson is factually correct and cannot promote the candidate, trust level, or persistent knowledge. A later step must introduce versioned executable tests tied to trusted fixtures/oracles and compare actual results to those expectations before any acceptance policy is considered.
