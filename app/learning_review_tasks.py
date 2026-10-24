@@ -103,6 +103,8 @@ def handle_candidate_review(
             value = action()
             if not isinstance(value, dict):
                 value = {"status": "failed", "error_type": "invalid_channel_result"}
+        except (RetryableTaskError, PermanentTaskError):
+            raise
         except Exception as exc:
             value = {"status": "failed", "error_type": type(exc).__name__}
         channel_status = str(value.get("status", "failed"))
