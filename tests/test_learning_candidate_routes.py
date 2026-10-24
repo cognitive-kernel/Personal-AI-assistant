@@ -163,3 +163,70 @@ def test_candidate_api_rejects_unknown_status_and_missing_candidate(candidate_st
     assert invalid_filter.status_code == 422
     missing = candidate_store.get("/api/learning/candidates/999999")
     assert missing.status_code == 404
+
+
+def test_curated_oracle_catalog_is_versioned_and_fails_closed(review_store):
+    from app.learning_oracles import evaluate_candidate_claim, list_oracles
+
+    catalog = list_oracles()
+    assert catalog
+    assert all(item["version"] == 1 and len(item["source_summary_sha256"]) == 64 for item in catalog)
+    claim = "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document."
+    matched = evaluate_candidate_claim(
+        f"Python JSON handling. {claim}",
+        oracle_id="python.json-decode-error",
+        oracle_version=1,
+        claim=claim,
+    )
+    assert matched["status"] == "matched"
+    assert matched["promoted"] is False
+    assert matched["source_url"] == "https://docs.python.org/3/library/json.html"
+
+    assert evaluate_candidate_claim(
+        "This lesson says nothing about JSON parsing.",
+        oracle_id="python.json-decode-error",
+        oracle_version=1,
+        claim=claim,
+    )["reason"] == "claim_not_present_in_candidate"
+    assert evaluate_candidate_claim(
+        claim,
+        oracle_id="python.json-decode-error",
+        oracle_version=999,
+        claim=claim,
+    )["reason"] == "unknown_oracle_version"
+    assert evaluate_candidate_claim(
+        "Python can parse JSON.",
+        oracle_id="python.json-decode-error",
+        oracle_version=1,
+        claim="Python can parse JSON.",
+    )["reason"] == "claim_not_in_curated_reference_set"
+
+
+def test_test_plan_curated_oracle_must_match_candidate_content(review_store):
+    candidate_claim = "Python's json.loads raises JSONDecodeError when the input is not a valid JSON document."
+    candidate_id, _job_id = _candidate(content=f"JSON parsing behavior. {candidate_claim}")
+    request = {
+        "confirm": True,
+        "oracle_reviewed": True,
+        "review_note": "The curated claim was checked against the versioned reference catalog.",
+        "tests": [{
+            "name": "json-decode-reference",
+            "objective": "Check a narrowly curated Python JSON claim.",
+            "expected_result": "The exact curated claim appears in the candidate.",
+            "python_test_code": "print('reviewed')",
+            "expected_stdout": "reviewed",
+            "oracle_id": "python.json-decode-error",
+            "oracle_version": 1,
+            "claim": candidate_claim,
+        }],
+    }
+    saved = review_store.post(f"/api/learning/candidates/{candidate_id}/test-plan", json=request)
+    assert saved.status_code == 201
+    assert saved.json()["test_plan"]["version"] == 3
+
+    other_id, _job_id = _candidate(content="Python can parse JSON.")
+    bad = review_store.post(
+        f"/api/learning/candidates/{other_id}/test-plan",
+        json={**request, "tests": [{**request["tests"][0], "claim": "Python can parse JSON."}]},
+    )
+    assert bad.status_code == 422
