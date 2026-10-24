@@ -305,7 +305,6 @@ def handle_candidate_sandbox_review(
                     raise PermanentTaskError("Curated oracle validation failed closed.")
             if (
                 not isinstance(test.get("name"), str)
-                or not isinstance(test.get("name"), str)
                 or not test["name"].strip()
                 or not isinstance(test.get("python_test_code"), str)
                 or not test["python_test_code"].strip()
