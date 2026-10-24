@@ -838,7 +838,7 @@ def test_peer_request_bypasses_ambient_proxy_configuration(review_store, monkeyp
     result = review.consult_configured_peer_ais(candidate_id)
 
     assert result["consulted"] == 1
-    assert captured["timeout"] == 6
+    assert captured["timeout"] == 15
     proxy_handlers = [
         handler for handler in captured["handlers"]
         if isinstance(handler, review.urllib.request.ProxyHandler)
