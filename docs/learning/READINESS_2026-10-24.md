@@ -31,6 +31,6 @@ endpoint فقط loopback `GET /api/learning/operational-metrics` این داده
 
 ## وضعیت اعتبارسنجی CI
 
-آخرین تغییرات کد و تست‌ها در شاخهٔ `work/learning-review-channels` هستند. این سند تا سبز شدن workflowهای همان head، وضعیت CI را تأییدشده اعلام نمی‌کند. برای pull، هر سه workflow روی یک SHA واحد باید موفق باشند: tests (شامل Windows storage regressions)، Browser E2E و dependency audit.
+وضعیت CI لحظه‌ای را از [PR #459](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/459) بررسی کنید؛ این سند عمداً وضعیت workflowها را به‌صورت ثابت و قابل‌کهنه‌شدن ثبت نمی‌کند. معیار pull این است که روی یک SHA واحد هر سه workflow موفق باشند: tests (شامل Windows storage regressions)، Browser E2E و dependency audit.
 
 هیچ ادعایی دربارهٔ هزینهٔ مالی واقعی مطرح نمی‌شود مگر اینکه usage کامل و rate card معتبر برای همان provider/model در دسترس باشد. کاتالوگ Oracle نیز provisional باقی می‌ماند؛ این دو محدودیت، طبق درخواست، معیار تکمیل کدنویسی نیستند.
