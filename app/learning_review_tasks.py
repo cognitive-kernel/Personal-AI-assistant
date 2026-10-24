@@ -1,4 +1,4 @@
-"""Durable task handler for independent web and peer-AI review of lesson candidates."""
+"""Durable task handlers for web, peer-AI, and controlled sandbox review of lesson candidates."""
 from __future__ import annotations
 
 import hashlib
@@ -272,7 +272,7 @@ def handle_candidate_sandbox_review(
             outcomes.append({"test": test["name"], "status": "cancelled", "reason": "consent_revoked"})
             break
         context.checkpoint({"phase": "candidate_sandbox_test", "candidate_id": candidate_id,
-                            "content_sha256": actual_hash, "test": test["name"],
+                            "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash, "test": test["name"],
                             "index": index, "total": len(plan["tests"])})
         def control_check() -> str:
             status = context.control_status()
@@ -311,13 +311,13 @@ def handle_candidate_sandbox_review(
     )
     channels.record_review_attempt(
         candidate_id, channel="sandbox", status=terminal_status,
-        details={"request_id": request_id, "content_sha256": actual_hash, "image": image,
+        details={"request_id": request_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash, "image": image,
                  "executed": executed_count, "passed": sum(item.get("passed") is True for item in outcomes),
                  "outcomes": outcomes,
                  "interpretation": "Human-attested expected stdout was compared exactly; this is bounded evidence, not universal truth and never promotes the candidate."},
     )
     return {
-        "candidate_id": candidate_id, "content_sha256": actual_hash,
+        "candidate_id": candidate_id, "content_sha256": actual_hash, "test_plan_sha256": actual_plan_hash,
         "status": terminal_status, "executed": executed_count, "outcomes": outcomes,
         "promoted": False,
         "note": "Sandbox tests compare exact stdout against a human-attested expectation; results never promote candidate knowledge.",
