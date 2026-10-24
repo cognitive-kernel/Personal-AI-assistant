@@ -99,8 +99,29 @@ def handle_candidate_review(
             raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
         except ValueError as exc:
             raise PermanentTaskError("Candidate channel ledger rejected the review.") from exc
+        def persist_failure(value: dict[str, Any]) -> None:
+            channel_status = str(value.get("status", "unknown"))
+            if channel not in {"research_web", "peer_ai"} or channel_status not in {"failed", "unavailable"}:
+                return
+            try:
+                learning_candidate_experiences.record_candidate_channel_failure(
+                    candidate_id,
+                    topic=str(row["topic"] or f"Candidate {candidate_id}"),
+                    content_sha256=content_hash,
+                    channel=channel,
+                    status=channel_status,
+                    error_type=str(value.get("error_type", value.get("reason", "unknown"))),
+                )
+            except Exception as exc:
+                # The ledger result is already durable. Retrying is safe: the terminal
+                # channel record is immutable and experience creation is idempotent.
+                raise RetryableTaskError("Channel failure was recorded, but its learning experience could not be persisted.") from exc
+
         if not reservation["should_execute"]:
-            return reservation["result"]
+            cached = reservation["result"]
+            if isinstance(cached, dict):
+                persist_failure(cached)
+            return cached
         try:
             value = action()
             if not isinstance(value, dict):
@@ -123,6 +144,7 @@ def handle_candidate_review(
             raise RetryableTaskError("Candidate channel ledger is temporarily unavailable.") from exc
         except ValueError as exc:
             raise PermanentTaskError("Candidate channel ledger rejected the result.") from exc
+        persist_failure(value)
         return value
 
     def review_web() -> dict[str, Any]:
