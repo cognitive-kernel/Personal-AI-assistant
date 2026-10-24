@@ -82,6 +82,21 @@ def test_candidate_test_plan_requires_explicit_confirmation_and_independent_orac
     )
     assert no_oracle.status_code == 422
 
+    one_sided_executable_test = {
+        **base,
+        "tests": [{
+            "name": "behavior contract",
+            "objective": "Check the stated behavior against a documented contract.",
+            "expected_result": "The result must match the documented contract exactly.",
+            "python_test_code": "print('result')",
+        }],
+    }
+    rejected_executable_test = candidate_store.post(
+        f"/api/learning/candidates/{candidate_id}/test-plan",
+        json=one_sided_executable_test,
+    )
+    assert rejected_executable_test.status_code == 422
+
     saved = candidate_store.post(
         f"/api/learning/candidates/{candidate_id}/test-plan",
         json=base,
@@ -91,6 +106,7 @@ def test_candidate_test_plan_requires_explicit_confirmation_and_independent_orac
     assert result["executed"] is False
     assert result["promoted"] is False
     assert result["test_plan"]["oracle_reviewed"] is True
+    assert result["test_plan"]["version"] == 2
 
     detail = candidate_store.get(f"/api/learning/candidates/{candidate_id}").json()["candidate"]
     assert detail["status"] == "awaiting_test"
