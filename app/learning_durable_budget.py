@@ -42,7 +42,7 @@ def reserve_job_budget(
     stage = stage.strip()
     if calls == 0 and predict_tokens != 0:
         raise LearningBudgetError("A zero-call reservation cannot reserve output tokens.")
-    if calls > 0 and predict_tokens == 0 and stage not in {"sandbox_execution"}:
+    if calls > 0 and predict_tokens == 0 and not stage.startswith("sandbox_execution_"):
         raise LearningBudgetError("Model call reservations must reserve a positive token ceiling.")
 
     init_databases()
