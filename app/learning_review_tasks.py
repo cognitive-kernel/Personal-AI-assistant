@@ -147,25 +147,28 @@ def handle_candidate_review(
 
 
 LEARNING_SANDBOX_REVIEW_TASK_TYPE = "learning.sandbox_candidate"
-_ALLOWED_SANDBOX_REVIEW_KEYS = {"candidate_id", "content_sha256", "request_id"}
+_ALLOWED_SANDBOX_REVIEW_KEYS = {"candidate_id", "content_sha256", "test_plan_sha256", "request_id"}
 
 
 def enqueue_candidate_sandbox_review(
-    candidate_id: int, *, content_sha256: str, request_id: str
+    candidate_id: int, *, content_sha256: str, test_plan_sha256: str, request_id: str
 ) -> dict[str, Any]:
     """Queue an explicitly consented, bounded run of human-reviewed candidate tests."""
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise ValueError("candidate_id must be a positive integer.")
     if not isinstance(content_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", content_sha256) is None:
         raise ValueError("content_sha256 must be a lowercase SHA-256 digest.")
+    if not isinstance(test_plan_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", test_plan_sha256) is None:
+        raise ValueError("test_plan_sha256 must be a lowercase SHA-256 digest.")
     if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 100:
         raise ValueError("request_id is required and must be at most 100 characters.")
     return create_task(
         LEARNING_SANDBOX_REVIEW_TASK_TYPE,
-        {"candidate_id": candidate_id, "content_sha256": content_sha256, "request_id": request_id.strip()},
+        {"candidate_id": candidate_id, "content_sha256": content_sha256,
+         "test_plan_sha256": test_plan_sha256, "request_id": request_id.strip()},
         priority=0,
         max_attempts=1,
-        dedupe_key=f"learning-sandbox-review:{candidate_id}:{content_sha256}:{request_id.strip()}",
+        dedupe_key=f"learning-sandbox-review:{candidate_id}:{content_sha256}:{test_plan_sha256}:{request_id.strip()}",
     )
 
 
@@ -179,11 +182,14 @@ def handle_candidate_sandbox_review(
         raise PermanentTaskError("Sandbox review payload contains unsupported or missing fields.")
     candidate_id = payload.get("candidate_id")
     expected_hash = payload.get("content_sha256")
+    expected_plan_hash = payload.get("test_plan_sha256")
     request_id = payload.get("request_id")
     if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
         raise PermanentTaskError("candidate_id must be a positive integer.")
     if not isinstance(expected_hash, str) or re.fullmatch(r"[0-9a-f]{64}", expected_hash) is None:
         raise PermanentTaskError("content_sha256 must be a lowercase SHA-256 digest.")
+    if not isinstance(expected_plan_hash, str) or re.fullmatch(r"[0-9a-f]{64}", expected_plan_hash) is None:
+        raise PermanentTaskError("test_plan_sha256 is invalid.")
     if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 100:
         raise PermanentTaskError("request_id is invalid.")
 
@@ -205,6 +211,10 @@ def handle_candidate_sandbox_review(
             plan = json.loads(row["test_plan_json"])
         except (TypeError, json.JSONDecodeError) as exc:
             raise PermanentTaskError("Candidate test plan is invalid.") from exc
+        canonical_plan = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        actual_plan_hash = hashlib.sha256(canonical_plan.encode("utf-8")).hexdigest()
+        if actual_plan_hash != expected_plan_hash:
+            raise PermanentTaskError("Candidate test plan changed after sandbox review was queued.")
         if (
             not isinstance(plan, dict)
             or plan.get("version") != 2
