@@ -127,8 +127,11 @@ def handle_candidate_review(
             (3, 4500) if channel == "peer_ai" else (1, 0)
         )
         try:
+            attempt_budget_suffix = hashlib.sha256(
+                (channel_key + ":" + str(reservation["attempt_generation"])).encode("utf-8")
+            ).hexdigest()[:16]
             budget = learning_durable_budget.reserve_job_budget(
-                int(row["job_id"]), f"candidate_review_{channel}_{hashlib.sha256(f'{channel_key}:{reservation["attempt_generation"]}'.encode()).hexdigest()[:16]}",
+                int(row["job_id"]), f"candidate_review_{channel}_{attempt_budget_suffix}",
                 calls=budget_calls, predict_tokens=budget_tokens,
             )
         except learning_durable_budget.LearningBudgetError as exc:
@@ -400,8 +403,12 @@ def handle_candidate_sandbox_review(
         return {**skipped_result, "failure_experience": None}
 
     try:
+        sandbox_attempt_suffix = hashlib.sha256(
+            request_id.strip().encode("utf-8")
+        ).hexdigest()[:16]
         sandbox_budget = learning_durable_budget.reserve_job_budget(
-            int(row["job_id"]), f"sandbox_execution_{hashlib.sha256(request_id.strip().encode()).hexdigest()[:16]}_{actual_plan_hash[:10]}_{reservation["attempt_generation"]}",
+            int(row["job_id"]),
+            f"sandbox_execution_{sandbox_attempt_suffix}_{actual_plan_hash[:10]}_{reservation['attempt_generation']}",
             calls=1, predict_tokens=0,
         )
     except learning_durable_budget.LearningBudgetError as exc:
