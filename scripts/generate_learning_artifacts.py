@@ -1,4 +1,4 @@
-"""Generate the checked-in learning specification and review prompts from one source."""
+"""Generate checked-in learning review prompts from one source."""
 from __future__ import annotations
 
 import argparse
