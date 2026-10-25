@@ -160,6 +160,7 @@ def chat(
     system_prompt: str | None = None,
     *,
     purpose: str = "chat",
+    model_override: str | None = None,
 ) -> str:
     if purpose not in {"chat", "learning", "programming", "factual_review"}:
         raise ValueError("purpose must be chat, learning, programming, or factual_review.")
@@ -177,7 +178,9 @@ def chat(
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
     if purpose == "factual_review":
         request_timeout = max(1, min(request_timeout, 45))
-    model = str(settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b")))
+    model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
+    if not model or len(model) > 200:
+        raise ValueError("model must be a non-empty name of at most 200 characters.")
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
         messages.append({"role": "system", "content": system_prompt.strip()[:6000]})
