@@ -7,6 +7,7 @@ import json
 import re
 import secrets
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from . import factual_knowledge, factual_semantic_review, sandbox_consent, sandbox_tasks
 from .db import learning_connection
@@ -15,7 +16,7 @@ from .task_worker import TaskContext
 FACTUAL_VERIFY_TASK_TYPE = "factual.verify_claim"
 _ALLOWED_PAYLOAD_KEYS = {
     "knowledge_id", "test_name", "source_code", "timeout_seconds", "max_output_bytes",
-    "oracle_reviewed", "oracle_review_note", "oracle_review_id", "semantic_assessment",
+    "oracle_reviewed", "oracle_review_note", "oracle_review_id",
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
 
@@ -132,17 +133,47 @@ def _build_handler(
             )
         if oracle_review is None:
             raise ValueError("Persisted independent-oracle review does not match this claim revision and exact test source.")
-        assessment = payload.get("semantic_assessment")
-        if not isinstance(assessment, dict):
-            raise ValueError("A structured semantic assessment is required before factual verification.")
-        if (
-            assessment.get("claim_hash") != candidate["claim_hash"]
-            or assessment.get("test_source_hash") != original_hash
-        ):
-            raise ValueError("Semantic assessment is not bound to the current claim revision and exact test source.")
-        semantic_decision = factual_semantic_review.adjudicate_assessment(assessment)
+        with learning_connection() as connection:
+            evidence_rows = connection.execute(
+                """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
+                   FROM factual_evidence
+                   WHERE knowledge_id=? ORDER BY id LIMIT 5""",
+                (knowledge_id,),
+            ).fetchall()
+        usable_evidence = []
+        for evidence_row in evidence_rows:
+            evidence_item = dict(evidence_row)
+            parsed_source_url = urlparse(str(evidence_item.get("source_ref", "")))
+            excerpt = evidence_item.get("excerpt")
+            if (
+                evidence_item.get("source_type") in {"official_docs", "source_code"}
+                and parsed_source_url.scheme == "https"
+                and parsed_source_url.hostname
+                and isinstance(excerpt, str)
+                and excerpt.strip()
+            ):
+                usable_evidence.append(evidence_item)
+        if not usable_evidence:
+            raise ValueError("Independent factual review requires a bounded HTTPS source excerpt.")
+        evidence = usable_evidence[0]
+        excerpt = evidence["excerpt"][:6000]
+        excerpt_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
+        try:
+            semantic_decision = factual_semantic_review.review_claim_against_source(
+                claim=candidate["claim"],
+                claim_hash=candidate["claim_hash"],
+                source_excerpt=excerpt,
+                source_url=evidence["source_ref"],
+                source_hash=excerpt_hash,
+                claim_version=candidate["environment_version"],
+                environment_name=candidate["environment_name"],
+                environment_version=candidate["environment_version"],
+                test_source=source_code,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise ValueError("Independent factual semantic review failed closed: " + str(exc)[:300]) from exc
         if not semantic_decision.accepted:
-            raise ValueError("Semantic assessment did not pass the fail-closed factual review rubric.")
+            raise ValueError("Independent factual review did not pass the fail-closed rubric.")
         wrapped, completion_marker = _wrapped_harness(source_code)
         context.checkpoint({
             "phase": "factual_claim_test_started",
@@ -189,6 +220,8 @@ def _build_handler(
             "semantic_rubric_version": semantic_decision.rubric_version,
             "semantic_review_score": semantic_decision.score,
             "semantic_review_verdict": semantic_decision.verdict,
+            "semantic_evaluator_model": semantic_decision.evaluator_model,
+            "semantic_evaluator_digest": semantic_decision.evaluator_digest,
             "oracle_review_note": oracle_review_note.strip(),
             "oracle_source_url": oracle_review["oracle_source_url"],
             "oracle_source_hash": oracle_review["oracle_source_hash"],
@@ -242,6 +275,8 @@ def _build_handler(
             "semantic_rubric_version": semantic_decision.rubric_version,
             "semantic_review_score": semantic_decision.score,
             "semantic_review_verdict": semantic_decision.verdict,
+            "semantic_evaluator_model": semantic_decision.evaluator_model,
+            "semantic_evaluator_digest": semantic_decision.evaluator_digest,
             "log_sha256": log_hash,
         }
         context.checkpoint({"phase": "factual_claim_test_recorded", **result_payload})
