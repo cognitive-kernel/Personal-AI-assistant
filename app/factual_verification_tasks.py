@@ -74,6 +74,34 @@ def _wrapped_harness(source_code: str) -> tuple[str, str]:
     return wrapper, completion_marker
 
 
+def _bounded_summary_json(summary: dict[str, Any]) -> str:
+    """Serialize a valid JSON audit summary within the database's 2 KiB field limit."""
+    bounded = dict(summary)
+    for key, limit in (
+        ("configured_image", 120),
+        ("semantic_evaluator_model", 80),
+        ("semantic_review_rationale", 180),
+        ("semantic_source_url", 180),
+        ("oracle_source_url", 180),
+        ("oracle_review_note", 120),
+    ):
+        value = bounded.get(key)
+        if isinstance(value, str):
+            bounded[key] = value[:limit]
+    encoded = json.dumps(bounded, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if len(encoded) <= 2000:
+        return encoded
+    essential_keys = (
+        "runner", "execution_status", "exit_code", "runtime_version",
+        "claim_hash_at_start", "test_source_sha256", "oracle_review_id",
+        "semantic_rubric_version", "semantic_review_score", "semantic_review_verdict",
+        "semantic_review_confidence", "semantic_evaluator_model", "semantic_evaluator_digest",
+        "semantic_source_excerpt_sha256", "output_hash",
+    )
+    essential = {key: bounded[key] for key in essential_keys if key in bounded}
+    return json.dumps(essential, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 def _runtime_version(stdout: str, completion_marker: str) -> tuple[str | None, bool, str]:
     lines = stdout.splitlines()
     if not lines:
@@ -242,7 +270,7 @@ def _build_handler(
             "oracle_source_hash": oracle_review["oracle_source_hash"],
             "output_hash": log_hash,
         }
-        summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        summary_json = _bounded_summary_json(summary)
         with learning_connection() as connection:
             current = connection.execute(
                 """SELECT claim_hash, evidence_level, lifecycle_status,
