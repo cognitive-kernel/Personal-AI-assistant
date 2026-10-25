@@ -86,20 +86,24 @@ def check_sources(*, limit: int = 10) -> dict[str, Any]:
         except Exception as exc:
             observed_hash = ""
             observed_chars = 0
+            observed_text = None
             outcome = "unavailable"
             detail = "Safe source fetch failed (" + type(exc).__name__ + "); no change conclusion was made."
+
+        if outcome != "unavailable":
+            observed_text = current_text
 
         with learning_connection() as connection:
             connection.execute(
                 """INSERT INTO learning_source_sync_events(
-                       snapshot_id, observed_sha256, observed_chars, outcome, detail
-                   ) VALUES (?, ?, ?, ?, ?)
+                       snapshot_id, observed_sha256, observed_chars, outcome, observed_text, detail
+                   ) VALUES (?, ?, ?, ?, ?, ?)
                    ON CONFLICT(snapshot_id, observed_sha256, outcome) DO NOTHING""",
-                (snapshot["id"], observed_hash, observed_chars, outcome, detail),
+                (snapshot["id"], observed_hash, observed_chars, outcome, observed_text, detail),
             )
             event = connection.execute(
                 """SELECT id, snapshot_id, observed_sha256, observed_chars, outcome,
-                          detail, checked_at, review_decision, review_note, reviewed_at
+                          observed_text, detail, checked_at, review_decision, review_note, reviewed_at
                    FROM learning_source_sync_events
                    WHERE snapshot_id=? AND observed_sha256=? AND outcome=?
                    ORDER BY id DESC LIMIT 1""",
