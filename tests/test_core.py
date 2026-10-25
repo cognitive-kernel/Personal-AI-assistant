@@ -317,7 +317,15 @@ def test_sync_path_preserves_progress_and_job_history(tmp_path, monkeypatch):
             "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
             (path["id"], "Legacy topic with job", next_position + 2),
         ).lastrowid
-    job = learning.create_job("Legacy topic with job", path_topic_id=legacy_job_id)
+    # Simulate a legacy job linked before prerequisite enforcement was introduced.
+    # New jobs must obey prerequisites; migration/sync must still preserve old history.
+    job = learning.create_job("Legacy topic with job")
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET path_topic_id=? WHERE id=?", (legacy_job_id, job["id"]))
+        conn.execute(
+            "UPDATE learning_path_topics SET status='in_progress' WHERE id=?",
+            (legacy_job_id,),
+        )
     result = learning.sync_curriculum_path(path["id"])
     topics = {item["topic"]: item for item in result["topics"]}
     assert "Legacy unstarted duplicate" not in topics
