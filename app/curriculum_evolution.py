@@ -82,8 +82,7 @@ def generate_proposals(*, path_id: int) -> dict[str, Any]:
                 continue
             if connection.execute(
                 """SELECT 1 FROM curriculum_update_proposals
-                   WHERE path_id=? AND trigger_topic_id=? AND proposal_type='reinforce_topic'
-                     AND status='pending'""",
+                   WHERE path_id=? AND trigger_topic_id=? AND proposal_type='reinforce_topic'""",
                 (path_id, topic["id"]),
             ).fetchone():
                 continue
