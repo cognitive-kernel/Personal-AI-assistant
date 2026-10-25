@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, research_planner, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -169,6 +169,7 @@ def startup() -> None:
     settings = db.get_settings()
     chat_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
+        research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
     learning_handlers = {LEARNING_TASK_TYPE: handle_learning_job}
     programming_handlers: dict[str, Any] = {
