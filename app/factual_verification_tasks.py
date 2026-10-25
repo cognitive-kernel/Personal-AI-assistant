@@ -177,6 +177,7 @@ def _build_handler(
                 evidence_item.get("source_type") in {"official_docs", "source_code"}
                 and parsed_source_url.scheme == "https"
                 and parsed_source_url.hostname
+                and len(str(evidence_item.get("source_ref", ""))) <= 1500
                 and isinstance(excerpt, str)
                 and excerpt.strip()
             ):
@@ -201,10 +202,10 @@ def _build_handler(
                     source_version_item = source_path_parts[0]
             source_versions.append(source_version_item)
             source_blocks.append(
-                f"[Source {index}] URL: {evidence_item['source_ref']}\n"
-                f"Version: {source_version_item}\n"
+                f"[Source {index}] URL: {str(evidence_item['source_ref'])[:250]}\n"
+                f"Version: {str(source_version_item)[:120]}\n"
                 f"Stored source hash: {str(evidence_item.get('source_hash', ''))[:128]}\n"
-                f"Excerpt: {str(evidence_item.get('excerpt', '')).strip()[:1000]}"
+                f"Excerpt: {str(evidence_item.get('excerpt', '')).strip()[:700]}"
             )
         excerpt = "\n\n".join(source_blocks)[:4000]
         excerpt_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
