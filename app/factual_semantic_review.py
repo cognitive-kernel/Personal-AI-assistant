@@ -40,6 +40,9 @@ class ReviewDecision:
     evaluator_model: str | None = None
     evaluator_digest: str | None = None
     confidence: float | None = None
+    rationale: str | None = None
+    source_url: str | None = None
+    source_excerpt_sha256: str | None = None
 
 
 def adjudicate_assessment(assessment: dict[str, Any]) -> ReviewDecision:
@@ -240,6 +243,9 @@ def review_claim_against_source(
             evaluator_model=reviewer_model,
             evaluator_digest=reviewer_digest,
             confidence=float(confidence),
+            rationale=parsed["rationale"].strip(),
+            source_url=source_url,
+            source_excerpt_sha256=actual_excerpt_hash,
         )
     return ReviewDecision(
         verdict=decision.verdict,
@@ -250,4 +256,7 @@ def review_claim_against_source(
         evaluator_model=reviewer_model,
         evaluator_digest=reviewer_digest,
         confidence=float(confidence),
+        rationale=parsed["rationale"].strip(),
+        source_url=source_url,
+        source_excerpt_sha256=actual_excerpt_hash,
     )
