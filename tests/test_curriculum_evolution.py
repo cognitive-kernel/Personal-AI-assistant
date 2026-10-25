@@ -187,6 +187,6 @@ def test_learning_ui_exposes_curriculum_proposal_review_controls():
         encoding="utf-8"
     )
     assert "تولید پیشنهادهای تطبیق مسیر" in page
-    assert "/api/learning/paths/" + path.id + "/curriculum-proposals/generate" in page
-    assert "/api/learning/curriculum-proposals/" + proposal.id + "/review" in page
+    assert '"/api/learning/paths/" + path.id + "/curriculum-proposals/generate"' in page
+    assert '"/api/learning/curriculum-proposals/" + proposal.id + "/review"' in page
     assert "حداقل ۲۰ نویسه" in page
