@@ -6,6 +6,23 @@ from app import db, factual_knowledge, factual_verification_routes, factual_veri
 from app.task_worker import TaskWorker
 
 
+def _valid_semantic_assessment(knowledge_id, source_code):
+    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+    return {
+        "claim_hash": candidate["claim_hash"],
+        "test_source_hash": hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+        "verdict": "supports",
+        "claim_atomic": True,
+        "source_directly_addresses_claim": True,
+        "scope_matches": True,
+        "source_version_matches_claim": True,
+        "runtime_environment_matches": True,
+        "source_is_authoritative": True,
+        "no_unresolved_conflict": True,
+        "reviewer_is_independent": True,
+    }
+
+
 def _create_active_sourced_claim(version="3.12.3"):
     with db.learning_connection() as connection:
         claim_id = factual_knowledge.create_claim(
@@ -42,6 +59,7 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     monkeypatch.setattr(factual_verification_routes, "_configured", lambda: True)
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
 
+    test_source_code = "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise RuntimeError('assert did not fail')"
     request = factual_verification_routes.FactualClaimTestRequest(
         confirm=True,
         oracle_reviewed=True,
@@ -49,7 +67,8 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
         oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
         oracle_source_hash=hashlib.sha256(b"Official Python assert reference excerpt").hexdigest(),
         test_name="Python assert raises on false condition",
-        source_code="try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise RuntimeError('assert did not fail')",
+        source_code=test_source_code,
+        semantic_assessment=_valid_semantic_assessment(claim_id, test_source_code),
         timeout_seconds=5,
         max_output_bytes=2048,
     )
