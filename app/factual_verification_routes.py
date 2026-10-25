@@ -33,6 +33,8 @@ class FactualClaimTestRequest(BaseModel):
     confirm: StrictBool
     oracle_reviewed: StrictBool
     oracle_review_note: str = Field(min_length=20, max_length=1000)
+    oracle_source_url: str = Field(min_length=9, max_length=2048)
+    oracle_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     test_name: str = Field(min_length=1, max_length=300)
     source_code: str = Field(min_length=1, max_length=65536)
     timeout_seconds: StrictInt = Field(default=10, ge=1, le=120)
@@ -103,11 +105,34 @@ def queue_factual_claim_test(
     if not _configured():
         raise HTTPException(status_code=409, detail="Factual claim testing requires a configured digest-pinned Docker sandbox.")
 
+    parsed_oracle_url = urlparse(request.oracle_source_url)
+    if (
+        parsed_oracle_url.scheme != "https"
+        or not parsed_oracle_url.hostname
+        or parsed_oracle_url.username is not None
+        or parsed_oracle_url.password is not None
+    ):
+        raise HTTPException(status_code=422, detail="Oracle reference must be an absolute HTTPS URL without embedded credentials.")
     source_hash = hashlib.sha256(request.source_code.encode("utf-8")).hexdigest()
+    try:
+        with learning_connection() as connection:
+            candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+            oracle_review_id = factual_knowledge.record_oracle_review(
+                connection,
+                knowledge_id,
+                claim_hash=candidate["claim_hash"],
+                test_source_hash=source_hash,
+                oracle_source_url=request.oracle_source_url,
+                oracle_source_hash=request.oracle_source_hash,
+                review_note=request.oracle_review_note.strip(),
+            )
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Oracle review audit could not be saved.") from exc
     payload = {
         "knowledge_id": knowledge_id,
         "oracle_reviewed": request.oracle_reviewed,
         "oracle_review_note": request.oracle_review_note.strip(),
+        "oracle_review_id": oracle_review_id,
         "test_name": request.test_name.strip(),
         "source_code": request.source_code,
         "timeout_seconds": request.timeout_seconds,
@@ -125,7 +150,8 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=503, detail="Factual claim test could not be queued.") from exc
     return {
         "task": task,
-        "message": "Factual claim test queued in the isolated sandbox; any L2 promotion requires the reviewed independent oracle and an exact Python-version match.",
+        "oracle_review_id": oracle_review_id,
+        "message": "Factual claim test queued in the isolated sandbox. The independent-oracle attestation is audit-bound to this claim revision, test hash, HTTPS reference and reference hash; L2 promotion also requires a passing exact-version run.",
     }
 
 
