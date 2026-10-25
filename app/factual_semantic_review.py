@@ -11,6 +11,7 @@ import json
 import math
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse
 
 from . import ollama
 from .db import get_settings
@@ -136,6 +137,12 @@ def review_claim_against_source(
     for key, value in bounded.items():
         if not isinstance(value, str) or not value.strip() or len(value) > limits[key]:
             raise ValueError(f"{key} must be non-empty text within {limits[key]} characters")
+    parsed_source_url = urlparse(source_url)
+    if parsed_source_url.scheme != "https" or not parsed_source_url.hostname or parsed_source_url.username or parsed_source_url.password:
+        raise ValueError("source_url must be an absolute HTTPS URL without embedded credentials")
+    actual_excerpt_hash = hashlib.sha256(source_excerpt.encode("utf-8")).hexdigest()
+    if source_hash != actual_excerpt_hash:
+        raise ValueError("source_hash must match the exact source excerpt bytes")
 
     settings = get_settings()
     reviewer_model = str(settings.get("factual_review_ollama_model", "")).strip()
