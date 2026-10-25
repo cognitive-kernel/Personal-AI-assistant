@@ -277,6 +277,117 @@ def list_experience_versions(experience_id: int) -> list[dict[str, Any]]:
     return versions
 
 
+def list_experience_evolution(experience_id: int) -> dict[str, Any]:
+    """Compare immutable versions by hypothesis, evidence, test plan/results, and status."""
+    init_experience_tables()
+    with learning_connection() as conn:
+        current = conn.execute(
+            """SELECT id, version, topic, problem, hypothesis, status,
+                      source_evidence_json, test_plan_json, test_results_json,
+                      takeaway, updated_at AS created_at
+               FROM learning_experiences WHERE id=?""",
+            (experience_id,),
+        ).fetchone()
+        if current is None:
+            raise KeyError(experience_id)
+        snapshots = conn.execute(
+            """SELECT version, topic, problem, hypothesis, status,
+                      source_evidence_json, test_plan_json, test_results_json,
+                      takeaway, created_at
+               FROM learning_experience_versions
+               WHERE experience_id=? ORDER BY version""",
+            (experience_id,),
+        ).fetchall()
+
+    versions: list[dict[str, Any]] = [dict(row) for row in snapshots]
+    current_dict = dict(current)
+    if not any(int(item["version"]) == int(current_dict["version"]) for item in versions):
+        versions.append(current_dict)
+    versions.sort(key=lambda item: int(item["version"]))
+
+    def decode(item: dict[str, Any]) -> dict[str, Any]:
+        result = dict(item)
+        for source, target in (
+            ("source_evidence_json", "source_evidence"),
+            ("test_plan_json", "test_plan"),
+            ("test_results_json", "test_results"),
+        ):
+            try:
+                value = json.loads(result.pop(source))
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError("Experience history contains invalid structured JSON.") from exc
+            if not isinstance(value, list):
+                raise ValueError("Experience history contains invalid structured JSON.")
+            result[target] = value
+        return result
+
+    decoded = [decode(item) for item in versions]
+
+    def canonical_items(items: list[dict[str, Any]], kind: str) -> dict[str, str]:
+        keyed: dict[str, str] = {}
+        for item in items:
+            if kind == "evidence":
+                identity = json.dumps(
+                    {"url": item.get("url"), "claim": item.get("claim"), "sha256": item.get("sha256")},
+                    ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                )
+            elif kind == "tests":
+                identity = str(item.get("test", "")).strip()
+            else:
+                identity = json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            if identity:
+                keyed[identity] = json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return keyed
+
+    changes: list[dict[str, Any]] = []
+    for previous, newer in zip(decoded, decoded[1:]):
+        evidence_before = canonical_items(previous["source_evidence"], "evidence")
+        evidence_after = canonical_items(newer["source_evidence"], "evidence")
+        plan_before = canonical_items(previous["test_plan"], "tests")
+        plan_after = canonical_items(newer["test_plan"], "tests")
+        results_before = canonical_items(previous["test_results"], "tests")
+        results_after = canonical_items(newer["test_results"], "tests")
+        changed_fields = [
+            field for field in ("topic", "problem", "hypothesis", "status", "takeaway")
+            if previous.get(field) != newer.get(field)
+        ]
+        if plan_before != plan_after:
+            changed_fields.append("test_plan")
+        if results_before != results_after:
+            changed_fields.append("test_results")
+        if evidence_before != evidence_after:
+            changed_fields.append("source_evidence")
+        changes.append({
+            "from_version": int(previous["version"]),
+            "to_version": int(newer["version"]),
+            "changed_fields": changed_fields,
+            "hypothesis_changed": previous["hypothesis"] != newer["hypothesis"],
+            "status_transition": {"from": previous["status"], "to": newer["status"]},
+            "evidence_added": [json.loads(evidence_after[key]) for key in sorted(evidence_after.keys() - evidence_before.keys())],
+            "evidence_removed": [json.loads(evidence_before[key]) for key in sorted(evidence_before.keys() - evidence_after.keys())],
+            "test_plan_added": [json.loads(plan_after[key]) for key in sorted(plan_after.keys() - plan_before.keys())],
+            "test_plan_removed": [json.loads(plan_before[key]) for key in sorted(plan_before.keys() - plan_after.keys())],
+            "test_results_added_or_changed": [
+                json.loads(results_after[key]) for key in sorted(results_after)
+                if key not in results_before or results_before[key] != results_after[key]
+            ],
+            "test_results_removed": [
+                json.loads(results_before[key]) for key in sorted(results_before.keys() - results_after.keys())
+            ],
+            "recorded_at": newer.get("created_at"),
+        })
+    return {
+        "experience_id": experience_id,
+        "current_version": int(decoded[-1]["version"]),
+        "version_count": len(decoded),
+        "changes": changes,
+        "interpretation_limit": (
+            "This is a deterministic field-level history of hypotheses, source evidence, plans, and test outcomes; "
+            "it does not infer semantic equivalence or prove that a hypothesis is true."
+        ),
+    }
+
+
 def rollback_experience(experience_id: int, target_version: int, *, _controlled_run: bool = False) -> dict[str, Any]:
     """Restore an older snapshot as a new version; reserved for the controlled runner."""
     if not _controlled_run:
