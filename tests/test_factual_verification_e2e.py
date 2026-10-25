@@ -33,6 +33,11 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
     monkeypatch.setattr(
+        factual_verification_tasks,
+        "_verify_live_source_excerpt",
+        lambda _url, excerpt: hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+    )
+    monkeypatch.setattr(
         factual_semantic_review,
         "review_claim_against_source",
         lambda **_kwargs: factual_semantic_review.ReviewDecision(
