@@ -946,7 +946,7 @@ LEARNING_MIGRATIONS = (
                     (review_decision = 'pending' AND review_note IS NULL AND reviewed_at IS NULL)
                     OR
                     (review_decision <> 'pending' AND length(trim(review_note)) >= 20 AND reviewed_at IS NOT NULL)
-                ),
+                )
             )""",
             "CREATE INDEX idx_learning_source_sync_snapshot_checked ON learning_source_sync_events(snapshot_id, checked_at DESC, id DESC)",
             "CREATE INDEX idx_learning_source_sync_decision ON learning_source_sync_events(review_decision, outcome, checked_at DESC)",
