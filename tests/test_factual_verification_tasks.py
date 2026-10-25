@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
+from app import db, factual_knowledge, factual_semantic_review, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
 
 
 class FakeContext:
@@ -26,6 +26,19 @@ def learning_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    monkeypatch.setattr(
+        factual_semantic_review,
+        "review_claim_against_source",
+        lambda **_kwargs: factual_semantic_review.ReviewDecision(
+            verdict="supports",
+            accepted=True,
+            score=1.0,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_stub_independent_reviewer",),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        ),
+    )
     return tmp_path
 
 
@@ -49,23 +62,6 @@ def _active_sourced_python_claim(version="3.12.3"):
         factual_knowledge.transition_evidence_level(connection, knowledge_id, "L1_sourced")
         factual_knowledge.transition_lifecycle(connection, knowledge_id, "active")
     return knowledge_id
-
-
-def _valid_semantic_assessment(knowledge_id, source_code):
-    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
-    return {
-        "claim_hash": candidate["claim_hash"],
-        "test_source_hash": hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
-        "verdict": "supports",
-        "claim_atomic": True,
-        "source_directly_addresses_claim": True,
-        "scope_matches": True,
-        "source_version_matches_claim": True,
-        "runtime_environment_matches": True,
-        "source_is_authoritative": True,
-        "no_unresolved_conflict": True,
-        "reviewer_is_independent": True,
-    }
 
 
 def _oracle_review_id(knowledge_id, source_code):
@@ -116,7 +112,6 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')",
-        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -160,7 +155,6 @@ def test_sandbox_version_mismatch_records_environment_failure_without_promotion(
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
-        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -191,7 +185,6 @@ def test_failed_assertion_is_inconclusive_not_automatic_claim_failure(learning_s
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert False",
-        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert False"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert False"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -229,7 +222,6 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
             "knowledge_id": knowledge_id,
             "test_name": "assert semantics",
             "source_code": "assert True",
-            "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
@@ -258,7 +250,6 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
         oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
-        semantic_assessment=_valid_semantic_assessment(knowledge_id, "assert True"),
         timeout_seconds=5,
         max_output_bytes=1000,
     )
@@ -291,7 +282,6 @@ def test_claim_change_during_execution_prevents_promotion(learning_store, monkey
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
-        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
@@ -320,7 +310,6 @@ def test_route_rejects_missing_independent_oracle_attestation():
         oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
-        semantic_assessment={},
     )
     with pytest.raises(HTTPException) as raised:
         factual_verification_routes.queue_factual_claim_test(1, request)
@@ -343,7 +332,6 @@ def test_missing_or_mismatched_oracle_audit_cannot_execute_or_promote(learning_s
             "knowledge_id": knowledge_id,
             "test_name": "assert semantics",
             "source_code": "assert True",
-            "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
@@ -368,7 +356,6 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
-        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
@@ -423,7 +410,6 @@ def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
             "knowledge_id": knowledge_id,
             "test_name": "queued test",
             "source_code": "assert True",
-            "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
@@ -474,9 +460,22 @@ def test_factual_test_history_exposes_bounded_results_and_current_claim_state(le
     assert item["command_hash"] == "e" * 64
     assert item["log_hash"] == "f" * 64
 
-def test_semantic_assessment_that_does_not_address_claim_cannot_execute_or_promote(learning_store, monkeypatch):
+def test_independent_reviewer_rejection_cannot_execute_or_promote(learning_store, monkeypatch):
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        factual_semantic_review,
+        "review_claim_against_source",
+        lambda **_kwargs: factual_semantic_review.ReviewDecision(
+            verdict="insufficient_evidence",
+            accepted=False,
+            score=0.5,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_does_not_directly_check_claim", "fail_closed_no_promotion"),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        ),
+    )
     called = False
 
     def sandbox_handler(*_args):
@@ -485,15 +484,12 @@ def test_semantic_assessment_that_does_not_address_claim_cannot_execute_or_promo
         return _sandbox_result()
 
     source_code = "assert True"
-    assessment = _valid_semantic_assessment(knowledge_id, source_code)
-    assessment["source_directly_addresses_claim"] = False
     handler = factual_verification_tasks._build_handler(sandbox_handler)
     with pytest.raises(ValueError, match="did not pass"):
         handler({
             "knowledge_id": knowledge_id,
             "test_name": "unrelated assertion",
             "source_code": source_code,
-            "semantic_assessment": assessment,
             "oracle_reviewed": True,
             "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
             "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -508,22 +504,41 @@ def test_semantic_assessment_that_does_not_address_claim_cannot_execute_or_promo
     assert claim["evidence_level"] == "L1_sourced"
 
 
-def test_semantic_assessment_bound_to_another_test_is_rejected(learning_store, monkeypatch):
+def test_independent_reviewer_receives_exact_claim_source_and_test(learning_store, monkeypatch):
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
-    source_code = "assert True"
-    assessment = _valid_semantic_assessment(knowledge_id, "assert False")
-    handler = factual_verification_tasks._build_handler(lambda *_args: pytest.fail("sandbox must not run"))
-    with pytest.raises(ValueError, match="not bound"):
-        handler({
-            "knowledge_id": knowledge_id,
-            "test_name": "mismatched semantic assessment",
-            "source_code": source_code,
-            "semantic_assessment": assessment,
-            "oracle_reviewed": True,
-            "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
-            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
-            "timeout_seconds": 5,
-            "max_output_bytes": 1000,
-        }, None, FakeContext())
+    observed = {}
+
+    def review(**kwargs):
+        observed.update(kwargs)
+        return factual_semantic_review.ReviewDecision(
+            verdict="supports",
+            accepted=True,
+            score=1.0,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_stub_independent_reviewer",),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        )
+
+    monkeypatch.setattr(factual_semantic_review, "review_claim_against_source", review)
+    source_code = "try:\n    assert False\nexcept AssertionError:\n    pass"
+    handler = factual_verification_tasks._build_handler(
+        lambda payload, *_args: _sandbox_result(completion_marker=_completion_marker(payload["source_code"]))
+    )
+    result = handler({
+        "knowledge_id": knowledge_id,
+        "test_name": "assert false condition",
+        "source_code": source_code,
+        "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+    }, None, FakeContext())
+    assert result["evidence_level_promoted"] is True
+    assert observed["claim"] == "A Python assertion raises an error when its condition is false."
+    assert observed["claim_hash"] == factual_verification_tasks.get_verification_candidate(knowledge_id)["claim_hash"]
+    assert observed["source_excerpt"].startswith("The assert statement raises AssertionError")
+    assert observed["test_source"] == source_code
 
