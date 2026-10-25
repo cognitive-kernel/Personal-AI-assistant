@@ -159,12 +159,23 @@ def _build_handler(
         excerpt = evidence["excerpt"][:6000]
         excerpt_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
         try:
+            applicability = json.loads(evidence.get("applicability_json") or "{}")
+        except (TypeError, ValueError):
+            applicability = {}
+        source_version = applicability.get("source_version") or applicability.get("version")
+        if not isinstance(source_version, str) or not source_version.strip():
+            source_version = "unspecified"
+            source_path_parts = [part for part in urlparse(evidence["source_ref"]).path.split("/") if part]
+            if source_path_parts and source_path_parts[0] in {"2", "3"}:
+                source_version = source_path_parts[0]
+        try:
             semantic_decision = factual_semantic_review.review_claim_against_source(
                 claim=candidate["claim"],
                 claim_hash=candidate["claim_hash"],
                 source_excerpt=excerpt,
                 source_url=evidence["source_ref"],
                 source_hash=excerpt_hash,
+                source_version=source_version,
                 claim_version=candidate["environment_version"],
                 environment_name=candidate["environment_name"],
                 environment_version=candidate["environment_version"],
