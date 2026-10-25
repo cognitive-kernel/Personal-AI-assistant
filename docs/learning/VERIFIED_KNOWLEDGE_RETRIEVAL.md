@@ -9,6 +9,7 @@ Current implementation lives in `app.factual_knowledge.py` and `app.chat_researc
 - The query must resolve to one unambiguous, explicitly supported technical domain and environment. Ambiguous or unrecognized topics fail closed to an empty factual-knowledge context.
 - Only claims with lifecycle `active`, evidence level `L2_tested` or `L3_human_verified`, unexpired re-verification state, traceable HTTPS source evidence with a content hash, and at least one passing test matching the claim's environment name/version are eligible.
 - Results are bounded and include claim identity, source URL/hash/excerpt, and passing-test metadata. The current chat context caps the result at three claims and limits source/test details per claim.
+- Factual test promotion requires a persisted local review audit binding the exact claim revision and test-source SHA-256 to an HTTPS oracle URL, a SHA-256 digest of the reviewed reference excerpt, and a review note. A task without a matching audit fails before sandbox execution. This is traceability, not cryptographic proof that the human review was independent or correct.
 - The allowlist is defined by the domain resolver in `app/learning.py`; support for a domain does not imply that all claims in that domain are eligible.
 - Retrieval failures return no factual-knowledge context and are logged without exposing database details or blocking the ordinary answer path.
 
@@ -27,6 +28,7 @@ A retrieved claim is not proof of truth. Eligibility means it met the repository
 ## Remaining work
 
 - Build a versioned, human-adjudicated golden set for relevance, citation adherence, prompt-injection resistance, and false acceptance.
+- Validate that the supplied oracle excerpt hash actually corresponds to the cited URL/content, or capture and hash the excerpt server-side under an SSRF-safe fetch policy. The current audit records the supplied hash and URL but does not fetch or independently verify their correspondence.
 - Measure Recall@k/MRR and answer citation correctness across Persian and English queries with a real embedding/model setup; do not infer quality from unit tests alone.
 - Expand domain coverage only with exact environment resolution and tests that preserve the fail-closed retrieval gate.
 - Consider sandbox execution only for explicitly allow-listed executable claims with current consent and an independent oracle. Never execute arbitrary source text or model-generated code as part of ordinary chat.
