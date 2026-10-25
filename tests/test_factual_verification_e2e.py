@@ -2,25 +2,8 @@ import hashlib
 import json
 import re
 
-from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent
+from app import db, factual_knowledge, factual_semantic_review, factual_verification_routes, factual_verification_tasks, sandbox_consent
 from app.task_worker import TaskWorker
-
-
-def _valid_semantic_assessment(knowledge_id, source_code):
-    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
-    return {
-        "claim_hash": candidate["claim_hash"],
-        "test_source_hash": hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
-        "verdict": "supports",
-        "claim_atomic": True,
-        "source_directly_addresses_claim": True,
-        "scope_matches": True,
-        "source_version_matches_claim": True,
-        "runtime_environment_matches": True,
-        "source_is_authoritative": True,
-        "no_unresolved_conflict": True,
-        "reviewer_is_independent": True,
-    }
 
 
 def _create_active_sourced_claim(version="3.12.3"):
@@ -49,6 +32,19 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    monkeypatch.setattr(
+        factual_semantic_review,
+        "review_claim_against_source",
+        lambda **_kwargs: factual_semantic_review.ReviewDecision(
+            verdict="supports",
+            accepted=True,
+            score=1.0,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_stub_independent_reviewer",),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        ),
+    )
     claim_id = _create_active_sourced_claim()
 
     monkeypatch.setattr(
@@ -68,7 +64,6 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
         oracle_source_hash=hashlib.sha256(b"Official Python assert reference excerpt").hexdigest(),
         test_name="Python assert raises on false condition",
         source_code=test_source_code,
-        semantic_assessment=_valid_semantic_assessment(claim_id, test_source_code),
         timeout_seconds=5,
         max_output_bytes=2048,
     )
