@@ -509,6 +509,7 @@ def test_independent_reviewer_receives_exact_claim_source_and_test(learning_stor
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
     observed = {}
+    candidate_before = factual_verification_tasks.get_verification_candidate(knowledge_id)
 
     def review(**kwargs):
         observed.update(kwargs)
@@ -539,7 +540,7 @@ def test_independent_reviewer_receives_exact_claim_source_and_test(learning_stor
     }, None, FakeContext())
     assert result["evidence_level_promoted"] is True
     assert observed["claim"] == "A Python assertion raises an error when its condition is false."
-    assert observed["claim_hash"] == factual_verification_tasks.get_verification_candidate(knowledge_id)["claim_hash"]
+    assert observed["claim_hash"] == candidate_before["claim_hash"]
     assert observed["source_excerpt"].startswith("The assert statement raises AssertionError")
     assert observed["test_source"] == source_code
 
