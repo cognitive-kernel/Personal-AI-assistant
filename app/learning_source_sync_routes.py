@@ -39,6 +39,18 @@ def check_lesson_sources(request: SourceSyncCheckRequest) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="Lesson source synchronization could not be completed.") from exc
 
 
+@router.post("/events/{event_id}/regenerate")
+def regenerate_lesson_from_reviewed_source(event_id: int) -> dict[str, Any]:
+    try:
+        return learning_source_sync.queue_lesson_regeneration(event_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Source-sync event not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Lesson regeneration could not be queued.") from exc
+
+
 @router.post("/events/{event_id}/review")
 def review_source_change(event_id: int, request: SourceSyncReviewRequest) -> dict[str, Any]:
     try:
