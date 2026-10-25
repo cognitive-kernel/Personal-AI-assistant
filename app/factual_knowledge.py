@@ -792,7 +792,7 @@ def traverse_knowledge_relations(
         current_id, depth, path = frontier.pop(0)
         if depth >= max_depth:
             continue
-        rows = connection.execute(
+        cursor = connection.execute(
             f"""SELECT r.related_knowledge_id, r.relation_type, k.claim,
                        k.domain_name, k.environment_name, k.environment_version,
                        k.evidence_level, k.lifecycle_status
@@ -802,8 +802,10 @@ def traverse_knowledge_relations(
                 ORDER BY r.relation_type, r.related_knowledge_id
                 LIMIT ?""",
             (current_id, *selected_types, limit),
-        ).fetchall()
-        for row in rows:
+        )
+        columns = [column[0] for column in cursor.description]
+        for raw_row in cursor.fetchall():
+            row = dict(zip(columns, raw_row))
             related_id = int(row["related_knowledge_id"])
             relation_type = str(row["relation_type"])
             if related_id in visited:
