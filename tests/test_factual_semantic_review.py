@@ -46,6 +46,7 @@ def _reviewer_response(**overrides):
         "no_unresolved_conflict": True,
         "test_directly_checks_claim": True,
         "rationale": "The source directly describes the claimed behavior and the test exercises it.",
+        "confidence": 0.95,
     }
     value.update(overrides)
     return json.dumps(value)
