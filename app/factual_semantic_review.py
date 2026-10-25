@@ -181,7 +181,7 @@ def review_claim_against_source(
             "no_unresolved_conflict": "boolean",
             "test_directly_checks_claim": "boolean",
             "rationale": "string, max 600 characters",
-            "confidence": "number between 0 and 1, not a calibrated probability",
+            "confidence": "number from 0 to 1 estimating the probability that the claim is supported by this source and the test directly checks it",
         },
         "case": bounded,
     }
