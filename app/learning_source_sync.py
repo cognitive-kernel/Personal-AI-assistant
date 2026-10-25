@@ -145,7 +145,7 @@ def record_review_decision(
     init_databases()
     with learning_connection() as connection:
         row = connection.execute(
-            "SELECT id, outcome, review_decision FROM learning_source_sync_events WHERE id=?",
+            "SELECT id, outcome, review_decision, observed_text FROM learning_source_sync_events WHERE id=?",
             (event_id,),
         ).fetchone()
         if row is None:
@@ -154,6 +154,8 @@ def record_review_decision(
             raise ValueError("Only a detected source change can receive a review decision.")
         if row["review_decision"] != "pending":
             raise ValueError("A source-change decision is immutable; create a new check to record a later decision.")
+        if decision == "regenerate_lesson" and not str(row["observed_text"] or "").strip():
+            raise ValueError("The changed source snapshot is unavailable; the lesson cannot be regenerated from it.")
         connection.execute(
             """UPDATE learning_source_sync_events
                SET review_decision=?, review_note=?, reviewed_at=CURRENT_TIMESTAMP
@@ -167,3 +169,118 @@ def record_review_decision(
             (event_id,),
         ).fetchone()
     return dict(updated)
+
+
+
+def queue_lesson_regeneration(event_id: int) -> dict[str, Any]:
+    """Queue a new lesson version from a human-approved changed source snapshot.
+
+    The previous lesson is preserved. The decision event stores the resulting job ID
+    before queue submission, so a retry can reuse the same job rather than duplicate it.
+    """
+    if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id < 1:
+        raise ValueError("event_id must be a positive integer.")
+    init_databases()
+    with learning_connection() as connection:
+        row = connection.execute(
+            """SELECT e.id, e.outcome, e.review_decision, e.observed_text,
+                      e.regeneration_job_id, s.source_ref, s.source_title,
+                      j.topic, j.path_topic_id
+               FROM learning_source_sync_events AS e
+               JOIN learning_source_snapshots AS s ON s.id=e.snapshot_id
+               JOIN learning_jobs AS j ON j.id=s.job_id
+               WHERE e.id=?""",
+            (event_id,),
+        ).fetchone()
+    if row is None:
+        raise KeyError(event_id)
+    if row["outcome"] != "changed" or row["review_decision"] != "regenerate_lesson":
+        raise ValueError("Only a changed source with an explicit regenerate_lesson decision can be queued.")
+    observed_text = str(row["observed_text"] or "").strip()
+    if not observed_text:
+        raise ValueError("The changed source snapshot is unavailable.")
+    job_id = int(row["regeneration_job_id"]) if row["regeneration_job_id"] is not None else None
+
+    from . import learning
+    from .learning_tasks import enqueue_learning_task
+
+    if job_id is None:
+        path_topic_id = int(row["path_topic_id"]) if row["path_topic_id"] is not None else None
+        if path_topic_id is not None:
+            with learning_connection() as connection:
+                active = connection.execute(
+                    """SELECT id FROM learning_jobs
+                       WHERE path_topic_id=? AND status IN ('queued', 'running')
+                       ORDER BY id DESC LIMIT 1""",
+                    (path_topic_id,),
+                ).fetchone()
+            if active is not None:
+                raise ValueError("An active lesson job already exists for this path topic; resolve it before regeneration.")
+
+        source_ref = str(row["source_ref"])
+        source_title = str(row["source_title"] or "Updated learning source")[:300]
+        source_text = (
+            f"Source title: {source_title}\n"
+            f"Source URL: {source_ref}\n"
+            f"Content:\n{observed_text[:MAX_SNAPSHOT_CHARS]}"
+        )
+        job = learning.create_job(
+            str(row["topic"]),
+            source_text=source_text,
+            path_topic_id=path_topic_id,
+        )
+        job_id = int(job["id"])
+        digest = _sha256(source_text)
+        with learning_connection() as connection:
+            connection.execute(
+                """UPDATE learning_jobs SET source_kind='web_retrieved'
+                   WHERE id=? AND status='queued'""",
+                (job_id,),
+            )
+            connection.execute(
+                "DELETE FROM learning_evidence WHERE job_id=? AND evidence_type='user_text' AND source_ref='user-provided'",
+                (job_id,),
+            )
+            connection.execute(
+                """INSERT INTO learning_evidence(
+                       job_id, evidence_type, source_ref, content_hash, note
+                   ) VALUES (?, 'web_page', ?, ?, ?)
+                   ON CONFLICT DO NOTHING""",
+                (job_id, source_ref, digest, "Human-approved changed public source snapshot; content still requires independent review."),
+            )
+            evidence = connection.execute(
+                """SELECT id FROM learning_evidence
+                   WHERE job_id=? AND evidence_type='web_page' AND source_ref=? AND content_hash=?
+                   ORDER BY id LIMIT 1""",
+                (job_id, source_ref, digest),
+            ).fetchone()
+            if evidence is None:
+                raise RuntimeError("Regeneration source evidence could not be recorded.")
+            capture_source_snapshot(
+                connection,
+                job_id=job_id,
+                evidence_id=int(evidence["id"]),
+                source_ref=source_ref,
+                source_title=source_title,
+                snapshot_text=observed_text[:MAX_SNAPSHOT_CHARS],
+            )
+            connection.execute(
+                """UPDATE learning_source_sync_events SET regeneration_job_id=?
+                   WHERE id=? AND regeneration_job_id IS NULL""",
+                (job_id, event_id),
+            )
+            linked = connection.execute(
+                "SELECT regeneration_job_id FROM learning_source_sync_events WHERE id=?",
+                (event_id,),
+            ).fetchone()
+            if linked is None or int(linked["regeneration_job_id"] or 0) != job_id:
+                raise RuntimeError("Regeneration job could not be linked to the review event.")
+
+    task = enqueue_learning_task(job_id)
+    return {
+        "event_id": event_id,
+        "job_id": job_id,
+        "task_id": task.get("id"),
+        "task_status": task.get("status"),
+        "lesson_modified_in_place": False,
+    }
