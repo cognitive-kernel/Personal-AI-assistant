@@ -165,9 +165,12 @@ def _build_handler(
             evidence_rows = connection.execute(
                 """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
                    FROM factual_evidence
-                   WHERE knowledge_id=? ORDER BY id LIMIT 5""",
+                   WHERE knowledge_id=? AND source_type IN ('official_docs', 'source_code')
+                   ORDER BY id LIMIT 4""",
                 (knowledge_id,),
             ).fetchall()
+        if len(evidence_rows) > 3:
+            raise ValueError("Independent factual review is limited to three official source excerpts; curate evidence before testing.")
         usable_evidence = []
         for evidence_row in evidence_rows:
             evidence_item = dict(evidence_row)
