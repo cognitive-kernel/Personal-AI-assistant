@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 
@@ -50,6 +51,22 @@ def _active_sourced_python_claim(version="3.12.3"):
     return knowledge_id
 
 
+def _oracle_review_id(knowledge_id, source_code):
+    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+    with db.learning_connection() as connection:
+        return factual_knowledge.record_oracle_review(
+            connection,
+            knowledge_id,
+            claim_hash=candidate["claim_hash"],
+            test_source_hash=hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+            oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+            oracle_source_hash=hashlib.sha256(
+                b"Python assert statement reference excerpt reviewed independently"
+            ).hexdigest(),
+            review_note="Compared the test assertion against the official Python reference excerpt.",
+        )
+
+
 def _sandbox_result(status="succeeded", exit_code=0, version="3.12.3", completion_marker="__PAI_TEST_COMPLETED__:test-token"):
     return {
         "execution_status": status,
@@ -83,6 +100,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
         "test_name": "assert semantics",
         "source_code": "assert (1 + 1) == 2",
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert (1 + 1) == 2"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -125,6 +143,7 @@ def test_sandbox_version_mismatch_records_environment_failure_without_promotion(
         "test_name": "assert semantics",
         "source_code": "assert True",
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -154,6 +173,7 @@ def test_failed_assertion_is_inconclusive_not_automatic_claim_failure(learning_s
         "test_name": "assert semantics",
         "source_code": "assert False",
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert False"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -192,6 +212,7 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
             "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         }, None, FakeContext())
     assert called is False
@@ -212,6 +233,8 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
         confirm=True,
         oracle_reviewed=True,
         oracle_review_note="Compared the assertion against the official Python reference for assert semantics.",
+        oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
         timeout_seconds=5,
@@ -249,6 +272,7 @@ def test_claim_change_during_execution_prevents_promotion(learning_store, monkey
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
     }, None, FakeContext())
 
@@ -269,6 +293,8 @@ def test_route_rejects_missing_independent_oracle_attestation():
         confirm=True,
         oracle_reviewed=False,
         oracle_review_note="This note is long enough for schema validation.",
+        oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
     )
@@ -291,6 +317,7 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
     }, None, FakeContext())
 
@@ -344,6 +371,7 @@ def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
             "oracle_review_note": "Reviewed against the official Python reference before queueing.",
         },
         max_attempts=1,
