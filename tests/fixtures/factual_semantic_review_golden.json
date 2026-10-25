@@ -1,0 +1,77 @@
+[
+  {
+    "id": "supported_exact_scope_version",
+    "assessment": {
+      "verdict": "supports",
+      "claim_atomic": true,
+      "source_directly_addresses_claim": true,
+      "scope_matches": true,
+      "source_version_matches_claim": true,
+      "runtime_environment_matches": true,
+      "source_is_authoritative": true,
+      "no_unresolved_conflict": true,
+      "reviewer_is_independent": true
+    },
+    "expected": {"accepted": true, "score": 1.0}
+  },
+  {
+    "id": "assertion_unrelated_to_claim",
+    "assessment": {
+      "verdict": "supports",
+      "claim_atomic": true,
+      "source_directly_addresses_claim": false,
+      "scope_matches": true,
+      "source_version_matches_claim": true,
+      "runtime_environment_matches": true,
+      "source_is_authoritative": true,
+      "no_unresolved_conflict": true,
+      "reviewer_is_independent": true
+    },
+    "expected": {"accepted": false, "score": 0.875}
+  },
+  {
+    "id": "version_mismatch",
+    "assessment": {
+      "verdict": "supports",
+      "claim_atomic": true,
+      "source_directly_addresses_claim": true,
+      "scope_matches": true,
+      "source_version_matches_claim": false,
+      "runtime_environment_matches": false,
+      "source_is_authoritative": true,
+      "no_unresolved_conflict": true,
+      "reviewer_is_independent": true
+    },
+    "expected": {"accepted": false, "score": 0.75}
+  },
+  {
+    "id": "contradicting_source",
+    "assessment": {
+      "verdict": "contradicts",
+      "claim_atomic": true,
+      "source_directly_addresses_claim": true,
+      "scope_matches": true,
+      "source_version_matches_claim": true,
+      "runtime_environment_matches": true,
+      "source_is_authoritative": true,
+      "no_unresolved_conflict": true,
+      "reviewer_is_independent": true
+    },
+    "expected": {"accepted": false, "score": 1.0}
+  },
+  {
+    "id": "insufficient_evidence_abstains",
+    "assessment": {
+      "verdict": "insufficient_evidence",
+      "claim_atomic": true,
+      "source_directly_addresses_claim": false,
+      "scope_matches": true,
+      "source_version_matches_claim": true,
+      "runtime_environment_matches": true,
+      "source_is_authoritative": true,
+      "no_unresolved_conflict": true,
+      "reviewer_is_independent": true
+    },
+    "expected": {"accepted": false, "score": 0.875}
+  }
+]
