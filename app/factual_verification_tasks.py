@@ -188,6 +188,20 @@ def _build_handler(
         if not usable_evidence:
             raise ValueError("Independent factual review requires a bounded HTTPS source excerpt.")
         source_items = usable_evidence[:3]
+        # Bind the human attestation to an exact excerpt the reviewer will see.
+        oracle_evidence = next(
+            (
+                item for item in source_items
+                if item["source_ref"] == oracle_review["oracle_source_url"]
+                and hashlib.sha256(str(item["excerpt"]).encode("utf-8")).hexdigest()
+                    == oracle_review["oracle_source_hash"]
+            ),
+            None,
+        )
+        if oracle_evidence is None:
+            raise ValueError(
+                "Oracle review must match the URL and SHA-256 of an exact stored source excerpt."
+            )
         source_blocks = []
         source_versions = []
         for index, evidence_item in enumerate(source_items, start=1):
