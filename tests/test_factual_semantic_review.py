@@ -92,7 +92,7 @@ def test_independent_model_review_accepts_only_distinct_model_with_valid_respons
         claim_version="3.12.3",
         environment_name="python",
         environment_version="3.12.3",
-        test_source="try:\\n    assert False\\nexcept AssertionError:\\n    pass",
+        test_source="try:\n    assert False\nexcept AssertionError:\n    pass",
     )
     assert decision.accepted is True
     assert decision.evaluator_model == "reviewer:7b"
