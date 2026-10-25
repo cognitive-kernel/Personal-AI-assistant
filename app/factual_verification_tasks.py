@@ -194,7 +194,9 @@ def _build_handler(
         if not isinstance(source_version, str) or not source_version.strip():
             source_version = "unspecified"
             source_path_parts = [part for part in urlparse(evidence["source_ref"]).path.split("/") if part]
-            if source_path_parts and source_path_parts[0] in {"2", "3"}:
+            if source_path_parts and re.fullmatch(r"\d+\.\d+", source_path_parts[0]):
+                source_version = source_path_parts[0]
+            elif source_path_parts and source_path_parts[0] in {"2", "3"}:
                 source_version = source_path_parts[0]
         try:
             semantic_decision = factual_semantic_review.review_claim_against_source(
