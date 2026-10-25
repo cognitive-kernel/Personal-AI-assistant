@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from . import factual_knowledge, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
+from . import factual_knowledge, factual_semantic_review, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
 from .db import learning_connection
 from .task_routes import require_loopback_client
 
@@ -95,6 +95,20 @@ def queue_factual_claim_test(
         factual_verification_tasks.validate_test_harness(request.source_code)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    test_source_hash = hashlib.sha256(request.source_code.encode("utf-8")).hexdigest()
+    assessment = request.semantic_assessment
+    if (
+        assessment.get("claim_hash") != candidate["claim_hash"]
+        or assessment.get("test_source_hash") != test_source_hash
+    ):
+        raise HTTPException(status_code=422, detail="Semantic assessment must bind the current claim revision and exact test source.")
+    try:
+        semantic_decision = factual_semantic_review.adjudicate_assessment(assessment)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not semantic_decision.accepted:
+        raise HTTPException(status_code=422, detail="Semantic assessment did not pass the fail-closed factual review rubric.")
 
     try:
         consent = sandbox_consent.get_consent()
