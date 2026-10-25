@@ -156,7 +156,7 @@ def _build_handler(
         if not usable_evidence:
             raise ValueError("Independent factual review requires a bounded HTTPS source excerpt.")
         evidence = usable_evidence[0]
-        excerpt = evidence["excerpt"][:6000]
+        excerpt = evidence["excerpt"][:4000]
         excerpt_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
         try:
             applicability = json.loads(evidence.get("applicability_json") or "{}")
