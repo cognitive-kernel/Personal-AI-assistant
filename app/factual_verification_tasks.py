@@ -231,6 +231,7 @@ def _build_handler(
             "semantic_rubric_version": semantic_decision.rubric_version,
             "semantic_review_score": semantic_decision.score,
             "semantic_review_verdict": semantic_decision.verdict,
+            "semantic_review_confidence": semantic_decision.confidence,
             "semantic_evaluator_model": semantic_decision.evaluator_model,
             "semantic_evaluator_digest": semantic_decision.evaluator_digest,
             "oracle_review_note": oracle_review_note.strip(),
