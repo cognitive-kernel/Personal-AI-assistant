@@ -80,6 +80,7 @@ def review_claim_against_source(
     source_excerpt: str,
     source_url: str,
     source_hash: str,
+    claim_hash: str,
     claim_version: str,
     environment_name: str,
     environment_version: str,
@@ -190,7 +191,7 @@ def review_claim_against_source(
         **{key: parsed.get(key) for key in _REQUIRED_CHECKS if key != "reviewer_is_independent"},
         "reviewer_is_independent": True,
         "verdict": verdict,
-        "claim_hash": __import__("hashlib").sha256(claim.encode("utf-8")).hexdigest(),
+        "claim_hash": claim_hash,
         "test_source_hash": __import__("hashlib").sha256(test_source.encode("utf-8")).hexdigest(),
     }
     # Test relevance is an additional hard gate, not a score-only signal.
