@@ -143,6 +143,13 @@ def review_claim_against_source(
     parsed_source_url = urlparse(source_url)
     if parsed_source_url.scheme != "https" or not parsed_source_url.hostname or parsed_source_url.username or parsed_source_url.password:
         raise ValueError("source_url must be an absolute HTTPS URL without embedded credentials")
+    source_path_parts = [part for part in parsed_source_url.path.split("/") if part]
+    url_version = source_path_parts[0] if source_path_parts and len(source_path_parts[0].split(".")) == 2 and all(part.isdigit() for part in source_path_parts[0].split(".")) else ""
+    if not url_version or not (
+        versions_compatible(url_version, source_version)
+        or versions_compatible(source_version, url_version)
+    ):
+        raise ValueError("source URL must expose a major.minor version consistent with source_version")
     actual_excerpt_hash = hashlib.sha256(source_excerpt.encode("utf-8")).hexdigest()
     if source_hash != actual_excerpt_hash:
         raise ValueError("source_hash must match the exact source excerpt bytes")
