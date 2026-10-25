@@ -183,21 +183,41 @@ def _build_handler(
                 usable_evidence.append(evidence_item)
         if not usable_evidence:
             raise ValueError("Independent factual review requires a bounded HTTPS source excerpt.")
-        evidence = usable_evidence[0]
-        excerpt = evidence["excerpt"][:4000]
+        source_items = usable_evidence[:3]
+        source_blocks = []
+        source_versions = []
+        for index, evidence_item in enumerate(source_items, start=1):
+            try:
+                applicability = json.loads(evidence_item.get("applicability_json") or "{}")
+            except (TypeError, ValueError):
+                applicability = {}
+            source_version_item = applicability.get("source_version") or applicability.get("version")
+            if not isinstance(source_version_item, str) or not source_version_item.strip():
+                source_version_item = "unspecified"
+                source_path_parts = [part for part in urlparse(evidence_item["source_ref"]).path.split("/") if part]
+                if source_path_parts and re.fullmatch(r"\d+\.\d+", source_path_parts[0]):
+                    source_version_item = source_path_parts[0]
+                elif source_path_parts and source_path_parts[0] in {"2", "3"}:
+                    source_version_item = source_path_parts[0]
+            source_versions.append(source_version_item)
+            source_blocks.append(
+                f"[Source {index}] URL: {evidence_item['source_ref']}\n"
+                f"Version: {source_version_item}\n"
+                f"Stored source hash: {str(evidence_item.get('source_hash', ''))[:128]}\n"
+                f"Excerpt: {str(evidence_item.get('excerpt', '')).strip()[:1000]}"
+            )
+        excerpt = "\n\n".join(source_blocks)[:4000]
         excerpt_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
-        try:
-            applicability = json.loads(evidence.get("applicability_json") or "{}")
-        except (TypeError, ValueError):
-            applicability = {}
-        source_version = applicability.get("source_version") or applicability.get("version")
-        if not isinstance(source_version, str) or not source_version.strip():
-            source_version = "unspecified"
-            source_path_parts = [part for part in urlparse(evidence["source_ref"]).path.split("/") if part]
-            if source_path_parts and re.fullmatch(r"\d+\.\d+", source_path_parts[0]):
-                source_version = source_path_parts[0]
-            elif source_path_parts and source_path_parts[0] in {"2", "3"}:
-                source_version = source_path_parts[0]
+        compatible_versions = [
+            version for version in source_versions
+            if factual_semantic_review.versions_compatible(version, candidate["environment_version"])
+        ]
+        source_version = (
+            max(compatible_versions, key=lambda value: len(value.split(".")))
+            if len(compatible_versions) == len(source_versions) and compatible_versions
+            else "conflict_or_unknown"
+        )
+        evidence = source_items[0]
         try:
             semantic_decision = factual_semantic_review.review_claim_against_source(
                 claim=candidate["claim"],
