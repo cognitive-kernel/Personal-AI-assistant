@@ -15,7 +15,7 @@ from .task_worker import TaskContext
 FACTUAL_VERIFY_TASK_TYPE = "factual.verify_claim"
 _ALLOWED_PAYLOAD_KEYS = {
     "knowledge_id", "test_name", "source_code", "timeout_seconds", "max_output_bytes",
-    "oracle_reviewed", "oracle_review_note",
+    "oracle_reviewed", "oracle_review_note", "oracle_review_id",
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
 
@@ -103,6 +103,9 @@ def _build_handler(
         oracle_review_note = payload.get("oracle_review_note")
         if not isinstance(oracle_review_note, str) or len(oracle_review_note.strip()) < 20 or len(oracle_review_note) > 1000:
             raise ValueError("oracle_review_note must explain the independent reference review in 20–1000 characters.")
+        oracle_review_id = payload.get("oracle_review_id")
+        if isinstance(oracle_review_id, bool) or not isinstance(oracle_review_id, int) or oracle_review_id < 1:
+            raise ValueError("oracle_review_id must identify a persisted oracle review.")
         test_name = payload.get("test_name")
         if not isinstance(test_name, str) or not test_name.strip() or len(test_name) > 300:
             raise ValueError("test_name must contain 1–300 characters.")
@@ -119,6 +122,16 @@ def _build_handler(
 
         candidate = get_verification_candidate(knowledge_id)
         original_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
+        with learning_connection() as connection:
+            oracle_review = factual_knowledge.get_oracle_review(
+                connection,
+                oracle_review_id,
+                knowledge_id=knowledge_id,
+                claim_hash=candidate["claim_hash"],
+                test_source_hash=original_hash,
+            )
+        if oracle_review is None:
+            raise ValueError("Persisted independent-oracle review does not match this claim revision and exact test source.")
         wrapped, completion_marker = _wrapped_harness(source_code)
         context.checkpoint({
             "phase": "factual_claim_test_started",
@@ -161,7 +174,10 @@ def _build_handler(
             "claim_hash_at_start": candidate["claim_hash"],
             "test_source_sha256": original_hash,
             "oracle_reviewed": True,
+            "oracle_review_id": oracle_review_id,
             "oracle_review_note": oracle_review_note.strip(),
+            "oracle_source_url": oracle_review["oracle_source_url"],
+            "oracle_source_hash": oracle_review["oracle_source_hash"],
             "output_hash": log_hash,
         }
         summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))[:2000]
@@ -208,6 +224,7 @@ def _build_handler(
             "evidence_level_promoted": promoted,
             "runtime_version": runtime_version,
             "test_source_sha256": original_hash,
+            "oracle_review_id": oracle_review_id,
             "log_sha256": log_hash,
         }
         context.checkpoint({"phase": "factual_claim_test_recorded", **result_payload})
