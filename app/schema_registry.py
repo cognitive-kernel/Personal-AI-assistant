@@ -934,6 +934,7 @@ LEARNING_MIGRATIONS = (
                 observed_sha256 TEXT NOT NULL CHECK(length(observed_sha256) IN (0, 64)),
                 observed_chars INTEGER NOT NULL DEFAULT 0 CHECK(observed_chars BETWEEN 0 AND 6000),
                 outcome TEXT NOT NULL CHECK(outcome IN ('unchanged', 'changed', 'unavailable')),
+                observed_text TEXT CHECK(observed_text IS NULL OR length(observed_text) <= 6000),
                 detail TEXT NOT NULL CHECK(length(detail) <= 500),
                 checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 review_decision TEXT NOT NULL DEFAULT 'pending'
