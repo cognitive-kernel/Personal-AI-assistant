@@ -31,7 +31,11 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
                         (SELECT COUNT(*)
                          FROM assessment_attempts a
                          JOIN learning_jobs j ON j.id=a.job_id
-                         WHERE j.path_topic_id=t.id) AS assessment_count,
+                         WHERE j.path_topic_id=t.id
+                           AND a.scoring_method='normalized_exact_match'
+                           AND a.score BETWEEN 0 AND 100
+                           AND a.question_count > 0
+                           AND a.correct_count BETWEEN 0 AND a.question_count) AS assessment_count,
                         latest.id AS latest_attempt_id,
                         latest.score AS latest_attempt_score,
                         latest.correct_count AS latest_correct_count,
