@@ -304,6 +304,35 @@ def test_route_rejects_missing_independent_oracle_attestation():
 
 
 
+def test_missing_or_mismatched_oracle_audit_cannot_execute_or_promote(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    called = {"sandbox": False}
+
+    def sandbox_handler(*_args):
+        called["sandbox"] = True
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="Persisted independent-oracle review"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "assert semantics",
+            "source_code": "assert True",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Compared against the official reference documentation.",
+            "oracle_review_id": 999999,
+        }, None, FakeContext())
+    assert called["sandbox"] is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
+
+
 def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store, monkeypatch):
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
