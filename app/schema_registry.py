@@ -951,6 +951,39 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_source_sync_snapshot_checked ON learning_source_sync_events(snapshot_id, checked_at DESC, id DESC)",
             "CREATE INDEX idx_learning_source_sync_decision ON learning_source_sync_events(review_decision, outcome, checked_at DESC)",
         ),
+    ),
+    Migration(
+        26,
+        "auditable-curriculum-evolution",
+        (
+            """CREATE TABLE curriculum_update_proposals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path_id INTEGER NOT NULL REFERENCES learning_paths(id) ON DELETE CASCADE,
+                trigger_topic_id INTEGER REFERENCES learning_path_topics(id) ON DELETE SET NULL,
+                source_sync_event_id INTEGER REFERENCES learning_source_sync_events(id) ON DELETE SET NULL,
+                proposal_type TEXT NOT NULL CHECK(proposal_type IN ('reinforce_topic', 'refresh_lesson')),
+                proposed_topic TEXT NOT NULL CHECK(length(trim(proposed_topic)) BETWEEN 1 AND 300),
+                rationale TEXT NOT NULL CHECK(length(trim(rationale)) BETWEEN 20 AND 1000),
+                evidence_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'rejected')),
+                review_note TEXT,
+                reviewed_at TEXT,
+                applied_topic_id INTEGER REFERENCES learning_path_topics(id) ON DELETE SET NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(
+                    (status = 'pending' AND review_note IS NULL AND reviewed_at IS NULL)
+                    OR
+                    (status <> 'pending' AND length(trim(review_note)) >= 20 AND reviewed_at IS NOT NULL)
+                ),
+                CHECK(
+                    (proposal_type = 'reinforce_topic' AND trigger_topic_id IS NOT NULL AND source_sync_event_id IS NULL)
+                    OR
+                    (proposal_type = 'refresh_lesson' AND trigger_topic_id IS NOT NULL AND source_sync_event_id IS NOT NULL)
+                )
+            )""",
+            "CREATE INDEX idx_curriculum_proposals_path_status ON curriculum_update_proposals(path_id, status, id DESC)",
+            "CREATE INDEX idx_curriculum_proposals_source_event ON curriculum_update_proposals(source_sync_event_id, status)",
+        ),
     )
 )
 
