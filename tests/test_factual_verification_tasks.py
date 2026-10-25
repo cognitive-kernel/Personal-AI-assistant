@@ -51,6 +51,23 @@ def _active_sourced_python_claim(version="3.12.3"):
     return knowledge_id
 
 
+def _valid_semantic_assessment(knowledge_id, source_code):
+    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+    return {
+        "claim_hash": candidate["claim_hash"],
+        "test_source_hash": hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+        "verdict": "supports",
+        "claim_atomic": True,
+        "source_directly_addresses_claim": True,
+        "scope_matches": True,
+        "source_version_matches_claim": True,
+        "runtime_environment_matches": True,
+        "source_is_authoritative": True,
+        "no_unresolved_conflict": True,
+        "reviewer_is_independent": True,
+    }
+
+
 def _oracle_review_id(knowledge_id, source_code):
     candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
     with db.learning_connection() as connection:
@@ -99,6 +116,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert (1 + 1) == 2",
+        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert (1 + 1) == 2"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert (1 + 1) == 2"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -142,6 +160,7 @@ def test_sandbox_version_mismatch_records_environment_failure_without_promotion(
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
+        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -172,6 +191,7 @@ def test_failed_assertion_is_inconclusive_not_automatic_claim_failure(learning_s
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert False",
+        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert False"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert False"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
@@ -209,6 +229,7 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
             "knowledge_id": knowledge_id,
             "test_name": "assert semantics",
             "source_code": "assert True",
+            "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
@@ -269,6 +290,7 @@ def test_claim_change_during_execution_prevents_promotion(learning_store, monkey
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
+        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
@@ -319,6 +341,7 @@ def test_missing_or_mismatched_oracle_audit_cannot_execute_or_promote(learning_s
             "knowledge_id": knowledge_id,
             "test_name": "assert semantics",
             "source_code": "assert True",
+            "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
@@ -343,6 +366,7 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "assert True",
+        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
@@ -397,6 +421,7 @@ def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
             "knowledge_id": knowledge_id,
             "test_name": "queued test",
             "source_code": "assert True",
+            "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert True"),
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
