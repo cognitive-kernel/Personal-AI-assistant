@@ -1,8 +1,8 @@
-"""Deterministic policy for adjudicating semantic factual-review assessments.
+"""Independent-model factual review plus a deterministic, fail-closed acceptance policy.
 
-This module does not infer truth from prose or trust an LLM verdict. It validates
-an explicitly recorded assessment against fixed criteria and abstains when the
-assessment is incomplete, out of scope, or version-incompatible.
+Model output is treated as untrusted data. The evaluator checks model identity,
+source/test binding, version compatibility, completeness, and abstention conditions.
+It provides evidence for review, not a mathematical proof of truth.
 """
 from __future__ import annotations
 
