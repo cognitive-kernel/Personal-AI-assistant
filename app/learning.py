@@ -227,7 +227,7 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
                 (job_id, document.url, digest),
             ).fetchone()
             stored_source_text = stored_chunk.partition("\nContent:\n")[2].strip()
-            if evidence is not None and stored_source_text:
+            if evidence is not None and stored_source_text and document.url.startswith("https://"):
                 learning_source_sync.capture_source_snapshot(
                     conn,
                     job_id=job_id,
