@@ -197,12 +197,21 @@ def _build_handler(
                 applicability = {}
             source_version_item = applicability.get("source_version") or applicability.get("version")
             if not isinstance(source_version_item, str) or not source_version_item.strip():
+                source_version_item = ""
+            source_path_parts = [part for part in urlparse(evidence_item["source_ref"]).path.split("/") if part]
+            url_version = source_path_parts[0] if source_path_parts and re.fullmatch(r"\d+\.\d+", source_path_parts[0]) else ""
+            if not url_version:
+                # Major-only or unversioned documentation URLs do not establish minor-version compatibility.
                 source_version_item = "unspecified"
-                source_path_parts = [part for part in urlparse(evidence_item["source_ref"]).path.split("/") if part]
-                if source_path_parts and re.fullmatch(r"\d+\.\d+", source_path_parts[0]):
-                    source_version_item = source_path_parts[0]
-                elif source_path_parts and source_path_parts[0] in {"2", "3"}:
-                    source_version_item = source_path_parts[0]
+            elif source_version_item:
+                versions_agree = (
+                    factual_semantic_review.versions_compatible(url_version, source_version_item)
+                    or factual_semantic_review.versions_compatible(source_version_item, url_version)
+                )
+                if not versions_agree:
+                    source_version_item = "conflict_or_unknown"
+            else:
+                source_version_item = url_version
             source_versions.append(source_version_item)
             source_blocks.append(
                 f"[Source {index}] URL: {str(evidence_item['source_ref'])[:250]}\n"
