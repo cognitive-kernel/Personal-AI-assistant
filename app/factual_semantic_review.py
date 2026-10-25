@@ -26,6 +26,7 @@ _REQUIRED_CHECKS = (
     "runtime_environment_matches",
     "source_is_authoritative",
     "no_unresolved_conflict",
+    "test_directly_checks_claim",
     "reviewer_is_independent",
 )
 
