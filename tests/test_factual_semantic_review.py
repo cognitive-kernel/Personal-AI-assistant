@@ -86,9 +86,9 @@ def test_independent_model_review_accepts_only_distinct_model_with_valid_respons
         claim="An assertion raises AssertionError when false.",
         claim_hash="c" * 64,
         source_excerpt="The assert statement raises AssertionError when the expression is false.",
-        source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+        source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
         source_hash=hashlib.sha256(b"The assert statement raises AssertionError when the expression is false.").hexdigest(),
-        source_version="3",
+        source_version="3.12",
         claim_version="3.12.3",
         environment_name="python",
         environment_version="3.12.3",
@@ -141,3 +141,11 @@ def test_same_model_digest_cannot_be_used_as_independent_reviewer(monkeypatch):
             environment_version="3.12.3",
             test_source="assert True",
         )
+
+
+
+def test_source_version_requires_major_minor_precision():
+    assert factual_semantic_review.versions_compatible("3.12", "3.12.3") is True
+    assert factual_semantic_review.versions_compatible("3.11", "3.12.3") is False
+    assert factual_semantic_review.versions_compatible("3", "3.12.3") is False
+    assert factual_semantic_review.versions_compatible("latest", "3.12.3") is False
