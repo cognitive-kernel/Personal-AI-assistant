@@ -177,3 +177,16 @@ def test_curriculum_proposal_api_is_loopback_only_and_requires_explicit_review(t
     with TestClient(app, client=("203.0.113.10", 12345)) as client:
         blocked = client.get(f"/api/learning/paths/{path_id}/curriculum-proposals")
         assert blocked.status_code == 403
+
+
+
+def test_learning_ui_exposes_curriculum_proposal_review_controls():
+    from pathlib import Path
+
+    page = (Path(__file__).parents[1] / "app" / "static" / "learning.js").read_text(
+        encoding="utf-8"
+    )
+    assert "تولید پیشنهادهای تطبیق مسیر" in page
+    assert "/api/learning/paths/" + path.id + "/curriculum-proposals/generate" in page
+    assert "/api/learning/curriculum-proposals/" + proposal.id + "/review" in page
+    assert "حداقل ۲۰ نویسه" in page
