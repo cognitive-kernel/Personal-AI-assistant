@@ -39,6 +39,11 @@ def learning_store(tmp_path, monkeypatch):
             evaluator_digest="b" * 64,
         ),
     )
+    monkeypatch.setattr(
+        factual_verification_tasks,
+        "_verify_live_source_excerpt",
+        lambda _url, excerpt: hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+    )
     return tmp_path
 
 
