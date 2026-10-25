@@ -104,3 +104,81 @@ def test_chat_conversation_api_keeps_old_conversations_and_persists_user_turn(tm
         ]
         conversations = client.get("/api/conversations").json()["conversations"]
         assert {item["id"] for item in conversations} >= {first_id, second_id}
+
+
+
+def test_research_plan_route_queues_bounded_plan_task(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    captured = {}
+
+    def fake_create_task(task_type, payload, **kwargs):
+        captured.update(task_type=task_type, payload=payload, options=kwargs)
+        return {"id": 765, "status": "queued", "task_type": task_type}
+
+    monkeypatch.setattr(task_manager, "create_task", fake_create_task)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.post(
+            "/api/research/plans",
+            json={"goal": "Compare SQL Server indexing strategies", "max_steps": 3},
+        )
+        assert response.status_code == 202
+        assert response.json()["task_id"] == 765
+        invalid = client.post(
+            "/api/research/plans",
+            json={"goal": "goal", "max_steps": 9},
+        )
+        assert invalid.status_code == 422
+
+    assert captured["task_type"] == "research.plan"
+    assert captured["payload"] == {
+        "goal": "Compare SQL Server indexing strategies",
+        "max_steps": 3,
+    }
+    assert captured["options"]["max_attempts"] == 1
+
+
+def test_research_plan_progress_endpoint_returns_checkpoint_progress(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    plan = [
+        {
+            "question": "What is documented?",
+            "source_focus": "Official docs",
+            "acceptance_criteria": "Use primary sources",
+        },
+        {
+            "question": "What are the limitations?",
+            "source_focus": "Official release notes",
+            "acceptance_criteria": "List caveats",
+        },
+    ]
+    monkeypatch.setattr(
+        task_manager,
+        "get_task",
+        lambda task_id: {
+            "id": task_id,
+            "task_type": "research.plan",
+            "status": "paused",
+            "error": None,
+            "result": None,
+            "checkpoint": {
+                "phase": "step_completed",
+                "plan": plan,
+                "completed_results": [
+                    {"step_index": 0, "question": plan[0]["question"], "answer": "A sourced answer"}
+                ],
+                "next_step_index": 1,
+                "total_steps": 2,
+            },
+        },
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.get("/api/research/plans/44")
+        assert response.status_code == 200
+        assert response.json()["completed_steps"] == 1
+        assert response.json()["total_steps"] == 2
+        assert response.json()["results"][0]["answer"] == "A sourced answer"
+        assert client.get("/api/research/plans/45").status_code == 200
+
+    monkeypatch.setattr(task_manager, "get_task", lambda _task_id: None)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        assert client.get("/api/research/plans/46").status_code == 404
