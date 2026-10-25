@@ -866,6 +866,34 @@ async function loadLearningPaths() {
  } catch (error) { learningEl("paths-output").textContent = error.message; }
 }
 
+async function refreshLearningCapabilities() {
+ const output = learningEl("capability-map-output");
+ if (!output) return;
+ output.textContent = "در حال ساخت نقشه از ارزیابی‌های ذخیره‌شده…";
+ try {
+  const result = await learningApi("/api/learning/capabilities?limit=200");
+  const items = result.capabilities || [];
+  const labels = {
+   not_assessed: "ارزیابی نشده",
+   invalid_evidence: "شواهد نامعتبر",
+   needs_reinforcement: "نیازمند تقویت",
+   provisional: "شواهد اولیه",
+   repeated_provisional: "شواهد اولیهٔ تکرارشده"
+  };
+  output.textContent = items.length
+   ? items.map(item =>
+      item.path_title + " — " + item.capability +
+      "\\nوضعیت: " + (labels[item.status] || item.status) +
+      "\\nآخرین نمره: " + (item.latest_score == null ? "ندارد" : item.latest_score + "/100") +
+      "؛ تعداد آزمون معتبر: " + item.assessment_count
+     ).join("\\n\\n") +
+     "\\n\\nاین نقشه فقط شواهد آزمون ذخیره‌شده را خلاصه می‌کند؛ تطبیق متنی، تسلط معنایی یا انتقال مهارت عملی را اثبات نمی‌کند."
+   : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
+ } catch (error) {
+  output.textContent = "ساخت نقشهٔ قابلیت‌ها ناموفق بود: " + error.message;
+ }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
  const enroll = learningEl("enroll-curriculum");
  if (!enroll) return;
@@ -881,6 +909,7 @@ document.addEventListener("DOMContentLoaded", () => {
  learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
  learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
  learningEl("refresh-learning-recommendations").addEventListener("click", refreshLearningRecommendations);
+ learningEl("refresh-capability-map").addEventListener("click", refreshLearningCapabilities);
  loadLearningCurricula();
  loadLearningPaths();
  refreshDueLearningReviews();
