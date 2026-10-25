@@ -11,6 +11,8 @@ import math
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from app.factual_semantic_review import review_claim_against_source
 
 
@@ -83,7 +85,7 @@ def main() -> int:
         "recall": round(sum(item["accepted"] for item in positives) / len(positives), 4) if positives else None,
         "false_acceptance_rate": round(sum(item["accepted"] for item in negatives) / len(negatives), 4) if negatives else None,
         "coverage": round(len(scored) / len(results), 4),
-        "abstention_rate": round(sum(item["verdict"] == "insufficient_evidence" for item in results) / len(results), 4),
+        "abstention_rate": round(sum(item["verdict"] in {"insufficient_evidence", "conflict"} for item in results) / len(results), 4),
         "brier_score": round(brier, 4),
         "expected_calibration_error_5_bins": expected_calibration_error(results),
         "all_cases_correct": all(item["correct"] for item in results),
