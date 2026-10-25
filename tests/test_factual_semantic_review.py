@@ -98,6 +98,7 @@ def test_independent_model_review_accepts_only_distinct_model_with_valid_respons
     assert decision.evaluator_model == "reviewer:7b"
     assert decision.evaluator_digest == "b" * 64
     assert captured["purpose"] == "factual_review"
+    assert captured["model_override"] == "reviewer:7b"
 
 
 def test_independent_model_review_fails_closed_on_source_version_mismatch(monkeypatch):
