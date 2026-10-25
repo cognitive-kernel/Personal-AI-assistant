@@ -11,7 +11,44 @@ from . import curricula, factual_knowledge, learning_evidence_gate
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
-LESSON_GENERATION_PROMPT_VERSION = "learning-lesson-v1"
+LESSON_GENERATION_PROMPT_VERSION = "learning-lesson-v2-adaptive-difficulty"
+
+
+def _adaptive_difficulty_guidance(score: float | int | None) -> dict[str, str]:
+    """Map the last persisted assessment score to bounded lesson-generation guidance."""
+    if score is None:
+        return {
+            "level": "baseline",
+            "instruction": "Use a balanced introductory-to-intermediate explanation; do not assume prior mastery.",
+        }
+    try:
+        numeric_score = float(score)
+    except (TypeError, ValueError):
+        numeric_score = float("nan")
+    if not 0 <= numeric_score <= 100:
+        return {
+            "level": "baseline",
+            "instruction": "Use a balanced introductory-to-intermediate explanation; do not assume prior mastery.",
+        }
+    if numeric_score < 50:
+        return {
+            "level": "foundational",
+            "instruction": "Reduce prerequisite load, define terms before use, explain each step explicitly, and add one worked example plus a short misconception check.",
+        }
+    if numeric_score < 80:
+        return {
+            "level": "reinforcement",
+            "instruction": "Re-teach the core concept from a different angle, connect each step to the prior lesson, and add a worked example targeting likely misconceptions.",
+        }
+    if numeric_score >= 90:
+        return {
+            "level": "advanced_transfer",
+            "instruction": "Increase challenge with a boundary case, trade-off analysis, and a novel transfer scenario while preserving technical correctness.",
+        }
+    return {
+        "level": "application",
+        "instruction": "Keep the core explanation concise and add an applied example requiring the learner to choose and justify an approach.",
+    }
 
 class LearningError(RuntimeError):
     pass
@@ -492,8 +529,24 @@ def run_job(job_id: int) -> None:
                 (safe_error, job_id),
             )
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
+    prior_assessment_score = None
+    if path_topic_id is not None:
+        with learning_connection() as conn:
+            score_row = conn.execute(
+                "SELECT latest_score FROM learning_path_topics WHERE id=?",
+                (path_topic_id,),
+            ).fetchone()
+        if score_row is not None:
+            prior_assessment_score = score_row["latest_score"]
+    adaptive_difficulty = _adaptive_difficulty_guidance(prior_assessment_score)
     prompt = {
         "topic": topic,
+        "adaptive_difficulty": adaptive_difficulty,
+        "adaptive_difficulty_policy": (
+            "Use this score-derived guidance to adjust explanation depth and practice type, not to alter factual claims. "
+            "The score is a noisy normalized exact-match result, not proof of semantic mastery. "
+            "If the score is absent or invalid, use baseline difficulty."
+        ),
         "source_text": model_source_text,
         "verified_factual_context": verified_factual_context,
         "verified_factual_context_policy": (
@@ -503,7 +556,7 @@ def run_job(job_id: int) -> None:
             "cite only the exact supplied HTTPS URLs, and do not claim that this lesson or any "
             "new claim has been independently verified. If the context is empty, proceed without it."
         ),
-        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
+        "instruction": "Follow adaptive_difficulty.level and adaptive_difficulty.instruction when choosing explanation depth and practice type. Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If source_text is empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text exists, distinguish what it supports from additional explanation and include a Sources section with the exact source URLs used; do not invent or alter URLs."
     }
     if lesson_review:
         prompt["learner_review"] = lesson_review
