@@ -117,3 +117,28 @@ def test_source_sync_bounds_requested_work(tmp_path, monkeypatch, limit):
     _setup(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="limit must be"):
         learning_source_sync.check_sources(limit=limit)
+
+
+
+def test_source_sync_records_a_new_event_when_content_returns_and_changes_again(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    original = "The Python tutorial describes language basics and practical examples."
+    changed = "The Python tutorial has changed to describe a different API behavior."
+    current = {"text": changed}
+    monkeypatch.setattr(
+        learning_source_sync.web_sources,
+        "fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=current["text"]),
+    )
+
+    first_change = learning_source_sync.check_sources(limit=1)["results"][0]["event"]
+    assert first_change["outcome"] == "changed"
+    current["text"] = original
+    restored = learning_source_sync.check_sources(limit=1)["results"][0]["event"]
+    assert restored["outcome"] == "unchanged"
+    current["text"] = changed
+    second_change = learning_source_sync.check_sources(limit=1)["results"][0]["event"]
+
+    assert second_change["outcome"] == "changed"
+    assert second_change["id"] != first_change["id"]
+    assert second_change["review_decision"] == "pending"
