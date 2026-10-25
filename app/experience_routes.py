@@ -270,6 +270,16 @@ def get_experience_source_checks(
     return {"experience_id": experience_id, "checks": checks, "count": len(checks)}
 
 
+@router.get("/{experience_id}/evolution")
+def get_experience_evolution(experience_id: int) -> dict[str, Any]:
+    try:
+        return experience.list_experience_evolution(experience_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Experience not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail="Experience history is invalid and requires review.") from exc
+
+
 @router.get("/{experience_id}/versions")
 def get_experience_versions(experience_id: int) -> dict[str, Any]:
     try:
