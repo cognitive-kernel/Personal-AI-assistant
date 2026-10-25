@@ -121,3 +121,18 @@ def test_learning_ui_exposes_recommendation_panel():
     assert 'id="learning-recommendations-output"' in index
     assert '"/api/learning/recommendations?limit=20"' in script
     assert "هیچ درس یا وظیفه‌ای به‌صورت خودکار شروع نشده است" in script
+
+
+def test_in_progress_low_assessment_score_is_detected_as_knowledge_gap(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch, [
+        {"topic": "Weak active topic", "status": "in_progress", "score": 41.5},
+        {"topic": "Next topic"},
+    ])
+    result = learning_recommendations.get_learning_recommendations(path_id=path_id)
+    recommendation = result["recommendations"][0]
+    assert recommendation["topic_id"] == topic_ids[0]
+    assert recommendation["recommendation_type"] == "knowledge_gap"
+    assert recommendation["action"] == "reinforce_topic"
+    assert recommendation["gap_score"] == 38.5
+    assert recommendation["priority"] > 85
+    assert all(item["topic_id"] != topic_ids[1] for item in result["recommendations"])
