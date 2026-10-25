@@ -74,7 +74,7 @@ def _oracle_review_id(knowledge_id, source_code):
             test_source_hash=hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
             oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
             oracle_source_hash=hashlib.sha256(
-                b"Python assert statement reference excerpt reviewed independently"
+                b"The assert statement raises AssertionError when the expression is false."
             ).hexdigest(),
             review_note="Compared the test assertion against the official Python reference excerpt.",
         )
