@@ -55,7 +55,7 @@ def _active_sourced_python_claim(version="3.12.3"):
             connection,
             knowledge_id,
             source_type="official_docs",
-            source_ref="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+            source_ref="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
             source_hash="sha256:source-evidence",
             excerpt="The assert statement raises AssertionError when the expression is false.",
         )
@@ -72,7 +72,7 @@ def _oracle_review_id(knowledge_id, source_code):
             knowledge_id,
             claim_hash=candidate["claim_hash"],
             test_source_hash=hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
-            oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+            oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
             oracle_source_hash=hashlib.sha256(
                 b"Python assert statement reference excerpt reviewed independently"
             ).hexdigest(),
@@ -247,7 +247,7 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
         confirm=True,
         oracle_reviewed=True,
         oracle_review_note="Compared the assertion against the official Python reference for assert semantics.",
-        oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
         oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
@@ -307,7 +307,7 @@ def test_route_rejects_missing_independent_oracle_attestation():
         confirm=True,
         oracle_reviewed=False,
         oracle_review_note="This note is long enough for schema validation.",
-        oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
         oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
