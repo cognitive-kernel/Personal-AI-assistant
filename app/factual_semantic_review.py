@@ -74,6 +74,19 @@ def adjudicate_assessment(assessment: dict[str, Any]) -> ReviewDecision:
     )
 
 
+def versions_compatible(source_version: str, claim_version: str) -> bool:
+    """Return true only when a numeric source version is a prefix of the claim version."""
+    if not isinstance(source_version, str) or not isinstance(claim_version, str):
+        return False
+    source_parts = source_version.strip().split(".")
+    claim_parts = claim_version.strip().split(".")
+    if not source_parts or len(source_parts) > 3 or len(claim_parts) < len(source_parts):
+        return False
+    if any(not part.isdigit() for part in source_parts + claim_parts):
+        return False
+    return claim_parts[:len(source_parts)] == source_parts
+
+
 def review_claim_against_source(
     *,
     claim: str,
@@ -179,6 +192,7 @@ def review_claim_against_source(
         purpose="factual_review",
     )
     import json
+import hashlib
     try:
         parsed = json.loads(raw.strip())
     except (TypeError, ValueError) as exc:
@@ -192,10 +206,12 @@ def review_claim_against_source(
         raise ValueError("Independent factual reviewer omitted test relevance.")
     assessment = {
         **{key: parsed.get(key) for key in _REQUIRED_CHECKS if key != "reviewer_is_independent"},
+        "source_version_matches_claim": versions_compatible(source_version, claim_version),
+        "runtime_environment_matches": bool(environment_name.strip() and environment_version == claim_version),
         "reviewer_is_independent": True,
         "verdict": verdict,
         "claim_hash": claim_hash,
-        "test_source_hash": __import__("hashlib").sha256(test_source.encode("utf-8")).hexdigest(),
+        "test_source_hash": hashlib.sha256(test_source.encode("utf-8")).hexdigest(),
     }
     # Test relevance is an additional hard gate, not a score-only signal.
     decision = adjudicate_assessment(assessment)
