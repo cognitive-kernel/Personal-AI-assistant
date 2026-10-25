@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from . import factual_knowledge, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
-from .db import learning_connection
+from .db import get_settings, learning_connection
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -49,6 +49,17 @@ def _configured() -> bool:
         return sandbox_tasks.handler_from_environment() is not None
     except ValueError:
         return False
+
+
+def _reviewer_configured() -> bool:
+    settings = get_settings()
+    reviewer = str(settings.get("factual_review_ollama_model", "")).strip()
+    generation_models = {
+        str(settings.get(key, "")).strip()
+        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
+        if str(settings.get(key, "")).strip()
+    }
+    return bool(reviewer and reviewer not in generation_models)
 
 
 @router.get("/test-history")
@@ -106,6 +117,8 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=409, detail="Factual claim testing requires explicit current sandbox consent.")
     if not _configured():
         raise HTTPException(status_code=409, detail="Factual claim testing requires a configured digest-pinned Docker sandbox.")
+    if not _reviewer_configured():
+        raise HTTPException(status_code=409, detail="Configure a distinct factual-review Ollama model before queueing factual verification.")
 
     parsed_oracle_url = urlparse(request.oracle_source_url)
     if (
