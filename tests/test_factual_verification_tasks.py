@@ -541,6 +541,58 @@ def test_independent_reviewer_receives_exact_claim_source_and_test(learning_stor
     assert result["evidence_level_promoted"] is True
     assert observed["claim"] == "A Python assertion raises an error when its condition is false."
     assert observed["claim_hash"] == candidate_before["claim_hash"]
-    assert observed["source_excerpt"].startswith("The assert statement raises AssertionError")
+    assert "[Source 1] URL: https://docs.python.org/3.12" in observed["source_excerpt"]
+    assert "The assert statement raises AssertionError" in observed["source_excerpt"]
     assert observed["test_source"] == source_code
 
+
+def test_conflicting_evidence_is_sent_to_reviewer_and_prevents_promotion(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    with db.learning_connection() as connection:
+        factual_knowledge.add_evidence(
+            connection,
+            knowledge_id,
+            source_type="official_docs",
+            source_ref="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+            source_hash=hashlib.sha256(b"contradictory source").hexdigest(),
+            excerpt="The assert statement never raises an exception when the expression is false.",
+            applicability={"source_version": "3.12"},
+        )
+    called = False
+
+    def review(**kwargs):
+        nonlocal called
+        called = True
+        assert "The assert statement raises AssertionError" in kwargs["source_excerpt"]
+        assert "The assert statement never raises an exception" in kwargs["source_excerpt"]
+        return factual_semantic_review.ReviewDecision(
+            verdict="conflict",
+            accepted=False,
+            score=0.875,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("unresolved_source_conflict", "fail_closed_no_promotion"),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        )
+
+    monkeypatch.setattr(factual_semantic_review, "review_claim_against_source", review)
+    source_code = "try:\n    assert False\nexcept AssertionError:\n    pass"
+    handler = factual_verification_tasks._build_handler(lambda *_args: pytest.fail("sandbox must not run"))
+    with pytest.raises(ValueError, match="did not pass"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "conflicting source review",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+    assert called is True
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
