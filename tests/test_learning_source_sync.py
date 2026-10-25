@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import db, learning_source_sync
+from app import db, learning, learning_source_sync
 from app.db import learning_connection
 
 
@@ -73,6 +73,16 @@ def test_source_sync_records_change_and_requires_immutable_human_decision(tmp_pa
     )
     assert reviewed["review_decision"] == "regenerate_lesson"
     assert reviewed["reviewed_at"]
+
+    queued = learning_source_sync.queue_lesson_regeneration(event_id)
+    retried = learning_source_sync.queue_lesson_regeneration(event_id)
+    assert queued["job_id"] == retried["job_id"]
+    assert queued["task_id"] == retried["task_id"]
+    assert queued["lesson_modified_in_place"] is False
+    regenerated_job = learning.get_job(queued["job_id"])
+    assert regenerated_job["source_kind"] == "web_retrieved"
+    assert any(item["evidence_type"] == "web_page" for item in regenerated_job["evidence"])
+
     with pytest.raises(ValueError, match="immutable"):
         learning_source_sync.record_review_decision(
             event_id,
