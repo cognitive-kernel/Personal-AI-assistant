@@ -109,13 +109,16 @@ def check_sources(*, limit: int = 10) -> dict[str, Any]:
                    ORDER BY id DESC LIMIT 1""",
                 (snapshot["id"], observed_hash, outcome),
             ).fetchone()
+        event_data = dict(event) if event else None
+        if event_data is not None:
+            event_data.pop("observed_text", None)
         results.append({
             "snapshot_id": int(snapshot["id"]),
             "job_id": int(snapshot["job_id"]),
             "evidence_id": int(snapshot["evidence_id"]),
             "source_ref": source_ref,
             "outcome": outcome,
-            "event": dict(event) if event else None,
+            "event": event_data,
         })
     return {
         "checked": len(results),
