@@ -125,6 +125,10 @@ def propose_hypotheses(topic: str, problem: str, *, max_candidates: int = 3) -> 
             if not isinstance(query, str) or not query.strip() or len(query) > 300:
                 raise ValueError("Source discovery queries must contain 1–300 characters.")
             clean_queries.append(query.strip())
+        # Persist source-discovery queries alongside each test plan so they survive
+        # beyond the response and remain part of the versioned audit history.
+        for clean_test in clean_plan:
+            clean_test["source_queries"] = clean_queries
         normalized.append({
             "hypothesis": hypothesis.strip(),
             "falsification_criteria": falsification.strip(),
