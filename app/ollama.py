@@ -161,7 +161,7 @@ def chat(
     *,
     purpose: str = "chat",
 ) -> str:
-    if purpose not in {"chat", "learning", "programming"}:
+    if purpose not in {"chat", "learning", "programming", "factual_review"}:
         raise ValueError("purpose must be chat, learning, or programming.")
     settings = get_settings()
     prefix = purpose
@@ -175,6 +175,8 @@ def chat(
     }, hardware)
     keep_alive = model_keep_alive(purpose, hardware, settings)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
+    if purpose == "factual_review":
+        request_timeout = max(1, min(request_timeout, 45))
     model = str(settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b")))
     messages = []
     if isinstance(system_prompt, str) and system_prompt.strip():
@@ -186,9 +188,13 @@ def chat(
     if purpose == "programming":
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
+    options = {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]}
+    if purpose == "factual_review":
+        options["num_ctx"] = min(int(options["num_ctx"]), 4096)
+        options["num_predict"] = 500
     response = _request("/api/chat", {
         "model": model, "stream": False, "messages": messages, "keep_alive": keep_alive,
-        "options": {"num_ctx": limits["num_ctx"], "num_thread": limits["cpu_threads"]},
+        "options": options,
     }, timeout=request_timeout)
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
