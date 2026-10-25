@@ -673,6 +673,11 @@ def test_knowledge_graph_traversal_is_bounded_ordered_and_cycle_safe(connection)
     third = make_claim(connection, "Python sequences support indexing")
     fourth = make_claim(connection, "Python dictionaries map keys to values")
     add_relation(connection, first, second, "depends_on")
+    # Supersedes edges require reviewed knowledge; this fixture exercises traversal,
+    # so prepare the source claim at the minimum reviewed level.
+    transition_evidence_level(connection, first, "L1_sourced")
+    transition_evidence_level(connection, first, "L2_tested")
+    transition_evidence_level(connection, first, "L3_human_verified", human_verified_by="test-reviewer")
     add_relation(connection, first, third, "supersedes")
     add_relation(connection, second, third, "depends_on")
     add_relation(connection, third, first, "contradicts")
