@@ -67,7 +67,7 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
         oracle_reviewed=True,
         oracle_review_note="Compared this exact test with the official Python assert reference.",
         oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
-        oracle_source_hash=hashlib.sha256(b"The assert statement raises AssertionError when its condition is false.").hexdigest(),
+        oracle_source_hash=hashlib.sha256(b"The assert statement raises AssertionError when its expression is false.").hexdigest(),
         test_name="Python assert raises on false condition",
         source_code=test_source_code,
         timeout_seconds=5,
