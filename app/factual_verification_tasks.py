@@ -234,15 +234,15 @@ def _build_handler(
             "semantic_review_confidence": semantic_decision.confidence,
             "semantic_evaluator_model": semantic_decision.evaluator_model,
             "semantic_evaluator_digest": semantic_decision.evaluator_digest,
-            "semantic_review_rationale": semantic_decision.rationale,
-            "semantic_source_url": semantic_decision.source_url,
+            "semantic_review_rationale": (semantic_decision.rationale or "")[:300],
+            "semantic_source_url": (semantic_decision.source_url or "")[:300],
             "semantic_source_excerpt_sha256": semantic_decision.source_excerpt_sha256,
-            "oracle_review_note": oracle_review_note.strip(),
-            "oracle_source_url": oracle_review["oracle_source_url"],
+            "oracle_review_note": oracle_review_note.strip()[:200],
+            "oracle_source_url": oracle_review["oracle_source_url"][:300],
             "oracle_source_hash": oracle_review["oracle_source_hash"],
             "output_hash": log_hash,
         }
-        summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))[:2000]
+        summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         with learning_connection() as connection:
             current = connection.execute(
                 """SELECT claim_hash, evidence_level, lifecycle_status,
@@ -261,7 +261,7 @@ def _build_handler(
             ):
                 outcome = "inconclusive"
                 summary["reason"] = "Claim identity or eligibility changed during the sandbox run."
-                summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))[:2000]
+                summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             factual_knowledge.record_test(
                 connection,
                 knowledge_id,
