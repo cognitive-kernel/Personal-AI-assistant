@@ -677,6 +677,18 @@ def test_knowledge_graph_traversal_is_bounded_ordered_and_cycle_safe(connection)
     # so provide traceable evidence before advancing the source claim's evidence level.
     source(connection, first)
     transition_evidence_level(connection, first, "L1_sourced")
+    record_test(
+        connection,
+        first,
+        test_kind="unit",
+        test_name="graph-fixture-applicable-test",
+        environment_name="python",
+        environment_version="3.11",
+        outcome="passed",
+        result_summary='{"fixture":true}',
+        command_hash="a" * 64,
+        log_hash="b" * 64,
+    )
     transition_evidence_level(connection, first, "L2_tested")
     transition_evidence_level(connection, first, "L3_human_verified", human_verified_by="test-reviewer")
     add_relation(connection, first, third, "supersedes")
