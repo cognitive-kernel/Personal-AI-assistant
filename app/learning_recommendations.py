@@ -117,24 +117,37 @@ def get_learning_recommendations(
             status = item["status"]
             score = item["latest_score"]
             if status == "in_progress":
-                recommendations.append({
-                    **item,
-                    "recommendation_type": "continue_learning",
-                    "action": "continue_topic",
-                    "priority": 85,
-                    "reason": "Continue the topic already in progress before opening another lesson.",
-                    "due_at": None,
-                    "overdue_days": 0,
-                })
+                if score is not None and float(score) < 80:
+                    recommendations.append({
+                        **item,
+                        "recommendation_type": "knowledge_gap",
+                        "action": "reinforce_topic",
+                        "priority": 90 + min(20, max(0, int((80 - float(score)) / 4))),
+                        "reason": "The latest assessment score is below the 80-point mastery threshold; reinforce this topic before advancing.",
+                        "gap_score": round(80 - float(score), 2),
+                        "due_at": None,
+                        "overdue_days": 0,
+                    })
+                else:
+                    recommendations.append({
+                        **item,
+                        "recommendation_type": "continue_learning",
+                        "action": "continue_topic",
+                        "priority": 85,
+                        "reason": "Continue the topic already in progress before opening another lesson.",
+                        "due_at": None,
+                        "overdue_days": 0,
+                    })
                 seen.add(topic_id)
                 continue
-            if status == "completed" and score is not None and float(score) < 70:
+            if status == "completed" and score is not None and float(score) < 80:
                 recommendations.append({
                     **item,
                     "recommendation_type": "reinforcement",
                     "action": "reinforce_topic",
-                    "priority": 70 + min(30, max(0, 70 - int(float(score)))),
-                    "reason": "The latest assessment score is below 70; reinforce this topic.",
+                    "priority": 70 + min(30, max(0, int((80 - float(score)) / 2))),
+                    "reason": "The latest assessment score is below the 80-point mastery threshold; reinforce this topic.",
+                    "gap_score": round(80 - float(score), 2),
                     "due_at": None,
                     "overdue_days": 0,
                 })
