@@ -221,7 +221,7 @@ def review_assessment_attempt(job_id: int, attempt_id: int) -> dict[str, Any]:
                ON CONFLICT(attempt_id) DO UPDATE SET
                    job_id=excluded.job_id, model=excluded.model,
                    review_json=excluded.review_json, created_at=excluded.created_at""",
-            (attempt_id, job_id, model, json.dumps(stored, ensure_ascii=False), created_at),
+            (attempt_id, job_id, reviewer_model, json.dumps(stored, ensure_ascii=False), created_at),
         )
     return {"job_id": job_id, "attempt_id": attempt_id, **stored}
 
