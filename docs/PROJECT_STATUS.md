@@ -52,11 +52,11 @@
 
 ### 3.1 اعتبارسنجی دانش و شواهد
 
-- [ ] پیاده‌سازی اعتبارسنجی معنایی ادعا با معیارهای روشن؛ وجود منبع یا موافقت مدل به‌تنهایی کافی نیست.
-- [ ] پشتیبانی صریح و قابل ارزیابی از سازگاری نسخهٔ منبع با نسخهٔ ادعا/محیط.
+- [x] پیاده‌سازی ارزیابی معنایی در worker با مدل مستقل Ollama، rubric نسخه‌دار، بررسی اتصال آزمون به ادعا و رد پیش‌فرض در صورت کمبود شواهد؛ مدل بازبین باید digest متفاوت از مدل‌های تولید داشته باشد. کیفیت واقعی هنوز به اجرای زنده و ارزیابی انسانی نیاز دارد.
+- [x] کنترل قطعی سازگاری نسخهٔ منبع با نسخهٔ ادعا برای نسخه‌های عددی؛ نسخهٔ نامشخص یا ناسازگار fail-closed می‌شود. تطبیق محیط اجرا نیز با نسخهٔ ثبت‌شده و نسخهٔ runtime آزمون کنترل می‌شود.
 - [ ] گسترش دامنه‌های فنی پشتیبانی‌شده فراتر از پوشش فعلی محدود و allowlist‌شده.
-- [ ] اتصال worker اختصاصی بازبینی factual به runtime صف، با بودجهٔ retry، منابع و هزینه.
-- [ ] ساخت مجموعهٔ طلایی ارزیابی، معیارهای کالیبراسیون و اجرای تکرارپذیر برای سنجش کیفیت ادعا و تصمیم‌های اعتماد.
+- [x] اتصال بازبینی factual به worker صف با یک تلاش، سقف ۴۵ ثانیه برای استنتاج، context حداکثر ۴۰۹۶ و خروجی حداکثر ۵۰۰ توکن؛ اجرای آزمون نیز در sandbox محدود می‌ماند.
+- [x] مجموعهٔ طلایی نسخه‌دار و runner تکرارپذیر برای accuracy، precision، recall، false-acceptance rate، coverage، abstention، Brier score و ECE اضافه شده است. [ ] اجرای زنده روی مدل مقصد و مجموعهٔ برچسب‌خوردهٔ انسانی هنوز انجام نشده است.
 - [ ] تکمیل آزمون ارتقا به `L2_tested` به‌عنوان مسیر پذیرش پایدار؛ مسیر فعلی دستی و محدود است و اجرای خودکار کل خط لولهٔ درس را انجام نمی‌دهد.
 - [ ] تکمیل بررسی سازگاری مهاجرت پایگاه داده و پشتیبان/بازیابی بدون از دست‌رفتن داده.
 
@@ -111,8 +111,9 @@
 ## 7. منابع پیاده‌سازی مرتبط
 
 - `app/learning.py`, `app/learning_recommendations.py`, `app/spaced_repetition.py`
-- `app/factual_knowledge.py`, `app/factual_verification_routes.py`, `app/factual_verification_tasks.py`
+- `app/factual_knowledge.py`, `app/factual_verification_routes.py`, `app/factual_verification_tasks.py`, `app/factual_semantic_review.py`
 - `app/chat_research.py`, `app/experience.py`, `app/experience_retrieval.py`
 - `app/task_manager.py`, `app/task_runtime.py`, `app/task_worker.py`
+- `scripts/evaluate_factual_review_golden.py`, `tests/fixtures/factual_review_model_golden.json`
 - `docs/LEARNING_RECOMMENDATIONS.md` (راهنمای API پیشنهادها؛ نگه داشته می‌شود چون سند عملیاتی اختصاصی است)
 - `docs/SYSTEM_REQUIREMENTS.md` (نیازمندی‌های هدف؛ نگه داشته می‌شود چون مشخصات طراحی است)
