@@ -55,7 +55,7 @@ def _verify_live_source_excerpt(source_url: str, stored_excerpt: str) -> str:
             "Live source could not be safely fetched; factual verification fails closed ("
             + type(exc).__name__ + ")."
         ) from exc
-    normalize = lambda value: re.sub(r"\\s+", " ", value).strip()
+    normalize = lambda value: re.sub(r"\s+", " ", value).strip()
     excerpt_normalized = normalize(stored_excerpt)
     document_normalized = normalize(document.text)
     if excerpt_normalized not in document_normalized:
@@ -138,7 +138,7 @@ def _bounded_summary_json(summary: dict[str, Any]) -> str:
         "claim_hash_at_start", "test_source_sha256", "oracle_review_id",
         "semantic_rubric_version", "semantic_review_score", "semantic_review_verdict",
         "semantic_review_confidence", "semantic_evaluator_model", "semantic_evaluator_digest",
-        "semantic_source_excerpt_sha256", "output_hash",
+        "semantic_source_excerpt_sha256", "live_source_verified", "live_source_hashes", "output_hash",
     )
     essential = {key: bounded[key] for key in essential_keys if key in bounded}
     return json.dumps(essential, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
