@@ -94,20 +94,24 @@ def check_sources(*, limit: int = 10) -> dict[str, Any]:
             observed_text = current_text
 
         with learning_connection() as connection:
-            connection.execute(
-                """INSERT INTO learning_source_sync_events(
-                       snapshot_id, observed_sha256, observed_chars, outcome, observed_text, detail
-                   ) VALUES (?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(snapshot_id, observed_sha256, outcome) DO NOTHING""",
-                (snapshot["id"], observed_hash, observed_chars, outcome, observed_text, detail),
-            )
+            latest = connection.execute(
+                """SELECT observed_sha256, outcome FROM learning_source_sync_events
+                   WHERE snapshot_id=? ORDER BY id DESC LIMIT 1""",
+                (snapshot["id"],),
+            ).fetchone()
+            if latest is None or latest["observed_sha256"] != observed_hash or latest["outcome"] != outcome:
+                connection.execute(
+                    """INSERT INTO learning_source_sync_events(
+                           snapshot_id, observed_sha256, observed_chars, outcome, observed_text, detail
+                       ) VALUES (?, ?, ?, ?, ?, ?)""",
+                    (snapshot["id"], observed_hash, observed_chars, outcome, observed_text, detail),
+                )
             event = connection.execute(
                 """SELECT id, snapshot_id, observed_sha256, observed_chars, outcome,
                           observed_text, detail, checked_at, review_decision, review_note, reviewed_at
                    FROM learning_source_sync_events
-                   WHERE snapshot_id=? AND observed_sha256=? AND outcome=?
-                   ORDER BY id DESC LIMIT 1""",
-                (snapshot["id"], observed_hash, outcome),
+                   WHERE snapshot_id=? ORDER BY id DESC LIMIT 1""",
+                (snapshot["id"],),
             ).fetchone()
         event_data = dict(event) if event else None
         if event_data is not None:
