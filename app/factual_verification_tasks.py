@@ -19,6 +19,48 @@ _ALLOWED_PAYLOAD_KEYS = {
     "oracle_reviewed", "oracle_review_note", "oracle_review_id",
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
+_OFFICIAL_SOURCE_HOSTS = (
+    "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org",
+    "doc.rust-lang.org", "rust-lang.org", "help.mikrotik.com", "mikrotik.com",
+    "docs.vmware.com", "knowledge.broadcom.com", "developer.android.com",
+    "developer.apple.com", "developer.mozilla.org", "docs.docker.com",
+    "docs.kernel.org", "cisco.com", "metatrader5.com", "metatrader4.com",
+)
+
+
+def _verify_live_source_excerpt(source_url: str, stored_excerpt: str) -> str:
+    """Verify that a bounded stored quotation still exists on its allow-listed HTTPS source."""
+    if not isinstance(source_url, str) or len(source_url) > 1500:
+        raise ValueError("Live source URL is invalid or too long.")
+    parsed = urlparse(source_url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if (
+        parsed.scheme != "https"
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or not any(host == allowed or host.endswith("." + allowed) for allowed in _OFFICIAL_SOURCE_HOSTS)
+    ):
+        raise ValueError("Live source verification requires an allow-listed official HTTPS documentation host.")
+    if not isinstance(stored_excerpt, str) or not stored_excerpt.strip() or len(stored_excerpt) > 1000:
+        raise ValueError("Stored source excerpt is invalid or exceeds the verification limit.")
+    from . import web_sources
+
+    try:
+        document = web_sources.fetch_public_document(
+            source_url, "factual claim evidence", max_chars=100000
+        )
+    except Exception as exc:
+        raise ValueError(
+            "Live source could not be safely fetched; factual verification fails closed ("
+            + type(exc).__name__ + ")."
+        ) from exc
+    normalize = lambda value: re.sub(r"\\s+", " ", value).strip()
+    excerpt_normalized = normalize(stored_excerpt)
+    document_normalized = normalize(document.text)
+    if excerpt_normalized not in document_normalized:
+        raise ValueError("Stored evidence excerpt is absent from the current live source page.")
+    return hashlib.sha256(document.text.encode("utf-8")).hexdigest()
 
 
 def validate_test_harness(source_code: str) -> None:
@@ -202,6 +244,13 @@ def _build_handler(
             raise ValueError(
                 "Oracle review must match the URL and SHA-256 of an exact stored source excerpt."
             )
+        # Re-fetch every evidence page from the official-host allowlist and require
+        # each quoted excerpt to remain present in the live page before model review.
+        live_source_hashes: dict[str, str] = {}
+        for evidence_item in source_items:
+            live_source_hashes[evidence_item["source_ref"]] = _verify_live_source_excerpt(
+                str(evidence_item["source_ref"]), str(evidence_item["excerpt"])
+            )
         source_blocks = []
         source_versions = []
         for index, evidence_item in enumerate(source_items, start=1):
@@ -317,6 +366,11 @@ def _build_handler(
             "oracle_review_note": oracle_review_note.strip()[:200],
             "oracle_source_url": oracle_review["oracle_source_url"][:300],
             "oracle_source_hash": oracle_review["oracle_source_hash"],
+            "live_source_verified": True,
+            "live_source_hashes": {
+                hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]: digest
+                for url, digest in live_source_hashes.items()
+            },
             "output_hash": log_hash,
         }
         summary_json = _bounded_summary_json(summary)
