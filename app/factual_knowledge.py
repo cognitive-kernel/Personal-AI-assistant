@@ -123,6 +123,63 @@ def add_evidence(
     return int(row[0])
 
 
+def record_oracle_review(
+    connection: sqlite3.Connection,
+    knowledge_id: int,
+    *,
+    claim_hash: str,
+    test_source_hash: str,
+    oracle_source_url: str,
+    oracle_source_hash: str,
+    review_note: str,
+) -> int:
+    """Persist a traceable local attestation binding a test to an independent reference."""
+    for field_name, value in (
+        ("claim_hash", claim_hash),
+        ("test_source_hash", test_source_hash),
+        ("oracle_source_hash", oracle_source_hash),
+    ):
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise KnowledgePolicyError(f"{field_name} must be a lowercase SHA-256 digest")
+    if not isinstance(oracle_source_url, str) or not oracle_source_url.startswith("https://"):
+        raise KnowledgePolicyError("oracle_source_url must use HTTPS")
+    if not isinstance(review_note, str) or len(review_note.strip()) < 20 or len(review_note) > 1000:
+        raise KnowledgePolicyError("review_note must contain 20–1000 characters")
+    current = connection.execute(
+        "SELECT claim_hash FROM factual_knowledge WHERE id = ?", (knowledge_id,)
+    ).fetchone()
+    if current is None or current["claim_hash"] != claim_hash:
+        raise KnowledgePolicyError("oracle review does not match the current claim revision")
+    cursor = connection.execute(
+        """INSERT INTO factual_oracle_reviews(
+               knowledge_id, claim_hash, test_source_hash, oracle_source_url,
+               oracle_source_hash, reviewer, review_note
+           ) VALUES (?, ?, ?, ?, ?, 'local_user', ?)""",
+        (knowledge_id, claim_hash, test_source_hash, oracle_source_url,
+         oracle_source_hash, review_note.strip()),
+    )
+    return int(cursor.lastrowid)
+
+
+def get_oracle_review(
+    connection: sqlite3.Connection,
+    review_id: int,
+    *,
+    knowledge_id: int,
+    claim_hash: str,
+    test_source_hash: str,
+) -> dict[str, Any] | None:
+    """Return an audit record only when it binds the exact claim revision and test."""
+    row = connection.execute(
+        """SELECT id, knowledge_id, claim_hash, test_source_hash, oracle_source_url,
+                  oracle_source_hash, reviewer, review_note, created_at
+           FROM factual_oracle_reviews
+           WHERE id = ? AND knowledge_id = ? AND claim_hash = ? AND test_source_hash = ?""",
+        (review_id, knowledge_id, claim_hash, test_source_hash),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
 def record_test(
     connection: sqlite3.Connection,
     knowledge_id: int,
