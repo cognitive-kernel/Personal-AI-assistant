@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -86,7 +87,7 @@ def test_independent_model_review_accepts_only_distinct_model_with_valid_respons
         claim_hash="c" * 64,
         source_excerpt="The assert statement raises AssertionError when the expression is false.",
         source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
-        source_hash="d" * 64,
+        source_hash=hashlib.sha256(b"The assert statement raises AssertionError when the expression is false.").hexdigest(),
         source_version="3",
         claim_version="3.12.3",
         environment_name="python",
@@ -106,7 +107,7 @@ def test_independent_model_review_fails_closed_on_source_version_mismatch(monkey
         claim_hash="c" * 64,
         source_excerpt="The assert statement raises AssertionError when the expression is false.",
         source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
-        source_hash="d" * 64,
+        source_hash=hashlib.sha256(b"The assert statement raises AssertionError when the expression is false.").hexdigest(),
         source_version="3.11",
         claim_version="3.12.3",
         environment_name="python",
@@ -133,7 +134,7 @@ def test_same_model_digest_cannot_be_used_as_independent_reviewer(monkeypatch):
             claim_hash="c" * 64,
             source_excerpt="Source excerpt",
             source_url="https://example.org/source",
-            source_hash="d" * 64,
+            source_hash=hashlib.sha256(b"Source excerpt").hexdigest(),
             source_version="3",
             claim_version="3.12.3",
             environment_name="python",
