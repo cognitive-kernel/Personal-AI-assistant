@@ -135,7 +135,7 @@ def test_same_model_digest_cannot_be_used_as_independent_reviewer(monkeypatch):
             source_excerpt="Source excerpt",
             source_url="https://example.org/3.12/source",
             source_hash=hashlib.sha256(b"Source excerpt").hexdigest(),
-            source_version="3",
+            source_version="3.12",
             claim_version="3.12.3",
             environment_name="python",
             environment_version="3.12.3",
