@@ -53,6 +53,7 @@ def test_hypothesis_proposals_are_saved_as_unverified_versioned_drafts(tmp_path,
     assert item["source_evidence"] == []
     assert item["test_results"] == []
     assert item["test_plan"][0]["test"] == "write then read regression"
+    assert item["test_plan"][0]["source_queries"] == ["official documentation cache invalidation after write"]
     assert item["source_queries"] == ["official documentation cache invalidation after write"]
     assert "falsified if repeated reads" in item["falsification_criteria"]
     assert "not verified" in item["problem"]
