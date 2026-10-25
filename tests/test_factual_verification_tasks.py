@@ -115,7 +115,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
     result = handler({
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
-        "source_code": "try:\\n    assert False\\nexcept AssertionError:\\n    pass\\nelse:\\n    raise AssertionError('assert did not raise')",
+        "source_code": "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')",
         "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert (1 + 1) == 2"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert (1 + 1) == 2"),
