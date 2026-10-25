@@ -431,3 +431,40 @@ def test_factual_claim_persistence_does_not_attach_unmatched_source_quotes(learn
     assert stored == 1
     assert evidence_count == 0
     assert tuple(claim) == ("L0_raw", "unverified")
+
+
+
+@pytest.mark.parametrize(
+    ("topic", "expected_domain", "expected_version"),
+    [
+        ("SQL Server 2022 execution plans", "sql_server", "2022"),
+        ("Windows Server 2022 administration", "windows_server", "2022"),
+        ("MikroTik RouterOS 7.15 routing", "mikrotik_routeros", "7.15"),
+        ("VMware ESXi 8.0 storage", "vmware_esxi", "8.0"),
+        ("MySQL 8.4 transaction isolation", "mysql", "8.4"),
+        ("SQLite 3.46 locking", "sqlite", "3.46"),
+        ("Python 3.12 async tasks", "python", "3.12"),
+        ("Rust 1.82 ownership", "rust", "1.82"),
+        ("ECMAScript 2024 modules", "javascript", "2024"),
+        ("Docker container networking", "docker", "unspecified"),
+        ("Linux Ubuntu service management", "linux", "unspecified"),
+        ("Cisco IOS-XE routing", "cisco_networking", "unspecified"),
+        ("Android application lifecycle", "android", "unspecified"),
+        ("SwiftUI iOS application", "ios", "unspecified"),
+        ("MetaTrader 5 MQL5 strategy", "forex_metatrader", "unspecified"),
+    ],
+)
+def test_factual_topic_domain_coverage_is_explicit_and_conservative(
+    learning_store, topic, expected_domain, expected_version
+):
+    domain = learning._factual_domain_for_topic(topic)
+    assert domain is not None
+    assert domain[0] == expected_domain
+    assert domain[1] == expected_version
+
+
+def test_factual_topic_domain_classifier_rejects_ambiguous_or_unrecognized_topics(
+    learning_store,
+):
+    assert learning._factual_domain_for_topic("Python Docker deployment") is None
+    assert learning._factual_domain_for_topic("general productivity advice") is None
