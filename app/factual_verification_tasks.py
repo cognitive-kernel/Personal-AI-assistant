@@ -186,6 +186,9 @@ def _build_handler(
             "test_source_sha256": original_hash,
             "oracle_reviewed": True,
             "oracle_review_id": oracle_review_id,
+            "semantic_rubric_version": semantic_decision.rubric_version,
+            "semantic_review_score": semantic_decision.score,
+            "semantic_review_verdict": semantic_decision.verdict,
             "oracle_review_note": oracle_review_note.strip(),
             "oracle_source_url": oracle_review["oracle_source_url"],
             "oracle_source_hash": oracle_review["oracle_source_hash"],
@@ -236,6 +239,9 @@ def _build_handler(
             "runtime_version": runtime_version,
             "test_source_sha256": original_hash,
             "oracle_review_id": oracle_review_id,
+            "semantic_rubric_version": semantic_decision.rubric_version,
+            "semantic_review_score": semantic_decision.score,
+            "semantic_review_verdict": semantic_decision.verdict,
             "log_sha256": log_hash,
         }
         context.checkpoint({"phase": "factual_claim_test_recorded", **result_payload})
