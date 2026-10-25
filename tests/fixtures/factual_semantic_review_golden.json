@@ -10,9 +10,13 @@
       "runtime_environment_matches": true,
       "source_is_authoritative": true,
       "no_unresolved_conflict": true,
-      "reviewer_is_independent": true
+      "reviewer_is_independent": true,
+      "test_directly_checks_claim": true
     },
-    "expected": {"accepted": true, "score": 1.0}
+    "expected": {
+      "accepted": true,
+      "score": 1
+    }
   },
   {
     "id": "assertion_unrelated_to_claim",
@@ -25,9 +29,13 @@
       "runtime_environment_matches": true,
       "source_is_authoritative": true,
       "no_unresolved_conflict": true,
-      "reviewer_is_independent": true
+      "reviewer_is_independent": true,
+      "test_directly_checks_claim": false
     },
-    "expected": {"accepted": false, "score": 0.875}
+    "expected": {
+      "accepted": false,
+      "score": 0.7778
+    }
   },
   {
     "id": "version_mismatch",
@@ -40,9 +48,13 @@
       "runtime_environment_matches": false,
       "source_is_authoritative": true,
       "no_unresolved_conflict": true,
-      "reviewer_is_independent": true
+      "reviewer_is_independent": true,
+      "test_directly_checks_claim": true
     },
-    "expected": {"accepted": false, "score": 0.75}
+    "expected": {
+      "accepted": false,
+      "score": 0.7778
+    }
   },
   {
     "id": "contradicting_source",
@@ -55,9 +67,13 @@
       "runtime_environment_matches": true,
       "source_is_authoritative": true,
       "no_unresolved_conflict": true,
-      "reviewer_is_independent": true
+      "reviewer_is_independent": true,
+      "test_directly_checks_claim": true
     },
-    "expected": {"accepted": false, "score": 1.0}
+    "expected": {
+      "accepted": false,
+      "score": 1
+    }
   },
   {
     "id": "insufficient_evidence_abstains",
@@ -70,8 +86,12 @@
       "runtime_environment_matches": true,
       "source_is_authoritative": true,
       "no_unresolved_conflict": true,
-      "reviewer_is_independent": true
+      "reviewer_is_independent": true,
+      "test_directly_checks_claim": true
     },
-    "expected": {"accepted": false, "score": 0.875}
+    "expected": {
+      "accepted": false,
+      "score": 0.8889
+    }
   }
 ]
