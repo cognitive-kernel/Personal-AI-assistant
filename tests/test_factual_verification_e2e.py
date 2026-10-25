@@ -19,7 +19,7 @@ def _create_active_sourced_claim(version="3.12.3"):
             connection,
             claim_id,
             source_type="official_docs",
-            source_ref="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+            source_ref="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
             source_hash="sha256:python-assert-reference",
             excerpt="The assert statement raises AssertionError when its expression is false.",
         )
@@ -61,7 +61,7 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
         confirm=True,
         oracle_reviewed=True,
         oracle_review_note="Compared this exact test with the official Python assert reference.",
-        oracle_source_url="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
         oracle_source_hash=hashlib.sha256(b"Official Python assert reference excerpt").hexdigest(),
         test_name="Python assert raises on false condition",
         source_code=test_source_code,
