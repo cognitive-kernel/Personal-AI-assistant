@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 
 import pytest
+from fastapi.testclient import TestClient
 
-from app import curriculum_evolution, db, learning_source_sync
+from app import cloud_resources, curriculum_evolution, db, learning_source_sync
+from app.main import app
 from app.db import learning_connection
 
 
@@ -141,3 +143,37 @@ def test_invalid_curriculum_proposal_requests_fail_closed(tmp_path, monkeypatch)
         curriculum_evolution.generate_proposals(path_id=path_id + 999)
     with pytest.raises(ValueError, match="decision"):
         curriculum_evolution.review_proposal(1, decision="maybe", note="This note is long enough for review.")
+
+
+
+def test_curriculum_proposal_api_is_loopback_only_and_requires_explicit_review(tmp_path, monkeypatch):
+    path_id, _, _ = _setup(tmp_path, monkeypatch, score=61)
+    monkeypatch.setattr(
+        cloud_resources, "ensure_daily_discovery_scheduled",
+        lambda: {"status": "disabled"},
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        generated = client.post(
+            f"/api/learning/paths/{path_id}/curriculum-proposals/generate"
+        )
+        assert generated.status_code == 200
+        proposal = generated.json()["proposals"][0]
+        assert proposal["status"] == "pending"
+
+        listed = client.get(f"/api/learning/paths/{path_id}/curriculum-proposals")
+        assert listed.status_code == 200
+        assert listed.json()["count"] == 1
+
+        reviewed = client.post(
+            f"/api/learning/curriculum-proposals/{proposal['id']}/review",
+            json={
+                "decision": "accept",
+                "note": "The saved assessment score supports adding a reinforcement topic before the next lesson.",
+            },
+        )
+        assert reviewed.status_code == 200
+        assert reviewed.json()["proposal"]["status"] == "accepted"
+
+    with TestClient(app, client=("203.0.113.10", 12345)) as client:
+        blocked = client.get(f"/api/learning/paths/{path_id}/curriculum-proposals")
+        assert blocked.status_code == 403
