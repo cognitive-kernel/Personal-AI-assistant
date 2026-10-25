@@ -445,7 +445,7 @@ def test_factual_claim_persistence_does_not_attach_unmatched_source_quotes(learn
         ("SQLite 3.46 locking", "sqlite", "3.46"),
         ("Python 3.12 async tasks", "python", "3.12"),
         ("Rust 1.82 ownership", "rust", "1.82"),
-        ("ECMAScript 2024 modules", "javascript", "2024"),
+        ("JavaScript ECMAScript 2024 modules", "javascript", "2024"),
         ("Docker container networking", "docker", "unspecified"),
         ("Linux Ubuntu service management", "linux", "unspecified"),
         ("Cisco IOS-XE routing", "cisco_networking", "unspecified"),
