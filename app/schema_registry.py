@@ -894,8 +894,7 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_factual_source_checks_claim_checked ON factual_source_checks(knowledge_id, checked_at DESC, id DESC)",
             "CREATE INDEX idx_factual_source_checks_outcome_checked ON factual_source_checks(outcome, checked_at DESC)",
         ),
-    )
-,
+    ),
     Migration(
         24,
         "factual-independent-oracle-audit",
