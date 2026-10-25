@@ -6,6 +6,9 @@ assessment is incomplete, out of scope, or version-incompatible.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -186,16 +189,13 @@ def review_claim_against_source(
         "case": bounded,
     }
     raw = ollama.chat(
-        __import__("json").dumps(prompt, ensure_ascii=False, separators=(",", ":")),
+        json.dumps(prompt, ensure_ascii=False, separators=(",", ":")),
         system_prompt=(
             "You are an independent factual reviewer. You must abstain rather than infer missing facts. "
             "A passing program test is not evidence that a test is relevant to the claim."
         ),
         purpose="factual_review",
     )
-    import json
-import hashlib
-import math
     try:
         parsed = json.loads(raw.strip())
     except (TypeError, ValueError) as exc:
