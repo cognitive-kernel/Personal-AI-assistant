@@ -51,6 +51,23 @@ def create_job(
         # Acquire the SQLite write reservation before checking for an active job.
         if path_topic_id is not None:
             conn.execute("BEGIN IMMEDIATE")
+            topic_row = conn.execute(
+                "SELECT id, path_id, position, status FROM learning_path_topics WHERE id=?",
+                (path_topic_id,),
+            ).fetchone()
+            if topic_row is None:
+                raise KeyError(f"Learning path topic {path_topic_id} not found.")
+            blocked = conn.execute(
+                """SELECT topic, status FROM learning_path_topics
+                   WHERE path_id=? AND position<? AND status!='completed'
+                   ORDER BY position LIMIT 1""",
+                (topic_row["path_id"], topic_row["position"]),
+            ).fetchone()
+            if blocked is not None:
+                raise ValueError(
+                    "Prerequisite topic is not completed: "
+                    + str(blocked["topic"]) + " (" + str(blocked["status"]) + ")."
+                )
             existing = conn.execute(
                 "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
                 "ORDER BY id DESC LIMIT 1",
@@ -78,6 +95,13 @@ def create_job(
                 ),
             )
             job_id = int(cursor.lastrowid)
+            if path_topic_id is not None:
+                conn.execute(
+                    """UPDATE learning_path_topics
+                       SET status=CASE WHEN status='completed' THEN status ELSE 'in_progress' END,
+                           updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (path_topic_id,),
+                )
             if source_text:
                 digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
                 conn.execute("INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)", (job_id, source_text))
@@ -675,16 +699,8 @@ def run_job(job_id: int) -> None:
                  json.dumps(assessment, ensure_ascii=False) if quality["accepted"] else None,
                  json.dumps(quality, ensure_ascii=False),
                  None if quality["accepted"] else "درس از فیلتر کیفیت عبور نکرد: " + " ".join(quality.get("reasons", [])) + " متن درس و متن منبع حذف شد.", job_id))
-            # Automatically persist the lesson-quality score on its curriculum topic.
-            # This is a content-quality score, not a score for the learner's understanding.
-            path_topic_id = conn.execute(
-                "SELECT path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
-            ).fetchone()["path_topic_id"]
-            if path_topic_id is not None:
-                conn.execute(
-                    "UPDATE learning_path_topics SET latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                    (float(quality["score"]), path_topic_id),
-                )
+            # The path topic's latest_score is reserved for learner assessment
+            # results. Lesson-generation quality remains in learning_jobs.quality_json.
             conn.execute("INSERT INTO learning_evidence(job_id, evidence_type, source_ref, content_hash, note) VALUES (?, 'model_output', 'ollama', NULL, ?)",
                 (job_id, "خروجی مدل؛ منبع مستقل یا تأیید علمی محسوب نمی‌شود."))
             if claim_review_result is not None:
@@ -795,7 +811,9 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
         raise ValueError("Every answer must contain 1–2000 characters.")
     with learning_connection() as conn:
-        row = conn.execute("SELECT status, assessment_json FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute(
+            "SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
+        ).fetchone()
         if row is None:
             raise KeyError(job_id)
         if row["status"] != "completed" or not row["assessment_json"]:
@@ -815,10 +833,45 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
             (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions)),
         )
         attempt_id = int(cursor.lastrowid)
+        completion_status = "not_path_topic"
+        if row["path_topic_id"] is not None:
+            path_topic_id = int(row["path_topic_id"])
+            topic = conn.execute(
+                "SELECT path_id, position, status FROM learning_path_topics WHERE id=?",
+                (path_topic_id,),
+            ).fetchone()
+            if topic is not None:
+                blocked = conn.execute(
+                    """SELECT 1 FROM learning_path_topics
+                       WHERE path_id=? AND position<? AND status!='completed' LIMIT 1""",
+                    (topic["path_id"], topic["position"]),
+                ).fetchone()
+                if topic["status"] == "completed":
+                    completion_status = "completed"
+                    conn.execute(
+                        "UPDATE learning_path_topics SET latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                        (score, path_topic_id),
+                    )
+                elif score >= 80 and blocked is None:
+                    completion_status = "completed"
+                    conn.execute(
+                        """UPDATE learning_path_topics SET status='completed', latest_score=?,
+                           updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (score, path_topic_id),
+                    )
+                else:
+                    completion_status = "prerequisite_blocked" if blocked is not None else "in_progress"
+                    conn.execute(
+                        """UPDATE learning_path_topics SET status='in_progress', latest_score=?,
+                           updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (score, path_topic_id),
+                    )
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
         "scoring_method": "normalized_exact_match",
+        "path_topic_status": completion_status,
+        "completion_threshold": 80,
         "independent_verification": False,
         "note": "نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و تأیید علمی یا فهم معنایی را اثبات نمی‌کند.",
     }
