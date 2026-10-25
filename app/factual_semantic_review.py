@@ -124,15 +124,15 @@ def review_claim_against_source(
         "test_source": test_source,
     }
     limits = {
-        "claim": 2000,
-        "source_excerpt": 6000,
-        "source_url": 2048,
+        "claim": 1500,
+        "source_excerpt": 4000,
+        "source_url": 1500,
         "source_hash": 128,
         "source_version": 120,
         "claim_version": 120,
         "environment_name": 64,
         "environment_version": 120,
-        "test_source": 8000,
+        "test_source": 4000,
     }
     for key, value in bounded.items():
         if not isinstance(value, str) or not value.strip() or len(value) > limits[key]:
