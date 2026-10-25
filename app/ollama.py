@@ -162,7 +162,7 @@ def chat(
     purpose: str = "chat",
 ) -> str:
     if purpose not in {"chat", "learning", "programming", "factual_review"}:
-        raise ValueError("purpose must be chat, learning, or programming.")
+        raise ValueError("purpose must be chat, learning, programming, or factual_review.")
     settings = get_settings()
     prefix = purpose
     hardware = detect_hardware()
@@ -184,7 +184,7 @@ def chat(
     for item in history or []:
         if item.get("role") in {"user", "assistant"} and isinstance(item.get("content"), str):
             messages.append({"role": item["role"], "content": item["content"][:12000]})
-    message_limit = 12000
+    message_limit = 16000 if purpose == "factual_review" else 12000
     if purpose == "programming":
         message_limit = min(72000, max(12000, int(settings.get("programming_source_max_chars", 12000)) + 6500))
     messages.append({"role": "user", "content": message[:message_limit]})
