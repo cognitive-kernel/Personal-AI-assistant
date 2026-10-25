@@ -8,14 +8,14 @@ import re
 import secrets
 from typing import Any, Callable
 
-from . import factual_knowledge, sandbox_consent, sandbox_tasks
+from . import factual_knowledge, factual_semantic_review, sandbox_consent, sandbox_tasks
 from .db import learning_connection
 from .task_worker import TaskContext
 
 FACTUAL_VERIFY_TASK_TYPE = "factual.verify_claim"
 _ALLOWED_PAYLOAD_KEYS = {
     "knowledge_id", "test_name", "source_code", "timeout_seconds", "max_output_bytes",
-    "oracle_reviewed", "oracle_review_note", "oracle_review_id",
+    "oracle_reviewed", "oracle_review_note", "oracle_review_id", "semantic_assessment",
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
 
@@ -132,6 +132,17 @@ def _build_handler(
             )
         if oracle_review is None:
             raise ValueError("Persisted independent-oracle review does not match this claim revision and exact test source.")
+        assessment = payload.get("semantic_assessment")
+        if not isinstance(assessment, dict):
+            raise ValueError("A structured semantic assessment is required before factual verification.")
+        if (
+            assessment.get("claim_hash") != candidate["claim_hash"]
+            or assessment.get("test_source_hash") != original_hash
+        ):
+            raise ValueError("Semantic assessment is not bound to the current claim revision and exact test source.")
+        semantic_decision = factual_semantic_review.adjudicate_assessment(assessment)
+        if not semantic_decision.accepted:
+            raise ValueError("Semantic assessment did not pass the fail-closed factual review rubric.")
         wrapped, completion_marker = _wrapped_harness(source_code)
         context.checkpoint({
             "phase": "factual_claim_test_started",
