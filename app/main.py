@@ -458,6 +458,11 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
             raise HTTPException(status_code=422, detail=f"{key} must be a non-empty string of at most 200 characters.")
+    if "factual_review_ollama_model" in values and (
+        not isinstance(values["factual_review_ollama_model"], str)
+        or len(values["factual_review_ollama_model"]) > 200
+    ):
+        raise HTTPException(status_code=422, detail="factual_review_ollama_model must be text up to 200 characters; leave empty to disable independent review.")
     try:
         return db.update_settings(values)
     except ValueError as exc:
