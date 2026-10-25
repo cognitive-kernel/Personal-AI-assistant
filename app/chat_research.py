@@ -75,6 +75,36 @@ def _factual_knowledge_context(message: str) -> list[dict[str, Any]]:
                 environment_name=environment_name,
                 environment_version=environment_version,
             )
+            eligible = factual_knowledge.list_retrievable_claims(
+                connection,
+                limit=500,
+                domain=environment_name,
+                environment_name=environment_name,
+                environment_version=environment_version,
+            )
+            eligible_by_id = {int(claim["id"]): claim for claim in eligible}
+            relations_by_claim: dict[int, list[dict[str, Any]]] = {}
+            for claim in claims:
+                claim_id = int(claim["id"])
+                edges = factual_knowledge.traverse_knowledge_relations(
+                    connection, claim_id, max_depth=2, limit=12
+                )
+                relations_by_claim[claim_id] = [
+                    {
+                        "related_knowledge_id": int(edge["knowledge_id"]),
+                        "relation_path": edge["relation_path"],
+                        "depth": int(edge["depth"]),
+                        "eligible_same_environment": (
+                            int(edge["knowledge_id"]) in eligible_by_id
+                            and edge["domain_name"] == environment_name
+                            and edge["environment_name"] == environment_name
+                            and edge["environment_version"] == environment_version
+                        ),
+                        "lifecycle_status": edge["lifecycle_status"],
+                        "evidence_level": edge["evidence_level"],
+                    }
+                    for edge in edges
+                ]
     except Exception as exc:
         # Retrieval must fail closed without blocking chat or leaking storage details.
         logger.warning("Verified factual knowledge lookup failed (%s)", type(exc).__name__)
@@ -114,6 +144,7 @@ def _factual_knowledge_context(message: str) -> list[dict[str, Any]]:
             )).strip()[:100],
             "sources": sources,
             "passing_tests": tests,
+            "relations": relations_by_claim.get(int(item["id"]), []),
             "status": "eligible_verified_factual_knowledge",
         })
     return context
