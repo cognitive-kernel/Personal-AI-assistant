@@ -530,14 +530,18 @@ def run_job(job_id: int) -> None:
             )
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prior_assessment_score = None
-    if path_topic_id is not None:
-        with learning_connection() as conn:
+    with learning_connection() as conn:
+        job_row = conn.execute(
+            "SELECT path_topic_id FROM learning_jobs WHERE id=?",
+            (job_id,),
+        ).fetchone()
+        if job_row is not None and job_row["path_topic_id"] is not None:
             score_row = conn.execute(
                 "SELECT latest_score FROM learning_path_topics WHERE id=?",
-                (path_topic_id,),
+                (job_row["path_topic_id"],),
             ).fetchone()
-        if score_row is not None:
-            prior_assessment_score = score_row["latest_score"]
+            if score_row is not None:
+                prior_assessment_score = score_row["latest_score"]
     adaptive_difficulty = _adaptive_difficulty_guidance(prior_assessment_score)
     prompt = {
         "topic": topic,
