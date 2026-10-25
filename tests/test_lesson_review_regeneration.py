@@ -59,7 +59,9 @@ def test_regeneration_uses_only_latest_review_for_same_topic(tmp_path, monkeypat
     monkeypatch.setattr(learning, "_enqueue_learning_job", lambda _job_id: {})
 
     regenerated_a = learning.regenerate_topic_learning(path_id, topic_a_id)
-    regenerated_b = learning.regenerate_topic_learning(path_id, topic_b_id)
+    # Use a standalone topic for the no-review control case. Topic B is a later
+    # path prerequisite and must not be started while Topic A remains in progress.
+    regenerated_b = learning.create_job("Topic B")
     captured_prompts = []
 
     def capture_prompt_then_stop(_path, payload, **_kwargs):
