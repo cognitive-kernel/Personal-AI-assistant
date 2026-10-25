@@ -115,7 +115,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
     result = handler({
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
-        "source_code": "assert (1 + 1) == 2",
+        "source_code": "try:\\n    assert False\\nexcept AssertionError:\\n    pass\\nelse:\\n    raise AssertionError('assert did not raise')",
         "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert (1 + 1) == 2"),
         "oracle_reviewed": True,
         "oracle_review_id": _oracle_review_id(knowledge_id, "assert (1 + 1) == 2"),
@@ -128,7 +128,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
     assert result["evidence_level_promoted"] is True
     assert result["runtime_version"] == "3.12.3"
     assert "__PAI_PYTHON_VERSION__" in captured["payload"]["source_code"]
-    assert "assert (1 + 1) == 2" in captured["payload"]["source_code"]
+    assert "assert False" in captured["payload"]["source_code"]
     assert result["test_source_sha256"]
     with db.learning_connection() as connection:
         claim = connection.execute(
@@ -471,3 +471,57 @@ def test_factual_test_history_exposes_bounded_results_and_current_claim_state(le
     assert item["test_environment_version"] == item["current_environment_version"] == "3.12.3"
     assert item["command_hash"] == "e" * 64
     assert item["log_hash"] == "f" * 64
+
+def test_semantic_assessment_that_does_not_address_claim_cannot_execute_or_promote(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    called = False
+
+    def sandbox_handler(*_args):
+        nonlocal called
+        called = True
+        return _sandbox_result()
+
+    source_code = "assert True"
+    assessment = _valid_semantic_assessment(knowledge_id, source_code)
+    assessment["source_directly_addresses_claim"] = False
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="did not pass"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "unrelated assertion",
+            "source_code": source_code,
+            "semantic_assessment": assessment,
+            "oracle_reviewed": True,
+            "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+    assert called is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
+
+
+def test_semantic_assessment_bound_to_another_test_is_rejected(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    source_code = "assert True"
+    assessment = _valid_semantic_assessment(knowledge_id, "assert False")
+    handler = factual_verification_tasks._build_handler(lambda *_args: pytest.fail("sandbox must not run"))
+    with pytest.raises(ValueError, match="not bound"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "mismatched semantic assessment",
+            "source_code": source_code,
+            "semantic_assessment": assessment,
+            "oracle_reviewed": True,
+            "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+
