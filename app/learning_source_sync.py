@@ -7,6 +7,7 @@ A reviewer must explicitly record how a detected change should be handled.
 from __future__ import annotations
 
 import hashlib
+import re
 from typing import Any
 
 from . import web_sources
@@ -45,6 +46,53 @@ def capture_source_snapshot(
     )
 
 
+def _extract_stored_source(source_text: str, source_ref: str) -> tuple[str, str] | None:
+    pattern = re.compile(
+        r"Source title:\\s*(?P<title>[^\\n]{1,300})\\n"
+        r"Source URL:\\s*(?P<url>https://[^\\s]+)\\n"
+        r"Content:\\n(?P<content>.*?)(?=\\n\\nSource title:|\\Z)",
+        re.DOTALL,
+    )
+    for match in pattern.finditer(source_text[:100000]):
+        if match.group("url").strip() == source_ref:
+            title = match.group("title").strip()[:300]
+            text = match.group("content").strip()[:MAX_SNAPSHOT_CHARS]
+            return (title, text) if text else None
+    return None
+
+
+def _backfill_legacy_snapshots(limit: int) -> int:
+    """Create first-seen baselines from stored lesson excerpts without rewriting them."""
+    with learning_connection() as connection:
+        rows = connection.execute(
+            """SELECT j.id AS job_id, e.id AS evidence_id, e.source_ref, st.content
+               FROM learning_jobs AS j
+               JOIN learning_source_text AS st ON st.job_id=j.id
+               JOIN learning_evidence AS e ON e.job_id=j.id
+               LEFT JOIN learning_source_snapshots AS s ON s.evidence_id=e.id
+               WHERE j.status='completed' AND e.evidence_type='web_page'
+                 AND e.source_ref LIKE 'https://%' AND s.id IS NULL
+               ORDER BY j.id, e.id LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        created = 0
+        for row in rows:
+            extracted = _extract_stored_source(str(row["content"]), str(row["source_ref"]))
+            if extracted is None:
+                continue
+            title, text = extracted
+            capture_source_snapshot(
+                connection,
+                job_id=int(row["job_id"]),
+                evidence_id=int(row["evidence_id"]),
+                source_ref=str(row["source_ref"]),
+                source_title=title,
+                snapshot_text=text,
+            )
+            created += 1
+        return created
+
+
 def check_sources(*, limit: int = 10) -> dict[str, Any]:
     """Compare bounded stored snapshots with freshly fetched public pages.
 
@@ -53,6 +101,7 @@ def check_sources(*, limit: int = 10) -> dict[str, Any]:
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_SOURCES_PER_CHECK:
         raise ValueError(f"limit must be an integer from 1 to {MAX_SOURCES_PER_CHECK}.")
     init_databases()
+    baselines_created = _backfill_legacy_snapshots(limit)
     with learning_connection() as connection:
         snapshots = [
             dict(row) for row in connection.execute(
@@ -126,6 +175,7 @@ def check_sources(*, limit: int = 10) -> dict[str, Any]:
         })
     return {
         "checked": len(results),
+        "baselines_created": baselines_created,
         "changed": sum(item["outcome"] == "changed" for item in results),
         "unavailable": sum(item["outcome"] == "unavailable" for item in results),
         "results": results,
