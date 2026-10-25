@@ -810,6 +810,9 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
         raise ValueError("Submit between 1 and 3 answers.")
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
         raise ValueError("Every answer must contain 1–2000 characters.")
+    review_topic: tuple[int, int] | None = None
+    review_schedule: dict[str, Any] | None = None
+    review_schedule_status = "not_applicable"
     with learning_connection() as conn:
         row = conn.execute(
             "SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)
@@ -841,6 +844,7 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
                 (path_topic_id,),
             ).fetchone()
             if topic is not None:
+                review_topic = (int(topic["path_id"]), path_topic_id)
                 blocked = conn.execute(
                     """SELECT 1 FROM learning_path_topics
                        WHERE path_id=? AND position<? AND status!='completed' LIMIT 1""",
@@ -866,12 +870,26 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
                            updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                         (score, path_topic_id),
                     )
+    if review_topic is not None:
+        try:
+            from . import spaced_repetition
+
+            review_schedule = spaced_repetition.record_assessment_result(
+                review_topic[0], review_topic[1], score
+            )
+            review_schedule_status = "scheduled"
+        except Exception:
+            # The persisted assessment remains authoritative even if review scheduling
+            # is temporarily unavailable; expose the failure state without leaking internals.
+            review_schedule_status = "unavailable"
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
         "scoring_method": "normalized_exact_match",
         "path_topic_status": completion_status,
         "completion_threshold": 80,
+        "review_schedule_status": review_schedule_status,
+        "review_schedule": review_schedule,
         "independent_verification": False,
         "note": "نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و تأیید علمی یا فهم معنایی را اثبات نمی‌کند.",
     }
