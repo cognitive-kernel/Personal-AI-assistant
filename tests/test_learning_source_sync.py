@@ -142,3 +142,28 @@ def test_source_sync_records_a_new_event_when_content_returns_and_changes_again(
     assert second_change["outcome"] == "changed"
     assert second_change["id"] != first_change["id"]
     assert second_change["review_decision"] == "pending"
+
+
+
+def test_source_sync_backfills_existing_completed_lesson_from_stored_excerpt(tmp_path, monkeypatch):
+    job_id, evidence_id = _setup(tmp_path, monkeypatch)
+    title = "Python tutorial"
+    source_ref = "https://docs.python.org/3/tutorial/index.html"
+    excerpt = "The Python tutorial describes language basics and practical examples."
+    with learning_connection() as connection:
+        connection.execute("DELETE FROM learning_source_snapshots WHERE evidence_id=?", (evidence_id,))
+        connection.execute(
+            "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
+            (job_id, f"Source title: {title}\\nSource URL: {source_ref}\\nContent:\\n{excerpt}"),
+        )
+    monkeypatch.setattr(
+        learning_source_sync.web_sources,
+        "fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=excerpt),
+    )
+
+    result = learning_source_sync.check_sources(limit=1)
+
+    assert result["baselines_created"] == 1
+    assert result["checked"] == 1
+    assert result["results"][0]["outcome"] == "unchanged"
