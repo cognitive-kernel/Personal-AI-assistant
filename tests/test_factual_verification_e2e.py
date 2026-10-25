@@ -53,6 +53,7 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
         lambda: {"enabled": True},
     )
     monkeypatch.setattr(factual_verification_routes, "_configured", lambda: True)
+    monkeypatch.setattr(factual_verification_routes, "_reviewer_configured", lambda: True)
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
 
     test_source_code = "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise RuntimeError('assert did not fail')"
