@@ -136,3 +136,19 @@ def test_in_progress_low_assessment_score_is_detected_as_knowledge_gap(tmp_path,
     assert recommendation["gap_score"] == 38.5
     assert recommendation["priority"] > 85
     assert all(item["topic_id"] != topic_ids[1] for item in result["recommendations"])
+
+
+def test_assessment_score_adapts_review_interval_and_low_score_resets_it(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch, [{"topic": "Adaptive review"}])
+    first = spaced_repetition.record_assessment_result(path_id, topic_ids[0], 95)
+    second = spaced_repetition.record_assessment_result(path_id, topic_ids[0], 95)
+    low = spaced_repetition.record_assessment_result(path_id, topic_ids[0], 35)
+
+    assert first["trigger"] == "assessment_score"
+    assert first["rating"] == 5
+    assert first["interval_days"] == 1
+    assert second["interval_days"] == 6
+    assert low["rating"] == 0
+    assert low["interval_days"] == 1
+    assert low["repetitions"] == 0
+    assert low["rating_mapping_version"] == 1
