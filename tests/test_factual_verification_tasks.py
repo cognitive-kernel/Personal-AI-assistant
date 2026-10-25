@@ -596,3 +596,51 @@ def test_conflicting_evidence_is_sent_to_reviewer_and_prevents_promotion(learnin
             "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
         ).fetchone()
     assert claim["evidence_level"] == "L1_sourced"
+
+
+
+@pytest.mark.parametrize("mismatch", ["url", "hash"])
+def test_oracle_attestation_must_match_exact_stored_evidence(learning_store, monkeypatch, mismatch):
+    knowledge_id = _active_sourced_python_claim()
+    source_code = "assert True"
+    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+    with db.learning_connection() as connection:
+        review_id = factual_knowledge.record_oracle_review(
+            connection,
+            knowledge_id,
+            claim_hash=candidate["claim_hash"],
+            test_source_hash=hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+            oracle_source_url=(
+                "https://docs.python.org/3.12/reference/other.html"
+                if mismatch == "url"
+                else "https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement"
+            ),
+            oracle_source_hash=(
+                "0" * 64
+                if mismatch == "hash"
+                else hashlib.sha256(
+                    b"The assert statement raises AssertionError when the expression is false."
+                ).hexdigest()
+            ),
+            review_note="Compared the exact test to a reference excerpt before execution.",
+        )
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    called = {"sandbox": False}
+
+    def sandbox_handler(*_args, **_kwargs):
+        called["sandbox"] = True
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="exact stored source excerpt"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "assert semantics",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_id": review_id,
+            "oracle_review_note": "Compared the exact test to a reference excerpt before execution.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+    assert called["sandbox"] is False
