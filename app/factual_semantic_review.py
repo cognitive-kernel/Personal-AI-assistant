@@ -182,6 +182,17 @@ def review_claim_against_source(
     }
     if reviewer_digest in primary_digests:
         raise ValueError("The factual review model digest must differ from every configured generation model.")
+    latest_settings = get_settings()
+    latest_primary_models = {
+        str(latest_settings.get(key, "")).strip()
+        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
+        if str(latest_settings.get(key, "")).strip()
+    }
+    if (
+        str(latest_settings.get("factual_review_ollama_model", "")).strip() != reviewer_model
+        or reviewer_model in latest_primary_models
+    ):
+        raise ValueError("Factual review model settings changed during identity validation; retry the review.")
 
     prompt = {
         "task": "Assess whether the exact source excerpt supports the exact claim and whether the supplied test actually tests that claim.",
@@ -210,6 +221,7 @@ def review_claim_against_source(
             "A passing program test is not evidence that a test is relevant to the claim."
         ),
         purpose="factual_review",
+        model_override=reviewer_model,
     )
     try:
         parsed = json.loads(raw.strip())
