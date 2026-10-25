@@ -913,10 +913,47 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_factual_oracle_reviews_claim_created ON factual_oracle_reviews(knowledge_id, created_at DESC, id DESC)",
             "CREATE INDEX idx_factual_oracle_reviews_test_hash ON factual_oracle_reviews(test_source_hash, claim_hash)",
         ),
+    ),
+    Migration(
+        25,
+        "auditable-learning-source-sync",
+        (
+            """CREATE TABLE learning_source_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                evidence_id INTEGER NOT NULL UNIQUE REFERENCES learning_evidence(id) ON DELETE CASCADE,
+                source_ref TEXT NOT NULL CHECK(substr(source_ref, 1, 8) = 'https://'),
+                source_title TEXT NOT NULL,
+                snapshot_sha256 TEXT NOT NULL CHECK(length(snapshot_sha256) = 64),
+                snapshot_chars INTEGER NOT NULL CHECK(snapshot_chars BETWEEN 1 AND 6000),
+                captured_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE learning_source_sync_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_id INTEGER NOT NULL REFERENCES learning_source_snapshots(id) ON DELETE CASCADE,
+                observed_sha256 TEXT NOT NULL CHECK(length(observed_sha256) IN (0, 64)),
+                observed_chars INTEGER NOT NULL DEFAULT 0 CHECK(observed_chars BETWEEN 0 AND 6000),
+                outcome TEXT NOT NULL CHECK(outcome IN ('unchanged', 'changed', 'unavailable')),
+                detail TEXT NOT NULL CHECK(length(detail) <= 500),
+                checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                review_decision TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(review_decision IN ('pending', 'keep_lesson', 'regenerate_lesson', 'needs_manual_resolution')),
+                review_note TEXT,
+                reviewed_at TEXT,
+                CHECK(
+                    (review_decision = 'pending' AND review_note IS NULL AND reviewed_at IS NULL)
+                    OR
+                    (review_decision <> 'pending' AND length(trim(review_note)) >= 20 AND reviewed_at IS NOT NULL)
+                ),
+                UNIQUE(snapshot_id, observed_sha256, outcome)
+            )""",
+            "CREATE INDEX idx_learning_source_sync_snapshot_checked ON learning_source_sync_events(snapshot_id, checked_at DESC, id DESC)",
+            "CREATE INDEX idx_learning_source_sync_decision ON learning_source_sync_events(review_decision, outcome, checked_at DESC)",
+        ),
     )
 )
 
-
+ 
 # This exact fingerprint was captured by the read-only target-host diagnostic on
 # 2026-10-18. It is accepted only as a migration source, never as an already
 # current schema. The fixture and row-preserving conversion are regression-tested.
