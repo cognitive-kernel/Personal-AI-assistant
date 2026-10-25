@@ -154,7 +154,7 @@ def test_source_sync_backfills_existing_completed_lesson_from_stored_excerpt(tmp
         connection.execute("DELETE FROM learning_source_snapshots WHERE evidence_id=?", (evidence_id,))
         connection.execute(
             "INSERT INTO learning_source_text(job_id, content) VALUES (?, ?)",
-            (job_id, f"Source title: {title}\\nSource URL: {source_ref}\\nContent:\\n{excerpt}"),
+            (job_id, f"Source title: {title}\nSource URL: {source_ref}\nContent:\n{excerpt}"),
         )
     monkeypatch.setattr(
         learning_source_sync.web_sources,
