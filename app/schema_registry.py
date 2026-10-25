@@ -941,6 +941,7 @@ LEARNING_MIGRATIONS = (
                     CHECK(review_decision IN ('pending', 'keep_lesson', 'regenerate_lesson', 'needs_manual_resolution')),
                 review_note TEXT,
                 reviewed_at TEXT,
+                regeneration_job_id INTEGER REFERENCES learning_jobs(id) ON DELETE SET NULL,
                 CHECK(
                     (review_decision = 'pending' AND review_note IS NULL AND reviewed_at IS NULL)
                     OR
