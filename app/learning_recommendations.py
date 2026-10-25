@@ -111,8 +111,12 @@ def get_learning_recommendations(
             schedule = schedules.get(topic_id)
             if schedule:
                 due_at = str(schedule.get("due_at") or "")
-                if due_at and due_at > now_iso:
-                    # A future review is already scheduled; don't duplicate it as weak-topic work.
+                if due_at and due_at > now_iso and not (
+                    item["status"] == "in_progress"
+                    and item["latest_score"] is not None
+                    and float(item["latest_score"]) < 80
+                ):
+                    # Keep low-scoring active topics visible as gaps even when a review is scheduled.
                     continue
             status = item["status"]
             score = item["latest_score"]
