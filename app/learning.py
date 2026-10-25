@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import curricula, factual_knowledge, learning_evidence_gate
+from . import curricula, factual_knowledge, learning_evidence_gate, learning_source_sync
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
@@ -220,6 +220,22 @@ def _discover_and_store_sources(job_id: int, topic: str) -> tuple[str, str]:
                 )""", (job_id, document.url, digest,
                 f"Retrieved public page; title: {document.title}. Content has not been independently verified.",
                 job_id, document.url, digest))
+            evidence = conn.execute(
+                """SELECT id FROM learning_evidence
+                   WHERE job_id=? AND evidence_type='web_page' AND source_ref=? AND content_hash=?
+                   ORDER BY id LIMIT 1""",
+                (job_id, document.url, digest),
+            ).fetchone()
+            stored_source_text = stored_chunk.partition("\nContent:\n")[2].strip()
+            if evidence is not None and stored_source_text:
+                learning_source_sync.capture_source_snapshot(
+                    conn,
+                    job_id=job_id,
+                    evidence_id=int(evidence["id"]),
+                    source_ref=document.url,
+                    source_title=document.title,
+                    snapshot_text=stored_source_text,
+                )
     return combined, "web_retrieved"
 
 def _claim_review_sources(source_text: str) -> list[dict[str, str]]:
