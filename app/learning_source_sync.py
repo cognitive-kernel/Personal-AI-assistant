@@ -131,7 +131,7 @@ def record_review_decision(
     """Audit a human decision for a source change without silently applying it."""
     if isinstance(event_id, bool) or not isinstance(event_id, int) or event_id < 1:
         raise ValueError("event_id must be a positive integer.")
-    if decision not in _REVIEW_DECISIONS:
+    if not isinstance(decision, str) or decision not in _REVIEW_DECISIONS:
         raise ValueError("decision must be keep_lesson, regenerate_lesson, or needs_manual_resolution.")
     if not isinstance(note, str) or not 20 <= len(note.strip()) <= 1000:
         raise ValueError("note must contain 20–1000 non-whitespace characters.")
