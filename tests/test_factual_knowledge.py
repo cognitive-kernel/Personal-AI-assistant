@@ -674,7 +674,8 @@ def test_knowledge_graph_traversal_is_bounded_ordered_and_cycle_safe(connection)
     fourth = make_claim(connection, "Python dictionaries map keys to values")
     add_relation(connection, first, second, "depends_on")
     # Supersedes edges require reviewed knowledge; this fixture exercises traversal,
-    # so prepare the source claim at the minimum reviewed level.
+    # so provide traceable evidence before advancing the source claim's evidence level.
+    source(connection, first)
     transition_evidence_level(connection, first, "L1_sourced")
     transition_evidence_level(connection, first, "L2_tested")
     transition_evidence_level(connection, first, "L3_human_verified", human_verified_by="test-reviewer")
