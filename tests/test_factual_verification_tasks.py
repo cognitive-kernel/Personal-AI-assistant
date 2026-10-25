@@ -649,3 +649,44 @@ def test_oracle_attestation_must_match_exact_stored_evidence(learning_store, mon
             "max_output_bytes": 1000,
         }, None, FakeContext())
     assert called["sandbox"] is False
+
+
+def test_live_source_mismatch_blocks_sandbox_and_promotion(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    source_code = "assert isinstance(1, int)"
+    oracle_review_id = _oracle_review_id(knowledge_id, source_code)
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        factual_verification_tasks,
+        "_verify_live_source_excerpt",
+        lambda *_args: (_ for _ in ()).throw(
+            ValueError("Stored evidence excerpt is absent from the current live source page.")
+        ),
+    )
+    sandbox_called = False
+
+    def sandbox_handler(*_args):
+        nonlocal sandbox_called
+        sandbox_called = True
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="absent from the current live source page"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "assert type",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Compared the exact test against the official Python reference excerpt.",
+            "oracle_review_id": oracle_review_id,
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+
+    assert sandbox_called is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        assert claim["evidence_level"] == "L1_sourced"
