@@ -17,7 +17,7 @@ router = APIRouter(
 
 
 class SourceSyncCheckRequest(BaseModel):
-    limit: int = Field(default=10, ge=1, le=20)
+    limit: int = Field(default=5, ge=1, le=5)
 
     model_config = ConfigDict(extra="forbid")
 
