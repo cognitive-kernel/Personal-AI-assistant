@@ -116,9 +116,9 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
         "source_code": "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')",
-        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "assert (1 + 1) == 2"),
+        "semantic_assessment": _valid_semantic_assessment(knowledge_id, "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')"),
         "oracle_reviewed": True,
-        "oracle_review_id": _oracle_review_id(knowledge_id, "assert (1 + 1) == 2"),
+        "oracle_review_id": _oracle_review_id(knowledge_id, "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -258,6 +258,7 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
         oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
+        semantic_assessment=_valid_semantic_assessment(knowledge_id, "assert True"),
         timeout_seconds=5,
         max_output_bytes=1000,
     )
@@ -319,6 +320,7 @@ def test_route_rejects_missing_independent_oracle_attestation():
         oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
+        semantic_assessment={},
     )
     with pytest.raises(HTTPException) as raised:
         factual_verification_routes.queue_factual_claim_test(1, request)
