@@ -35,6 +35,7 @@ class ReviewDecision:
     reasons: tuple[str, ...]
     evaluator_model: str | None = None
     evaluator_digest: str | None = None
+    confidence: float | None = None
 
 
 def adjudicate_assessment(assessment: dict[str, Any]) -> ReviewDecision:
@@ -180,6 +181,7 @@ def review_claim_against_source(
             "no_unresolved_conflict": "boolean",
             "test_directly_checks_claim": "boolean",
             "rationale": "string, max 600 characters",
+            "confidence": "number between 0 and 1, not a calibrated probability",
         },
         "case": bounded,
     }
@@ -193,6 +195,7 @@ def review_claim_against_source(
     )
     import json
 import hashlib
+import math
     try:
         parsed = json.loads(raw.strip())
     except (TypeError, ValueError) as exc:
@@ -204,6 +207,11 @@ import hashlib
         raise ValueError("Independent factual reviewer returned an unsupported verdict.")
     if not isinstance(parsed.get("test_directly_checks_claim"), bool):
         raise ValueError("Independent factual reviewer omitted test relevance.")
+    confidence = parsed.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0 <= confidence <= 1:
+        raise ValueError("Independent factual reviewer confidence must be a finite number from 0 to 1.")
+    if not isinstance(parsed.get("rationale"), str) or not parsed["rationale"].strip() or len(parsed["rationale"]) > 600:
+        raise ValueError("Independent factual reviewer rationale is invalid.")
     assessment = {
         **{key: parsed.get(key) for key in _REQUIRED_CHECKS if key != "reviewer_is_independent"},
         "source_version_matches_claim": versions_compatible(source_version, claim_version),
@@ -224,6 +232,7 @@ import hashlib
             reasons=decision.reasons + ("test_does_not_directly_check_claim", "fail_closed_no_promotion"),
             evaluator_model=reviewer_model,
             evaluator_digest=reviewer_digest,
+            confidence=float(confidence),
         )
     return ReviewDecision(
         verdict=decision.verdict,
@@ -233,4 +242,5 @@ import hashlib
         reasons=decision.reasons,
         evaluator_model=reviewer_model,
         evaluator_digest=reviewer_digest,
+        confidence=float(confidence),
     )
