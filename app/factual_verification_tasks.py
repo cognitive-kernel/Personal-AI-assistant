@@ -234,6 +234,9 @@ def _build_handler(
             "semantic_review_confidence": semantic_decision.confidence,
             "semantic_evaluator_model": semantic_decision.evaluator_model,
             "semantic_evaluator_digest": semantic_decision.evaluator_digest,
+            "semantic_review_rationale": semantic_decision.rationale,
+            "semantic_source_url": semantic_decision.source_url,
+            "semantic_source_excerpt_sha256": semantic_decision.source_excerpt_sha256,
             "oracle_review_note": oracle_review_note.strip(),
             "oracle_source_url": oracle_review["oracle_source_url"],
             "oracle_source_hash": oracle_review["oracle_source_hash"],
@@ -289,6 +292,9 @@ def _build_handler(
             "semantic_review_verdict": semantic_decision.verdict,
             "semantic_evaluator_model": semantic_decision.evaluator_model,
             "semantic_evaluator_digest": semantic_decision.evaluator_digest,
+            "semantic_review_rationale": semantic_decision.rationale,
+            "semantic_source_url": semantic_decision.source_url,
+            "semantic_source_excerpt_sha256": semantic_decision.source_excerpt_sha256,
             "log_sha256": log_hash,
         }
         context.checkpoint({"phase": "factual_claim_test_recorded", **result_payload})
