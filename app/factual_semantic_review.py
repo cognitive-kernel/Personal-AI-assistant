@@ -88,7 +88,7 @@ def versions_compatible(source_version: str, claim_version: str) -> bool:
         return False
     source_parts = source_version.strip().split(".")
     claim_parts = claim_version.strip().split(".")
-    if not source_parts or len(source_parts) > 3 or len(claim_parts) < len(source_parts):
+    if len(source_parts) < 2 or len(source_parts) > 3 or len(claim_parts) < len(source_parts):
         return False
     if any(not part.isdigit() for part in source_parts + claim_parts):
         return False
