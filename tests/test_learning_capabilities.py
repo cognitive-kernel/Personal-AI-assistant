@@ -1,0 +1,80 @@
+import pytest
+
+from app import db, learning_capabilities
+from app.db import learning_connection
+
+
+def _setup(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
+    db.init_databases()
+    with learning_connection() as connection:
+        path_id = connection.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('capability-test', 'Capability test')"
+        ).lastrowid
+        topic_ids = []
+        for position, (topic, status) in enumerate(
+            [("Not assessed", "pending"), ("Weak topic", "completed"), ("Strong topic", "completed"), ("Invalid topic", "completed")],
+            start=1,
+        ):
+            topic_id = connection.execute(
+                """INSERT INTO learning_path_topics(path_id, topic, position, status)
+                   VALUES (?, ?, ?, ?)""",
+                (path_id, topic, position, status),
+            ).lastrowid
+            topic_ids.append(int(topic_id))
+        for topic_id, topic in zip(topic_ids[1:], ["Weak topic", "Strong topic", "Invalid topic"]):
+            job_id = connection.execute(
+                """INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id)
+                   VALUES (?, 'completed', 'model_knowledge_no_external_source', ?)""",
+                (topic, topic_id),
+            ).lastrowid
+            if topic == "Weak topic":
+                attempts = [(45.0, 1, 3, "normalized_exact_match")]
+            elif topic == "Strong topic":
+                attempts = [
+                    (85.0, 2, 3, "normalized_exact_match"),
+                    (92.0, 3, 3, "normalized_exact_match"),
+                ]
+            else:
+                attempts = [(100.0, 3, 3, "unreviewed_scoring_method")]
+            for score, correct, questions, method in attempts:
+                connection.execute(
+                    """INSERT INTO assessment_attempts(
+                           job_id, answers_json, score, correct_count, question_count, scoring_method
+                       ) VALUES (?, '[]', ?, ?, ?, ?)""",
+                    (job_id, score, correct, questions, method),
+                )
+    return int(path_id), topic_ids
+
+
+def test_capability_map_distinguishes_unassessed_weak_repeated_and_invalid_evidence(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch)
+
+    result = learning_capabilities.get_capability_map(path_id=path_id)
+
+    assert result["count"] == 4
+    by_topic = {item["capability"]: item for item in result["capabilities"]}
+    assert by_topic["Not assessed"]["status"] == "not_assessed"
+    assert by_topic["Not assessed"]["confidence"] == "none"
+    assert by_topic["Weak topic"]["status"] == "needs_reinforcement"
+    assert by_topic["Weak topic"]["latest_score"] == 45
+    assert by_topic["Strong topic"]["status"] == "repeated_provisional"
+    assert by_topic["Strong topic"]["assessment_count"] == 2
+    assert by_topic["Strong topic"]["latest_score"] == 92
+    assert by_topic["Invalid topic"]["status"] == "invalid_evidence"
+    assert by_topic["Invalid topic"]["latest_score"] is None
+    assert all("not established" in item["evidence_limit"] for item in result["capabilities"])
+    assert result["summary"]["not_assessed"] == 1
+    assert result["summary"]["repeated_provisional"] == 1
+
+
+def test_capability_map_validates_scope_and_limit(tmp_path, monkeypatch):
+    path_id, _ = _setup(tmp_path, monkeypatch)
+    with pytest.raises(KeyError):
+        learning_capabilities.get_capability_map(path_id=path_id + 999)
+    with pytest.raises(ValueError, match="limit"):
+        learning_capabilities.get_capability_map(path_id=path_id, limit=501)
+    with pytest.raises(ValueError, match="path_id"):
+        learning_capabilities.get_capability_map(path_id=True)
