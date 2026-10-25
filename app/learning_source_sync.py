@@ -48,9 +48,9 @@ def capture_source_snapshot(
 
 def _extract_stored_source(source_text: str, source_ref: str) -> tuple[str, str] | None:
     pattern = re.compile(
-        r"Source title:\\s*(?P<title>[^\\n]{1,300})\\n"
-        r"Source URL:\\s*(?P<url>https://[^\\s]+)\\n"
-        r"Content:\\n(?P<content>.*?)(?=\\n\\nSource title:|\\Z)",
+        r"Source title:\s*(?P<title>[^\n]{1,300})\n"
+        r"Source URL:\s*(?P<url>https://[^\s]+)\n"
+        r"Content:\n(?P<content>.*?)(?=\n\nSource title:|\Z)",
         re.DOTALL,
     )
     for match in pattern.finditer(source_text[:100000]):
