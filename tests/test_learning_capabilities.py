@@ -218,3 +218,51 @@ def test_capability_map_requires_distinct_scenarios_linked_to_retained_knowledge
     assert transfer["transfer_repeatable"] is True
     assert transfer["transfer_case_count"] == 2
     assert knowledge_id in transfer["transfer_evidence_knowledge_ids"]
+
+def test_transfer_evidence_deduplicates_problem_statements_after_normalization(tmp_path, monkeypatch):
+    path_id, _ = _setup(tmp_path, monkeypatch)
+    job = learning.create_job("Strong topic")
+    with learning_connection() as connection:
+        knowledge_id = int(connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, 1, 'retained_after_review', ?)""",
+            ("Strong topic", "Validated knowledge for transfer assessment.", "web_retrieved", job["id"]),
+        ).lastrowid)
+
+    sources = [{
+        "url": "https://docs.python.org/3/library/",
+        "claim": "Official reference excerpt",
+        "live_content_sha256": "a" * 64,
+        "excerpt_sha256": "b" * 64,
+    }]
+    problems = (
+        "Apply the retained concept to a cache invalidation scenario.",
+        "  apply   the retained concept to a CACHE invalidation scenario. ",
+    )
+    for index, problem in enumerate(problems, start=1):
+        item = experience.create_experience("Strong topic", problem, "Transfer hypothesis.")
+        experience.update_experience(
+            item["id"], status="verified", source_evidence=sources,
+            test_plan=[{"test": f"normalized transfer case {index}"}],
+            test_results=[{
+                "test": f"normalized transfer case {index}", "passed": True,
+                "runner": "docker-sandbox", "source_sha256": str(index) * 64,
+                "source_evidence": [{
+                    "url": sources[0]["url"],
+                    "live_content_sha256": "a" * 64,
+                    "excerpt_sha256": "b" * 64,
+                }],
+            }],
+            _controlled_run=True,
+        )
+        with learning_connection() as connection:
+            connection.execute(
+                "UPDATE learning_experiences SET originating_knowledge_id=? WHERE id=?",
+                (knowledge_id, item["id"]),
+            )
+
+    result = learning_capabilities.get_capability_map(path_id=path_id)
+    transfer = next(row for row in result["capabilities"] if row["capability"] == "Strong topic")
+    assert transfer["transfer_repeatable"] is False
+    assert transfer["transfer_case_count"] == 1
+
