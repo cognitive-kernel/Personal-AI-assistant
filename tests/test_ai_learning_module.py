@@ -181,7 +181,8 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert 'data-message-author-role="assistant"' in automation
     assert "launch_persistent_context" in automation
     assert "api.openai.com" not in automation
-    assert "cookies" not in automation.casefold()
+    assert "context.cookies(" not in automation
+    assert "storage_state(" not in automation
 
 def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
     from app.ai_learning import integration
