@@ -280,9 +280,26 @@ def list_courses(limit: int = 50) -> list[dict[str, Any]]:
     with connection() as conn:
         rows = conn.execute(
             """SELECT c.*, (SELECT COUNT(*) FROM topics t WHERE t.course_id=c.id AND t.deleted_at IS NULL) AS topic_count
-               FROM courses c ORDER BY c.updated_at DESC,c.id DESC LIMIT ?""",
+               FROM courses c WHERE c.status <> 'archived'
+               ORDER BY c.updated_at DESC,c.id DESC LIMIT ?""",
             (max(1, min(100, limit)),)).fetchall()
     return [dict(row) for row in rows]
+
+
+def soft_delete_course(course_id: int) -> dict[str, Any]:
+    """Archive a course instead of erasing its learning history and content."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        course = conn.execute(
+            "SELECT id,status FROM courses WHERE id=?", (course_id,)
+        ).fetchone()
+        if course is None or course["status"] == "archived":
+            raise NotFoundError("Course not found.")
+        conn.execute(
+            "UPDATE courses SET status='archived',updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (course_id,),
+        )
+        return {"id": course_id, "archived": True}
 
 def get_course(course_id: int) -> dict[str, Any]:
     with connection() as conn:
