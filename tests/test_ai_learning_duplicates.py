@@ -165,7 +165,7 @@ def test_persian_content_duplicate_normalizes_arabic_yeh_and_kaf_without_embeddi
     with pytest.raises(ValueError, match="محتوا با درس دیگری"):
         service.add_content_version(
             second_lesson["id"],
-            "مديريت اييندكس در پايگاه داده براي بهبود جست‌وجوي ركوردها",
+            "مديريت ايندكس در پايگاه داده براي بهبود جست‌وجوي ركوردها",
         )
 
     assert service.list_versions(second_lesson["id"]) == []
