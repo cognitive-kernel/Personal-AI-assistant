@@ -263,6 +263,11 @@ def add_content(lesson_id: int, request: ContentCreate) -> dict[str, Any]:
 def get_content_version(version_id: int) -> dict[str, Any]:
     return _call(service.get_content_version, version_id)
 
+@router.get("/versions/{version_id}/sources")
+def get_content_sources(version_id: int) -> dict[str, Any]:
+    items = _call(service.list_content_sources, version_id)
+    return {"items": items, "count": len(items)}
+
 @router.patch("/lessons/{lesson_id}")
 def edit_lesson(lesson_id: int, request: LessonCreate) -> dict[str, Any]:
     return _call(service.edit_lesson, lesson_id, request.title)
