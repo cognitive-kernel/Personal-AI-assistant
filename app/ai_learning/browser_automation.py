@@ -87,20 +87,23 @@ def _profile_path() -> Path:
 
 
 def _assistant_message_count(page: Any) -> int:
-    """Count assistant message nodes before a prompt is submitted."""
+    """Count assistant messages, falling back to visible response-copy controls on UI variants."""
     try:
-        return page.locator('[data-message-author-role="assistant"]').count()
+        count = page.locator('[data-message-author-role="assistant"]').count()
+        if count:
+            return count
+        return page.locator('button[aria-label="Copy response"],button[data-testid*="copy-turn"]').count()
     except Exception:
         return 0
 
 
 def _visible_response_with_index(page: Any) -> tuple[str, int | None]:
-    """Read the newest non-empty assistant message and its node index."""
+    """Read the newest visible assistant response across supported ChatGPT DOM variants."""
     messages = page.locator('[data-message-author-role="assistant"]')
     try:
         count = messages.count()
     except Exception:
-        return "", None
+        count = 0
     for index in range(count - 1, -1, -1):
         try:
             text = messages.nth(index).inner_text(timeout=1500).strip()
@@ -108,6 +111,35 @@ def _visible_response_with_index(page: Any) -> tuple[str, int | None]:
             continue
         if text:
             return text, index
+
+    # Some public ChatGPT UI variants no longer expose data-message-author-role.
+    # The visible "Copy response" action is attached to the assistant response.
+    # Walk up from that action and select the smallest ancestor containing real text.
+    copy_buttons = page.locator('button[aria-label="Copy response"],button[data-testid*="copy-turn"]')
+    try:
+        button_count = copy_buttons.count()
+    except Exception:
+        return "", None
+    for index in range(button_count - 1, -1, -1):
+        try:
+            response_text = copy_buttons.nth(index).evaluate("""button => {
+              let node = button;
+              for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+                const text = (node.innerText || '').trim();
+                if (text.length >= 20) {
+                  return text
+                    .replace(/^(Copy response|Copy)\\s*/i, '')
+                    .replace(/\\s+(Copy response|Read aloud|Good response|Bad response|Regenerate)\\s*$/i, '')
+                    .trim();
+                }
+              }
+              return '';
+            }""")
+            response_text = (response_text or "").strip()
+            if response_text:
+                return response_text, index
+        except Exception:
+            continue
     return "", None
 
 
