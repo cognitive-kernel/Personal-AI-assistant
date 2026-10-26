@@ -39,6 +39,7 @@ class BrowserLessonStart(BaseModel):
     course_id: int = Field(ge=1)
     topic_ids: list[int] = Field(min_length=1, max_length=100)
     request_key: str = Field(min_length=1, max_length=100)
+    force_retry: bool = False
     model_config = ConfigDict(extra="forbid")
 
 class RunHistoryDelete(BaseModel):
@@ -145,7 +146,7 @@ def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
 
 @router.post("/browser/lessons", status_code=202)
 def start_browser_lessons(request: BrowserLessonStart) -> dict[str, Any]:
-    return _call(browser_automation.start_lesson_run, request.course_id, request.topic_ids, request.request_key)
+    return _call(browser_automation.start_lesson_run, request.course_id, request.topic_ids, request.request_key, request.force_retry)
 
 @router.post("/runs", status_code=201)
 def create_run(request: RunCreate) -> dict[str, Any]:
@@ -267,6 +268,10 @@ def get_content_version(version_id: int) -> dict[str, Any]:
 def get_content_sources(version_id: int) -> dict[str, Any]:
     items = _call(service.list_content_sources, version_id)
     return {"items": items, "count": len(items)}
+
+@router.post("/sources/{source_id}/check")
+def check_content_source(source_id: int) -> dict[str, Any]:
+    return _call(service.check_content_source, source_id)
 
 @router.patch("/lessons/{lesson_id}")
 def edit_lesson(lesson_id: int, request: LessonCreate) -> dict[str, Any]:
