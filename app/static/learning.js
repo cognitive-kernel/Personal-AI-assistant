@@ -892,7 +892,11 @@ async function refreshLearningCapabilities() {
       "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count +
       "\nمصرف مدل: " + item.prompt_tokens + " ورودی / " + item.completion_tokens + " خروجی توکن" +
       "؛ زمان استنتاج: " + item.inference_duration_ms + " میلی‌ثانیه" +
-      "؛ امتیاز نظری به‌ازای ۱۰۰۰ توکن خروجی: " + (item.score_points_per_1000_output_tokens == null ? "ناموجود" : item.score_points_per_1000_output_tokens)
+      "؛ امتیاز نظری به‌ازای ۱۰۰۰ توکن خروجی: " + (item.score_points_per_1000_output_tokens == null ? "ناموجود" : item.score_points_per_1000_output_tokens) +
+      "\nهزینهٔ تخمینی: " + (item.estimated_cost_microusd == null ? "نامشخص؛ نرخ هزینه تنظیم نشده" : item.estimated_cost_microusd + " میکرو‌دلار") +
+      "؛ وضعیت هزینه: " + (item.cost_status || "نامشخص") +
+      "\nشاخص ارزش: " + (item.learning_value_cost && item.learning_value_cost.provisional_value_points != null ? item.learning_value_cost.provisional_value_points : "ناموجود") +
+      "؛ هزینه به‌ازای هر واحد ارزش: " + (item.learning_value_cost && item.learning_value_cost.estimated_cost_microusd_per_value_point != null ? item.learning_value_cost.estimated_cost_microusd_per_value_point : "ناموجود؛ هزینه یا خط مبنای کافی نیست")
      ).join("\n\n") +
      "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال عمومی مهارت را اثبات نمی‌کند."
    : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
