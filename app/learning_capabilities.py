@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from .db import init_databases, learning_connection
+from . import learning_cost_manager
 
 _MAX_LIMIT = 500
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -125,6 +126,8 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
                            SUM(u.prompt_tokens) AS prompt_tokens,
                            SUM(u.completion_tokens) AS completion_tokens,
                            SUM(u.total_duration_ns) AS total_duration_ns,
+                           SUM(u.estimated_cost_microusd) AS estimated_cost_microusd,
+                           COUNT(u.estimated_cost_microusd) AS cost_estimate_count,
                            GROUP_CONCAT(DISTINCT u.model_name) AS models
                     FROM model_usage_events u
                     JOIN learning_jobs j ON j.task_id=u.task_id
@@ -139,6 +142,8 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
                     "completion_tokens": int(item["completion_tokens"] or 0),
                     "inference_duration_ms": round(int(item["total_duration_ns"] or 0) / 1_000_000, 2),
                     "models_used": sorted(set(str(item["models"] or "").split(",")) - {""}),
+                    "estimated_cost_microusd": int(item["estimated_cost_microusd"]) if item["estimated_cost_microusd"] is not None else None,
+                    "cost_estimate_count": int(item["cost_estimate_count"] or 0),
                 }
                 for item in usage_rows
             }
@@ -185,6 +190,26 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
                 status = "practical_provisional"
                 confidence = "provisional_practical"
 
+        usage = usage_by_topic.get(int(row["topic_id"]), {
+            "model_call_count": 0, "prompt_tokens": 0, "completion_tokens": 0,
+            "inference_duration_ms": 0.0, "models_used": [],
+            "estimated_cost_microusd": None, "cost_estimate_count": 0,
+        })
+        if usage["cost_estimate_count"] == 0:
+            usage["cost_status"] = "unknown_rate"
+        elif usage["cost_estimate_count"] < usage["model_call_count"]:
+            usage["cost_status"] = "partial_estimate"
+        else:
+            usage["cost_status"] = "configured_estimate"
+        value_metrics = learning_cost_manager.learning_value_metrics(
+            prior_score=None,
+            current_score=float(score) if valid else None,
+            estimated_cost_microusd=usage["estimated_cost_microusd"],
+            prompt_tokens=usage["prompt_tokens"],
+            completion_tokens=usage["completion_tokens"],
+            practical_successes=practical["practical_attempt_count"],
+            independent_source_count=practical["practical_source_count"],
+        )
         capabilities.append({
             "path_id": int(row["path_id"]),
             "path_title": row["path_title"],
@@ -198,6 +223,7 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "assessment_count": count,
             **practical,
             **usage,
+            "learning_value_cost": value_metrics,
             "score_points_per_1000_output_tokens": (
                 round(float(score) * 1000 / usage["completion_tokens"], 3)
                 if valid and usage["completion_tokens"] > 0 else None
