@@ -47,6 +47,15 @@ def test_parse_outline_json_limits_deduplicates_and_preserves_title():
     assert topics == ["Intro", "Indexes"]
 
 
+def test_parse_outline_extracts_json_from_surrounding_text():
+    title, topics = browser_learning._parse_outline(
+        'Here is the plan: {"title":"SQL Server","topics":["Indexes","Transactions"]} End.',
+        2,
+    )
+    assert title == "SQL Server"
+    assert topics == ["Indexes", "Transactions"]
+
+
 def test_parse_outline_accepts_numbered_markdown_fallback():
     title, topics = browser_learning._parse_outline(
         "سرفصل‌های دوره\n1. نصب و معماری\n2) پایگاه داده\n- امنیت",
