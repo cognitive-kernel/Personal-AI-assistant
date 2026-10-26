@@ -443,8 +443,8 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
         ) from exc
 
 
-def _continue_lessons(course_id: int) -> None:
-    """Keep the existing workflow: approve newly received topics and create lessons in batches of three."""
+def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
+    """Approve captured topics and fetch lessons one topic at a time for safe pause/resume."""
     course = service.get_course(course_id)
     pending_ids = [int(topic["id"]) for topic in course.get("topics", [])
                    if topic.get("approval_status") == "pending"]
@@ -471,12 +471,21 @@ def _continue_lessons(course_id: int) -> None:
                                  selection_mode="selected", request_key=request_key)
         run_id = int(run["id"])
         service.start_run(run_id)
+        with _LOCK:
+            previous_active_run_id = _ACTIVE_RUN_ID
+            _ACTIVE_RUN_ID = run_id
+            _CANCEL_EVENTS[run_id] = cancel_event
         try:
-            answer = _browser_capture(run["prompt_text"])
+            answer = _browser_capture(run["prompt_text"], cancel_event)
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
             service.mark_run_needs_user_action(run_id, exc.code, str(exc))
             return
+        finally:
+            with _LOCK:
+                _CANCEL_EVENTS.pop(run_id, None)
+                if _ACTIVE_RUN_ID == run_id:
+                    _ACTIVE_RUN_ID = previous_active_run_id
         if result.get("status") != "succeeded":
             return
 
@@ -493,7 +502,7 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         if result.get("status") == "succeeded":
             try:
-                _continue_lessons(course_id)
+                _continue_lessons(course_id, cancel_event)
             except Exception as exc:
                 # The outline remains safely saved even if lesson follow-up fails.
                 print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
