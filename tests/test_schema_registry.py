@@ -124,9 +124,11 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 27
+        assert LEARNING_MIGRATIONS[-1].version == 32
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
-        assert {"task_id", "purpose", "model_name", "prompt_tokens", "completion_tokens", "total_duration_ns"} <= usage_columns
+        assert {"task_id", "purpose", "model_name", "prompt_tokens", "completion_tokens", "total_duration_ns", "estimated_cost_microusd"} <= usage_columns
+        graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
+        assert {"source_knowledge_id", "target_knowledge_id", "relation_type", "source_url", "source_excerpt", "source_sha256", "status", "review_json"} <= graph_columns
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
@@ -248,7 +250,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(4, expected_v4), (5, None), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None)]
+        assert history == [(4, expected_v4), *[(version, None) for version in range(5, LEARNING_MIGRATIONS[-1].version + 1)]]
 
 
 def test_known_v5_schema_is_baselined_then_upgraded():
@@ -258,7 +260,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None)]
+        assert history == [(5, expected_v5), *[(version, None) for version in range(6, LEARNING_MIGRATIONS[-1].version + 1)]]
 
 
 def test_known_v6_schema_is_baselined_then_upgraded():
@@ -268,7 +270,7 @@ def test_known_v6_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None)]
+        assert history == [(6, expected_v6), *[(version, None) for version in range(7, LEARNING_MIGRATIONS[-1].version + 1)]]
 
 
 def test_known_v7_schema_is_baselined_then_upgraded():
@@ -278,7 +280,7 @@ def test_known_v7_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(7, expected_v7), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None)]
+        assert history == [(7, expected_v7), *[(version, None) for version in range(8, LEARNING_MIGRATIONS[-1].version + 1)]]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
