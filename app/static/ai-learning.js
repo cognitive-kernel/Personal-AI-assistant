@@ -168,6 +168,19 @@ byId("course-form").addEventListener("submit", async event => {
     message("دوره ایجاد شد.");
   } catch (error) { message(error.message, true); }
 });
+byId("outline-import-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  if (!selectedCourse) { message("ابتدا یک دوره انتخاب کنید.", true); return; }
+  try {
+    const result = await api("/api/ai-learning/courses/" + selectedCourse + "/outline/import", jsonOptions("POST", {
+      raw_response:byId("outline-raw").value,provider:byId("outline-provider").value
+    }));
+    byId("outline-raw").value = "";
+    await loadCourseDetails();
+    byId("outline-import-result").textContent = result.imported + " سرفصل استخراج شد؛ همه در انتظار تأیید هستند. شناسه ورود: " + result.run_id;
+    message("پاسخ خام ثبت و سرفصل‌ها استخراج شدند؛ هیچ‌کدام خودکار تأیید نشده‌اند.");
+  } catch (error) { byId("outline-import-result").textContent = error.message; message(error.message, true); }
+});
 byId("topic-form").addEventListener("submit", async event => {
   event.preventDefault();
   if (!selectedCourse) { message("ابتدا یک دوره انتخاب کنید.", true); return; }
