@@ -20,3 +20,11 @@ def test_static_asset_names_are_allowlisted(monkeypatch):
     with pytest.raises(HTTPException) as error:
         ui.learning_asset("../service.py")
     assert error.value.status_code==404
+ 
+def test_main_dashboard_links_to_ai_learning_module():
+    from pathlib import Path
+
+    dashboard = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
+    html = dashboard.read_text(encoding="utf-8")
+    assert 'href="/ai-learning"' in html
+    assert "یادگیری از هوش مصنوعی" in html
