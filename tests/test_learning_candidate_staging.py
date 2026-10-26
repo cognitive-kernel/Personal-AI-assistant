@@ -68,6 +68,9 @@ def test_accepted_lesson_is_staged_as_unverified_candidate(learning_store, monke
             "SELECT * FROM knowledge_items WHERE job_id=?",
             (job["id"],),
         ).fetchone()
+        validation_task = conn.execute(
+            "SELECT task_type, payload_json, status FROM task_queue WHERE task_type='learning.validate_candidate' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
 
     assert candidate is not None
     assert candidate["status"] == "awaiting_test"
@@ -78,6 +81,9 @@ def test_accepted_lesson_is_staged_as_unverified_candidate(learning_store, monke
     assert candidate["promoted_knowledge_id"] is None
     assert knowledge is not None
     assert knowledge["status"] == "unverified"
+    assert validation_task is not None
+    assert validation_task["status"] == "queued"
+    assert json.loads(validation_task["payload_json"])["candidate_id"] == candidate["id"]
 
 
 def test_rejected_lesson_is_not_staged_as_candidate(learning_store, monkeypatch):
