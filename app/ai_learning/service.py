@@ -31,6 +31,29 @@ def _clean_text(value: str, field: str, maximum: int) -> str:
         raise ValueError(f"{field} must contain 1–{maximum} characters.")
     return value
 
+
+def _dedupe_normalize(value: str) -> str:
+    """Normalize titles across case, whitespace, punctuation, and Persian/Arabic letter variants."""
+    value = str(value).casefold().replace("ي", "ی").replace("ك", "ک").replace("ۀ", "ه").replace("ة", "ه")
+    value = value.replace("\u200c", " ").replace("\u200f", "").replace("\u200e", "")
+    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
+
+
+def _ensure_unique_title(conn: sqlite3.Connection, *, table: str, title: str,
+                         scope_column: str, scope_id: int, exclude_id: int | None = None) -> None:
+    """Reject a normalized duplicate within one course/topic before inserting or renaming."""
+    if table not in {"topics", "lessons"} or scope_column not in {"course_id", "topic_id"}:
+        raise ValueError("Unsupported title uniqueness scope.")
+    query = f"SELECT id,title FROM {table} WHERE {scope_column}=? AND deleted_at IS NULL"
+    params: list[Any] = [scope_id]
+    if exclude_id is not None:
+        query += " AND id<>?"
+        params.append(exclude_id)
+    normalized = _dedupe_normalize(title)
+    for row in conn.execute(query, params).fetchall():
+        if _dedupe_normalize(str(row["title"])) == normalized:
+            raise ValueError("عنوان تکراری است؛ موردی با همین نام از قبل ثبت شده است.")
+
 def create_course(*, title: str, provider: str = "manual", language: str = "fa",
                   target_level: str = "beginner_to_advanced", scope_notes: str = "") -> dict[str, Any]:
     title = _clean_text(title, "title", 300)
@@ -40,6 +63,11 @@ def create_course(*, title: str, provider: str = "manual", language: str = "fa",
     if len(scope_notes) > 4000:
         raise ValueError("scope_notes cannot exceed 4000 characters.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        normalized_title = _dedupe_normalize(title)
+        existing = conn.execute("SELECT title FROM courses WHERE status<>'archived'").fetchall()
+        if any(_dedupe_normalize(str(row["title"])) == normalized_title for row in existing):
+            raise ValueError("عنوان دوره تکراری است؛ دوره‌ای با همین نام از قبل ثبت شده است.")
         cursor = conn.execute(
             "INSERT INTO courses(title,provider,language,target_level,scope_notes,status) VALUES(?,?,?,?,?,'active')",
             (title, provider, language, target_level, scope_notes))
@@ -289,8 +317,8 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
     def add(value: str) -> None:
         title = re.sub(r"\s+#+\s*$", "", value.strip().strip("*").strip())
         title = re.sub(r"^\[[^]]{1,80}\]\s*", "", title).strip()
-        key = " ".join(title.split()).casefold()
-        if 2 <= len(title) <= 300 and key not in seen and len(candidates) < 200:
+        key = _dedupe_normalize(title)
+        if 2 <= len(title) <= 300 and key and key not in seen and len(candidates) < 200:
             seen.add(key)
             candidates.append(title)
 
@@ -483,10 +511,10 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
             existing_rows = conn.execute(
                 "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
-            existing_titles = {" ".join(str(row["title"]).split()).casefold() for row in existing_rows}
+            existing_titles = {_dedupe_normalize(str(row["title"])) for row in existing_rows}
             new_titles = []
             for title in titles:
-                normalized = " ".join(title.split()).casefold()
+                normalized = _dedupe_normalize(title)
                 if normalized not in existing_titles:
                     new_titles.append(title)
                     existing_titles.add(normalized)
@@ -730,7 +758,8 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         match = re.match(r"^(?:#{1,6}\s+|(?:\d+(?:\.\d+)*[.)]?|[-*+•])\s+)(.+?)\s*$", item)
         if match:
             title = re.sub(r"\s+#+\s*$", "", match.group(1).strip().strip("*").strip())
-            if 2 <= len(title) <= 300 and title.casefold() not in {x.casefold() for x in candidates}:
+            normalized = _dedupe_normalize(title)
+            if 2 <= len(title) <= 300 and normalized and normalized not in {_dedupe_normalize(x) for x in candidates}:
                 candidates.append(title)
         if len(candidates) >= 200:
             break
@@ -743,10 +772,10 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         existing_rows = conn.execute(
             "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
-        existing_titles = {" ".join(str(row["title"]).split()).casefold() for row in existing_rows}
+        existing_titles = {_dedupe_normalize(str(row["title"])) for row in existing_rows}
         new_candidates = []
         for title in candidates:
-            normalized = " ".join(title.split()).casefold()
+            normalized = _dedupe_normalize(title)
             if normalized not in existing_titles:
                 new_candidates.append(title)
                 existing_titles.add(normalized)
@@ -952,6 +981,7 @@ def add_topic(course_id: int, title: str, description: str = "", parent_topic_id
             "SELECT 1 FROM topics WHERE id=? AND course_id=? AND deleted_at IS NULL",
             (parent_topic_id, course_id)).fetchone() is None:
             raise ValueError("Parent topic must belong to the same course.")
+        _ensure_unique_title(conn, table="topics", title=title, scope_column="course_id", scope_id=course_id)
         position = int(conn.execute(
             "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
             (course_id,)).fetchone()[0])
@@ -1010,8 +1040,12 @@ def edit_topic(topic_id: int, *, title: str | None = None, description: str | No
     updates.append("updated_at=CURRENT_TIMESTAMP")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        if conn.execute("SELECT 1 FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone() is None:
+        current = conn.execute("SELECT id,course_id FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone()
+        if current is None:
             raise NotFoundError("Topic not found.")
+        if title is not None:
+            _ensure_unique_title(conn, table="topics", title=title, scope_column="course_id",
+                                 scope_id=int(current["course_id"]), exclude_id=topic_id)
         conn.execute(f"UPDATE topics SET {','.join(updates)} WHERE id=?", (*params, topic_id))
         return dict(conn.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone())
 
@@ -1060,6 +1094,7 @@ def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
             raise NotFoundError("Topic not found.")
         if topic["approval_status"] != "approved":
             raise ValueError("A lesson can only be created under an approved topic.")
+        _ensure_unique_title(conn, table="lessons", title=title, scope_column="topic_id", scope_id=topic_id)
         position = int(conn.execute(
             "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
             (topic_id,)).fetchone()[0])
@@ -1069,11 +1104,6 @@ def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
         return dict(conn.execute("SELECT * FROM lessons WHERE id=?", (int(cursor.lastrowid),)).fetchone())
 
 SEMANTIC_DUPLICATE_THRESHOLD = 0.90
-
-
-def _dedupe_normalize(value: str) -> str:
-    value = value.casefold().replace("ي", "ی").replace("ك", "ک")
-    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
 
 
 def _dedupe_content_hash(value: str) -> str:
@@ -1366,6 +1396,11 @@ def edit_lesson(lesson_id: int, title: str) -> dict[str, Any]:
             "SELECT 1 FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)
         ).fetchone() is None:
             raise NotFoundError("Lesson not found.")
+        current = conn.execute("SELECT topic_id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
+        if current is None:
+            raise NotFoundError("Lesson not found.")
+        _ensure_unique_title(conn, table="lessons", title=title, scope_column="topic_id",
+                             scope_id=int(current["topic_id"]), exclude_id=lesson_id)
         conn.execute(
             "UPDATE lessons SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (title, lesson_id),
