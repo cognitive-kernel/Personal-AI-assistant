@@ -449,3 +449,24 @@ def test_lesson_capture_requires_body_and_preserves_course_context(isolated_stor
     version = service.get_content_version(service.list_versions(lesson["id"])[0]["id"])
     assert len(version["markdown"]) > 100
     assert "مدیریت حافظه" in version["markdown"]
+
+
+
+def test_lesson_progress_uses_latest_version_even_if_an_older_version_was_published(isolated_store):
+    course = service.create_course(title="SQL Server latest-version progress")
+    topic = service.add_topic(course["id"], "Memory management")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Memory management")
+    valid = service.add_content_version(lesson["id"], "Substantive lesson content with enough detail.")
+    service.review_content(valid["id"], "reviewed")
+    service.publish_content(valid["id"])
+    # Simulate a legacy/corrupt empty version that was incorrectly marked published.
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO content_versions(lesson_id,version_no,markdown,raw_response,content_sha256,
+               review_status,source_kind,provider) VALUES(?,2,'','','','published','chatgpt_ui','ChatGPT')""",
+            (lesson["id"],),
+        )
+    latest = service.list_lessons(topic["id"])[0]
+    assert latest["progress_percent"] == 25
+    assert "آخرین نسخه خالی است" in latest["progress_label"]
