@@ -42,7 +42,7 @@ def get_learning_recommendations(
         ).fetchone() is None:
             raise KeyError(path_id)
         sql = """SELECT t.id AS topic_id, t.path_id, p.title AS path_title,
-                        p.curriculum_slug, t.topic, t.position, t.status,
+                        p.curriculum_slug, p.prerequisite_mode, t.topic, t.position, t.status,
                         t.latest_score, t.updated_at
                  FROM learning_path_topics AS t
                  JOIN learning_paths AS p ON p.id=t.path_id"""
@@ -59,6 +59,15 @@ def get_learning_recommendations(
                    FROM learning_review_schedule"""
             ).fetchall()
         }
+        prerequisite_rows = connection.execute(
+            """SELECT p.topic_id, p.prerequisite_topic_id, prerequisite.status AS prerequisite_status
+               FROM learning_topic_prerequisites p
+               JOIN learning_path_topics prerequisite ON prerequisite.id=p.prerequisite_topic_id"""
+        ).fetchall()
+        prerequisite_statuses: dict[int, list[str]] = {}
+        for prerequisite in prerequisite_rows:
+            prerequisite_statuses.setdefault(int(prerequisite["topic_id"]), []).append(str(prerequisite["prerequisite_status"]))
+
         semantic_rows = connection.execute(
             """SELECT j.path_topic_id AS topic_id, a.id AS attempt_id, r.review_json
                FROM learning_jobs j
@@ -226,15 +235,23 @@ def get_learning_recommendations(
                 })
                 seen.add(topic_id)
 
-        # Recommend only the first pending topic whose prerequisites are completed.
+        # Recommend one eligible topic. Linear paths retain their ordering;
+        # custom DAG paths may skip a blocked topic when another branch is ready.
+        prerequisite_mode = str(path_topics[0].get("prerequisite_mode", "linear")) if path_topics else "linear"
         for index, item in enumerate(path_topics):
             if item["status"] == "completed":
                 continue
             if item["status"] == "in_progress":
                 break
             if item["status"] == "pending":
-                prior_topics = path_topics[:index]
-                if all(previous["status"] == "completed" for previous in prior_topics):
+                if prerequisite_mode == "linear":
+                    eligible = all(previous["status"] == "completed" for previous in path_topics[:index])
+                else:
+                    eligible = all(
+                        value == "completed"
+                        for value in prerequisite_statuses.get(int(item["topic_id"]), [])
+                    )
+                if eligible:
                     topic_id = int(item["topic_id"])
                     if topic_id not in seen:
                         recommendations.append({
@@ -242,12 +259,18 @@ def get_learning_recommendations(
                             "recommendation_type": "next_topic",
                             "action": "start_topic",
                             "priority": 50,
-                            "reason": "This is the next sequential topic with all earlier topics completed.",
+                            "reason": (
+                                "This is the next sequential topic with all earlier topics completed."
+                                if prerequisite_mode == "linear"
+                                else "This topic's configured prerequisite graph is satisfied."
+                            ),
                             "due_at": None,
                             "overdue_days": 0,
                         })
                         seen.add(topic_id)
-                break
+                    break
+                if prerequisite_mode == "linear":
+                    break
 
     recommendations.sort(
         key=lambda item: (
