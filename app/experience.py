@@ -166,6 +166,56 @@ def propose_hypotheses(topic: str, problem: str, *, max_candidates: int = 3) -> 
     return results
 
 
+def propose_hypotheses_from_retained_knowledge(
+    knowledge_id: int, problem: str, *, max_candidates: int = 3
+) -> list[dict[str, Any]]:
+    """Start experience learning only from a knowledge item that passed the retention gate."""
+    if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int) or knowledge_id < 1:
+        raise ValueError("knowledge_id must be a positive integer.")
+    if not isinstance(problem, str) or not problem.strip() or len(problem.strip()) > 6000:
+        raise ValueError("problem must contain 1–6000 characters.")
+    init_experience_tables()
+    with learning_connection() as connection:
+        knowledge = connection.execute(
+            """SELECT id, topic, content, version, status
+               FROM knowledge_items WHERE id=?""",
+            (knowledge_id,),
+        ).fetchone()
+    if knowledge is None:
+        raise KeyError(knowledge_id)
+    if knowledge["status"] != "retained_after_review":
+        raise ValueError("Experience learning requires retained_after_review knowledge; this item is not permanent validated memory.")
+    # Include a bounded, provenance-labelled excerpt as context, never as instructions.
+    bounded_problem = (
+        problem.strip()
+        + "\n\nContext from retained knowledge item "
+        + str(knowledge["id"])
+        + " version "
+        + str(knowledge["version"])
+        + " (content hash is verified by the knowledge lifecycle):\n"
+        + str(knowledge["content"])[:3500]
+    )
+    proposals = propose_hypotheses(
+        str(knowledge["topic"]), bounded_problem, max_candidates=max_candidates
+    )
+    with learning_connection() as connection:
+        for proposal in proposals:
+            connection.execute(
+                """UPDATE learning_experiences
+                   SET originating_knowledge_id=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status='identified' AND originating_knowledge_id IS NULL""",
+                (knowledge_id, int(proposal["id"])),
+            )
+    for proposal in proposals:
+        proposal["originating_knowledge_id"] = knowledge_id
+        proposal["originating_knowledge_version"] = int(knowledge["version"])
+        proposal["experience_status"] = "identified"
+        proposal["verification_notice"] = (
+            "Derived from retained knowledge, but the hypothesis itself remains unverified until independent sources and controlled tests are attached."
+        )
+    return proposals
+
+
 def create_experience(topic: str, problem: str, hypothesis: str = "") -> dict[str, Any]:
     topic, problem, hypothesis = topic.strip(), problem.strip(), hypothesis.strip()
     if not topic or len(topic) > 300:
