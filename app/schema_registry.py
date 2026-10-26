@@ -1063,6 +1063,14 @@ LEARNING_MIGRATIONS = (
             "ALTER TABLE learning_experiences ADD COLUMN originating_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL",
             "CREATE INDEX idx_experiences_originating_knowledge ON learning_experiences(originating_knowledge_id, id DESC)",
         ),
+    ),
+    Migration(
+        31,
+        "estimated-model-cost-telemetry",
+        (
+            "ALTER TABLE model_usage_events ADD COLUMN estimated_cost_microusd INTEGER CHECK(estimated_cost_microusd IS NULL OR estimated_cost_microusd >= 0)",
+            "CREATE INDEX idx_model_usage_cost ON model_usage_events(estimated_cost_microusd, created_at DESC)",
+        ),
     )
 )
 
