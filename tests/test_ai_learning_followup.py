@@ -138,3 +138,27 @@ def test_bulk_delete_course_runs_refuses_active_runs(isolated_store):
     service.start_run(run["id"])
     with pytest.raises(ValueError, match="Active runs cannot be deleted"):
         service.delete_course_runs(course["id"], [run["id"]])
+
+
+
+def test_cancel_run_makes_history_deletable(isolated_store):
+    course = service.create_course(title="SQL Server")
+    run = service.create_run(course["id"], run_type="outline", request_key="cancel-run")
+    service.start_run(run["id"])
+
+    cancelled = service.cancel_run(run["id"])
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["error_code"] == "user_cancelled"
+
+    result = service.delete_course_runs(course["id"], [run["id"]])
+    assert result["deleted"] == 1
+
+
+def test_cancel_run_rejects_terminal_runs(isolated_store):
+    course = service.create_course(title="SQL Server")
+    run = service.create_run(course["id"], run_type="outline", request_key="already-done")
+    service.start_run(run["id"])
+    service.complete_run(run["id"], "1. Fundamentals\n2. Query processing")
+
+    with pytest.raises(ValueError, match="Only queued or running"):
+        service.cancel_run(run["id"])
