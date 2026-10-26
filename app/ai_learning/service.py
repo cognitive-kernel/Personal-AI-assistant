@@ -409,6 +409,34 @@ def cancel_run(run_id: int) -> dict[str, Any]:
     return get_run(run_id)
 
 
+def _outline_normalized_duplicates(raw_response: str) -> list[dict[str, Any]]:
+    """Report repeated normalized titles inside a structured outline without importing them twice."""
+    marker = re.compile(
+        r"^(?:#{1,6}\s+|(?:[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*[.)]?|[-*+•])\s+)(.+?)\s*$"
+    )
+    seen: dict[str, str] = {}
+    duplicates: list[dict[str, Any]] = []
+    for raw_line in raw_response.splitlines():
+        match = marker.match(raw_line.strip().lstrip("\ufeff"))
+        if not match:
+            continue
+        title = re.sub(r"\s+#+\s*$", "", match.group(1).strip().strip("*").strip())
+        title = re.sub(r"^\[[^]]{1,80}\]\s*", "", title).strip()
+        key = _dedupe_normalize(title)
+        if not key:
+            continue
+        if key in seen:
+            duplicates.append({
+                "title": title,
+                "duplicate_of": seen[key],
+                "score": 1.0,
+                "method": "normalized",
+            })
+        else:
+            seen[key] = title
+    return duplicates
+
+
 def _parse_outline_titles(raw_response: str) -> list[str]:
     """Parse numbered, bulleted, headed, or plain one-topic-per-line outlines."""
     candidates: list[str] = []
@@ -864,9 +892,10 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
     """Import a large outline idempotently; supports plain one-title-per-line output."""
     raw_response = _clean_text(raw_response, "raw_response", 500_000)
     provider = _clean_text(provider, "provider", 80)
+    in_batch_duplicates = _outline_normalized_duplicates(raw_response)
     candidates = _parse_outline_titles(raw_response)
     if not candidates:
-        raise ValueError("No outline items were found. Paste one topic per line or use numbering, bullets, or Markdown headings.")
+        raise ValueError("No numbered, bulleted, Markdown-heading, or valid one-topic-per-line outline items were found. Paste one topic per line or use numbering, bullets, or Markdown headings.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
@@ -881,6 +910,7 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
         else:
             new_candidates, skipped_duplicates = candidates, []
+        skipped_duplicates = in_batch_duplicates + skipped_duplicates
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
             (course_id, raw_response))
