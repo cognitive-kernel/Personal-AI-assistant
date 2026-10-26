@@ -64,6 +64,10 @@ class TopicEdit(BaseModel):
     description: str | None = Field(default=None, max_length=4000)
     model_config = ConfigDict(extra="forbid")
 
+class PauseState(BaseModel):
+    paused: bool
+    model_config = ConfigDict(extra="forbid")
+
 class TopicOrder(BaseModel):
     topic_ids: list[int] = Field(min_length=1, max_length=500)
     model_config = ConfigDict(extra="forbid")
@@ -198,6 +202,10 @@ def add_topic(course_id: int, request: TopicCreate) -> dict[str, Any]:
 def edit_topic(topic_id: int, request: TopicEdit) -> dict[str, Any]:
     return _call(service.edit_topic, topic_id, **request.model_dump(exclude_unset=True))
 
+@router.post("/topics/{topic_id}/pause")
+def pause_topic(topic_id: int, request: PauseState) -> dict[str, Any]:
+    return _call(service.set_topic_paused, topic_id, request.paused)
+
 @router.put("/courses/{course_id}/topic-order")
 def reorder_topics(course_id: int, request: TopicOrder) -> dict[str, Any]:
     return {"items": _call(service.reorder_topics, course_id, request.topic_ids)}
@@ -214,6 +222,10 @@ def create_lesson(topic_id: int, request: LessonCreate) -> dict[str, Any]:
 def list_lessons(topic_id: int) -> dict[str, Any]:
     items = _call(service.list_lessons, topic_id)
     return {"items": items, "count": len(items)}
+
+@router.post("/lessons/{lesson_id}/pause")
+def pause_lesson(lesson_id: int, request: PauseState) -> dict[str, Any]:
+    return _call(service.set_lesson_paused, lesson_id, request.paused)
 
 @router.delete("/topics/{topic_id}")
 def delete_topic(topic_id: int) -> dict[str, Any]:
