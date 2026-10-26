@@ -318,7 +318,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
     This is a bounded queue-worker operation. Missing sources/models or disagreement
     stays temporary; a single failing or unavailable check never triggers rejection.
     """
-    from . import ollama, web_sources
+    from . import ollama, web_sources, learning_review_adapters
 
     init_databases()
     with learning_connection() as connection:
@@ -387,34 +387,18 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
             "readiness": candidate_readiness(candidate_id),
         }
 
-    installed = ollama.list_models()
     settings = get_settings()
-    primary_names = {
-        str(settings.get(key, "")).strip()
-        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
-        if str(settings.get(key, "")).strip()
-    }
-    primary_digests = {
-        str(item.get("digest")) for item in installed
-        if str(item.get("name", "")).strip() in primary_names and item.get("digest")
-    }
-    reviewers: list[tuple[str, str]] = []
-    seen_digests = set(primary_digests)
-    for item in installed:
-        name = str(item.get("name", "")).strip()
-        digest = str(item.get("digest", "")).strip()
-        if not name or not digest or len(name) + len(digest) + 8 > 200 or name in primary_names or digest in seen_digests:
-            continue
-        reviewers.append((name, digest))
-        seen_digests.add(digest)
-        if len(reviewers) == 2:
-            break
+    try:
+        installed = ollama.list_models()
+    except Exception:
+        installed = []
+    reviewers = learning_review_adapters.list_reviewers(settings, installed)
     if len(reviewers) < 2:
         return {
             "candidate_id": candidate_id,
             "status": "awaiting_evidence",
             "ready_for_promotion": False,
-            "reason": "Two installed reviewer models with distinct digests and separate from generation models are required.",
+            "reason": "Two attributable, digest-distinct reviewers are not configured/available. External providers require explicit data-sharing approval and a stable response fingerprint.",
             "readiness": candidate_readiness(candidate_id),
         }
 
@@ -423,7 +407,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
         for item in documents
     ]
     model_results: list[dict[str, Any]] = []
-    for index, (model_name, digest) in enumerate(reviewers):
+    for index, reviewer in enumerate(reviewers):
         if context is not None:
             context.checkpoint({"stage": "review_model", "candidate_id": candidate_id, "reviewer_index": index})
         role = "evidence_synthesizer" if index == 0 else "skeptical_contradiction_auditor"
@@ -452,14 +436,33 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
         }
         serialized = json.dumps(prompt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         input_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+        fallback_model_id = str(reviewer["model_id"])
+        fallback_reviewer_id = str(reviewer["reviewer_id"])
+        fallback_digest = str(reviewer["digest"])
         try:
-            raw = ollama.chat(
+            provider_result = learning_review_adapters.run_reviewer(
+                reviewer,
                 serialized,
-                system_prompt="You are an independent knowledge reviewer. Abstain when evidence is insufficient. Output JSON only.",
-                purpose="factual_review",
-                model_override=model_name,
+                system_prompt=(
+                    "You are an independent knowledge reviewer. Abstain when evidence is insufficient. "
+                    + role_policy + " Output JSON only."
+                ),
             )
+            raw = provider_result["content"]
+            actual_digest = str(provider_result["digest"])
+            actual_model_id = str(provider_result["model_id"])
+            actual_reviewer_id = str(provider_result["reviewer_id"])
             output_hash = hashlib.sha256(str(raw).encode("utf-8")).hexdigest()
+            # Recheck local model identity after inference; a changed digest cannot support a verdict.
+            if provider_result["provider_id"] == "ollama":
+                current_models = ollama.list_models()
+                current_digest = next(
+                    (str(item.get("digest", "")) for item in current_models
+                     if isinstance(item, dict) and str(item.get("name", "")).strip() == provider_result["model"]),
+                    "",
+                )
+                if current_digest != actual_digest:
+                    raise ValueError("reviewer model identity changed during inference")
             parsed = json.loads(raw.strip()) if isinstance(raw, str) else {}
             if not isinstance(parsed, dict) or parsed.get("verdict") not in _VERDICTS:
                 raise ValueError("review schema invalid")
@@ -483,7 +486,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 try:
                     record_candidate_review(
                         candidate_id, candidate_sha256=current_hash, review_kind="source",
-                        verdict=verdict, reviewer_id=f"ollama:{model_name}@{digest}",
+                        verdict=verdict, reviewer_id=actual_reviewer_id,
                         note=source_note[:2000], source_url=document["url"],
                         source_sha256=document["sha256"],
                     )
@@ -497,26 +500,29 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
             note = rationale.strip()
             record_candidate_review(
                 candidate_id, candidate_sha256=current_hash, review_kind="ai_review",
-                verdict=overall, reviewer_id=f"ollama:{model_name}@{digest}",
-                model_id=f"{model_name}@{digest}", note=note,
+                verdict=overall, reviewer_id=actual_reviewer_id,
+                model_id=actual_model_id, note=note,
                 input_sha256=input_hash, output_sha256=output_hash, _trusted_adapter=True,
             )
             model_results.append({
-                "model": model_name, "digest": digest, "verdict": overall, "specialist_role": role,
+                "model": provider_result["model"], "provider_id": provider_result["provider_id"],
+                "digest": actual_digest, "verdict": overall, "specialist_role": role,
                 "source_verdicts": per_source, "input_sha256": input_hash, "output_sha256": output_hash,
             })
         except Exception as exc:
-            # Failure to review is inconclusive, never a rejection.
-            failure = f"Reviewer unavailable or returned invalid output ({type(exc).__name__}); no conclusion was drawn."
+            # Provider failure or missing attributable identity is inconclusive, never a rejection.
+            failure = f"Reviewer unavailable or returned invalid/unattributable output ({type(exc).__name__}); no conclusion was drawn."
             failure_hash = hashlib.sha256(failure.encode("utf-8")).hexdigest()
             record_candidate_review(
                 candidate_id, candidate_sha256=current_hash, review_kind="ai_review",
-                verdict="inconclusive", reviewer_id=f"ollama:{model_name}@{digest}",
-                model_id=f"{model_name}@{digest}", note=failure,
-                input_sha256=hashlib.sha256((topic + content).encode("utf-8")).hexdigest(),
-                output_sha256=failure_hash, _trusted_adapter=True,
+                verdict="inconclusive", reviewer_id=fallback_reviewer_id,
+                model_id=fallback_model_id, note=failure,
+                input_sha256=input_hash, output_sha256=failure_hash, _trusted_adapter=True,
             )
-            model_results.append({"model": model_name, "digest": digest, "verdict": "inconclusive"})
+            model_results.append({
+                "model": reviewer["model"], "provider_id": reviewer["provider_id"],
+                "digest": fallback_digest, "verdict": "inconclusive", "specialist_role": role,
+            })
 
     all_support = len(model_results) == 2 and all(item.get("verdict") == "supports" for item in model_results)
     all_contradict = len(model_results) == 2 and all(item.get("verdict") == "contradicts" for item in model_results)
