@@ -23,6 +23,7 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
+from .ai_learning.routes import router as ai_learning_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -51,6 +52,7 @@ app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
 app.include_router(learning_candidate_router)
+app.include_router(ai_learning_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
@@ -240,6 +242,15 @@ def shutdown() -> None:
     for runtime in _task_runtimes:
         if not runtime.stop(timeout=10.0):
             logger.warning("Task runtime %s did not stop before the shutdown deadline.", runtime.worker_prefix)
+
+@app.get("/ai-learning", include_in_schema=False)
+def ai_learning_page() -> FileResponse:
+    """Serve the isolated learning console only when its feature flag is enabled."""
+    from .ai_learning.config import is_enabled
+    if not is_enabled():
+        raise HTTPException(status_code=404, detail="AI-learning module is disabled.")
+    return FileResponse(STATIC_DIR / "ai-learning.html")
+
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
