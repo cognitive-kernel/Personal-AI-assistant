@@ -2,6 +2,8 @@
 const byId = id => document.getElementById(id);
 let selectedCourse = null;
 let courseTopics = [];
+let selectedTopicIds = new Set();
+let lessonsTopicId = null;
 
 async function api(path, options) {
   const response = await fetch(path, Object.assign({
@@ -69,6 +71,15 @@ async function loadCourseDetails() {
 function renderTopics() {
   const list = byId("topics-list");
   list.replaceChildren();
+  const progress = byId("course-progress");
+  progress.replaceChildren();
+  const total = courseTopics.length;
+  const complete = courseTopics.filter(t => Number(t.progress_percent) >= 100).length;
+  const overall = total ? Math.round(courseTopics.reduce((sum,t) => sum + Number(t.progress_percent || 0), 0) / total) : 0;
+  const summary = node("div", "پیشرفت کل: " + overall + "% · تکمیل‌شده: " + complete + " از " + total + " سرفصل · باقی‌مانده: " + (total-complete));
+  const meter = node("progress"); meter.max = 100; meter.value = overall; meter.setAttribute("aria-label","درصد پیشرفت کل");
+  progress.append(summary, meter);
+  byId("select-all-topics").checked = total > 0 && courseTopics.every(t => selectedTopicIds.has(Number(t.id)));
   if (!courseTopics.length) {
     list.append(node("p", "برای این دوره هنوز سرفصلی وجود ندارد."));
     return;
@@ -77,8 +88,14 @@ function renderTopics() {
     const card = node("article", undefined, "topic-card");
     const top = node("div", undefined, "topic-top");
     const title = node("div");
-    title.append(node("strong", index + 1 + ". " + topic.title));
-    title.append(node("div", "تصمیم: " + topic.approval_status + " · پردازش: " + topic.processing_status, "topic-status"));
+    const check = node("input"); check.type = "checkbox"; check.checked = selectedTopicIds.has(Number(topic.id));
+    check.setAttribute("aria-label", "انتخاب سرفصل " + topic.title);
+    check.addEventListener("change", () => { if (check.checked) selectedTopicIds.add(Number(topic.id)); else selectedTopicIds.delete(Number(topic.id)); });
+    const heading = node("div", undefined, "topic-heading"); heading.append(check, node("strong", index + 1 + ". " + topic.title));
+    title.append(heading);
+    title.append(node("div", "تصمیم: " + topic.approval_status + " · پردازش: " + topic.processing_status + " · پیشرفت: " + (topic.progress_percent || 0) + "% · " + (topic.progress_label || ""), "topic-status"));
+    const meter = node("progress"); meter.max = 100; meter.value = Number(topic.progress_percent || 0); meter.setAttribute("aria-label","درصد پیشرفت سرفصل");
+    title.append(meter);
     if (topic.description) title.append(node("p", topic.description));
     top.append(title);
     card.append(top);
@@ -86,13 +103,126 @@ function renderTopics() {
     actions.append(action("تأیید", () => decide(topic.id, "approved"), topic.approval_status === "approved"));
     actions.append(action("رد", () => decide(topic.id, "rejected"), topic.approval_status === "rejected"));
     actions.append(action("ویرایش", () => editTopic(topic)));
+    actions.append(action(topic.processing_status === "paused" ? "ادامه سرفصل" : "مکث سرفصل", () => pauseTopic(topic, topic.processing_status !== "paused")));
+    actions.append(action("درس‌ها و محتوا", () => showLessons(topic)));
     actions.append(action("بالا", () => moveTopic(index, -1), index === 0));
     actions.append(action("پایین", () => moveTopic(index, 1), index === courseTopics.length - 1));
-    actions.append(action("ایجاد درس", () => createLesson(topic), topic.approval_status !== "approved"));
+    actions.append(action("ایجاد درس دستی", () => createLesson(topic), topic.approval_status !== "approved"));
     actions.append(action("حذف", () => deleteTopic(topic), false, true));
     card.append(actions);
     list.append(card);
   });
+}
+async function pauseTopic(topic, paused) {
+  await api("/api/ai-learning/topics/" + topic.id + "/pause", jsonOptions("POST", {paused}));
+  await loadCourseDetails();
+  message(paused ? "سرفصل مکث شد؛ محتوای ثبت‌شده حفظ شد." : "سرفصل برای ادامه فعال شد.");
+}
+async function showLessons(topic) {
+  lessonsTopicId = Number(topic.id);
+  const panel = byId("lessons-panel");
+  panel.replaceChildren(node("p", "در حال دریافت درس‌ها…"));
+  try {
+    const result = await api("/api/ai-learning/topics/" + topic.id + "/lessons");
+    panel.replaceChildren(node("h4", topic.title));
+    if (!result.items.length) {
+      panel.append(node("p", "برای این سرفصل هنوز درس ایجاد نشده است. سرفصل را تأیید کنید و «دریافت درس» را اجرا کنید."));
+      return;
+    }
+    for (const lesson of result.items) {
+      const card = node("article", undefined, "lesson-card");
+      card.append(node("strong", lesson.title));
+      card.append(node("p", "وضعیت: " + lesson.status + " · پیشرفت: " + lesson.progress_percent + "% · " + lesson.progress_label + " · نسخه‌ها: " + lesson.version_count));
+      const meter = node("progress"); meter.max = 100; meter.value = lesson.progress_percent; card.append(meter);
+      const controls = node("div", undefined, "topic-actions");
+      controls.append(action("ویرایش عنوان", async () => {
+        const title = window.prompt("عنوان درس:", lesson.title);
+        if (title === null || !title.trim()) return;
+        await api("/api/ai-learning/lessons/" + lesson.id, jsonOptions("PATCH", {title:title.trim()}));
+        await showLessons(topic);
+      }));
+      controls.append(action(lesson.status === "paused" ? "ادامه درس" : "مکث درس", async () => {
+        await api("/api/ai-learning/lessons/" + lesson.id + "/pause", jsonOptions("POST", {paused:lesson.status !== "paused"}));
+        await showLessons(topic);
+      }));
+      controls.append(action("نمایش/ویرایش متن", async () => editLessonContent(lesson, topic)));
+      controls.append(action("حذف از فهرست فعال", async () => {
+        if (!window.confirm("درس از فهرست فعال پنهان شود؟ سابقه محتوا حفظ می‌شود.")) return;
+        await api("/api/ai-learning/lessons/" + lesson.id, {method:"DELETE"});
+        await showLessons(topic);
+      }, false, true));
+      card.append(controls);
+      const versions = await api("/api/ai-learning/lessons/" + lesson.id + "/versions");
+      if (!versions.items.length) {
+        card.append(node("p", "متن درس ثبت نشده است.", "error"));
+      } else {
+        for (const version of versions.items) {
+          const vcard = node("div", undefined, "version-card");
+          vcard.append(node("strong", "نسخه " + version.version_no + " · " + version.review_status + " · " + version.created_at));
+          const vbuttons = node("div", undefined, "topic-actions");
+          vbuttons.append(action("مشاهده متن", async () => {
+            const content = await api("/api/ai-learning/versions/" + version.id);
+            const box = node("pre", content.markdown || "(متن خالی است)");
+            const raw = node("details"); raw.append(node("summary", "پاسخ خام ChatGPT"), node("pre", content.raw_response || "(پاسخ خام ثبت نشده)"));
+            vcard.append(box, raw);
+          }));
+          vbuttons.append(action("منابع", async () => {
+            const sources = await api("/api/ai-learning/versions/" + version.id + "/sources");
+            const box = node("div", undefined, "source-list");
+            if (!sources.items.length) box.append(node("p", "برای این نسخه پیوند منبعی استخراج نشده است."));
+            sources.items.forEach(s => {
+              const row = node("p", (s.title || s.url || "منبع") + " · " + (s.validation_status || "unverified") + " · " + (s.url || ""));
+              if (s.url) row.append(action("بررسی پیوند", async () => { await api("/api/ai-learning/sources/" + s.id + "/check", {method:"POST"}); await showLessons(topic); }));
+              box.append(row);
+            });
+            vcard.append(box);
+          }));
+          if (version.review_status === "needs_review") {
+            vbuttons.append(action("تأیید بازبینی", async () => {
+              await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"reviewed"}));
+              await showLessons(topic);
+            }));
+            vbuttons.append(action("رد نسخه", async () => {
+              await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"rejected"}));
+              await showLessons(topic);
+            }, false, true));
+          }
+          if (version.review_status === "reviewed") {
+            vbuttons.append(action("انتشار", async () => {
+              if (!window.confirm("این نسخه منتشر شود؟")) return;
+              await api("/api/ai-learning/versions/" + version.id + "/publish", {method:"POST"});
+              await showLessons(topic);
+            }));
+          }
+          if (version.review_status === "published") {
+            vbuttons.append(action("لغو انتشار", async () => {
+              if (!window.confirm("انتشار لغو شود؟ محتوا و سابقه نسخه حفظ می‌شود.")) return;
+              await api("/api/ai-learning/versions/" + version.id + "/unpublish", {method:"POST"});
+              await showLessons(topic);
+            }, false, true));
+          }
+          vcard.append(vbuttons); card.append(vcard);
+        }
+      }
+      panel.append(card);
+    }
+  } catch (error) { panel.replaceChildren(node("p", error.message, "error")); }
+}
+async function editLessonContent(lesson, topic) {
+  const versions = await api("/api/ai-learning/lessons/" + lesson.id + "/versions");
+  let current = "";
+  if (versions.items.length) {
+    const latest = await api("/api/ai-learning/versions/" + versions.items[0].id);
+    current = latest.markdown || "";
+  }
+  const markdown = window.prompt("متن کامل درس را ویرایش کنید. ذخیره، نسخه جدید می‌سازد و نسخه قبلی را حذف نمی‌کند:", current);
+  if (markdown === null) return;
+  if (!markdown.trim()) { message("متن خالی ذخیره نشد. برای پاسخ ناقص، نسخه اصلاحی با متن کامل ثبت کنید.", true); return; }
+  await api("/api/ai-learning/lessons/" + lesson.id + "/versions", jsonOptions("POST", {
+    markdown, raw_response:markdown, source_kind:"manual", provider:"manual"
+  }));
+  await showLessons(topic);
+  message("نسخه اصلاحی ذخیره شد و برای بازبینی در انتظار ماند.");
 }
 function action(label, callback, disabled, danger) {
   const button = node("button", label, danger ? "secondary" : "");
