@@ -23,6 +23,7 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
+from .knowledge_lifecycle_routes import router as knowledge_lifecycle_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -51,6 +52,7 @@ app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
 app.include_router(learning_candidate_router)
+app.include_router(knowledge_lifecycle_router)
 app.include_router(curriculum_evolution_routes.router)
 app.include_router(learning_capabilities_routes.router)
 app.include_router(learning_source_sync_routes.router)
