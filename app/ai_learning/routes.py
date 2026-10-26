@@ -31,6 +31,10 @@ class RunCreate(BaseModel):
     request_key: str = Field(min_length=1, max_length=100)
     model_config = ConfigDict(extra="forbid")
 
+class RunHistoryDelete(BaseModel):
+    run_ids: list[int] = Field(min_length=1, max_length=50)
+    model_config = ConfigDict(extra="forbid")
+
 class RunComplete(BaseModel):
     response_text: str = Field(min_length=1, max_length=100000)
     model_config = ConfigDict(extra="forbid")
@@ -149,6 +153,10 @@ def delete_course(course_id: int) -> dict[str, Any]:
 @router.get("/courses/{course_id}")
 def get_course(course_id: int) -> dict[str, Any]:
     return _call(service.get_course, course_id)
+
+@router.delete("/courses/{course_id}/runs")
+def delete_course_runs(course_id: int, request: RunHistoryDelete) -> dict[str, Any]:
+    return _call(service.delete_course_runs, course_id, request.run_ids)
 
 @router.get("/courses/{course_id}/runs")
 def list_course_runs(course_id: int, limit: int = Query(default=10, ge=1, le=50)) -> dict[str, Any]:
