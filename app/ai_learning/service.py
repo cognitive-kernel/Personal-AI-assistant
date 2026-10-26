@@ -39,9 +39,72 @@ def _dedupe_normalize(value: str) -> str:
     return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
 
 
+TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.90
+
+
+def _title_embeddings(texts: list[str]) -> list[list[float]]:
+    settings = get_settings()
+    model = str(settings.get("ollama_embedding_model") or os.getenv("OLLAMA_EMBEDDING_MODEL") or "nomic-embed-text").strip()
+    if not model:
+        raise RuntimeError("No local embedding model is configured for title duplicate checks.")
+    vectors = ollama_embed(texts, model=model)
+    if len(vectors) != len(texts) or any(not vector for vector in vectors):
+        raise RuntimeError("Embedding model returned incomplete title vectors.")
+    return [[float(value) for value in vector] for vector in vectors]
+
+
+def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) -> tuple[list[str], list[dict[str, Any]]]:
+    """Filter a whole title batch semantically, with exact normalization as a first pass."""
+    accepted: list[str] = []
+    skipped: list[dict[str, Any]] = []
+    known: list[str] = []
+    seen: set[str] = set()
+    for title in existing_titles:
+        key = _dedupe_normalize(title)
+        if key and key not in seen:
+            seen.add(key)
+            known.append(title)
+    pending: list[str] = []
+    for title in candidates:
+        key = _dedupe_normalize(title)
+        exact = next((value for value in known if _dedupe_normalize(value) == key), None)
+        if exact is not None or not key:
+            skipped.append({"title": title, "duplicate_of": exact or title, "score": 1.0, "method": "normalized"})
+        else:
+            pending.append(title)
+            known.append(title)
+            seen.add(key)
+    if not pending:
+        return accepted, skipped
+    # Embed existing titles and candidates once, rather than issuing one request per title.
+    base_titles = list(existing_titles)
+    try:
+        vectors = _title_embeddings(base_titles + pending)
+    except Exception as exc:
+        raise ValueError(
+            "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
+            f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
+        ) from exc
+    base_vectors = vectors[:len(base_titles)]
+    candidate_vectors = vectors[len(base_titles):]
+    accepted_vectors: list[tuple[str, list[float]]] = list(zip(base_titles, base_vectors))
+    for title, vector in zip(pending, candidate_vectors):
+        best: tuple[str, float] | None = None
+        for existing, existing_vector in accepted_vectors:
+            score = _embedding_cosine(vector, existing_vector)
+            if best is None or score > best[1]:
+                best = (existing, score)
+        if best and best[1] >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
+            skipped.append({"title": title, "duplicate_of": best[0], "score": round(best[1], 4), "method": "embedding"})
+        else:
+            accepted.append(title)
+            accepted_vectors.append((title, vector))
+    return accepted, skipped
+
+
 def _ensure_unique_title(conn: sqlite3.Connection, *, table: str, title: str,
                          scope_column: str, scope_id: int, exclude_id: int | None = None) -> None:
-    """Reject a normalized duplicate within one course/topic before inserting or renaming."""
+    """Reject normalized or semantically duplicate titles before inserting or renaming."""
     if table not in {"topics", "lessons"} or scope_column not in {"course_id", "topic_id"}:
         raise ValueError("Unsupported title uniqueness scope.")
     query = f"SELECT id,title FROM {table} WHERE {scope_column}=? AND deleted_at IS NULL"
@@ -49,10 +112,14 @@ def _ensure_unique_title(conn: sqlite3.Connection, *, table: str, title: str,
     if exclude_id is not None:
         query += " AND id<>?"
         params.append(exclude_id)
-    normalized = _dedupe_normalize(title)
-    for row in conn.execute(query, params).fetchall():
-        if _dedupe_normalize(str(row["title"])) == normalized:
-            raise ValueError("عنوان تکراری است؛ موردی با همین نام از قبل ثبت شده است.")
+    titles = [str(row["title"]) for row in conn.execute(query, params).fetchall()]
+    duplicate_titles, skipped = _filter_duplicate_titles([title], titles)
+    if skipped:
+        duplicate = skipped[0]
+        raise ValueError(
+            "عنوان تکراری یا از نظر معنایی بسیار مشابه است؛ عنوان موجود: " + duplicate["duplicate_of"]
+            + f" (روش={duplicate['method']}، شباهت={duplicate['score']:.3f})."
+        )
 
 def create_course(*, title: str, provider: str = "manual", language: str = "fa",
                   target_level: str = "beginner_to_advanced", scope_notes: str = "") -> dict[str, Any]:
@@ -64,10 +131,13 @@ def create_course(*, title: str, provider: str = "manual", language: str = "fa",
         raise ValueError("scope_notes cannot exceed 4000 characters.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        normalized_title = _dedupe_normalize(title)
-        existing = conn.execute("SELECT title FROM courses WHERE status<>'archived'").fetchall()
-        if any(_dedupe_normalize(str(row["title"])) == normalized_title for row in existing):
-            raise ValueError("عنوان دوره تکراری است؛ دوره‌ای با همین نام از قبل ثبت شده است.")
+        existing = [str(row["title"]) for row in conn.execute(
+            "SELECT title FROM courses WHERE status<>'archived'").fetchall()]
+        _accepted, skipped = _filter_duplicate_titles([title], existing)
+        if skipped:
+            duplicate = skipped[0]
+            raise ValueError("عنوان دوره تکراری یا از نظر معنایی بسیار مشابه است؛ عنوان موجود: "
+                             + duplicate["duplicate_of"] + f" (شباهت={duplicate['score']:.3f}).")
         cursor = conn.execute(
             "INSERT INTO courses(title,provider,language,target_level,scope_notes,status) VALUES(?,?,?,?,?,'active')",
             (title, provider, language, target_level, scope_notes))
@@ -772,13 +842,8 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         existing_rows = conn.execute(
             "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
-        existing_titles = {_dedupe_normalize(str(row["title"])) for row in existing_rows}
-        new_candidates = []
-        for title in candidates:
-            normalized = _dedupe_normalize(title)
-            if normalized not in existing_titles:
-                new_candidates.append(title)
-                existing_titles.add(normalized)
+        existing_titles = [str(row["title"]) for row in existing_rows]
+        new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
             (course_id, raw_response))
@@ -796,8 +861,9 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             created.append({"id": topic_id, "title": title, "position": position + offset, "approval_status": "pending"})
         conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (course_id,))
     return {"run_id": run_id, "provider": provider, "imported": len(created),
-            "skipped_existing": len(candidates) - len(created), "topics": created,
-            "note": "Existing topics were skipped by normalized title; new topics remain pending approval."}
+            "skipped_existing": len(skipped_duplicates), "skipped_duplicates": skipped_duplicates,
+            "topics": created,
+            "note": "Normalized and semantic duplicate titles were skipped; new topics remain pending approval."}
 
 def list_courses(limit: int = 50) -> list[dict[str, Any]]:
     with connection() as conn:
