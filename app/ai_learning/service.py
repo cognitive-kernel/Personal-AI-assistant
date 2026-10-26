@@ -543,6 +543,9 @@ def soft_delete_course(course_id: int) -> dict[str, Any]:
         ).fetchone()
         if course is None or course["status"] == "archived":
             raise NotFoundError("Course not found.")
+        active = conn.execute("SELECT id FROM runs WHERE course_id=? AND status IN ('queued','running') LIMIT 1", (course_id,)).fetchone()
+        if active is not None:
+            raise ValueError("تا پایان یا توقف امن اجرای فعال، دوره قابل آرشیو نیست؛ اجرای فعال: " + str(active["id"]))
         conn.execute(
             "UPDATE courses SET status='archived',updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (course_id,),
@@ -911,6 +914,12 @@ def soft_delete_topic(topic_id: int) -> dict[str, Any]:
         topic = conn.execute("SELECT id FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone()
         if topic is None:
             raise NotFoundError("Topic not found.")
+        active = conn.execute(
+            """SELECT r.id FROM runs r JOIN run_topics rt ON rt.run_id=r.id
+               WHERE rt.topic_id=? AND r.status IN ('queued','running') LIMIT 1""", (topic_id,)
+        ).fetchone()
+        if active is not None:
+            raise ValueError("این سرفصل در اجرای فعال شماره " + str(active["id"]) + " استفاده می‌شود؛ ابتدا مکث/توقف امن کنید.")
         conn.execute("UPDATE topics SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (topic_id,))
         conn.execute("UPDATE lessons SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE topic_id=? AND deleted_at IS NULL", (topic_id,))
         conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT cv.id FROM content_versions cv JOIN lessons l ON l.id=cv.lesson_id WHERE l.topic_id=?)", (topic_id,))
@@ -919,8 +928,15 @@ def soft_delete_topic(topic_id: int) -> dict[str, Any]:
 def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        if conn.execute("SELECT 1 FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone() is None:
+        lesson = conn.execute("SELECT topic_id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
+        if lesson is None:
             raise NotFoundError("Lesson not found.")
+        active = conn.execute(
+            """SELECT r.id FROM runs r JOIN run_topics rt ON rt.run_id=r.id
+               WHERE rt.topic_id=? AND r.status IN ('queued','running') LIMIT 1""", (lesson["topic_id"],)
+        ).fetchone()
+        if active is not None:
+            raise ValueError("سرفصل این درس در اجرای فعال شماره " + str(active["id"]) + " است؛ ابتدا مکث/توقف امن کنید.")
         conn.execute("UPDATE lessons SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
         conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT id FROM content_versions WHERE lesson_id=?)", (lesson_id,))
         return {"id": lesson_id, "deleted": True}
