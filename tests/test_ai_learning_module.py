@@ -532,3 +532,110 @@ def test_extract_references_keeps_clickable_markdown_urls(isolated_store):
         "منابع: [SQL Server documentation](https://learn.microsoft.com/sql/)"
     )
     assert refs == [{"title": "SQL Server documentation", "url": "https://learn.microsoft.com/sql/"}]
+
+
+
+def _create_approved_lesson(title: str):
+    course = service.create_course(title=f"Course {title}")
+    topic = service.add_topic(course["id"], title)
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], title)
+    return course, topic, lesson
+
+
+def test_semantic_duplicate_content_is_rejected_across_different_lessons(
+    isolated_store, monkeypatch
+):
+    old = (
+        "A database index improves lookup speed by allowing the database to locate rows "
+        "without scanning every record. It provides a structure that helps the engine find "
+        "matching data efficiently."
+    )
+    paraphrase = (
+        "Indexes make database searches faster because the engine can find matching records "
+        "directly instead of reading every row in the table. This structure improves lookup "
+        "efficiency."
+    )
+    course, topic_a, lesson_a = _create_approved_lesson("Database indexes")
+    version_a = service.add_content_version(lesson_a["id"], old)
+    _course_b, topic_b, lesson_b = _create_approved_lesson("Database lookup performance")
+
+    def fake_embed(texts, model=None):
+        vectors = {
+            old: [1.0, 0.0, 0.0],
+            paraphrase: [0.98, 0.18, 0.0],
+        }
+        return [vectors[text] for text in texts]
+
+    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    with pytest.raises(ValueError, match="بسیار مشابه"):
+        service.add_content_version(lesson_b["id"], paraphrase)
+
+    with connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM content_versions WHERE lesson_id=?", (lesson_b["id"],)
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM content_versions WHERE lesson_id=?", (lesson_a["id"],)
+        ).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM semantic_embedding_cache").fetchone()[0] == 2
+
+
+def test_lesson_update_can_create_new_version_without_self_duplicate_rejection(isolated_store):
+    _course, _topic, lesson = _create_approved_lesson("Python functions")
+    first = service.add_content_version(
+        lesson["id"],
+        "A Python function packages reusable instructions and can accept parameters.",
+    )
+    second = service.add_content_version(
+        lesson["id"],
+        "Python functions group reusable instructions and may receive input parameters.",
+    )
+    assert second["version_no"] == first["version_no"] + 1
+
+
+def test_chatgpt_capture_skips_semantically_duplicate_lesson(isolated_store, monkeypatch):
+    old = (
+        "A database index improves lookup speed by allowing the database to locate rows "
+        "without scanning every record. It provides a structure that helps the engine find "
+        "matching data efficiently."
+    )
+    paraphrase = (
+        "# Faster database searches\n\nIndexes make database searches faster because the engine "
+        "can find matching records directly instead of reading every row in the table. "
+        "This structure improves lookup efficiency."
+    )
+    course, topic_a, lesson_a = _create_approved_lesson("Database indexes")
+    service.add_content_version(lesson_a["id"], old)
+    _course_b = service.create_course(title="Course lookup performance")
+    topic_b = service.add_topic(_course_b["id"], "Database lookup performance")
+    service.decide_topics([topic_b["id"]], "approved")
+    run = service.create_run(
+        _course_b["id"],
+        run_type="lesson",
+        topic_ids=[topic_b["id"]],
+        selection_mode="single",
+        request_key="semantic-duplicate-capture",
+    )
+
+    def fake_embed(texts, model=None):
+        vectors = {
+            old: [1.0, 0.0, 0.0],
+            paraphrase: [0.98, 0.18, 0.0],
+        }
+        return [vectors[text] for text in texts]
+
+    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    completed = service.complete_run(run["id"], paraphrase)
+    assert completed["status"] == "succeeded"
+    with connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM lessons WHERE topic_id=?", (topic_b["id"],)
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT status FROM run_topics WHERE run_id=? AND topic_id=?",
+            (run["id"], topic_b["id"]),
+        ).fetchone()[0] == "skipped"
+        assert conn.execute(
+            "SELECT processing_status FROM topics WHERE id=?", (topic_b["id"],)
+        ).fetchone()[0] == "skipped"
