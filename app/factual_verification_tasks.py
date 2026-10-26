@@ -94,8 +94,8 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
             (knowledge_id,),
         ).fetchone()[0]
     item = dict(row)
-    if item["domain_name"] != "python" or item["environment_name"] != "python":
-        raise ValueError("The current Docker verification runner supports Python claims only.")
+    if (item["domain_name"], item["environment_name"]) not in {("python", "python"), ("sqlite", "sqlite")}:
+        raise ValueError("The current Docker verification runner supports Python and SQLite factual claims only.")
     if item["evidence_level"] != "L1_sourced" or item["lifecycle_status"] != "active":
         raise ValueError("Only active L1_sourced claims can be submitted for sandbox verification.")
     if evidence_count < 1:
@@ -103,15 +103,17 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
     return item
 
 
-def _wrapped_harness(source_code: str) -> tuple[str, str]:
+def _wrapped_harness(source_code: str, environment_name: str = "python") -> tuple[str, str]:
     encoded = json.dumps(source_code, ensure_ascii=False)
     completion_marker = "__PAI_TEST_COMPLETED__:" + secrets.token_hex(16)
     wrapper = (
-        "import json as __pai_json, platform as __pai_platform\n"
-        "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\n"
-        f"__pai_source = __pai_json.loads({json.dumps(encoded)})\n"
-        "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\n"
-        f"print({json.dumps(completion_marker)}, flush=True)\n"
+        "import json as __pai_json, platform as __pai_platform\\n"
+        "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\\n"
+        "import sqlite3 as __pai_sqlite\\n"
+        "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\\n"
+        f"__pai_source = __pai_json.loads({json.dumps(encoded)})\\n"
+        "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\\n"
+        f"print({json.dumps(completion_marker)}, flush=True)\\n"
     )
     return wrapper, completion_marker
 
@@ -144,16 +146,34 @@ def _bounded_summary_json(summary: dict[str, Any]) -> str:
     return json.dumps(essential, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _runtime_version(stdout: str, completion_marker: str) -> tuple[str | None, bool, str]:
+def _runtime_version(
+    stdout: str, completion_marker: str, environment_name: str = "python"
+) -> tuple[str | None, bool, str]:
     lines = stdout.splitlines()
     if not lines:
         return None, False, ""
-    match = _RUNTIME_MARKER.fullmatch(lines[0].strip())
-    if match is None:
+    python_match = _RUNTIME_MARKER.fullmatch(lines[0].strip())
+    if python_match is None:
         return None, False, stdout[:2000]
+    sqlite_match = next(
+        (
+            match for line in lines[1:3]
+            if (match := _SQLITE_RUNTIME_MARKER.fullmatch(line.strip())) is not None
+        ),
+        None,
+    )
+    runtime_match = sqlite_match if environment_name == "sqlite" else python_match
     completed = lines[-1].strip() == completion_marker
-    output_lines = lines[1:-1] if completed else lines[1:]
-    return match.group(1), completed, "\n".join(output_lines)[:2000]
+    output_lines = [
+        line for line in (lines[1:-1] if completed else lines[1:])
+        if _RUNTIME_MARKER.fullmatch(line.strip()) is None
+        and _SQLITE_RUNTIME_MARKER.fullmatch(line.strip()) is None
+    ]
+    return (
+        runtime_match.group(1) if runtime_match is not None else None,
+        completed,
+        "\\n".join(output_lines)[:2000],
+    )
 
 
 def _build_handler(
@@ -311,7 +331,7 @@ def _build_handler(
             raise ValueError("Independent factual semantic review failed closed: " + str(exc)[:300]) from exc
         if not semantic_decision.accepted:
             raise ValueError("Independent factual review did not pass the fail-closed rubric.")
-        wrapped, completion_marker = _wrapped_harness(source_code)
+        wrapped, completion_marker = _wrapped_harness(source_code, candidate["environment_name"])
         context.checkpoint({
             "phase": "factual_claim_test_started",
             "knowledge_id": knowledge_id,
@@ -331,7 +351,7 @@ def _build_handler(
 
         stdout = str(result.get("stdout", ""))
         stderr = str(result.get("stderr", ""))
-        runtime_version, harness_completed, _bounded_stdout = _runtime_version(stdout, completion_marker)
+        runtime_version, harness_completed, _bounded_stdout = _runtime_version(stdout, completion_marker, candidate["environment_name"])
         execution_status = str(result.get("execution_status", "unknown"))
         exit_code = result.get("exit_code")
         log_hash = hashlib.sha256((stdout + "\n" + stderr).encode("utf-8")).hexdigest()
@@ -345,6 +365,7 @@ def _build_handler(
 
         summary = {
             "runner": "docker-sandbox",
+            "runtime_name": candidate["environment_name"],
             "execution_status": execution_status,
             "exit_code": exit_code,
             "runtime_version": runtime_version,
@@ -386,8 +407,8 @@ def _build_handler(
                 or current["claim_hash"] != candidate["claim_hash"]
                 or current["evidence_level"] != "L1_sourced"
                 or current["lifecycle_status"] != "active"
-                or current["domain_name"] != "python"
-                or current["environment_name"] != "python"
+                or current["domain_name"] != candidate["domain_name"]
+                or current["environment_name"] != candidate["environment_name"]
                 or current["environment_version"] != candidate["environment_version"]
             ):
                 outcome = "inconclusive"
@@ -398,7 +419,7 @@ def _build_handler(
                 knowledge_id,
                 test_kind="unit",
                 test_name=test_name.strip(),
-                environment_name="python",
+                environment_name=candidate["environment_name"],
                 environment_version=runtime_version or "unknown",
                 outcome=outcome,
                 result_summary=summary_json,
