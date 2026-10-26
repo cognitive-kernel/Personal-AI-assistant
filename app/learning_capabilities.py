@@ -149,20 +149,21 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             }
 
         score_history: dict[int, list[float]] = {}
-        score_rows = connection.execute(
-            f"""SELECT j.path_topic_id AS topic_id, a.score
-                FROM assessment_attempts a
-                JOIN learning_jobs j ON j.id=a.job_id
-                WHERE j.path_topic_id IN ({placeholders})
-                  AND a.score BETWEEN 0 AND 100
-                  AND a.question_count > 0
-                ORDER BY a.id DESC""",
-            topic_ids,
-        ).fetchall()
-        for score_row in score_rows:
-            values = score_history.setdefault(int(score_row["topic_id"]), [])
-            if len(values) < 2:
-                values.append(float(score_row["score"]))
+        if topic_ids:
+            score_rows = connection.execute(
+                f"""SELECT j.path_topic_id AS topic_id, a.score
+                    FROM assessment_attempts a
+                    JOIN learning_jobs j ON j.id=a.job_id
+                    WHERE j.path_topic_id IN ({placeholders})
+                      AND a.score BETWEEN 0 AND 100
+                      AND a.question_count > 0
+                    ORDER BY a.id DESC""",
+                topic_ids,
+            ).fetchall()
+            for score_row in score_rows:
+                values = score_history.setdefault(int(score_row["topic_id"]), [])
+                if len(values) < 2:
+                    values.append(float(score_row["score"]))
 
     capabilities: list[dict[str, Any]] = []
     for row in rows:
