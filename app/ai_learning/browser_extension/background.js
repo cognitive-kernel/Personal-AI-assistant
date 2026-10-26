@@ -38,9 +38,9 @@ async function findOrOpenChatTab() {
 async function prepareRun(payload) {
   const created = await api("/runs", {method:"POST",body:JSON.stringify(payload)});
   const started = await api("/runs/" + created.id + "/start", {method:"POST"});
-  await chrome.storage.local.set({activeRunId:started.id});
   const tab = await findOrOpenChatTab();
   if (tab.id === undefined) throw new Error("Could not open a ChatGPT tab.");
+  await chrome.storage.local.set({activeRunId:started.id, activeRunTabId:tab.id});
   await new Promise((resolve, reject) => {
     let done = false;
     const finish = (fn, value) => {
@@ -68,17 +68,18 @@ async function prepareRun(payload) {
   });
 }
 async function captureRun() {
-  const stored = await chrome.storage.local.get("activeRunId");
+  const stored = await chrome.storage.local.get(["activeRunId","activeRunTabId"]);
   const runId = stored.activeRunId;
   if (!runId) throw new Error("No active learning run. Prepare a prompt first.");
   const tabs = await chrome.tabs.query({active:true, currentWindow:true});
   const tab = tabs[0];
   if (!tab || tab.id === undefined) throw new Error("No active tab found.");
+  if (stored.activeRunTabId !== tab.id) throw new Error("Switch to the same ChatGPT tab where this prompt was inserted before capturing.");
   const result = await sendToTab(tab.id, {type:"capture-answer"});
   const completed = await api("/runs/" + runId + "/complete", {
     method:"POST", body:JSON.stringify({response_text:result.text})
   });
-  if (completed.status === "succeeded") await chrome.storage.local.remove("activeRunId");
+  if (completed.status === "succeeded") await chrome.storage.local.remove(["activeRunId","activeRunTabId"]);
   return {run_id:runId,status:completed.status,topics:completed.topics || [],error_message:completed.error_message || null};
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
