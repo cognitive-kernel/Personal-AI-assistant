@@ -148,6 +148,22 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
                 for item in usage_rows
             }
 
+        score_history: dict[int, list[float]] = {}
+        score_rows = connection.execute(
+            f"""SELECT j.path_topic_id AS topic_id, a.score
+                FROM assessment_attempts a
+                JOIN learning_jobs j ON j.id=a.job_id
+                WHERE j.path_topic_id IN ({placeholders})
+                  AND a.score BETWEEN 0 AND 100
+                  AND a.question_count > 0
+                ORDER BY a.id DESC""",
+            topic_ids,
+        ).fetchall()
+        for score_row in score_rows:
+            values = score_history.setdefault(int(score_row["topic_id"]), [])
+            if len(values) < 2:
+                values.append(float(score_row["score"]))
+
     capabilities: list[dict[str, Any]] = []
     for row in rows:
         score = row["latest_attempt_score"]
@@ -202,8 +218,8 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
         else:
             usage["cost_status"] = "configured_estimate"
         value_metrics = learning_cost_manager.learning_value_metrics(
-            prior_score=None,
-            current_score=float(score) if valid else None,
+            prior_score=(score_history.get(int(row["topic_id"]), [None, None])[1]),
+            current_score=(score_history.get(int(row["topic_id"]), [float(score) if valid else None])[0]),
             estimated_cost_microusd=usage["estimated_cost_microusd"],
             prompt_tokens=usage["prompt_tokens"],
             completion_tokens=usage["completion_tokens"],
