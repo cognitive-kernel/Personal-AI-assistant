@@ -45,7 +45,7 @@ def test_parse_outline_accepts_numbered_markdown_fallback():
         3,
     )
     assert title
-    assert topics == ["سرفصل‌های دوره", "نصب و معماری", "پایگاه داده"]
+    assert topics == ["نصب و معماری", "پایگاه داده", "امنیت"]
 
 
 def test_browser_learning_course_persists_without_marking_content_verified(tmp_path, monkeypatch):
