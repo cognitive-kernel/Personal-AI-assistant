@@ -204,7 +204,7 @@ def edit_topic(topic_id: int, request: TopicEdit) -> dict[str, Any]:
 
 @router.post("/topics/{topic_id}/pause")
 def pause_topic(topic_id: int, request: PauseState) -> dict[str, Any]:
-    return _call(service.set_topic_paused, topic_id, request.paused)
+    return _call(browser_automation.set_topic_paused, topic_id, request.paused)
 
 @router.put("/courses/{course_id}/topic-order")
 def reorder_topics(course_id: int, request: TopicOrder) -> dict[str, Any]:
