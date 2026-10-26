@@ -31,6 +31,16 @@
   <div id="course-details"></div>
 </section>
 <section class="panel">
+  <h2>واردکردن پاسخ سرفصل‌ها</h2>
+  <p class="hint">پاسخ فهرست سرفصل‌ها را از ChatGPT یا منبع دیگر وارد کنید. فقط خطوط شماره‌دار، بولت‌دار یا عنوان‌های Markdown استخراج می‌شوند و همه سرفصل‌ها تا تأیید شما در وضعیت انتظار می‌مانند.</p>
+  <form id="outline-import-form">
+    <label>منبع <select id="outline-provider"><option value="chatgpt_ui">ChatGPT (ورود دستی)</option><option value="manual">ورود دستی</option><option value="other_provider">سرویس دیگر</option></select></label>
+    <label class="wide">پاسخ خام سرفصل‌ها <textarea id="outline-raw" rows="6" maxlength="100000" required placeholder="1. مقدمه&#10;2. معماری&#10;3. مثال‌های عملی"></textarea></label>
+    <button type="submit">استخراج سرفصل‌ها</button>
+  </form>
+  <div id="outline-import-result" aria-live="polite"></div>
+</section>
+<section class="panel">
   <h2>افزودن سرفصل</h2>
   <form id="topic-form">
     <label>عنوان سرفصل <input id="topic-title" required maxlength="300"></label>
