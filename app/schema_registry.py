@@ -1094,8 +1094,7 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_graph_source ON learning_knowledge_graph_edges(source_knowledge_id, status, relation_type)",
             "CREATE INDEX idx_learning_graph_target ON learning_knowledge_graph_edges(target_knowledge_id, status, relation_type)",
         ),
-    )
-
+    ),
     Migration(
         33,
         "chrome-chatgpt-learning-phase-one",
