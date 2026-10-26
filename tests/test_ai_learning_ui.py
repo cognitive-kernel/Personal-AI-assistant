@@ -52,3 +52,17 @@ def test_active_dashboard_exposes_progress_and_per_item_controls():
     assert '"/topics/"+t.id+"/pause"' in script
     assert '"/lessons/"+l.id+"/pause"' in script
     assert "باقی‌مانده" in script
+
+
+def test_dashboard_has_bulk_topic_and_lesson_review_controls():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    script = (root / "app.js").read_text(encoding="utf-8")
+    assert 'id="select-all-topics"' in html
+    assert 'id="approve-all-topics"' in html
+    assert 'id="approve-all-lessons"' in html
+    assert 'id="select-all-lessons"' in script
+    assert 'className="lesson-check"' in script
+    assert 'تأیید درس‌های انتخاب‌شده' in script
