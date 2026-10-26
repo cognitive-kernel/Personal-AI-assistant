@@ -167,3 +167,15 @@ def test_run_request_key_is_idempotent(isolated_store):
     first = service.create_run(course["id"], run_type="outline", request_key="same-key")
     second = service.create_run(course["id"], run_type="outline", request_key="same-key")
     assert first["id"] == second["id"]
+
+def test_browser_bridge_uses_narrow_permissions_and_never_auto_sends():
+    import json
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    extension = root / "app" / "ai_learning" / "browser_extension"
+    manifest = json.loads((extension / "manifest.json").read_text(encoding="utf-8"))
+    assert "<all_urls>" not in manifest.get("host_permissions", [])
+    assert not any("cookies" in permission for permission in manifest.get("permissions", []))
+    content_script = (extension / "content.js").read_text(encoding="utf-8")
+    assert ".click(" not in content_script
+    assert "Send button yourself" in content_script
