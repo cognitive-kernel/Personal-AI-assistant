@@ -274,3 +274,27 @@ def test_learning_pause_state_is_persistent_and_resumable(isolated_store):
     resumed = service.set_learning_paused(False)
     assert resumed["paused"] is False
     assert resumed["reason"] == ""
+
+
+def test_topic_and_lesson_pause_resume_and_progress_metrics(isolated_store):
+    course = service.create_course(title="SQL Server progress")
+    topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([topic["id"]], "approved")
+    assert service.get_course(course["id"])["topics"][0]["progress_percent"] == 0
+
+    paused_topic = service.set_topic_paused(topic["id"], True)
+    assert paused_topic["processing_status"] == "paused"
+    assert service.get_course(course["id"])["topics"][0]["progress_label"] == "متوقف‌شده"
+    resumed_topic = service.set_topic_paused(topic["id"], False)
+    assert resumed_topic["processing_status"] == "pending"
+
+    lesson = service.create_lesson(topic["id"], "Index fundamentals")
+    assert service.list_lessons(topic["id"])[0]["progress_percent"] == 25
+    service.set_lesson_paused(lesson["id"], True)
+    assert service.list_lessons(topic["id"])[0]["status"] == "paused"
+    service.set_lesson_paused(lesson["id"], False)
+    assert service.list_lessons(topic["id"])[0]["status"] == "draft"
+
+    version = service.add_content_version(lesson["id"], "Indexes organize lookup paths.")
+    assert service.list_lessons(topic["id"])[0]["progress_percent"] == 75
+    assert service.get_course(course["id"])["progress_percent"] == 75
