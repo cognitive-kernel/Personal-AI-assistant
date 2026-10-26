@@ -43,9 +43,9 @@ def _external_configs(settings: dict[str, Any]) -> list[dict[str, Any]]:
         allowlist = item.get("host_allowlist")
         if not isinstance(provider_id, str) or not _PROVIDER_ID.fullmatch(provider_id):
             continue
-        if provider_id == "ollama":
+        if provider_id == "ollama" or len(provider_id) > 30:
             continue
-        if not isinstance(model, str) or not 1 <= len(model.strip()) <= 120:
+        if not isinstance(model, str) or not 1 <= len(model.strip()) <= 100:
             continue
         if not isinstance(revision, str) or not 1 <= len(revision.strip()) <= 120:
             continue
@@ -212,7 +212,7 @@ def run_reviewer(reviewer: dict[str, Any], prompt: str, *, system_prompt: str) -
         raise ReviewProviderUnavailable("External reviewer supplied no system_fingerprint; its output cannot count as an attributable independent review.")
     actual_model = body.get("model")
     choices = body.get("choices")
-    if not isinstance(actual_model, str) or not actual_model.strip() or not isinstance(choices, list) or not choices:
+    if not isinstance(actual_model, str) or not 1 <= len(actual_model.strip()) <= 100 or not isinstance(choices, list) or not choices:
         raise ReviewProviderUnavailable("External reviewer response schema is invalid.")
     message = choices[0].get("message") if isinstance(choices[0], dict) else None
     content = message.get("content") if isinstance(message, dict) else None
