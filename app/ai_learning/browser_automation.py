@@ -494,14 +494,15 @@ def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
 def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
-    _log_event("worker_started", run_id=run_id, course_id=course_id, prompt_chars=len(prompt))
+    run_type = service.get_run(run_id).get("run_type")
+    _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
     try:
         answer = _browser_capture(prompt, cancel_event)
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
-        if result.get("status") == "succeeded":
+        if result.get("status") == "succeeded" and run_type == "outline":
             try:
                 _continue_lessons(course_id, cancel_event)
             except Exception as exc:
