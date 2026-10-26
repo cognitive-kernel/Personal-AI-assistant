@@ -91,6 +91,8 @@ def test_learning_dashboard_exposes_capability_map_control():
     assert 'id="capability-map-output"' in page
     assert '"/api/learning/capabilities?limit=200"' in script
     assert "انتقال مهارت عملی را اثبات نمی‌کند" in script
+    assert "transfer_novelty_threshold" in script
+    assert "روش تمایز سناریوها" in script
 
 
 def test_capability_map_uses_two_distinct_provenanced_sandbox_exercises_as_practical_evidence(tmp_path, monkeypatch):
