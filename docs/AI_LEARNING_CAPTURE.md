@@ -4,7 +4,7 @@ Status: initial implementation present on the feature branch; target-machine acc
 
 ## Goal
 
-The user creates a topic, reviews its outline and supervises collection of lessons. The user does not use this repository as a separate study product: Personal-AI-assistant may retrieve published knowledge when answering questions in its normal chat experience. Retrieval integration is optional, isolated and disabled by default.
+The user starts a course workflow once. The extension retrieves and stores the outline, skips existing topic titles, and continues through lesson batches automatically; lesson content still requires review before publication. The user does not use this repository as a separate study product: Personal-AI-assistant may retrieve published knowledge when answering questions in its normal chat experience. Retrieval integration is optional, isolated and disabled by default.
 
 ## Target workflow
 
@@ -34,7 +34,7 @@ The isolated schema contains courses, topics, lessons, content versions, runs, b
 
 ## Implementation boundary today
 
-The initial stage includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking and lexical search. A user-confirmed Chrome extension opens the existing ChatGPT UI, inserts a prompt, attempts to click the visible Send button only after the user's explicit Start action, and monitors for a changed stable assistant response before capturing it. Manual submission/capture remains a fallback. Run history exposes ambiguous captures for editing and reprocessing. Durable queue/pause-resume, crash recovery, resilient provider-independent parsing, embeddings and detailed query trace/feedback are not yet implemented. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
+The initial stage includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking and lexical search. The Chrome extension opens the existing ChatGPT UI, inserts and attempts to send the prompt after one explicit Start action, and monitors for a changed stable assistant response before capturing it. Successful outline capture automatically advances to deduplicated lesson batches. Manual recovery is reserved for browser/UI/provider failures. Run history exposes ambiguous captures for editing and reprocessing. Durable queue/pause-resume, crash recovery, resilient provider-independent parsing, embeddings and detailed query trace/feedback are not yet implemented. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
 
 ## Acceptance criteria
 
