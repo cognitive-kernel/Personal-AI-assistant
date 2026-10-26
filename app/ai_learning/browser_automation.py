@@ -124,7 +124,7 @@ def _visible_response_with_index(page: Any) -> tuple[str, int | None]:
         return "", None
     for index in range(button_count - 1, -1, -1):
         try:
-            response_text = copy_buttons.nth(index).evaluate("""button => {
+            response_text = copy_buttons.nth(index).evaluate(r"""button => {
               let node = button;
               for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
                 const text = (node.innerText || '').trim();
