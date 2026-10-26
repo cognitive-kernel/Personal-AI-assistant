@@ -894,6 +894,20 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_factual_source_checks_claim_checked ON factual_source_checks(knowledge_id, checked_at DESC, id DESC)",
             "CREATE INDEX idx_factual_source_checks_outcome_checked ON factual_source_checks(outcome, checked_at DESC)",
         ),
+    ),
+    Migration(
+        24,
+        "semantic-lesson-duplicate-cache",
+        (
+            """CREATE TABLE lesson_embedding_cache (
+                content_sha256 TEXT NOT NULL CHECK(length(content_sha256) = 64),
+                embedding_model TEXT NOT NULL CHECK(length(trim(embedding_model)) > 0),
+                embedding_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(content_sha256, embedding_model)
+            )""",
+            "CREATE INDEX idx_lesson_embedding_cache_model ON lesson_embedding_cache(embedding_model, content_sha256)",
+        ),
     )
 )
 
