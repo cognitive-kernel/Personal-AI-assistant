@@ -451,38 +451,6 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                         "ChatGPT برای این درخواست به صفحهٔ ورود هدایت کرد؛ ارسال در حالت مهمان در این وضعیت در دسترس نیست. هیچ ورود یا محدودیت امنیتی دور زده نشد.",
                     )
                 if cancel_event is not None and cancel_event.is_set():
-                            raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
-                        elapsed = int(login_timeout_seconds - (login_deadline - time.monotonic()))
-                        if elapsed // 10 > last_login_wait_log:
-                            last_login_wait_log = elapsed // 10
-                            _log_event("waiting_for_chatgpt_sign_in", elapsed_seconds=elapsed,
-                                       remaining_seconds=max(0, login_timeout_seconds - elapsed))
-                        page.wait_for_timeout(1000)
-                    if _anonymous_landing_visible(page):
-                        raise BrowserAutomationError(
-                            "chatgpt_login_required",
-                            "پنجرهٔ Chrome به صفحهٔ مهمان ChatGPT رسیده و هنوز وارد حساب نشده است؛ هیچ سؤالی ارسال نشده. در پنجرهٔ Chrome که با پروفایل اختصاصی آموزش باز شده، خودتان وارد ChatGPT شوید و سپس در داشبورد «ادامه و دریافت درس‌های باقی‌مانده / بازیابی» را اجرا کنید. این ورود فقط یک‌بار برای همین پروفایل لازم است؛ هیچ دادهٔ ورود یا کوکی‌ای توسط برنامه استخراج نمی‌شود.",
-                        )
-                    _log_event("anonymous_landing_cleared", url=page.url)
-                    page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
-                    page.wait_for_timeout(1200)
-                if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
-                    _log_event("login_required", url=page.url)
-                    # Keep the visible browser open briefly so the user can complete a legitimate sign-in.
-                    login_deadline = time.monotonic() + 180
-                    while time.monotonic() < login_deadline:
-                        if cancel_event is not None and cancel_event.is_set():
-                            raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
-                        if "login" not in page.url.casefold() and "auth.openai.com" not in page.url.casefold():
-                            break
-                        page.wait_for_timeout(1000)
-                    if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
-                        raise BrowserAutomationError(
-                            "chatgpt_login_required",
-                            "ورود به ChatGPT در ۳ دقیقه تکمیل نشد. اگر رابط عمومی بدون ورود کار می‌کند، دوباره تلاش کنید.",
-                        )
-                    page.wait_for_timeout(1500)
-                if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                 previous_message_count = _assistant_message_count(page)
                 previous = _visible_response(page)
