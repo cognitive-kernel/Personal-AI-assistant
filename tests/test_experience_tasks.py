@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from app import experience_tasks, sandbox_tasks
@@ -27,6 +29,14 @@ def _configure(monkeypatch, tmp_path):
     monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
 
 
+def _patch_live_source(monkeypatch, text="The page says: Documented behavior for empty input."):
+    monkeypatch.setattr(
+        experience_tasks.web_sources,
+        "fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=text),
+    )
+
+
 def _experience(status="identified"):
     return {
         "id": 17,
@@ -35,7 +45,7 @@ def _experience(status="identified"):
         "hypothesis": "The empty-input branch is missing.",
         "status": status,
         "version": 1,
-        "source_evidence": [{"url": "https://docs.python.org/3/library/", "claim": "Documented behavior"}],
+        "source_evidence": [{"url": "https://docs.python.org/3/library/", "claim": "Documented behavior", "excerpt": "Documented behavior for empty input."}],
         "test_plan": [{"test": "empty input regression"}],
         "test_results": [],
         "takeaway": "",
@@ -55,6 +65,7 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
     monkeypatch, tmp_path
 ):
     _configure(monkeypatch, tmp_path)
+    _patch_live_source(monkeypatch)
     monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: _experience())
     captured = {}
 
@@ -90,6 +101,8 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
     assert captured["test_results"][-1]["passed"] is True
     assert captured["test_results"][-1]["runner"] == "docker-sandbox"
     assert captured["test_results"][-1]["source_sha256"]
+    assert captured["source_evidence"][0]["live_content_sha256"]
+    assert captured["test_results"][-1]["source_evidence"][0]["excerpt_sha256"]
     assert "source_code" not in captured["test_results"][-1]
 
 
@@ -136,6 +149,7 @@ def test_controlled_runner_records_failure_without_verification(monkeypatch, tmp
 )
 def test_runner_rejects_unverifiable_or_unplanned_tests(monkeypatch, tmp_path, item, test_name):
     _configure(monkeypatch, tmp_path)
+    _patch_live_source(monkeypatch)
     monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: item)
     handler = experience_tasks.handler_from_environment()
     with pytest.raises(ValueError):
@@ -144,3 +158,32 @@ def test_runner_rejects_unverifiable_or_unplanned_tests(monkeypatch, tmp_path, i
             None,
             FakeContext(),
         )
+
+
+def test_runner_rejects_excerpt_missing_from_live_page_before_sandbox(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    _patch_live_source(monkeypatch, "The page contains different text.")
+    monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: _experience())
+    sandbox_calls = []
+    monkeypatch.setattr(sandbox_tasks.sandbox, "run_python", lambda *_a, **_k: sandbox_calls.append(True))
+    handler = experience_tasks.handler_from_environment()
+    with pytest.raises(ValueError, match="absent from the current live source"):
+        handler(
+            {"experience_id": 17, "test_name": "empty input regression", "source_code": "assert True"},
+            None,
+            FakeContext(),
+        )
+    assert sandbox_calls == []
+
+
+def test_runner_rejects_non_official_source_host_before_fetch(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    item = _experience()
+    item["source_evidence"][0]["url"] = "https://example.com/page"
+    monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: item)
+    fetch_calls = []
+    monkeypatch.setattr(experience_tasks.web_sources, "fetch_public_document", lambda *a, **k: fetch_calls.append(a))
+    handler = experience_tasks.handler_from_environment()
+    with pytest.raises(ValueError, match="allow-listed official HTTPS"):
+        handler({"experience_id": 17, "test_name": "empty input regression", "source_code": "assert True"}, None, FakeContext())
+    assert fetch_calls == []
