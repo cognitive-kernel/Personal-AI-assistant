@@ -48,7 +48,7 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 - Opening **درس‌ها** on a topic displays that topic's lessons. Each lesson can be selected; bulk review marks selected lesson versions as reviewed but does not publish them. The course-wide bulk review control has the same review-only behavior.
 - The global resume action starts or continues lesson capture for approved topics whose lessons have no non-empty captured content, including legacy lesson records whose saved content is empty. A retry reuses the existing empty lesson record and creates a new version instead of duplicating the lesson.
 - A version is not counted as 75–100% complete merely because an empty content row exists; valid content is required. Published means the content workflow is published, not that factual correctness or model mastery has been independently verified.
-- In the lesson card, use **مشاهده متن** to expand a saved version's Markdown content. If it still appears blank, inspect the execution's captured response and local browser log before approving or publishing it.
+- In the lesson card, use **نمایش/پنهان‌کردن متن** to expand saved Markdown. If the newest version is blank, progress is capped at 25% even when an older version was published; use **نمایش پاسخ خام ذخیره‌شده از ChatGPT** and **استفاده از پاسخ خام برای نسخهٔ اصلاحی** to recover content into a new version before reviewing or publishing.
 
 ## Dashboard review and recovery controls
 
@@ -66,3 +66,6 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 - Lesson prompts request a dedicated source section with clickable URLs only for sources actually used. Markdown links and bare URLs found in the saved lesson or raw answer are persisted to the sources table in the same database transaction as the content version, then exposed by `GET /api/ai-learning/versions/{version_id}/sources`.
 - The source list is an audit trail, not a truth guarantee. References start as `unverified` and must be checked before relying on them. Links not actually included in the provider response cannot be recovered by the parser.
 - This protects common same-process conflicts, but it is not a durable distributed queue: do not run multiple server processes against the same browser profile. After abrupt power loss, use the dashboard recovery action and inspect any run left in `needs_user_action`.
+
+
+- The dashboard's **پاک‌سازی داده‌های یادگیری و شروع از صفر** action deletes captured topics, lessons, content versions, attached source references, run history, relations/chunks through topic cascades, and retrieval traces while preserving course definitions. It requires explicit confirmation and refuses to reset while the in-process browser worker is active or persisted runs remain queued/running.
