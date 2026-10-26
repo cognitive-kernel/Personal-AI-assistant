@@ -553,8 +553,19 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
         reason = "rejected_after_review: two digest-distinct reviewers and at least two distinct live source hosts contradicted this candidate; content scrubbed, hashes retained."
         with learning_connection() as connection:
             connection.execute(
+                "DELETE FROM learning_source_text WHERE job_id=?",
+                (candidate["job_id"],),
+            )
+            connection.execute(
                 "DELETE FROM knowledge_items WHERE job_id=? AND status='unverified'",
                 (candidate["job_id"],),
+            )
+            connection.execute(
+                """UPDATE learning_jobs
+                   SET status='rejected', assessment_json=NULL, error=?,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (reason, candidate["job_id"]),
             )
             connection.execute(
                 """UPDATE temporary_knowledge_candidates
