@@ -87,6 +87,8 @@ def _call(function, *args, **kwargs):
         raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except sqlite3.DatabaseError as exc:
+        raise HTTPException(status_code=503, detail="AI-learning storage is unavailable; inspect local logs and database integrity.") from exc
 
 @router.get("/status")
 def status() -> dict[str, Any]:
