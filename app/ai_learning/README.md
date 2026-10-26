@@ -55,7 +55,7 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 - The lessons panel can display all lessons in the selected course, select them together, and approve review for selected lessons without publishing them automatically.
 - Saved Markdown content is shown directly inside each version card; the blank Markdown form is only for creating a corrected/new version.
 - A published version can be withdrawn back to reviewed status. Its text is preserved and its active retrieval chunks are disabled. Reviewed or rejected versions can be reset to needs-review.
-- Empty lesson content cannot be published.
+- Empty lesson content cannot be published. Lesson capture also rejects title-only or near-empty ChatGPT responses before creating a content version; the raw response is retained in the run history with a recoverable `needs_user_action` status. Use the global resume control to retry that topic after reviewing the captured response.
 - Global pause/resume and per-topic/per-lesson pause controls preserve stored work. Resume processes approved topics with no non-empty lesson content; topics that are still pending approval must be approved first.
 - Progress percentages describe workflow state (received/reviewed/published), not a measured percentage of model mastery.
 
