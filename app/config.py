@@ -73,6 +73,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "learning_model_keep_alive": "0",
     "learning_source_max_chars": 12000,
     "learning_model_cost_profiles": {},
+    "learning_external_review_providers": [],
     "learning_model_minimum_quality_score": 0.0,
     "learning_task_budget_microusd": None,
     "programming_ollama_model": defaults.programming_ollama_model,
