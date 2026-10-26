@@ -1,11 +1,12 @@
 """Optional management page and static assets for AI knowledge capture."""
 from __future__ import annotations
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from .config import is_enabled
+from ..task_routes import require_loopback_client
 
-router = APIRouter(tags=["ai-learning-ui"])
+router = APIRouter(tags=["ai-learning-ui"], dependencies=[Depends(require_loopback_client)])
 _ROOT = Path(__file__).resolve().parent / "static"
 _ASSETS = {"app.js": "text/javascript", "style.css": "text/css"}
 
