@@ -286,6 +286,20 @@ def list_courses(limit: int = 50) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+
+def list_course_runs(course_id: int, limit: int = 10) -> list[dict[str, Any]]:
+    """List recent generation runs for the local course dashboard without returning large response bodies."""
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM courses WHERE id=? AND status <> 'archived'", (course_id,)).fetchone() is None:
+            raise NotFoundError("Course not found.")
+        rows = conn.execute(
+            """SELECT id,course_id,run_type,selection_mode,status,error_code,error_message,
+                      created_at,started_at,finished_at
+               FROM runs WHERE course_id=? ORDER BY id DESC LIMIT ?""",
+            (course_id, max(1, min(50, limit))),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
 def soft_delete_course(course_id: int) -> dict[str, Any]:
     """Archive a course instead of erasing its learning history and content."""
     with connection() as conn:
