@@ -554,7 +554,11 @@ def _continue_lessons(
             return
 
 
-def _worker(\n    run_id: int, course_id: int, prompt: str, cancel_event: threading.Event,\n    continue_after: bool = False, followup_topic_ids: list[int] | None = None,\n    force_retry: bool = False,\n) -> None:
+def _worker(
+    run_id: int, course_id: int, prompt: str, cancel_event: threading.Event,
+    continue_after: bool = False, followup_topic_ids: list[int] | None = None,
+    force_retry: bool = False,
+) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
     run_type = service.get_run(run_id).get("run_type")
