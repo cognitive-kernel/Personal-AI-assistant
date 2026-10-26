@@ -27,8 +27,8 @@ A retrieved claim is not proof of truth. Eligibility means it met the repository
 
 ## Remaining work
 
-- Build a versioned, human-adjudicated golden set for relevance, citation adherence, prompt-injection resistance, and false acceptance.
-- Validate that the supplied oracle excerpt hash actually corresponds to the cited URL/content, or capture and hash the excerpt server-side under an SSRF-safe fetch policy. The current audit records the supplied hash and URL but does not fetch or independently verify their correspondence.
+- Run the versioned golden set against configured live models and complete human-labelled calibration in the separate post-implementation validation phase.
+- The factual verification worker now fetches the allow-listed HTTPS page through the SSRF-safe public-document fetcher and confirms that the exact stored excerpt is present before running the sandbox. The full-page hash is recorded, but it is not compared to a prior full-page snapshot; a matching excerpt alone does not establish scientific truth.
 - Measure Recall@k/MRR and answer citation correctness across Persian and English queries with a real embedding/model setup; do not infer quality from unit tests alone.
 - Expand domain coverage only with exact environment resolution and tests that preserve the fail-closed retrieval gate.
 - Consider sandbox execution only for explicitly allow-listed executable claims with current consent and an independent oracle. Never execute arbitrary source text or model-generated code as part of ordinary chat.
