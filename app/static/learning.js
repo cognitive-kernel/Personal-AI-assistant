@@ -1017,7 +1017,8 @@ async function loadBrowserLearningCourse(courseId, card) {
    }
    if (lesson.content) {
     const provenance = document.createElement("p");
-    provenance.textContent = "منبع: " + (lesson.source_url || "نامشخص") +
+    provenance.textContent = "اعتماد: " + (lesson.trust_status || "unverified") +
+      " | منبع: " + (lesson.source_url || "نامشخص") +
       " | SHA-256 محتوا: " + (lesson.content_sha256 || "ثبت نشده") +
       " | SHA-256 درخواست: " + (lesson.prompt_sha256 || "ثبت نشده");
     const body = document.createElement("pre");
