@@ -211,6 +211,7 @@ def test_run_course_uses_browser_chatgpt_flow_and_persists_each_lesson(tmp_path,
 
     assert result["status"] == "completed"
     assert result["title"] == "Demo course"
+    assert len(result["outline_sha256"]) == 64
     assert [lesson["topic"] for lesson in result["lessons"]] == ["First lesson", "Second lesson"]
     assert all(lesson["status"] == "completed" for lesson in result["lessons"])
     assert all(lesson["trust_status"] == "unverified" for lesson in result["lessons"])
