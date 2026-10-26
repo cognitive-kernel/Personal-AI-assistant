@@ -891,6 +891,8 @@ async function refreshLearningCapabilities() {
       "؛ تعداد آزمون نظری معتبر: " + item.assessment_count +
       "\nآزمون عملی معتبر: " + item.practical_attempt_count +
       "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count +
+      "\nحالات انتقال عملی: " + (item.transfer_case_count || 0) +
+      "؛ انتقال تکرارپذیر: " + (item.transfer_repeatable ? "بله (موقت)" : "خیر/شواهد ناکافی") +
       "\nمصرف مدل: " + item.prompt_tokens + " ورودی / " + item.completion_tokens + " خروجی توکن" +
       "؛ زمان استنتاج: " + item.inference_duration_ms + " میلی‌ثانیه" +
       "؛ امتیاز نظری به‌ازای ۱۰۰۰ توکن خروجی: " + (item.score_points_per_1000_output_tokens == null ? "ناموجود" : item.score_points_per_1000_output_tokens) +
