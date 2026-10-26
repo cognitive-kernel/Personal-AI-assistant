@@ -1,13 +1,12 @@
 from __future__ import annotations
 import hashlib
 import json
-import math
 import platform
 import re
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
-from .ollama import _request, embed as ollama_embed
+from .ollama import _request
 from . import curricula, factual_knowledge, learning_evidence_gate
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
@@ -418,129 +417,6 @@ def _persist_factual_review_claims(
     return stored
 
 
-SEMANTIC_DUPLICATE_THRESHOLD = 0.90
-
-
-def _normalize_lesson_content(value: str) -> str:
-    value = value.casefold().replace("ي", "ی").replace("ك", "ک")
-    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
-
-
-def _lesson_content_hash(value: str) -> str:
-    normalized = _normalize_lesson_content(value)
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
-def _cosine_similarity(left: list[float], right: list[float]) -> float:
-    if not left or len(left) != len(right):
-        raise LearningError("Embedding vectors have inconsistent dimensions.")
-    dot = sum(a * b for a, b in zip(left, right))
-    left_norm = math.sqrt(sum(a * a for a in left))
-    right_norm = math.sqrt(sum(b * b for b in right))
-    if left_norm == 0.0 or right_norm == 0.0:
-        return 0.0
-    return dot / (left_norm * right_norm)
-
-
-def _find_semantic_duplicate_lesson(
-    conn, topic: str, lesson: str
-) -> dict[str, Any] | None:
-    """Return the closest existing lesson when content is an exact or semantic duplicate.
-
-    Embeddings are cached by normalized content hash and model so old lessons are
-    indexed once rather than re-embedded for every future lesson. If the local
-    embedding service is unavailable, the caller must fail closed and not persist
-    a lesson that has not passed the duplicate check.
-    """
-    normalized = _normalize_lesson_content(lesson)
-    if not normalized:
-        return None
-
-    existing = conn.execute(
-        "SELECT id, topic, content FROM knowledge_items ORDER BY id DESC"
-    ).fetchall()
-    if not existing:
-        return None
-
-    for row in existing:
-        if _normalize_lesson_content(str(row["content"])) == normalized:
-            return {
-                "id": int(row["id"]),
-                "topic": str(row["topic"]),
-                "score": 1.0,
-                "method": "exact",
-            }
-
-    settings = get_settings()
-    model = str(settings.get("ollama_embedding_model", "nomic-embed-text")).strip()
-    if not model:
-        raise LearningError("No local embedding model is configured for semantic duplicate detection.")
-
-    content_by_hash: dict[str, str] = {}
-    for row in existing:
-        content = str(row["content"]).strip()
-        if content:
-            content_by_hash.setdefault(_lesson_content_hash(content), content[:6000])
-    candidate_hash = _lesson_content_hash(lesson)
-    content_by_hash.setdefault(candidate_hash, lesson.strip()[:6000])
-
-    cached_rows = conn.execute(
-        "SELECT content_sha256, embedding_json FROM lesson_embedding_cache WHERE embedding_model=?",
-        (model,),
-    ).fetchall()
-    vectors: dict[str, list[float]] = {}
-    for row in cached_rows:
-        try:
-            value = json.loads(row["embedding_json"])
-            if isinstance(value, list) and value and all(
-                isinstance(item, (int, float)) and not isinstance(item, bool)
-                and math.isfinite(float(item)) for item in value
-            ):
-                vectors[str(row["content_sha256"])] = [float(item) for item in value]
-        except (TypeError, ValueError, json.JSONDecodeError):
-            continue
-
-    missing = [(key, value) for key, value in content_by_hash.items() if key not in vectors]
-    for offset in range(0, len(missing), 32):
-        batch = missing[offset:offset + 32]
-        batch_vectors = ollama_embed([value for _, value in batch], model=model)
-        if len(batch_vectors) != len(batch):
-            raise LearningError("The embedding model returned an incomplete batch.")
-        for (content_hash, _), vector in zip(batch, batch_vectors):
-            encoded = json.dumps(vector, separators=(",", ":"), allow_nan=False)
-            conn.execute(
-                """INSERT INTO lesson_embedding_cache(content_sha256, embedding_model, embedding_json)
-                   VALUES (?, ?, ?) ON CONFLICT(content_sha256, embedding_model)
-                   DO UPDATE SET embedding_json=excluded.embedding_json""",
-                (content_hash, model, encoded),
-            )
-            vectors[content_hash] = vector
-
-    candidate_vector = vectors.get(candidate_hash)
-    if candidate_vector is None:
-        raise LearningError("The candidate lesson embedding was not available after indexing.")
-
-    best: dict[str, Any] | None = None
-    for row in existing:
-        content = str(row["content"]).strip()
-        if not content:
-            continue
-        vector = vectors.get(_lesson_content_hash(content))
-        if vector is None:
-            raise LearningError("An existing lesson embedding was not available after indexing.")
-        score = _cosine_similarity(candidate_vector, vector)
-        if best is None or score > float(best["score"]):
-            best = {
-                "id": int(row["id"]),
-                "topic": str(row["topic"]),
-                "score": score,
-                "method": "embedding",
-            }
-    if best is not None and float(best["score"]) >= SEMANTIC_DUPLICATE_THRESHOLD:
-        return best
-    return None
-
-
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
         # Atomically claim a queued job. Multiple workers may call run_job for the
@@ -831,47 +707,33 @@ def run_job(job_id: int) -> None:
                         review=claim_review_result,
                     )
             if quality["accepted"]:
-                try:
-                    duplicate = _find_semantic_duplicate_lesson(conn, topic, result["lesson"])
-                except Exception as exc:
-                    duplicate = None
+                def normalize_lesson_content(value: str) -> str:
+                    value = value.casefold().replace("ي", "ی").replace("ك", "ک")
+                    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
+
+                normalized_lesson = normalize_lesson_content(result["lesson"])
+                existing_lessons = conn.execute(
+                    "SELECT content FROM knowledge_items"
+                ).fetchall()
+                duplicate_lesson = any(
+                    normalize_lesson_content(str(item["content"])) == normalized_lesson
+                    for item in existing_lessons
+                )
+                if duplicate_lesson:
                     quality["accepted"] = False
                     quality.setdefault("reasons", []).append(
-                        "بررسی معنایی تکراری نبودن درس انجام نشد؛ برای جلوگیری از ثبت آموزش تکراری، ذخیره متوقف شد."
+                        "محتوای این درس با نسخه ثبت‌شده یکسان است؛ نسخه تکراری ذخیره نشد."
                     )
-                    quality["duplicate_check_status"] = f"unavailable:{type(exc).__name__}"
                     conn.execute(
                         "UPDATE learning_jobs SET status='rejected', lesson=NULL, assessment_json=NULL, "
                         "quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                         (
                             json.dumps(quality, ensure_ascii=False),
-                            "بررسی معنایی تکراری نبودن درس در دسترس نبود؛ درس ذخیره نشد.",
+                            "محتوای تکراری؛ نسخه جدید ثبت نشد.",
                             job_id,
                         ),
                     )
-                if duplicate is not None:
-                    quality["accepted"] = False
-                    quality.setdefault("reasons", []).append(
-                        "این درس از نظر محتوا با آموزش ثبت‌شده مشابه است؛ نسخه تکراری ذخیره نشد."
-                    )
-                    quality["duplicate_check_status"] = "duplicate"
-                    quality["duplicate_match"] = {
-                        "knowledge_id": duplicate["id"],
-                        "topic": duplicate["topic"],
-                        "similarity": round(float(duplicate["score"]), 4),
-                        "method": duplicate["method"],
-                    }
-                    conn.execute(
-                        "UPDATE learning_jobs SET status='rejected', lesson=NULL, assessment_json=NULL, "
-                        "quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                        (
-                            json.dumps(quality, ensure_ascii=False),
-                            "محتوای درس تکراری یا از نظر معنایی بسیار مشابه است؛ نسخه جدید ثبت نشد.",
-                            job_id,
-                        ),
-                    )
-                elif quality["accepted"]:
-                    quality["duplicate_check_status"] = "passed"
+                else:
                     latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
                     conn.execute(
                         "INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
