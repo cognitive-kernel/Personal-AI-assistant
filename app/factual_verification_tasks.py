@@ -1,4 +1,4 @@
-"""Consent-gated Docker verification for sourced Python and SQLite factual claims."""
+"""Consent-gated Docker verification for sourced Python, SQLite, JavaScript/Node, and Rust claims."""
 from __future__ import annotations
 
 import ast
