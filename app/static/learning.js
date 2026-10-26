@@ -878,16 +878,20 @@ async function refreshLearningCapabilities() {
    invalid_evidence: "شواهد نامعتبر",
    needs_reinforcement: "نیازمند تقویت",
    provisional: "شواهد اولیه",
-   repeated_provisional: "شواهد اولیهٔ تکرارشده"
+   repeated_provisional: "شواهد اولیهٔ تکرارشده",
+   practical_provisional: "شواهد عملی تکرارشده (موقت)",
+   conflicting_evidence: "تعارض بین آزمون نظری و عملی"
   };
   output.textContent = items.length
    ? items.map(item =>
       item.path_title + " — " + item.capability +
       "\nوضعیت: " + (labels[item.status] || item.status) +
       "\nآخرین نمره: " + (item.latest_score == null ? "ندارد" : item.latest_score + "/100") +
-      "؛ تعداد آزمون معتبر: " + item.assessment_count
+      "؛ تعداد آزمون نظری معتبر: " + item.assessment_count +
+      "\nآزمون عملی معتبر: " + item.practical_attempt_count +
+      "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count
      ).join("\n\n") +
-     "\n\nاین نقشه فقط شواهد آزمون ذخیره‌شده را خلاصه می‌کند؛ تطبیق متنی، تسلط معنایی یا انتقال مهارت عملی را اثبات نمی‌کند."
+     "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال عمومی مهارت را اثبات نمی‌کند."
    : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
  } catch (error) {
   output.textContent = "ساخت نقشهٔ قابلیت‌ها ناموفق بود: " + error.message;

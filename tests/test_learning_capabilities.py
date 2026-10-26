@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, learning_capabilities
+from app import db, experience, learning_capabilities
 from app.db import learning_connection
 
 
@@ -91,3 +91,52 @@ def test_learning_dashboard_exposes_capability_map_control():
     assert 'id="capability-map-output"' in page
     assert '"/api/learning/capabilities?limit=200"' in script
     assert "انتقال مهارت عملی را اثبات نمی‌کند" in script
+
+
+def test_capability_map_uses_two_distinct_provenanced_sandbox_exercises_as_practical_evidence(tmp_path, monkeypatch):
+    path_id, _ = _setup(tmp_path, monkeypatch)
+    item = experience.create_experience("Not assessed", "Repeatable practical capability evidence.", "The learner can perform the task.")
+    sources = [{
+        "url": "https://docs.python.org/3/library/",
+        "claim": "Official reference excerpt",
+        "excerpt": "A verified excerpt.",
+        "live_content_sha256": "a" * 64,
+        "excerpt_sha256": "b" * 64,
+    }]
+    results = [
+        {"test": "exercise one", "passed": True, "runner": "docker-sandbox", "source_sha256": "c" * 64,
+         "source_evidence": [{"url": sources[0]["url"], "live_content_sha256": "a" * 64, "excerpt_sha256": "b" * 64}]},
+        {"test": "exercise two", "passed": True, "runner": "docker-sandbox", "source_sha256": "d" * 64,
+         "source_evidence": [{"url": sources[0]["url"], "live_content_sha256": "a" * 64, "excerpt_sha256": "b" * 64}]},
+    ]
+    experience.update_experience(
+        item["id"], status="verified", source_evidence=sources,
+        test_plan=[{"test": "exercise one"}, {"test": "exercise two"}],
+        test_results=results, _controlled_run=True,
+    )
+
+    result = learning_capabilities.get_capability_map(path_id=path_id)
+    practical = next(row for row in result["capabilities"] if row["capability"] == "Not assessed")
+    assert practical["status"] == "practical_provisional"
+    assert practical["practical_repeatable"] is True
+    assert practical["practical_attempt_count"] == 2
+    assert practical["practical_source_count"] == 2
+    assert result["summary"]["practical_provisional"] == 1
+
+
+def test_capability_map_does_not_count_unprovenanced_or_duplicate_practical_runs(tmp_path, monkeypatch):
+    path_id, _ = _setup(tmp_path, monkeypatch)
+    item = experience.create_experience("Not assessed", "Insufficient evidence.", "A claim.")
+    experience.update_experience(
+        item["id"], status="verified",
+        source_evidence=[{"url": "https://docs.python.org/3/library/", "claim": "Reference"}],
+        test_plan=[{"test": "same"}],
+        test_results=[
+            {"test": "same", "passed": True, "runner": "docker-sandbox", "source_sha256": "c" * 64},
+            {"test": "same", "passed": True, "runner": "docker-sandbox", "source_sha256": "c" * 64},
+        ], _controlled_run=True,
+    )
+    result = learning_capabilities.get_capability_map(path_id=path_id)
+    practical = next(row for row in result["capabilities"] if row["capability"] == "Not assessed")
+    assert practical["status"] == "not_assessed"
+    assert practical["practical_repeatable"] is False

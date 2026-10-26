@@ -5,11 +5,68 @@ assessment scores remain provisional until repeatable practical tasks are added.
 """
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from .db import init_databases, learning_connection
 
 _MAX_LIMIT = 500
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _practical_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, Any]]:
+    """Count distinct successful sandbox exercises with live source provenance."""
+    result_map: dict[str, dict[str, Any]] = {}
+    if not topics:
+        return result_map
+    rows = connection.execute(
+        """SELECT topic, test_results_json FROM learning_experiences
+           WHERE status='verified' ORDER BY id DESC LIMIT 5000"""
+    ).fetchall()
+    valid_by_topic: dict[str, dict[tuple[str, str], dict[str, Any]]] = {}
+    for row in rows:
+        topic = str(row["topic"]).strip().casefold()
+        if topic not in topics:
+            continue
+        try:
+            results = json.loads(row["test_results_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(results, list):
+            continue
+        for item in results:
+            if not isinstance(item, dict) or item.get("passed") is not True or item.get("runner") != "docker-sandbox":
+                continue
+            test_name, source_hash = item.get("test"), item.get("source_sha256")
+            if not isinstance(test_name, str) or not test_name.strip() or not isinstance(source_hash, str) or not _SHA256.fullmatch(source_hash):
+                continue
+            sources = item.get("source_evidence")
+            if not isinstance(sources, list) or not sources:
+                continue
+            if not all(
+                isinstance(source, dict)
+                and isinstance(source.get("url"), str)
+                and isinstance(source.get("live_content_sha256"), str)
+                and _SHA256.fullmatch(source["live_content_sha256"])
+                and isinstance(source.get("excerpt_sha256"), str)
+                and _SHA256.fullmatch(source["excerpt_sha256"])
+                for source in sources
+            ):
+                continue
+            valid_by_topic.setdefault(topic, {})[(test_name.strip(), source_hash)] = item
+    for topic in topics:
+        valid = valid_by_topic.get(topic.casefold(), {})
+        hashes = {source_hash for _, source_hash in valid}
+        names = {name for name, _ in valid}
+        result_map[topic] = {
+            "practical_attempt_count": len(valid),
+            "practical_test_names": sorted(names)[:20],
+            "practical_source_count": len(hashes),
+            "practical_repeatable": len(hashes) >= 2 and len(names) >= 2,
+        }
+    return result_map
+
 
 
 def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[str, Any]:
@@ -58,6 +115,7 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
         sql += " ORDER BY p.id, t.position, t.id LIMIT ?"
         params.append(limit)
         rows = [dict(row) for row in connection.execute(sql, params).fetchall()]
+        practical_by_topic = _practical_evidence_map(connection, {str(row["topic"]).strip().casefold() for row in rows})
 
     capabilities: list[dict[str, Any]] = []
     for row in rows:
@@ -93,6 +151,14 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             status = "provisional"
             confidence = "provisional"
 
+        if practical["practical_repeatable"]:
+            if valid and float(score) < 80:
+                status = "conflicting_evidence"
+                confidence = "conflicting"
+            else:
+                status = "practical_provisional"
+                confidence = "provisional_practical"
+
         capabilities.append({
             "path_id": int(row["path_id"]),
             "path_title": row["path_title"],
@@ -104,6 +170,7 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "status": status,
             "latest_score": float(score) if valid else None,
             "assessment_count": count,
+            **practical,
             "latest_attempt_id": row["latest_attempt_id"],
             "correct_count": int(correct) if valid else None,
             "question_count": int(questions) if valid else None,
@@ -111,6 +178,8 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "last_assessed_at": row["latest_assessed_at"] if valid else None,
             "confidence": confidence,
             "evidence_limit": (
+                "Repeated practical evidence means two distinct passing sandbox test programs with current-page source excerpts; it remains provisional and does not prove general transfer or semantic mastery."
+                if practical["practical_repeatable"] else
                 "Exact-match assessments are provisional evidence; semantic mastery and practical transfer are not established."
             ),
         })
@@ -125,5 +194,7 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "needs_reinforcement": sum(item["status"] == "needs_reinforcement" for item in capabilities),
             "provisional": sum(item["status"] == "provisional" for item in capabilities),
             "repeated_provisional": sum(item["status"] == "repeated_provisional" for item in capabilities),
+            "practical_provisional": sum(item["status"] == "practical_provisional" for item in capabilities),
+            "conflicting_evidence": sum(item["status"] == "conflicting_evidence" for item in capabilities),
         },
     }
