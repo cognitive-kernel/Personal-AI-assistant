@@ -158,7 +158,7 @@ def test_two_models_and_two_live_sources_allow_audited_promotion(lifecycle_store
     job = learning.create_job("Multi-model validation")
     content = "A temporary lesson checked against two independent public sources."
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    urls = ["https://alpha.example.test/guide", "https://beta.example.test/reference"]
+    urls = ["https://alpha.example.test/guide", "https://beta.other.test/reference"]
     texts = {
         urls[0]: "Alpha source describes the mechanism, expected behavior, constraints, and version scope in detail.",
         urls[1]: "Beta source independently documents the same mechanism, behavior, limitations, and version applicability.",
@@ -239,7 +239,7 @@ def test_one_available_reviewer_does_not_reject_or_promote_candidate(lifecycle_s
     job = learning.create_job("Insufficient reviewers")
     content = "Temporary lesson that remains in staging when independent review is unavailable."
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    urls = ["https://alpha.example.test/guide", "https://beta.example.test/reference"]
+    urls = ["https://alpha.example.test/guide", "https://beta.other.test/reference"]
     texts = {
         urls[0]: "Alpha source describes the mechanism, expected behavior, constraints, and version scope in detail.",
         urls[1]: "Beta source independently documents the same mechanism, behavior, limitations, and version applicability.",
@@ -284,7 +284,7 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     job = learning.create_job("Repeated contradiction")
     content = "Temporary lesson whose central claim may be contradicted by evidence."
     digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    urls = ["https://alpha.example.test/guide", "https://beta.example.test/reference"]
+    urls = ["https://alpha.example.test/guide", "https://beta.other.test/reference"]
     texts = {
         urls[0]: "Alpha source explicitly contradicts the claim, including its mechanism and documented constraints.",
         urls[1]: "Beta source explicitly contradicts the claim and documents an incompatible behavior and scope.",
@@ -363,3 +363,32 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
     assert readiness["status"] == "rejected_after_review"
     assert readiness["ready_for_promotion"] is False
+
+
+def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(lifecycle_store, monkeypatch):
+    job = learning.create_job("Subdomain source diversity")
+    candidate_id, digest = _candidate(job["id"])
+    live_text = "A source page with enough content to bind this exact source hash."
+    live_hash = hashlib.sha256(live_text.encode("utf-8")).hexdigest()
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *args, **kwargs: SimpleNamespace(text=live_text),
+    )
+    for url in (
+        "https://docs.example.test/topic",
+        "https://api.example.test/reference",
+    ):
+        knowledge_lifecycle.record_candidate_review(
+            candidate_id,
+            candidate_sha256=digest,
+            review_kind="source",
+            verdict="supports",
+            reviewer_id="source-reviewer",
+            note="The source was inspected for direct relevance to this candidate.",
+            source_url=url,
+            source_sha256=live_hash,
+        )
+
+    readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
+    assert readiness["checks"]["two_supporting_source_hosts"] is False
+    assert readiness["evidence_counts"]["supporting_source_hosts"] == 1
