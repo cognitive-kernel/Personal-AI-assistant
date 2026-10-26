@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import math
+import os
 import re
 import socket
 import sqlite3
@@ -11,6 +13,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 from .db import connection
+from ..db import get_settings
+from ..ollama import embed as ollama_embed
 
 MAX_CONTENT_CHARS = 200_000
 CHUNK_TARGET_CHARS = 1_800
@@ -949,6 +953,150 @@ def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
             (topic_id, position, title))
         return dict(conn.execute("SELECT * FROM lessons WHERE id=?", (int(cursor.lastrowid),)).fetchone())
 
+SEMANTIC_DUPLICATE_THRESHOLD = 0.92
+
+
+def _dedupe_normalize(value: str) -> str:
+    value = value.casefold().replace("ي", "ی").replace("ك", "ک")
+    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
+
+
+def _dedupe_content_hash(value: str) -> str:
+    return hashlib.sha256(_dedupe_normalize(value).encode("utf-8")).hexdigest()
+
+
+def _embedding_cosine(left: list[float], right: list[float]) -> float:
+    if not left or len(left) != len(right):
+        raise RuntimeError("Embedding vectors have inconsistent dimensions.")
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(a * a for a in left))
+    right_norm = math.sqrt(sum(b * b for b in right))
+    if not left_norm or not right_norm:
+        return 0.0
+    return dot / (left_norm * right_norm)
+
+
+def _find_semantic_duplicate_content(
+    conn: sqlite3.Connection,
+    markdown: str,
+    *,
+    exclude_lesson_id: int | None = None,
+    exclude_topic_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Find near-identical active lesson content using cached local embeddings.
+
+    Previous versions of the same lesson/topic are intentionally excluded so a
+    genuine lesson update can create a new version. If embeddings are unavailable,
+    the caller must not save unchecked content.
+    """
+    normalized = _dedupe_normalize(markdown)
+    if not normalized:
+        return None
+    rows = conn.execute(
+        """SELECT cv.id AS version_id, cv.lesson_id, cv.markdown, cv.content_sha256,
+                  l.title AS lesson_title, l.topic_id, t.title AS topic_title
+           FROM content_versions cv
+           JOIN lessons l ON l.id=cv.lesson_id
+           JOIN topics t ON t.id=l.topic_id
+           WHERE l.deleted_at IS NULL AND t.deleted_at IS NULL
+             AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+             AND cv.review_status NOT IN ('superseded','withdrawn','rejected')
+             AND (? IS NULL OR l.id<>?)
+             AND (? IS NULL OR l.topic_id<>?)
+           ORDER BY cv.id DESC""",
+        (exclude_lesson_id, exclude_lesson_id, exclude_topic_id, exclude_topic_id),
+    ).fetchall()
+    for row in rows:
+        if _dedupe_normalize(str(row["markdown"])) == normalized:
+            return {
+                "version_id": int(row["version_id"]),
+                "lesson_id": int(row["lesson_id"]),
+                "topic_id": int(row["topic_id"]),
+                "lesson_title": str(row["lesson_title"]),
+                "topic_title": str(row["topic_title"]),
+                "score": 1.0,
+                "method": "exact",
+            }
+    if not rows:
+        return None
+
+    try:
+        settings = get_settings()
+    except Exception:
+        settings = {}
+    model = str(
+        settings.get("ollama_embedding_model")
+        or os.getenv("OLLAMA_EMBEDDING_MODEL")
+        or "nomic-embed-text"
+    ).strip()
+    if not model:
+        raise RuntimeError("No local embedding model is configured.")
+
+    content_by_hash: dict[str, str] = {}
+    for row in rows:
+        text = str(row["markdown"]).strip()
+        if text:
+            content_by_hash.setdefault(_dedupe_content_hash(text), text[:6000])
+    candidate_hash = _dedupe_content_hash(markdown)
+    content_by_hash.setdefault(candidate_hash, markdown.strip()[:6000])
+
+    cached = conn.execute(
+        "SELECT content_sha256,embedding_json FROM semantic_embedding_cache WHERE embedding_model=?",
+        (model,),
+    ).fetchall()
+    vectors: dict[str, list[float]] = {}
+    for row in cached:
+        try:
+            vector = json.loads(row["embedding_json"])
+            if isinstance(vector, list) and vector and all(
+                isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(float(value)) for value in vector
+            ):
+                vectors[str(row["content_sha256"])] = [float(value) for value in vector]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+
+    missing = [(digest, text) for digest, text in content_by_hash.items() if digest not in vectors]
+    for offset in range(0, len(missing), 32):
+        batch = missing[offset:offset + 32]
+        batch_vectors = ollama_embed([text for _, text in batch], model=model)
+        if len(batch_vectors) != len(batch):
+            raise RuntimeError("Embedding model returned an incomplete batch.")
+        for (digest, _), vector in zip(batch, batch_vectors):
+            encoded = json.dumps(vector, separators=(",", ":"), allow_nan=False)
+            conn.execute(
+                """INSERT INTO semantic_embedding_cache(content_sha256,embedding_model,embedding_json)
+                   VALUES(?,?,?) ON CONFLICT(content_sha256,embedding_model)
+                   DO UPDATE SET embedding_json=excluded.embedding_json""",
+                (digest, model, encoded),
+            )
+            vectors[digest] = [float(value) for value in vector]
+
+    candidate_vector = vectors.get(candidate_hash)
+    if candidate_vector is None:
+        raise RuntimeError("Candidate embedding is missing after indexing.")
+    best: dict[str, Any] | None = None
+    for row in rows:
+        text = str(row["markdown"]).strip()
+        if not text:
+            continue
+        vector = vectors.get(_dedupe_content_hash(text))
+        if vector is None:
+            raise RuntimeError("Existing lesson embedding is missing after indexing.")
+        score = _embedding_cosine(candidate_vector, vector)
+        if best is None or score > float(best["score"]):
+            best = {
+                "version_id": int(row["version_id"]),
+                "lesson_id": int(row["lesson_id"]),
+                "topic_id": int(row["topic_id"]),
+                "lesson_title": str(row["lesson_title"]),
+                "topic_title": str(row["topic_title"]),
+                "score": score,
+                "method": "embedding",
+            }
+    return best if best is not None and float(best["score"]) >= SEMANTIC_DUPLICATE_THRESHOLD else None
+
+
 def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | None = None,
                         source_kind: str = "manual", provider: str = "manual",
                         model_name: str | None = None) -> dict[str, Any]:
@@ -962,6 +1110,20 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
         lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
         if lesson is None:
             raise NotFoundError("Lesson not found.")
+        try:
+            duplicate = _find_semantic_duplicate_content(
+                conn, markdown, exclude_lesson_id=lesson_id
+            )
+        except Exception as exc:
+            raise ValueError(
+                "بررسی معنایی تکراری نبودن درس در دسترس نیست؛ محتوا ذخیره نشد."
+            ) from exc
+        if duplicate is not None:
+            raise ValueError(
+                "این محتوا با درس دیگری بسیار مشابه است و نسخهٔ تکراری ذخیره نشد: "
+                f"{duplicate['topic_title']} / {duplicate['lesson_title']} "
+                f"(similarity={float(duplicate['score']):.3f})."
+            )
         version_no = int(conn.execute(
             "SELECT COALESCE(MAX(version_no),0)+1 FROM content_versions WHERE lesson_id=?", (lesson_id,)).fetchone()[0])
         digest = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
