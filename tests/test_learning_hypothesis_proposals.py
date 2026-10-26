@@ -103,3 +103,51 @@ def test_invalid_hypothesis_output_fails_closed_without_creating_records(
 def test_hypothesis_request_bounds_are_enforced(topic, problem, max_candidates):
     with pytest.raises(ValueError):
         experience.propose_hypotheses(topic, problem, max_candidates=max_candidates)
+
+
+
+def test_experience_hypotheses_require_and_link_retained_knowledge(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    from app import learning
+
+    job = learning.create_job("Retained source lesson")
+    with db.learning_connection() as connection:
+        knowledge_id = int(connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'retained_after_review', ?)""",
+            ("Cache consistency", "Retained knowledge content.", "web_retrieved", 1, job["id"]),
+        ).lastrowid)
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **kwargs: json.dumps(_proposal()))
+
+    items = experience.propose_hypotheses_from_retained_knowledge(
+        knowledge_id, "Investigate the cache invalidation experience.", max_candidates=1
+    )
+
+    assert len(items) == 1
+    assert items[0]["originating_knowledge_id"] == knowledge_id
+    assert items[0]["originating_knowledge_version"] == 1
+    assert items[0]["status"] == "identified"
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT originating_knowledge_id FROM learning_experiences WHERE id=?",
+            (items[0]["id"],),
+        ).fetchone()
+    assert row["originating_knowledge_id"] == knowledge_id
+
+
+def test_experience_hypotheses_do_not_start_from_unretained_knowledge(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    from app import learning
+
+    job = learning.create_job("Unretained source lesson")
+    with db.learning_connection() as connection:
+        knowledge_id = int(connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'unverified', ?)""",
+            ("Cache consistency", "Unverified content.", "web_retrieved", 1, job["id"]),
+        ).lastrowid)
+
+    with pytest.raises(ValueError, match="requires retained_after_review"):
+        experience.propose_hypotheses_from_retained_knowledge(
+            knowledge_id, "Investigate this experience.", max_candidates=1
+        )
