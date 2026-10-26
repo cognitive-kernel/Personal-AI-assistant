@@ -485,3 +485,37 @@ def test_lesson_progress_uses_latest_version_even_if_an_older_version_was_publis
     lessons = service.list_lessons(topic["id"])
     assert len(lessons) == 1
     assert lessons[0]["progress_percent"] == 75
+
+
+
+def test_force_retry_keeps_existing_lesson_and_creates_a_new_version(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    topic = service.add_topic(course["id"], "Memory management")
+    service.decide_topics([topic["id"]], "approved")
+    first = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                              request_key="first-lesson-version")
+    service.start_run(first["id"])
+    service.complete_run(first["id"],
+                         "# Memory management\n\nSQL Server memory management coordinates memory grants, "
+                         "buffer pool usage, and workload pressure. Administrators should monitor memory "
+                         "clerks and wait statistics, compare workload behavior, and validate changes safely.")
+    retry = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                               request_key="retry-lesson-version", force_retry=True)
+    assert "[FORCE_RETRY_EXISTING_LESSON]" in retry["prompt_text"]
+    service.start_run(retry["id"])
+    service.complete_run(retry["id"],
+                         "# Updated memory management\n\nSQL Server memory management must be assessed "
+                         "against the current workload and available memory. Review memory grants, buffer pool "
+                         "pressure, relevant performance counters, and query behavior before making a change.")
+    lessons = service.list_lessons(topic["id"])
+    assert len(lessons) == 1
+    versions = service.list_versions(lessons[0]["id"])
+    assert len(versions) == 2
+    assert versions[0]["markdown"].startswith("# Updated memory management")
+
+
+def test_extract_references_keeps_clickable_markdown_urls(isolated_store):
+    refs = service._extract_references(
+        "منابع: [SQL Server documentation](https://learn.microsoft.com/sql/)"
+    )
+    assert refs == [{"title": "SQL Server documentation", "url": "https://learn.microsoft.com/sql/"}]
