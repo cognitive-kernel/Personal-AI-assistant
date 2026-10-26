@@ -47,7 +47,7 @@ class RunHistoryDelete(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class RunComplete(BaseModel):
-    response_text: str = Field(min_length=1, max_length=100000)
+    response_text: str = Field(min_length=1, max_length=500000)
     model_config = ConfigDict(extra="forbid")
 
 class RunNeedsAction(BaseModel):
