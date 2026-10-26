@@ -9,17 +9,18 @@ This is an optional, user-confirmed Manifest V3 extension. It connects the local
 3. Enable Developer mode and choose Load unpacked.
 4. Select this directory: app/ai_learning/browser_extension.
 5. Open the local module at http://127.0.0.1:8000/ai-learning and create a course.
-6. Click the extension icon while on ChatGPT. Choose a course and either outline or approved topic(s).
-7. The extension opens ChatGPT and inserts the prepared prompt into the composer. Review the prompt and click ChatGPT's Send button manually.
-8. After ChatGPT finishes, open the extension popup and click Capture latest answer. The captured answer is saved as an unreviewed run; outlines remain pending approval and lesson versions remain unpublished.
+6. Open the extension icon from any tab. Choose a course and either outline or one or more approved topics.
+7. Click “Start; open ChatGPT and send automatically”. The extension opens the normal ChatGPT tab, inserts the prompt, and clicks the visible Send button only after this explicit user action and only when the button can be identified confidently.
+8. The extension watches the visible page for a changed, stable assistant answer and saves it automatically. The dashboard tab is refreshed after successful capture. If the Send button or response completion cannot be identified, the extension shows a manual-recovery status; send the prompt yourself and use “Capture answer manually”.
+9. In the dashboard, inspect the run history. If parsing needs attention, use “View and edit response” and retry processing. Outlines remain pending approval and lesson versions remain unpublished until reviewed.
 
 ## Safety and limitations
 
-- The extension never clicks ChatGPT's Send button automatically.
+- The extension can click ChatGPT's visible Send button only after the user explicitly clicks Start in the extension popup. It does not run unsolicited prompts.
 - It captures only the latest visible assistant response after checking for a visible generation/stop control.
 - DOM selectors may change. If the composer or response cannot be identified confidently, the operation stops and reports an error.
 - Only ChatGPT's supported visible UI is used; no private API or hidden endpoint is called.
 - The local API remains loopback-only and the module is disabled by default.
-- Browser extension integration is not yet a durable background queue. If the tab closes or the browser crashes, the run remains visible in the local database and may need manual recovery.
+- Browser extension integration is not yet a durable background queue. If the tab closes or the browser crashes, the run remains visible in the local database and may need manual recovery. The active run is stored locally, but automatic restart after a browser crash is not guaranteed.
 - Batch lesson generation requires explicit topic markers in the response. Ambiguous output is retained for review and no lesson is auto-published.
 - Do not use this bridge to submit confidential content unless the user understands the provider's data handling terms.
