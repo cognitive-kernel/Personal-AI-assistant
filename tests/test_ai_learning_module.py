@@ -150,3 +150,20 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store):
     assert completed["status"] == "succeeded"
     assert len(service.list_lessons(a["id"])) == 1
     assert len(service.list_lessons(b["id"])) == 1
+
+def test_all_approved_run_selects_all_approved_topics(isolated_store):
+    course = service.create_course(title="SQL Server")
+    approved = service.add_topic(course["id"], "Indexes")
+    pending = service.add_topic(course["id"], "Triggers")
+    service.decide_topics([approved["id"]], "approved")
+    run = service.create_run(course["id"], run_type="lesson", selection_mode="all_approved",
+                             request_key="all-approved-test")
+    assert [topic["topic_id"] for topic in run["topics"]] == [approved["id"]]
+    assert pending["id"] not in [topic["topic_id"] for topic in run["topics"]]
+
+
+def test_run_request_key_is_idempotent(isolated_store):
+    course = service.create_course(title="SQL Server")
+    first = service.create_run(course["id"], run_type="outline", request_key="same-key")
+    second = service.create_run(course["id"], run_type="outline", request_key="same-key")
+    assert first["id"] == second["id"]
