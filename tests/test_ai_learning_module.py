@@ -102,10 +102,10 @@ def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolat
 
 def test_outline_parser_accepts_plain_lines_and_ignores_chatgpt_wrapper_and_audit():
     raw = (
-        "ChatGPT said:\\n"
-        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه\\n"
-        "ایجاد و مدیریت Sequence با CREATE SEQUENCE\\n"
-        "مدیریت تراکنش‌ها و کنترل هم‌زمانی\\n"
+        "ChatGPT said:\n"
+        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه\n"
+        "ایجاد و مدیریت Sequence با CREATE SEQUENCE\n"
+        "مدیریت تراکنش‌ها و کنترل هم‌زمانی\n"
         "AUDIT: status=COMPLETE; total_topics=1400; missing_domains=none; end_reason=all_applicable_domains_covered"
     )
     assert service._parse_outline_titles(raw) == [
@@ -116,7 +116,7 @@ def test_outline_parser_accepts_plain_lines_and_ignores_chatgpt_wrapper_and_audi
 
 
 def test_outline_parser_does_not_truncate_large_plain_line_outlines():
-    raw = "\\n".join(f"سرفصل آزمایشی شماره {index}" for index in range(1, 1401))
+    raw = "\n".join(f"سرفصل آزمایشی شماره {index}" for index in range(1, 1401))
     titles = service._parse_outline_titles(raw)
     assert len(titles) == 1400
     assert titles[0] == "سرفصل آزمایشی شماره 1"
@@ -126,10 +126,10 @@ def test_outline_parser_does_not_truncate_large_plain_line_outlines():
 def test_outline_import_accepts_plain_line_outline_and_preserves_raw_response(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2025")
     raw = (
-        "ChatGPT said:\\n"
-        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه\\n"
-        "ایجاد و مدیریت Sequence با CREATE SEQUENCE\\n"
-        "مدیریت تراکنش‌ها و کنترل هم‌زمانی\\n"
+        "ChatGPT said:\n"
+        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه\n"
+        "ایجاد و مدیریت Sequence با CREATE SEQUENCE\n"
+        "مدیریت تراکنش‌ها و کنترل هم‌زمانی\n"
         "AUDIT: status=COMPLETE; total_topics=3; missing_domains=none; end_reason=all_applicable_domains_covered"
     )
     monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
