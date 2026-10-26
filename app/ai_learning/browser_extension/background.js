@@ -61,7 +61,14 @@ async function prepareRun(payload) {
         catch(error) { submitted=false;submitMessage="Prompt inserted but could not be auto-sent: "+error.message+" Send it manually; the extension will still try to capture the answer."; await setBadge("MAN","#a66b00"); }
         await saveStatus({run_id:started.id,status:"running",message:submitMessage});
         finish(resolve,{run_id:started.id,tab_id:tab.id,inserted:inserted.inserted,submitted,message:submitMessage});
-      } catch(error) { delivering=false;finish(reject,error); }
+      } catch(error) {
+        delivering=false;
+        try { await api("/runs/"+started.id+"/needs-user-action",{method:"POST",body:JSON.stringify({error_code:"browser_prepare_failed",error_message:String(error.message||error).slice(0,1000)})}); } catch (_) {}
+        await saveStatus({run_id:started.id,status:"needs_user_action",message:String(error.message||error)});
+        await setBadge("MAN","#a66b00");
+        await refreshLearningTabs();
+        finish(reject,error);
+      }
     };
     const listener=(updatedId,changeInfo)=>{if(updatedId===tab.id&&changeInfo.status==="complete")deliver();};
     const timeout=setTimeout(()=>finish(reject,new Error("Timed out waiting for ChatGPT. Open the tab and try again.")),30000);
