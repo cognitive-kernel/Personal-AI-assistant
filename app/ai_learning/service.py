@@ -229,6 +229,12 @@ def mark_run_needs_user_action(run_id: int, error_code: str, error_message: str)
                WHERE id=?""",
             (error_code, error_message, run_id),
         )
+        conn.execute(
+            """UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
+               WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                 AND processing_status <> 'paused'""",
+            (run_id,),
+        )
     return get_run(run_id)
 
 
@@ -260,6 +266,12 @@ def cancel_run(run_id: int) -> dict[str, Any]:
             """UPDATE runs SET status='cancelled',error_code='user_cancelled',
                error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
                WHERE id=? AND status IN ('queued','running')""",
+            (run_id,),
+        )
+        conn.execute(
+            """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+               WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                 AND processing_status='running'""",
             (run_id,),
         )
     return get_run(run_id)
