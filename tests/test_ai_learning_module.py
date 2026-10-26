@@ -3,6 +3,7 @@ import hashlib
 import sqlite3
 import pytest
 from app.ai_learning import service
+from app.ai_learning import browser_automation
 from app.ai_learning.db import initialize_store, connection, StoreSchemaError
 
 @pytest.fixture
@@ -815,3 +816,38 @@ def test_semantic_dedup_does_not_reject_a_different_lesson(isolated_store, monke
     monkeypatch.setattr(service, "ollama_embed", fake_embed)
     version = service.add_content_version(lesson_b["id"], different)
     assert version["version_no"] == 1
+
+
+def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_store, monkeypatch):
+    course = service.create_course(title="SQL Server 2025")
+    topics = [service.add_topic(course["id"], f"Topic {index}") for index in range(3)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(service, "get_learning_control", lambda: {"paused": False})
+
+    captured = {}
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            captured["args"] = args
+            captured["name"] = name
+            captured["daemon"] = daemon
+        def start(self):
+            captured["started"] = True
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.start_lesson_run(
+        course["id"], [topic["id"] for topic in topics], "selected-three-topics"
+    )
+
+    run = service.get_run(result["run_id"])
+    assert [item["topic_id"] for item in run["topics"]] == [topics[0]["id"]]
+    assert result["queued_topic_count"] == 3
+    assert captured["args"][4] is True
+    assert captured["args"][5] == [topics[1]["id"], topics[2]["id"]]
+    assert captured["started"] is True
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
