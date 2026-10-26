@@ -144,6 +144,20 @@ def test_outline_import_accepts_plain_line_outline_and_preserves_raw_response(is
         saved = conn.execute("SELECT response_text FROM runs WHERE id=?", (result["run_id"],)).fetchone()
     assert saved["response_text"] == raw
 
+
+def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    run = service.create_run(course["id"], run_type="outline", request_key="large-outline-response")
+    service.start_run(run["id"])
+    titles = [f"سرفصل آزمایشی شماره {index:04d} با شرح تکمیلی" for index in range(1, 1401)]
+    raw = "\\n".join(titles)
+    assert len(raw) > 100_000
+    result = service.complete_run(run["id"], raw)
+    assert result["status"] == "succeeded"
+    assert len(result["topics"]) == 1400
+    assert result["topics"][0]["title"] == titles[0]
+    assert result["topics"][-1]["title"] == titles[-1]
+
 def test_outline_import_rejects_unstructured_response(isolated_store):
     course = service.create_course(title="SQL Server")
     with pytest.raises(ValueError, match="No numbered"):
