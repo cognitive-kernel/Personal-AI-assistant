@@ -194,7 +194,10 @@ def test_run_course_uses_browser_chatgpt_flow_and_persists_each_lesson(tmp_path,
     page = FakePage()
 
     class FakeContext:
-        pages = [page]
+        pages = []
+
+        def new_page(self):
+            return page
 
     class FakeBrowser:
         contexts = [FakeContext()]
