@@ -145,7 +145,7 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store):
     ambiguous = service.complete_run(run["id"], "Here are two sections, but no topic markers.")
     assert ambiguous["status"] == "needs_user_action"
     assert service.list_lessons(a["id"]) == []
-    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content.\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content."
+    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content explains lookup performance, index maintenance, and query-plan effects.\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content explains isolation, commit, rollback, and consistency guarantees."
     completed = service.complete_run(run["id"], corrected)
     assert completed["status"] == "succeeded"
     assert len(service.list_lessons(a["id"])) == 1
