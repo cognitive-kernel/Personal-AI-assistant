@@ -63,3 +63,13 @@ def test_new_topic_position_skips_soft_deleted_positions(isolated_store):
     third = service.add_topic(course["id"], "Third")
     assert first["position"] == 1
     assert third["position"] == 3
+
+
+def test_browser_timeout_is_recoverable(isolated_store):
+    course = service.create_course(title="SQL Server")
+    run = service.create_run(course["id"], run_type="outline", request_key="browser-timeout")
+    service.start_run(run["id"])
+    marked = service.mark_run_needs_user_action(run["id"], "response_timeout", "Timed out waiting for ChatGPT.")
+    assert marked["status"] == "needs_user_action"
+    recovered = service.complete_run(run["id"], "1. Basics\n2. Query processing")
+    assert recovered["status"] == "succeeded"
