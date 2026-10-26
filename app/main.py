@@ -25,6 +25,7 @@ from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
 from .ai_learning.routes import router as ai_learning_router
 from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
+from .ai_learning.ui import router as ai_learning_ui_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -54,6 +55,7 @@ app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
 app.include_router(learning_candidate_router)
 app.include_router(ai_learning_router)
+app.include_router(ai_learning_ui_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
