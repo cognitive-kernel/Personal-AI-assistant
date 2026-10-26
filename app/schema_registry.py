@@ -1071,6 +1071,29 @@ LEARNING_MIGRATIONS = (
             "ALTER TABLE model_usage_events ADD COLUMN estimated_cost_microusd INTEGER CHECK(estimated_cost_microusd IS NULL OR estimated_cost_microusd >= 0)",
             "CREATE INDEX idx_model_usage_cost ON model_usage_events(estimated_cost_microusd, created_at DESC)",
         ),
+    ),
+    Migration(
+        32,
+        "evidence-reviewed-learning-causal-graph",
+        (
+            """CREATE TABLE learning_knowledge_graph_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_knowledge_id INTEGER NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                target_knowledge_id INTEGER NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                relation_type TEXT NOT NULL CHECK(relation_type IN ('supports','causes','depends_on','contradicts','supersedes')),
+                source_url TEXT NOT NULL CHECK(substr(source_url, 1, 8) = 'https://'),
+                source_excerpt TEXT NOT NULL CHECK(length(trim(source_excerpt)) BETWEEN 20 AND 1000),
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','accepted','conflicting','rejected')),
+                review_json TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TEXT,
+                CHECK(source_knowledge_id <> target_knowledge_id),
+                UNIQUE(source_knowledge_id, target_knowledge_id, relation_type, source_sha256)
+            )""",
+            "CREATE INDEX idx_learning_graph_source ON learning_knowledge_graph_edges(source_knowledge_id, status, relation_type)",
+            "CREATE INDEX idx_learning_graph_target ON learning_knowledge_graph_edges(target_knowledge_id, status, relation_type)",
+        ),
     )
 )
 
