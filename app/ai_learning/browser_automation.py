@@ -15,6 +15,7 @@ from . import service
 
 _LOCK = threading.Lock()
 _ACTIVE = False
+_CANCEL_EVENTS: dict[int, threading.Event] = {}
 _RESPONSE_TIMEOUT_SECONDS = 600
 _STABLE_SECONDS = 4.0
 
@@ -118,12 +119,14 @@ def _send_prompt(page: Any, prompt: str) -> None:
         ) from exc
 
 
-def _wait_for_complete_answer(page: Any, previous_answer: str) -> str:
+def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None) -> str:
     deadline = time.monotonic() + _RESPONSE_TIMEOUT_SECONDS
     last_text = ""
     stable_since: float | None = None
     last_stop_visible = False
     while time.monotonic() < deadline:
+        if cancel_event is not None and cancel_event.is_set():
+            raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
         try:
             current = _visible_response(page)
             stop_visible = False
@@ -181,7 +184,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str) -> str:
     )
 
 
-def _browser_capture(prompt: str) -> str:
+def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -> str:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -209,6 +212,8 @@ def _browser_capture(prompt: str) -> str:
             try:
                 page = context.pages[0] if context.pages else context.new_page()
                 page.set_default_timeout(5000)
+                if cancel_event is not None and cancel_event.is_set():
+                    raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                 page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
                 try:
                     page.wait_for_load_state("networkidle", timeout=8000)
@@ -230,7 +235,7 @@ def _browser_capture(prompt: str) -> str:
                     page.wait_for_timeout(1500)
                 previous = _visible_response(page)
                 _send_prompt(page, prompt)
-                return _wait_for_complete_answer(page, previous)
+                return _wait_for_complete_answer(page, previous, cancel_event)
             finally:
                 context.close()
     except BrowserAutomationError:
@@ -275,10 +280,10 @@ def _continue_lessons(course_id: int) -> None:
             return
 
 
-def _worker(run_id: int, course_id: int, prompt: str) -> None:
+def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event) -> None:
     global _ACTIVE
     try:
-        answer = _browser_capture(prompt)
+        answer = _browser_capture(prompt, cancel_event)
         result = service.complete_run(run_id, answer)
         if result.get("status") == "succeeded":
             try:
@@ -302,6 +307,7 @@ def _worker(run_id: int, course_id: int, prompt: str) -> None:
     finally:
         with _LOCK:
             _ACTIVE = False
+            _CANCEL_EVENTS.pop(run_id, None)
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
@@ -318,9 +324,20 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
             raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره بازخوانی را دوباره بزنید.")
         service.start_run(int(run["id"]))
         _ACTIVE = True
+        cancel_event = threading.Event()
+        _CANCEL_EVENTS[int(run["id"])] = cancel_event
         thread = threading.Thread(
-            target=_worker, args=(int(run["id"]), course_id, str(run["prompt_text"])),
+            target=_worker, args=(int(run["id"]), course_id, str(run["prompt_text"]), cancel_event),
             name=f"ai-learning-browser-{run['id']}", daemon=True,
         )
         thread.start()
         return {"run_id": int(run["id"]), "status": "running", "provider": "ChatGPT visible UI"}
+
+
+def cancel_run(run_id: int) -> dict[str, Any]:
+    """Signal the local browser worker and persist cancellation of its run."""
+    with _LOCK:
+        event = _CANCEL_EVENTS.get(run_id)
+        if event is not None:
+            event.set()
+    return service.cancel_run(run_id)
