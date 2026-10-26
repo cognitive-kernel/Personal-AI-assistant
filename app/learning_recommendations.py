@@ -98,7 +98,7 @@ def get_learning_recommendations(
             if not isinstance(item, dict):
                 continue
             judgment = item.get("judgment")
-            if judgment in counts:
+            if isinstance(judgment, str) and judgment in counts:
                 counts[judgment] += 1
             concepts = item.get("missing_concepts", [])
             if isinstance(concepts, list):
