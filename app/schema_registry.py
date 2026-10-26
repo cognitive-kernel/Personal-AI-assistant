@@ -1055,6 +1055,14 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_prerequisites_by_topic ON learning_topic_prerequisites(topic_id, prerequisite_topic_id)",
             "CREATE INDEX idx_learning_prerequisites_by_prerequisite ON learning_topic_prerequisites(prerequisite_topic_id, topic_id)",
         ),
+    ),
+    Migration(
+        30,
+        "experience-originating-retained-knowledge",
+        (
+            "ALTER TABLE learning_experiences ADD COLUMN originating_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL",
+            "CREATE INDEX idx_experiences_originating_knowledge ON learning_experiences(originating_knowledge_id, id DESC)",
+        ),
     )
 )
 
