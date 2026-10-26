@@ -180,7 +180,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_ambiguous',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                         (response_text, "The batch response did not include topic markers; map each section manually before saving.", run_id))
                     conn.commit()
-                return get_run(run_id)
+                    return get_run(run_id)
                 allowed = {int(topic["id"]): topic for topic in topics}
                 for index, match in enumerate(matches):
                     topic_id = int(match.group(1))
@@ -196,7 +196,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_incomplete',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                         (response_text, "One or more requested topics were not mapped; no lesson was created.", run_id))
                     conn.commit()
-                return get_run(run_id)
+                    return get_run(run_id)
             for topic_id, title, body in sections:
                 position = int(conn.execute(
                     "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
