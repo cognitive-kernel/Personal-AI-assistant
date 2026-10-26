@@ -35,7 +35,7 @@ def _clean_text(value: str, field: str, maximum: int) -> str:
 def _dedupe_normalize(value: str) -> str:
     """Normalize titles across case, whitespace, punctuation, and Persian/Arabic letter variants."""
     value = str(value).casefold().replace("ي", "ی").replace("ك", "ک").replace("ۀ", "ه").replace("ة", "ه")
-    value = value.replace("\u200c", " ").replace("\u200f", "").replace("\u200e", "")
+    value = value.replace("\u200c", "").replace("\u200f", "").replace("\u200e", "")
     return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
 
 
