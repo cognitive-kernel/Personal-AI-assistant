@@ -932,3 +932,154 @@ document.addEventListener("DOMContentLoaded", () => {
  refreshDueLearningReviews();
  refreshLearningRecommendations();
 });
+
+
+// Phase one: acquire lessons through the user's authenticated ChatGPT tab in local Chrome.
+async function refreshBrowserLearningCourses() {
+ const container = learningEl("browser-learning-courses");
+ if (!container) return;
+ container.textContent = "در حال بارگذاری دوره‌های هوش‌به‌هوش…";
+ try {
+  const result = await learningApi("/api/learning/browser/courses?limit=50");
+  container.replaceChildren();
+  const courses = result.courses || [];
+  if (!courses.length) {
+   container.textContent = "هنوز دوره‌ای ثبت نشده است.";
+   return;
+  }
+  for (const item of courses) {
+   const card = document.createElement("article");
+   card.className = "browser-learning-course";
+   const heading = document.createElement("h4");
+   heading.textContent = "#" + item.id + " — " + (item.title || item.topic);
+   const meta = document.createElement("p");
+   meta.textContent = "وضعیت: " + item.status + " | موضوع: " + item.topic;
+   card.append(heading, meta);
+   if (item.error) {
+    const error = document.createElement("p");
+    error.className = "muted";
+    error.textContent = "جزئیات خطا: " + item.error;
+    card.append(error);
+   }
+   const open = document.createElement("button");
+   open.type = "button";
+   open.textContent = "نمایش سرفصل‌ها و درس‌های ذخیره‌شده";
+   open.addEventListener("click", () => loadBrowserLearningCourse(item.id, card));
+   card.append(open);
+   if (["failed", "interrupted"].includes(item.status)) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "ادامه / تلاش دوباره";
+    retry.addEventListener("click", async () => {
+     retry.disabled = true;
+     try {
+      await learningApi("/api/learning/browser/courses/" + item.id + "/retry", {method: "POST", body: "{}"});
+      await refreshBrowserLearningCourses();
+      pollBrowserLearningCourse(item.id);
+     } catch (error) {
+      retry.disabled = false;
+      learningEl("browser-learning-output").textContent = "ادامهٔ دوره ناموفق بود: " + error.message;
+     }
+    });
+    card.append(retry);
+   }
+   container.append(card);
+  }
+ } catch (error) {
+  container.textContent = "بارگذاری فهرست دوره‌ها ناموفق بود: " + error.message;
+ }
+}
+
+async function loadBrowserLearningCourse(courseId, card) {
+ try {
+  const course = await learningApi("/api/learning/browser/courses/" + courseId);
+  let detail = card.querySelector(".browser-learning-detail");
+  if (detail) detail.remove();
+  detail = document.createElement("div");
+  detail.className = "browser-learning-detail";
+  const heading = document.createElement("h5");
+  heading.textContent = "سرفصل‌های دوره — " + (course.title || course.topic);
+  detail.append(heading);
+  const summary = document.createElement("p");
+  const lessons = course.lessons || [];
+  const completed = lessons.filter(lesson => lesson.status === "completed").length;
+  summary.textContent = "پیشرفت: " + completed + " از " + lessons.length + " درس ذخیره شده | وضعیت دوره: " + course.status;
+  detail.append(summary);
+  for (const lesson of lessons) {
+   const section = document.createElement("details");
+   const title = document.createElement("summary");
+   title.textContent = lesson.position + ". " + lesson.topic + " — " + lesson.status;
+   section.append(title);
+   if (lesson.error) {
+    const error = document.createElement("p");
+    error.textContent = "خطا: " + lesson.error;
+    section.append(error);
+   }
+   if (lesson.content) {
+    const provenance = document.createElement("p");
+    provenance.textContent = "منبع: " + (lesson.source_url || "نامشخص") +
+      " | SHA-256 محتوا: " + (lesson.content_sha256 || "ثبت نشده") +
+      " | SHA-256 درخواست: " + (lesson.prompt_sha256 || "ثبت نشده");
+    const body = document.createElement("pre");
+    body.textContent = lesson.content;
+    section.append(provenance, body);
+   }
+   detail.append(section);
+  }
+  card.append(detail);
+ } catch (error) {
+  learningEl("browser-learning-output").textContent = "دریافت جزئیات دوره ناموفق بود: " + error.message;
+ }
+}
+
+async function pollBrowserLearningCourse(courseId) {
+ const output = learningEl("browser-learning-output");
+ for (let attempt = 0; attempt < 1800; attempt += 1) {
+  try {
+   const course = await learningApi("/api/learning/browser/courses/" + courseId);
+   const lessons = course.lessons || [];
+   const completed = lessons.filter(lesson => lesson.status === "completed").length;
+   output.textContent = "دوره #" + courseId + " — " + (course.title || course.topic) +
+    "\nوضعیت: " + course.status + "\nدرس‌های ذخیره‌شده: " + completed + " از " + lessons.length +
+    (course.error ? "\nخطا: " + course.error : "");
+   await refreshBrowserLearningCourses();
+   if (!["queued", "running"].includes(course.status)) return;
+  } catch (error) {
+   output.textContent = "وضعیت دوره قابل دریافت نیست: " + error.message;
+   return;
+  }
+  await learningDelay(3000);
+ }
+ output.textContent = "پایش خودکار پس از ۹۰ دقیقه متوقف شد؛ وضعیت دوره در فهرست ذخیره شده است.";
+}
+
+const browserLearningForm = learningEl("browser-learning-form");
+if (browserLearningForm) {
+ browserLearningForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = learningEl("browser-learning-start");
+  const output = learningEl("browser-learning-output");
+  button.disabled = true;
+  output.textContent = "در حال ثبت دوره و شروع ارتباط با Chrome…";
+  try {
+   const course = await learningApi("/api/learning/browser/courses", {
+    method: "POST",
+    body: JSON.stringify({
+     topic: learningEl("browser-learning-topic").value,
+     cdp_url: learningEl("browser-learning-cdp").value,
+     max_lessons: Number(learningEl("browser-learning-max-lessons").value)
+    })
+   });
+   output.textContent = "دوره #" + course.id + " ثبت شد؛ در حال اتصال به ChatGPT و دریافت سرفصل‌ها…";
+   await refreshBrowserLearningCourses();
+   pollBrowserLearningCourse(course.id);
+  } catch (error) {
+   output.textContent = "شروع یادگیری هوش‌به‌هوش ناموفق بود: " + error.message;
+  } finally {
+   button.disabled = false;
+  }
+ });
+}
+const browserLearningRefresh = learningEl("browser-learning-refresh");
+if (browserLearningRefresh) browserLearningRefresh.addEventListener("click", refreshBrowserLearningCourses);
+refreshBrowserLearningCourses();
