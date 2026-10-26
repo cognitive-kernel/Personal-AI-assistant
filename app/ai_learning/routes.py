@@ -91,8 +91,8 @@ def _call(function, *args, **kwargs):
 @router.get("/status")
 def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
-            "provider_mode": "manual_import",
-            "note": "Browser automation and chat integration are not enabled in this initial implementation."}
+            "provider_mode": "user_confirmed_chrome_bridge",
+            "note": "The extension inserts prompts but never clicks Send automatically; retrieval is not connected to the existing chat response path."}
 
 @router.post("/runs", status_code=201)
 def create_run(request: RunCreate) -> dict[str, Any]:
