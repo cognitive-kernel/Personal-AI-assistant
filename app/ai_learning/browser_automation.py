@@ -161,7 +161,7 @@ def _browser_capture(prompt: str) -> str:
     except ImportError as exc:
         raise BrowserAutomationError(
             "playwright_not_installed",
-            "Playwright نصب نیست. در پوشه پروژه دستور pip install -e ".[browser]" را اجرا کنید.",
+            'Playwright نصب نیست. در پوشه پروژه دستور pip install -e ".[browser]" را اجرا کنید.',
         ) from exc
 
     chrome = _chrome_path()
