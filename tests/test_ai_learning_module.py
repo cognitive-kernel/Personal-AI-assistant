@@ -50,6 +50,31 @@ def test_reorder_requires_exact_topic_set(isolated_store):
     with pytest.raises(ValueError, match="every active topic"):
         service.reorder_topics(course["id"], [first["id"]])
 
+def test_bulk_topic_actions_support_more_than_500_topics(isolated_store):
+    course = service.create_course(title="Large course")
+    with connection() as conn:
+        conn.executemany(
+            "INSERT INTO topics(course_id,position,title) VALUES(?,?,?)",
+            [(course["id"], index, f"Topic number {index}") for index in range(1, 1201)],
+        )
+        topic_ids = [int(row["id"]) for row in conn.execute(
+            "SELECT id FROM topics WHERE course_id=? ORDER BY position", (course["id"],)
+        ).fetchall()]
+
+    reversed_ids = list(reversed(topic_ids))
+    ordered = service.reorder_topics(course["id"], reversed_ids)
+    assert len(ordered) == 1200
+    assert ordered[0]["id"] == reversed_ids[0]
+    assert ordered[-1]["id"] == reversed_ids[-1]
+
+    assert service.decide_topics(topic_ids, "approved") == 1200
+    with connection() as conn:
+        approved = conn.execute(
+            "SELECT COUNT(*) FROM topics WHERE course_id=? AND approval_status='approved'",
+            (course["id"],),
+        ).fetchone()[0]
+    assert approved == 1200
+
 def test_migration_checksum_mismatch_fails_closed(isolated_store):
     with connection() as conn:
         conn.execute("UPDATE ai_learning_migrations SET checksum='invalid' WHERE version=1")
