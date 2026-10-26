@@ -99,7 +99,7 @@ def _call(function, *args, **kwargs):
 def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
             "provider_mode": "user_confirmed_chrome_bridge",
-            "note": "The extension inserts prompts but never clicks Send automatically; retrieval is separately gated and adds bounded context only when enabled."}
+            "note": "After the user starts a run, the extension attempts to submit the visible ChatGPT prompt and capture the completed answer. Successful outlines automatically continue into small lesson batches; lesson content remains unpublished for review. Retrieval is separately gated."}
 
 @router.post("/runs", status_code=201)
 def create_run(request: RunCreate) -> dict[str, Any]:
