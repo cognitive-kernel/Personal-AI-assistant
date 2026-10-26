@@ -1,6 +1,6 @@
 # AI Learning capture subsystem
 
-Status: staged implementation; only features verified by code and tests should be considered available.
+Status: initial implementation present on the feature branch; target-machine acceptance is still required. Only features verified by code and tests should be considered available.
 
 ## Goal
 
@@ -34,7 +34,7 @@ The isolated schema contains courses, topics, lessons, content versions, runs, b
 
 ## Implementation boundary today
 
-The initial stage includes isolated storage, course/topic APIs, topic ordering, approval/rejection, lesson creation, content versioning, manual review/publishing, chunking and lexical search. A user-confirmed Chrome extension now inserts prompts into the existing ChatGPT UI and captures the latest visible assistant response when the user explicitly requests it. It does not click Send automatically and depends on the provider's current DOM. Durable background queue/pause-resume, resilient response parsing, embeddings and detailed query trace/feedback are not yet implemented. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged.
+The initial stage includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking and lexical search. A user-confirmed Chrome extension now inserts prompts into the existing ChatGPT UI and captures the latest visible assistant response when the user explicitly requests it. It does not click Send automatically and depends on the provider's current DOM. Durable background queue/pause-resume, resilient response parsing, embeddings and detailed query trace/feedback are not yet implemented. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
 
 ## Acceptance criteria
 
