@@ -298,3 +298,27 @@ def test_topic_and_lesson_pause_resume_and_progress_metrics(isolated_store):
     version = service.add_content_version(lesson["id"], "Indexes organize lookup paths.")
     assert service.list_lessons(topic["id"])[0]["progress_percent"] == 75
     assert service.get_course(course["id"])["progress_percent"] == 75
+
+
+def test_resume_reuses_lesson_shell_with_empty_content(isolated_store):
+    course = service.create_course(title="SQL Server recovery")
+    topic = service.add_topic(course["id"], "Query optimization")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Query optimization")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO content_versions(lesson_id,version_no,markdown,raw_response,content_sha256,
+               review_status,source_kind,provider) VALUES(?,1,'','','','published','chatgpt_ui','ChatGPT')""",
+            (lesson["id"],),
+        )
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                             request_key="retry-empty-content")
+    service.start_run(run["id"])
+    completed = service.complete_run(run["id"], "# Query optimization\n\nValid lesson content.")
+    lessons = service.list_lessons(topic["id"])
+    assert completed["status"] == "succeeded"
+    assert len(lessons) == 1
+    assert lessons[0]["progress_percent"] == 75
+    versions = service.list_versions(lesson["id"])
+    assert len(versions) == 2
+    assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content."
