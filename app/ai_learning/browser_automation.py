@@ -528,7 +528,7 @@ def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
             return
         # One topic per run makes per-topic pause/cancel deterministic and recoverable.
         topic_ids = eligible[:1]
-        request_key = f"playwright-lessons-{course_id}-" + "-".join(map(str, topic_ids))
+        request_key = f"playwright-lessons-{course_id}-" + "-".join(map(str, topic_ids)) + "-attempt-" + str(int(time.time()))
         run = service.create_run(course_id, run_type="lesson", topic_ids=topic_ids,
                                  selection_mode="selected", request_key=request_key)
         run_id = int(run["id"])
