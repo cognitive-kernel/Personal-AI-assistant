@@ -52,7 +52,7 @@ python run.py --check-only
 رابط: http://127.0.0.1:8000  
 مستندات API: http://127.0.0.1:8000/docs
 
-برای جزئیات توسعه و معماری به `docs/DEVELOPMENT.md` و `docs/ARCHITECTURE.md` مراجعه کنید. **مرجع واحد مستندات زیرسامانهٔ یادگیری** در `docs/LEARNING.md` قرار دارد. ماژول اختیاری جمع‌آوری و بازیابی دانش از هوش مصنوعی در `app/ai_learning/` پیاده‌سازی اولیه دارد؛ راهنما در `docs/AI_LEARNING_CAPTURE.md` و استاندارد مهندسی در `docs/AI_LEARNING_ENGINEERING.md` است. این ماژول به‌صورت پیش‌فرض خاموش است و پیش از بهره‌برداری باید CI و آزمون دستگاه مقصد بررسی شوند.  وضعیت کلی پروژه و دروازه‌های عملیاتی در `docs/PROJECT_STATUS.md` ثبت می‌شود. کاتالوگ دوره‌ها از مسیرهای `/api/learning/curricula` و `/api/learning/curricula/{slug}` قابل دریافت است.
+برای جزئیات توسعه و معماری به `docs/DEVELOPMENT.md` و `docs/ARCHITECTURE.md` مراجعه کنید. **مرجع واحد مستندات زیرسامانهٔ یادگیری** در `docs/LEARNING.md` قرار دارد. ماژول اختیاری جمع‌آوری و بازیابی دانش از هوش مصنوعی در `app/ai_learning/` پیاده‌سازی اولیه دارد؛ راهنما در `docs/AI_LEARNING_CAPTURE.md` و استاندارد مهندسی در `docs/AI_LEARNING_ENGINEERING.md` است. راهنمای شروع آزمون و فعال‌سازی منوی داشبورد در `docs/AI_LEARNING_TESTING.md` قرار دارد. این ماژول به‌صورت پیش‌فرض خاموش است و پیش از بهره‌برداری باید CI و آزمون دستگاه مقصد بررسی شوند.  وضعیت کلی پروژه و دروازه‌های عملیاتی در `docs/PROJECT_STATUS.md` ثبت می‌شود. کاتالوگ دوره‌ها از مسیرهای `/api/learning/curricula` و `/api/learning/curricula/{slug}` قابل دریافت است.
 
 ## پایگاه دادهٔ موجود و مهاجرت امن
 
