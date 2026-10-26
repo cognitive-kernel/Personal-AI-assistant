@@ -205,6 +205,9 @@ def chat(
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
         raise OllamaError("Ollama returned an empty or unexpected chat response.", retryable=True)
+    # Resource telemetry is best-effort and never changes the model result.
+    from . import usage_metrics
+    usage_metrics.record_ollama_response(purpose=purpose, model=model, response=response)
     return result
 
 

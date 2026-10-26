@@ -984,6 +984,27 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_curriculum_proposals_path_status ON curriculum_update_proposals(path_id, status, id DESC)",
             "CREATE INDEX idx_curriculum_proposals_source_event ON curriculum_update_proposals(source_sync_event_id, status)",
         ),
+    Migration(
+        27,
+        "measured-model-usage-for-learning-value",
+        (
+            """CREATE TABLE model_usage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL REFERENCES task_queue(id) ON DELETE CASCADE,
+                purpose TEXT NOT NULL CHECK(purpose IN ('chat','learning','programming','factual_review','research_plan')),
+                model_name TEXT NOT NULL CHECK(length(trim(model_name)) BETWEEN 1 AND 200),
+                prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK(prompt_tokens >= 0),
+                completion_tokens INTEGER NOT NULL DEFAULT 0 CHECK(completion_tokens >= 0),
+                total_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(total_duration_ns >= 0),
+                load_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(load_duration_ns >= 0),
+                prompt_eval_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(prompt_eval_duration_ns >= 0),
+                eval_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(eval_duration_ns >= 0),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_model_usage_task ON model_usage_events(task_id, id)",
+            "CREATE INDEX idx_model_usage_purpose_created ON model_usage_events(purpose, created_at DESC)",
+        ),
+    )
     )
 )
 

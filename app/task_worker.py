@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from typing import Any, Callable
 
-from . import task_manager
+from . import task_manager, usage_metrics
 from .task_manager import TaskManagerError
 
 TaskHandler = Callable[[dict[str, Any], dict[str, Any] | None, "TaskContext"], dict[str, Any]]
@@ -157,7 +157,8 @@ class TaskWorker:
         )
         heartbeat_thread.start()
         try:
-            result = handler(task["payload"], task["checkpoint"], context)
+            with usage_metrics.capture_task(task["id"]):
+                result = handler(task["payload"], task["checkpoint"], context)
             if not isinstance(result, dict):
                 raise TypeError("Task handlers must return a JSON object.")
             control = context.control_status()
