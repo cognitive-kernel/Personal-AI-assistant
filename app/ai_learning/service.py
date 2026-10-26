@@ -332,18 +332,39 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     conn.commit()
                     return get_run(run_id)
             for topic_id, title, body in sections:
-                position = int(conn.execute(
-                    "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
-                    (topic_id,)).fetchone()[0])
-                cursor = conn.execute(
-                    "INSERT INTO lessons(topic_id,position,title,status) VALUES(?,?,?,'needs_review')",
-                    (topic_id, position, title))
-                lesson_id = int(cursor.lastrowid)
+                # Reuse a prior lesson shell when its captured content was empty; do not
+                # create duplicate lessons just to recover a failed/blank capture.
+                reusable = conn.execute(
+                    """SELECT l.id FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL
+                       AND NOT EXISTS (SELECT 1 FROM content_versions cv
+                                       WHERE cv.lesson_id=l.id AND length(trim(cv.markdown))>0)
+                       ORDER BY l.position DESC LIMIT 1""",
+                    (topic_id,),
+                ).fetchone()
+                if reusable is not None:
+                    lesson_id = int(reusable["id"])
+                    version_no = int(conn.execute(
+                        "SELECT COALESCE(MAX(version_no),0)+1 FROM content_versions WHERE lesson_id=?",
+                        (lesson_id,),
+                    ).fetchone()[0])
+                    conn.execute(
+                        "UPDATE lessons SET title=?,status='needs_review',updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                        (title[:300], lesson_id),
+                    )
+                else:
+                    position = int(conn.execute(
+                        "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
+                        (topic_id,)).fetchone()[0])
+                    cursor = conn.execute(
+                        "INSERT INTO lessons(topic_id,position,title,status) VALUES(?,?,?,'needs_review')",
+                        (topic_id, position, title[:300]))
+                    lesson_id = int(cursor.lastrowid)
+                    version_no = 1
                 digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
                 conn.execute(
                     """INSERT INTO content_versions(lesson_id,version_no,markdown,raw_response,content_sha256,
-                       review_status,source_kind,provider,run_id) VALUES(?,1,?,?,?,'needs_review','chatgpt_ui','ChatGPT',?)""",
-                    (lesson_id, body, response_text, digest, run_id))
+                       review_status,source_kind,provider,run_id) VALUES(?,?,?,?,?,'needs_review','chatgpt_ui','ChatGPT',?)""",
+                    (lesson_id, version_no, body, response_text, digest, run_id))
                 conn.execute("UPDATE run_topics SET status='parsed' WHERE run_id=? AND topic_id=?", (run_id, topic_id))
                 conn.execute("""UPDATE topics SET processing_status='needs_review',updated_at=CURRENT_TIMESTAMP
                                 WHERE id=? AND processing_status <> 'paused'""", (topic_id,))
