@@ -80,3 +80,5 @@ def test_dashboard_exposes_course_wide_lesson_selection_and_generation_controls(
     assert '"/browser/lessons"' in script
     assert '"/versions/"+v.id+"/unpublish"' in script
     assert "هشدار: متن این نسخه خالی است" in script
+    assert "تلاش مجدد با منابع به‌روز" in script
+    assert '"/sources/"+source.id+"/check"' in script
