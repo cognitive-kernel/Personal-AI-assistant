@@ -696,3 +696,29 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
     assert second_count == 0
     assert statuses[first_topic["id"]] == "parsed"
     assert statuses[second_topic["id"]] == "skipped"
+
+
+
+def test_semantic_dedup_does_not_reject_a_different_lesson(isolated_store, monkeypatch):
+    old = (
+        "A database index improves lookup speed by locating matching records without scanning "
+        "every row. It adds a structure that makes searches more efficient."
+    )
+    different = (
+        "Database transactions group operations into an atomic unit, preserve consistency, and "
+        "control concurrent changes using isolation and rollback."
+    )
+    _course_a, _topic_a, lesson_a = _create_approved_lesson("Database indexes")
+    service.add_content_version(lesson_a["id"], old)
+    _course_b, _topic_b, lesson_b = _create_approved_lesson("Database transactions")
+
+    def fake_embed(texts, model=None):
+        vectors = {
+            old: [1.0, 0.0, 0.0],
+            different: [0.0, 1.0, 0.0],
+        }
+        return [vectors[text] for text in texts]
+
+    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    version = service.add_content_version(lesson_b["id"], different)
+    assert version["version_no"] == 1
