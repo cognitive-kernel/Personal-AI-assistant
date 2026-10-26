@@ -117,7 +117,22 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
     return true;
   }
   if(message&&message.type==="get-active-run") {
-    chrome.storage.local.get([...ACTIVE_KEYS,"lastRunStatus"]).then(value=>sendResponse({ok:true,run_id:value.activeRunId||null,last_status:value.lastRunStatus||null}));
+    chrome.storage.local.get([...ACTIVE_KEYS,"lastRunStatus"]).then(async value=>{
+      let runId=value.activeRunId||null;
+      let lastStatus=value.lastRunStatus||null;
+      if(runId) {
+        try {
+          const run=await api("/runs/"+runId);
+          if(["succeeded","failed","cancelled"].includes(run.status)) {
+            await chrome.storage.local.remove(ACTIVE_KEYS);
+            runId=null;
+            lastStatus={run_id:run.id,status:run.status,message:run.error_message||"Run is already complete."};
+            await saveStatus(lastStatus);
+          }
+        } catch (_) {}
+      }
+      sendResponse({ok:true,run_id:runId,last_status:lastStatus});
+    }).catch(error=>sendResponse({ok:false,error:error.message}));
     return true;
   }
   if(message&&message.type==="answer-ready") {
