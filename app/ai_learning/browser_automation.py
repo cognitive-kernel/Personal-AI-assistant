@@ -131,10 +131,15 @@ def _wait_for_complete_answer(page: Any, previous_answer: str) -> str:
                         break
                 except Exception:
                     pass
-            if current and current != previous_answer and current == last_text and not stop_visible:
+            # Some ChatGPT UI versions leave a stale/hidden stop-generation control
+            # visible after the answer has finished. Track text stability independently
+            # and use a longer grace period when that control remains visible.
+            if current and current != previous_answer and current == last_text:
                 if stable_since is None:
                     stable_since = time.monotonic()
-                elif time.monotonic() - stable_since >= _STABLE_SECONDS:
+                stable_for = time.monotonic() - stable_since
+                required_stability = 25.0 if stop_visible else _STABLE_SECONDS
+                if stable_for >= required_stability:
                     if len(current) < 20:
                         raise BrowserAutomationError(
                             "chatgpt_response_too_short",
