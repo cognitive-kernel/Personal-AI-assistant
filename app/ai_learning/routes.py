@@ -43,7 +43,7 @@ class BrowserLessonStart(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class RunHistoryDelete(BaseModel):
-    run_ids: list[int] = Field(min_length=1, max_length=50)
+    run_ids: list[int] = Field(min_length=1, max_length=500)
     model_config = ConfigDict(extra="forbid")
 
 class RunComplete(BaseModel):
@@ -76,11 +76,11 @@ class PauseState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class TopicOrder(BaseModel):
-    topic_ids: list[int] = Field(min_length=1, max_length=500)
+    topic_ids: list[int] = Field(min_length=1, max_length=10000)
     model_config = ConfigDict(extra="forbid")
 
 class TopicDecision(BaseModel):
-    topic_ids: list[int] = Field(min_length=1, max_length=500)
+    topic_ids: list[int] = Field(min_length=1, max_length=10000)
     decision: str
     model_config = ConfigDict(extra="forbid")
 
