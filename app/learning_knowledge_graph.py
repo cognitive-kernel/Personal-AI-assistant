@@ -7,7 +7,7 @@ import re
 from typing import Any
 from urllib.parse import urlparse
 
-from . import ollama, web_sources
+from . import ollama, web_sources, learning_review_adapters
 from .db import get_settings, init_databases, learning_connection
 
 _RELATIONS = {"supports", "causes", "depends_on", "contradicts", "supersedes"}
@@ -128,30 +128,15 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
         })
 
     settings = get_settings()
-    primary_names = {
-        str(settings.get(key, "")).strip()
-        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
-        if str(settings.get(key, "")).strip()
-    }
-    installed = ollama.list_models()
-    primary_digests = {
-        str(item.get("digest")) for item in installed
-        if str(item.get("name", "")).strip() in primary_names and item.get("digest")
-    }
-    reviewers: list[tuple[str, str]] = []
-    seen_digests = set(primary_digests)
-    for item in installed:
-        name, digest = str(item.get("name", "")).strip(), str(item.get("digest", "")).strip()
-        if not name or not digest or name in primary_names or digest in seen_digests or len(name) + len(digest) + 8 > 200:
-            continue
-        reviewers.append((name, digest))
-        seen_digests.add(digest)
-        if len(reviewers) == 2:
-            break
+    try:
+        installed = ollama.list_models()
+    except Exception:
+        installed = []
+    reviewers = learning_review_adapters.list_reviewers(settings, installed)
     if len(reviewers) < 2:
         return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
-            "reason": "Two digest-distinct reviewer models are not available; no edge was accepted or rejected.",
+            "reason": "Two attributable, digest-distinct reviewers are not available; no graph edge was accepted or rejected.",
             "reviews": [],
         })
 
@@ -171,44 +156,54 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
         ),
     }
     reviews = []
-    for index, (model_name, digest) in enumerate(reviewers):
+    reviews = []
+    for index, reviewer in enumerate(reviewers):
         prompt = dict(prompt_base)
-        prompt["specialist_role"] = "relation_evidence_synthesizer" if index == 0 else "skeptical_causal_auditor"
+        role = "relation_evidence_synthesizer" if index == 0 else "skeptical_causal_auditor"
+        prompt["specialist_role"] = role
         serialized = json.dumps(prompt, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         input_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
         try:
-            raw = ollama.chat(
+            provider_result = learning_review_adapters.run_reviewer(
+                reviewer,
                 serialized,
-                system_prompt="Review graph relation evidence conservatively. Abstain if the source does not directly support the relation. JSON only.",
-                purpose="factual_review",
-                model_override=model_name,
+                system_prompt=(
+                    "Review graph relation evidence conservatively. Abstain if the source does not directly support "
+                    "the relation. For causal edges, reject mere correlation. JSON only."
+                ),
             )
+            raw = provider_result["content"]
+            digest = str(provider_result["digest"])
+            model_name = str(provider_result["model"])
             output_hash = hashlib.sha256(str(raw).encode("utf-8")).hexdigest()
             value = json.loads(raw.strip()) if isinstance(raw, str) else {}
             verdict = value.get("verdict") if isinstance(value, dict) else None
             rationale = value.get("rationale") if isinstance(value, dict) else None
             if verdict not in _VERDICTS or not isinstance(rationale, str) or not 20 <= len(rationale.strip()) <= 600:
                 verdict, rationale = "inconclusive", "Reviewer response failed schema validation; no conclusion was drawn."
+            if provider_result["provider_id"] == "ollama":
+                current_models = ollama.list_models()
+                current_digest = next(
+                    (str(item.get("digest", "")) for item in current_models
+                     if isinstance(item, dict) and str(item.get("name", "")).strip() == model_name),
+                    "",
+                )
+                if current_digest != digest:
+                    verdict, rationale = "inconclusive", "Reviewer model identity changed during inference; no conclusion was drawn."
+            reviews.append({
+                "model": model_name, "provider_id": provider_result["provider_id"], "digest": digest,
+                "role": role, "verdict": verdict, "rationale": rationale.strip(),
+                "input_sha256": input_hash, "output_sha256": output_hash,
+            })
         except Exception as exc:
-            verdict, rationale = "inconclusive", f"Reviewer failed safely ({type(exc).__name__}); no conclusion was drawn."
-            input_hash = hashlib.sha256(json.dumps(prompt_base, sort_keys=True).encode()).hexdigest()
-            output_hash = hashlib.sha256(rationale.encode()).hexdigest()
-        reviews.append({
-            "model": model_name, "digest": digest, "role": prompt["specialist_role"],
-            "verdict": verdict, "rationale": rationale.strip(),
-            "input_sha256": input_hash, "output_sha256": output_hash,
-        })
-    latest_installed = ollama.list_models()
-    latest_digests = {
-        str(item.get("name", "")).strip(): str(item.get("digest", "")).strip()
-        for item in latest_installed if isinstance(item, dict)
-    }
-    if any(latest_digests.get(item["model"]) != item["digest"] for item in reviews):
-        return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
-            "status": "inconclusive",
-            "reason": "Reviewer model identity changed during inference; no graph edge was accepted.",
-            "reviews": reviews,
-        })
+            rationale = f"Reviewer failed safely ({type(exc).__name__}); no conclusion was drawn."
+            reviews.append({
+                "model": reviewer["model"], "provider_id": reviewer["provider_id"],
+                "digest": reviewer["digest"], "role": role, "verdict": "inconclusive",
+                "rationale": rationale,
+                "input_sha256": input_hash,
+                "output_sha256": hashlib.sha256(rationale.encode()).hexdigest(),
+            })
     verdicts = [item["verdict"] for item in reviews]
     status = "accepted" if verdicts == ["supports", "supports"] else (
         "rejected" if verdicts == ["contradicts", "contradicts"] else "conflicting"
