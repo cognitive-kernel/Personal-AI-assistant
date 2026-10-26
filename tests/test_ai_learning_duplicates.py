@@ -120,7 +120,7 @@ def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store
     assert result["imported"] == 1
     assert result["skipped_existing"] == 1
     assert result["skipped_duplicates"][0]["duplicate_of"] == existing["title"]
-    assert result["skipped_duplicates"][0]["method"] == "embedding"
+    assert result["skipped_duplicates"][0]["method"] == "embedding+token_overlap"
 
 
 def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_store, monkeypatch):
