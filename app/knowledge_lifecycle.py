@@ -74,6 +74,19 @@ def record_candidate_review(
         if parsed.scheme != "https" or not host or parsed.username or parsed.password:
             raise ValueError("Source review requires a credential-free HTTPS URL.")
         source_sha256 = _digest(source_sha256, "source_sha256")
+        # Bind the claimed source digest to a safe live fetch instead of accepting a caller-supplied hash.
+        from . import web_sources
+        try:
+            live_document = web_sources.fetch_public_document(
+                source_url, "temporary learning candidate review", max_chars=100000
+            )
+        except Exception as exc:
+            raise ValueError(
+                "Source could not be safely fetched; record the review as inconclusive outside this endpoint."
+            ) from exc
+        observed_source_hash = hashlib.sha256(live_document.text.encode("utf-8")).hexdigest()
+        if observed_source_hash != source_sha256:
+            raise ValueError("Source hash does not match the currently fetched public document.")
     elif source_url is not None or source_sha256 is not None:
         raise ValueError("Only source reviews may include a source URL/hash.")
     if review_kind == "ai_review":
