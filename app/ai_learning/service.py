@@ -170,8 +170,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
         raise ValueError("run_type must be outline or lesson.")
     if selection_mode not in {"single", "selected", "all_approved"}:
         raise ValueError("Unsupported selection_mode.")
-    if len(topic_ids) > 100 or len(set(topic_ids)) != len(topic_ids):
-        raise ValueError("topic_ids must be unique and contain at most 100 items.")
+    if len(topic_ids) > 10000 or len(set(topic_ids)) != len(topic_ids):
+        raise ValueError("topic_ids must be unique and contain at most 10000 items.")
     if run_type == "outline" and topic_ids:
         raise ValueError("Outline runs do not take topic IDs.")
     if run_type == "lesson":
@@ -1130,8 +1130,8 @@ def edit_topic(topic_id: int, *, title: str | None = None, description: str | No
         return dict(conn.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone())
 
 def reorder_topics(course_id: int, topic_ids: list[int]) -> list[dict[str, Any]]:
-    if not topic_ids or len(topic_ids) > 500 or len(set(topic_ids)) != len(topic_ids):
-        raise ValueError("topic_ids must be a non-empty list of unique topic IDs.")
+    if not topic_ids or len(topic_ids) > 10000 or len(set(topic_ids)) != len(topic_ids):
+        raise ValueError("topic_ids must be a non-empty list of up to 10000 unique topic IDs.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         current = [int(r[0]) for r in conn.execute(
@@ -1139,9 +1139,10 @@ def reorder_topics(course_id: int, topic_ids: list[int]) -> list[dict[str, Any]]
             (course_id,)).fetchall()]
         if set(current) != set(topic_ids):
             raise ValueError("topic_ids must contain every active topic in this course exactly once.")
-        # Temporary positive positions avoid both the UNIQUE constraint and CHECK(position >= 1).
+        # Use positions above the current maximum; fixed offsets collide once courses exceed 999 topics.
+        temporary_base = max(current, default=0) + len(topic_ids)
         for offset, topic_id in enumerate(topic_ids, 1):
-            conn.execute("UPDATE topics SET position=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (1000 + offset, topic_id))
+            conn.execute("UPDATE topics SET position=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (temporary_base + offset, topic_id))
         for position, topic_id in enumerate(topic_ids, 1):
             conn.execute("UPDATE topics SET position=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (position, topic_id))
         rows = conn.execute("SELECT * FROM topics WHERE course_id=? AND deleted_at IS NULL ORDER BY position",
@@ -1153,15 +1154,23 @@ def decide_topics(topic_ids: list[int], decision: str) -> int:
         raise ValueError("decision must be approved or rejected.")
     if not topic_ids or len(topic_ids) > 500 or len(set(topic_ids)) != len(topic_ids):
         raise ValueError("topic_ids must be a non-empty list of unique IDs.")
-    marks = ",".join("?" for _ in topic_ids)
+    # Chunk SQL parameters to remain below SQLite's conservative 999-variable limit.
+    chunk_size = 400
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        found = conn.execute(
-            f"SELECT id FROM topics WHERE id IN ({marks}) AND deleted_at IS NULL", tuple(topic_ids)).fetchall()
-        if len(found) != len(topic_ids):
+        found_ids: set[int] = set()
+        for start in range(0, len(topic_ids), chunk_size):
+            chunk = topic_ids[start:start + chunk_size]
+            marks = ",".join("?" for _ in chunk)
+            found_ids.update(int(row["id"]) for row in conn.execute(
+                f"SELECT id FROM topics WHERE id IN ({marks}) AND deleted_at IS NULL", tuple(chunk)).fetchall())
+        if len(found_ids) != len(topic_ids):
             raise NotFoundError("One or more topics were not found.")
-        conn.execute(f"UPDATE topics SET approval_status=?,updated_at=CURRENT_TIMESTAMP WHERE id IN ({marks})",
-                     (decision, *topic_ids))
+        for start in range(0, len(topic_ids), chunk_size):
+            chunk = topic_ids[start:start + chunk_size]
+            marks = ",".join("?" for _ in chunk)
+            conn.execute(f"UPDATE topics SET approval_status=?,updated_at=CURRENT_TIMESTAMP WHERE id IN ({marks})",
+                         (decision, *chunk))
     return len(topic_ids)
 
 def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
