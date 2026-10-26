@@ -191,6 +191,11 @@ def delete_course(course_id: int) -> dict[str, Any]:
 def get_course(course_id: int) -> dict[str, Any]:
     return _call(service.get_course, course_id)
 
+@router.post("/reset-learning-data")
+def reset_learning_data() -> dict[str, Any]:
+    """Destructively clear captured topics, lessons, versions, runs and retrieval traces."""
+    return _call(service.reset_learning_data)
+
 @router.delete("/courses/{course_id}/runs")
 def delete_course_runs(course_id: int, request: RunHistoryDelete) -> dict[str, Any]:
     return _call(service.delete_course_runs, course_id, request.run_ids)
