@@ -312,6 +312,8 @@ def test_transfer_evidence_does_not_count_near_duplicate_problem_paraphrases(tmp
     assert transfer["transfer_repeatable"] is False
     assert transfer["transfer_case_count"] == 1
     assert transfer["transfer_attempt_count"] == 2
+    assert transfer["transfer_novelty_method"] == "token_set_jaccard"
+    assert transfer["transfer_novelty_threshold"] == 0.80
 
 
 def test_unprovenanced_near_duplicate_cannot_collapse_valid_transfer_scenarios(tmp_path, monkeypatch):
