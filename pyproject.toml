@@ -20,3 +20,6 @@ markers = ["sandbox_integration: requires Docker and a preloaded digest-pinned P
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.setuptools.package-data]
+app = ["ai_learning/static/*", "ai_learning/browser_extension/*"]
