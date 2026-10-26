@@ -224,6 +224,8 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     # Keep the visible browser open briefly so the user can complete a legitimate sign-in.
                     login_deadline = time.monotonic() + 180
                     while time.monotonic() < login_deadline:
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                         if "login" not in page.url.casefold() and "auth.openai.com" not in page.url.casefold():
                             break
                         page.wait_for_timeout(1000)
@@ -233,6 +235,8 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                             "ورود به ChatGPT در ۳ دقیقه تکمیل نشد. اگر رابط عمومی بدون ورود کار می‌کند، دوباره تلاش کنید.",
                         )
                     page.wait_for_timeout(1500)
+                if cancel_event is not None and cancel_event.is_set():
+                    raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                 previous = _visible_response(page)
                 _send_prompt(page, prompt)
                 return _wait_for_complete_answer(page, previous, cancel_event)
