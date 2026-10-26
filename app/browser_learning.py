@@ -20,6 +20,23 @@ class BrowserLearningError(RuntimeError):
     pass
 
 
+def _is_chatgpt_url(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+    except (TypeError, ValueError):
+        return False
+    return parsed.scheme == "https" and (parsed.hostname or "").lower() in {"chatgpt.com", "chat.openai.com"}
+
+
+def _chatgpt_source_url(value: str) -> str:
+    if not _is_chatgpt_url(value):
+        raise BrowserLearningError("صفحهٔ فعال، میزبان معتبر ChatGPT نیست.")
+    parsed = urlparse(value)
+    # Keep the conversation path but never persist query parameters or fragments.
+    path = parsed.path or "/"
+    return f"https://{parsed.hostname.lower()}{path}"[:1000]
+
+
 def _valid_cdp_url(value: str) -> str:
     if not isinstance(value, str) or len(value) > 200:
         raise ValueError("نشانی Chrome DevTools نامعتبر است.")
@@ -246,11 +263,11 @@ def run_course(course_id: int) -> None:
                 raise BrowserLearningError("Chrome هیچ نشست فعالی در اختیار نگذاشت.")
             context = contexts[0]
             pages = context.pages
-            page = next((item for item in reversed(pages) if item.url.startswith(("https://chatgpt.com", "https://chat.openai.com"))), None)
+            page = next((item for item in reversed(pages) if _is_chatgpt_url(item.url)), None)
             if page is None:
                 page = context.new_page()
                 page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
-            if not page.url.startswith(("https://chatgpt.com", "https://chat.openai.com")):
+            if not _is_chatgpt_url(page.url):
                 page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
 
             if course.get("outline_json"):
@@ -317,7 +334,7 @@ def run_course(course_id: int) -> None:
                             """UPDATE browser_learning_lessons SET status='completed', content=?,
                                source_url=?, prompt_sha256=?, content_sha256=?, error=NULL,
                                updated_at=CURRENT_TIMESTAMP WHERE course_id=? AND position=?""",
-                            (lesson, SOURCE_URL, prompt_hash, lesson_hash, course_id, position),
+                            (lesson, _chatgpt_source_url(page.url), prompt_hash, lesson_hash, course_id, position),
                         )
                 except Exception as exc:
                     with learning_connection() as conn:
