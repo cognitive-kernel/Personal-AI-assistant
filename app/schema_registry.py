@@ -1095,6 +1095,45 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_graph_target ON learning_knowledge_graph_edges(target_knowledge_id, status, relation_type)",
         ),
     )
+
+    Migration(
+        33,
+        "chrome-chatgpt-learning-phase-one",
+        (
+            """CREATE TABLE browser_learning_courses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic TEXT NOT NULL CHECK(length(trim(topic)) BETWEEN 1 AND 300),
+                title TEXT,
+                cdp_url TEXT NOT NULL CHECK(cdp_url LIKE 'http://127.0.0.1:%' OR cdp_url LIKE 'http://localhost:%' OR cdp_url LIKE 'http://[::1]:%'),
+                max_lessons INTEGER NOT NULL CHECK(max_lessons BETWEEN 1 AND 40),
+                outline_json TEXT,
+                status TEXT NOT NULL DEFAULT 'queued'
+                    CHECK(status IN ('queued','running','completed','failed','interrupted')),
+                error TEXT CHECK(error IS NULL OR length(error) <= 1000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE browser_learning_lessons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL REFERENCES browser_learning_courses(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 40),
+                topic TEXT NOT NULL CHECK(length(trim(topic)) BETWEEN 1 AND 300),
+                status TEXT NOT NULL DEFAULT 'queued'
+                    CHECK(status IN ('queued','running','completed','failed')),
+                content TEXT,
+                source_url TEXT CHECK(source_url IS NULL OR source_url = 'https://chatgpt.com/'),
+                prompt_sha256 TEXT CHECK(prompt_sha256 IS NULL OR length(prompt_sha256) = 64),
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256) = 64),
+                error TEXT CHECK(error IS NULL OR length(error) <= 1000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(course_id, position)
+            )""",
+            "CREATE INDEX idx_browser_learning_courses_status ON browser_learning_courses(status, id DESC)",
+            "CREATE INDEX idx_browser_learning_lessons_course ON browser_learning_lessons(course_id, position)",
+            "CREATE INDEX idx_browser_learning_lessons_status ON browser_learning_lessons(status, course_id)",
+        ),
+    ),
 )
 
  
