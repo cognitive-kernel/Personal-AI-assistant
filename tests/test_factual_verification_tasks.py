@@ -761,3 +761,98 @@ def test_node_and_rust_harnesses_bind_runtime_and_completion_markers():
     assert version == "1.84.0"
     assert completed is True
     assert output == "rust assertion passed"
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "version", "source_url", "source_excerpt", "test_source", "runtime_marker"),
+    [
+        (
+            "javascript", "22.14.0",
+            "https://nodejs.org/download/release/v22.14.0/docs/api/assert.html",
+            "The assert module provides a set of assertion functions for verifying invariants.",
+            "assert.equal(2 + 2, 4);",
+            "__PAI_NODE_VERSION__",
+        ),
+        (
+            "rust", "1.84.0",
+            "https://doc.rust-lang.org/1.84.0/std/macro.assert_eq.html",
+            "Asserts that two expressions are equal to each other.",
+            "assert_eq!(2 + 2, 4);",
+            "__PAI_RUST_VERSION__",
+        ),
+    ],
+)
+def test_language_runner_promotes_only_after_exact_runtime_and_completed_harness(
+    learning_store, monkeypatch, environment_name, version, source_url,
+    source_excerpt, test_source, runtime_marker,
+):
+    with db.learning_connection() as connection:
+        knowledge_id = factual_knowledge.create_claim(
+            connection,
+            f"A versioned {environment_name} assertion checks equality.",
+            environment_name=environment_name,
+            environment_version=version,
+            scope={"topic": f"{environment_name} assertions"},
+        )
+        factual_knowledge.add_evidence(
+            connection, knowledge_id, source_type="official_docs",
+            source_ref=source_url, source_hash="sha256:language-source",
+            excerpt=source_excerpt,
+        )
+        factual_knowledge.transition_evidence_level(connection, knowledge_id, "L1_sourced")
+        factual_knowledge.transition_lifecycle(connection, knowledge_id, "active")
+        candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+        oracle_review_id = factual_knowledge.record_oracle_review(
+            connection,
+            knowledge_id,
+            claim_hash=candidate["claim_hash"],
+            test_source_hash=hashlib.sha256(test_source.encode("utf-8")).hexdigest(),
+            oracle_source_url=source_url,
+            oracle_source_hash=hashlib.sha256(source_excerpt.encode("utf-8")).hexdigest(),
+            review_note="Compared this assertion against the exact official versioned runtime reference.",
+        )
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    captured = {}
+
+    def sandbox_handler(payload, *_args):
+        captured.update(payload)
+        marker = _completion_marker(payload["source_code"])
+        return {
+            "execution_status": "succeeded",
+            "exit_code": 0,
+            "stdout": f"{runtime_marker}:{version}\\nassertion passed\\n{marker}\\n",
+            "stderr": "",
+            "duration_ms": 12,
+            "image": (
+                "node:22-bookworm-slim@sha256:" + "b" * 64
+                if environment_name == "javascript"
+                else "rust:1.84-slim@sha256:" + "c" * 64
+            ),
+        }
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    result = handler({
+        "knowledge_id": knowledge_id,
+        "test_name": f"{environment_name} assertion semantics",
+        "source_code": test_source,
+        "oracle_reviewed": True,
+        "oracle_review_id": oracle_review_id,
+        "oracle_review_note": "Compared this assertion against the exact official versioned runtime reference.",
+        "timeout_seconds": 10,
+        "max_output_bytes": 1000,
+    }, None, FakeContext())
+
+    assert captured["language"] == environment_name
+    assert result["outcome"] == "passed"
+    assert result["evidence_level_promoted"] is True
+    assert result["runtime_version"] == version
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+        test = connection.execute(
+            "SELECT outcome, environment_name, environment_version FROM factual_tests WHERE knowledge_id=?",
+            (knowledge_id,),
+        ).fetchone()
+    assert row["evidence_level"] == "L2_tested"
+    assert tuple(test) == ("passed", environment_name, version)
