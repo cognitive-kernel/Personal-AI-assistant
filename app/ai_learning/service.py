@@ -70,8 +70,12 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             topics = conn.execute(
                 """SELECT t.* FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL
                    AND t.approval_status='approved'
-                   AND NOT EXISTS (SELECT 1 FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
-                                   WHERE l.topic_id=t.id AND l.deleted_at IS NULL AND length(trim(cv.markdown))>0)
+                   AND NOT EXISTS (SELECT 1 FROM lessons l
+                                    WHERE l.topic_id=t.id AND l.deleted_at IS NULL
+                                      AND EXISTS (SELECT 1 FROM content_versions cv
+                                                  WHERE cv.lesson_id=l.id
+                                                    AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+                                                    AND length(trim(COALESCE(cv.markdown,'')))>0))
                    ORDER BY t.position""",
                 (course_id,)).fetchall()
             if not topics:
@@ -87,8 +91,12 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             if any(row["approval_status"] != "approved" for row in topics):
                 raise ValueError("Only approved topics may be sent for lesson generation.")
             topics = [row for row in topics if conn.execute(
-                """SELECT 1 FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
-                   WHERE l.topic_id=? AND l.deleted_at IS NULL AND length(trim(cv.markdown))>0 LIMIT 1""",
+                """SELECT 1 FROM lessons l
+                   WHERE l.topic_id=? AND l.deleted_at IS NULL
+                     AND EXISTS (SELECT 1 FROM content_versions cv
+                                 WHERE cv.lesson_id=l.id
+                                   AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+                                   AND length(trim(COALESCE(cv.markdown,'')))>0) LIMIT 1""",
                 (row["id"],)).fetchone() is None]
             topic_ids = [int(row["id"]) for row in topics]
             if not topics:
@@ -452,7 +460,9 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 reusable = conn.execute(
                     """SELECT l.id FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL
                        AND NOT EXISTS (SELECT 1 FROM content_versions cv
-                                       WHERE cv.lesson_id=l.id AND length(trim(cv.markdown))>0)
+                                        WHERE cv.lesson_id=l.id
+                                          AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+                                          AND length(trim(COALESCE(cv.markdown,'')))>0)
                        ORDER BY l.position DESC LIMIT 1""",
                     (topic_id,),
                 ).fetchone()
@@ -651,9 +661,11 @@ def get_course(course_id: int) -> dict[str, Any]:
                       (SELECT COUNT(*) FROM lessons l
                        WHERE l.topic_id=t.id AND l.deleted_at IS NULL) AS lesson_count,
                       (SELECT COUNT(DISTINCT l.id) FROM lessons l
-                       JOIN content_versions cv ON cv.lesson_id=l.id
-                       WHERE l.topic_id=t.id AND l.deleted_at IS NULL
-                         AND length(trim(COALESCE(cv.markdown,'')))>0) AS lesson_content_ready_count
+                        WHERE l.topic_id=t.id AND l.deleted_at IS NULL
+                          AND EXISTS (SELECT 1 FROM content_versions cv
+                                      WHERE cv.lesson_id=l.id
+                                        AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+                                        AND length(trim(COALESCE(cv.markdown,'')))>0)) AS lesson_content_ready_count
                FROM topics t
                WHERE t.course_id=? AND t.deleted_at IS NULL
                ORDER BY t.position,t.id""",
