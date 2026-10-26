@@ -99,6 +99,51 @@ def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolat
     assert run["status"] == "succeeded"
 
 
+
+def test_outline_parser_accepts_plain_lines_and_ignores_chatgpt_wrapper_and_audit():
+    raw = (
+        "ChatGPT said:\\n"
+        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه\\n"
+        "ایجاد و مدیریت Sequence با CREATE SEQUENCE\\n"
+        "مدیریت تراکنش‌ها و کنترل هم‌زمانی\\n"
+        "AUDIT: status=COMPLETE; total_topics=1400; missing_domains=none; end_reason=all_applicable_domains_covered"
+    )
+    assert service._parse_outline_titles(raw) == [
+        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه",
+        "ایجاد و مدیریت Sequence با CREATE SEQUENCE",
+        "مدیریت تراکنش‌ها و کنترل هم‌زمانی",
+    ]
+
+
+def test_outline_parser_does_not_truncate_large_plain_line_outlines():
+    raw = "\\n".join(f"سرفصل آزمایشی شماره {index}" for index in range(1, 1401))
+    titles = service._parse_outline_titles(raw)
+    assert len(titles) == 1400
+    assert titles[0] == "سرفصل آزمایشی شماره 1"
+    assert titles[-1] == "سرفصل آزمایشی شماره 1400"
+
+
+def test_outline_import_accepts_plain_line_outline_and_preserves_raw_response(isolated_store, monkeypatch):
+    course = service.create_course(title="SQL Server 2025")
+    raw = (
+        "ChatGPT said:\\n"
+        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه\\n"
+        "ایجاد و مدیریت Sequence با CREATE SEQUENCE\\n"
+        "مدیریت تراکنش‌ها و کنترل هم‌زمانی\\n"
+        "AUDIT: status=COMPLETE; total_topics=3; missing_domains=none; end_reason=all_applicable_domains_covered"
+    )
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
+    result = service.import_outline(course["id"], raw)
+    assert result["imported"] == 3
+    assert [item["title"] for item in result["topics"]] == [
+        "تفاوت Identity با Sequence و مدیریت تخصیص شناسه",
+        "ایجاد و مدیریت Sequence با CREATE SEQUENCE",
+        "مدیریت تراکنش‌ها و کنترل هم‌زمانی",
+    ]
+    with connection() as conn:
+        saved = conn.execute("SELECT response_text FROM runs WHERE id=?", (result["run_id"],)).fetchone()
+    assert saved["response_text"] == raw
+
 def test_outline_import_rejects_unstructured_response(isolated_store):
     course = service.create_course(title="SQL Server")
     with pytest.raises(ValueError, match="No numbered"):
