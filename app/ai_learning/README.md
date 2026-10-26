@@ -12,11 +12,11 @@ Do not expose the host service beyond loopback. The host application intentional
 
 ## Implemented
 
-Isolated SQLite schema and checksummed migrations, course/topic management, explicit topic approval/rejection, topic ordering, lesson/version creation, review-before-publish, chunking, and lexical retrieval over published content only.
+Isolated SQLite schema and checksummed migrations, course/topic management, explicit topic approval/rejection, topic ordering, lesson/version creation, review-before-publish, chunking, lexical retrieval over published content only, and an optional fail-open retrieval hook in the existing chat path. The chat hook is disabled by default.
 
 ## Not implemented yet
 
-Automatic background outline/lesson generation, robust DOM-independent provider parsing, durable pause/resume jobs, semantic embeddings, durable query trace/feedback and broader quality evaluation. A user-confirmed Chrome extension now inserts prompts into ChatGPT and captures the latest visible answer, but the user must submit the prompt and request capture explicitly. The extension is DOM-sensitive and is not a durable queue. Content is still unreviewed until explicitly reviewed and published.
+Automatic background outline/lesson generation, robust DOM-independent provider parsing, durable pause/resume jobs, semantic embeddings, durable query trace/feedback and broader quality evaluation. A user-confirmed Chrome extension now inserts prompts into ChatGPT and captures the latest visible answer, but the user must submit the prompt and request capture explicitly. The extension is DOM-sensitive and is not a durable queue. Content is still unreviewed until explicitly reviewed and published. The chat hook does not change the configured model; it adds bounded internal context only when both feature flags are enabled and matching published knowledge exists.
 
 ## Safety
 
