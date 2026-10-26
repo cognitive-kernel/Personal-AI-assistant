@@ -1117,6 +1117,7 @@ def _find_semantic_duplicate_content(
            WHERE l.deleted_at IS NULL AND t.deleted_at IS NULL
              AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
              AND cv.review_status NOT IN ('superseded','withdrawn','rejected')
+             AND length(trim(COALESCE(cv.markdown,'')))>0
              AND (? IS NULL OR l.id<>?)
              AND (? IS NULL OR l.topic_id<>?)
            ORDER BY cv.id DESC""",
