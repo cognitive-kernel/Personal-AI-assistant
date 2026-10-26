@@ -581,6 +581,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
         in_flight = next((item for item in candidates if item.get("status") in {"running", "queued"}), None)
         if in_flight is not None:
             run = service.start_run(int(in_flight["id"]))
+            run = service.get_run(int(in_flight["id"]))
             run_id = int(run["id"])
             target_course = int(run["course_id"])
             _ACTIVE = True
@@ -598,7 +599,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                     "message": "اجرای ناتمام دوباره آغاز شد؛ پاسخ‌های ثبت‌شده حفظ شده‌اند."}
 
         courses = ([service.get_course(course_id)] if course_id is not None
-                   else service.list_courses(100))
+                   else [service.get_course(int(item["id"])) for item in service.list_courses(100)])
         for course in courses:
             cid = int(course["id"])
             eligible = [int(topic["id"]) for topic in course.get("topics", [])
