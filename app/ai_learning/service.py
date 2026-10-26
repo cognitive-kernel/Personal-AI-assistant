@@ -501,59 +501,100 @@ def soft_delete_course(course_id: int) -> dict[str, Any]:
         )
         return {"id": course_id, "archived": True}
 
+def reset_learning_data() -> dict[str, Any]:
+    """Clear all collected learning content while preserving course definitions for a clean restart."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        active = conn.execute(
+            "SELECT id FROM runs WHERE status IN ('queued','running') ORDER BY id"
+        ).fetchall()
+        if active:
+            ids = ", ".join(str(int(row["id"])) for row in active)
+            raise ValueError(
+                "ابتدا همهٔ اجراهای فعال را با «توقف همه اجراهای فعال» متوقف کنید؛ "
+                "اجرای فعال باقی مانده: " + ids
+            )
+        counts = {
+            "runs": int(conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]),
+            "topics": int(conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0]),
+            "lessons": int(conn.execute("SELECT COUNT(*) FROM lessons").fetchone()[0]),
+            "versions": int(conn.execute("SELECT COUNT(*) FROM content_versions").fetchone()[0]),
+        }
+        conn.execute("DELETE FROM runs")
+        conn.execute("DELETE FROM topics")
+        conn.execute("DELETE FROM query_traces")
+        conn.execute(
+            "UPDATE ai_learning_control SET paused=0,reason='',updated_at=CURRENT_TIMESTAMP WHERE id=1"
+        )
+        return {
+            "reset": True,
+            "preserved_courses": int(conn.execute("SELECT COUNT(*) FROM courses").fetchone()[0]),
+            "deleted": counts,
+        }
+
 def get_course(course_id: int) -> dict[str, Any]:
+    """Return course topics with progress derived from every lesson, not an arbitrary joined version."""
     with connection() as conn:
         course = conn.execute("SELECT * FROM courses WHERE id=?", (course_id,)).fetchone()
         if course is None:
             raise NotFoundError("Course not found.")
         topics = conn.execute(
             """SELECT t.*,
-                      (SELECT COUNT(*) FROM lessons l WHERE l.topic_id=t.id AND l.deleted_at IS NULL) AS lesson_count,
-                      (SELECT COUNT(DISTINCT l.id) FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
-                       WHERE l.topic_id=t.id AND l.deleted_at IS NULL AND length(trim(cv.markdown))>0) AS lesson_content_ready_count,
-                      (SELECT CASE WHEN length(trim(cv.markdown))>0 THEN cv.review_status ELSE 'empty' END
-                       FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
-                       WHERE l.topic_id=t.id AND l.deleted_at IS NULL ORDER BY cv.version_no DESC LIMIT 1) AS latest_review_status
-               FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL ORDER BY t.position,t.id""",
-            (course_id,)).fetchall()
+                      (SELECT COUNT(*) FROM lessons l
+                       WHERE l.topic_id=t.id AND l.deleted_at IS NULL) AS lesson_count,
+                      (SELECT COUNT(DISTINCT l.id) FROM lessons l
+                       JOIN content_versions cv ON cv.lesson_id=l.id
+                       WHERE l.topic_id=t.id AND l.deleted_at IS NULL
+                         AND length(trim(COALESCE(cv.markdown,'')))>0) AS lesson_content_ready_count
+               FROM topics t
+               WHERE t.course_id=? AND t.deleted_at IS NULL
+               ORDER BY t.position,t.id""",
+            (course_id,),
+        ).fetchall()
+
     topic_items = []
     for row in topics:
         item = dict(row)
-        review = item.pop("latest_review_status", None)
-        if review == "published":
-            progress = 100
-            label = "منتشرشده"
-        elif review == "reviewed":
-            progress = 90
-            label = "بازبینی‌شده"
-        elif review == "needs_review":
-            progress = 75
-            label = "محتوا دریافت شده؛ نیازمند بازبینی"
-        elif item["lesson_count"]:
-            progress = 25
-            label = "درس ایجاد شده؛ محتوا خالی یا ناقص است و باید دوباره دریافت شود"
+        lessons = list_lessons(int(item["id"]))
+        if lessons:
+            lesson_progress = [int(lesson["progress_percent"]) for lesson in lessons]
+            progress = round(sum(lesson_progress) / len(lesson_progress))
+            if all(value == 100 for value in lesson_progress):
+                label = "همهٔ درس‌ها منتشر شده‌اند"
+            elif all(value >= 90 for value in lesson_progress):
+                label = "درس‌ها بازبینی شده‌اند؛ انتشار یا تکمیل باقی مانده"
+            elif all(value >= 75 for value in lesson_progress):
+                label = "محتوا دریافت شده؛ نیازمند بازبینی"
+            elif any(value > 0 for value in lesson_progress):
+                label = "بخشی از درس‌ها دریافت شده؛ ادامه یا اصلاح لازم است"
+            elif item["processing_status"] == "running":
+                progress, label = 10, "در حال دریافت"
+            elif item["processing_status"] == "paused":
+                progress, label = 0, "متوقف‌شده"
+            else:
+                label = "درس ایجاد شده؛ دریافت محتوا باقی مانده"
         elif item["processing_status"] == "running":
-            progress = 10
-            label = "در حال دریافت"
+            progress, label = 10, "در حال دریافت"
         elif item["processing_status"] == "paused":
-            progress = 0
-            label = "متوقف‌شده"
+            progress, label = 0, "متوقف‌شده"
         elif item["approval_status"] == "approved":
-            progress = 0
-            label = "در انتظار دریافت درس"
+            progress, label = 0, "در انتظار دریافت درس"
         else:
-            progress = 0
-            label = "در انتظار تأیید سرفصل"
-        if item["processing_status"] == "paused":
-            label = "متوقف‌شده" if progress == 0 else "متوقف‌شده — " + label
+            progress, label = 0, "در انتظار تأیید سرفصل"
+
+        if item["processing_status"] == "paused" and progress > 0:
+            label = "متوقف‌شده — " + label
         item["progress_percent"] = progress
         item["progress_label"] = label
         topic_items.append(item)
+
     result = dict(course)
     result["topics"] = topic_items
-    result["progress_percent"] = round(sum(t["progress_percent"] for t in topic_items) / len(topic_items)) if topic_items else 0
+    result["progress_percent"] = round(
+        sum(topic["progress_percent"] for topic in topic_items) / len(topic_items)
+    ) if topic_items else 0
     result["topic_total"] = len(topic_items)
-    result["topic_completed"] = sum(1 for t in topic_items if t["progress_percent"] == 100)
+    result["topic_completed"] = sum(1 for topic in topic_items if topic["progress_percent"] == 100)
     result["topic_remaining"] = result["topic_total"] - result["topic_completed"]
     return result
 
@@ -745,9 +786,10 @@ def list_lessons(topic_id: int) -> list[dict[str, Any]]:
             raise NotFoundError("Topic not found.")
         rows = conn.execute(
             """SELECT l.*,
-                      (SELECT CASE WHEN length(trim(markdown))>0 THEN review_status ELSE 'empty' END
-                       FROM content_versions cv WHERE cv.lesson_id=l.id
-                       ORDER BY version_no DESC LIMIT 1) AS latest_review_status,
+                      (SELECT review_status
+                       FROM content_versions cv
+                       WHERE cv.lesson_id=l.id AND length(trim(COALESCE(cv.markdown,'')))>0
+                       ORDER BY cv.id DESC LIMIT 1) AS latest_review_status,
                       (SELECT COUNT(*) FROM content_versions cv WHERE cv.lesson_id=l.id) AS version_count
                FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL ORDER BY l.position,l.id""",
             (topic_id,)).fetchall()
