@@ -1,6 +1,6 @@
 """Loopback-only API for the optional AI-learning module."""
 from __future__ import annotations
-from typing import Any
+from typing import Any, Literal
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,6 +16,18 @@ class CourseCreate(BaseModel):
     language: str = Field(default="fa", min_length=2, max_length=20)
     target_level: str = Field(default="beginner_to_advanced", min_length=1, max_length=80)
     scope_notes: str = Field(default="", max_length=4000)
+    model_config = ConfigDict(extra="forbid")
+
+class RunCreate(BaseModel):
+    course_id: int = Field(ge=1)
+    run_type: Literal["outline", "lesson"]
+    topic_ids: list[int] = Field(default_factory=list, max_length=100)
+    selection_mode: Literal["single", "selected", "all_approved"] = "single"
+    request_key: str = Field(min_length=1, max_length=100)
+    model_config = ConfigDict(extra="forbid")
+
+class RunComplete(BaseModel):
+    response_text: str = Field(min_length=1, max_length=100000)
     model_config = ConfigDict(extra="forbid")
 
 class OutlineImport(BaseModel):
@@ -81,6 +93,24 @@ def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
             "provider_mode": "manual_import",
             "note": "Browser automation and chat integration are not enabled in this initial implementation."}
+
+@router.post("/runs", status_code=201)
+def create_run(request: RunCreate) -> dict[str, Any]:
+    return _call(service.create_run, request.course_id, run_type=request.run_type,
+                 topic_ids=request.topic_ids, selection_mode=request.selection_mode,
+                 request_key=request.request_key)
+
+@router.get("/runs/{run_id}")
+def get_run(run_id: int) -> dict[str, Any]:
+    return _call(service.get_run, run_id)
+
+@router.post("/runs/{run_id}/start")
+def start_run(run_id: int) -> dict[str, Any]:
+    return _call(service.start_run, run_id)
+
+@router.post("/runs/{run_id}/complete")
+def complete_run(run_id: int, request: RunComplete) -> dict[str, Any]:
+    return _call(service.complete_run, run_id, request.response_text)
 
 @router.post("/courses", status_code=201)
 def create_course(request: CourseCreate) -> dict[str, Any]:
