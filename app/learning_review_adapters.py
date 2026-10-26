@@ -221,6 +221,11 @@ def run_reviewer(reviewer: dict[str, Any], prompt: str, *, system_prompt: str) -
     digest = hashlib.sha256(
         f"{reviewer['provider_id']}|{actual_model}|{reviewer['model_revision']}|{body['system_fingerprint']}".encode()
     ).hexdigest()
+    usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+    usage_tokens = {
+        "prompt_tokens": usage.get("prompt_tokens") if isinstance(usage.get("prompt_tokens"), int) and not isinstance(usage.get("prompt_tokens"), bool) and usage.get("prompt_tokens") >= 0 else None,
+        "completion_tokens": usage.get("completion_tokens") if isinstance(usage.get("completion_tokens"), int) and not isinstance(usage.get("completion_tokens"), bool) and usage.get("completion_tokens") >= 0 else None,
+    }
     return {
         "content": content,
         "model": actual_model,
@@ -229,4 +234,5 @@ def run_reviewer(reviewer: dict[str, Any], prompt: str, *, system_prompt: str) -
         "model_id": f"{reviewer['provider_id']}:{actual_model}@{digest}",
         "reviewer_id": f"{reviewer['provider_id']}:{actual_model}@{digest}",
         "system_fingerprint": body["system_fingerprint"],
+        "usage": usage_tokens,
     }
