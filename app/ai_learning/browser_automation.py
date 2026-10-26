@@ -49,28 +49,33 @@ def _profile_path() -> Path:
 
 
 def _assistant_message_count(page: Any) -> int:
-    """Count assistant message nodes so identical repeated answers are still detectable."""
+    """Count assistant message nodes before a prompt is submitted."""
     try:
         return page.locator('[data-message-author-role="assistant"]').count()
     except Exception:
         return 0
 
 
-def _visible_response(page: Any) -> str:
-    """Read the newest non-empty assistant message, ignoring empty streaming placeholders."""
+def _visible_response_with_index(page: Any) -> tuple[str, int | None]:
+    """Read the newest non-empty assistant message and its node index."""
     messages = page.locator('[data-message-author-role="assistant"]')
     try:
         count = messages.count()
     except Exception:
-        return ""
+        return "", None
     for index in range(count - 1, -1, -1):
         try:
             text = messages.nth(index).inner_text(timeout=1500).strip()
         except Exception:
             continue
         if text:
-            return text
-    return ""
+            return text, index
+    return "", None
+
+
+def _visible_response(page: Any) -> str:
+    """Read the newest non-empty assistant message, ignoring empty streaming placeholders."""
+    return _visible_response_with_index(page)[0]
 
 
 def _send_prompt(page: Any, prompt: str) -> None:
@@ -136,9 +141,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
         if cancel_event is not None and cancel_event.is_set():
             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
         try:
-            current = _visible_response(page)
-            current_message_count = _assistant_message_count(page)
-            new_message_seen = previous_message_count is not None and current_message_count > previous_message_count
+            current, current_message_index = _visible_response_with_index(page)
+            new_message_seen = (
+                previous_message_count is not None
+                and current_message_index is not None
+                and current_message_index >= previous_message_count
+            )
             stop_visible = False
             for selector in (
                 'button[data-testid="stop-button"]',
@@ -179,7 +187,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             # If the browser closes after a complete answer was already stable long
             # enough, retain that answer instead of discarding it because the final
             # polling sleep failed.
-            new_message_seen = previous_message_count is not None and _assistant_message_count(page) > previous_message_count
+            _, current_message_index = _visible_response_with_index(page)
+            new_message_seen = (
+                previous_message_count is not None
+                and current_message_index is not None
+                and current_message_index >= previous_message_count
+            )
             if last_text and (last_text != previous_answer or new_message_seen) and stable_since is not None:
                 stable_for = time.monotonic() - stable_since
                 required_stability = 25.0 if last_stop_visible else _STABLE_SECONDS
