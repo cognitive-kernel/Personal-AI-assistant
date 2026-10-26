@@ -132,6 +132,11 @@ def delete_course(course_id: int) -> dict[str, Any]:
 def get_course(course_id: int) -> dict[str, Any]:
     return _call(service.get_course, course_id)
 
+@router.get("/courses/{course_id}/runs")
+def list_course_runs(course_id: int, limit: int = Query(default=10, ge=1, le=50)) -> dict[str, Any]:
+    items = _call(service.list_course_runs, course_id, limit)
+    return {"items": items, "count": len(items)}
+
 @router.post("/courses/{course_id}/outline/import", status_code=201)
 def import_outline(course_id: int, request: OutlineImport) -> dict[str, Any]:
     return _call(service.import_outline, course_id, request.raw_response, provider=request.provider)
