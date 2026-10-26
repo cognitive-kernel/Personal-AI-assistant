@@ -48,14 +48,20 @@ def _profile_path() -> Path:
 
 
 def _visible_response(page: Any) -> str:
+    """Read the newest non-empty assistant message, ignoring empty streaming placeholders."""
     messages = page.locator('[data-message-author-role="assistant"]')
-    count = messages.count()
-    if not count:
-        return ""
     try:
-        return messages.nth(count - 1).inner_text(timeout=3000).strip()
+        count = messages.count()
     except Exception:
         return ""
+    for index in range(count - 1, -1, -1):
+        try:
+            text = messages.nth(index).inner_text(timeout=1500).strip()
+        except Exception:
+            continue
+        if text:
+            return text
+    return ""
 
 
 def _send_prompt(page: Any, prompt: str) -> None:
