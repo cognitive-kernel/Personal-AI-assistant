@@ -108,6 +108,7 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
 
 def test_controlled_runner_records_failure_without_verification(monkeypatch, tmp_path):
     _configure(monkeypatch, tmp_path)
+    _patch_live_source(monkeypatch)
     monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: _experience())
     captured = {}
 

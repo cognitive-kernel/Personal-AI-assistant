@@ -76,7 +76,7 @@ def _verify_live_source_evidence(item: dict[str, Any]) -> list[dict[str, Any]]:
             document = web_sources.fetch_public_document(url, "experience source evidence", max_chars=100000)
         except Exception as exc:
             raise ValueError("A source could not be safely fetched live; verification fails closed (" + type(exc).__name__ + ").") from exc
-        normalize = lambda value: re.sub(r"\\s+", " ", value).strip()
+        normalize = lambda value: re.sub(r"\s+", " ", value).strip()
         normalized_excerpt = normalize(excerpt)
         if normalized_excerpt not in normalize(document.text):
             raise ValueError("A saved evidence excerpt is absent from the current live source page.")
