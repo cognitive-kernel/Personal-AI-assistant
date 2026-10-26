@@ -16,7 +16,7 @@ from .db import connection
 from ..db import get_settings
 from ..ollama import embed as ollama_embed
 
-MAX_CONTENT_CHARS = 200_000
+MAX_CONTENT_CHARS = 500_000
 CHUNK_TARGET_CHARS = 1_800
 CHUNK_OVERLAP_CHARS = 180
 
@@ -400,29 +400,36 @@ def cancel_run(run_id: int) -> dict[str, Any]:
 
 
 def _parse_outline_titles(raw_response: str) -> list[str]:
-    """Parse structured outlines, with a guarded fallback for one-topic-per-paragraph replies."""
+    """Parse numbered, bulleted, headed, or plain one-topic-per-line outlines."""
     candidates: list[str] = []
     seen: set[str] = set()
+    marker = re.compile(
+        r"^(?:#{1,6}\s+|(?:[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*[.)]?|[-*+•])\s+)(.+?)\s*$"
+    )
+    audit = re.compile(r"(?i)^AUDIT\s*:")
+    wrapper = re.compile(
+        r"(?i)^(?:chatgpt said:?|here is(?: the)?|here's(?: the)?|certainly[,!:.]?|sure[,!:.]?|"
+        r"در ادامه(?:،|:)?|فهرست(?: زیر)?(?:،|:)?|این هم(?:،|:)?).*$"
+    )
 
     def add(value: str) -> None:
         title = re.sub(r"\s+#+\s*$", "", value.strip().strip("*").strip())
         title = re.sub(r"^\[[^]]{1,80}\]\s*", "", title).strip()
         key = _dedupe_normalize(title)
-        if 2 <= len(title) <= 300 and key and key not in seen and len(candidates) < 200:
+        if 2 <= len(title) <= 300 and key and key not in seen:
             seen.add(key)
             candidates.append(title)
 
-    cleaned_lines = []
+    cleaned_lines: list[str] = []
     for raw_line in raw_response.splitlines():
-        line = raw_line.strip()
-        # Browser copy/paste can add separators or a "ChatGPT said:" prefix.
-        if not line or re.fullmatch(r"[\\/|]+", line) or re.match(r"(?i)^chatgpt said:?\s*$", line):
+        line = raw_line.strip().lstrip("\ufeff")
+        if not line or re.fullmatch(r"[\\/|]+", line):
+            continue
+        if re.match(r"(?i)^chatgpt said:?\s*$", line) or audit.match(line):
             continue
         cleaned_lines.append(line)
 
-    marker = re.compile(
-        r"^(?:#{1,6}\s+|(?:[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*[.)]?|[-*+•])\s+)(.+?)\s*$"
-    )
+    # Prefer explicit structural markers when present, preserving their order.
     for line in cleaned_lines:
         match = marker.match(line)
         if match:
@@ -430,21 +437,17 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
     if candidates:
         return candidates
 
-    # Some ChatGPT UI responses omit numbering despite the prompt. Accept only
-    # multiple distinct, short standalone paragraphs; a single prose paragraph
-    # must never be imported as a topic outline.
-    paragraphs = re.split(r"\n\s*\n+", raw_response.strip())
-    for paragraph in paragraphs:
-        lines = [line.strip() for line in paragraph.splitlines()
-                 if line.strip() and not re.fullmatch(r"[\\/|]+", line.strip())]
-        if len(lines) != 1:
+    # Plain text exports often contain exactly one topic per line, without
+    # Markdown markers. Ignore common wrapper/introduction text and audit footers.
+    for line in cleaned_lines:
+        if audit.match(line) or wrapper.match(line):
             continue
-        item = lines[0]
-        if re.match(r"(?i)^(chatgpt said:|here is|here's|certainly|sure[,!:.])", item):
+        if re.match(r"(?i)^(?:total_topics|missing_domains|end_reason|status)\s*=", line):
             continue
-        if marker.match(item) or re.match(r"^#{1,6}\s+", item):
+        # Do not import obvious multi-sentence explanatory prose as a topic.
+        if len(line) > 300:
             continue
-        add(item)
+        add(line)
     return candidates if len(candidates) >= 3 else []
 
 def _lesson_has_substantive_body(text: str) -> bool:
@@ -832,24 +835,12 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     return get_run(run_id)
 
 def import_outline(course_id: int, raw_response: str, *, provider: str = "manual") -> dict[str, Any]:
-    """Import an outline idempotently; existing normalized titles are never duplicated."""
-    raw_response = _clean_text(raw_response, "raw_response", 100_000)
+    """Import a large outline idempotently; supports plain one-title-per-line output."""
+    raw_response = _clean_text(raw_response, "raw_response", 500_000)
     provider = _clean_text(provider, "provider", 80)
-    candidates: list[str] = []
-    for line in raw_response.splitlines():
-        item = line.strip()
-        if not item:
-            continue
-        match = re.match(r"^(?:#{1,6}\s+|(?:\d+(?:\.\d+)*[.)]?|[-*+•])\s+)(.+?)\s*$", item)
-        if match:
-            title = re.sub(r"\s+#+\s*$", "", match.group(1).strip().strip("*").strip())
-            normalized = _dedupe_normalize(title)
-            if 2 <= len(title) <= 300 and normalized and normalized not in {_dedupe_normalize(x) for x in candidates}:
-                candidates.append(title)
-        if len(candidates) >= 200:
-            break
+    candidates = _parse_outline_titles(raw_response)
     if not candidates:
-        raise ValueError("No numbered, bulleted, or Markdown-heading outline items were found.")
+        raise ValueError("No outline items were found. Paste one topic per line or use numbering, bullets, or Markdown headings.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
