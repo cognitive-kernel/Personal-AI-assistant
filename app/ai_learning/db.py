@@ -63,7 +63,7 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
             selection_mode TEXT NOT NULL DEFAULT 'single' CHECK(selection_mode IN ('single','selected','all_approved')),
             status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','succeeded','failed','cancelled','needs_user_action')),
             prompt_text TEXT NOT NULL DEFAULT '', response_text TEXT,
-            error_code TEXT, error_message TEXT, started_at TEXT, finished_at TEXT,
+            error_code TEXT, error_message TEXT, request_key TEXT UNIQUE, started_at TEXT, finished_at TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )""",
         """CREATE TABLE run_topics (
