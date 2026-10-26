@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 from .db import init_databases, learning_connection
@@ -58,6 +59,59 @@ def get_learning_recommendations(
                    FROM learning_review_schedule"""
             ).fetchall()
         }
+        semantic_rows = connection.execute(
+            """SELECT j.path_topic_id AS topic_id, a.id AS attempt_id, r.review_json
+               FROM learning_jobs j
+               JOIN assessment_attempts a ON a.job_id=j.id
+               JOIN assessment_semantic_reviews r ON r.attempt_id=a.id
+               WHERE j.path_topic_id IS NOT NULL
+                 AND a.id=(
+                    SELECT MAX(a2.id) FROM assessment_attempts a2
+                    JOIN learning_jobs j2 ON j2.id=a2.job_id
+                    WHERE j2.path_topic_id=j.path_topic_id
+                 )
+               ORDER BY r.id DESC"""
+        ).fetchall()
+
+    semantic_gaps: dict[int, dict[str, Any]] = {}
+    for review_row in semantic_rows:
+        topic_key = int(review_row["topic_id"])
+        if topic_key in semantic_gaps:
+            continue
+        try:
+            stored = json.loads(review_row["review_json"])
+            review = stored.get("review", {}) if isinstance(stored, dict) else {}
+            items = review.get("items", []) if isinstance(review, dict) else []
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not (
+            isinstance(stored, dict)
+            and stored.get("independent_evaluator") is True
+            and stored.get("independent_verification") is False
+            and isinstance(stored.get("evaluator_digest"), str)
+            and isinstance(items, list)
+        ):
+            continue
+        counts = {"partial": 0, "incorrect": 0, "uncertain": 0}
+        missing: list[str] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            judgment = item.get("judgment")
+            if judgment in counts:
+                counts[judgment] += 1
+            concepts = item.get("missing_concepts", [])
+            if isinstance(concepts, list):
+                missing.extend(value.strip() for value in concepts if isinstance(value, str) and value.strip())
+        if any(counts.values()):
+            semantic_gaps[topic_key] = {
+                **counts,
+                "missing_concepts": list(dict.fromkeys(missing))[:12],
+                "review_attempt_id": int(review_row["attempt_id"]),
+                "rubric_version": stored.get("rubric_version"),
+                "evaluator_digest": stored.get("evaluator_digest"),
+                "advisory_only": True,
+            }
 
     due_by_topic: dict[int, dict[str, Any]] = {}
     for item in topics:
@@ -120,6 +174,21 @@ def get_learning_recommendations(
                     continue
             status = item["status"]
             score = item["latest_score"]
+            semantic_gap = semantic_gaps.get(topic_id)
+            if semantic_gap and status in {"in_progress", "completed"}:
+                gap_weight = 12 * semantic_gap["incorrect"] + 6 * semantic_gap["partial"] + 2 * semantic_gap["uncertain"]
+                recommendations.append({
+                    **item,
+                    "recommendation_type": "semantic_knowledge_gap",
+                    "action": "reinforce_topic",
+                    "priority": 88 + min(11, gap_weight),
+                    "reason": "The latest independent-model semantic review reported incomplete, incorrect, or uncertain answer concepts; this is advisory evidence and does not change the score or completion status.",
+                    "semantic_gap": semantic_gap,
+                    "due_at": None,
+                    "overdue_days": 0,
+                })
+                seen.add(topic_id)
+                continue
             if status == "in_progress":
                 if score is not None and float(score) < 80:
                     recommendations.append({
