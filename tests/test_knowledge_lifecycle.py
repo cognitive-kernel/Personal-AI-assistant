@@ -392,3 +392,16 @@ def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(li
     readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
     assert readiness["checks"]["two_supporting_source_hosts"] is False
     assert readiness["evidence_counts"]["supporting_source_hosts"] == 1
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("docs.python.org", "python.org"),
+        ("learn.microsoft.com", "microsoft.com"),
+        ("api.example.co.uk", "example.co.uk"),
+        ("EXAMPLE.TEST.", "example.test"),
+    ],
+)
+def test_registrable_domain_normalization(host, expected):
+    assert knowledge_lifecycle._registrable_source_domain(host) == expected
