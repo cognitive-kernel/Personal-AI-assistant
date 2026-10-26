@@ -128,7 +128,8 @@ def recover_interrupted_courses() -> int:
 def _parse_outline(response: str, max_lessons: int) -> tuple[str, list[str]]:
     text = response.strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
-    candidate = fenced.group(1) if fenced else text
+    embedded = re.search(r"\{.*\}", text, re.DOTALL) if not fenced else None
+    candidate = fenced.group(1) if fenced else (embedded.group(0) if embedded else text)
     title = ""
     topics: list[str] = []
     try:
