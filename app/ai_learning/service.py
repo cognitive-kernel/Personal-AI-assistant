@@ -180,6 +180,9 @@ def start_run(run_id: int) -> dict[str, Any]:
             raise NotFoundError("Run not found.")
         if run["status"] == "queued":
             conn.execute("UPDATE runs SET status='running',started_at=CURRENT_TIMESTAMP WHERE id=?", (run_id,))
+            conn.execute("""UPDATE topics SET processing_status='running',updated_at=CURRENT_TIMESTAMP
+                            WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                              AND processing_status <> 'paused'""", (run_id,))
         elif run["status"] != "running":
             raise ValueError("Only queued or running runs can be started.")
     return get_run(run_id)
@@ -340,6 +343,8 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                        review_status,source_kind,provider,run_id) VALUES(?,1,?,?,?,'needs_review','chatgpt_ui','ChatGPT',?)""",
                     (lesson_id, body, response_text, digest, run_id))
                 conn.execute("UPDATE run_topics SET status='parsed' WHERE run_id=? AND topic_id=?", (run_id, topic_id))
+                conn.execute("""UPDATE topics SET processing_status='needs_review',updated_at=CURRENT_TIMESTAMP
+                                WHERE id=? AND processing_status <> 'paused'""", (topic_id,))
             conn.execute(
                 "UPDATE runs SET response_text=?,status='succeeded',error_code=NULL,error_message=NULL,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                 (response_text, run_id))
