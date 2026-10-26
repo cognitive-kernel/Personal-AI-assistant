@@ -66,6 +66,42 @@ class BrowserAutomationError(RuntimeError):
         self.code = code
 
 
+def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError | None:
+    """Classify explicit visible provider gates; never attempt to bypass them."""
+    lowered_url = (url or "").casefold()
+    text = " ".join((visible_text or "").casefold().split())
+    if "auth.openai.com" in lowered_url or "/auth/login" in lowered_url or "/login" in lowered_url:
+        return BrowserAutomationError(
+            "guest_send_unavailable",
+            "ChatGPT برای این درخواست به صفحهٔ ورود هدایت کرد؛ ورود باید توسط کاربر انجام شود.",
+        )
+    human_gate_phrases = (
+        "verify you are human",
+        "confirm you're not a robot",
+        "confirm you are not a robot",
+        "complete the security check",
+        "captcha verification required",
+    )
+    if any(phrase in text for phrase in human_gate_phrases):
+        return BrowserAutomationError(
+            "human_verification_required",
+            "ChatGPT تأیید انسانی می‌خواهد؛ آن را در مرورگر انجام دهید و سپس کار را بازیابی کنید.",
+        )
+    rate_limit_phrases = (
+        "too many requests",
+        "you've reached the limit of messages",
+        "you have reached the limit of messages",
+        "message limit reached",
+        "try again later",
+    )
+    if any(phrase in text for phrase in rate_limit_phrases):
+        return BrowserAutomationError(
+            "provider_rate_limited",
+            "ChatGPT محدودیت موقت درخواست اعمال کرده است؛ پس از رفع محدودیت، اجرا را دوباره ادامه دهید.",
+        )
+    return None
+
+
 def _chrome_path() -> str | None:
     configured = os.getenv("AI_LEARNING_CHROME_PATH", "").strip()
     candidates = [configured] if configured else []
