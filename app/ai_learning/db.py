@@ -97,6 +97,14 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, CHECK(from_lesson_id <> to_lesson_id),
             UNIQUE(from_lesson_id, to_lesson_id, relation_type)
         )""",
+        """CREATE TABLE query_traces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            query_sha256 TEXT NOT NULL,
+            result_chunk_ids_json TEXT NOT NULL,
+            result_count INTEGER NOT NULL CHECK(result_count >= 0),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE INDEX idx_ai_query_traces_created ON query_traces(created_at DESC, id DESC)",
         "CREATE INDEX idx_ai_topics_course_order ON topics(course_id, deleted_at, position)",
         "CREATE INDEX idx_ai_lessons_topic_order ON lessons(topic_id, deleted_at, position)",
         "CREATE INDEX idx_ai_versions_lesson_status ON content_versions(lesson_id, review_status, version_no DESC)",
