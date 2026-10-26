@@ -122,6 +122,24 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'queued')", (run_id, topic["id"]))
     return get_run(run_id)
 
+def get_learning_control() -> dict[str, Any]:
+    """Return durable global pause state for every ChatGPT learning workflow."""
+    with connection() as conn:
+        row = conn.execute("SELECT paused,updated_at,reason FROM ai_learning_control WHERE id=1").fetchone()
+    return {"paused": bool(row["paused"]), "updated_at": row["updated_at"], "reason": row["reason"]}
+
+
+def set_learning_paused(paused: bool, reason: str = "") -> dict[str, Any]:
+    """Persist a global pause/resume flag; it survives process and machine restarts."""
+    reason = str(reason or "")[:300]
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET paused=?,updated_at=CURRENT_TIMESTAMP,reason=? WHERE id=1",
+            (1 if paused else 0, reason if paused else ""),
+        )
+    return get_learning_control()
+
+
 def get_run(run_id: int) -> dict[str, Any]:
     with connection() as conn:
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
