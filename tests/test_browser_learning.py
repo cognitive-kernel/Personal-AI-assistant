@@ -30,6 +30,14 @@ def test_cdp_endpoint_accepts_loopback_only():
     assert browser_learning._valid_cdp_url("http://[::1]:9222") == "http://[::1]:9222"
 
 
+def test_chatgpt_page_host_is_exact_and_conversation_url_is_sanitized():
+    assert browser_learning._is_chatgpt_url("https://chatgpt.com/c/abc")
+    assert browser_learning._is_chatgpt_url("https://chat.openai.com/c/abc")
+    assert not browser_learning._is_chatgpt_url("https://chatgpt.com.attacker.invalid/")
+    assert not browser_learning._is_chatgpt_url("http://chatgpt.com/c/abc")
+    assert browser_learning._chatgpt_source_url("https://chatgpt.com/c/abc?secret=value#fragment") == "https://chatgpt.com/c/abc"
+
+
 def test_parse_outline_json_limits_deduplicates_and_preserves_title():
     title, topics = browser_learning._parse_outline(
         '{"title":"SQL Server course","topics":["Intro","Indexes","Intro","Query plans"]}',
