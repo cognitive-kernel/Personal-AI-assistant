@@ -32,3 +32,8 @@ A retrieved claim is not proof of truth. Eligibility means it met the repository
 - Measure Recall@k/MRR and answer citation correctness across Persian and English queries with a real embedding/model setup; do not infer quality from unit tests alone.
 - Expand domain coverage only with exact environment resolution and tests that preserve the fail-closed retrieval gate.
 - Consider sandbox execution only for explicitly allow-listed executable claims with current consent and an independent oracle. Never execute arbitrary source text or model-generated code as part of ordinary chat.
+
+
+## Related learning knowledge graph
+
+Lesson generation may include a bounded, two-hop graph context from retained knowledge. Graph edges are not accepted from model output alone: the edge proposal is bound to a source excerpt hash, the worker re-fetches the public HTTPS page, and two digest-distinct reviewer models must agree. Causal/dependency/supersession cycles are blocked; only accepted edges are retrieved. Graph relations are not transitively composed into new causal claims. Current executable factual test runners cover Python and SQLite; other classified domains remain source/retrieval-only until a domain-specific runner is implemented.
