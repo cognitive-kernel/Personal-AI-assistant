@@ -56,7 +56,7 @@ class RunNeedsAction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class OutlineImport(BaseModel):
-    raw_response: str = Field(min_length=1, max_length=100000)
+    raw_response: str = Field(min_length=1, max_length=500000)
     provider: str = Field(default="manual", min_length=1, max_length=80)
     model_config = ConfigDict(extra="forbid")
 
