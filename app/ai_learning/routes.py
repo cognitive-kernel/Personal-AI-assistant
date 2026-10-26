@@ -193,8 +193,8 @@ def get_course(course_id: int) -> dict[str, Any]:
 
 @router.post("/reset-learning-data")
 def reset_learning_data() -> dict[str, Any]:
-    """Destructively clear captured topics, lessons, versions, runs and retrieval traces."""
-    return _call(service.reset_learning_data)
+    """Destructively clear captured learning data only after browser work is quiescent."""
+    return _call(browser_automation.reset_learning_data)
 
 @router.delete("/courses/{course_id}/runs")
 def delete_course_runs(course_id: int, request: RunHistoryDelete) -> dict[str, Any]:
