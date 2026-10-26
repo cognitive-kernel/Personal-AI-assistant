@@ -69,3 +69,11 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 
 
 - The dashboard's **پاک‌سازی داده‌های یادگیری و شروع از صفر** action deletes captured topics, lessons, content versions, attached source references, run history, relations/chunks through topic cascades, and retrieval traces while preserving course definitions. It requires explicit confirmation and refuses to reset while the in-process browser worker is active or persisted runs remain queued/running.
+
+
+## Source-link checks and lesson retries
+
+- Lesson prompts require each cited source to be a clickable Markdown link of the form `[source title](https://full-url)`; a title without a URL is not sufficient.
+- Saved source URLs can be checked from the lesson version card. The checker accepts public HTTP(S) URLs only, does not follow redirects, and refuses private/local destinations. Reachability is recorded separately from factual validation; an HTTP response does not prove the source's claims are correct.
+- A broken or redirected URL is marked rejected with a diagnostic. Use **تلاش مجدد با منابع به‌روز** to request a corrected content version; the prompt tells ChatGPT to check links and replace broken/obsolete URLs with current official links where possible. The previous lesson versions and source audit trail are preserved for review.
+- Retry is available on a topic even when an earlier run failed before a lesson was created. It reuses the existing lesson record when possible and creates a new content version, avoiding duplicate lesson shells. All retry content remains in needs_review and must be reviewed before publication.
