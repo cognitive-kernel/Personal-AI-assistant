@@ -111,6 +111,15 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
         "CREATE INDEX idx_ai_chunks_active ON chunks(active, content_version_id)",
         "CREATE INDEX idx_ai_runs_course_status ON runs(course_id, status, id DESC)",
     )),
+    (2, "ai-learning-persistent-control", (
+        """CREATE TABLE ai_learning_control (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN (0,1)),
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            reason TEXT NOT NULL DEFAULT ''
+        )""",
+        "INSERT INTO ai_learning_control(id,paused,reason) VALUES(1,0,'')",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):
