@@ -337,6 +337,31 @@ def list_courses(limit: int = 50) -> list[dict[str, Any]]:
 
 
 
+def delete_course_runs(course_id: int, run_ids: list[int]) -> dict[str, Any]:
+    """Delete selected terminal run-history entries for one course; never delete active runs."""
+    if not run_ids or len(run_ids) > 50 or len(set(run_ids)) != len(run_ids):
+        raise ValueError("run_ids must be a non-empty list of up to 50 unique run IDs.")
+    marks = ",".join("?" for _ in run_ids)
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        course = conn.execute(
+            "SELECT id FROM courses WHERE id=? AND status <> 'archived'", (course_id,)
+        ).fetchone()
+        if course is None:
+            raise NotFoundError("Course not found.")
+        rows = conn.execute(
+            f"SELECT id,status FROM runs WHERE course_id=? AND id IN ({marks})",
+            (course_id, *run_ids),
+        ).fetchall()
+        if len(rows) != len(run_ids):
+            raise NotFoundError("One or more selected runs do not belong to this course.")
+        active = [int(row["id"]) for row in rows if row["status"] in {"queued", "running"}]
+        if active:
+            raise ValueError("Active runs cannot be deleted. Stop or wait for them first: " + ", ".join(map(str, active)))
+        conn.execute(f"DELETE FROM runs WHERE course_id=? AND id IN ({marks})", (course_id, *run_ids))
+        return {"deleted": len(run_ids), "run_ids": run_ids}
+
+
 def list_course_runs(course_id: int, limit: int = 10) -> list[dict[str, Any]]:
     """List recent generation runs for the local course dashboard without returning large response bodies."""
     with connection() as conn:
