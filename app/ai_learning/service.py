@@ -895,10 +895,11 @@ def list_lessons(topic_id: int) -> list[dict[str, Any]]:
             raise NotFoundError("Topic not found.")
         rows = conn.execute(
             """SELECT l.*,
-                      (SELECT review_status
-                       FROM content_versions cv
-                       WHERE cv.lesson_id=l.id AND length(trim(COALESCE(cv.markdown,'')))>0
-                       ORDER BY cv.id DESC LIMIT 1) AS latest_review_status,
+                      (SELECT review_status FROM content_versions cv
+                       WHERE cv.lesson_id=l.id ORDER BY cv.id DESC LIMIT 1) AS latest_review_status,
+                      (SELECT CASE WHEN length(trim(COALESCE(cv.markdown,'')))>0 THEN 1 ELSE 0 END
+                       FROM content_versions cv WHERE cv.lesson_id=l.id
+                       ORDER BY cv.id DESC LIMIT 1) AS latest_content_nonempty,
                       (SELECT COUNT(*) FROM content_versions cv WHERE cv.lesson_id=l.id) AS version_count
                FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL ORDER BY l.position,l.id""",
             (topic_id,)).fetchall()
@@ -906,14 +907,17 @@ def list_lessons(topic_id: int) -> list[dict[str, Any]]:
     for row in rows:
         item = dict(row)
         review = item.pop("latest_review_status", None)
-        if review == "published":
+        latest_content_nonempty = bool(item.pop("latest_content_nonempty", 0))
+        # Progress must describe the newest version shown in the UI, not an older
+        # published version. Otherwise an empty latest draft can misleadingly show 100%.
+        if item["version_count"] and not latest_content_nonempty:
+            item["progress_percent"], item["progress_label"] = 25, "آخرین نسخه خالی است؛ پاسخ خام را بررسی و نسخه اصلاحی ثبت کنید"
+        elif review == "published":
             item["progress_percent"], item["progress_label"] = 100, "منتشرشده"
         elif review == "reviewed":
             item["progress_percent"], item["progress_label"] = 90, "بازبینی‌شده"
         elif review == "needs_review":
             item["progress_percent"], item["progress_label"] = 75, "محتوا دریافت شده؛ نیازمند بازبینی"
-        elif item["version_count"]:
-            item["progress_percent"], item["progress_label"] = 25, "نسخهٔ محتوا خالی است؛ دریافت مجدد لازم است"
         elif item["status"] == "paused":
             item["progress_percent"], item["progress_label"] = 0, "متوقف‌شده"
         else:
