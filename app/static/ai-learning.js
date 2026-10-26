@@ -358,6 +358,61 @@ async function refreshLearningControl() {
   byId("pause-learning").disabled = !!state.paused;
   byId("resume-learning").disabled = false;
 }
+byId("select-all-topics").addEventListener("change", () => {
+  selectedTopicIds = new Set(byId("select-all-topics").checked ? courseTopics.map(t => Number(t.id)) : []);
+  renderTopics();
+});
+byId("approve-all-topics").addEventListener("click", async () => {
+  if (!courseTopics.length) return;
+  if (!window.confirm("همهٔ " + courseTopics.length + " سرفصل این دوره تأیید شوند؟")) return;
+  try {
+    for (let i=0; i<courseTopics.length; i+=500) {
+      await api("/api/ai-learning/topics/decision", jsonOptions("POST", {
+        topic_ids:courseTopics.slice(i,i+500).map(t=>Number(t.id)), decision:"approved"
+      }));
+    }
+    await loadCourseDetails();
+    message("همهٔ سرفصل‌های این دوره تأیید شدند.");
+  } catch (error) { message(error.message, true); }
+});
+byId("reject-selected-topics").addEventListener("click", async () => {
+  const ids = [...selectedTopicIds];
+  if (!ids.length) { message("ابتدا سرفصل‌ها را انتخاب کنید.", true); return; }
+  if (!window.confirm(ids.length + " سرفصل انتخاب‌شده رد شوند؟")) return;
+  try {
+    for (let i=0; i<ids.length; i+=500) await api("/api/ai-learning/topics/decision", jsonOptions("POST", {topic_ids:ids.slice(i,i+500),decision:"rejected"}));
+    selectedTopicIds.clear(); await loadCourseDetails(); message("سرفصل‌های انتخاب‌شده رد شدند.");
+  } catch (error) { message(error.message, true); }
+});
+byId("fetch-selected-lessons").addEventListener("click", async () => {
+  const ids = [...selectedTopicIds].filter(id => {
+    const t = courseTopics.find(item => Number(item.id) === id);
+    return t && t.approval_status === "approved" && t.processing_status !== "paused" && Number(t.lesson_content_ready_count || 0) === 0;
+  });
+  if (!ids.length) { message("سرفصل تأییدشده و آمادهٔ دریافت درس انتخاب نشده است.", true); return; }
+  if (ids.length > 100) { message("در هر اجرا حداکثر ۱۰۰ سرفصل انتخاب کنید.", true); return; }
+  try {
+    const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + ids.join("-") + "-" + Date.now();
+    const result = await api("/api/ai-learning/browser/lessons", jsonOptions("POST", {
+      course_id:selectedCourse, topic_ids:ids, request_key:requestKey, force_retry:false
+    }));
+    message("دریافت درس برای " + ids.length + " سرفصل شروع شد. شناسه اجرا: " + result.run_id);
+    await loadCourseDetails();
+  } catch (error) { message(error.message, true); }
+});
+byId("reset-learning-data").addEventListener("click", async () => {
+  const confirmation = window.prompt("این عملیات همهٔ سرفصل‌ها، درس‌ها، نسخه‌ها، منابع و سوابق اجرا را حذف می‌کند؛ نام دوره‌ها باقی می‌ماند. برای تأیید دقیقاً RESET را وارد کنید.");
+  if (confirmation !== "RESET") { message("پاک‌سازی لغو شد."); return; }
+  try {
+    await api("/api/ai-learning/pause", {method:"POST"});
+    const result = await api("/api/ai-learning/reset-learning-data", {method:"POST"});
+    selectedTopicIds.clear();
+    byId("lessons-panel").replaceChildren(node("p","داده‌های یادگیری پاک شدند."));
+    await loadCourses(selectedCourse);
+    await refreshLearningControl();
+    message("پاک‌سازی انجام شد. تعداد حذف‌شده‌ها: " + JSON.stringify(result.deleted));
+  } catch (error) { message(error.message, true); }
+});
 byId("pause-learning").addEventListener("click", async () => {
   try {
     await api("/api/ai-learning/pause", {method:"POST"});
