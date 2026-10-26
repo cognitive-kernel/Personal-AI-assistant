@@ -94,7 +94,7 @@ def _call(function, *args, **kwargs):
 def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
             "provider_mode": "user_confirmed_chrome_bridge",
-            "note": "The extension inserts prompts but never clicks Send automatically; retrieval is not connected to the existing chat response path."}
+            "note": "The extension inserts prompts but never clicks Send automatically; retrieval is separately gated and adds bounded context only when enabled."}
 
 @router.post("/runs", status_code=201)
 def create_run(request: RunCreate) -> dict[str, Any]:
@@ -172,6 +172,14 @@ def list_versions(lesson_id: int) -> dict[str, Any]:
 @router.post("/lessons/{lesson_id}/versions", status_code=201)
 def add_content(lesson_id: int, request: ContentCreate) -> dict[str, Any]:
     return _call(service.add_content_version, lesson_id, **request.model_dump())
+
+@router.get("/versions/{version_id}")
+def get_content_version(version_id: int) -> dict[str, Any]:
+    return _call(service.get_content_version, version_id)
+
+@router.patch("/lessons/{lesson_id}")
+def edit_lesson(lesson_id: int, request: LessonCreate) -> dict[str, Any]:
+    return _call(service.edit_lesson, lesson_id, request.title)
 
 @router.post("/versions/{version_id}/review")
 def review_content(version_id: int, request: ReviewDecision) -> dict[str, Any]:
