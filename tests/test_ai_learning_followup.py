@@ -115,3 +115,26 @@ def test_lesson_run_excludes_topics_with_existing_lessons(isolated_store):
             course["id"], run_type="lesson", topic_ids=[done["id"]],
             selection_mode="single", request_key="skip-only-existing"
         )
+
+
+
+def test_bulk_delete_course_run_history_keeps_unselected_runs(isolated_store):
+    course = service.create_course(title="SQL Server")
+    run_ids = []
+    for key in ("bulk-delete-a", "bulk-delete-b", "bulk-delete-keep"):
+        run = service.create_run(course["id"], run_type="outline", request_key=key)
+        service.start_run(run["id"])
+        service.complete_run(run["id"], "1. Fundamentals\n2. Query processing")
+        run_ids.append(run["id"])
+    result = service.delete_course_runs(course["id"], run_ids[:2])
+    remaining = service.list_course_runs(course["id"], limit=10)
+    assert result["deleted"] == 2
+    assert {item["id"] for item in remaining} == {run_ids[2]}
+
+
+def test_bulk_delete_course_runs_refuses_active_runs(isolated_store):
+    course = service.create_course(title="SQL Server")
+    run = service.create_run(course["id"], run_type="outline", request_key="active-run")
+    service.start_run(run["id"])
+    with pytest.raises(ValueError, match="Active runs cannot be deleted"):
+        service.delete_course_runs(course["id"], [run["id"]])
