@@ -68,10 +68,13 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
         topics = []
         if run_type == "lesson" and selection_mode == "all_approved":
             topics = conn.execute(
-                "SELECT * FROM topics WHERE course_id=? AND deleted_at IS NULL AND approval_status='approved' ORDER BY position",
+                """SELECT t.* FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL
+                   AND t.approval_status='approved'
+                   AND NOT EXISTS (SELECT 1 FROM lessons l WHERE l.topic_id=t.id AND l.deleted_at IS NULL)
+                   ORDER BY t.position""",
                 (course_id,)).fetchall()
             if not topics:
-                raise ValueError("The course has no approved topics to send.")
+                raise ValueError("No approved topics without an existing lesson remain.")
             topic_ids = [int(row["id"]) for row in topics]
         elif topic_ids:
             marks = ",".join("?" for _ in topic_ids)
@@ -82,6 +85,12 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 raise ValueError("All selected topics must belong to the selected course.")
             if any(row["approval_status"] != "approved" for row in topics):
                 raise ValueError("Only approved topics may be sent for lesson generation.")
+            topics = [row for row in topics if conn.execute(
+                "SELECT 1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL LIMIT 1",
+                (row["id"],)).fetchone() is None]
+            topic_ids = [int(row["id"]) for row in topics]
+            if not topics:
+                raise ValueError("All selected topics already have lessons; nothing new was queued.")
         if run_type == "outline":
             prompt = (
                 "Create a structured learning outline for: " + course["title"] + ".\n"
@@ -191,10 +200,20 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     (response_text, "No numbered, bulleted, or Markdown-heading outline items were detected.", run_id))
                 conn.commit()
                 return get_run(run_id)
+            existing_rows = conn.execute(
+                "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
+                (run["course_id"],)).fetchall()
+            existing_titles = {" ".join(str(row["title"]).split()).casefold() for row in existing_rows}
+            new_titles = []
+            for title in titles:
+                normalized = " ".join(title.split()).casefold()
+                if normalized not in existing_titles:
+                    new_titles.append(title)
+                    existing_titles.add(normalized)
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
-            for offset, title in enumerate(titles):
+            for offset, title in enumerate(new_titles):
                 cur = conn.execute(
                     "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
                     (run["course_id"], position + offset, title))
@@ -256,7 +275,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     return get_run(run_id)
 
 def import_outline(course_id: int, raw_response: str, *, provider: str = "manual") -> dict[str, Any]:
-    """Import a user-reviewed provider response as pending topics without auto-approval."""
+    """Import an outline idempotently; existing normalized titles are never duplicated."""
     raw_response = _clean_text(raw_response, "raw_response", 100_000)
     provider = _clean_text(provider, "provider", 80)
     candidates: list[str] = []
@@ -264,10 +283,9 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         item = line.strip()
         if not item:
             continue
-        match = re.match(r"^(?:#{1,6}\s+|(?:\d+(?:\.\d+)*[.)]?|[-*+•])\s+)(.+?)\s*$", item)
+        match = re.match(r"^(?:#{1,6}\\s+|(?:\\d+(?:\\.\\d+)*[.)]?|[-*+•])\\s+)(.+?)\\s*$", item)
         if match:
-            title = match.group(1).strip().strip("*").strip()
-            title = re.sub(r"\s+#+\s*$", "", title)
+            title = re.sub(r"\\s+#+\\s*$", "", match.group(1).strip().strip("*").strip())
             if 2 <= len(title) <= 300 and title.casefold() not in {x.casefold() for x in candidates}:
                 candidates.append(title)
         if len(candidates) >= 200:
@@ -278,15 +296,25 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
             raise NotFoundError("Course not found.")
+        existing_rows = conn.execute(
+            "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
+        ).fetchall()
+        existing_titles = {" ".join(str(row["title"]).split()).casefold() for row in existing_rows}
+        new_candidates = []
+        for title in candidates:
+            normalized = " ".join(title.split()).casefold()
+            if normalized not in existing_titles:
+                new_candidates.append(title)
+                existing_titles.add(normalized)
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
             (course_id, raw_response))
         run_id = int(cursor.lastrowid)
         position = int(conn.execute(
-            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
-            (course_id,)).fetchone()[0])
+            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?", (course_id,)
+        ).fetchone()[0])
         created = []
-        for offset, title in enumerate(candidates):
+        for offset, title in enumerate(new_candidates):
             cur = conn.execute(
                 "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
                 (course_id, position + offset, title))
@@ -294,8 +322,9 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
             created.append({"id": topic_id, "title": title, "position": position + offset, "approval_status": "pending"})
         conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (course_id,))
-    return {"run_id": run_id, "provider": provider, "imported": len(created), "topics": created,
-            "note": "Imported topics are pending user approval; the raw response is retained in the run record."}
+    return {"run_id": run_id, "provider": provider, "imported": len(created),
+            "skipped_existing": len(candidates) - len(created), "topics": created,
+            "note": "Existing topics were skipped by normalized title; new topics remain pending approval."}
 
 def list_courses(limit: int = 50) -> list[dict[str, Any]]:
     with connection() as conn:
