@@ -132,3 +132,4 @@ def test_external_reviewer_records_actual_model_fingerprint(monkeypatch):
     assert result["model"] == "model-name-2026-10"
     assert result["digest"] != provider["config_digest"]
     assert result["system_fingerprint"] == "fp-immutable-build-7"
+    assert result["usage"] == {"prompt_tokens": 120, "completion_tokens": 80}
