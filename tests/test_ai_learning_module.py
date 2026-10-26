@@ -189,6 +189,9 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "retain that answer instead of discarding it" in automation
     assert "newest non-empty assistant message" in automation
     assert "for index in range(count - 1, -1, -1)" in automation
+    assert "def _assistant_message_count(page: Any) -> int:" in automation
+    assert "previous_message_count=previous_message_count" in automation
+    assert "current != previous_answer or new_message_seen" in automation
 
 def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
     from app.ai_learning import integration
