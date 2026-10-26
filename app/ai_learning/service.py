@@ -36,6 +36,47 @@ def create_course(*, title: str, provider: str = "manual", language: str = "fa",
         course_id = int(cursor.lastrowid)
     return get_course(course_id)
 
+def import_outline(course_id: int, raw_response: str, *, provider: str = "manual") -> dict[str, Any]:
+    """Import a user-reviewed provider response as pending topics without auto-approval."""
+    raw_response = _clean_text(raw_response, "raw_response", 100_000)
+    provider = _clean_text(provider, "provider", 80)
+    candidates: list[str] = []
+    for line in raw_response.splitlines():
+        item = line.strip()
+        if not item:
+            continue
+        match = re.match(r"^(?:#{1,6}\\s+|(?:\\d+(?:\\.\\d+)*[.)]?|[-*+•])\\s+)(.+?)\\s*$", item)
+        if match:
+            title = match.group(1).strip().strip("*").strip()
+            title = re.sub(r"\\s+#+\\s*$", "", title)
+            if 2 <= len(title) <= 300 and title.casefold() not in {x.casefold() for x in candidates}:
+                candidates.append(title)
+        if len(candidates) >= 200:
+            break
+    if not candidates:
+        raise ValueError("No numbered, bulleted, or Markdown-heading outline items were found.")
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
+            raise NotFoundError("Course not found.")
+        cursor = conn.execute(
+            "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+            (course_id, raw_response))
+        run_id = int(cursor.lastrowid)
+        position = int(conn.execute(
+            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=? AND deleted_at IS NULL",
+            (course_id,)).fetchone()[0])
+        created = []
+        for offset, title in enumerate(candidates):
+            cur = conn.execute(
+                "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
+                (course_id, position + offset, title))
+            topic_id = int(cur.lastrowid)
+            conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
+            created.append({"id": topic_id, "title": title, "position": position + offset, "approval_status": "pending"})
+        conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (course_id,))
+    return {"run_id": run_id, "provider": provider, "imported": len(created), "topics": created,
+            "note": "Imported topics are pending user approval; the raw response is retained in the run record."}
+
 def list_courses(limit: int = 50) -> list[dict[str, Any]]:
     with connection() as conn:
         rows = conn.execute(
