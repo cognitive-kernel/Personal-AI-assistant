@@ -195,10 +195,13 @@ def startup() -> None:
     sandbox_handler = sandbox_tasks.handler_from_environment()
     if sandbox_handler is not None:
         programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
+    sandbox_language_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
+    if sandbox_language_handler is not None:
+        programming_handlers[sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE] = sandbox_language_handler
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
         programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
-    factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_handler)
+    factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_language_handler)
     if factual_verification_handler is not None:
         programming_handlers[factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE] = factual_verification_handler
 
