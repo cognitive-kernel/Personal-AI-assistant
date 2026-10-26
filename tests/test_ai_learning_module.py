@@ -688,6 +688,43 @@ def test_lesson_update_can_create_new_version_without_self_duplicate_rejection(i
     assert second["version_no"] == first["version_no"] + 1
 
 
+
+def test_chatgpt_lesson_is_saved_when_embedding_model_is_unavailable(isolated_store, monkeypatch):
+    old = (
+        "Database indexes improve lookup speed by locating matching records without "
+        "scanning every row in the table."
+    )
+    _course_a, _topic_a, lesson_a = _create_approved_lesson("Database indexes")
+    service.add_content_version(lesson_a["id"], old)
+
+    course_b = service.create_course(title="Course transaction management")
+    topic_b = service.add_topic(course_b["id"], "Transaction management")
+    service.decide_topics([topic_b["id"]], "approved")
+    run = service.create_run(
+        course_b["id"], run_type="lesson", topic_ids=[topic_b["id"]],
+        request_key="save-lesson-without-embedding-model",
+    )
+    service.start_run(run["id"])
+
+    def unavailable_embed(texts, model=None):
+        raise RuntimeError("embedding model not installed")
+
+    monkeypatch.setattr(service, "ollama_embed", unavailable_embed)
+    answer = (
+        "# Transaction management in SQL Server 2025\n\n"
+        "Transactions group database operations into a logical unit. SQL Server uses "
+        "transaction boundaries to preserve consistency and supports COMMIT and ROLLBACK. "
+        "Administrators should understand isolation levels, locking, deadlocks, and recovery."
+    )
+    result = service.complete_run(run["id"], answer)
+
+    assert result["status"] == "succeeded"
+    assert service.list_lessons(topic_b["id"])
+    saved = service.list_lessons(topic_b["id"])[0]
+    versions = service.list_versions(saved["id"])
+    assert versions
+    assert "Transactions group database operations" in service.get_content_version(versions[0]["id"])["markdown"]
+
 def test_chatgpt_capture_skips_semantically_duplicate_lesson(isolated_store, monkeypatch):
     old = (
         "A database index improves lookup speed by allowing the database to locate rows "
