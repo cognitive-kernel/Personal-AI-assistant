@@ -707,11 +707,35 @@ def run_job(job_id: int) -> None:
                         review=claim_review_result,
                     )
             if quality["accepted"]:
-                latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
-                conn.execute(
-                    "INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
-                    (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id),
+                normalized_lesson = " ".join(result["lesson"].casefold().split())
+                existing_lessons = conn.execute(
+                    "SELECT id, content FROM knowledge_items WHERE lower(topic)=lower(?)",
+                    (topic,),
+                ).fetchall()
+                duplicate_lesson = any(
+                    " ".join(str(item["content"]).casefold().split()) == normalized_lesson
+                    for item in existing_lessons
                 )
+                if duplicate_lesson:
+                    quality["accepted"] = False
+                    quality.setdefault("reasons", []).append(
+                        "محتوای این درس با نسخه ثبت‌شده یکسان است؛ نسخه تکراری ذخیره نشد."
+                    )
+                    conn.execute(
+                        "UPDATE learning_jobs SET status='rejected', lesson=NULL, assessment_json=NULL, "
+                        "quality_json=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                        (
+                            json.dumps(quality, ensure_ascii=False),
+                            "محتوای تکراری؛ نسخه جدید ثبت نشد.",
+                            job_id,
+                        ),
+                    )
+                else:
+                    latest = conn.execute("SELECT COALESCE(MAX(version), 0) AS version FROM knowledge_items WHERE topic=?", (topic,)).fetchone()
+                    conn.execute(
+                        "INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id) VALUES (?, ?, ?, ?, 'unverified', ?)",
+                        (topic, result["lesson"], source_kind, int(latest["version"]) + 1, job_id),
+                    )
                 # Stage accepted lessons as temporary candidates. This is a separate
                 # review lifecycle: a structural quality pass must not promote durable
                 # factual knowledge or imply independent verification.
@@ -726,22 +750,23 @@ def run_job(job_id: int) -> None:
                     if isinstance(item["source_ref"], str)
                     and item["source_ref"].startswith("https://")
                 ]
-                conn.execute(
-                    """INSERT INTO temporary_knowledge_candidates(
-                           job_id, topic, content, source_kind, source_urls_json,
-                           content_sha256, quality_report_json
-                       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(job_id) DO NOTHING""",
-                    (
-                        job_id,
-                        topic,
-                        result["lesson"],
-                        source_kind,
-                        json.dumps(list(dict.fromkeys(source_urls)), ensure_ascii=False),
-                        hashlib.sha256(result["lesson"].encode("utf-8")).hexdigest(),
-                        json.dumps(quality, ensure_ascii=False),
-                    ),
-                )
+                if quality["accepted"]:
+                    conn.execute(
+                        """INSERT INTO temporary_knowledge_candidates(
+                               job_id, topic, content, source_kind, source_urls_json,
+                               content_sha256, quality_report_json
+                           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(job_id) DO NOTHING""",
+                        (
+                            job_id,
+                            topic,
+                            result["lesson"],
+                            source_kind,
+                            json.dumps(list(dict.fromkeys(source_urls)), ensure_ascii=False),
+                            hashlib.sha256(result["lesson"].encode("utf-8")).hexdigest(),
+                            json.dumps(quality, ensure_ascii=False),
+                        ),
+                    )
             else:
                 conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
@@ -1091,25 +1116,49 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
 
 
 def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
-    """Always create a fresh lesson unless this topic already has an active job."""
+    """Replace the previous lesson for a topic; never keep two active lesson versions."""
+    lesson_review = _latest_completed_topic_review(topic_id)
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         topic = conn.execute(
             "SELECT id, topic FROM learning_path_topics WHERE id=? AND path_id=?",
             (topic_id, path_id),
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
-        latest = conn.execute(
-            "SELECT id, status FROM learning_jobs WHERE path_topic_id=? ORDER BY id DESC LIMIT 1",
+        active = conn.execute(
+            "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
+            "ORDER BY id DESC LIMIT 1",
             (topic_id,),
         ).fetchone()
-        if latest and latest["status"] in {"queued", "running"}:
-            return get_job(int(latest["id"]))
+        if active is not None:
+            return get_job(int(active["id"]))
+        old_job_ids = [
+            int(row["id"]) for row in conn.execute(
+                "SELECT id FROM learning_jobs WHERE path_topic_id=? AND lesson IS NOT NULL",
+                (topic_id,),
+            ).fetchall()
+        ]
+        if old_job_ids:
+            placeholders = ",".join("?" for _ in old_job_ids)
+            conn.execute(
+                f"DELETE FROM temporary_knowledge_candidates WHERE job_id IN ({placeholders})",
+                old_job_ids,
+            )
+            conn.execute(
+                f"DELETE FROM knowledge_items WHERE job_id IN ({placeholders})",
+                old_job_ids,
+            )
+            conn.execute(
+                f"UPDATE learning_jobs SET status='superseded', lesson=NULL, assessment_json=NULL, "
+                f"error='این درس با درخواست تولید مجدد جایگزین شد.', updated_at=CURRENT_TIMESTAMP "
+                f"WHERE id IN ({placeholders})",
+                old_job_ids,
+            )
         conn.execute(
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
-    lesson_review = _latest_completed_topic_review(topic_id)
     job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _enqueue_learning_job(int(job["id"]))
     return job
