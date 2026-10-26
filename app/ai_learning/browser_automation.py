@@ -599,6 +599,69 @@ def _worker(
             _ACTIVE_RUN_ID = None
             _ACTIVE_COURSE_ID = None
             _CANCEL_EVENTS.pop(run_id, None)
+        # Drain only requests that were explicitly persisted by a user/API call.
+        # Do not auto-create new lessons during startup recovery.
+        try:
+            _dispatch_next_persisted_run()
+        except Exception as exc:
+            _log_event("persisted_queue_dispatch_failed", exception_type=type(exc).__name__,
+                       message=str(exc)[:300])
+
+
+def _dispatch_next_persisted_run() -> dict[str, Any]:
+    """Claim the oldest persisted queued/interrupted run and start its browser worker."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    if service.get_learning_control()["paused"]:
+        return {"status": "paused", "active": False}
+    with _LOCK:
+        if _ACTIVE:
+            return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
+        candidates: list[dict[str, Any]] = []
+        for course in service.list_courses(100):
+            candidates.extend(service.list_course_runs(int(course["id"]), 50))
+        pending = [item for item in candidates if item.get("status") in {"queued", "running"}]
+        if not pending:
+            return {"status": "idle", "active": False}
+        # Stable FIFO order across restart: oldest creation timestamp, then DB ID.
+        pending.sort(key=lambda item: (str(item.get("created_at") or ""), int(item["id"])))
+        selected = pending[0]
+        run_id = int(selected["id"])
+        course_id = int(selected["course_id"])
+        run = service.start_run(run_id)
+        cancel_event = threading.Event()
+        _ACTIVE = True
+        _ACTIVE_RUN_ID = run_id
+        _ACTIVE_COURSE_ID = course_id
+        _CANCEL_EVENTS[run_id] = cancel_event
+        thread = threading.Thread(
+            target=_worker,
+            args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
+            name=f"ai-learning-durable-run-{run_id}",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except Exception:
+            _ACTIVE = False
+            _ACTIVE_RUN_ID = None
+            _ACTIVE_COURSE_ID = None
+            _CANCEL_EVENTS.pop(run_id, None)
+            raise
+        _log_event("persisted_queue_run_dispatched", run_id=run_id, course_id=course_id,
+                   run_type=run.get("run_type"), recovered_status=selected.get("status"))
+        return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+
+
+def recover_pending_runs() -> dict[str, Any]:
+    """Recover explicit queued/running records after process restart; never invent work."""
+    from .db import initialize_store
+
+    initialize_store()
+    if service.get_learning_control()["paused"]:
+        return {"status": "paused", "active": False, "message": "Global learning pause is active."}
+    result = _dispatch_next_persisted_run()
+    _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
+    return result
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
