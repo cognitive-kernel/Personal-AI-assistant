@@ -179,6 +179,29 @@ def _dom_diagnostics(page: Any) -> dict[str, Any]:
         return {"probe_error": f"{type(exc).__name__}: {str(exc)[:180]}"}
 
 
+
+def _is_anonymous_landing_text(url: str, body_text: str) -> bool:
+    """Detect ChatGPT's logged-out welcome page instead of a usable conversation."""
+    url_lower = (url or "").casefold()
+    body_lower = (body_text or "").casefold()
+    login_promo = (
+        "get responses tailored to you" in body_lower
+        and "log in to get answers" in body_lower
+    )
+    return login_promo or (
+        "noauth_recent_chat_failed" in url_lower
+        and ("log in" in body_lower or "where should we begin" in body_lower)
+    )
+
+
+def _anonymous_landing_visible(page: Any) -> bool:
+    try:
+        body_text = page.locator("body").inner_text(timeout=2000)
+    except Exception:
+        body_text = ""
+    return _is_anonymous_landing_text(str(getattr(page, "url", "")), body_text)
+
+
 def _send_prompt(page: Any, prompt: str) -> None:
     composer_candidates = [
         "#prompt-textarea",
@@ -399,6 +422,25 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     pass
                 page.wait_for_timeout(1200)
                 _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
+                # A logged-out welcome page can look like a valid ChatGPT landing page,
+                # but it cannot reliably create the conversation needed for this job.
+                # Give the user a chance to sign in through the visible UI; never save
+                # the welcome page as lesson content.
+                if _anonymous_landing_visible(page):
+                    _log_event("anonymous_landing_detected", url=page.url)
+                    login_deadline = time.monotonic() + 180
+                    while time.monotonic() < login_deadline and _anonymous_landing_visible(page):
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
+                        page.wait_for_timeout(1000)
+                    if _anonymous_landing_visible(page):
+                        raise BrowserAutomationError(
+                            "chatgpt_login_required",
+                            "ChatGPT صفحهٔ مهمان/ورود را نشان می‌دهد و گفت‌وگوی آموزشی ایجاد نشده است. در پنجرهٔ Chrome وارد حساب ChatGPT شوید؛ سپس در داشبورد «ادامه و دریافت درس‌های باقی‌مانده / بازیابی» را بزنید. هیچ درس خالی از این صفحه ثبت نشده است.",
+                        )
+                    _log_event("anonymous_landing_cleared", url=page.url)
+                    page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
+                    page.wait_for_timeout(1200)
                 if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
                     _log_event("login_required", url=page.url)
                     # Keep the visible browser open briefly so the user can complete a legitimate sign-in.
