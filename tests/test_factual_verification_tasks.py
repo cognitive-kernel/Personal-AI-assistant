@@ -690,3 +690,29 @@ def test_live_source_mismatch_blocks_sandbox_and_promotion(learning_store, monke
             (knowledge_id,),
         ).fetchone()
         assert claim["evidence_level"] == "L1_sourced"
+
+
+
+def test_runtime_version_selects_sqlite_runtime_for_sqlite_claims():
+    from app.factual_verification_tasks import _runtime_version
+
+    marker = "__PAI_TEST_COMPLETED__:fixed-marker"
+    stdout = "\n".join([
+        "__PAI_PYTHON_VERSION__:3.12.2",
+        "__PAI_SQLITE_VERSION__:3.45.3",
+        "sqlite assertion output",
+        marker,
+    ])
+    version, completed, output = _runtime_version(stdout, marker, "sqlite")
+    assert version == "3.45.3"
+    assert completed is True
+    assert output == "sqlite assertion output"
+
+
+def test_wrapped_harness_reports_both_python_and_sqlite_versions():
+    from app.factual_verification_tasks import _wrapped_harness
+
+    wrapped, marker = _wrapped_harness("import sqlite3\nassert sqlite3.sqlite_version")
+    assert "__PAI_PYTHON_VERSION__" in wrapped
+    assert "__PAI_SQLITE_VERSION__" in wrapped
+    assert marker in wrapped
