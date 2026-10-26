@@ -552,7 +552,7 @@ def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
             return
 
 
-def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event) -> None:
+def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event, continue_after: bool = False) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
     run_type = service.get_run(run_id).get("run_type")
@@ -563,7 +563,7 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
-        if result.get("status") == "succeeded" and run_type == "outline":
+        if result.get("status") == "succeeded" and (run_type == "outline" or continue_after):
             try:
                 _continue_lessons(course_id, cancel_event)
             except Exception as exc:
@@ -726,7 +726,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             cancel_event = threading.Event()
             _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
-                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
+                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event, True),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
             thread.start()
@@ -758,7 +758,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             cancel_event = threading.Event()
             _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
-                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
+                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event, True),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
             thread.start()
