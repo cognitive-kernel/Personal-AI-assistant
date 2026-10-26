@@ -116,6 +116,35 @@ def _visible_response(page: Any) -> str:
     return _visible_response_with_index(page)[0]
 
 
+def _dom_diagnostics(page: Any) -> dict[str, Any]:
+    """Collect structural UI diagnostics without storing conversation text."""
+    try:
+        return page.evaluate("""() => {
+          const count = selector => { try { return document.querySelectorAll(selector).length; } catch (_) { return -1; } };
+          const visibleLabels = Array.from(document.querySelectorAll('button,[role=alert],[role=status]'))
+            .filter(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length))
+            .slice(-20).map(el => ({tag: el.tagName.toLowerCase(), testid: el.getAttribute('data-testid') || '',
+              aria: el.getAttribute('aria-label') || '', title: el.getAttribute('title') || '',
+              role: el.getAttribute('role') || '', textLength: (el.innerText || '').trim().length}));
+          const roleCounts = {};
+          document.querySelectorAll('[data-message-author-role]').forEach(el => {
+            const role = el.getAttribute('data-message-author-role') || '(empty)';
+            roleCounts[role] = (roleCounts[role] || 0) + 1;
+          });
+          return {url: location.href, title: document.title, readyState: document.readyState,
+            bodyTextLength: (document.body?.innerText || '').length,
+            mainTextLength: (document.querySelector('main')?.innerText || '').length,
+            assistantNodes: count('[data-message-author-role="assistant"]'),
+            allMessageRoleNodes: count('[data-message-author-role]'), roleCounts,
+            conversationTurns: count('[data-testid^="conversation-turn"]'),
+            messageContentNodes: count('[data-message-content]'), mainNodes: count('main'),
+            textareas: count('textarea'), contenteditables: count('[contenteditable="true"]'),
+            visibleLabels};
+        }""")
+    except Exception as exc:
+        return {"probe_error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+
+
 def _send_prompt(page: Any, prompt: str) -> None:
     composer_candidates = [
         "#prompt-textarea",
@@ -181,8 +210,10 @@ def _send_prompt(page: Any, prompt: str) -> None:
 def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None, previous_message_count: int | None = None) -> str:
     started = time.monotonic()
     deadline = started + _RESPONSE_TIMEOUT_SECONDS
+    next_diagnostic_at = 0.0
     _log_event("response_wait_started", url=page.url, previous_message_count=previous_message_count,
-               previous_answer_chars=len(previous_answer), timeout_seconds=_RESPONSE_TIMEOUT_SECONDS)
+               previous_answer_chars=len(previous_answer), timeout_seconds=_RESPONSE_TIMEOUT_SECONDS,
+               dom=_dom_diagnostics(page))
     last_text = ""
     stable_since: float | None = None
     last_stop_visible = False
@@ -209,12 +240,15 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                         break
                 except Exception:
                     pass
-            if int(time.monotonic() - started) % 10 == 0:
-                _log_event("response_poll", elapsed_seconds=round(time.monotonic() - started, 1),
+            elapsed = time.monotonic() - started
+            if elapsed >= next_diagnostic_at:
+                _log_event("response_poll", elapsed_seconds=round(elapsed, 1),
                            assistant_message_count=_assistant_message_count(page),
                            current_message_index=current_message_index, current_chars=len(current),
                            new_message_seen=new_message_seen, stop_visible=stop_visible,
-                           stable_seconds=round(time.monotonic() - stable_since, 1) if stable_since else 0)
+                           stable_seconds=round(time.monotonic() - stable_since, 1) if stable_since else 0,
+                           dom=_dom_diagnostics(page))
+                next_diagnostic_at = elapsed + 10.0
             # Some ChatGPT UI versions leave a stale/hidden stop-generation control
             # visible after the answer has finished. Track text stability independently
             # and use a longer grace period when that control remains visible.
@@ -305,6 +339,11 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
             try:
                 page = context.pages[0] if context.pages else context.new_page()
                 _log_event("page_selected", url=page.url, page_count=len(context.pages))
+                page.on("close", lambda *_: _log_event("page_closed_event", url=page.url))
+                page.on("crash", lambda *_: _log_event("page_crashed_event", url=page.url))
+                page.on("pageerror", lambda error: _log_event("page_javascript_error", message=str(error)[:300]))
+                page.on("console", lambda message: _log_event("page_console_error", message=message.text[:300]) if message.type == "error" else None)
+                page.on("requestfailed", lambda request: _log_event("browser_request_failed", url=request.url.split("?")[0][:300], error=request.failure or "unknown") if any(host in request.url for host in ("chatgpt.com", "openai.com")) else None)
                 page.set_default_timeout(5000)
                 if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
@@ -316,7 +355,7 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 except Exception:
                     pass
                 page.wait_for_timeout(1200)
-                _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page))
+                _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
                 if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
                     _log_event("login_required", url=page.url)
                     # Keep the visible browser open briefly so the user can complete a legitimate sign-in.
@@ -338,7 +377,7 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 previous_message_count = _assistant_message_count(page)
                 previous = _visible_response(page)
                 _log_event("pre_submit_snapshot", url=page.url, assistant_message_count=previous_message_count,
-                           previous_answer_chars=len(previous))
+                           previous_answer_chars=len(previous), dom=_dom_diagnostics(page))
                 _send_prompt(page, prompt)
                 answer = _wait_for_complete_answer(
                     page, previous, cancel_event, previous_message_count=previous_message_count
