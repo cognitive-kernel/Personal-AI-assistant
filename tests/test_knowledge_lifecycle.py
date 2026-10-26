@@ -391,7 +391,9 @@ def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(li
 
     readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
     assert readiness["checks"]["two_supporting_source_hosts"] is False
+    assert readiness["checks"]["two_supporting_source_domains"] is False
     assert readiness["evidence_counts"]["supporting_source_hosts"] == 1
+    assert readiness["evidence_counts"]["supporting_source_domains"] == 1
 
 
 @pytest.mark.parametrize(
