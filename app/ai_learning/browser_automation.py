@@ -190,10 +190,18 @@ def _browser_capture(prompt: str) -> str:
                     pass
                 page.wait_for_timeout(1200)
                 if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
-                    raise BrowserAutomationError(
-                        "chatgpt_login_required",
-                        "ChatGPT برای این صفحه ورود می‌خواهد. اگر دسترسی عمومی بدون ورود در دسترس نیست، در پنجره بازشده وارد شوید و سپس دوباره «بازخوانی» را بزنید.",
-                    )
+                    # Keep the visible browser open briefly so the user can complete a legitimate sign-in.
+                    login_deadline = time.monotonic() + 180
+                    while time.monotonic() < login_deadline:
+                        if "login" not in page.url.casefold() and "auth.openai.com" not in page.url.casefold():
+                            break
+                        page.wait_for_timeout(1000)
+                    if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
+                        raise BrowserAutomationError(
+                            "chatgpt_login_required",
+                            "ورود به ChatGPT در ۳ دقیقه تکمیل نشد. اگر رابط عمومی بدون ورود کار می‌کند، دوباره تلاش کنید.",
+                        )
+                    page.wait_for_timeout(1500)
                 previous = _visible_response(page)
                 _send_prompt(page, prompt)
                 return _wait_for_complete_answer(page, previous)
