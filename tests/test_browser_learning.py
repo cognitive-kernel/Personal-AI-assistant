@@ -69,6 +69,7 @@ def test_browser_learning_course_persists_without_marking_content_verified(tmp_p
     assert result["lessons"][0]["content"] == "Lesson body"
     assert result["lessons"][0]["content_sha256"] == "b" * 64
     assert result["lessons"][0]["status"] == "completed"
+    assert result["lessons"][0]["trust_status"] == "unverified"
 
 
 def test_only_one_browser_learning_course_can_be_active(tmp_path, monkeypatch):
