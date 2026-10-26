@@ -24,6 +24,7 @@ from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
 from .ai_learning.routes import router as ai_learning_router
+from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -409,6 +410,17 @@ def chat(request: ChatRequest) -> dict[str, str]:
     if len(request.message) > chat_limit:
         raise HTTPException(status_code=422, detail=f"message exceeds the configured chat input limit of {chat_limit} characters.")
     try:
+        if ai_learning_config.retrieval_is_enabled() and chat_research.should_use_research(request.message):
+            try:
+                knowledge_context = ai_learning_integration.retrieve_context(request.message)
+            except Exception as retrieval_error:
+                # Optional local knowledge must never make the established chat path unavailable.
+                logger.warning("Optional AI-learning retrieval failed (%s)", type(retrieval_error).__name__)
+                knowledge_context = []
+            if knowledge_context:
+                return {"reply": chat_research.answer(
+                    request.message, request.history, knowledge_context=knowledge_context
+                )}
         return {"reply": chat_research.answer(request.message, request.history)}
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
