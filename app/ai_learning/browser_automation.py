@@ -48,6 +48,14 @@ def _profile_path() -> Path:
     return path
 
 
+def _assistant_message_count(page: Any) -> int:
+    """Count assistant message nodes so identical repeated answers are still detectable."""
+    try:
+        return page.locator('[data-message-author-role="assistant"]').count()
+    except Exception:
+        return 0
+
+
 def _visible_response(page: Any) -> str:
     """Read the newest non-empty assistant message, ignoring empty streaming placeholders."""
     messages = page.locator('[data-message-author-role="assistant"]')
@@ -119,7 +127,7 @@ def _send_prompt(page: Any, prompt: str) -> None:
         ) from exc
 
 
-def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None) -> str:
+def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None, previous_message_count: int | None = None) -> str:
     deadline = time.monotonic() + _RESPONSE_TIMEOUT_SECONDS
     last_text = ""
     stable_since: float | None = None
@@ -129,6 +137,8 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
         try:
             current = _visible_response(page)
+            current_message_count = _assistant_message_count(page)
+            new_message_seen = previous_message_count is not None and current_message_count > previous_message_count
             stop_visible = False
             for selector in (
                 'button[data-testid="stop-button"]',
@@ -144,7 +154,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             # Some ChatGPT UI versions leave a stale/hidden stop-generation control
             # visible after the answer has finished. Track text stability independently
             # and use a longer grace period when that control remains visible.
-            if current and current != previous_answer and current == last_text:
+            if current and (current != previous_answer or new_message_seen) and current == last_text:
                 if stable_since is None:
                     stable_since = time.monotonic()
                 stable_for = time.monotonic() - stable_since
@@ -169,7 +179,8 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             # If the browser closes after a complete answer was already stable long
             # enough, retain that answer instead of discarding it because the final
             # polling sleep failed.
-            if last_text and last_text != previous_answer and stable_since is not None:
+            new_message_seen = previous_message_count is not None and _assistant_message_count(page) > previous_message_count
+            if last_text and (last_text != previous_answer or new_message_seen) and stable_since is not None:
                 stable_for = time.monotonic() - stable_since
                 required_stability = 25.0 if last_stop_visible else _STABLE_SECONDS
                 if stable_for >= required_stability and len(last_text) >= 20:
@@ -237,9 +248,12 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     page.wait_for_timeout(1500)
                 if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
+                previous_message_count = _assistant_message_count(page)
                 previous = _visible_response(page)
                 _send_prompt(page, prompt)
-                return _wait_for_complete_answer(page, previous, cancel_event)
+                return _wait_for_complete_answer(
+                    page, previous, cancel_event, previous_message_count=previous_message_count
+                )
             finally:
                 context.close()
     except BrowserAutomationError:
