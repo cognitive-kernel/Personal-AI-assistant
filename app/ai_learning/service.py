@@ -76,7 +76,7 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
             seen.add(key)
     if not pending:
         return accepted, skipped
-    if not existing_titles:
+    if not existing_titles and len(pending) == 1:
         return pending, skipped
     # Embed existing titles and candidates once, rather than issuing one request per title.
     base_titles = list(existing_titles)
