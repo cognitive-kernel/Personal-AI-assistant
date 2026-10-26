@@ -397,3 +397,15 @@ def test_source_extraction_deduplicates_urls():
     sources = service._extract_references(text)
     assert len(sources) == 1
     assert sources[0]["url"] == "https://learn.microsoft.com/sql/"
+
+
+
+def test_active_learning_run_blocks_destructive_topic_deletion(isolated_store):
+    course = service.create_course(title="SQL Server concurrency")
+    topic = service.add_topic(course["id"], "Resource governance")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                             request_key="active-run-delete-guard")
+    service.start_run(run["id"])
+    with pytest.raises(ValueError, match="اجرای فعال"):
+        service.soft_delete_topic(topic["id"])
