@@ -90,33 +90,11 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
     base_titles = list(existing_titles)
     try:
         vectors = _title_embeddings(base_titles + pending)
-    except Exception:
-        # Embeddings improve duplicate detection but must not make basic course
-        # management depend on an optional local model. Fall back to a strict
-        # lexical overlap check; exact normalized duplicates were handled above.
-        accepted_vectors: list[str] = []
-        for title in pending:
-            candidate_tokens = _title_tokens(title)
-            best: tuple[str, float] | None = None
-            for existing in [*base_titles, *accepted_vectors]:
-                existing_tokens = _title_tokens(existing)
-                shared = candidate_tokens & existing_tokens
-                union = candidate_tokens | existing_tokens
-                overlap = len(shared) / len(union) if union else 0.0
-                if len(shared) >= 3 and overlap >= 0.80:
-                    if best is None or overlap > best[1]:
-                        best = (existing, overlap)
-            if best:
-                skipped.append({
-                    "title": title,
-                    "duplicate_of": best[0],
-                    "score": round(best[1], 4),
-                    "method": "lexical_fallback",
-                })
-            else:
-                accepted.append(title)
-                accepted_vectors.append(title)
-        return accepted, skipped
+    except Exception as exc:
+        raise ValueError(
+            "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
+            f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
+        ) from exc
     base_vectors = vectors[:len(base_titles)]
     candidate_vectors = vectors[len(base_titles):]
     accepted_vectors: list[tuple[str, list[float]]] = list(zip(base_titles, base_vectors))
