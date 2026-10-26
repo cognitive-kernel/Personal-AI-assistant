@@ -880,6 +880,7 @@ async function refreshLearningCapabilities() {
    provisional: "شواهد اولیه",
    repeated_provisional: "شواهد اولیهٔ تکرارشده",
    practical_provisional: "شواهد عملی تکرارشده (موقت)",
+   transfer_provisional: "انتقال عملی از دانش تأییدشده (موقت)",
    conflicting_evidence: "تعارض بین آزمون نظری و عملی"
   };
   output.textContent = items.length
