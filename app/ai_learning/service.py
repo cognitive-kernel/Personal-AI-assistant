@@ -582,7 +582,7 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
 
 def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
-    response_text = _clean_text(response_text, "response_text", 100_000)
+    response_text = _clean_text(response_text, "response_text", 500_000)
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -605,7 +605,10 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
             existing_titles = [str(row["title"]) for row in existing_rows]
-            new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
+            if existing_titles:
+                new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
+            else:
+                new_titles, skipped_titles = titles, []
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
