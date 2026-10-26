@@ -511,7 +511,7 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
 
 
 def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
-    """Approve captured topics and fetch lessons one topic at a time for safe pause/resume."""
+    """Fetch lessons only for explicitly approved topics, one topic at a time for safe pause/resume."""
     global _ACTIVE_RUN_ID
     # Never approve topics as a side effect of background learning. Approval is a
     # deliberate dashboard action so users can review the outline before lesson capture.
