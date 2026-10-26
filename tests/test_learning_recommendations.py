@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning_recommendations, spaced_repetition
+from app import db, learning_recommendations, spaced_repetition, learning_prerequisites
 from app.db import learning_connection
 from app.main import app
 from app.task_routes import require_loopback_client
@@ -201,3 +201,19 @@ def test_latest_independent_semantic_review_adds_concept_level_gap(tmp_path, mon
     assert recommendation["semantic_gap"]["partial"] == 1
     assert "transaction isolation" in recommendation["semantic_gap"]["missing_concepts"]
     assert recommendation["semantic_gap"]["advisory_only"] is True
+
+
+
+def test_custom_dag_recommends_ready_branch_when_first_topic_is_blocked(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch, [
+        {"topic": "Blocked first topic"},
+        {"topic": "Ready prerequisite branch"},
+        {"topic": "Other pending topic"},
+    ])
+    learning_prerequisites.set_topic_prerequisites(path_id, topic_ids[0], [topic_ids[1]])
+
+    result = learning_recommendations.get_learning_recommendations(path_id=path_id)
+
+    assert result["recommendations"][0]["topic_id"] == topic_ids[1]
+    assert result["recommendations"][0]["recommendation_type"] == "next_topic"
+    assert "prerequisite graph is satisfied" in result["recommendations"][0]["reason"]
