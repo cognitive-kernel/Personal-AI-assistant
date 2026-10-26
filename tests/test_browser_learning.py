@@ -182,6 +182,9 @@ def test_run_course_uses_browser_chatgpt_flow_and_persists_each_lesson(tmp_path,
             self.prompt = ""
             self.responses = []
 
+        def goto(self, url, wait_until=None, timeout=None):
+            self.url = url
+
         def locator(self, selector):
             if selector in {"#prompt-textarea", "[data-testid='prompt-textarea']", "div[contenteditable='true'][role='textbox']", "textarea"}:
                 return FakeLocator(self, "editor")
