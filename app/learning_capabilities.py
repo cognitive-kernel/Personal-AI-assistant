@@ -163,6 +163,8 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
             "transfer_case_count": len(scenario_hashes),
             "transfer_attempt_count": len(best),
             "transfer_repeatable": bool(repeatable),
+            "transfer_novelty_method": "token_set_jaccard",
+            "transfer_novelty_threshold": 0.80,
             "transfer_evidence_knowledge_ids": [
                 knowledge_id for knowledge_id, attempts in per_knowledge.items()
                 if len({scenario for _name, _source, scenario in attempts}) >= 2
@@ -310,7 +312,8 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
         })
         transfer = transfer_by_topic.get(str(row["topic"]).strip().casefold(), {
             "transfer_case_count": 0, "transfer_attempt_count": 0,
-            "transfer_repeatable": False, "transfer_evidence_knowledge_ids": [],
+            "transfer_repeatable": False, "transfer_novelty_method": "token_set_jaccard",
+            "transfer_novelty_threshold": 0.80, "transfer_evidence_knowledge_ids": [],
         })
         if transfer["transfer_repeatable"]:
             if valid and float(score) < 80:
