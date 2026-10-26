@@ -444,3 +444,20 @@ def test_workspace_tests_report_failure_without_host_fallback(tmp_path, monkeypa
     assert result.exit_code == 1
     assert result.stdout == "1 failed"
     assert result.stderr == "assertion failed"
+
+
+
+@pytest.mark.parametrize(
+    ("image", "language", "expected"),
+    [
+        ("node:22-bookworm-slim@sha256:" + "a" * 64, "javascript", True),
+        ("rust:1.84-slim@sha256:" + "b" * 64, "rust", True),
+        ("node:latest", "javascript", False),
+        ("python:3.12-slim@sha256:" + "a" * 64, "javascript", False),
+        ("rust:latest", "rust", False),
+    ],
+)
+def test_language_runner_requires_official_digest_pinned_images(image, language, expected):
+    from app.sandbox import is_valid_language_image_reference
+
+    assert is_valid_language_image_reference(image, language) is expected
