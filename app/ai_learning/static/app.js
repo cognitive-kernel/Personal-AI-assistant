@@ -11,7 +11,7 @@ function renderTopics(){const root=$("topics");root.replaceChildren();if(!topics
 async function move(i,d){const j=i+d;if(j<0||j>=topics.length)return;[topics[i],topics[j]]=[topics[j],topics[i]];topics.forEach((t,k)=>t.position=k+1);renderTopics();say("ترتیب محلی تغییر کرد؛ برای ذخیره، «ذخیره ترتیب» را بزنید.")}
 async function decide(ids,decision){if(!ids.length)throw Error("حداقل یک سرفصل انتخاب کنید.");await api("/topics/decision",{method:"POST",body:JSON.stringify({topic_ids:ids,decision})});await loadCourse();say("وضعیت سرفصل‌ها به‌روزرسانی شد.")}
 $("course-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const payload=data(form);act(async()=>{await api("/courses",{method:"POST",body:JSON.stringify(payload)});form.reset();await loadCourses();say("دوره ایجاد شد.")})};
-$("reload").onclick=()=>act(()=>loadCourses(courseId));
+$("reload").onclick=()=>act(async()=>{const b=$("reload"),label=b.textContent;b.disabled=true;b.textContent="در حال بازخوانی…";say("در حال دریافت فهرست دوره‌ها و سرفصل‌ها…");try{await loadCourses(courseId);say("بازخوانی انجام شد؛ فهرست دوره‌ها و سرفصل‌های دورهٔ انتخاب‌شده به‌روز است.")}finally{b.disabled=false;b.textContent=label}});
 $("delete-course").onclick=()=>act(async()=>{
  if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");
  const selected=$("course-select").selectedOptions[0]?.textContent||("شناسه "+courseId);
