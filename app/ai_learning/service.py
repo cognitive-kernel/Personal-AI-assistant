@@ -1123,7 +1123,7 @@ def _find_semantic_duplicate_content(
     ).fetchall()
     for row in rows:
         if _dedupe_normalize(str(row["markdown"])) == normalized:
-            return {
+            exact_match = {
                 "version_id": int(row["version_id"]),
                 "lesson_id": int(row["lesson_id"]),
                 "topic_id": int(row["topic_id"]),
@@ -1132,6 +1132,9 @@ def _find_semantic_duplicate_content(
                 "score": 1.0,
                 "method": "exact",
             }
+            if not ensure_candidate_embedding:
+                return exact_match
+            break
     if not rows and not ensure_candidate_embedding:
         return None
 
