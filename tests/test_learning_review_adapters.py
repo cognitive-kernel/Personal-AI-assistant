@@ -92,3 +92,43 @@ def test_external_reviewer_requires_system_fingerprint(monkeypatch):
     monkeypatch.setattr("app.learning_review_adapters.httpx.Client", Client)
     with pytest.raises(learning_review_adapters.ReviewProviderUnavailable, match="system_fingerprint"):
         learning_review_adapters.run_reviewer(provider, "{}", system_prompt="Review conservatively.")
+
+
+
+def test_external_reviewer_records_actual_model_fingerprint(monkeypatch):
+    provider = learning_review_adapters._external_configs({
+        "learning_external_review_providers": [_provider()]
+    })[0]
+    monkeypatch.setenv("LEARNING_REVIEW_API_KEY_PROVIDER_A", "test-key")
+    monkeypatch.setattr(
+        "app.learning_review_adapters.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))],
+    )
+
+    class Response:
+        is_redirect = False
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def raise_for_status(self): return None
+        def iter_bytes(self):
+            yield json.dumps({
+                "model": "model-name-2026-10",
+                "system_fingerprint": "fp-immutable-build-7",
+                "usage": {"prompt_tokens": 120, "completion_tokens": 80},
+                "choices": [{"message": {"content": '{"verdict":"supports","rationale":"The supplied evidence supports the lesson."}'}}],
+            }).encode()
+
+    class Client:
+        def __init__(self, **_kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def stream(self, *_args, **_kwargs): return Response()
+
+    monkeypatch.setattr("app.learning_review_adapters.httpx.Client", Client)
+    result = learning_review_adapters.run_reviewer(
+        provider, '{"claim":"example"}', system_prompt="Review the claim conservatively."
+    )
+    assert result["provider_id"] == "provider_a"
+    assert result["model"] == "model-name-2026-10"
+    assert result["digest"] != provider["config_digest"]
+    assert result["system_fingerprint"] == "fp-immutable-build-7"
