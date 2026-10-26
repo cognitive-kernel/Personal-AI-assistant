@@ -107,3 +107,42 @@ def test_graph_edge_rejects_self_relation(graph_store):
             source_url="https://docs.example.test/cache",
             source_excerpt="This source is long enough to pass the excerpt size validation.",
         )
+
+
+
+def test_accepted_causal_edges_cannot_form_a_cycle(graph_store, monkeypatch):
+    source_id, target_id = graph_store
+    excerpt = "The source directly describes how stale cache entries can result after writes."
+    edge = learning_knowledge_graph.propose_edge(
+        source_id, target_id, relation_type="causes",
+        source_url="https://docs.example.test/cache", source_excerpt=excerpt,
+    )
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=excerpt, title="Source"),
+    )
+    monkeypatch.setattr(
+        "app.ollama.list_models",
+        lambda: [
+            {"name": "reviewer-one", "digest": "digest-one"},
+            {"name": "reviewer-two", "digest": "digest-two"},
+        ],
+    )
+    monkeypatch.setattr(
+        "app.ollama.chat",
+        lambda *_args, **_kwargs: json.dumps({
+            "verdict": "supports",
+            "rationale": "The source directly supports the causal relationship in the requested scope.",
+        }),
+    )
+    reviewed = learning_knowledge_graph.review_edge(
+        edge["id"], expected_source_sha256=edge["source_sha256"]
+    )
+    assert reviewed["status"] == "accepted"
+
+    with pytest.raises(ValueError, match="cycle"):
+        learning_knowledge_graph.propose_edge(
+            target_id, source_id, relation_type="causes",
+            source_url="https://docs.example.test/cache",
+            source_excerpt="A different source excerpt for the reverse causal edge.",
+        )
