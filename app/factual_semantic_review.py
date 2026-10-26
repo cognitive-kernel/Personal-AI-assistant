@@ -96,6 +96,9 @@ def extract_url_version(source_url: str) -> str:
             if match:
                 return match.group(1) + "." + match.group(2)
     for part in reversed([item for item in parsed.path.split("/") if item]):
+        prefixed = re.fullmatch(r"v(\d+)\.(\d+)(?:\.\d+|\.x)?", part)
+        if prefixed:
+            return prefixed.group(1) + "." + prefixed.group(2)
         match = re.fullmatch(r"(\d+)\.(\d+)(?:\.\d+)?(?:\.html?)?", part)
         if match:
             return match.group(1) + "." + match.group(2)
