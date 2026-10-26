@@ -64,3 +64,13 @@ The initial code provides isolated storage, a dedicated management page, course/
 ## Current pause/resume behavior
 
 The management dashboard exposes global pause and resume controls. The pause flag is stored in the isolated AI-learning SQLite database. A live worker pauses while waiting for a response and lesson generation checks the flag between batches. After a process or machine restart, the user must open the dashboard and select resume/recovery. It restarts a persisted queued/running run, or starts the next batch for approved topics without lessons. Responses already committed remain saved; a response still only visible in ChatGPT may need to be requested again. This cooperative mechanism is not an OS-level interrupt and does not guarantee exact continuation of the remote ChatGPT generation itself.
+
+
+## Dashboard controls and lesson integrity (2026-10)
+
+- Topic cards show per-topic progress and the course-level aggregate, with periodic refresh. Select-all and approve-all apply to the selected course; approval remains explicit and is not performed automatically after outline capture.
+- Approved topics can be selected and submitted for lesson capture in groups of at most 100. Per-topic and per-lesson pause/resume controls preserve saved content. Global pause is persisted in SQLite; resume/recovery must be triggered from the dashboard after a restart.
+- Each topic exposes its lessons, version history, captured Markdown and raw response, and source links. Sources extracted from ChatGPT output are stored in the isolated `sources` table with `unverified` status until checked. A link appearing in a lesson is not proof that its contents were consulted.
+- Lesson versions with blank or insubstantial content must not be accepted as completed. Bulk review skips versions with no substantive body. Editing creates a new content version, preserving history. A mistakenly published version can be unpublished without deleting its content.
+- The destructive reset control requires typing `RESET`, preserves course definitions, and clears captured topics, lessons, versions, source rows (through foreign-key cascades), run history, chunks and query traces. It refuses to run while the browser worker is active.
+- This is still a cooperative single-worker design, not a durable distributed queue. A prompt interrupted before its response is committed may be reissued on recovery. Do not run multiple application processes against the same browser profile.
