@@ -233,3 +233,34 @@ def test_opt_in_retrieval_adapter_is_off_when_flag_is_disabled(isolated_store, m
     monkeypatch.setenv("AI_LEARNING_ENABLED", "0")
     monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
     assert integration.retrieve_context("anything") == []
+
+
+def test_outline_parser_accepts_chatgpt_plain_topic_paragraphs(isolated_store):
+    raw = """ChatGPT said:\\
+
+\\
+
+آشنایی با SQL Server 2025 و معماری کلی آن
+
+\\
+
+مفاهیم پایه پایگاه داده و مدل رابطه‌ای
+
+\\
+
+نصب و راه‌اندازی SQL Server
+
+\\
+
+مدیریت کاربران و مجوزهای دسترسی"""
+    titles = service._parse_outline_titles(raw)
+    assert titles == [
+        "آشنایی با SQL Server 2025 و معماری کلی آن",
+        "مفاهیم پایه پایگاه داده و مدل رابطه‌ای",
+        "نصب و راه‌اندازی SQL Server",
+        "مدیریت کاربران و مجوزهای دسترسی",
+    ]
+
+
+def test_outline_parser_still_rejects_unstructured_prose(isolated_store):
+    assert service._parse_outline_titles("SQL Server is a database system.") == []
