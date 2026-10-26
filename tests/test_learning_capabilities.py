@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, experience, learning_capabilities
+from app import db, experience, learning_capabilities, task_manager, usage_metrics
 from app.db import learning_connection
 
 
@@ -140,3 +140,30 @@ def test_capability_map_does_not_count_unprovenanced_or_duplicate_practical_runs
     practical = next(row for row in result["capabilities"] if row["capability"] == "Not assessed")
     assert practical["status"] == "not_assessed"
     assert practical["practical_repeatable"] is False
+
+
+def test_capability_map_reports_measured_model_tokens_and_inference_time(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch)
+    with learning_connection() as connection:
+        job_id = connection.execute(
+            "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id) VALUES ('Not assessed', 'completed', 'model_knowledge_no_external_source', ?)",
+            (topic_ids[0],),
+        ).lastrowid
+    task = task_manager.create_task("learning.generate_lesson", {"job_id": int(job_id)})
+    with learning_connection() as connection:
+        connection.execute("UPDATE learning_jobs SET task_id=? WHERE id=?", (task["id"], job_id))
+    with usage_metrics.capture_task(task["id"]):
+        assert usage_metrics.record_ollama_response(
+            purpose="learning", model="local-test-model",
+            response={"prompt_eval_count": 120, "eval_count": 80, "total_duration": 2500000000,
+                      "load_duration": 200000000, "prompt_eval_duration": 300000000, "eval_duration": 1000000000},
+        ) is True
+
+    result = learning_capabilities.get_capability_map(path_id=path_id)
+    measured = next(row for row in result["capabilities"] if row["capability"] == "Not assessed")
+    assert measured["model_call_count"] == 1
+    assert measured["prompt_tokens"] == 120
+    assert measured["completion_tokens"] == 80
+    assert measured["inference_duration_ms"] == 2500.0
+    assert measured["models_used"] == ["local-test-model"]
+    assert measured["score_points_per_1000_output_tokens"] is None

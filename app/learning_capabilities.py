@@ -116,6 +116,32 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
         params.append(limit)
         rows = [dict(row) for row in connection.execute(sql, params).fetchall()]
         practical_by_topic = _practical_evidence_map(connection, {str(row["topic"]).strip().casefold() for row in rows})
+        topic_ids = [int(row["topic_id"]) for row in rows]
+        usage_by_topic: dict[int, dict[str, Any]] = {}
+        if topic_ids:
+            placeholders = ",".join("?" for _ in topic_ids)
+            usage_rows = connection.execute(
+                f"""SELECT j.path_topic_id AS topic_id, COUNT(u.id) AS model_call_count,
+                           SUM(u.prompt_tokens) AS prompt_tokens,
+                           SUM(u.completion_tokens) AS completion_tokens,
+                           SUM(u.total_duration_ns) AS total_duration_ns,
+                           GROUP_CONCAT(DISTINCT u.model_name) AS models
+                    FROM model_usage_events u
+                    JOIN learning_jobs j ON j.task_id=u.task_id
+                    WHERE j.path_topic_id IN ({placeholders})
+                    GROUP BY j.path_topic_id""",
+                topic_ids,
+            ).fetchall()
+            usage_by_topic = {
+                int(item["topic_id"]): {
+                    "model_call_count": int(item["model_call_count"] or 0),
+                    "prompt_tokens": int(item["prompt_tokens"] or 0),
+                    "completion_tokens": int(item["completion_tokens"] or 0),
+                    "inference_duration_ms": round(int(item["total_duration_ns"] or 0) / 1_000_000, 2),
+                    "models_used": sorted(set(str(item["models"] or "").split(",")) - {""}),
+                }
+                for item in usage_rows
+            }
 
     capabilities: list[dict[str, Any]] = []
     for row in rows:
@@ -171,6 +197,11 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "latest_score": float(score) if valid else None,
             "assessment_count": count,
             **practical,
+            **usage,
+            "score_points_per_1000_output_tokens": (
+                round(float(score) * 1000 / usage["completion_tokens"], 3)
+                if valid and usage["completion_tokens"] > 0 else None
+            ),
             "latest_attempt_id": row["latest_attempt_id"],
             "correct_count": int(correct) if valid else None,
             "question_count": int(questions) if valid else None,

@@ -124,6 +124,10 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
+        assert LEARNING_MIGRATIONS[-1].version == 27
+        usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
+        assert {"task_id", "purpose", "model_name", "prompt_tokens", "completion_tokens", "total_duration_ns"} <= usage_columns
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
         job_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_jobs)")}
         task_columns = {row[1] for row in connection.execute("PRAGMA table_info(task_queue)")}

@@ -984,6 +984,7 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_curriculum_proposals_path_status ON curriculum_update_proposals(path_id, status, id DESC)",
             "CREATE INDEX idx_curriculum_proposals_source_event ON curriculum_update_proposals(source_sync_event_id, status)",
         ),
+    ),
     Migration(
         27,
         "measured-model-usage-for-learning-value",

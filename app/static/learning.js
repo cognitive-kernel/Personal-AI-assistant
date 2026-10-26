@@ -889,7 +889,10 @@ async function refreshLearningCapabilities() {
       "\nآخرین نمره: " + (item.latest_score == null ? "ندارد" : item.latest_score + "/100") +
       "؛ تعداد آزمون نظری معتبر: " + item.assessment_count +
       "\nآزمون عملی معتبر: " + item.practical_attempt_count +
-      "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count
+      "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count +
+      "\nمصرف مدل: " + item.prompt_tokens + " ورودی / " + item.completion_tokens + " خروجی توکن" +
+      "؛ زمان استنتاج: " + item.inference_duration_ms + " میلی‌ثانیه" +
+      "؛ امتیاز نظری به‌ازای ۱۰۰۰ توکن خروجی: " + (item.score_points_per_1000_output_tokens == null ? "ناموجود" : item.score_points_per_1000_output_tokens)
      ).join("\n\n") +
      "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال عمومی مهارت را اثبات نمی‌کند."
    : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
