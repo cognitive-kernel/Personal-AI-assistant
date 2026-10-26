@@ -134,7 +134,7 @@ def test_lesson_run_creates_reviewable_version_not_published(isolated_store):
     assert stored["raw_response"] == "# Index fundamentals\n\nIndexes speed up data access."
 
 
-def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store):
+def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, monkeypatch):
     course = service.create_course(title="Database topics")
     a = service.add_topic(course["id"], "Indexes")
     b = service.add_topic(course["id"], "Transactions")
@@ -146,6 +146,15 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store):
     assert ambiguous["status"] == "needs_user_action"
     assert service.list_lessons(a["id"]) == []
     corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content explains lookup performance, index maintenance, and query-plan effects. A production database should compare execution plans, selectivity, write overhead, and storage costs before changing an index strategy. Monitor the workload and validate changes in a test environment.\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content explains isolation, commit, rollback, and consistency guarantees. A production workflow should handle errors, keep transactions short, and validate locking and concurrency behavior under representative load before deployment."
+
+    def fake_embed(texts, model=None):
+        return [
+            [1.0, 0.0, 0.0] if "index maintenance" in text
+            else [0.0, 1.0, 0.0]
+            for text in texts
+        ]
+
+    monkeypatch.setattr(service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], corrected)
     assert completed["status"] == "succeeded"
     assert len(service.list_lessons(a["id"])) == 1
