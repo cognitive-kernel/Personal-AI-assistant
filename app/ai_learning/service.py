@@ -283,9 +283,9 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         item = line.strip()
         if not item:
             continue
-        match = re.match(r"^(?:#{1,6}\\s+|(?:\\d+(?:\\.\\d+)*[.)]?|[-*+•])\\s+)(.+?)\\s*$", item)
+        match = re.match(r"^(?:#{1,6}\s+|(?:\d+(?:\.\d+)*[.)]?|[-*+•])\s+)(.+?)\s*$", item)
         if match:
-            title = re.sub(r"\\s+#+\\s*$", "", match.group(1).strip().strip("*").strip())
+            title = re.sub(r"\s+#+\s*$", "", match.group(1).strip().strip("*").strip())
             if 2 <= len(title) <= 300 and title.casefold() not in {x.casefold() for x in candidates}:
                 candidates.append(title)
         if len(candidates) >= 200:
