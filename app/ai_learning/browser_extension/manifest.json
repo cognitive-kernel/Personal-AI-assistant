@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Personal AI Assistant — Learning Bridge",
-  "version": "0.2.0",
-  "description": "User-confirmed bridge between the local AI-learning module and the normal ChatGPT browser session.",
+  "version": "0.3.0",
+  "description": "Automatic course-learning bridge between the local module and the visible ChatGPT browser session.",
   "permissions": ["activeTab", "tabs", "storage", "scripting"],
   "host_permissions": [
     "http://127.0.0.1:8000/*",
