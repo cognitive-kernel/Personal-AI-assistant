@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from typing import Any
 from urllib.parse import urlparse
@@ -44,11 +45,18 @@ class FactualClaimTestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _configured() -> bool:
+def _configured(runner_language: str = "python") -> bool:
     try:
-        return sandbox_tasks.handler_from_environment() is not None
+        handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
     except ValueError:
         return False
+    if handler is None:
+        return False
+    if runner_language == "javascript":
+        return bool(os.getenv("SANDBOX_NODE_IMAGE", "").strip())
+    if runner_language == "rust":
+        return bool(os.getenv("SANDBOX_RUST_IMAGE", "").strip())
+    return runner_language in {"python", "sqlite"}
 
 
 def _reviewer_configured() -> bool:
@@ -97,13 +105,15 @@ def queue_factual_claim_test(
     if request.oracle_reviewed is not True:
         raise HTTPException(status_code=422, detail="Explicit attestation that the test matches an independent oracle is required.")
     try:
-        factual_verification_tasks.get_verification_candidate(knowledge_id)
+        candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Factual claim not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
-        factual_verification_tasks.validate_test_harness(request.source_code)
+        factual_verification_tasks._validate_domain_test_harness(
+            request.source_code, candidate["runner_language"]
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -115,8 +125,11 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=503, detail="Sandbox consent storage is unavailable.") from exc
     if not consent["enabled"]:
         raise HTTPException(status_code=409, detail="Factual claim testing requires explicit current sandbox consent.")
-    if not _configured():
-        raise HTTPException(status_code=409, detail="Factual claim testing requires a configured digest-pinned Docker sandbox.")
+    if not _configured(candidate["runner_language"]):
+        raise HTTPException(
+            status_code=409,
+            detail="Factual claim testing requires a configured digest-pinned Docker image for this runtime.",
+        )
     if not _reviewer_configured():
         raise HTTPException(status_code=409, detail="Configure a distinct factual-review Ollama model before queueing factual verification.")
 
@@ -195,6 +208,13 @@ def list_factual_source_review_queue(
             items = []
             for row in rows:
                 item = dict(row)
+                runner_language = (
+                    "javascript" if item["domain_name"] in {"javascript", "node"}
+                    else "rust" if item["domain_name"] == "rust"
+                    else item["environment_name"]
+                )
+                if not _configured(runner_language):
+                    continue
                 evidence = connection.execute(
                     """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
                        FROM factual_evidence WHERE knowledge_id=? ORDER BY id""",
@@ -219,8 +239,12 @@ def list_factual_test_queue(
                           k.environment_version, k.evidence_level, k.lifecycle_status,
                           k.risk_level, k.updated_at
                    FROM factual_knowledge AS k
-                   WHERE k.domain_name IN ('python','sqlite')
-                     AND k.environment_name=k.domain_name
+                   WHERE (
+                       (k.domain_name IN ('python','sqlite') AND k.environment_name=k.domain_name)
+                       OR (k.domain_name='javascript' AND k.environment_name IN ('javascript','node'))
+                       OR (k.domain_name='node' AND k.environment_name='node')
+                       OR (k.domain_name='rust' AND k.environment_name='rust')
+                   )
                      AND k.evidence_level='L1_sourced'
                      AND k.lifecycle_status='active'
                      AND k.risk_level NOT IN ('high','critical')
