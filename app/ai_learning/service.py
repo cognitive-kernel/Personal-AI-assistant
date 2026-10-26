@@ -106,7 +106,7 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "Create a structured learning outline for: " + course["title"] + ".\n"
                 "Language: " + course["language"] + ". Level: " + course["target_level"] + ".\n"
                 "Scope: " + course["scope_notes"] + "\n"
-                "Return only the outline, with every topic numbered using the exact format '1. Topic title', "
+                "Return only the outline with numbered topics; every topic must use the exact format '1. Topic title', "
                 "one topic per line and no blank lines between topics. Do not add an introduction, "
                 "explanation, or closing note. Use at least 10 topics when the subject allows it. "
                 "Do not claim that unverified facts are verified."
@@ -427,7 +427,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     )
                     conn.commit()
                     return get_run(run_id)
-                title_match = re.search(r"(?m)^#{1,6}\\s+(.{1,300})$", response_text)
+                title_match = re.search(r"(?m)^#{1,6}\s+(.{1,300})$", response_text)
                 title = title_match.group(1).strip() if title_match else topics[0]["title"]
                 sections = [(int(topics[0]["id"]), title, response_text)]
             else:
