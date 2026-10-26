@@ -226,7 +226,7 @@ async function refreshLearningControl() {
     ? "وضعیت: مکث فعال است. این وضعیت پس از خاموشی نیز حفظ می‌شود."
     : "وضعیت: مکث فعال نیست. فرایندهای در حال اجرا می‌توانند ادامه پیدا کنند.";
   byId("pause-learning").disabled = !!state.paused;
-  byId("resume-learning").disabled = !state.paused;
+  byId("resume-learning").disabled = false;
 }
 byId("pause-learning").addEventListener("click", async () => {
   try {
