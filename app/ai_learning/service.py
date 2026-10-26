@@ -506,6 +506,8 @@ def get_course(course_id: int) -> dict[str, Any]:
         else:
             progress = 0
             label = "در انتظار تأیید سرفصل"
+        if item["processing_status"] == "paused":
+            label = "متوقف‌شده" if progress == 0 else "متوقف‌شده — " + label
         item["progress_percent"] = progress
         item["progress_label"] = label
         topic_items.append(item)
@@ -711,6 +713,8 @@ def list_lessons(topic_id: int) -> list[dict[str, Any]]:
             item["progress_percent"], item["progress_label"] = 0, "متوقف‌شده"
         else:
             item["progress_percent"], item["progress_label"] = 25, "درس ایجاد شده؛ منتظر محتوا"
+        if item["status"] == "paused":
+            item["progress_label"] = "متوقف‌شده" if item["progress_percent"] == 0 else "متوقف‌شده — " + item["progress_label"]
         result.append(item)
     return result
 
