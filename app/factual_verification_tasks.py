@@ -282,8 +282,7 @@ def _build_handler(
             source_version_item = applicability.get("source_version") or applicability.get("version")
             if not isinstance(source_version_item, str) or not source_version_item.strip():
                 source_version_item = ""
-            source_path_parts = [part for part in urlparse(evidence_item["source_ref"]).path.split("/") if part]
-            url_version = source_path_parts[0] if source_path_parts and re.fullmatch(r"\d+\.\d+", source_path_parts[0]) else ""
+            url_version = factual_semantic_review.extract_url_version(str(evidence_item["source_ref"]))
             if not url_version:
                 # Major-only or unversioned documentation URLs do not establish minor-version compatibility.
                 source_version_item = "unspecified"
