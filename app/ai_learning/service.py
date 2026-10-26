@@ -690,19 +690,32 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                         ensure_candidate_embedding=len(sections) > 1,
                     )
                 except Exception as exc:
-                    conn.execute(
-                        """UPDATE runs SET response_text=?,status='needs_user_action',
-                           error_code='semantic_duplicate_check_unavailable',error_message=?,
-                           finished_at=CURRENT_TIMESTAMP WHERE id=?""",
-                        (
-                            response_text,
-                            "بررسی معنایی تکراری نبودن درس انجام نشد؛ برای جلوگیری از ثبت آموزش تکراری، هیچ بخشی از این دسته ذخیره نشد. "
-                            f"جزئیات فنی: {type(exc).__name__}",
-                            run_id,
-                        ),
-                    )
-                    conn.commit()
-                    return get_run(run_id)
+                    # For a single captured lesson, semantic embeddings are optional:
+                    # exact normalized duplicates were already checked by the helper.
+                    # Do not discard valid lesson content just because Ollama lacks
+                    # the configured embedding model.
+                    if len(sections) == 1:
+                        duplicate = None
+                        conn.execute(
+                            "UPDATE runs SET error_code=NULL,error_message=? WHERE id=?",
+                            (
+                                f"هشدار: بررسی معنایی تکراری بودن محتوا در دسترس نبود ({type(exc).__name__})؛ پس از بررسی دقیق متن، درس ذخیره می‌شود.",
+                                run_id,
+                            ),
+                        )
+                    else:
+                        conn.execute(
+                            """UPDATE runs SET response_text=?,status='needs_user_action',error_code='semantic_duplicate_check_unavailable',error_message=?,
+                               finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+                            (
+                                response_text,
+                                "بررسی معنایی تکراری نبودن درس انجام نشد؛ برای جلوگیری از ثبت آموزش تکراری، هیچ بخشی از این دسته ذخیره نشد. "
+                                f"جزئیات فنی: {type(exc).__name__}",
+                                run_id,
+                            ),
+                        )
+                        conn.commit()
+                        return get_run(run_id)
                 if duplicate is not None:
                     duplicate_sections[topic_id] = duplicate
 
