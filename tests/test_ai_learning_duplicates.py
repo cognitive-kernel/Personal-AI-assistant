@@ -15,7 +15,10 @@ def test_course_titles_are_unique_after_persian_normalization(learning_store):
         service.create_course(title="  sql-server   2025! ")
 
 
-def test_topic_titles_are_unique_on_create_and_edit(learning_store):
+def test_topic_titles_are_unique_on_create_and_edit(learning_store, monkeypatch):
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+        [1.0, 0.0] if "ایندکس" in text else [0.0, 1.0] for text in texts
+    ])
     course = service.create_course(title="دوره آزمایشی")
     first = service.add_topic(course["id"], "ایندکس‌ها در SQL Server")
     with pytest.raises(ValueError, match="عنوان تکراری"):
@@ -41,7 +44,10 @@ def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning
     ]
 
 
-def test_lesson_titles_are_unique_within_topic_on_create_and_edit(learning_store):
+def test_lesson_titles_are_unique_within_topic_on_create_and_edit(learning_store, monkeypatch):
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+        [1.0, 0.0] if "ایندکس" in text else [0.0, 1.0] for text in texts
+    ])
     course = service.create_course(title="دوره درس‌ها")
     topic = service.add_topic(course["id"], "مبانی")
     service.decide_topics([topic["id"]], "approved")
@@ -95,3 +101,30 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
     assert duplicate is not None
     assert duplicate["method"] == "embedding"
     assert duplicate["topic_id"] == first_topic["id"]
+
+
+
+def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store, monkeypatch):
+    course = service.create_course(title="SQL Server")
+    existing = service.add_topic(course["id"], "آشنایی با مفاهیم پایگاه داده و کاربردهای SQL Server")
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[1.0, 0.0] for _ in texts])
+
+    result = service.import_outline(
+        course["id"],
+        "1. آشنایی با پایگاه داده، مفاهیم داده و معماری سیستم‌های مدیریت پایگاه داده\n"
+        "2. آموزش موضوع کاملاً تازه",
+    )
+
+    assert result["imported"] == 0
+    assert result["skipped_existing"] == 2
+    assert result["skipped_duplicates"][0]["duplicate_of"] == existing["title"]
+    assert result["skipped_duplicates"][0]["method"] == "embedding"
+
+
+def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_store, monkeypatch):
+    course = service.create_course(title="SQL Server")
+    service.add_topic(course["id"], "مبانی")
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")))
+
+    with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
+        service.add_topic(course["id"], "موضوع دیگر")
