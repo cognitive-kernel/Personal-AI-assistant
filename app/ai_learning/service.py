@@ -53,8 +53,17 @@ def _title_embeddings(texts: list[str]) -> list[list[float]]:
     return [[float(value) for value in vector] for vector in vectors]
 
 
+TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.985
+
+
+def _title_tokens(value: str) -> set[str]:
+    """Extract meaningful normalized title tokens for a conservative semantic duplicate check."""
+    return {token for token in _dedupe_normalize(value).split()
+            if len(token) > 1 and token not in {"sql", "server", "2025", "آشنایی", "مقدمه", "معرفی", "بررسی", "کار", "با", "در", "و", "از", "برای"}}
+
+
 def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) -> tuple[list[str], list[dict[str, Any]]]:
-    """Filter a whole title batch semantically, with exact normalization as a first pass."""
+    """Skip exact duplicates and only near-identical semantic titles, never broad topic overlap."""
     accepted: list[str] = []
     skipped: list[dict[str, Any]] = []
     known: list[str] = []
@@ -78,7 +87,6 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
         return accepted, skipped
     if not existing_titles and len(pending) == 1:
         return pending, skipped
-    # Embed existing titles and candidates once, rather than issuing one request per title.
     base_titles = list(existing_titles)
     try:
         vectors = _title_embeddings(base_titles + pending)
@@ -91,13 +99,20 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
     candidate_vectors = vectors[len(base_titles):]
     accepted_vectors: list[tuple[str, list[float]]] = list(zip(base_titles, base_vectors))
     for title, vector in zip(pending, candidate_vectors):
+        candidate_tokens = _title_tokens(title)
         best: tuple[str, float] | None = None
         for existing, existing_vector in accepted_vectors:
             score = _embedding_cosine(vector, existing_vector)
-            if best is None or score > best[1]:
-                best = (existing, score)
-        if best and best[1] >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
-            skipped.append({"title": title, "duplicate_of": best[0], "score": round(best[1], 4), "method": "embedding"})
+            existing_tokens = _title_tokens(existing)
+            union = candidate_tokens | existing_tokens
+            overlap = len(candidate_tokens & existing_tokens) / len(union) if union else 0.0
+            # Title embeddings alone often confuse two distinct subtopics in the same domain.
+            # Require both exceptionally high semantic similarity and strong lexical overlap.
+            if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD and overlap >= 0.65 and len(candidate_tokens & existing_tokens) >= 3:
+                if best is None or score > best[1]:
+                    best = (existing, score)
+        if best:
+            skipped.append({"title": title, "duplicate_of": best[0], "score": round(best[1], 4), "method": "embedding+token_overlap"})
         else:
             accepted.append(title)
             accepted_vectors.append((title, vector))
@@ -216,10 +231,13 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "Create a structured learning outline for: " + course["title"] + ".\n"
                 "Language: " + course["language"] + ". Level: " + course["target_level"] + ".\n"
                 "Scope: " + course["scope_notes"] + "\n"
-                "Return only the outline with numbered topics; every topic must use the exact format '1. Topic title', "
-                "one topic per line and no blank lines between topics. Do not add an introduction, "
-                "explanation, or closing note. Use at least 10 topics when the subject allows it. "
-                "Do not claim that unverified facts are verified."
+                "Create the most comprehensive practical curriculum possible, from foundations through advanced production engineering. "
+                "Do not give a short overview or a starter list. For a broad product such as SQL Server 2025, aim for 120–160 distinct, teachable topics and never intentionally stop at 50–80. "
+                "Cover every relevant domain, including fundamentals and relational design; T-SQL from basic to advanced; data types and programmability; transactions and concurrency; indexes and query optimization; administration and monitoring; security; backup, restore, high availability and disaster recovery; data integration, ETL and analytics; JSON/XML, full-text, regex and vector/AI capabilities; cloud and hybrid integration; deployment, migration, automation, troubleshooting, capacity planning and a final end-to-end project. "
+                "Give each topic a specific learning outcome and keep distinct subtopics separate, even when they belong to the same domain. Do not merge beginner and advanced material, concepts and implementation, or administration and troubleshooting into one broad title. Include SQL Server 2025-specific features only when supported; label version-dependent or preview features clearly rather than inventing them. "
+                "Before answering, internally check coverage against all relevant domains and add missing topics. Avoid duplicate titles and truly redundant topics, but do not discard a topic merely because it is related to another. "
+                "Return only the outline with numbered topics; every topic must use the exact format '1. Topic title', one topic per line, continuous numbering, no sub-bullets, no blank lines, and no introductory or closing text. "
+                "If the complete outline does not fit in one response, return a clearly numbered first part and explicitly state the last topic number so the user can request continuation; never silently summarize or truncate the curriculum. Do not claim that unverified facts are verified."
             )
         else:
             topic_lines = "\n".join("[TOPIC_ID:" + str(row["id"]) + "] " + row["title"] for row in topics)
