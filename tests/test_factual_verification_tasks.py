@@ -716,3 +716,48 @@ def test_wrapped_harness_reports_both_python_and_sqlite_versions():
     assert "__PAI_PYTHON_VERSION__" in wrapped
     assert "__PAI_SQLITE_VERSION__" in wrapped
     assert marker in wrapped
+
+
+
+@pytest.mark.parametrize(
+    ("language", "source", "expected"),
+    [
+        ("javascript", "assert.equal(2 + 2, 4);", True),
+        ("javascript", "const value = 4;", False),
+        ("rust", "assert_eq!(2 + 2, 4);", True),
+        ("rust", "let value = 4;", False),
+    ],
+)
+def test_domain_harness_requires_explicit_assertions(language, source, expected):
+    from app.factual_verification_tasks import _validate_domain_test_harness
+
+    if expected:
+        _validate_domain_test_harness(source, language)
+    else:
+        with pytest.raises(ValueError, match="assert"):
+            _validate_domain_test_harness(source, language)
+
+
+def test_node_and_rust_harnesses_bind_runtime_and_completion_markers():
+    from app.factual_verification_tasks import _runtime_version, _wrapped_harness
+
+    node, node_marker = _wrapped_harness("assert.equal(2 + 2, 4);", "javascript")
+    assert "__PAI_NODE_VERSION__" in node
+    version, completed, output = _runtime_version(
+        "__PAI_NODE_VERSION__:22.14.0\nnode assertion passed\n" + node_marker,
+        node_marker, "javascript",
+    )
+    assert version == "22.14.0"
+    assert completed is True
+    assert output == "node assertion passed"
+
+    rust, rust_marker = _wrapped_harness("assert_eq!(2 + 2, 4);", "rust")
+    assert "fn main()" in rust
+    assert "assert_eq!(2 + 2, 4);" in rust
+    version, completed, output = _runtime_version(
+        "__PAI_RUST_VERSION__:1.84.0\nrust assertion passed\n" + rust_marker,
+        rust_marker, "rust",
+    )
+    assert version == "1.84.0"
+    assert completed is True
+    assert output == "rust assertion passed"
