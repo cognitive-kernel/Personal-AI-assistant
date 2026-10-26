@@ -37,7 +37,7 @@ class LearningResume(BaseModel):
 
 class BrowserLessonStart(BaseModel):
     course_id: int = Field(ge=1)
-    topic_ids: list[int] = Field(min_length=1, max_length=100)
+    topic_ids: list[int] = Field(min_length=1, max_length=10000)
     request_key: str = Field(min_length=1, max_length=100)
     force_retry: bool = False
     model_config = ConfigDict(extra="forbid")
