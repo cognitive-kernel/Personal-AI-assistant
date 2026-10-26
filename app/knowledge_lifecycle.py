@@ -188,8 +188,8 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
     return {
         "candidate_id": candidate_id,
         "candidate_sha256": candidate["content_sha256"],
-        "status": "ready_for_promotion" if ready else (
-            "conflicting" if contradictions else "awaiting_evidence"
+        "status": ("retained" if candidate["promoted_knowledge_id"] is not None else "ready_for_promotion") if ready else (
+            "retained" if candidate["promoted_knowledge_id"] is not None else "conflicting" if contradictions else "awaiting_evidence"
         ),
         "ready_for_promotion": ready,
         "checks": checks,
@@ -264,10 +264,14 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
         ).fetchone()
         if knowledge is None:
             raise ValueError("Durable knowledge row for this candidate is missing.")
-        connection.execute(
+        if knowledge["status"] != "unverified":
+            raise ValueError("Durable knowledge is not in the unverified state required for promotion.")
+        knowledge_update = connection.execute(
             "UPDATE knowledge_items SET status='retained_after_review' WHERE id=? AND status='unverified'",
             (knowledge["id"],),
         )
+        if knowledge_update.rowcount != 1:
+            raise ValueError("Durable knowledge changed during promotion; no promotion was recorded.")
         cursor = connection.execute(
             """UPDATE temporary_knowledge_candidates
                SET promoted_knowledge_id=?, updated_at=CURRENT_TIMESTAMP
@@ -381,7 +385,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
     for item in installed:
         name = str(item.get("name", "")).strip()
         digest = str(item.get("digest", "")).strip()
-        if not name or not digest or len(name) + 1 + len(digest) > 200 or name in primary_names or digest in seen_digests:
+        if not name or not digest or len(name) + len(digest) + 8 > 200 or name in primary_names or digest in seen_digests:
             continue
         reviewers.append((name, digest))
         seen_digests.add(digest)
