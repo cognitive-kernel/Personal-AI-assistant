@@ -4,7 +4,7 @@ from typing import Any, Literal
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-from . import config, service
+from . import config, service, browser_automation
 from .db import StoreSchemaError, initialize_store
 from ..task_routes import require_loopback_client
 
@@ -16,6 +16,11 @@ class CourseCreate(BaseModel):
     language: str = Field(default="fa", min_length=2, max_length=20)
     target_level: str = Field(default="beginner_to_advanced", min_length=1, max_length=80)
     scope_notes: str = Field(default="", max_length=4000)
+    model_config = ConfigDict(extra="forbid")
+
+class BrowserOutlineStart(BaseModel):
+    course_id: int = Field(ge=1)
+    request_key: str = Field(min_length=1, max_length=100)
     model_config = ConfigDict(extra="forbid")
 
 class RunCreate(BaseModel):
@@ -98,8 +103,12 @@ def _call(function, *args, **kwargs):
 @router.get("/status")
 def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
-            "provider_mode": "user_confirmed_chrome_bridge",
-            "note": "After the user starts a run, the extension attempts to submit the visible ChatGPT prompt and capture the completed answer. Successful outlines automatically continue into small lesson batches; lesson content remains unpublished for review. Retrieval is separately gated."}
+            "provider_mode": "playwright_visible_chatgpt_ui",
+            "note": "The dashboard starts a persistent local Chrome/Playwright worker that interacts with the visible ChatGPT page. No OpenAI API key is used. Successful outlines continue into lesson batches; lessons remain unpublished for review."}
+
+@router.post("/browser/outline", status_code=202)
+def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
+    return _call(browser_automation.start_outline, request.course_id, request.request_key)
 
 @router.post("/runs", status_code=201)
 def create_run(request: RunCreate) -> dict[str, Any]:
