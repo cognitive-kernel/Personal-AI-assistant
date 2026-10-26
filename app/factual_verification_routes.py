@@ -208,13 +208,6 @@ def list_factual_source_review_queue(
             items = []
             for row in rows:
                 item = dict(row)
-                runner_language = (
-                    "javascript" if item["domain_name"] in {"javascript", "node"}
-                    else "rust" if item["domain_name"] == "rust"
-                    else item["environment_name"]
-                )
-                if not _configured(runner_language):
-                    continue
                 evidence = connection.execute(
                     """SELECT source_type, source_ref, source_hash, excerpt, applicability_json
                        FROM factual_evidence WHERE knowledge_id=? ORDER BY id""",
@@ -231,7 +224,7 @@ def list_factual_source_review_queue(
 def list_factual_test_queue(
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
-    """List sourced, active Python/SQLite L1 claims that may be manually submitted for testing."""
+    """List sourced L1 claims for runtimes whose digest-pinned sandbox image is configured."""
     try:
         with learning_connection() as connection:
             rows = connection.execute(
@@ -275,6 +268,13 @@ def list_factual_test_queue(
             items = []
             for row in rows:
                 item = dict(row)
+                runner_language = (
+                    "javascript" if item["domain_name"] in {"javascript", "node"}
+                    else "rust" if item["domain_name"] == "rust"
+                    else item["environment_name"]
+                )
+                if not _configured(runner_language):
+                    continue
                 evidence = connection.execute(
                     """SELECT source_type, source_ref, source_hash, excerpt
                        FROM factual_evidence
