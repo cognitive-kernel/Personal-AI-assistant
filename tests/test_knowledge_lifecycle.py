@@ -232,3 +232,113 @@ def test_two_models_and_two_live_sources_allow_audited_promotion(lifecycle_store
     assert counts["source"] >= 2
     assert counts["ai_review"] == 2
     assert counts["test_review"] == 1
+
+
+
+def test_one_available_reviewer_does_not_reject_or_promote_candidate(lifecycle_store, monkeypatch):
+    job = learning.create_job("Insufficient reviewers")
+    content = "Temporary lesson that remains in staging when independent review is unavailable."
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    urls = ["https://alpha.example.test/guide", "https://beta.example.test/reference"]
+    texts = {
+        urls[0]: "Alpha source describes the mechanism, expected behavior, constraints, and version scope in detail.",
+        urls[1]: "Beta source independently documents the same mechanism, behavior, limitations, and version applicability.",
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'unverified', ?)""",
+            ("Insufficient reviewers", content, "web_retrieved", 1, job["id"]),
+        )
+        candidate_id = int(connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (job["id"], "Insufficient reviewers", content, "web_retrieved",
+             json.dumps(urls), digest, json.dumps({"accepted": True})),
+        ).lastrowid)
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda url, *_args, **_kwargs: SimpleNamespace(text=texts[url], title=url),
+    )
+    monkeypatch.setattr(
+        "app.ollama.list_models",
+        lambda: [{"name": "only-reviewer", "digest": "only-digest"}],
+    )
+
+    result = knowledge_lifecycle.validate_candidate_with_models(candidate_id)
+
+    assert result["status"] == "awaiting_evidence"
+    assert result["ready_for_promotion"] is False
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert row["status"] == "awaiting_test"
+    assert row["promoted_knowledge_id"] is None
+
+
+def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecycle_store, monkeypatch):
+    job = learning.create_job("Repeated contradiction")
+    content = "Temporary lesson whose central claim may be contradicted by evidence."
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    urls = ["https://alpha.example.test/guide", "https://beta.example.test/reference"]
+    texts = {
+        urls[0]: "Alpha source explicitly contradicts the claim, including its mechanism and documented constraints.",
+        urls[1]: "Beta source explicitly contradicts the claim and documents an incompatible behavior and scope.",
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'unverified', ?)""",
+            ("Repeated contradiction", content, "web_retrieved", 1, job["id"]),
+        )
+        candidate_id = int(connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (job["id"], "Repeated contradiction", content, "web_retrieved",
+             json.dumps(urls), digest, json.dumps({"accepted": True})),
+        ).lastrowid)
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda url, *_args, **_kwargs: SimpleNamespace(text=texts[url], title=url),
+    )
+    monkeypatch.setattr(
+        "app.ollama.list_models",
+        lambda: [
+            {"name": "reviewer-one", "digest": "digest-one"},
+            {"name": "reviewer-two", "digest": "digest-two"},
+        ],
+    )
+
+    def contradictory_chat(prompt, **kwargs):
+        request = json.loads(prompt)
+        return json.dumps({
+            "verdict": "contradicts",
+            "rationale": "The sources directly contradict the central lesson claim and its stated scope.",
+            "source_verdicts": [
+                {
+                    "url": source["url"],
+                    "verdict": "contradicts",
+                    "rationale": "This source directly documents behavior incompatible with the candidate claim.",
+                }
+                for source in request["sources"]
+            ],
+        })
+
+    monkeypatch.setattr("app.ollama.chat", contradictory_chat)
+    result = knowledge_lifecycle.validate_candidate_with_models(candidate_id)
+
+    assert result["status"] == "rejected_after_review"
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT status, failure_reason, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+    assert row["status"] == "failed"
+    assert "rejected_after_review" in row["failure_reason"]
+    assert row["promoted_knowledge_id"] is None
