@@ -6,7 +6,8 @@ from contextvars import ContextVar
 import logging
 from typing import Any, Iterator
 
-from .db import learning_connection
+from .db import get_settings, learning_connection
+from . import learning_cost_manager
 
 logger = logging.getLogger("personal_ai_assistant.usage_metrics")
 _CURRENT_TASK_ID: ContextVar[int | None] = ContextVar("usage_metrics_task_id", default=None)
@@ -56,18 +57,21 @@ def record_ollama_response(*, purpose: str, model: str, response: dict[str, Any]
     if not any(values.values()):
         return False
     try:
+        estimate = learning_cost_manager.estimate_model_usage(
+            get_settings(), model.strip(), values["prompt_tokens"], values["completion_tokens"]
+        )
         with learning_connection() as connection:
             connection.execute(
                 """INSERT INTO model_usage_events(
                        task_id, purpose, model_name, prompt_tokens, completion_tokens,
                        total_duration_ns, load_duration_ns, prompt_eval_duration_ns,
-                       eval_duration_ns
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       eval_duration_ns, estimated_cost_microusd
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     task_id, purpose, model.strip(), values["prompt_tokens"],
                     values["completion_tokens"], values["total_duration_ns"],
                     values["load_duration_ns"], values["prompt_eval_duration_ns"],
-                    values["eval_duration_ns"],
+                    values["eval_duration_ns"], estimate["estimated_cost_microusd"],
                 ),
             )
         return True
