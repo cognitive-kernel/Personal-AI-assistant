@@ -159,6 +159,7 @@ def test_source_version_requires_major_minor_precision():
         ("https://sqlite.org/releaselog/3_45_0.html", "3.45"),
         ("https://docs.example.test/3.12/library/index.html", "3.12"),
         ("https://docs.example.test/latest/?version=4.7.2", "4.7"),
+        ("https://nodejs.org/docs/v22.14.0/api/assert.html", "22.14"),
     ],
 )
 def test_version_parser_handles_explicit_versioned_documentation_urls(url, expected):
