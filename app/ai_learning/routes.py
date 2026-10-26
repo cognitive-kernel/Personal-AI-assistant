@@ -35,6 +35,12 @@ class LearningResume(BaseModel):
     course_id: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
 
+class BrowserLessonStart(BaseModel):
+    course_id: int = Field(ge=1)
+    topic_ids: list[int] = Field(min_length=1, max_length=100)
+    request_key: str = Field(min_length=1, max_length=100)
+    model_config = ConfigDict(extra="forbid")
+
 class RunHistoryDelete(BaseModel):
     run_ids: list[int] = Field(min_length=1, max_length=50)
     model_config = ConfigDict(extra="forbid")
@@ -136,6 +142,10 @@ def resume_learning(request: LearningResume) -> dict[str, Any]:
 @router.post("/browser/outline", status_code=202)
 def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
     return _call(browser_automation.start_outline, request.course_id, request.request_key)
+
+@router.post("/browser/lessons", status_code=202)
+def start_browser_lessons(request: BrowserLessonStart) -> dict[str, Any]:
+    return _call(browser_automation.start_lesson_run, request.course_id, request.topic_ids, request.request_key)
 
 @router.post("/runs", status_code=201)
 def create_run(request: RunCreate) -> dict[str, Any]:
