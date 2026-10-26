@@ -959,7 +959,9 @@ def review_content(version_id: int, decision: str) -> dict[str, Any]:
             raise NotFoundError("Content version not found.")
         if row["review_status"] in {"published", "withdrawn", "superseded"}:
             raise ValueError("Published or inactive versions cannot be reviewed in place; use the unpublish action or create a new version.")
-        if decision == "reviewed" and not _lesson_has_substantive_body(str(row["markdown"] or "")):
+        review_text = str(row["markdown"] or "").strip()
+        review_body = re.sub(r"(?m)^\s*#{1,6}\s+.*$", "", review_text).strip()
+        if decision == "reviewed" and len(review_body) < 10:
             raise ValueError("متن درس خالی یا ناقص است؛ بازبینی را تأیید نکنید. ابتدا نسخهٔ اصلاحی با محتوای کامل ثبت کنید.")
         conn.execute("UPDATE content_versions SET review_status=? WHERE id=?", (decision, version_id))
         conn.execute("UPDATE lessons SET status=? WHERE id=?",
