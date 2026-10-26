@@ -124,6 +124,10 @@ def create_run(request: RunCreate) -> dict[str, Any]:
 def get_run(run_id: int) -> dict[str, Any]:
     return _call(service.get_run, run_id)
 
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: int) -> dict[str, Any]:
+    return _call(browser_automation.cancel_run, run_id)
+
 @router.post("/runs/{run_id}/start")
 def start_run(run_id: int) -> dict[str, Any]:
     return _call(service.start_run, run_id)
