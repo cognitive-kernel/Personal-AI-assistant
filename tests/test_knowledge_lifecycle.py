@@ -151,3 +151,84 @@ def test_review_schema_is_registered_and_indexed(lifecycle_store):
         ).fetchone()
     assert table is not None
     assert index is not None
+
+
+
+def test_two_models_and_two_live_sources_allow_audited_promotion(lifecycle_store, monkeypatch):
+    job = learning.create_job("Multi-model validation")
+    content = "A temporary lesson checked against two independent public sources."
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    urls = ["https://alpha.example.test/guide", "https://beta.example.test/reference"]
+    texts = {
+        urls[0]: "Alpha source describes the mechanism, expected behavior, constraints, and version scope in detail.",
+        urls[1]: "Beta source independently documents the same mechanism, behavior, limitations, and version applicability.",
+    }
+    with db.learning_connection() as connection:
+        connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'unverified', ?)""",
+            ("Multi-model validation", content, "web_retrieved", 1, job["id"]),
+        )
+        cursor = connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (job["id"], "Multi-model validation", content, "web_retrieved",
+             json.dumps(urls), digest, json.dumps({"accepted": True})),
+        )
+        candidate_id = int(cursor.lastrowid)
+
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda url, *_args, **_kwargs: SimpleNamespace(text=texts[url], title=url),
+    )
+    monkeypatch.setattr(
+        "app.ollama.list_models",
+        lambda: [
+            {"name": "reviewer-one", "digest": "digest-one"},
+            {"name": "reviewer-two", "digest": "digest-two"},
+        ],
+    )
+
+    def fake_chat(prompt, **kwargs):
+        request = json.loads(prompt)
+        return json.dumps({
+            "verdict": "supports",
+            "rationale": "The central lesson claims are supported by both supplied independent sources.",
+            "source_verdicts": [
+                {
+                    "url": source["url"],
+                    "verdict": "supports",
+                    "rationale": "This source directly supports the candidate's central claim and scope.",
+                }
+                for source in request["sources"]
+            ],
+        })
+
+    monkeypatch.setattr("app.ollama.chat", fake_chat)
+
+    result = knowledge_lifecycle.validate_candidate_with_models(candidate_id)
+
+    assert result["ready_for_promotion"] is True
+    assert result["status"] == "ready_for_promotion"
+    promoted = knowledge_lifecycle.promote_candidate(
+        candidate_id, expected_candidate_sha256=digest
+    )
+    assert promoted["promoted"] is True
+    assert promoted["knowledge"]["status"] == "retained_after_review"
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        reviews = connection.execute(
+            "SELECT review_kind, COUNT(*) AS n FROM knowledge_candidate_reviews WHERE candidate_id=? GROUP BY review_kind",
+            (candidate_id,),
+        ).fetchall()
+    assert candidate["status"] == "passed"
+    assert candidate["promoted_knowledge_id"] is not None
+    counts = {row["review_kind"]: row["n"] for row in reviews}
+    assert counts["source"] >= 2
+    assert counts["ai_review"] == 2
+    assert counts["test_review"] == 1
