@@ -120,6 +120,16 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
         )""",
         "INSERT INTO ai_learning_control(id,paused,reason) VALUES(1,0,'')",
     )),
+    (3, "semantic-lesson-deduplication-cache", (
+        """CREATE TABLE semantic_embedding_cache (
+            content_sha256 TEXT NOT NULL CHECK(length(content_sha256)=64),
+            embedding_model TEXT NOT NULL CHECK(length(trim(embedding_model))>0),
+            embedding_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(content_sha256, embedding_model)
+        )""",
+        "CREATE INDEX idx_ai_semantic_embedding_model ON semantic_embedding_cache(embedding_model,content_sha256)",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):
