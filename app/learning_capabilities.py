@@ -5,6 +5,7 @@ assessment scores remain provisional until repeatable practical tasks are added.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -48,6 +49,7 @@ def _practical_evidence_map(connection, topics: set[str]) -> dict[str, dict[str,
             if not all(
                 isinstance(source, dict)
                 and isinstance(source.get("url"), str)
+                and source["url"].startswith("https://")
                 and isinstance(source.get("live_content_sha256"), str)
                 and _SHA256.fullmatch(source["live_content_sha256"])
                 and isinstance(source.get("excerpt_sha256"), str)
@@ -95,7 +97,8 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
             continue
         if not isinstance(results, list):
             continue
-        scenario_hash = hashlib.sha256(problem.strip().encode("utf-8")).hexdigest()
+        normalized_problem = re.sub(r"\s+", " ", problem).strip().casefold()
+        scenario_hash = hashlib.sha256(normalized_problem.encode("utf-8")).hexdigest()
         for item in results:
             if not isinstance(item, dict) or item.get("passed") is not True or item.get("runner") != "docker-sandbox":
                 continue
@@ -269,6 +272,10 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             status = "provisional"
             confidence = "provisional"
 
+        practical = practical_by_topic.get(str(row["topic"]).strip().casefold(), {
+            "practical_attempt_count": 0, "practical_test_names": [],
+            "practical_source_count": 0, "practical_repeatable": False,
+        })
         transfer = transfer_by_topic.get(str(row["topic"]).strip().casefold(), {
             "transfer_case_count": 0, "transfer_attempt_count": 0,
             "transfer_repeatable": False, "transfer_evidence_knowledge_ids": [],
@@ -335,7 +342,9 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "last_assessed_at": row["latest_assessed_at"] if valid else None,
             "confidence": confidence,
             "evidence_limit": (
-                "Repeated practical evidence means two distinct passing sandbox test programs with current-page source excerpts; it remains provisional and does not prove general transfer or semantic mastery."
+                "Transfer evidence requires distinct problem statements and passing sandbox tests tied to the same retained knowledge item with live source provenance; it remains provisional and does not prove general transfer or semantic mastery."
+                if transfer["transfer_repeatable"] else
+                "Repeated practical evidence means distinct passing sandbox test programs with current-page source excerpts; it remains provisional and does not prove general transfer or semantic mastery."
                 if practical["practical_repeatable"] else
                 "Exact-match assessments are provisional evidence; semantic mastery and practical transfer are not established."
             ),
