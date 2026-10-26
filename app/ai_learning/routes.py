@@ -31,6 +31,10 @@ class RunCreate(BaseModel):
     request_key: str = Field(min_length=1, max_length=100)
     model_config = ConfigDict(extra="forbid")
 
+class LearningResume(BaseModel):
+    course_id: int | None = Field(default=None, ge=1)
+    model_config = ConfigDict(extra="forbid")
+
 class RunHistoryDelete(BaseModel):
     run_ids: list[int] = Field(min_length=1, max_length=50)
     model_config = ConfigDict(extra="forbid")
@@ -109,6 +113,21 @@ def status() -> dict[str, Any]:
     return {"enabled": config.is_enabled(), "retrieval_enabled": config.retrieval_is_enabled(),
             "provider_mode": "playwright_visible_chatgpt_ui",
             "note": "The dashboard starts a persistent local Chrome/Playwright worker that interacts with the visible ChatGPT page. No OpenAI API key is used. Successful outlines continue into lesson batches; lessons remain unpublished for review."}
+
+@router.get("/control")
+def learning_control() -> dict[str, Any]:
+    return _call(service.get_learning_control)
+
+
+@router.post("/pause")
+def pause_learning() -> dict[str, Any]:
+    return _call(browser_automation.pause_learning)
+
+
+@router.post("/resume")
+def resume_learning(request: LearningResume) -> dict[str, Any]:
+    return _call(browser_automation.resume_learning, request.course_id)
+
 
 @router.post("/browser/outline", status_code=202)
 def start_browser_outline(request: BrowserOutlineStart) -> dict[str, Any]:
