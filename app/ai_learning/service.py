@@ -122,6 +122,25 @@ def get_run(run_id: int) -> dict[str, Any]:
     result["topics"] = [dict(row) for row in topics]
     return result
 
+def mark_run_needs_user_action(run_id: int, error_code: str, error_message: str) -> dict[str, Any]:
+    """Persist recoverable browser/provider failures without discarding a captured response."""
+    error_code = _clean_text(error_code, "error_code", 80)
+    error_message = _clean_text(error_message, "error_message", 1000)
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise NotFoundError("Run not found.")
+        if run["status"] in {"succeeded", "failed", "cancelled"}:
+            return get_run(run_id)
+        conn.execute(
+            """UPDATE runs SET status='needs_user_action',error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
+               WHERE id=?""",
+            (error_code, error_message, run_id),
+        )
+    return get_run(run_id)
+
+
 def start_run(run_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
