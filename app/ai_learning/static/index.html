@@ -3,7 +3,7 @@
 <body><header><h1>مدیریت دانش هوش مصنوعی</h1><p>دانش پس از بازبینی و انتشار، به‌صورت اختیاری در پاسخ‌گویی عادی دستیار استفاده می‌شود.</p><p id="status" role="status" aria-live="polite">در حال بارگذاری…</p>
 <div class="toolbar" aria-label="کنترل سراسری یادگیری">
 <button id="pause-learning" type="button" class="secondary">مکث همهٔ فرایندهای ChatGPT</button>
-<button id="resume-learning" type="button">ادامه / بازیابی پس از قطعی برق</button>
+<button id="resume-learning" type="button">ادامه و دریافت درس‌های باقی‌مانده / بازیابی پس از قطعی برق</button>
 </div>
 <p id="learning-control-status" class="hint" role="status">وضعیت مکث در حال بررسی است.</p></header><main>
 <section><h2>۱. ایجاد دوره</h2><form id="course-form" class="grid"><label>موضوع<input name="title" required maxlength="300" placeholder="مثلاً SQL Server 2005"></label><label>سرویس<select name="provider"><option value="manual">ورود دستی</option><option value="chatgpt_ui">ChatGPT در Chrome</option><option value="other_provider">سرویس دیگر</option></select></label><label>زبان<input name="language" value="fa" maxlength="20"></label><label>سطح<input name="target_level" value="از پایه تا پیشرفته" maxlength="80"></label><label class="wide">محدوده<textarea name="scope_notes" maxlength="4000" rows="2"></textarea></label><button type="submit">ایجاد دوره</button></form></section>
