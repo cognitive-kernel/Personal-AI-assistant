@@ -5,9 +5,12 @@ the visible ChatGPT page. It never uses private endpoints or session cookies.
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 import threading
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +21,41 @@ _ACTIVE = False
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
 _RESPONSE_TIMEOUT_SECONDS = 600
 _STABLE_SECONDS = 4.0
+_LOG_LOCK = threading.Lock()
+_LOGGER: logging.Logger | None = None
+
+
+def _logger() -> logging.Logger:
+    """Create a rotating diagnostic log without recording prompts or answer text."""
+    global _LOGGER
+    if _LOGGER is not None:
+        return _LOGGER
+    logger = logging.getLogger("ai_learning.browser_automation")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        log_path = Path(os.getenv("AI_LEARNING_LOG_PATH", "data/logs/ai_learning_browser.log"))
+        if not log_path.is_absolute():
+            log_path = Path.cwd() / log_path
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(log_path, maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logger.addHandler(handler)
+        console = logging.StreamHandler()
+        console.setFormatter(logging.Formatter("[AI-LEARNING] %(message)s"))
+        logger.addHandler(console)
+    _LOGGER = logger
+    return logger
+
+
+def _log_event(event: str, **fields: Any) -> None:
+    """Write one structured JSON event to file and server console."""
+    record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "event": event, **fields}
+    try:
+        with _LOG_LOCK:
+            _logger().info(json.dumps(record, ensure_ascii=False, default=str))
+    except Exception as exc:
+        print(f"[AI-LEARNING] diagnostic logging failed: {type(exc).__name__}: {exc}", flush=True)
 
 
 class BrowserAutomationError(RuntimeError):
@@ -85,23 +123,29 @@ def _send_prompt(page: Any, prompt: str) -> None:
         'div[contenteditable="true"][role="textbox"]',
         'textarea[placeholder]',
     ]
+    _log_event("composer_search_started", url=page.url, selectors=len(composer_candidates))
     composer = None
+    chosen_selector = None
     for selector in composer_candidates:
         locator = page.locator(selector).last
         try:
             if locator.count() and locator.is_visible(timeout=1000):
                 composer = locator
+                chosen_selector = selector
                 break
         except Exception:
             continue
     if composer is None:
+        _log_event("composer_not_found", url=page.url)
         raise BrowserAutomationError(
             "chatgpt_composer_not_found",
             "کادر نوشتن ChatGPT پیدا نشد؛ صفحه را بررسی کنید و دوباره تلاش کنید.",
         )
+    _log_event("composer_found", selector=chosen_selector, prompt_chars=len(prompt))
     try:
         composer.click(timeout=5000)
         composer.fill(prompt, timeout=10000)
+        _log_event("prompt_filled", selector=chosen_selector, prompt_chars=len(prompt))
     except Exception as exc:
         raise BrowserAutomationError(
             "chatgpt_composer_unavailable",
@@ -119,12 +163,14 @@ def _send_prompt(page: Any, prompt: str) -> None:
         try:
             if button.count() and button.is_visible(timeout=800) and button.is_enabled():
                 button.click(timeout=5000)
+                _log_event("prompt_submitted", method="button", selector=selector)
                 return
         except Exception:
             continue
     # Keyboard submission is only used after the visible composer was positively found.
     try:
         composer.press("Enter", timeout=3000)
+        _log_event("prompt_submitted", method="enter")
     except Exception as exc:
         raise BrowserAutomationError(
             "chatgpt_send_not_found",
@@ -133,12 +179,16 @@ def _send_prompt(page: Any, prompt: str) -> None:
 
 
 def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: threading.Event | None = None, previous_message_count: int | None = None) -> str:
-    deadline = time.monotonic() + _RESPONSE_TIMEOUT_SECONDS
+    started = time.monotonic()
+    deadline = started + _RESPONSE_TIMEOUT_SECONDS
+    _log_event("response_wait_started", url=page.url, previous_message_count=previous_message_count,
+               previous_answer_chars=len(previous_answer), timeout_seconds=_RESPONSE_TIMEOUT_SECONDS)
     last_text = ""
     stable_since: float | None = None
     last_stop_visible = False
     while time.monotonic() < deadline:
         if cancel_event is not None and cancel_event.is_set():
+            _log_event("response_wait_cancelled", elapsed_seconds=round(time.monotonic() - started, 1))
             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
         try:
             current, current_message_index = _visible_response_with_index(page)
@@ -159,6 +209,12 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                         break
                 except Exception:
                     pass
+            if int(time.monotonic() - started) % 10 == 0:
+                _log_event("response_poll", elapsed_seconds=round(time.monotonic() - started, 1),
+                           assistant_message_count=_assistant_message_count(page),
+                           current_message_index=current_message_index, current_chars=len(current),
+                           new_message_seen=new_message_seen, stop_visible=stop_visible,
+                           stable_seconds=round(time.monotonic() - stable_since, 1) if stable_since else 0)
             # Some ChatGPT UI versions leave a stale/hidden stop-generation control
             # visible after the answer has finished. Track text stability independently
             # and use a longer grace period when that control remains visible.
@@ -173,6 +229,9 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                             "chatgpt_response_too_short",
                             "پاسخ ChatGPT بیش از حد کوتاه است و برای ثبت خودکار پذیرفته نشد.",
                         )
+                    _log_event("response_accepted", elapsed_seconds=round(time.monotonic() - started, 1),
+                               answer_chars=len(current), message_index=current_message_index,
+                               stop_visible=stop_visible, stable_seconds=round(stable_for, 1))
                     return current
             else:
                 stable_since = None
@@ -198,10 +257,15 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                 required_stability = 25.0 if last_stop_visible else _STABLE_SECONDS
                 if stable_for >= required_stability and len(last_text) >= 20:
                     return last_text
+            _log_event("response_poll_exception", elapsed_seconds=round(time.monotonic() - started, 1),
+                       exception_type=type(exc).__name__, message=str(exc)[:300])
             raise BrowserAutomationError(
                 "chatgpt_page_closed",
                 "صفحه یا مرورگر ChatGPT هنگام دریافت پاسخ بسته شد. اگر پاسخ هنوز در صفحه قابل مشاهده است، مرورگر را باز نگه دارید و دوباره تلاش کنید.",
             ) from exc
+    _log_event("response_timeout", elapsed_seconds=round(time.monotonic() - started, 1),
+               last_chars=len(last_text), last_message_count=_assistant_message_count(page),
+               last_stop_visible=last_stop_visible, stable_since_set=stable_since is not None)
     raise BrowserAutomationError(
         "chatgpt_response_timeout",
         "در مهلت ۱۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. اجرای کار برای بررسی در داشبورد نگه داشته شد.",
@@ -209,6 +273,8 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
 
 
 def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -> str:
+    capture_started = time.monotonic()
+    _log_event("capture_started", prompt_chars=len(prompt), cancelled=bool(cancel_event and cancel_event.is_set()))
     try:
         from playwright.sync_api import sync_playwright
     except ImportError as exc:
@@ -224,8 +290,10 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
             "Chrome پیدا نشد. مسیر آن را در AI_LEARNING_CHROME_PATH تنظیم کنید.",
         )
     profile = _profile_path()
+    _log_event("browser_configured", chrome_path=chrome, profile_path=str(profile))
     try:
         with sync_playwright() as playwright:
+            _log_event("browser_launch_started")
             context = playwright.chromium.launch_persistent_context(
                 user_data_dir=str(profile),
                 executable_path=chrome,
@@ -233,18 +301,24 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 viewport={"width": 1365, "height": 900},
                 accept_downloads=False,
             )
+            _log_event("browser_launch_succeeded", open_pages=len(context.pages))
             try:
                 page = context.pages[0] if context.pages else context.new_page()
+                _log_event("page_selected", url=page.url, page_count=len(context.pages))
                 page.set_default_timeout(5000)
                 if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
+                _log_event("navigation_started", target="https://chatgpt.com/")
                 page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
+                _log_event("navigation_domcontentloaded", url=page.url)
                 try:
                     page.wait_for_load_state("networkidle", timeout=8000)
                 except Exception:
                     pass
                 page.wait_for_timeout(1200)
+                _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page))
                 if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
+                    _log_event("login_required", url=page.url)
                     # Keep the visible browser open briefly so the user can complete a legitimate sign-in.
                     login_deadline = time.monotonic() + 180
                     while time.monotonic() < login_deadline:
@@ -263,15 +337,24 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                 previous_message_count = _assistant_message_count(page)
                 previous = _visible_response(page)
+                _log_event("pre_submit_snapshot", url=page.url, assistant_message_count=previous_message_count,
+                           previous_answer_chars=len(previous))
                 _send_prompt(page, prompt)
-                return _wait_for_complete_answer(
+                answer = _wait_for_complete_answer(
                     page, previous, cancel_event, previous_message_count=previous_message_count
                 )
+                _log_event("capture_succeeded", elapsed_seconds=round(time.monotonic() - capture_started, 1),
+                           answer_chars=len(answer))
+                return answer
             finally:
                 context.close()
-    except BrowserAutomationError:
+    except BrowserAutomationError as exc:
+        _log_event("capture_failed", elapsed_seconds=round(time.monotonic() - capture_started, 1),
+                   error_code=exc.code, message=str(exc)[:500])
         raise
     except Exception as exc:
+        _log_event("capture_failed", elapsed_seconds=round(time.monotonic() - capture_started, 1),
+                   error_code="playwright_browser_error", exception_type=type(exc).__name__, message=str(exc)[:500])
         raise BrowserAutomationError(
             "playwright_browser_error",
             f"خطای مرورگر Playwright: {str(exc)[:700]}",
@@ -313,9 +396,14 @@ def _continue_lessons(course_id: int) -> None:
 
 def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event) -> None:
     global _ACTIVE
+    worker_started = time.monotonic()
+    _log_event("worker_started", run_id=run_id, course_id=course_id, prompt_chars=len(prompt))
     try:
         answer = _browser_capture(prompt, cancel_event)
+        _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
         result = service.complete_run(run_id, answer)
+        _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
+                   elapsed_seconds=round(time.monotonic() - worker_started, 1))
         if result.get("status") == "succeeded":
             try:
                 _continue_lessons(course_id)
@@ -323,11 +411,15 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
                 # The outline remains safely saved even if lesson follow-up fails.
                 print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
     except BrowserAutomationError as exc:
+        _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
+                   elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
             service.mark_run_needs_user_action(run_id, exc.code, str(exc))
         except Exception as mark_exc:
             print(f"Could not mark AI-learning run {run_id}: {mark_exc}", flush=True)
     except Exception as exc:
+        _log_event("worker_unexpected_error", run_id=run_id, exception_type=type(exc).__name__,
+                   message=str(exc)[:500], elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
             service.mark_run_needs_user_action(
                 run_id, "playwright_unexpected_error",
@@ -336,6 +428,7 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
         except Exception as mark_exc:
             print(f"Could not mark AI-learning run {run_id}: {mark_exc}", flush=True)
     finally:
+        _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
             _ACTIVE = False
             _CANCEL_EVENTS.pop(run_id, None)
