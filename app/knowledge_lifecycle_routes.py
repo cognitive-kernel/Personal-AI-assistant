@@ -87,11 +87,27 @@ def enqueue_candidate_validation(candidate_id: int) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail="Temporary knowledge candidate not found.")
         if row["promoted_knowledge_id"] is not None:
             raise HTTPException(status_code=409, detail="Candidate has already been promoted.")
+        payload = {"candidate_id": candidate_id, "candidate_sha256": row["content_sha256"]}
+        encoded_payload = json.dumps(payload, ensure_ascii=False, allow_nan=False)
+        with db.learning_connection() as connection:
+            previous_tasks = connection.execute(
+                """SELECT id, status FROM task_queue
+                   WHERE task_type=? AND payload_json=? ORDER BY id DESC LIMIT 100""",
+                (KNOWLEDGE_VALIDATE_TASK_TYPE, encoded_payload),
+            ).fetchall()
+        active = next(
+            (item for item in previous_tasks if item["status"] in {"queued", "running", "pause_requested", "paused", "cancel_requested"}),
+            None,
+        )
+        if active is not None:
+            task = task_manager.get_task(int(active["id"]))
+            return {"candidate_id": candidate_id, "status": "queued", "task": task, "readiness": readiness}
+        attempt = len(previous_tasks)
         task = task_manager.create_task(
             KNOWLEDGE_VALIDATE_TASK_TYPE,
-            {"candidate_id": candidate_id, "candidate_sha256": row["content_sha256"]},
+            payload,
             max_attempts=1,
-            dedupe_key=f"knowledge-validate:{candidate_id}:{row['content_sha256']}",
+            dedupe_key=f"knowledge-validate:{candidate_id}:{row['content_sha256']}:retry:{attempt}",
         )
         return {"candidate_id": candidate_id, "status": "queued", "task": task, "readiness": readiness}
     except KeyError as exc:
