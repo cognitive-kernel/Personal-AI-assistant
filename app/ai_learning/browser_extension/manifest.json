@@ -1,9 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Personal AI Assistant — Learning Bridge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Automatic course-learning bridge between the local module and the visible ChatGPT browser session.",
-  "permissions": ["activeTab", "tabs", "storage", "scripting"],
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "scripting"
+  ],
   "host_permissions": [
     "http://127.0.0.1:8000/*",
     "http://localhost:8000/*",
@@ -17,9 +22,26 @@
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [{
-    "matches": ["https://chatgpt.com/*", "https://chat.openai.com/*"],
-    "js": ["content.js"],
-    "run_at": "document_idle"
-  }]
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://127.0.0.1:8000/ai-learning*",
+        "http://localhost:8000/ai-learning*"
+      ],
+      "js": [
+        "dashboard-bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }
