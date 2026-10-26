@@ -336,9 +336,19 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
     assert result["status"] == "rejected_after_review"
     with db.learning_connection() as connection:
         row = connection.execute(
-            "SELECT status, failure_reason, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            "SELECT status, content, source_urls_json, failure_reason, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
             (candidate_id,),
         ).fetchone()
+        remaining_unverified = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE job_id=? AND status='unverified'",
+            (job["id"],),
+        ).fetchone()[0]
     assert row["status"] == "failed"
+    assert row["content"] == ""
+    assert row["source_urls_json"] == "[]"
     assert "rejected_after_review" in row["failure_reason"]
     assert row["promoted_knowledge_id"] is None
+    assert remaining_unverified == 0
+    readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
+    assert readiness["status"] == "rejected_after_review"
+    assert readiness["ready_for_promotion"] is False
