@@ -620,6 +620,17 @@ def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
     return result
 
 
+def reset_learning_data() -> dict[str, Any]:
+    """Refuse destructive reset while any browser worker can still write to the store."""
+    with _LOCK:
+        if _ACTIVE:
+            raise ValueError(
+                "پاک‌سازی امن نیست؛ ابتدا «مکث همه» را بزنید، اجرای فعال را لغو کنید "
+                "و صبر کنید تا وضعیت اجرا از در حال اجرا خارج شود."
+            )
+    return service.reset_learning_data()
+
+
 def pause_learning() -> dict[str, Any]:
     """Pause all ChatGPT outline and lesson capture, preserving completed database work."""
     state = service.set_learning_paused(True, "توقف سراسری توسط کاربر")
