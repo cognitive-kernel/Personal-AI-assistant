@@ -264,3 +264,13 @@ def test_outline_parser_accepts_chatgpt_plain_topic_paragraphs(isolated_store):
 
 def test_outline_parser_still_rejects_unstructured_prose(isolated_store):
     assert service._parse_outline_titles("SQL Server is a database system.") == []
+
+
+def test_learning_pause_state_is_persistent_and_resumable(isolated_store):
+    paused = service.set_learning_paused(True, "test pause")
+    assert paused["paused"] is True
+    assert paused["reason"] == "test pause"
+    assert service.get_learning_control()["paused"] is True
+    resumed = service.set_learning_paused(False)
+    assert resumed["paused"] is False
+    assert resumed["reason"] == ""
