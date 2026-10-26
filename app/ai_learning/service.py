@@ -38,7 +38,7 @@ def create_course(*, title: str, provider: str = "manual", language: str = "fa",
     return get_course(course_id)
 
 def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = None,
-               selection_mode: str = "single", request_key: str) -> dict[str, Any]:
+               selection_mode: str = "single", request_key: str, force_retry: bool = False) -> dict[str, Any]:
     """Create an idempotent provider run and a prompt for explicit user submission."""
     topic_ids = topic_ids or []
     request_key = _clean_text(request_key, "request_key", 100)
@@ -90,14 +90,15 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 raise ValueError("All selected topics must belong to the selected course.")
             if any(row["approval_status"] != "approved" for row in topics):
                 raise ValueError("Only approved topics may be sent for lesson generation.")
-            topics = [row for row in topics if conn.execute(
-                """SELECT 1 FROM lessons l
-                   WHERE l.topic_id=? AND l.deleted_at IS NULL
-                     AND EXISTS (SELECT 1 FROM content_versions cv
-                                 WHERE cv.lesson_id=l.id
-                                   AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
-                                   AND length(trim(COALESCE(cv.markdown,'')))>0) LIMIT 1""",
-                (row["id"],)).fetchone() is None]
+            if not force_retry:
+                topics = [row for row in topics if conn.execute(
+                    """SELECT 1 FROM lessons l
+                       WHERE l.topic_id=? AND l.deleted_at IS NULL
+                         AND EXISTS (SELECT 1 FROM content_versions cv
+                                     WHERE cv.lesson_id=l.id
+                                       AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+                                       AND length(trim(COALESCE(cv.markdown,'')))>0) LIMIT 1""",
+                    (row["id"],)).fetchone() is None]
             topic_ids = [int(row["id"]) for row in topics]
             if not topics:
                 raise ValueError("All selected topics already have lessons; nothing new was queued.")
@@ -133,6 +134,14 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "section with a separate line in this exact format: [TOPIC_ID:123] Lesson title, replacing 123 "
                 "with that topic's numeric ID. Keep sections clearly separated and include actual lesson body "
                 "text under every section."
+            )
+        if run_type == "lesson" and force_retry:
+            prompt += (
+                "\n\n[FORCE_RETRY_EXISTING_LESSON] This is a recovery attempt for the existing lesson. "
+                "Create a corrected, complete new content version for the same lesson, not a duplicate lesson. "
+                "Check every source URL when possible. Replace unavailable or obsolete links with current official "
+                "documentation URLs, and include each source as a clickable Markdown link with its full URL in "
+                "the final Sources/منابع section. Never invent a URL; state when a link cannot be verified."
             )
         if run_type == "lesson":
             prior_sources = conn.execute(
@@ -457,15 +466,21 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
             for topic_id, title, body in sections:
                 # Reuse a prior lesson shell when its captured content was empty; do not
                 # create duplicate lessons just to recover a failed/blank capture.
-                reusable = conn.execute(
-                    """SELECT l.id FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL
-                       AND NOT EXISTS (SELECT 1 FROM content_versions cv
-                                        WHERE cv.lesson_id=l.id
-                                          AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
-                                          AND length(trim(COALESCE(cv.markdown,'')))>0)
-                       ORDER BY l.position DESC LIMIT 1""",
-                    (topic_id,),
-                ).fetchone()
+                if "[FORCE_RETRY_EXISTING_LESSON]" in str(run["prompt_text"]):
+                    reusable = conn.execute(
+                        "SELECT l.id FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL ORDER BY l.position DESC,l.id DESC LIMIT 1",
+                        (topic_id,),
+                    ).fetchone()
+                else:
+                    reusable = conn.execute(
+                        """SELECT l.id FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL
+                           AND NOT EXISTS (SELECT 1 FROM content_versions cv
+                                            WHERE cv.lesson_id=l.id
+                                              AND cv.id=(SELECT MAX(cv2.id) FROM content_versions cv2 WHERE cv2.lesson_id=l.id)
+                                              AND length(trim(COALESCE(cv.markdown,'')))>0)
+                           ORDER BY l.position DESC LIMIT 1""",
+                        (topic_id,),
+                    ).fetchone()
                 if reusable is not None:
                     lesson_id = int(reusable["id"])
                     version_no = int(conn.execute(
