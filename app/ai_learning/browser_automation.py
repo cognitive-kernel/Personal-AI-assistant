@@ -116,6 +116,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str) -> str:
     deadline = time.monotonic() + _RESPONSE_TIMEOUT_SECONDS
     last_text = ""
     stable_since: float | None = None
+    last_stop_visible = False
     while time.monotonic() < deadline:
         try:
             current = _visible_response(page)
@@ -149,11 +150,25 @@ def _wait_for_complete_answer(page: Any, previous_answer: str) -> str:
             else:
                 stable_since = None
             last_text = current
+            last_stop_visible = stop_visible
+            # Keep the wait inside the guarded block: Playwright raises here if the
+            # page/context/browser closes between polling iterations.
+            page.wait_for_timeout(1000)
         except BrowserAutomationError:
             raise
-        except Exception:
-            pass
-        page.wait_for_timeout(1000)
+        except Exception as exc:
+            # If the browser closes after a complete answer was already stable long
+            # enough, retain that answer instead of discarding it because the final
+            # polling sleep failed.
+            if last_text and last_text != previous_answer and stable_since is not None:
+                stable_for = time.monotonic() - stable_since
+                required_stability = 25.0 if last_stop_visible else _STABLE_SECONDS
+                if stable_for >= required_stability and len(last_text) >= 20:
+                    return last_text
+            raise BrowserAutomationError(
+                "chatgpt_page_closed",
+                "صفحه یا مرورگر ChatGPT هنگام دریافت پاسخ بسته شد. اگر پاسخ هنوز در صفحه قابل مشاهده است، مرورگر را باز نگه دارید و دوباره تلاش کنید.",
+            ) from exc
     raise BrowserAutomationError(
         "chatgpt_response_timeout",
         "در مهلت ۱۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. اجرای کار برای بررسی در داشبورد نگه داشته شد.",
