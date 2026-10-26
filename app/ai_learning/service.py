@@ -209,7 +209,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     title = match.group(2).strip() or allowed[topic_id]["title"]
                     if body:
                         sections.append((topic_id, title[:300], body))
-                if len({section[0] for section in sections}) != len(topics):
+                if len(sections) != len(topics) or len({section[0] for section in sections}) != len(topics):
                     conn.execute(
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_incomplete',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                         (response_text, "One or more requested topics were not mapped; no lesson was created.", run_id))
@@ -450,6 +450,39 @@ def list_versions(lesson_id: int) -> list[dict[str, Any]]:
             (lesson_id,)).fetchall()
     return [dict(row) for row in rows]
 
+def get_content_version(version_id: int) -> dict[str, Any]:
+    """Return one full version to the loopback-only review interface."""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT cv.*, l.title AS lesson_title, t.title AS topic_title,
+                      co.title AS course_title
+               FROM content_versions cv
+               JOIN lessons l ON l.id=cv.lesson_id
+               JOIN topics t ON t.id=l.topic_id
+               JOIN courses co ON co.id=t.course_id
+               WHERE cv.id=? AND l.deleted_at IS NULL AND t.deleted_at IS NULL""",
+            (version_id,),
+        ).fetchone()
+    if row is None:
+        raise NotFoundError("Content version not found.")
+    return dict(row)
+
+
+def edit_lesson(lesson_id: int, title: str) -> dict[str, Any]:
+    title = _clean_text(title, "title", 300)
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute(
+            "SELECT 1 FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)
+        ).fetchone() is None:
+            raise NotFoundError("Lesson not found.")
+        conn.execute(
+            "UPDATE lessons SET title=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (title, lesson_id),
+        )
+        return dict(conn.execute("SELECT * FROM lessons WHERE id=?", (lesson_id,)).fetchone())
+
+
 def soft_delete_topic(topic_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -553,7 +586,7 @@ def search_knowledge(query: str, limit: int = 8) -> dict[str, Any]:
     terms = re.findall(r"[^\W_]{2,}", query.casefold(), flags=re.UNICODE)[:12]
     if not terms:
         return {"query": query, "items": [], "count": 0, "mode": "lexical"}
-    clauses = " AND ".join("lower(c.body) LIKE ?" for _ in terms)
+    clauses = " OR ".join("lower(c.body) LIKE ?" for _ in terms)
     params: list[Any] = [_like_term(term) for term in terms]
     rank = " + ".join("CASE WHEN lower(c.body) LIKE ? THEN 1 ELSE 0 END" for _ in terms)
     params.extend(_like_term(term) for term in terms)
