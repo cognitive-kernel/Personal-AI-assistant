@@ -561,6 +561,38 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
         return {"run_id": int(run["id"]), "status": "running", "provider": "ChatGPT visible UI"}
 
 
+def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str) -> dict[str, Any]:
+    """Start a visible-ChatGPT lesson capture for explicitly selected approved topics."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    if service.get_learning_control()["paused"]:
+        raise ValueError("مکث سراسری فعال است؛ ابتدا ادامه / بازیابی را بزنید.")
+    if not topic_ids:
+        raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
+    with _LOCK:
+        if _ACTIVE:
+            raise ValueError("یک کار مرورگر در حال اجراست؛ ابتدا آن را متوقف کنید یا منتظر پایانش بمانید.")
+        run = service.create_run(
+            course_id, run_type="lesson", topic_ids=topic_ids,
+            selection_mode="selected", request_key=request_key,
+        )
+        if run["status"] not in {"queued", "running"}:
+            raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره درخواست جدید بسازید.")
+        service.start_run(int(run["id"]))
+        run_id = int(run["id"])
+        _ACTIVE = True
+        _ACTIVE_RUN_ID = run_id
+        _ACTIVE_COURSE_ID = course_id
+        cancel_event = threading.Event()
+        _CANCEL_EVENTS[run_id] = cancel_event
+        thread = threading.Thread(
+            target=_worker, args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
+            name=f"ai-learning-selected-lessons-{run_id}", daemon=True,
+        )
+        thread.start()
+        return {"run_id": run_id, "status": "running", "course_id": course_id,
+                "topic_ids": topic_ids, "provider": "ChatGPT visible UI"}
+
+
 def cancel_run(run_id: int) -> dict[str, Any]:
     """Signal the local browser worker and persist cancellation of its run."""
     with _LOCK:
