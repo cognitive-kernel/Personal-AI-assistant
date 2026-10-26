@@ -70,6 +70,74 @@ def _practical_evidence_map(connection, topics: set[str]) -> dict[str, dict[str,
 
 
 
+def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, Any]]:
+    """Count repeatable transfer cases only when they descend from retained knowledge."""
+    if not topics:
+        return {}
+    rows = connection.execute(
+        """SELECT e.topic, e.problem, e.originating_knowledge_id, e.test_results_json,
+                  k.topic AS knowledge_topic, k.status AS knowledge_status
+           FROM learning_experiences e
+           JOIN knowledge_items k ON k.id=e.originating_knowledge_id
+           WHERE e.status='verified' AND k.status='retained_after_review'
+           ORDER BY e.id DESC LIMIT 5000"""
+    ).fetchall()
+    by_topic: dict[str, dict[int, set[tuple[str, str, str]]]] = {}
+    for row in rows:
+        topic = str(row["knowledge_topic"]).strip().casefold()
+        knowledge_id = row["originating_knowledge_id"]
+        problem = row["problem"]
+        if topic not in topics or not isinstance(knowledge_id, int) or not isinstance(problem, str) or not problem.strip():
+            continue
+        try:
+            results = json.loads(row["test_results_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(results, list):
+            continue
+        scenario_hash = hashlib.sha256(problem.strip().encode("utf-8")).hexdigest()
+        for item in results:
+            if not isinstance(item, dict) or item.get("passed") is not True or item.get("runner") != "docker-sandbox":
+                continue
+            test_name, source_hash = item.get("test"), item.get("source_sha256")
+            sources = item.get("source_evidence")
+            if not isinstance(test_name, str) or not test_name.strip() or not isinstance(source_hash, str) or not _SHA256.fullmatch(source_hash):
+                continue
+            if not isinstance(sources, list) or not sources or not all(
+                isinstance(source, dict)
+                and isinstance(source.get("url"), str)
+                and isinstance(source.get("live_content_sha256"), str)
+                and _SHA256.fullmatch(source["live_content_sha256"])
+                and isinstance(source.get("excerpt_sha256"), str)
+                and _SHA256.fullmatch(source["excerpt_sha256"])
+                for source in sources
+            ):
+                continue
+            by_topic.setdefault(topic, {}).setdefault(int(knowledge_id), set()).add(
+                (test_name.strip(), source_hash, scenario_hash)
+            )
+    result: dict[str, dict[str, Any]] = {}
+    for topic in topics:
+        per_knowledge = by_topic.get(topic.casefold(), {})
+        best = max(per_knowledge.values(), key=len, default=set())
+        scenario_hashes = {scenario for _name, _source, scenario in best}
+        test_names = {name for name, _source, _scenario in best}
+        source_hashes = {source for _name, source, _scenario in best}
+        repeatable = len(scenario_hashes) >= 2 and len(test_names) >= 2 and len(source_hashes) >= 2
+        result[topic] = {
+            "transfer_case_count": len(scenario_hashes),
+            "transfer_attempt_count": len(best),
+            "transfer_repeatable": repeatable,
+            "transfer_evidence_knowledge_ids": [
+                knowledge_id for knowledge_id, attempts in per_knowledge.items()
+                if len({scenario for _name, _source, scenario in attempts}) >= 2
+                and len({name for name, _source, _scenario in attempts}) >= 2
+                and len({source for _name, source, _scenario in attempts}) >= 2
+            ][:10],
+        }
+    return result
+
+
 def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[str, Any]:
     if path_id is not None and (
         isinstance(path_id, bool) or not isinstance(path_id, int) or path_id < 1
@@ -116,7 +184,9 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
         sql += " ORDER BY p.id, t.position, t.id LIMIT ?"
         params.append(limit)
         rows = [dict(row) for row in connection.execute(sql, params).fetchall()]
-        practical_by_topic = _practical_evidence_map(connection, {str(row["topic"]).strip().casefold() for row in rows})
+        topic_keys = {str(row["topic"]).strip().casefold() for row in rows}
+        practical_by_topic = _practical_evidence_map(connection, topic_keys)
+        transfer_by_topic = _transfer_evidence_map(connection, topic_keys)
         topic_ids = [int(row["topic_id"]) for row in rows]
         usage_by_topic: dict[int, dict[str, Any]] = {}
         if topic_ids:
@@ -199,7 +269,19 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             status = "provisional"
             confidence = "provisional"
 
-        if practical["practical_repeatable"]:
+        transfer = transfer_by_topic.get(str(row["topic"]).strip().casefold(), {
+            "transfer_case_count": 0, "transfer_attempt_count": 0,
+            "transfer_repeatable": False, "transfer_evidence_knowledge_ids": [],
+        })
+        if transfer["transfer_repeatable"]:
+            if valid and float(score) < 80:
+                status = "conflicting_evidence"
+                confidence = "conflicting"
+            else:
+                status = "transfer_provisional"
+                confidence = "provisional_transfer"
+
+        if practical["practical_repeatable"] and not transfer["transfer_repeatable"]:
             if valid and float(score) < 80:
                 status = "conflicting_evidence"
                 confidence = "conflicting"
@@ -239,6 +321,7 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "latest_score": float(score) if valid else None,
             "assessment_count": count,
             **practical,
+            **transfer,
             **usage,
             "learning_value_cost": value_metrics,
             "score_points_per_1000_output_tokens": (
@@ -269,6 +352,7 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             "provisional": sum(item["status"] == "provisional" for item in capabilities),
             "repeated_provisional": sum(item["status"] == "repeated_provisional" for item in capabilities),
             "practical_provisional": sum(item["status"] == "practical_provisional" for item in capabilities),
+            "transfer_provisional": sum(item["status"] == "transfer_provisional" for item in capabilities),
             "conflicting_evidence": sum(item["status"] == "conflicting_evidence" for item in capabilities),
         },
     }
