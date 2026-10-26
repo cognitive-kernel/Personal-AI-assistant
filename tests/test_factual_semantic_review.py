@@ -150,3 +150,18 @@ def test_source_version_requires_major_minor_precision():
     assert factual_semantic_review.versions_compatible("3.11", "3.12.3") is False
     assert factual_semantic_review.versions_compatible("3", "3.12.3") is False
     assert factual_semantic_review.versions_compatible("latest", "3.12.3") is False
+
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://sqlite.org/releaselog/3_45_0.html", "3.45"),
+        ("https://docs.example.test/3.12/library/index.html", "3.12"),
+        ("https://docs.example.test/latest/?version=4.7.2", "4.7"),
+    ],
+)
+def test_version_parser_handles_explicit_versioned_documentation_urls(url, expected):
+    from app.factual_semantic_review import extract_url_version
+
+    assert extract_url_version(url) == expected
