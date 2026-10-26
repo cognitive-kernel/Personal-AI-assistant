@@ -1123,7 +1123,7 @@ LEARNING_MIGRATIONS = (
                 trust_status TEXT NOT NULL DEFAULT 'unverified'
                     CHECK(trust_status IN ('unverified','accepted','rejected')),
                 content TEXT,
-                source_url TEXT CHECK(source_url IS NULL OR source_url = 'https://chatgpt.com/'),
+                source_url TEXT CHECK(source_url IS NULL OR source_url = 'https://chatgpt.com/' OR source_url = 'https://chat.openai.com/' OR source_url LIKE 'https://chatgpt.com/%' OR source_url LIKE 'https://chat.openai.com/%'),
                 prompt_sha256 TEXT CHECK(prompt_sha256 IS NULL OR length(prompt_sha256) = 64),
                 content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256) = 64),
                 error TEXT CHECK(error IS NULL OR length(error) <= 1000),
