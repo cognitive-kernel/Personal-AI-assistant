@@ -14,7 +14,7 @@ Do not expose the host service beyond loopback. The host application intentional
 
 Isolated SQLite schema and checksummed migrations, course/topic management, explicit topic approval/rejection, topic ordering, lesson/version creation, review-before-publish, chunking, lexical retrieval over published content only, an optional fail-open retrieval hook in the existing chat path, persistent global pause/resume, per-topic pause/resume, per-lesson review-workflow pause/resume, and workflow-stage progress indicators. The chat hook is disabled by default.
 
-Progress percentages describe **content workflow completion**, not a verified measurement of model mastery: 0% pending, 10% active capture, 25% lesson record created, 75% content captured and awaiting review, 90% reviewed, and 100% published.
+Progress percentages describe **content workflow completion**, not a verified measurement of model mastery: 0% pending, 10% active capture, 25% lesson record created, 75% content captured and awaiting review, 90% reviewed, and 100% published. ChatGPT-provided Markdown links and URLs are stored against the matching content version in the sources table and shown in the lesson review panel. These references are marked unverified; persistence does not mean that the URL, source, or claim has been independently checked.
 
 ## Not implemented yet
 
@@ -58,3 +58,11 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 - Empty lesson content cannot be published.
 - Global pause/resume and per-topic/per-lesson pause controls preserve stored work. Resume processes approved topics with no non-empty lesson content; topics that are still pending approval must be approved first.
 - Progress percentages describe workflow state (received/reviewed/published), not a measured percentage of model mastery.
+
+## Concurrency and source references
+
+- A single in-process browser worker owns ChatGPT capture; a second browser learning request is rejected while one is active. SQLite writes use transactions, and deleting/archiving a course, topic, or lesson is blocked when that object participates in a queued/running learning run.
+- Review, approval, and other dashboard operations use separate database transactions. The captured answer is committed as a content version before the run is marked successful; empty lesson bodies are not valid completion.
+- Lesson prompts request a dedicated source section with clickable URLs only for sources actually used. Markdown links and bare URLs found in the saved lesson or raw answer are persisted to the sources table in the same database transaction as the content version, then exposed by `GET /api/ai-learning/versions/{version_id}/sources`.
+- The source list is an audit trail, not a truth guarantee. References start as `unverified` and must be checked before relying on them. Links not actually included in the provider response cannot be recovered by the parser.
+- This protects common same-process conflicts, but it is not a durable distributed queue: do not run multiple server processes against the same browser profile. After abrupt power loss, use the dashboard recovery action and inspect any run left in `needs_user_action`.
