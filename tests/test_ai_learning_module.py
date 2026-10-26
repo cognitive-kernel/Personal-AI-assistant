@@ -470,3 +470,18 @@ def test_lesson_progress_uses_latest_version_even_if_an_older_version_was_publis
     latest = service.list_lessons(topic["id"])[0]
     assert latest["progress_percent"] == 25
     assert "آخرین نسخه خالی است" in latest["progress_label"]
+
+    # Retry should select the topic and reuse its lesson shell instead of duplicating it.
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                             request_key="retry-after-empty-latest")
+    service.start_run(run["id"])
+    recovered = service.complete_run(
+        run["id"],
+        "# Memory management in SQL Server 2025\n\n"
+        "This is a substantive lesson explaining SQL Server memory management, "
+        "memory pressure, and practical troubleshooting steps.",
+    )
+    assert recovered["status"] == "succeeded"
+    lessons = service.list_lessons(topic["id"])
+    assert len(lessons) == 1
+    assert lessons[0]["progress_percent"] == 75
