@@ -106,14 +106,14 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
 
 def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
-    existing = service.add_topic(course["id"], "آشنایی با مفاهیم پایگاه داده و کاربردهای SQL Server")
+    existing = service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی در SQL Server")
     monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
         [0.0, 1.0] if "موضوع" in text else [1.0, 0.0] for text in texts
     ])
 
     result = service.import_outline(
         course["id"],
-        "1. آشنایی با پایگاه داده، مفاهیم داده و معماری سیستم‌های مدیریت پایگاه داده\n"
+        "1. مدیریت ایندکس‌های ترکیبی برای SQL Server\n"
         "2. آموزش موضوع کاملاً تازه",
     )
 
@@ -130,3 +130,19 @@ def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_sto
 
     with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
         service.add_topic(course["id"], "موضوع دیگر")
+
+
+
+def test_related_but_distinct_outline_topics_are_not_filtered(learning_store, monkeypatch):
+    course = service.create_course(title="SQL Server")
+    service.add_topic(course["id"], "طراحی ایندکس‌های SQL Server")
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[1.0, 0.0] for _ in texts])
+
+    result = service.import_outline(
+        course["id"],
+        "1. تحلیل Execution Plan در SQL Server\n"
+        "2. بهینه‌سازی پرس‌وجوهای SQL Server",
+    )
+
+    assert result["imported"] == 2
+    assert result["skipped_existing"] == 0
