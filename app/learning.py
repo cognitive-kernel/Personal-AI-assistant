@@ -709,7 +709,7 @@ def run_job(job_id: int) -> None:
             if quality["accepted"]:
                 def normalize_lesson_content(value: str) -> str:
                     value = value.casefold().replace("ي", "ی").replace("ك", "ک")
-                    return re.sub(r"[\\W_]+", " ", value, flags=re.UNICODE).strip()
+                    return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
 
                 normalized_lesson = normalize_lesson_content(result["lesson"])
                 existing_lessons = conn.execute(
