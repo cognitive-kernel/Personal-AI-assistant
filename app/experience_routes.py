@@ -37,6 +37,14 @@ class HypothesisProposalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RetainedKnowledgeHypothesisRequest(BaseModel):
+    knowledge_id: int = Field(ge=1)
+    problem: str = Field(min_length=1, max_length=6000)
+    max_candidates: int = Field(default=3, ge=1, le=3)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ExperienceCreateRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     problem: str = Field(min_length=1, max_length=10000)
@@ -287,6 +295,26 @@ def get_experience_versions(experience_id: int) -> dict[str, Any]:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Experience not found.") from exc
     return {"experience_id": experience_id, "versions": versions}
+
+
+@router.post("/from-retained-knowledge/hypotheses", status_code=status.HTTP_201_CREATED)
+def propose_experience_hypotheses_from_retained_knowledge(
+    request: RetainedKnowledgeHypothesisRequest,
+) -> dict[str, Any]:
+    try:
+        items = experience.propose_hypotheses_from_retained_knowledge(
+            request.knowledge_id, request.problem, max_candidates=request.max_candidates
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Retained knowledge item not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "items": items,
+        "count": len(items),
+        "source_knowledge_id": request.knowledge_id,
+        "experience_learning_started_after_knowledge_validation": True,
+    }
 
 
 @router.post("/hypotheses/propose", status_code=status.HTTP_201_CREATED)
