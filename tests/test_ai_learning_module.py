@@ -370,6 +370,16 @@ def test_empty_content_cannot_be_published(isolated_store):
     with pytest.raises(ValueError, match="متن درس خالی است"):
         service.publish_content(version["id"])
 
+def test_empty_or_title_only_content_cannot_be_approved(isolated_store):
+    course = service.create_course(title="SQL Server")
+    topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Index basics")
+    empty = service.add_content_version(lesson["id"], "# Index basics")
+    with pytest.raises(ValueError, match="متن درس خالی یا ناقص است"):
+        service.review_content(empty["id"], "reviewed")
+    assert service.get_content_version(empty["id"])["review_status"] == "needs_review"
+
 
 
 def test_chatgpt_sources_are_persisted_with_content_versions(isolated_store):
