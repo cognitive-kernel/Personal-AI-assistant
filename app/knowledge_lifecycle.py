@@ -318,7 +318,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
     This is a bounded queue-worker operation. Missing sources/models or disagreement
     stays temporary; a single failing or unavailable check never triggers rejection.
     """
-    from . import ollama, web_sources, learning_review_adapters
+    from . import ollama, web_sources, learning_review_adapters, usage_metrics
 
     init_databases()
     with learning_connection() as connection:
@@ -449,6 +449,17 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 ),
             )
             raw = provider_result["content"]
+            provider_usage = provider_result.get("usage")
+            if context is not None and isinstance(provider_usage, dict):
+                usage_metrics.record_ollama_response(
+                    task_id=context.task_id,
+                    purpose="factual_review",
+                    model=str(provider_result["model"]),
+                    response={
+                        "prompt_eval_count": provider_usage.get("prompt_tokens"),
+                        "eval_count": provider_usage.get("completion_tokens"),
+                    },
+                )
             actual_digest = str(provider_result["digest"])
             actual_model_id = str(provider_result["model_id"])
             actual_reviewer_id = str(provider_result["reviewer_id"])
