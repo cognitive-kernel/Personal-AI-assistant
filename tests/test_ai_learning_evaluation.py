@@ -14,7 +14,7 @@ def test_answer_quality_checks_concepts_forbidden_claims_and_sources():
     answer = "در SQL Server، ایندکس به جست‌وجوی رکوردها کمک می‌کند. منبع: https://learn.microsoft.com/sql/"
     result = evaluate_answer(
         answer,
-        expected_concepts=["ایندکس", "جست و جوی رکوردها"],
+        expected_concepts=["ایندکس", "جست‌وجوی رکوردها"],
         must_not_claim=["همیشه سریع‌تر است"],
         expected_sources=["https://learn.microsoft.com/sql/"],
     )
