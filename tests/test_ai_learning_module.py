@@ -322,3 +322,35 @@ def test_resume_reuses_lesson_shell_with_empty_content(isolated_store):
     versions = service.list_versions(lesson["id"])
     assert len(versions) == 2
     assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content."
+
+
+def test_published_version_can_be_withdrawn_and_review_reset(isolated_store):
+    course = service.create_course(title="SQL Server")
+    topic = service.add_topic(course["id"], "Transactions")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Transaction basics")
+    version = service.add_content_version(lesson["id"], "Transactions group database changes.")
+    service.review_content(version["id"], "reviewed")
+    service.publish_content(version["id"])
+    withdrawn = service.unpublish_content(version["id"])
+    assert withdrawn["review_status"] == "reviewed"
+    with connection() as conn:
+        active_chunks = conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE content_version_id=? AND active=1", (version["id"],)
+        ).fetchone()[0]
+    assert active_chunks == 0
+    reset = service.review_content(version["id"], "needs_review")
+    assert reset["review_status"] == "needs_review"
+
+
+def test_empty_content_cannot_be_published(isolated_store):
+    course = service.create_course(title="SQL Server")
+    topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Index basics")
+    version = service.add_content_version(lesson["id"], "Temporary content")
+    service.review_content(version["id"], "reviewed")
+    with connection() as conn:
+        conn.execute("UPDATE content_versions SET markdown='   ' WHERE id=?", (version["id"],))
+    with pytest.raises(ValueError, match="متن درس خالی است"):
+        service.publish_content(version["id"])
