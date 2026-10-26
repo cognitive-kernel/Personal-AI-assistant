@@ -118,7 +118,7 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
 
 def _validate_domain_test_harness(source_code: str, runner_language: str) -> None:
     if runner_language in {"python", "sqlite"}:
-        factual_knowledge.validate_test_harness(source_code)
+        validate_test_harness(source_code)
         return
     if not isinstance(source_code, str) or not source_code.strip() or len(source_code.encode("utf-8")) > 64 * 1024 or "\x00" in source_code:
         raise ValueError("Test harness must be non-empty text no larger than 64 KiB.")
