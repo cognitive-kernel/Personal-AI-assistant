@@ -1,10 +1,15 @@
 """Use cases for the isolated AI-learning knowledge store."""
 from __future__ import annotations
 import hashlib
+import ipaddress
 import json
 import re
+import socket
 import sqlite3
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 from .db import connection
 
 MAX_CONTENT_CHARS = 200_000
@@ -367,6 +372,64 @@ def _store_content_sources(conn: sqlite3.Connection, version_id: int, text: str)
             (version_id, str(source["title"] or url)[:300], url, publisher[:300]),
         )
     return len(sources)
+
+
+def check_content_source(source_id: int) -> dict[str, Any]:
+    """Check a saved public HTTP(S) source without following redirects or probing private hosts."""
+    with connection() as conn:
+        source = conn.execute("SELECT * FROM sources WHERE id=?", (source_id,)).fetchone()
+        if source is None:
+            raise NotFoundError("Source not found.")
+        url = str(source["url"] or "").strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("پیوند منبع معتبر HTTP/HTTPS نیست.")
+    host = parsed.hostname.lower()
+    if host in {"localhost"} or host.endswith((".localhost", ".local", ".internal")):
+        raise ValueError("برای ایمنی، پیوندهای محلی یا داخلی بررسی نمی‌شوند.")
+    try:
+        addresses = {ipaddress.ip_address(item[4][0].split("%")[0])
+                     for item in socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80),
+                                                    type=socket.SOCK_STREAM)}
+        if not addresses or any(not address.is_global for address in addresses):
+            raise ValueError("پیوند به نشانی خصوصی یا غیرعمومی اشاره می‌کند و بررسی نشد.")
+    except ValueError:
+        raise
+    except OSError as exc:
+        status, detail = "rejected", "نام دامنه قابل resolve نیست: " + str(exc)[:180]
+    else:
+        class _NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        opener = build_opener(_NoRedirect)
+        status, detail = "rejected", ""
+        try:
+            request = Request(url, method="HEAD", headers={"User-Agent": "Personal-AI-Assistant-LinkChecker/1.0"})
+            with opener.open(request, timeout=8) as response:
+                code = int(response.status)
+                status = "reviewed" if 200 <= code < 300 else "rejected"
+                detail = "HTTP " + str(code)
+        except HTTPError as exc:
+            if exc.code in {405, 501}:
+                try:
+                    request = Request(url, method="GET",
+                                      headers={"User-Agent": "Personal-AI-Assistant-LinkChecker/1.0", "Range": "bytes=0-0"})
+                    with opener.open(request, timeout=8) as response:
+                        code = int(response.status)
+                        status = "reviewed" if 200 <= code < 300 else "rejected"
+                        detail = "HTTP " + str(code)
+                except Exception as retry_exc:
+                    detail = "بررسی GET ناموفق: " + str(retry_exc)[:180]
+            else:
+                detail = "HTTP " + str(exc.code) + ("؛ پیوند تغییر مسیر می‌دهد و نیازمند جایگزینی است." if 300 <= exc.code < 400 else "")
+        except (URLError, TimeoutError, OSError) as exc:
+            detail = "پیوند قابل دسترسی نیست: " + str(exc)[:180]
+    with connection() as conn:
+        conn.execute("UPDATE sources SET validation_status=?,excerpt=? WHERE id=?",
+                     (status, detail[:500], source_id))
+        row = conn.execute("SELECT id,title,url,publisher,validation_status,excerpt FROM sources WHERE id=?",
+                           (source_id,)).fetchone()
+    return dict(row)
 
 
 def list_content_sources(version_id: int) -> list[dict[str, Any]]:
