@@ -24,7 +24,7 @@
 6. ابتدا یک بار `python run.py` را اجرا کنید تا محیط `.venv` ساخته شود؛ سپس سرور را با `Ctrl+C` متوقف کنید و Playwright را داخل همان محیط نصب کنید:
 
    ```powershell
-   .venv\\Scripts\\python.exe -m pip install -e ".[browser]"
+   .venv\Scripts\python.exe -m pip install -e ".[browser]"
    ```
 
 7. مطمئن شوید Google Chrome نصب است. اگر در مسیر استاندارد نیست، در `.env` مقدار `AI_LEARNING_CHROME_PATH` را روی مسیر کامل `chrome.exe` قرار دهید. پروفایل جداگانه مرورگر به‌صورت پیش‌فرض در `data/ai_learning_browser_profile` ساخته می‌شود و ورود احتمالی در آن پروفایل باقی می‌ماند.
