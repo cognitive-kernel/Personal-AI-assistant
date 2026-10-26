@@ -104,7 +104,11 @@ def test_lesson_run_excludes_topics_with_existing_lessons(isolated_store):
     done = service.add_topic(course["id"], "Basics")
     todo = service.add_topic(course["id"], "Indexes")
     service.decide_topics([done["id"], todo["id"]], "approved")
-    service.create_lesson(done["id"], "Existing lesson")
+    existing_lesson = service.create_lesson(done["id"], "Existing lesson")
+    service.add_content_version(
+        existing_lesson["id"],
+        "Database basics lesson with enough substantive content to count as captured and complete.",
+    )
     run = service.create_run(
         course["id"], run_type="lesson", topic_ids=[done["id"], todo["id"]],
         selection_mode="selected", request_key="skip-existing-lessons"
