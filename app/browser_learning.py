@@ -83,7 +83,7 @@ def get_course(course_id: int) -> dict[str, Any]:
             raise KeyError(course_id)
         course = dict(row)
         lessons = conn.execute(
-            """SELECT id, course_id, position, topic, status, content, source_url,
+            """SELECT id, course_id, position, topic, status, trust_status, content, source_url,
                       prompt_sha256, content_sha256, error, created_at, updated_at
                FROM browser_learning_lessons WHERE course_id=? ORDER BY position""",
             (course_id,),
@@ -270,11 +270,13 @@ def run_course(course_id: int) -> None:
                 )
                 outline_response = _chatgpt_answer(page, syllabus_prompt)
                 title, topics = _parse_outline(outline_response, int(course["max_lessons"]))
+                outline_hash = hashlib.sha256(outline_response.encode("utf-8")).hexdigest()
                 with learning_connection() as conn:
                     conn.execute(
-                        """UPDATE browser_learning_courses SET title=?, outline_json=?, status='running',
-                           updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                        (title, json.dumps({"topics": topics, "response": outline_response}, ensure_ascii=False), course_id),
+                        """UPDATE browser_learning_courses SET title=?, outline_json=?, outline_sha256=?,
+                           status='running', updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (title, json.dumps({"topics": topics, "response": outline_response}, ensure_ascii=False),
+                         outline_hash, course_id),
                     )
             with learning_connection() as conn:
                 for position, topic in enumerate(topics, 1):
