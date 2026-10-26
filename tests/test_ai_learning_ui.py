@@ -29,3 +29,13 @@ def test_main_dashboard_links_to_ai_learning_module():
     assert 'href="/ai-learning"' in html
     assert 'data-page="ai-learning"' not in html  # page-navigation rewrites data-page links
     assert "یادگیری از هوش مصنوعی" in html
+
+
+def test_active_dashboard_exposes_global_pause_and_recovery_controls():
+    from pathlib import Path
+
+    page = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static" / "index.html"
+    html = page.read_text(encoding="utf-8")
+    assert 'id="pause-learning"' in html
+    assert 'id="resume-learning"' in html
+    assert "بازیابی پس از قطعی برق" in html
