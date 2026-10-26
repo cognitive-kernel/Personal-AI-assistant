@@ -19,13 +19,14 @@ from .task_worker import TaskContext
 logger = logging.getLogger("personal_ai_assistant.sandbox_tasks")
 
 SANDBOX_TASK_TYPE = "sandbox.run_python"
+SANDBOX_LANGUAGE_TASK_TYPE = "sandbox.run_language"
 _IMAGE_REF = re.compile(
     r"^(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$"
 )
 _ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes"}
 
 
-def handler_from_environment() -> Callable[
+def handler_from_environment(*, allow_language_runners: bool = False) -> Callable[
     [dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]
 ] | None:
     """Return a handler only after explicit opt-in and valid local configuration."""
@@ -44,6 +45,13 @@ def handler_from_environment() -> Callable[
         raise ValueError("SANDBOX_DOCKER_EXECUTABLE must be an existing absolute file path.")
     if not _IMAGE_REF.fullmatch(image):
         raise ValueError("SANDBOX_PYTHON_IMAGE must be an official Python image pinned by SHA-256 digest.")
+    node_image = os.getenv("SANDBOX_NODE_IMAGE", "").strip()
+    rust_image = os.getenv("SANDBOX_RUST_IMAGE", "").strip()
+    if allow_language_runners:
+        if node_image and not sandbox.is_valid_language_image_reference(node_image, "javascript"):
+            raise ValueError("SANDBOX_NODE_IMAGE must be an official Node image pinned by SHA-256 digest.")
+        if rust_image and not sandbox.is_valid_language_image_reference(rust_image, "rust"):
+            raise ValueError("SANDBOX_RUST_IMAGE must be an official Rust image pinned by SHA-256 digest.")
 
     def handle(
         payload: dict[str, Any],
@@ -52,8 +60,21 @@ def handler_from_environment() -> Callable[
     ) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("Sandbox task payload must be a JSON object.")
-        if set(payload) - _ALLOWED_PAYLOAD_KEYS:
+        allowed_keys = _ALLOWED_PAYLOAD_KEYS | ({"language"} if allow_language_runners else set())
+        if set(payload) - allowed_keys:
             raise ValueError("Sandbox task payload contains unsupported fields.")
+        language = payload.get("language", "python")
+        if not isinstance(language, str) or language not in ({"python", "sqlite", "javascript", "rust"} if allow_language_runners else {"python"}):
+            raise ValueError("Unsupported sandbox language.")
+        selected_image = image
+        if language == "javascript":
+            selected_image = node_image
+            if not selected_image:
+                raise ValueError("SANDBOX_NODE_IMAGE is required for JavaScript factual tests.")
+        elif language == "rust":
+            selected_image = rust_image
+            if not selected_image:
+                raise ValueError("SANDBOX_RUST_IMAGE is required for Rust factual tests.")
         source_code = payload.get("source_code")
         if not isinstance(source_code, str) or not source_code.strip():
             raise ValueError("source_code must be non-empty text.")
@@ -83,7 +104,8 @@ def handler_from_environment() -> Callable[
             {
                 "phase": "sandbox_started",
                 "source_sha256": source_hash,
-                "image": image,
+                "image": selected_image,
+                "language": language,
             }
         )
         last_consent_check = 0.0
@@ -102,19 +124,32 @@ def handler_from_environment() -> Callable[
                     return "control_unavailable"
             return "running"
 
-        result = sandbox.run_python(
-            source_code,
-            docker_executable=executable,
-            image=image,
-            timeout_seconds=timeout_seconds,
-            max_output_bytes=max_output_bytes,
-            control_check=control_check,
-            task_id=context.task_id,
-        )
+        if language in {"javascript", "rust"}:
+            result = sandbox.run_language(
+                source_code,
+                language=language,
+                docker_executable=executable,
+                image=selected_image,
+                timeout_seconds=timeout_seconds,
+                max_output_bytes=max_output_bytes,
+                control_check=control_check,
+                task_id=context.task_id,
+            )
+        else:
+            result = sandbox.run_python(
+                source_code,
+                docker_executable=executable,
+                image=selected_image,
+                timeout_seconds=timeout_seconds,
+                max_output_bytes=max_output_bytes,
+                control_check=control_check,
+                task_id=context.task_id,
+            )
         evidence = {
             "phase": "sandbox_finished",
             "source_sha256": source_hash,
-            "image": image,
+            "image": selected_image,
+            "language": language,
             "execution_status": result.status,
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
