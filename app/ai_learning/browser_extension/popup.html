@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Learning Bridge</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+<main>
+  <h1>پل یادگیری</h1>
+  <p id="status" role="status">در حال اتصال به دستیار محلی…</p>
+  <label>دوره <select id="course"></select></label>
+  <label>نوع درخواست <select id="run-type"><option value="outline">دریافت سرفصل‌ها</option><option value="lesson">دریافت درس برای سرفصل‌های تأییدشده</option></select></label>
+  <fieldset id="topics-wrap" hidden><legend>انتخاب سرفصل‌ها</legend><button id="select-all-topics" type="button" class="secondary">انتخاب همه سرفصل‌های تأییدشده</button><div id="topics"></div></fieldset>
+  <button id="prepare">شروع؛ بازکردن ChatGPT و ارسال خودکار</button>
+  <button id="capture" class="secondary">ثبت پاسخ دستی (در صورت نیاز)</button>
+  <p class="hint">با کلیک روی شروع، درخواست در صفحه عادی ChatGPT درج و در صورت شناسایی مطمئن دکمه ارسال، ارسال می‌شود. پس از پایان پاسخ، افزونه آن را خودکار ثبت می‌کند. اگر ارسال یا تشخیص پاسخ خودکار موفق نشد، درخواست را دستی ارسال کنید و از «ثبت پاسخ دستی» استفاده کنید. محتوای دریافتی همچنان نیازمند بازبینی و تأیید است.</p>
+</main>
+<script src="popup.js"></script>
+</body></html>

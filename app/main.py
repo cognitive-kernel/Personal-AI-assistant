@@ -23,6 +23,9 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
+from .ai_learning.routes import router as ai_learning_router
+from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
+from .ai_learning.ui import router as ai_learning_ui_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -51,6 +54,8 @@ app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
 app.include_router(learning_candidate_router)
+app.include_router(ai_learning_router)
+app.include_router(ai_learning_ui_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
@@ -241,6 +246,15 @@ def shutdown() -> None:
         if not runtime.stop(timeout=10.0):
             logger.warning("Task runtime %s did not stop before the shutdown deadline.", runtime.worker_prefix)
 
+@app.get("/ai-learning", include_in_schema=False)
+def ai_learning_page() -> FileResponse:
+    """Serve the isolated learning console only when its feature flag is enabled."""
+    from .ai_learning.config import is_enabled
+    if not is_enabled():
+        raise HTTPException(status_code=404, detail="AI-learning module is disabled.")
+    return FileResponse(STATIC_DIR / "ai-learning.html")
+
+
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
@@ -398,6 +412,17 @@ def chat(request: ChatRequest) -> dict[str, str]:
     if len(request.message) > chat_limit:
         raise HTTPException(status_code=422, detail=f"message exceeds the configured chat input limit of {chat_limit} characters.")
     try:
+        if ai_learning_config.retrieval_is_enabled() and chat_research.should_use_research(request.message):
+            try:
+                knowledge_context = ai_learning_integration.retrieve_context(request.message)
+            except Exception as retrieval_error:
+                # Optional local knowledge must never make the established chat path unavailable.
+                logger.warning("Optional AI-learning retrieval failed (%s)", type(retrieval_error).__name__)
+                knowledge_context = []
+            if knowledge_context:
+                return {"reply": chat_research.answer(
+                    request.message, request.history, knowledge_context=knowledge_context
+                )}
         return {"reply": chat_research.answer(request.message, request.history)}
     except ollama.OllamaError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

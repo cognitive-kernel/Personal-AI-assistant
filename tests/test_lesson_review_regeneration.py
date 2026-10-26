@@ -104,3 +104,47 @@ def test_review_context_is_bounded_and_is_not_copied_into_source_text(tmp_path, 
         ).fetchone()
     assert json.loads(stored)["takeaway"] == "T" * 3000
     assert source is None
+
+
+
+def test_regeneration_replaces_old_lesson_instead_of_keeping_duplicate_versions(
+    tmp_path, monkeypatch
+):
+    path_id, topic_id, _topic_b_id = _make_review_fixture(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        previous = conn.execute(
+            "SELECT id FROM learning_jobs WHERE path_topic_id=? ORDER BY id LIMIT 1",
+            (topic_id,),
+        ).fetchone()
+        previous_id = int(previous["id"])
+        conn.execute(
+            "UPDATE learning_jobs SET lesson='Old lesson content' WHERE id=?",
+            (previous_id,),
+        )
+        conn.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES ('Topic A', 'Old lesson content', 'model_knowledge_no_external_source', 1, 'unverified', ?)""",
+            (previous_id,),
+        )
+    monkeypatch.setattr(learning, "_enqueue_learning_job", lambda _job_id: {})
+
+    replacement = learning.regenerate_topic_learning(path_id, topic_id)
+
+    with db.learning_connection() as conn:
+        old_job = conn.execute(
+            "SELECT status, lesson, assessment_json FROM learning_jobs WHERE id=?",
+            (previous_id,),
+        ).fetchone()
+        old_knowledge_count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE job_id=?", (previous_id,)
+        ).fetchone()[0]
+        new_knowledge_count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_items WHERE topic='Topic A'"
+        ).fetchone()[0]
+
+    assert replacement["id"] != previous_id
+    assert old_job["status"] == "superseded"
+    assert old_job["lesson"] is None
+    assert old_job["assessment_json"] is None
+    assert old_knowledge_count == 0
+    assert new_knowledge_count == 0

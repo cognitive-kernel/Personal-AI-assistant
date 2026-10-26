@@ -52,7 +52,7 @@ python run.py --check-only
 رابط: http://127.0.0.1:8000  
 مستندات API: http://127.0.0.1:8000/docs
 
-برای جزئیات به docs/DEVELOPMENT.md و docs/ARCHITECTURE.md مراجعه کنید. وضعیت یکپارچهٔ پروژه، یادگیری و کارهای باقی‌مانده در docs/PROJECT_STATUS.md ثبت شده است؛ کاتالوگ دوره‌ها از API مسیرهای یادگیری قابل دریافت است. کاتالوگ از مسیرهای `/api/learning/curricula` و `/api/learning/curricula/{slug}` قابل دریافت است.
+برای جزئیات توسعه و معماری به `docs/DEVELOPMENT.md` و `docs/ARCHITECTURE.md` مراجعه کنید. **مرجع واحد مستندات زیرسامانهٔ یادگیری** در `docs/LEARNING.md` قرار دارد. ماژول اختیاری جمع‌آوری و بازیابی دانش از هوش مصنوعی در `app/ai_learning/` پیاده‌سازی اولیه دارد؛ راهنما در `docs/AI_LEARNING_CAPTURE.md` و استاندارد مهندسی در `docs/AI_LEARNING_ENGINEERING.md` است. راهنمای شروع آزمون و فعال‌سازی منوی داشبورد در `docs/AI_LEARNING_TESTING.md` قرار دارد. این ماژول به‌صورت پیش‌فرض خاموش است و پیش از بهره‌برداری باید CI و آزمون دستگاه مقصد بررسی شوند.  وضعیت کلی پروژه و دروازه‌های عملیاتی در `docs/PROJECT_STATUS.md` ثبت می‌شود. کاتالوگ دوره‌ها از مسیرهای `/api/learning/curricula` و `/api/learning/curricula/{slug}` قابل دریافت است.
 
 ## پایگاه دادهٔ موجود و مهاجرت امن
 
@@ -70,6 +70,10 @@ python run.py --check-only
 ```
 
 گزارش schema و metadata را می‌سنجد و محتوای ردیف‌های کاربر را چاپ نمی‌کند؛ به‌تنهایی migration یا تعمیر انجام نمی‌دهد. پذیرش نهایی همچنان به اجرای واقعی روی Windows هدف، بررسی backup و موفقیت `/api/health` نیاز دارد.
+
+## ماژول مستقل یادگیری از هوش مصنوعی
+
+طراحی و استاندارد مهندسی این قابلیت در `docs/AI_LEARNING_CAPTURE.md` و `docs/AI_LEARNING_ENGINEERING.md` ثبت شده است. کد اولیه در `app/ai_learning/` قرار دارد و با دو feature flag مستقل، به‌صورت پیش‌فرض خاموش است. برای فعال‌سازی آزمایشی، `AI_LEARNING_ENABLED=1` و در صورت نیاز `AI_LEARNING_RETRIEVAL_ENABLED=1` را در محیط محلی تنظیم کنید. رابط مدیریت در `/ai-learning` قرار دارد. افزونهٔ اختیاری Chrome در `app/ai_learning/browser_extension/` درخواست را در رابط ChatGPT درج می‌کند و با اقدام صریح کاربر پاسخ را ثبت می‌کند؛ راهنمای نصب در `app/ai_learning/browser_extension/README.md` است؛ ارسال خودکار و صف مقاوم توقف/ادامه هنوز پیاده‌سازی نشده‌اند. مسیر پاسخ‌گویی فعلی یک hook اختیاری برای بازیابی دانش دارد که با `AI_LEARNING_RETRIEVAL_ENABLED=1` فعال می‌شود و در حالت پیش‌فرض هیچ تغییری در رفتار چت ایجاد نمی‌کند. محتوا پیش از انتشار باید بازبینی شود. پیش از فعال‌سازی، آزمون‌های پروژه و راهنمای عملیاتی را اجرا کنید.
 
 ## امنیت اولیه
 - رابط وب و همهٔ endpointها در middleware به اتصال loopback محدود شده‌اند؛ اتصال‌های غیر-loopback با 403 رد می‌شوند، حتی اگر سرور به‌اشتباه روی یک رابط شبکه bind شده باشد.

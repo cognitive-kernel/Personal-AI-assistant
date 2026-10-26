@@ -85,7 +85,11 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     assert first_task["payload"] == {"job_id": job["id"]}
     assert first_task["status"] == "queued"
     assert second_task["id"] == first_task["id"]
-    assert len(task_manager.list_tasks(statuses=["queued"])) == 1
+    queued_learning_tasks = [
+        task for task in task_manager.list_tasks(statuses=["queued"])
+        if task["task_type"] == "learning.run_job"
+    ]
+    assert len(queued_learning_tasks) == 1
     assert len(constructed) >= 3
     assert all(runtime.start_count == 1 for runtime in constructed)
     assert {runtime.handlers.keys().__iter__().__next__() for runtime in constructed} >= {

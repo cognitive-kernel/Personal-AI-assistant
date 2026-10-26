@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>یادگیری از هوش مصنوعی | Personal AI Assistant</title>
+<link rel="stylesheet" href="/static/ai-learning.css">
+</head>
+<body>
+<main class="shell">
+<header>
+  <p class="eyebrow">Personal AI Assistant</p>
+  <h1>مدیریت دانش یادگرفته‌شده</h1>
+  <p>این صفحه برای مدیریت و بازبینی دانش است. استفاده از دانش در پاسخ‌گویی عادی دستیار، جداگانه و به‌صورت پیش‌فرض غیرفعال است.</p>
+  <p id="status" class="status" role="status">در حال بررسی وضعیت ماژول…</p>
+  <div class="actions" aria-label="کنترل فرایند یادگیری">
+    <button id="pause-learning" type="button" class="secondary">مکث همهٔ فرایندهای یادگیری</button>
+    <button id="resume-learning" type="button">ادامه / بازیابی پس از قطعی برق</button>
+    <button id="reset-learning-data" type="button" class="secondary">پاک‌سازی داده‌های یادگیری و شروع از صفر</button>
+  </div>
+  <p id="learning-control-status" class="hint" role="status">وضعیت فرایند در حال بررسی است.</p>
+</header>
+<section class="panel">
+  <h2>ایجاد دوره</h2>
+  <form id="course-form">
+    <label>موضوع <input id="course-title" required maxlength="300" placeholder="مثلاً SQL Server 2005"></label>
+    <label>منبع <select id="course-provider"><option value="manual">ورود دستی</option><option value="chatgpt_ui">ChatGPT (ورود دستی پاسخ)</option><option value="other_provider">سرویس دیگر</option></select></label>
+    <label>زبان <select id="course-language"><option value="fa">فارسی</option><option value="en">English</option></select></label>
+    <label>محدوده و توضیحات <textarea id="course-notes" maxlength="4000" rows="2"></textarea></label>
+    <button type="submit">ایجاد دوره</button>
+  </form>
+</section>
+<section class="panel">
+  <div class="section-heading"><h2>دوره‌ها</h2><button id="reload-courses" type="button" class="secondary">بارگذاری مجدد</button></div>
+  <label>انتخاب دوره <select id="course-select"><option value="">ابتدا دوره ایجاد کنید</option></select></label>
+  <div id="course-details"></div>
+</section>
+<section class="panel">
+  <h2>واردکردن پاسخ سرفصل‌ها</h2>
+  <p class="hint">پاسخ فهرست سرفصل‌ها را از ChatGPT یا منبع دیگر وارد کنید. فقط خطوط شماره‌دار، بولت‌دار یا عنوان‌های Markdown استخراج می‌شوند و همه سرفصل‌ها تا تأیید شما در وضعیت انتظار می‌مانند.</p>
+  <form id="outline-import-form">
+    <label>منبع <select id="outline-provider"><option value="chatgpt_ui">ChatGPT (ورود دستی)</option><option value="manual">ورود دستی</option><option value="other_provider">سرویس دیگر</option></select></label>
+    <label class="wide">پاسخ خام سرفصل‌ها <textarea id="outline-raw" rows="6" maxlength="100000" required placeholder="1. مقدمه&#10;2. معماری&#10;3. مثال‌های عملی"></textarea></label>
+    <button type="submit">استخراج سرفصل‌ها</button>
+  </form>
+  <div id="outline-import-result" aria-live="polite"></div>
+</section>
+<section class="panel">
+  <h2>افزودن سرفصل</h2>
+  <form id="topic-form">
+    <label>عنوان سرفصل <input id="topic-title" required maxlength="300"></label>
+    <label>توضیحات <textarea id="topic-description" rows="2" maxlength="4000"></textarea></label>
+    <button type="submit">افزودن سرفصل</button>
+  </form>
+  <p class="hint">سرفصل‌ها ابتدا در وضعیت «در انتظار تأیید» هستند. تنها سرفصل‌های تأییدشده می‌توانند درس بگیرند.</p>
+  <div class="topic-bulk-actions">
+    <label class="inline-check"><input id="select-all-topics" type="checkbox"> انتخاب همهٔ سرفصل‌ها</label>
+    <button id="approve-all-topics" type="button">تأیید همهٔ سرفصل‌ها</button>
+    <button id="reject-selected-topics" type="button" class="secondary">رد سرفصل‌های انتخاب‌شده</button>
+    <button id="fetch-selected-lessons" type="button">دریافت درس برای سرفصل‌های تأییدشدهٔ انتخاب‌شده</button>
+  </div>
+  <div id="course-progress" class="progress-summary"></div>
+  <div id="topics-list" class="topics-list"></div>
+  <h3>درس‌ها و نسخه‌های محتوا</h3>
+  <p class="hint">برای مشاهده متن هر درس، دکمهٔ «درس‌ها و محتوا» را روی سرفصل بزنید. نسخه‌های منتشرشده قابل لغو انتشار هستند؛ اصلاح محتوا نسخهٔ جدید می‌سازد تا سابقه از بین نرود.</p>
+  <div class="topic-bulk-actions">
+    <label class="inline-check"><input id="select-all-lessons" type="checkbox"> انتخاب همهٔ درس‌های این سرفصل</label>
+    <button id="approve-selected-lessons" type="button">تأیید درس‌های انتخاب‌شده</button>
+    <button id="approve-all-lessons" type="button">تأیید بازبینی همهٔ درس‌ها</button>
+  </div>
+  <div id="lessons-panel" class="lessons-panel"><p>هنوز سرفصلی برای نمایش درس انتخاب نشده است.</p></div>
+</section>
+<section class="panel">
+  <h2>جست‌وجو در دانش منتشرشده</h2>
+  <form id="search-form">
+    <label>پرسش یا عبارت <input id="search-query" required maxlength="2000"></label>
+    <label>حداکثر نتیجه <select id="search-limit"><option>5</option><option selected>8</option><option>10</option><option>20</option></select></label>
+    <button type="submit">جست‌وجو</button>
+  </form>
+  <p class="hint">این جست‌وجو فقط نسخه‌های بازبینی‌شده و منتشرشده را می‌خواند؛ هنوز به مسیر گفت‌وگوی اصلی متصل نیست.</p>
+  <div id="search-results" class="results" aria-live="polite"></div>
+</section>
+<footer>مدیریت یادگیری از طریق رابط قابل مشاهدهٔ ChatGPT · محتوا تا بازبینی و انتشار انسانی وارد دانش قابل استفاده نمی‌شود.</footer>
+</main>
+<script src="/static/ai-learning.js" defer></script>
+</body>
+</html>
