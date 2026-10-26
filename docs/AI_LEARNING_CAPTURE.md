@@ -34,7 +34,7 @@ The isolated schema contains courses, topics, lessons, content versions, runs, b
 
 ## Implementation boundary today
 
-The initial stage includes isolated storage, course/topic APIs, topic ordering, approval/rejection, lesson creation, content versioning, manual review/publishing, chunking and lexical search. It does not yet include automatic Chrome/ChatGPT interaction, a dedicated durable queue, automated pause/resume, model-response parsing, embeddings or retrieval in the chat answer path. Content entry is manual for now.
+The initial stage includes isolated storage, course/topic APIs, topic ordering, approval/rejection, lesson creation, content versioning, manual review/publishing, chunking and lexical search. A user-confirmed Chrome extension now inserts prompts into the existing ChatGPT UI and captures the latest visible assistant response when the user explicitly requests it. It does not click Send automatically and depends on the provider's current DOM. Durable background queue/pause-resume, resilient response parsing, embeddings and retrieval in the main chat answer path are not yet implemented.
 
 ## Acceptance criteria
 
