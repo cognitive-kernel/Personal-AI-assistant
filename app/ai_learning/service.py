@@ -1237,6 +1237,9 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
                 "بررسی معنایی تکراری نبودن درس در دسترس نیست؛ محتوا ذخیره نشد."
             ) from exc
         if duplicate is not None:
+            # Preserve computed embeddings even though the content-version insert is
+            # rejected; otherwise every repeated attempt would recompute the same vectors.
+            conn.commit()
             raise ValueError(
                 "این محتوا با درس دیگری بسیار مشابه است و نسخهٔ تکراری ذخیره نشد: "
                 f"{duplicate['topic_title']} / {duplicate['lesson_title']} "
