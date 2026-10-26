@@ -17,6 +17,7 @@
   <div class="actions" aria-label="کنترل فرایند یادگیری">
     <button id="pause-learning" type="button" class="secondary">مکث همهٔ فرایندهای یادگیری</button>
     <button id="resume-learning" type="button">ادامه / بازیابی پس از قطعی برق</button>
+    <button id="reset-learning-data" type="button" class="secondary">پاک‌سازی داده‌های یادگیری و شروع از صفر</button>
   </div>
   <p id="learning-control-status" class="hint" role="status">وضعیت فرایند در حال بررسی است.</p>
 </header>
@@ -53,7 +54,17 @@
     <button type="submit">افزودن سرفصل</button>
   </form>
   <p class="hint">سرفصل‌ها ابتدا در وضعیت «در انتظار تأیید» هستند. تنها سرفصل‌های تأییدشده می‌توانند درس بگیرند.</p>
+  <div class="topic-bulk-actions">
+    <label class="inline-check"><input id="select-all-topics" type="checkbox"> انتخاب همهٔ سرفصل‌ها</label>
+    <button id="approve-all-topics" type="button">تأیید همهٔ سرفصل‌ها</button>
+    <button id="reject-selected-topics" type="button" class="secondary">رد سرفصل‌های انتخاب‌شده</button>
+    <button id="fetch-selected-lessons" type="button">دریافت درس برای سرفصل‌های تأییدشدهٔ انتخاب‌شده</button>
+  </div>
+  <div id="course-progress" class="progress-summary"></div>
   <div id="topics-list" class="topics-list"></div>
+  <h3>درس‌ها و نسخه‌های محتوا</h3>
+  <p class="hint">برای مشاهده متن هر درس، دکمهٔ «درس‌ها و محتوا» را روی سرفصل بزنید. نسخه‌های منتشرشده قابل لغو انتشار هستند؛ اصلاح محتوا نسخهٔ جدید می‌سازد تا سابقه از بین نرود.</p>
+  <div id="lessons-panel" class="lessons-panel"><p>هنوز سرفصلی برای نمایش درس انتخاب نشده است.</p></div>
 </section>
 <section class="panel">
   <h2>جست‌وجو در دانش منتشرشده</h2>
@@ -65,7 +76,7 @@
   <p class="hint">این جست‌وجو فقط نسخه‌های بازبینی‌شده و منتشرشده را می‌خواند؛ هنوز به مسیر گفت‌وگوی اصلی متصل نیست.</p>
   <div id="search-results" class="results" aria-live="polite"></div>
 </section>
-<footer>نسخه اولیه ایزوله · دریافت خودکار از Chrome هنوز فعال نشده است.</footer>
+<footer>مدیریت یادگیری از طریق رابط قابل مشاهدهٔ ChatGPT · محتوا تا بازبینی و انتشار انسانی وارد دانش قابل استفاده نمی‌شود.</footer>
 </main>
 <script src="/static/ai-learning.js" defer></script>
 </body>
