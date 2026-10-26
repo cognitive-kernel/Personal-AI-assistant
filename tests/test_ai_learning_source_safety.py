@@ -60,12 +60,15 @@ def test_source_links_remain_unverified_until_explicit_validation(isolated_store
 def test_unapproved_topic_cannot_publish_even_reviewed_content(isolated_store):
     course = service.create_course(title="انتشار کنترل‌شده")
     topic = service.add_topic(course["id"], "موضوع تأییدنشده")
+    service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "درس")
     version = service.add_content_version(
         lesson["id"],
         "# درس\n\nاین یک متن محتوایی معتبر برای آزمون است و نباید قبل از تأیید سرفصل منتشر شود.",
     )
     service.review_content(version["id"], "reviewed")
+    with connection() as conn:
+        conn.execute("UPDATE topics SET approval_status='pending' WHERE id=?", (topic["id"],))
     with pytest.raises(ValueError, match="Topic must be approved"):
         service.publish_content(version["id"])
     assert service.search_knowledge("محتوایی معتبر")["count"] == 0
