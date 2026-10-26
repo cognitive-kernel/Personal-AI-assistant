@@ -107,7 +107,9 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
 def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
     existing = service.add_topic(course["id"], "آشنایی با مفاهیم پایگاه داده و کاربردهای SQL Server")
-    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[1.0, 0.0] for _ in texts])
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [
+        [0.0, 1.0] if "موضوع" in text else [1.0, 0.0] for text in texts
+    ])
 
     result = service.import_outline(
         course["id"],
