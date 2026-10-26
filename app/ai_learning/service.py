@@ -577,75 +577,76 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 if duplicate is not None:
                     duplicate_sections[topic_id] = duplicate
 
-            # Also compare sections within this same batch. The database check
-            # alone cannot see a sibling section until it is saved, and saving first
-            # would risk partial writes if a later embedding call fails.
-            try:
-                embedding_settings = get_settings()
-            except Exception:
-                embedding_settings = {}
-            embedding_model = str(
-                embedding_settings.get("ollama_embedding_model")
-                or os.getenv("OLLAMA_EMBEDDING_MODEL")
-                or "nomic-embed-text"
-            ).strip()
-            seen_sections: list[tuple[int, str, list[float]]] = []
-            for topic_id, title, body in sections:
-                digest = _dedupe_content_hash(body)
-                cached = conn.execute(
-                    "SELECT embedding_json FROM semantic_embedding_cache "
-                    "WHERE content_sha256=? AND embedding_model=?",
-                    (digest, embedding_model),
-                ).fetchone()
-                if cached is None:
-                    conn.execute(
-                        """UPDATE runs SET response_text=?,status='needs_user_action',
-                           error_code='semantic_duplicate_check_unavailable',error_message=?,
-                           finished_at=CURRENT_TIMESTAMP WHERE id=?""",
-                        (
-                            response_text,
-                            "بردار معنایی یکی از بخش‌های درس در دسترس نبود؛ هیچ بخشی از این دسته ذخیره نشد.",
-                            run_id,
-                        ),
-                    )
-                    conn.commit()
-                    return get_run(run_id)
+            if len(sections) > 1:
+                # Also compare sections within this same batch. The database check
+                # alone cannot see a sibling section until it is saved, and saving first
+                # would risk partial writes if a later embedding call fails.
                 try:
-                    vector = json.loads(cached["embedding_json"])
-                    if not isinstance(vector, list) or not vector:
-                        raise ValueError("invalid embedding cache")
-                    vector = [float(value) for value in vector]
-                except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                    conn.execute(
-                        """UPDATE runs SET response_text=?,status='needs_user_action',
-                           error_code='semantic_duplicate_check_unavailable',error_message=?,
-                           finished_at=CURRENT_TIMESTAMP WHERE id=?""",
-                        (
-                            response_text,
-                            "ذخیره بردار معنایی معتبر نبود؛ هیچ بخشی از این دسته ذخیره نشد.",
-                            run_id,
-                        ),
-                    )
-                    conn.commit()
-                    return get_run(run_id)
-                for previous_topic_id, previous_title, previous_vector in seen_sections:
-                    score = _embedding_cosine(vector, previous_vector)
-                    if score >= SEMANTIC_DUPLICATE_THRESHOLD and topic_id not in duplicate_sections:
-                        previous_topic = next(
-                            (str(item["title"]) for item in topics if int(item["id"]) == previous_topic_id),
-                            f"topic {previous_topic_id}",
+                    embedding_settings = get_settings()
+                except Exception:
+                    embedding_settings = {}
+                embedding_model = str(
+                    embedding_settings.get("ollama_embedding_model")
+                    or os.getenv("OLLAMA_EMBEDDING_MODEL")
+                    or "nomic-embed-text"
+                ).strip()
+                seen_sections: list[tuple[int, str, list[float]]] = []
+                for topic_id, title, body in sections:
+                    digest = _dedupe_content_hash(body)
+                    cached = conn.execute(
+                        "SELECT embedding_json FROM semantic_embedding_cache "
+                        "WHERE content_sha256=? AND embedding_model=?",
+                        (digest, embedding_model),
+                    ).fetchone()
+                    if cached is None:
+                        conn.execute(
+                            """UPDATE runs SET response_text=?,status='needs_user_action',
+                               error_code='semantic_duplicate_check_unavailable',error_message=?,
+                               finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+                            (
+                                response_text,
+                                "بردار معنایی یکی از بخش‌های درس در دسترس نبود؛ هیچ بخشی از این دسته ذخیره نشد.",
+                                run_id,
+                            ),
                         )
-                        duplicate_sections[topic_id] = {
-                            "version_id": None,
-                            "lesson_id": None,
-                            "topic_id": previous_topic_id,
-                            "topic_title": previous_topic,
-                            "lesson_title": previous_title,
-                            "score": score,
-                            "method": "within_batch_embedding",
-                        }
-                        break
-                seen_sections.append((topic_id, title, vector))
+                        conn.commit()
+                        return get_run(run_id)
+                    try:
+                        vector = json.loads(cached["embedding_json"])
+                        if not isinstance(vector, list) or not vector:
+                            raise ValueError("invalid embedding cache")
+                        vector = [float(value) for value in vector]
+                    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                        conn.execute(
+                            """UPDATE runs SET response_text=?,status='needs_user_action',
+                               error_code='semantic_duplicate_check_unavailable',error_message=?,
+                               finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+                            (
+                                response_text,
+                                "ذخیره بردار معنایی معتبر نبود؛ هیچ بخشی از این دسته ذخیره نشد.",
+                                run_id,
+                            ),
+                        )
+                        conn.commit()
+                        return get_run(run_id)
+                    for previous_topic_id, previous_title, previous_vector in seen_sections:
+                        score = _embedding_cosine(vector, previous_vector)
+                        if score >= SEMANTIC_DUPLICATE_THRESHOLD and topic_id not in duplicate_sections:
+                            previous_topic = next(
+                                (str(item["title"]) for item in topics if int(item["id"]) == previous_topic_id),
+                                f"topic {previous_topic_id}",
+                            )
+                            duplicate_sections[topic_id] = {
+                                "version_id": None,
+                                "lesson_id": None,
+                                "topic_id": previous_topic_id,
+                                "topic_title": previous_topic,
+                                "lesson_title": previous_title,
+                                "score": score,
+                                "method": "within_batch_embedding",
+                            }
+                            break
+                    seen_sections.append((topic_id, title, vector))
 
             for topic_id, title, body in sections:
                 duplicate = duplicate_sections.get(topic_id)
