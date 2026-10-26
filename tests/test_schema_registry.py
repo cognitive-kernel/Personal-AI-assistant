@@ -124,7 +124,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 32
+        assert LEARNING_MIGRATIONS[-1].version == 33
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         assert {"task_id", "purpose", "model_name", "prompt_tokens", "completion_tokens", "total_duration_ns", "estimated_cost_microusd"} <= usage_columns
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
