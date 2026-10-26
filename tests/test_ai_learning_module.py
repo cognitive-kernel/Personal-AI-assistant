@@ -175,7 +175,7 @@ def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(is
     course = service.create_course(title="SQL Server 2025")
     run = service.create_run(course["id"], run_type="outline", request_key="large-outline-response")
     service.start_run(run["id"])
-    titles = [f"سرفصل آزمایشی شماره {index:04d} با شرح تکمیلی" for index in range(1, 1401)]
+    titles = [f"سرفصل آزمایشی شماره {index:04d} با شرح تکمیلی و توضیحات بیشتر برای پوشش کامل موضوعات آموزشی" for index in range(1, 1401)]
     raw = "\n".join(titles)
     assert len(raw) > 100_000
     result = service.complete_run(run["id"], raw)
