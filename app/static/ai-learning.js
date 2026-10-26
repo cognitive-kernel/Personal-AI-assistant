@@ -333,6 +333,7 @@ byId("topic-form").addEventListener("submit", async event => {
   } catch (error) { message(error.message, true); }
 });
 byId("course-select").addEventListener("change", async () => {
+  selectedTopicIds.clear(); selectedLessonIds.clear(); lessonsTopicId = null;
   selectedCourse = Number(byId("course-select").value) || null;
   try { await loadCourseDetails(); } catch (error) { message(error.message, true); }
 });
@@ -480,7 +481,7 @@ byId("resume-learning").addEventListener("click", async () => {
     if (enabled) {
       await loadCourses();
       await refreshLearningControl();
-      window.setInterval(() => refreshLearningControl().catch(() => {}), 5000);
+      window.setInterval(() => { refreshLearningControl().catch(() => {}); if (selectedCourse) loadCourseDetails().catch(() => {}); }, 5000);
     }
   } catch (error) { message(error.message, true); }
 })();
