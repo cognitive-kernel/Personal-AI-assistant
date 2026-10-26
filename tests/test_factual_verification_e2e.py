@@ -125,3 +125,34 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     assert tests[0]["environment_version"] == "3.12.3"
     assert len(tests[0]["command_hash"]) == 64
     assert len(tests[0]["log_hash"]) == 64
+
+def test_sqlite_factual_claim_is_visible_in_the_manual_test_queue(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    with db.learning_connection() as connection:
+        claim_id = factual_knowledge.create_claim(
+            connection,
+            "SQLite SELECT statements return rows matching the query result.",
+            environment_name="sqlite",
+            environment_version="3.45.0",
+            scope={"topic": "SQLite SELECT"},
+        )
+        factual_knowledge.add_evidence(
+            connection,
+            claim_id,
+            source_type="official_docs",
+            source_ref="https://sqlite.org/lang_select.html",
+            source_hash="sha256:sqlite-select-reference",
+            excerpt="A SELECT statement is used to query the database.",
+        )
+        factual_knowledge.transition_evidence_level(connection, claim_id, "L1_sourced")
+        factual_knowledge.transition_lifecycle(connection, claim_id, "active")
+
+    result = factual_verification_routes.list_factual_test_queue(limit=50)
+    item = next(row for row in result["items"] if row["id"] == claim_id)
+    assert item["domain_name"] == "sqlite"
+    assert item["environment_name"] == "sqlite"
+    assert item["environment_version"] == "3.45.0"
+    assert item["evidence"][0]["source_ref"] == "https://sqlite.org/lang_select.html"
+
