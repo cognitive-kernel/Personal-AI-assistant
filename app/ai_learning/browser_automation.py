@@ -560,6 +560,23 @@ def cancel_run(run_id: int) -> dict[str, Any]:
     return service.cancel_run(run_id)
 
 
+def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
+    """Pause one topic and cancel its active single-topic run if necessary."""
+    result = service.set_topic_paused(topic_id, paused)
+    if paused:
+        with _LOCK:
+            active_run_id = _ACTIVE_RUN_ID
+        if active_run_id is not None:
+            try:
+                run = service.get_run(active_run_id)
+                if any(int(item["topic_id"]) == topic_id for item in run.get("topics", [])):
+                    cancel_run(active_run_id)
+                    _log_event("topic_run_paused", topic_id=topic_id, run_id=active_run_id)
+            except Exception as exc:
+                _log_event("topic_pause_cancel_failed", topic_id=topic_id, error=str(exc)[:300])
+    return result
+
+
 def pause_learning() -> dict[str, Any]:
     """Pause all ChatGPT outline and lesson capture, preserving completed database work."""
     state = service.set_learning_paused(True, "توقف سراسری توسط کاربر")
