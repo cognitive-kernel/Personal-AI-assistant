@@ -50,6 +50,53 @@ def _adaptive_difficulty_guidance(score: float | int | None) -> dict[str, str]:
         "instruction": "Keep the core explanation concise and add an applied example requiring the learner to choose and justify an approach.",
     }
 
+def _semantic_gap_difficulty_guidance(review_json: str | None) -> dict[str, str] | None:
+    """Use only a current independent-model review as advisory lesson-generation guidance."""
+    if not isinstance(review_json, str) or not review_json or len(review_json) > 20000:
+        return None
+    try:
+        stored = json.loads(review_json)
+        review = stored.get("review", {}) if isinstance(stored, dict) else {}
+        items = review.get("items", []) if isinstance(review, dict) else []
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not (
+        isinstance(stored, dict)
+        and stored.get("independent_evaluator") is True
+        and stored.get("independent_verification") is False
+        and isinstance(stored.get("evaluator_digest"), str)
+        and isinstance(items, list)
+    ):
+        return None
+    missing: list[str] = []
+    judgments: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        judgment = item.get("judgment")
+        if isinstance(judgment, str) and judgment in {"partial", "incorrect", "uncertain"}:
+            judgments.append(judgment)
+        concepts = item.get("missing_concepts", [])
+        if isinstance(concepts, list):
+            missing.extend(
+                value.strip()[:120] for value in concepts
+                if isinstance(value, str) and value.strip() and len(value) <= 120
+            )
+    missing = list(dict.fromkeys(missing))[:5]
+    if not judgments and not missing:
+        return None
+    concept_text = "; ".join(missing) if missing else "the concepts flagged by the semantic review"
+    return {
+        "level": "semantic_reinforcement",
+        "instruction": (
+            "Re-teach the identified concepts with a different explanation, explicit definitions, "
+            "one worked example, and a misconception check. Focus on these advisory gaps: "
+            + concept_text
+            + ". Do not treat this model review as a factual verdict or change the learner's score."
+        )[:600],
+    }
+
+
 class LearningError(RuntimeError):
     pass
 
@@ -542,19 +589,43 @@ def run_job(job_id: int) -> None:
             )
         raise LearningError(f"Learning job {job_id} preparation failed.") from exc
     prior_assessment_score = None
+    latest_semantic_review_json = None
     with learning_connection() as conn:
         job_row = conn.execute(
             "SELECT path_topic_id FROM learning_jobs WHERE id=?",
             (job_id,),
         ).fetchone()
         if job_row is not None and job_row["path_topic_id"] is not None:
+            path_topic_id = int(job_row["path_topic_id"])
             score_row = conn.execute(
                 "SELECT latest_score FROM learning_path_topics WHERE id=?",
-                (job_row["path_topic_id"],),
+                (path_topic_id,),
             ).fetchone()
             if score_row is not None:
                 prior_assessment_score = score_row["latest_score"]
+            semantic_row = conn.execute(
+                """SELECT r.review_json
+                   FROM assessment_attempts a
+                   JOIN learning_jobs prior_job ON prior_job.id=a.job_id
+                   JOIN assessment_semantic_reviews r ON r.attempt_id=a.id
+                   WHERE prior_job.path_topic_id=?
+                     AND a.id=(
+                        SELECT MAX(a2.id) FROM assessment_attempts a2
+                        JOIN learning_jobs j2 ON j2.id=a2.job_id
+                        WHERE j2.path_topic_id=?
+                     )
+                   ORDER BY r.id DESC LIMIT 1""",
+                (path_topic_id, path_topic_id),
+            ).fetchone()
+            if semantic_row is not None:
+                latest_semantic_review_json = semantic_row["review_json"]
     adaptive_difficulty = _adaptive_difficulty_guidance(prior_assessment_score)
+    semantic_guidance = _semantic_gap_difficulty_guidance(latest_semantic_review_json)
+    if semantic_guidance is not None:
+        adaptive_difficulty = {
+            "level": semantic_guidance["level"],
+            "instruction": (adaptive_difficulty["instruction"] + " " + semantic_guidance["instruction"])[:600],
+        }
     prompt = {
         "topic": topic,
         "adaptive_difficulty": adaptive_difficulty,
