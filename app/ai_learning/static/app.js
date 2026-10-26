@@ -31,6 +31,18 @@ $("topic-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const
 $("select-all-topics").onchange=()=>document.querySelectorAll(".topic-check").forEach(x=>x.checked=$("select-all-topics").checked);
 $("approve-selected").onclick=()=>act(()=>decide(Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id)),"approved"));
 $("approve-all-topics").onclick=()=>act(async()=>{if(!topics.length)throw Error("سرفصلی برای تأیید وجود ندارد.");if(!confirm("همهٔ "+topics.length+" سرفصل این دوره تأیید شوند؟"))return;await decide(topics.map(t=>t.id),"approved");$("select-all-topics").checked=false;say("همهٔ سرفصل‌های دوره تأیید شدند. برای دریافت درس‌های باقی‌مانده، دکمهٔ ادامه/بازیابی را بزنید.")});
+$("learn-selected-topics").onclick=()=>act(async()=>{
+ const ids=Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id));
+ if(!ids.length)throw Error("ابتدا سرفصل‌هایی را که باید برایشان درس دریافت شود انتخاب کنید.");
+ const chosen=topics.filter(t=>ids.includes(Number(t.id)));
+ const unapproved=chosen.filter(t=>t.approval_status!=="approved");
+ if(unapproved.length)throw Error("ابتدا سرفصل‌های انتخاب‌شده را تأیید کنید؛ فقط سرفصل‌های تأییدشده برای دریافت درس ارسال می‌شوند.");
+ if(!confirm("برای سرفصل‌های انتخاب‌شده‌ای که هنوز محتوای درس ندارند، دریافت درس از ChatGPT آغاز شود؟"))return;
+ const result=await api("/browser/lessons",{method:"POST",body:JSON.stringify({course_id:courseId,topic_ids:ids,request_key:"playwright-selected-lessons-"+courseId+"-"+Date.now()})});
+ await loadCourse();
+ await loadRuns();
+ say("دریافت درس آغاز شد؛ اجرای #"+result.run_id+" در سوابق نمایش داده می‌شود. محتوای دریافت‌شده همچنان نیازمند بازبینی خواهد بود.");
+});
 $("approve-all-lessons").onclick=()=>act(async()=>{if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");if(!confirm("تمام نسخه‌های دارای محتوای نیازمند بازبینی در این دوره تأیید بازبینی شوند؟ این کار آن‌ها را منتشر نمی‌کند."))return;let reviewed=0;for(const t of topics){const d=await api("/topics/"+t.id+"/lessons");for(const l of d.items){const vs=await api("/lessons/"+l.id+"/versions");if(vs.items[0]?.review_status==="needs_review"){const v=vs.items[0];await api("/versions/"+v.id+"/review",{method:"POST",body:JSON.stringify({decision:"reviewed"})});reviewed++}}}await loadCourse();say(reviewed+" نسخهٔ درس تأیید بازبینی شد؛ انتشار انجام نشد.")});
 $("reject-selected").onclick=()=>act(()=>decide(Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id)),"rejected"));
 $("save-order").onclick=()=>act(async()=>{if(!courseId||!topics.length)throw Error("سرفصلی برای مرتب‌سازی وجود ندارد.");await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:topics.map(t=>t.id)})});await loadCourse();say("ترتیب ذخیره شد.")});
