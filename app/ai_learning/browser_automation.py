@@ -336,6 +336,23 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             _log_event("response_wait_cancelled", elapsed_seconds=round(time.monotonic() - started, 1))
             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
         try:
+            # Inspect only visible alert/error surfaces during streaming; do not scan
+            # the whole conversation, which may legitimately discuss these phrases.
+            try:
+                alerts = page.locator('[role="alert"],[data-testid*="error"]')
+                for alert_index in range(max(0, alerts.count() - 3), alerts.count()):
+                    try:
+                        alert_text = alerts.nth(alert_index).inner_text(timeout=300)
+                    except Exception:
+                        continue
+                    gate_error = _provider_gate_error(page.url, alert_text)
+                    if gate_error is not None:
+                        _log_event("provider_gate_detected", error_code=gate_error.code, url=page.url)
+                        raise gate_error
+            except BrowserAutomationError:
+                raise
+            except Exception:
+                pass
             current, current_message_index = _visible_response_with_index(page)
             new_message_seen = (
                 previous_message_count is not None
@@ -470,6 +487,17 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     pass
                 page.wait_for_timeout(1200)
                 _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
+                # On an empty landing page, classify explicit security/rate-limit gates
+                # before submitting. Existing conversations may legitimately discuss these terms.
+                if _assistant_message_count(page) == 0:
+                    try:
+                        landing_text = page.locator("body").inner_text(timeout=1500)
+                    except Exception:
+                        landing_text = ""
+                    gate_error = _provider_gate_error(page.url, landing_text)
+                    if gate_error is not None:
+                        _log_event("provider_gate_detected", error_code=gate_error.code, url=page.url)
+                        raise gate_error
                 # Guest mode is an explicit supported attempt: try the visible composer
                 # instead of requiring sign-in before submitting. ChatGPT may still impose
                 # an account, rate-limit, or human-verification gate; never bypass it.
