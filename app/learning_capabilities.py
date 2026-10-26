@@ -85,6 +85,10 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
            ORDER BY e.id DESC LIMIT 5000"""
     ).fetchall()
     by_topic: dict[str, dict[int, set[tuple[str, str, str]]]] = {}
+    # Exact hashes alone treat trivial paraphrases as separate transfer cases.
+    # Canonicalize highly overlapping token sets so near-duplicate problem statements
+    # cannot inflate the provisional transfer signal.
+    scenario_tokens: dict[str, dict[int, dict[str, set[str]]]] = {}
     for row in rows:
         topic = str(row["knowledge_topic"]).strip().casefold()
         knowledge_id = row["originating_knowledge_id"]
@@ -99,6 +103,18 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
             continue
         normalized_problem = re.sub(r"\s+", " ", problem).strip().casefold()
         scenario_hash = hashlib.sha256(normalized_problem.encode("utf-8")).hexdigest()
+        tokens = set(re.findall(r"[a-z0-9]+|[\u0600-\u06FF]+", normalized_problem))
+        if len(tokens) < 4:
+            continue
+        known_scenarios = scenario_tokens.setdefault(topic, {}).setdefault(int(knowledge_id), {})
+        for existing_hash, existing_tokens in known_scenarios.items():
+            union = tokens | existing_tokens
+            similarity = (len(tokens & existing_tokens) / len(union)) if union else 1.0
+            if similarity >= 0.80:
+                scenario_hash = existing_hash
+                break
+        else:
+            known_scenarios[scenario_hash] = tokens
         for item in results:
             if not isinstance(item, dict) or item.get("passed") is not True or item.get("runner") != "docker-sandbox":
                 continue
