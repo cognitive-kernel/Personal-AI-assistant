@@ -1,0 +1,307 @@
+"""Use cases for the isolated AI-learning knowledge store."""
+from __future__ import annotations
+import hashlib
+import re
+import sqlite3
+from typing import Any
+from .db import connection
+
+MAX_CONTENT_CHARS = 200_000
+CHUNK_TARGET_CHARS = 1_800
+CHUNK_OVERLAP_CHARS = 180
+
+class NotFoundError(KeyError):
+    """Requested learning resource does not exist."""
+
+def _clean_text(value: str, field: str, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text.")
+    value = value.strip()
+    if not value or len(value) > maximum:
+        raise ValueError(f"{field} must contain 1–{maximum} characters.")
+    return value
+
+def create_course(*, title: str, provider: str = "manual", language: str = "fa",
+                  target_level: str = "beginner_to_advanced", scope_notes: str = "") -> dict[str, Any]:
+    title = _clean_text(title, "title", 300)
+    provider = _clean_text(provider, "provider", 80)
+    language = _clean_text(language, "language", 20)
+    target_level = _clean_text(target_level, "target_level", 80)
+    if len(scope_notes) > 4000:
+        raise ValueError("scope_notes cannot exceed 4000 characters.")
+    with connection() as conn:
+        cursor = conn.execute(
+            "INSERT INTO courses(title,provider,language,target_level,scope_notes,status) VALUES(?,?,?,?,?,'active')",
+            (title, provider, language, target_level, scope_notes))
+        course_id = int(cursor.lastrowid)
+    return get_course(course_id)
+
+def list_courses(limit: int = 50) -> list[dict[str, Any]]:
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT c.*, (SELECT COUNT(*) FROM topics t WHERE t.course_id=c.id AND t.deleted_at IS NULL) AS topic_count
+               FROM courses c ORDER BY c.updated_at DESC,c.id DESC LIMIT ?""",
+            (max(1, min(100, limit)),)).fetchall()
+    return [dict(row) for row in rows]
+
+def get_course(course_id: int) -> dict[str, Any]:
+    with connection() as conn:
+        course = conn.execute("SELECT * FROM courses WHERE id=?", (course_id,)).fetchone()
+        if course is None:
+            raise NotFoundError("Course not found.")
+        topics = conn.execute(
+            """SELECT t.*, (SELECT COUNT(*) FROM lessons l WHERE l.topic_id=t.id AND l.deleted_at IS NULL) AS lesson_count
+               FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL ORDER BY t.position,t.id""",
+            (course_id,)).fetchall()
+    result = dict(course)
+    result["topics"] = [dict(row) for row in topics]
+    return result
+
+def add_topic(course_id: int, title: str, description: str = "", parent_topic_id: int | None = None) -> dict[str, Any]:
+    title = _clean_text(title, "title", 300)
+    if len(description) > 4000:
+        raise ValueError("description cannot exceed 4000 characters.")
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
+            raise NotFoundError("Course not found.")
+        if parent_topic_id is not None and conn.execute(
+            "SELECT 1 FROM topics WHERE id=? AND course_id=? AND deleted_at IS NULL",
+            (parent_topic_id, course_id)).fetchone() is None:
+            raise ValueError("Parent topic must belong to the same course.")
+        position = int(conn.execute(
+            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=? AND deleted_at IS NULL",
+            (course_id,)).fetchone()[0])
+        cursor = conn.execute(
+            "INSERT INTO topics(course_id,parent_topic_id,position,title,description) VALUES(?,?,?,?,?)",
+            (course_id, parent_topic_id, position, title, description))
+        topic_id = int(cursor.lastrowid)
+        conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (course_id,))
+        return dict(conn.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone())
+
+def edit_topic(topic_id: int, *, title: str | None = None, description: str | None = None) -> dict[str, Any]:
+    updates: list[str] = []
+    params: list[Any] = []
+    if title is not None:
+        updates.append("title=?")
+        params.append(_clean_text(title, "title", 300))
+    if description is not None:
+        if len(description) > 4000:
+            raise ValueError("description cannot exceed 4000 characters.")
+        updates.append("description=?")
+        params.append(description)
+    if not updates:
+        raise ValueError("At least one field must be supplied.")
+    updates.append("updated_at=CURRENT_TIMESTAMP")
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone() is None:
+            raise NotFoundError("Topic not found.")
+        conn.execute(f"UPDATE topics SET {','.join(updates)} WHERE id=?", (*params, topic_id))
+        return dict(conn.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone())
+
+def reorder_topics(course_id: int, topic_ids: list[int]) -> list[dict[str, Any]]:
+    if not topic_ids or len(topic_ids) > 500 or len(set(topic_ids)) != len(topic_ids):
+        raise ValueError("topic_ids must be a non-empty list of unique topic IDs.")
+    with connection() as conn:
+        current = [int(r[0]) for r in conn.execute(
+            "SELECT id FROM topics WHERE course_id=? AND deleted_at IS NULL ORDER BY position,id",
+            (course_id,)).fetchall()]
+        if set(current) != set(topic_ids):
+            raise ValueError("topic_ids must contain every active topic in this course exactly once.")
+        # Temporary positive positions avoid both the UNIQUE constraint and CHECK(position >= 1).
+        for offset, topic_id in enumerate(topic_ids, 1):
+            conn.execute("UPDATE topics SET position=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (1000 + offset, topic_id))
+        for position, topic_id in enumerate(topic_ids, 1):
+            conn.execute("UPDATE topics SET position=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (position, topic_id))
+        rows = conn.execute("SELECT * FROM topics WHERE course_id=? AND deleted_at IS NULL ORDER BY position",
+                            (course_id,)).fetchall()
+    return [dict(row) for row in rows]
+
+def decide_topics(topic_ids: list[int], decision: str) -> int:
+    if decision not in {"approved", "rejected"}:
+        raise ValueError("decision must be approved or rejected.")
+    if not topic_ids or len(topic_ids) > 500 or len(set(topic_ids)) != len(topic_ids):
+        raise ValueError("topic_ids must be a non-empty list of unique IDs.")
+    marks = ",".join("?" for _ in topic_ids)
+    with connection() as conn:
+        found = conn.execute(
+            f"SELECT id FROM topics WHERE id IN ({marks}) AND deleted_at IS NULL", tuple(topic_ids)).fetchall()
+        if len(found) != len(topic_ids):
+            raise NotFoundError("One or more topics were not found.")
+        conn.execute(f"UPDATE topics SET approval_status=?,updated_at=CURRENT_TIMESTAMP WHERE id IN ({marks})",
+                     (decision, *topic_ids))
+    return len(topic_ids)
+
+def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
+    title = _clean_text(title, "title", 300)
+    with connection() as conn:
+        topic = conn.execute("SELECT id,approval_status FROM topics WHERE id=? AND deleted_at IS NULL",
+                             (topic_id,)).fetchone()
+        if topic is None:
+            raise NotFoundError("Topic not found.")
+        if topic["approval_status"] != "approved":
+            raise ValueError("A lesson can only be created under an approved topic.")
+        position = int(conn.execute(
+            "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
+            (topic_id,)).fetchone()[0])
+        cursor = conn.execute(
+            "INSERT INTO lessons(topic_id,position,title,status) VALUES(?,?,?,'needs_review')",
+            (topic_id, position, title))
+        return dict(conn.execute("SELECT * FROM lessons WHERE id=?", (int(cursor.lastrowid),)).fetchone())
+
+def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | None = None,
+                        source_kind: str = "manual", provider: str = "manual",
+                        model_name: str | None = None) -> dict[str, Any]:
+    markdown = _clean_text(markdown, "markdown", MAX_CONTENT_CHARS)
+    if raw_response is not None and len(raw_response) > MAX_CONTENT_CHARS:
+        raise ValueError("raw_response is too large.")
+    if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
+        raise ValueError("Unsupported source_kind.")
+    with connection() as conn:
+        lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
+        if lesson is None:
+            raise NotFoundError("Lesson not found.")
+        version_no = int(conn.execute(
+            "SELECT COALESCE(MAX(version_no),0)+1 FROM content_versions WHERE lesson_id=?", (lesson_id,)).fetchone()[0])
+        digest = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
+        cursor = conn.execute(
+            """INSERT INTO content_versions(lesson_id,version_no,markdown,raw_response,content_sha256,
+               review_status,source_kind,provider,model_name) VALUES(?,?,?,?,?,'needs_review',?,?,?)""",
+            (lesson_id, version_no, markdown, raw_response, digest, source_kind, provider, model_name))
+        version_id = int(cursor.lastrowid)
+        conn.execute("UPDATE lessons SET status='needs_review',updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
+        return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
+
+def review_content(version_id: int, decision: str) -> dict[str, Any]:
+    if decision not in {"reviewed", "rejected"}:
+        raise ValueError("decision must be reviewed or rejected.")
+    with connection() as conn:
+        row = conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone()
+        if row is None:
+            raise NotFoundError("Content version not found.")
+        if row["review_status"] in {"published", "withdrawn", "superseded"}:
+            raise ValueError("Published or inactive versions cannot be reviewed in place; create a new version.")
+        conn.execute("UPDATE content_versions SET review_status=? WHERE id=?", (decision, version_id))
+        conn.execute("UPDATE lessons SET status=? WHERE id=?",
+                     ("ready" if decision == "reviewed" else "needs_review", row["lesson_id"]))
+        return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
+
+def list_lessons(topic_id: int) -> list[dict[str, Any]]:
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone() is None:
+            raise NotFoundError("Topic not found.")
+        rows = conn.execute(
+            "SELECT * FROM lessons WHERE topic_id=? AND deleted_at IS NULL ORDER BY position,id",
+            (topic_id,)).fetchall()
+    return [dict(row) for row in rows]
+
+def list_versions(lesson_id: int) -> list[dict[str, Any]]:
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone() is None:
+            raise NotFoundError("Lesson not found.")
+        rows = conn.execute(
+            "SELECT id,lesson_id,version_no,content_sha256,review_status,source_kind,provider,model_name,created_at FROM content_versions WHERE lesson_id=? ORDER BY version_no DESC",
+            (lesson_id,)).fetchall()
+    return [dict(row) for row in rows]
+
+def soft_delete_topic(topic_id: int) -> dict[str, Any]:
+    with connection() as conn:
+        topic = conn.execute("SELECT id FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone()
+        if topic is None:
+            raise NotFoundError("Topic not found.")
+        conn.execute("UPDATE topics SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (topic_id,))
+        conn.execute("UPDATE lessons SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE topic_id=? AND deleted_at IS NULL", (topic_id,))
+        conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT cv.id FROM content_versions cv JOIN lessons l ON l.id=cv.lesson_id WHERE l.topic_id=?)", (topic_id,))
+        return {"id": topic_id, "deleted": True}
+
+def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone() is None:
+            raise NotFoundError("Lesson not found.")
+        conn.execute("UPDATE lessons SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
+        conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT id FROM content_versions WHERE lesson_id=?)", (lesson_id,))
+        return {"id": lesson_id, "deleted": True}
+
+def _chunk_text(markdown: str) -> list[tuple[str, str]]:
+    chunks: list[tuple[str, str]] = []
+    heading = ""
+    buffer = ""
+    def flush() -> None:
+        nonlocal buffer
+        text = buffer.strip()
+        while len(text) > CHUNK_TARGET_CHARS:
+            cut = text.rfind("\n", 0, CHUNK_TARGET_CHARS)
+            if cut < CHUNK_TARGET_CHARS // 2:
+                cut = CHUNK_TARGET_CHARS
+            chunks.append((heading, text[:cut].strip()))
+            text = text[max(0, cut - CHUNK_OVERLAP_CHARS):].strip()
+        if text:
+            chunks.append((heading, text))
+        buffer = ""
+    for line in markdown.splitlines():
+        if line.lstrip().startswith("#"):
+            flush()
+            heading = line.strip()[:500]
+        else:
+            buffer += line + "\n"
+            if len(buffer) >= CHUNK_TARGET_CHARS:
+                flush()
+    flush()
+    return chunks or [("", markdown[:CHUNK_TARGET_CHARS])]
+
+def publish_content(version_id: int) -> dict[str, Any]:
+    """Publish only reviewed content; replace active chunks atomically."""
+    with connection() as conn:
+        version = conn.execute(
+            """SELECT cv.*,l.topic_id FROM content_versions cv JOIN lessons l ON l.id=cv.lesson_id
+               JOIN topics t ON t.id=l.topic_id WHERE cv.id=? AND l.deleted_at IS NULL AND t.deleted_at IS NULL""",
+            (version_id,)).fetchone()
+        if version is None:
+            raise NotFoundError("Content version or parent lesson/topic not found.")
+        if version["review_status"] != "reviewed":
+            raise ValueError("Only a reviewed content version can be published.")
+        topic = conn.execute("SELECT approval_status FROM topics WHERE id=?", (version["topic_id"],)).fetchone()
+        if topic is None or topic["approval_status"] != "approved":
+            raise ValueError("Topic must be approved before publishing its knowledge.")
+        conn.execute("UPDATE content_versions SET review_status='superseded' WHERE lesson_id=? AND review_status='published'",
+                     (version["lesson_id"],))
+        conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT id FROM content_versions WHERE lesson_id=?)",
+                     (version["lesson_id"],))
+        conn.execute("UPDATE content_versions SET review_status='published' WHERE id=?", (version_id,))
+        for ordinal, (heading, body) in enumerate(_chunk_text(version["markdown"])):
+            digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+            conn.execute(
+                """INSERT INTO chunks(content_version_id,ordinal,heading_path,body,content_sha256,active)
+                   VALUES(?,?,?,?,?,1) ON CONFLICT(content_version_id,ordinal) DO UPDATE SET
+                   heading_path=excluded.heading_path,body=excluded.body,content_sha256=excluded.content_sha256,active=1""",
+                (version_id, ordinal, heading, body, digest))
+        conn.execute("UPDATE lessons SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE id=?", (version["lesson_id"],))
+        return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
+
+def _like_term(term: str) -> str:
+    return "%" + term.replace("%", "").replace("_", "") + "%"
+
+def search_knowledge(query: str, limit: int = 8) -> dict[str, Any]:
+    """Bounded lexical retrieval over published, active chunks only."""
+    query = _clean_text(query, "query", 2000)
+    terms = re.findall(r"[^\W_]{2,}", query.casefold(), flags=re.UNICODE)[:12]
+    if not terms:
+        return {"query": query, "items": [], "count": 0, "mode": "lexical"}
+    clauses = " AND ".join("lower(c.body) LIKE ?" for _ in terms)
+    params: list[Any] = [_like_term(term) for term in terms]
+    rank = " + ".join("CASE WHEN lower(c.body) LIKE ? THEN 1 ELSE 0 END" for _ in terms)
+    params.extend(_like_term(term) for term in terms)
+    params.append(max(1, min(20, limit)))
+    with connection() as conn:
+        rows = conn.execute(
+            """SELECT c.id AS chunk_id,c.heading_path,c.body,c.content_sha256,
+                      cv.id AS content_version_id,cv.version_no,cv.provider,cv.model_name,
+                      l.id AS lesson_id,l.title AS lesson_title,t.id AS topic_id,t.title AS topic_title,
+                      co.id AS course_id,co.title AS course_title
+               FROM chunks c JOIN content_versions cv ON cv.id=c.content_version_id
+               JOIN lessons l ON l.id=cv.lesson_id JOIN topics t ON t.id=l.topic_id
+               JOIN courses co ON co.id=t.course_id
+               WHERE c.active=1 AND cv.review_status='published' AND l.deleted_at IS NULL AND t.deleted_at IS NULL AND t.approval_status='approved'
+                 AND """ + clauses + " ORDER BY (" + rank + ") DESC,length(c.body) ASC,c.id DESC LIMIT ?",
+            tuple(params)).fetchall()
+    items = [dict(row) for row in rows]
+    return {"query": query, "items": items, "count": len(items), "mode": "lexical"}
