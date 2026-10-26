@@ -849,7 +849,12 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
         existing_titles = [str(row["title"]) for row in existing_rows]
-        new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
+        # The parser has already removed normalized duplicates within the incoming batch.
+        # Avoid embedding the entire 1,000+ topic outline when the course is empty.
+        if existing_titles:
+            new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
+        else:
+            new_candidates, skipped_duplicates = candidates, []
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
             (course_id, raw_response))
