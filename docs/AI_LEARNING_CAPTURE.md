@@ -43,4 +43,4 @@ The initial stage includes isolated storage, a dedicated management page, course
 - Unapproved topics cannot create lessons; unreviewed content cannot be published.
 - Search returns only active chunks from published versions and includes provenance IDs.
 - Unit and integration tests run without internet or a live model.
-- The existing chat path remains disconnected until an explicit, tested integration is implemented.
+- The existing chat path uses only the separately gated optional retrieval adapter; with both flags off, the previous path remains unchanged.

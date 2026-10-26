@@ -12,7 +12,7 @@ def test_dashboard_is_disabled_by_default(monkeypatch):
 def test_dashboard_serves_page_when_enabled(monkeypatch):
     monkeypatch.setenv("AI_LEARNING_ENABLED","1")
     response=ui.learning_dashboard()
-    assert response.path.endswith("index.html")
+    assert str(response.path).endswith("index.html")
     assert response.media_type=="text/html"
 
 def test_static_asset_names_are_allowlisted(monkeypatch):

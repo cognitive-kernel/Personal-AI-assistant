@@ -601,7 +601,7 @@ def search_knowledge(query: str, limit: int = 8) -> dict[str, Any]:
                JOIN lessons l ON l.id=cv.lesson_id JOIN topics t ON t.id=l.topic_id
                JOIN courses co ON co.id=t.course_id
                WHERE c.active=1 AND cv.review_status='published' AND l.deleted_at IS NULL AND t.deleted_at IS NULL AND t.approval_status='approved'
-                 AND """ + clauses + " ORDER BY (" + rank + ") DESC,length(c.body) ASC,c.id DESC LIMIT ?",
+                 AND (" + clauses + ") ORDER BY (" + rank + ") DESC,length(c.body) ASC,c.id DESC LIMIT ?",
             tuple(params)).fetchall()
     items = [dict(row) for row in rows]
     return {"query": query, "items": items, "count": len(items), "mode": "lexical"}
