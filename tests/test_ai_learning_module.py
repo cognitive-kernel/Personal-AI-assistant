@@ -85,3 +85,21 @@ def test_feature_flags_are_off_by_default(monkeypatch):
     monkeypatch.delenv("AI_LEARNING_RETRIEVAL_ENABLED", raising=False)
     assert config.is_enabled() is False
     assert config.retrieval_is_enabled() is False
+
+def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store):
+    course = service.create_course(title="SQL Server 2005")
+    raw = "1. Architecture\n2. Indexes\n3. Backup and restore"
+    result = service.import_outline(course["id"], raw, provider="chatgpt_ui")
+    assert result["imported"] == 3
+    assert all(topic["approval_status"] == "pending" for topic in result["topics"])
+    assert [topic["title"] for topic in result["topics"]] == ["Architecture", "Indexes", "Backup and restore"]
+    with connection() as conn:
+        run = conn.execute("SELECT response_text,status FROM runs WHERE id=?", (result["run_id"],)).fetchone()
+    assert run["response_text"] == raw
+    assert run["status"] == "succeeded"
+
+
+def test_outline_import_rejects_unstructured_response(isolated_store):
+    course = service.create_course(title="SQL Server")
+    with pytest.raises(ValueError, match="No numbered"):
+        service.import_outline(course["id"], "This is a paragraph without an outline.")
