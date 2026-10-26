@@ -18,6 +18,11 @@ class CourseCreate(BaseModel):
     scope_notes: str = Field(default="", max_length=4000)
     model_config = ConfigDict(extra="forbid")
 
+class OutlineImport(BaseModel):
+    raw_response: str = Field(min_length=1, max_length=100000)
+    provider: str = Field(default="manual", min_length=1, max_length=80)
+    model_config = ConfigDict(extra="forbid")
+
 class TopicCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = Field(default="", max_length=4000)
@@ -89,6 +94,10 @@ def list_courses(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]
 @router.get("/courses/{course_id}")
 def get_course(course_id: int) -> dict[str, Any]:
     return _call(service.get_course, course_id)
+
+@router.post("/courses/{course_id}/outline/import", status_code=201)
+def import_outline(course_id: int, request: OutlineImport) -> dict[str, Any]:
+    return _call(service.import_outline, course_id, request.raw_response, provider=request.provider)
 
 @router.post("/courses/{course_id}/topics", status_code=201)
 def add_topic(course_id: int, request: TopicCreate) -> dict[str, Any]:
