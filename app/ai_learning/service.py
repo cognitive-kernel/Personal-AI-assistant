@@ -164,6 +164,24 @@ def start_run(run_id: int) -> dict[str, Any]:
             raise ValueError("Only queued or running runs can be started.")
     return get_run(run_id)
 
+def cancel_run(run_id: int) -> dict[str, Any]:
+    """Cancel an active run; terminal history can then be deleted normally."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute("SELECT id,status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise NotFoundError("Run not found.")
+        if run["status"] not in {"queued", "running"}:
+            raise ValueError("Only queued or running executions can be cancelled.")
+        conn.execute(
+            """UPDATE runs SET status='cancelled',error_code='user_cancelled',
+               error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
+               WHERE id=? AND status IN ('queued','running')""",
+            (run_id,),
+        )
+    return get_run(run_id)
+
+
 def _parse_outline_titles(raw_response: str) -> list[str]:
     candidates: list[str] = []
     for line in raw_response.splitlines():
