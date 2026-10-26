@@ -53,3 +53,13 @@ def test_course_run_history_and_outline_recovery(isolated_store):
     assert [topic["title"] for topic in service.get_course(course["id"])["topics"]] == [
         "Fundamentals", "Installation", "Security"
     ]
+
+
+def test_new_topic_position_skips_soft_deleted_positions(isolated_store):
+    course = service.create_course(title="Databases")
+    first = service.add_topic(course["id"], "First")
+    second = service.add_topic(course["id"], "Second")
+    service.soft_delete_topic(second["id"])
+    third = service.add_topic(course["id"], "Third")
+    assert first["position"] == 1
+    assert third["position"] == 3
