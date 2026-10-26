@@ -16,6 +16,26 @@ from .db import get_settings, init_databases, learning_connection
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _REVIEW_KINDS = {"source", "ai_review", "test_review"}
 _VERDICTS = {"supports", "contradicts", "inconclusive"}
+_MULTI_LABEL_PUBLIC_SUFFIXES = {
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "com.au", "net.au", "org.au",
+    "co.nz", "co.jp", "com.br", "com.cn", "com.sg", "com.tw", "com.hk",
+    "co.in", "co.za", "com.mx", "com.tr", "co.kr", "com.my", "com.ph",
+}
+
+
+def _registrable_source_domain(host: str) -> str:
+    """Collapse subdomains to a conservative registrable-domain approximation.
+
+    This is a diversity guard, not a complete Public Suffix List implementation.
+    """
+    normalized = host.casefold().rstrip(".")
+    labels = normalized.split(".")
+    if len(labels) <= 2:
+        return normalized
+    suffix2 = ".".join(labels[-2:])
+    if suffix2 in _MULTI_LABEL_PUBLIC_SUFFIXES:
+        return ".".join(labels[-3:])
+    return suffix2
 
 
 def _digest(value: Any, field: str) -> str:
@@ -164,7 +184,7 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
             (candidate_id,),
         ).fetchone()[0])
     sources = {
-        item["source_host"] for item in reviews
+        _registrable_source_domain(str(item["source_host"])) for item in reviews
         if item["review_kind"] == "source" and item["verdict"] == "supports"
         and item["source_host"]
     }
@@ -250,7 +270,7 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
             (candidate_id, expected_candidate_sha256),
         ).fetchall()]
         sources = {
-            item["source_host"] for item in reviews
+            _registrable_source_domain(str(item["source_host"])) for item in reviews
             if item["review_kind"] == "source" and item["verdict"] == "supports" and item["source_host"]
         }
         ai_models = {
