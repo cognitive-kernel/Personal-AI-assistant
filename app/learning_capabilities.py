@@ -107,14 +107,16 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
         if len(tokens) < 4:
             continue
         known_scenarios = scenario_tokens.setdefault(topic, {}).setdefault(int(knowledge_id), {})
+        canonical_scenario_hash = scenario_hash
+        scenario_already_known = False
         for existing_hash, existing_tokens in known_scenarios.items():
             union = tokens | existing_tokens
             similarity = (len(tokens & existing_tokens) / len(union)) if union else 1.0
             if similarity >= 0.80:
-                scenario_hash = existing_hash
+                canonical_scenario_hash = existing_hash
+                scenario_already_known = True
                 break
-        else:
-            known_scenarios[scenario_hash] = tokens
+        scenario_registered = False
         for item in results:
             if not isinstance(item, dict) or item.get("passed") is not True or item.get("runner") != "docker-sandbox":
                 continue
@@ -133,8 +135,14 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
                 for source in sources
             ):
                 continue
+            # Only evidence-backed, passing runs may reserve a scenario identity.
+            # An unprovenanced experience must not suppress a later valid case.
+            if not scenario_registered:
+                if not scenario_already_known:
+                    known_scenarios[canonical_scenario_hash] = tokens
+                scenario_registered = True
             by_topic.setdefault(topic, {}).setdefault(int(knowledge_id), set()).add(
-                (test_name.strip(), source_hash, scenario_hash)
+                (test_name.strip(), source_hash, canonical_scenario_hash)
             )
     result: dict[str, dict[str, Any]] = {}
     for topic in topics:
