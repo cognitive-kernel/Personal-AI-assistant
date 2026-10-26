@@ -1005,7 +1005,40 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_model_usage_task ON model_usage_events(task_id, id)",
             "CREATE INDEX idx_model_usage_purpose_created ON model_usage_events(purpose, created_at DESC)",
         ),
-    )
+    ),
+    Migration(
+        28,
+        "multi-evidence-temporary-knowledge-review",
+        (
+            """CREATE TABLE knowledge_candidate_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                candidate_sha256 TEXT NOT NULL CHECK(length(candidate_sha256) = 64),
+                review_kind TEXT NOT NULL CHECK(review_kind IN ('source','ai_review','test_review')),
+                verdict TEXT NOT NULL CHECK(verdict IN ('supports','contradicts','inconclusive')),
+                reviewer_id TEXT NOT NULL CHECK(length(trim(reviewer_id)) BETWEEN 1 AND 200),
+                model_id TEXT,
+                source_url TEXT,
+                source_host TEXT,
+                source_sha256 TEXT CHECK(source_sha256 IS NULL OR length(source_sha256) = 64),
+                input_sha256 TEXT CHECK(input_sha256 IS NULL OR length(input_sha256) = 64),
+                output_sha256 TEXT CHECK(output_sha256 IS NULL OR length(output_sha256) = 64),
+                note TEXT NOT NULL CHECK(length(trim(note)) BETWEEN 20 AND 2000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(
+                    (review_kind = 'source' AND source_url IS NOT NULL
+                     AND substr(source_url, 1, 8) = 'https://'
+                     AND source_host IS NOT NULL AND source_sha256 IS NOT NULL)
+                    OR review_kind <> 'source'
+                ),
+                CHECK(review_kind <> 'ai_review' OR
+                      (model_id IS NOT NULL AND input_sha256 IS NOT NULL AND output_sha256 IS NOT NULL)),
+                CHECK(review_kind <> 'test_review' OR
+                      (input_sha256 IS NOT NULL AND output_sha256 IS NOT NULL))
+            )""",
+            "CREATE INDEX idx_candidate_reviews_candidate ON knowledge_candidate_reviews(candidate_id, created_at DESC, id DESC)",
+            "CREATE INDEX idx_candidate_reviews_verdict ON knowledge_candidate_reviews(candidate_id, verdict, review_kind)",
+        ),
     )
 )
 
