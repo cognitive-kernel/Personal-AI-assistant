@@ -76,6 +76,8 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
             seen.add(key)
     if not pending:
         return accepted, skipped
+    if not existing_titles:
+        return pending, skipped
     # Embed existing titles and candidates once, rather than issuing one request per title.
     base_titles = list(existing_titles)
     try:
@@ -581,13 +583,8 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
             existing_rows = conn.execute(
                 "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
-            existing_titles = {_dedupe_normalize(str(row["title"])) for row in existing_rows}
-            new_titles = []
-            for title in titles:
-                normalized = _dedupe_normalize(title)
-                if normalized not in existing_titles:
-                    new_titles.append(title)
-                    existing_titles.add(normalized)
+            existing_titles = [str(row["title"]) for row in existing_rows]
+            new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
