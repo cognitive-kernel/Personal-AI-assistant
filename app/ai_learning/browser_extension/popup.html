@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Learning Bridge</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+<main>
+  <h1>پل یادگیری</h1>
+  <p id="status" role="status">در حال اتصال به دستیار محلی…</p>
+  <label>دوره <select id="course"></select></label>
+  <label>نوع درخواست <select id="run-type"><option value="outline">دریافت سرفصل‌ها</option><option value="lesson">دریافت درس برای سرفصل‌های تأییدشده</option></select></label>
+  <fieldset id="topics-wrap" hidden><legend>انتخاب سرفصل‌ها (برای ارسال گروهی چند مورد انتخاب کنید)</legend><div id="topics"></div></fieldset>
+  <button id="prepare">بازکردن ChatGPT و درج درخواست</button>
+  <button id="capture" class="secondary">ثبت پاسخ آخر ChatGPT</button>
+  <p class="hint">درخواست به‌طور خودکار ارسال نمی‌شود. متن را بررسی و با دکمه خود ChatGPT ارسال کنید؛ پس از پایان پاسخ، آن را ثبت کنید.</p>
+</main>
+<script src="popup.js"></script>
+</body></html>
