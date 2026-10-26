@@ -4,6 +4,8 @@ let selectedCourse = null;
 let courseTopics = [];
 let selectedTopicIds = new Set();
 let lessonsTopicId = null;
+let selectedLessonIds = new Set();
+let displayedLessons = [];
 
 async function api(path, options) {
   const response = await fetch(path, Object.assign({
@@ -119,19 +121,26 @@ async function pauseTopic(topic, paused) {
   message(paused ? "سرفصل مکث شد؛ محتوای ثبت‌شده حفظ شد." : "سرفصل برای ادامه فعال شد.");
 }
 async function showLessons(topic) {
+  if (lessonsTopicId !== Number(topic.id)) selectedLessonIds.clear();
   lessonsTopicId = Number(topic.id);
   const panel = byId("lessons-panel");
   panel.replaceChildren(node("p", "در حال دریافت درس‌ها…"));
   try {
     const result = await api("/api/ai-learning/topics/" + topic.id + "/lessons");
     panel.replaceChildren(node("h4", topic.title));
+    displayedLessons = result.items;
+    byId("select-all-lessons").checked = result.items.length > 0 && result.items.every(l => selectedLessonIds.has(Number(l.id)));
     if (!result.items.length) {
       panel.append(node("p", "برای این سرفصل هنوز درس ایجاد نشده است. سرفصل را تأیید کنید و «دریافت درس» را اجرا کنید."));
       return;
     }
     for (const lesson of result.items) {
       const card = node("article", undefined, "lesson-card");
-      card.append(node("strong", lesson.title));
+      const lessonHeading = node("div", undefined, "topic-heading");
+      const lessonCheck = node("input"); lessonCheck.type = "checkbox"; lessonCheck.checked = selectedLessonIds.has(Number(lesson.id));
+      lessonCheck.setAttribute("aria-label", "انتخاب درس " + lesson.title);
+      lessonCheck.addEventListener("change", () => { if (lessonCheck.checked) selectedLessonIds.add(Number(lesson.id)); else selectedLessonIds.delete(Number(lesson.id)); });
+      lessonHeading.append(lessonCheck, node("strong", lesson.title)); card.append(lessonHeading);
       card.append(node("p", "وضعیت: " + lesson.status + " · پیشرفت: " + lesson.progress_percent + "% · " + lesson.progress_label + " · نسخه‌ها: " + lesson.version_count));
       const meter = node("progress"); meter.max = 100; meter.value = lesson.progress_percent; card.append(meter);
       const controls = node("div", undefined, "topic-actions");
@@ -358,6 +367,44 @@ async function refreshLearningControl() {
   byId("pause-learning").disabled = !!state.paused;
   byId("resume-learning").disabled = false;
 }
+byId("select-all-lessons").addEventListener("change", () => {
+  if (byId("select-all-lessons").checked) displayedLessons.forEach(l => selectedLessonIds.add(Number(l.id)));
+  else displayedLessons.forEach(l => selectedLessonIds.delete(Number(l.id)));
+  const topic = courseTopics.find(t => Number(t.id) === lessonsTopicId);
+  if (topic) showLessons(topic);
+});
+async function bulkReviewLessons(ids) {
+  if (!ids.length) { message("درسی انتخاب نشده است.", true); return; }
+  let reviewed = 0, skipped = 0;
+  for (const lessonId of ids) {
+    const versions = await api("/api/ai-learning/lessons/" + lessonId + "/versions");
+    if (!versions.items.length) { skipped++; continue; }
+    const version = versions.items[0];
+    if (version.review_status !== "needs_review") { skipped++; continue; }
+    const content = await api("/api/ai-learning/versions/" + version.id);
+    const markdown = (content.markdown || "").trim();
+    const bodyText = markdown.replace(/^#{1,6}\s+.*$/gm, "").trim();
+    if (!markdown || bodyText.length < 20) { skipped++; continue; }
+    await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"reviewed"}));
+    reviewed++;
+  }
+  const topic = courseTopics.find(t => Number(t.id) === lessonsTopicId);
+  if (topic) await showLessons(topic);
+  message("بازبینی تأیید شد: " + reviewed + " درس؛ رد از تأیید خودکار/بدون متن: " + skipped + ". انتشار خودکار انجام نشد.");
+}
+byId("approve-all-lessons").addEventListener("click", async () => {
+  if (!lessonsTopicId) { message("ابتدا روی «درس‌ها و محتوا» برای یک سرفصل بزنید.", true); return; }
+  if (!window.confirm("همهٔ نسخه‌های دارای متن این سرفصل بازبینی و تأیید شوند؟ انتشار خودکار انجام نمی‌شود.")) return;
+  try { await bulkReviewLessons(displayedLessons.map(l => Number(l.id))); }
+  catch (error) { message(error.message, true); }
+});
+byId("approve-selected-lessons").addEventListener("click", async () => {
+  const ids = [...selectedLessonIds];
+  if (!ids.length) { message("ابتدا درس‌ها را انتخاب کنید.", true); return; }
+  if (!window.confirm("نسخه‌های دارای متن " + ids.length + " درس انتخاب‌شده بازبینی شوند؟")) return;
+  try { await bulkReviewLessons(ids); }
+  catch (error) { message(error.message, true); }
+});
 byId("select-all-topics").addEventListener("change", () => {
   selectedTopicIds = new Set(byId("select-all-topics").checked ? courseTopics.map(t => Number(t.id)) : []);
   renderTopics();
