@@ -343,12 +343,23 @@ def test_rejection_requires_two_models_and_two_live_contradictory_sources(lifecy
             "SELECT COUNT(*) FROM knowledge_items WHERE job_id=? AND status='unverified'",
             (job["id"],),
         ).fetchone()[0]
+        job_row = connection.execute(
+            "SELECT status, assessment_json FROM learning_jobs WHERE id=?",
+            (job["id"],),
+        ).fetchone()
+        source_text_count = connection.execute(
+            "SELECT COUNT(*) FROM learning_source_text WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()[0]
     assert row["status"] == "failed"
     assert row["content"] == ""
     assert row["source_urls_json"] == "[]"
     assert "rejected_after_review" in row["failure_reason"]
     assert row["promoted_knowledge_id"] is None
     assert remaining_unverified == 0
+    assert job_row["status"] == "rejected"
+    assert job_row["assessment_json"] is None
+    assert source_text_count == 0
     readiness = knowledge_lifecycle.candidate_readiness(candidate_id)
     assert readiness["status"] == "rejected_after_review"
     assert readiness["ready_for_promotion"] is False
