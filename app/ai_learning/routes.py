@@ -260,6 +260,10 @@ def review_content(version_id: int, request: ReviewDecision) -> dict[str, Any]:
 def publish_content(version_id: int) -> dict[str, Any]:
     return _call(service.publish_content, version_id)
 
+@router.post("/versions/{version_id}/unpublish")
+def unpublish_content(version_id: int) -> dict[str, Any]:
+    return _call(service.unpublish_content, version_id)
+
 @router.get("/search")
 def search(query: str = Query(min_length=1, max_length=2000), limit: int = Query(default=8, ge=1, le=20)) -> dict[str, Any]:
     if not config.retrieval_is_enabled():
