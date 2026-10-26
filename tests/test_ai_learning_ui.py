@@ -66,3 +66,17 @@ def test_dashboard_has_bulk_topic_and_lesson_review_controls():
     assert 'id="select-all-lessons"' in script
     assert 'className="lesson-check"' in script
     assert 'تأیید درس‌های انتخاب‌شده' in script
+
+def test_dashboard_exposes_course_wide_lesson_selection_and_generation_controls():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    script = (root / "app.js").read_text(encoding="utf-8")
+    assert 'id="show-all-lessons"' in html
+    assert 'id="select-all-course-lessons"' in html
+    assert 'id="approve-selected-course-lessons"' in html
+    assert 'id="learn-selected-topics"' in html
+    assert '"/browser/lessons"' in script
+    assert '"/versions/"+v.id+"/unpublish"' in script
+    assert "هشدار: متن این نسخه خالی است" in script
