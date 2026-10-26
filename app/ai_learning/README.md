@@ -49,3 +49,12 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 - The global resume action starts or continues lesson capture for approved topics whose lessons have no non-empty captured content, including legacy lesson records whose saved content is empty. A retry reuses the existing empty lesson record and creates a new version instead of duplicating the lesson.
 - A version is not counted as 75–100% complete merely because an empty content row exists; valid content is required. Published means the content workflow is published, not that factual correctness or model mastery has been independently verified.
 - In the lesson card, use **مشاهده متن** to expand a saved version's Markdown content. If it still appears blank, inspect the execution's captured response and local browser log before approving or publishing it.
+
+## Dashboard review and recovery controls
+
+- The lessons panel can display all lessons in the selected course, select them together, and approve review for selected lessons without publishing them automatically.
+- Saved Markdown content is shown directly inside each version card; the blank Markdown form is only for creating a corrected/new version.
+- A published version can be withdrawn back to reviewed status. Its text is preserved and its active retrieval chunks are disabled. Reviewed or rejected versions can be reset to needs-review.
+- Empty lesson content cannot be published.
+- Global pause/resume and per-topic/per-lesson pause controls preserve stored work. Resume processes approved topics with no non-empty lesson content; topics that are still pending approval must be approved first.
+- Progress percentages describe workflow state (received/reviewed/published), not a measured percentage of model mastery.
