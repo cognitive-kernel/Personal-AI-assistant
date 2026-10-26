@@ -428,19 +428,25 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 # the welcome page as lesson content.
                 if _anonymous_landing_visible(page):
                     _log_event("anonymous_landing_detected", url=page.url)
-                    # Do not leave the dashboard showing "receiving response" for minutes
-                    # when ChatGPT is clearly logged out. Allow a short window for the user
-                    # to sign in in the visible browser, then persist a clear actionable error.
-                    login_deadline = time.monotonic() + 45
-                    _log_event("login_required_wait_started", timeout_seconds=45, url=page.url)
+                    # The dedicated persistent profile may need a one-time interactive sign-in.
+                    # Keep the visible browser available long enough for the user to complete it.
+                    login_timeout_seconds = 180
+                    login_deadline = time.monotonic() + login_timeout_seconds
+                    _log_event("login_required_wait_started", timeout_seconds=login_timeout_seconds, url=page.url)
+                    last_login_wait_log = 0
                     while time.monotonic() < login_deadline and _anonymous_landing_visible(page):
                         if cancel_event is not None and cancel_event.is_set():
                             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
+                        elapsed = int(login_timeout_seconds - (login_deadline - time.monotonic()))
+                        if elapsed // 10 > last_login_wait_log:
+                            last_login_wait_log = elapsed // 10
+                            _log_event("waiting_for_chatgpt_sign_in", elapsed_seconds=elapsed,
+                                       remaining_seconds=max(0, login_timeout_seconds - elapsed))
                         page.wait_for_timeout(1000)
                     if _anonymous_landing_visible(page):
                         raise BrowserAutomationError(
                             "chatgpt_login_required",
-                            "ChatGPT صفحهٔ مهمان/ورود را نشان می‌دهد و گفت‌وگوی آموزشی ایجاد نشده است. در پنجرهٔ Chrome وارد حساب ChatGPT شوید؛ سپس در داشبورد «ادامه و دریافت درس‌های باقی‌مانده / بازیابی» را بزنید. هیچ درس خالی از این صفحه ثبت نشده است.",
+                            "پنجرهٔ Chrome به صفحهٔ مهمان ChatGPT رسیده و هنوز وارد حساب نشده است؛ هیچ سؤالی ارسال نشده. در پنجرهٔ Chrome که با پروفایل اختصاصی آموزش باز شده، خودتان وارد ChatGPT شوید و سپس در داشبورد «ادامه و دریافت درس‌های باقی‌مانده / بازیابی» را اجرا کنید. این ورود فقط یک‌بار برای همین پروفایل لازم است؛ هیچ دادهٔ ورود یا کوکی‌ای توسط برنامه استخراج نمی‌شود.",
                         )
                     _log_event("anonymous_landing_cleared", url=page.url)
                     page.goto("https://chatgpt.com/", wait_until="domcontentloaded", timeout=60000)
