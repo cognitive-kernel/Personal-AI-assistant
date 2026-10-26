@@ -1,6 +1,6 @@
 import pytest
 
-from app import db, experience, learning_capabilities, task_manager, usage_metrics
+from app import db, experience, learning_capabilities, task_manager, usage_metrics, learning
 from app.db import learning_connection
 
 
@@ -167,3 +167,54 @@ def test_capability_map_reports_measured_model_tokens_and_inference_time(tmp_pat
     assert measured["inference_duration_ms"] == 2500.0
     assert measured["models_used"] == ["local-test-model"]
     assert measured["score_points_per_1000_output_tokens"] is None
+
+
+
+def test_capability_map_requires_distinct_scenarios_linked_to_retained_knowledge_for_transfer(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch)
+    job = learning.create_job("Strong topic")
+    with learning_connection() as connection:
+        knowledge_id = int(connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, 1, 'retained_after_review', ?)""",
+            ("Strong topic", "Validated knowledge for transfer assessment.", "web_retrieved", job["id"]),
+        ).lastrowid)
+
+    sources = [{
+        "url": "https://docs.python.org/3/library/",
+        "claim": "Official reference excerpt",
+        "excerpt": "A verified excerpt.",
+        "live_content_sha256": "a" * 64,
+        "excerpt_sha256": "b" * 64,
+    }]
+    for index, problem in enumerate((
+        "Apply the retained concept to a cache invalidation scenario.",
+        "Apply the same retained concept to a transaction visibility scenario.",
+    ), start=1):
+        item = experience.create_experience("Strong topic", problem, "Transfer hypothesis.")
+        experience.update_experience(
+            item["id"], status="verified", source_evidence=sources,
+            test_plan=[{"test": f"transfer case {index}"}],
+            test_results=[{
+                "test": f"transfer case {index}", "passed": True, "runner": "docker-sandbox",
+                "source_sha256": str(index) * 64,
+                "source_evidence": [{
+                    "url": sources[0]["url"],
+                    "live_content_sha256": "a" * 64,
+                    "excerpt_sha256": "b" * 64,
+                }],
+            }],
+            _controlled_run=True,
+        )
+        with learning_connection() as connection:
+            connection.execute(
+                "UPDATE learning_experiences SET originating_knowledge_id=? WHERE id=?",
+                (knowledge_id, item["id"]),
+            )
+
+    result = learning_capabilities.get_capability_map(path_id=path_id)
+    transfer = next(row for row in result["capabilities"] if row["capability"] == "Strong topic")
+    assert transfer["status"] == "transfer_provisional"
+    assert transfer["transfer_repeatable"] is True
+    assert transfer["transfer_case_count"] == 2
+    assert knowledge_id in transfer["transfer_evidence_knowledge_ids"]
