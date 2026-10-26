@@ -15,8 +15,10 @@ async function loadTopics(){
   if(!courseId||el("run-type").value!=="lesson"){wrap.hidden=true;return;}
   wrap.hidden=false;
   const course=await api("/courses/"+courseId);
-  const topics=(course.topics||[]).filter(topic=>topic.approval_status==="approved");
-  if(!topics.length){output.textContent="این دوره سرفصل تأییدشده ندارد.";return;}
+  const topics=(course.topics||[]).filter(topic=>
+    topic.approval_status==="approved" && Number(topic.lesson_count||0)===0
+  );
+  if(!topics.length){output.textContent="سرفصل تأییدشدهٔ بدون درس جدید وجود ندارد؛ از دریافت سرفصل‌ها برای ادامهٔ خودکار دوره استفاده کنید.";return;}
   topics.forEach(topic=>{
     const label=document.createElement("label"),input=document.createElement("input"),text=document.createElement("span");
     input.type="checkbox";input.value=String(topic.id);
