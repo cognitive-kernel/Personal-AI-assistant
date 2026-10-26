@@ -7,7 +7,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import curricula, factual_knowledge, learning_evidence_gate, learning_source_sync
+from . import curricula, factual_knowledge, learning_evidence_gate, learning_source_sync, learning_prerequisites
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
@@ -94,16 +94,12 @@ def create_job(
             ).fetchone()
             if topic_row is None:
                 raise KeyError(f"Learning path topic {path_topic_id} not found.")
-            blocked = conn.execute(
-                """SELECT topic, status FROM learning_path_topics
-                   WHERE path_id=? AND position<? AND status!='completed'
-                   ORDER BY position LIMIT 1""",
-                (topic_row["path_id"], topic_row["position"]),
-            ).fetchone()
-            if blocked is not None:
+            blocked = learning_prerequisites.blocked_prerequisites(conn, path_topic_id)
+            if blocked:
+                first_blocked = blocked[0]
                 raise ValueError(
                     "Prerequisite topic is not completed: "
-                    + str(blocked["topic"]) + " (" + str(blocked["status"]) + ")."
+                    + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
                 )
             existing = conn.execute(
                 "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
@@ -918,18 +914,14 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
             ).fetchone()
             if topic is not None:
                 review_topic = (int(topic["path_id"]), path_topic_id)
-                blocked = conn.execute(
-                    """SELECT 1 FROM learning_path_topics
-                       WHERE path_id=? AND position<? AND status!='completed' LIMIT 1""",
-                    (topic["path_id"], topic["position"]),
-                ).fetchone()
+                blocked = learning_prerequisites.blocked_prerequisites(conn, path_topic_id)
                 if topic["status"] == "completed":
                     completion_status = "completed"
                     conn.execute(
                         "UPDATE learning_path_topics SET latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                         (score, path_topic_id),
                     )
-                elif score >= 80 and blocked is None:
+                elif score >= 80 and not blocked:
                     completion_status = "completed"
                     conn.execute(
                         """UPDATE learning_path_topics SET status='completed', latest_score=?,
@@ -937,7 +929,7 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
                         (score, path_topic_id),
                     )
                 else:
-                    completion_status = "prerequisite_blocked" if blocked is not None else "in_progress"
+                    completion_status = "prerequisite_blocked" if blocked else "in_progress"
                     conn.execute(
                         """UPDATE learning_path_topics SET status='in_progress', latest_score=?,
                            updated_at=CURRENT_TIMESTAMP WHERE id=?""",
