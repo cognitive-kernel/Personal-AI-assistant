@@ -47,8 +47,15 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
         raise ValueError("Unsupported selection_mode.")
     if len(topic_ids) > 100 or len(set(topic_ids)) != len(topic_ids):
         raise ValueError("topic_ids must be unique and contain at most 100 items.")
-    if (run_type == "outline" and topic_ids) or (run_type == "lesson" and not topic_ids):
-        raise ValueError("Outline runs do not take topic IDs; lesson runs require at least one topic.")
+    if run_type == "outline" and topic_ids:
+        raise ValueError("Outline runs do not take topic IDs.")
+    if run_type == "lesson":
+        if selection_mode == "all_approved" and topic_ids:
+            raise ValueError("all_approved selection must not include explicit topic IDs.")
+        if selection_mode == "single" and len(topic_ids) != 1:
+            raise ValueError("single selection requires exactly one topic ID.")
+        if selection_mode == "selected" and not topic_ids:
+            raise ValueError("selected selection requires at least one topic ID.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute("SELECT id FROM runs WHERE request_key=?", (request_key,)).fetchone()
@@ -58,7 +65,14 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
         if course is None:
             raise NotFoundError("Course not found.")
         topics = []
-        if topic_ids:
+        if run_type == "lesson" and selection_mode == "all_approved":
+            topics = conn.execute(
+                "SELECT * FROM topics WHERE course_id=? AND deleted_at IS NULL AND approval_status='approved' ORDER BY position",
+                (course_id,)).fetchall()
+            if not topics:
+                raise ValueError("The course has no approved topics to send.")
+            topic_ids = [int(row["id"]) for row in topics]
+        elif topic_ids:
             marks = ",".join("?" for _ in topic_ids)
             topics = conn.execute(
                 "SELECT * FROM topics WHERE id IN (" + marks + ") AND course_id=? AND deleted_at IS NULL ORDER BY position",
