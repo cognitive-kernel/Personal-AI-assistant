@@ -30,6 +30,11 @@ class RunComplete(BaseModel):
     response_text: str = Field(min_length=1, max_length=100000)
     model_config = ConfigDict(extra="forbid")
 
+class RunNeedsAction(BaseModel):
+    error_code: str = Field(min_length=1, max_length=80)
+    error_message: str = Field(min_length=1, max_length=1000)
+    model_config = ConfigDict(extra="forbid")
+
 class OutlineImport(BaseModel):
     raw_response: str = Field(min_length=1, max_length=100000)
     provider: str = Field(default="manual", min_length=1, max_length=80)
@@ -113,6 +118,10 @@ def start_run(run_id: int) -> dict[str, Any]:
 @router.post("/runs/{run_id}/complete")
 def complete_run(run_id: int, request: RunComplete) -> dict[str, Any]:
     return _call(service.complete_run, run_id, request.response_text)
+
+@router.post("/runs/{run_id}/needs-user-action")
+def run_needs_user_action(run_id: int, request: RunNeedsAction) -> dict[str, Any]:
+    return _call(service.mark_run_needs_user_action, run_id, request.error_code, request.error_message)
 
 @router.post("/courses", status_code=201)
 def create_course(request: CourseCreate) -> dict[str, Any]:
