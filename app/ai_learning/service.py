@@ -844,6 +844,8 @@ def publish_content(version_id: int) -> dict[str, Any]:
             (version_id,)).fetchone()
         if version is None:
             raise NotFoundError("Content version or parent lesson/topic not found.")
+        if not str(version["markdown"] or "").strip():
+            raise ValueError("متن درس خالی است؛ انتشار نسخهٔ بدون محتوا مجاز نیست. متن را دوباره دریافت یا اصلاح کنید.")
         if version["review_status"] != "reviewed":
             raise ValueError("Only a reviewed content version can be published.")
         topic = conn.execute("SELECT approval_status FROM topics WHERE id=?", (version["topic_id"],)).fetchone()
