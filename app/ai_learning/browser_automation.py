@@ -478,27 +478,56 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
         ) from exc
 
 
-def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
-    """Fetch lessons only for explicitly approved topics, one topic at a time for safe pause/resume."""
+def _continue_lessons(
+    course_id: int,
+    cancel_event: threading.Event,
+    selected_topic_ids: list[int] | None = None,
+    force_retry: bool = False,
+) -> None:
+    """Capture lessons sequentially, keeping every browser prompt bounded to one topic."""
     global _ACTIVE_RUN_ID
     # Never approve topics as a side effect of background learning. Approval is a
     # deliberate dashboard action so users can review the outline before lesson capture.
+    pending_ids = list(dict.fromkeys(int(item) for item in selected_topic_ids or []))
     while True:
-        if service.get_learning_control()["paused"]:
+        if service.get_learning_control()["paused"] or cancel_event.is_set():
             _log_event("lesson_followup_paused", course_id=course_id)
             return
         course = service.get_course(course_id)
-        eligible = [int(topic["id"]) for topic in course.get("topics", [])
-                    if topic.get("approval_status") == "approved"
-                    and topic.get("processing_status") != "paused"
-                    and int(topic.get("lesson_content_ready_count") or 0) == 0]
-        if not eligible:
-            return
-        # One topic per run makes per-topic pause/cancel deterministic and recoverable.
-        topic_ids = eligible[:1]
-        request_key = f"playwright-lessons-{course_id}-" + "-".join(map(str, topic_ids)) + "-attempt-" + str(int(time.time()))
-        run = service.create_run(course_id, run_type="lesson", topic_ids=topic_ids,
-                                 selection_mode="selected", request_key=request_key)
+        topics = course.get("topics", [])
+        if selected_topic_ids is None:
+            eligible = [
+                int(topic["id"]) for topic in topics
+                if topic.get("approval_status") == "approved"
+                and topic.get("processing_status") != "paused"
+                and int(topic.get("lesson_content_ready_count") or 0) == 0
+            ]
+            if not eligible:
+                return
+            topic_id = eligible[0]
+        else:
+            # Explicit selections must not silently expand to every approved topic.
+            eligible_by_id = {int(topic["id"]): topic for topic in topics}
+            while pending_ids:
+                candidate_id = pending_ids.pop(0)
+                topic = eligible_by_id.get(candidate_id)
+                if topic is None or topic.get("approval_status") != "approved" or topic.get("processing_status") == "paused":
+                    continue
+                if not force_retry and int(topic.get("lesson_content_ready_count") or 0) > 0:
+                    continue
+                topic_id = candidate_id
+                break
+            else:
+                return
+        topic_ids = [topic_id]
+        request_key = (
+            f"playwright-lessons-{course_id}-{topic_id}-"
+            f"{'retry' if force_retry else 'selected'}-{int(time.time())}"
+        )
+        run = service.create_run(
+            course_id, run_type="lesson", topic_ids=topic_ids,
+            selection_mode="selected", request_key=request_key, force_retry=force_retry,
+        )
         run_id = int(run["id"])
         service.start_run(run_id)
         with _LOCK:
@@ -511,6 +540,11 @@ def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
         except BrowserAutomationError as exc:
             service.mark_run_needs_user_action(run_id, exc.code, str(exc))
             return
+        except Exception as exc:
+            service.mark_run_needs_user_action(
+                run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}"
+            )
+            return
         finally:
             with _LOCK:
                 _CANCEL_EVENTS.pop(run_id, None)
@@ -520,7 +554,7 @@ def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
             return
 
 
-def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event, continue_after: bool = False) -> None:
+def _worker(\n    run_id: int, course_id: int, prompt: str, cancel_event: threading.Event,\n    continue_after: bool = False, followup_topic_ids: list[int] | None = None,\n    force_retry: bool = False,\n) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
     run_type = service.get_run(run_id).get("run_type")
@@ -533,7 +567,7 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         if result.get("status") == "succeeded" and (run_type == "outline" or continue_after):
             try:
-                _continue_lessons(course_id, cancel_event)
+                _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
             except Exception as exc:
                 # The outline remains safely saved even if lesson follow-up fails.
                 print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
@@ -592,17 +626,39 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
-    """Start a visible-ChatGPT lesson capture for explicitly selected approved topics."""
+    """Queue the selected topics and capture them sequentially, one bounded prompt at a time."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     if service.get_learning_control()["paused"]:
         raise ValueError("مکث سراسری فعال است؛ ابتدا ادامه / بازیابی را بزنید.")
-    if not topic_ids:
+    requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
+    if not requested_ids:
         raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
     with _LOCK:
         if _ACTIVE:
             raise ValueError("یک کار مرورگر در حال اجراست؛ ابتدا آن را متوقف کنید یا منتظر پایانش بمانید.")
+        course = service.get_course(course_id)
+        course_topics = {int(topic["id"]): topic for topic in course.get("topics", [])}
+        missing = [item for item in requested_ids if item not in course_topics]
+        if missing:
+            raise ValueError("یک یا چند سرفصل انتخاب‌شده در این دوره وجود ندارد؛ فهرست را بازخوانی کنید.")
+        unapproved = [
+            item for item in requested_ids
+            if course_topics[item].get("approval_status") != "approved"
+        ]
+        if unapproved:
+            raise ValueError("فقط سرفصل‌های تأییدشده قابل دریافت درس هستند.")
+        selected_ids = [
+            item for item in requested_ids
+            if force_retry or int(course_topics[item].get("lesson_content_ready_count") or 0) == 0
+        ]
+        if not selected_ids:
+            raise ValueError("تمام سرفصل‌های انتخاب‌شده از قبل درس دارند؛ برای ساخت نسخه جدید، تلاش مجدد را انتخاب کنید.")
+        # Creating a single-topic run prevents oversized batches from ever being
+        # serialized into one browser prompt. Remaining selected IDs are processed
+        # sequentially by the same worker after each successful capture.
+        first_topic_id = selected_ids[0]
         run = service.create_run(
-            course_id, run_type="lesson", topic_ids=topic_ids,
+            course_id, run_type="lesson", topic_ids=[first_topic_id],
             selection_mode="selected", request_key=request_key, force_retry=force_retry,
         )
         if run["status"] not in {"queued", "running"}:
@@ -614,13 +670,19 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         _ACTIVE_COURSE_ID = course_id
         cancel_event = threading.Event()
         _CANCEL_EVENTS[run_id] = cancel_event
+        followup_ids = selected_ids[1:]
         thread = threading.Thread(
-            target=_worker, args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
+            target=_worker,
+            args=(run_id, course_id, str(run["prompt_text"]), cancel_event, bool(followup_ids), followup_ids, force_retry),
             name=f"ai-learning-selected-lessons-{run_id}", daemon=True,
         )
         thread.start()
-        return {"run_id": run_id, "status": "running", "course_id": course_id,
-                "topic_ids": topic_ids, "provider": "ChatGPT visible UI"}
+        return {
+            "run_id": run_id, "status": "running", "course_id": course_id,
+            "topic_ids": selected_ids, "queued_topic_count": len(selected_ids),
+            "provider": "ChatGPT visible UI",
+            "message": f"دریافت درس برای {len(selected_ids)} سرفصل به‌صورت ترتیبی آغاز شد؛ هر درخواست فقط یک سرفصل دارد.",
+        }
 
 
 def cancel_run(run_id: int) -> dict[str, Any]:
