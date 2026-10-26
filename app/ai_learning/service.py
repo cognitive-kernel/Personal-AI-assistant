@@ -70,7 +70,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             topics = conn.execute(
                 """SELECT t.* FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL
                    AND t.approval_status='approved'
-                   AND NOT EXISTS (SELECT 1 FROM lessons l WHERE l.topic_id=t.id AND l.deleted_at IS NULL)
+                   AND NOT EXISTS (SELECT 1 FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
+                                   WHERE l.topic_id=t.id AND l.deleted_at IS NULL AND length(trim(cv.markdown))>0)
                    ORDER BY t.position""",
                 (course_id,)).fetchall()
             if not topics:
@@ -86,7 +87,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             if any(row["approval_status"] != "approved" for row in topics):
                 raise ValueError("Only approved topics may be sent for lesson generation.")
             topics = [row for row in topics if conn.execute(
-                "SELECT 1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL LIMIT 1",
+                """SELECT 1 FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
+                   WHERE l.topic_id=? AND l.deleted_at IS NULL AND length(trim(cv.markdown))>0 LIMIT 1""",
                 (row["id"],)).fetchone() is None]
             topic_ids = [int(row["id"]) for row in topics]
             if not topics:
@@ -474,7 +476,10 @@ def get_course(course_id: int) -> dict[str, Any]:
         topics = conn.execute(
             """SELECT t.*,
                       (SELECT COUNT(*) FROM lessons l WHERE l.topic_id=t.id AND l.deleted_at IS NULL) AS lesson_count,
-                      (SELECT cv.review_status FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
+                      (SELECT COUNT(DISTINCT l.id) FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
+                       WHERE l.topic_id=t.id AND l.deleted_at IS NULL AND length(trim(cv.markdown))>0) AS lesson_content_ready_count,
+                      (SELECT CASE WHEN length(trim(cv.markdown))>0 THEN cv.review_status ELSE 'empty' END
+                       FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
                        WHERE l.topic_id=t.id AND l.deleted_at IS NULL ORDER BY cv.version_no DESC LIMIT 1) AS latest_review_status
                FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL ORDER BY t.position,t.id""",
             (course_id,)).fetchall()
@@ -493,7 +498,7 @@ def get_course(course_id: int) -> dict[str, Any]:
             label = "محتوا دریافت شده؛ نیازمند بازبینی"
         elif item["lesson_count"]:
             progress = 25
-            label = "درس ایجاد شده؛ محتوا ناقص است"
+            label = "درس ایجاد شده؛ محتوا خالی یا ناقص است و باید دوباره دریافت شود"
         elif item["processing_status"] == "running":
             progress = 10
             label = "در حال دریافت"
@@ -692,7 +697,8 @@ def list_lessons(topic_id: int) -> list[dict[str, Any]]:
             raise NotFoundError("Topic not found.")
         rows = conn.execute(
             """SELECT l.*,
-                      (SELECT review_status FROM content_versions cv WHERE cv.lesson_id=l.id
+                      (SELECT CASE WHEN length(trim(markdown))>0 THEN review_status ELSE 'empty' END
+                       FROM content_versions cv WHERE cv.lesson_id=l.id
                        ORDER BY version_no DESC LIMIT 1) AS latest_review_status,
                       (SELECT COUNT(*) FROM content_versions cv WHERE cv.lesson_id=l.id) AS version_count
                FROM lessons l WHERE l.topic_id=? AND l.deleted_at IS NULL ORDER BY l.position,l.id""",
@@ -708,7 +714,7 @@ def list_lessons(topic_id: int) -> list[dict[str, Any]]:
         elif review == "needs_review":
             item["progress_percent"], item["progress_label"] = 75, "محتوا دریافت شده؛ نیازمند بازبینی"
         elif item["version_count"]:
-            item["progress_percent"], item["progress_label"] = 60, "نسخهٔ محتوا موجود است"
+            item["progress_percent"], item["progress_label"] = 25, "نسخهٔ محتوا خالی است؛ دریافت مجدد لازم است"
         elif item["status"] == "paused":
             item["progress_percent"], item["progress_label"] = 0, "متوقف‌شده"
         else:
