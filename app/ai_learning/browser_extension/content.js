@@ -36,19 +36,24 @@ function insertPrompt(prompt) {
   }
   return {inserted:true, note:"Prompt inserted only. Review it and click ChatGPT's own Send button yourself."};
 }
+function latestAssistantState() {
+  const messages = Array.from(document.querySelectorAll("[data-message-author-role='assistant']")).filter(visible);
+  return {messageCount:messages.length, text:messages.length ? (messages[messages.length - 1].innerText || "").trim() : ""};
+}
 function captureAnswer() {
   const busy = document.querySelector("[data-testid='stop-button'],button[aria-label*='Stop generating'],button[aria-label*='Stop response']");
   if (busy && visible(busy)) throw new Error("ChatGPT may still be generating. Wait until it finishes before capture.");
-  const messages = Array.from(document.querySelectorAll("[data-message-author-role='assistant']")).filter(visible);
-  if (!messages.length) throw new Error("Could not identify an assistant response on this ChatGPT page.");
-  const text = (messages[messages.length - 1].innerText || "").trim();
+  const state = latestAssistantState();
+  if (!state.messageCount) throw new Error("Could not identify an assistant response on this ChatGPT page.");
+  const text = state.text;
   if (text.length < 20) throw new Error("The latest assistant response is empty or too short to capture.");
   if (text.length > 100000) throw new Error("The latest response exceeds the module's 100,000-character limit.");
-  return {text:text};
+  return {text:text, messageCount:state.messageCount};
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   try {
-    if (message && message.type === "ping") sendResponse({ok:true});
+    if (message && message.type === "get-latest-answer") sendResponse({ok:true, state:latestAssistantState()});
+    else if (message && message.type === "ping") sendResponse({ok:true});
     else if (message && message.type === "insert-prompt") sendResponse(Object.assign({ok:true}, insertPrompt(message.prompt)));
     else if (message && message.type === "capture-answer") sendResponse(Object.assign({ok:true}, captureAnswer()));
     else sendResponse({ok:false,error:"Unsupported message."});
