@@ -101,6 +101,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "with that topic's numeric ID. Keep sections clearly separated. State uncertainty and "
                 "include sources or references when known; never invent citations."
             )
+        if len(prompt) > 20_000:
+            raise ValueError("Generated prompt exceeds the 20,000-character browser limit; select fewer topics or shorten the scope.")
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,request_key) VALUES(?,?,?,'queued',?,?)",
             (course_id, run_type, selection_mode, prompt, request_key))
