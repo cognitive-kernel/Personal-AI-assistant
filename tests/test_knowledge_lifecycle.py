@@ -407,3 +407,37 @@ def test_source_diversity_collapses_subdomains_of_the_same_registrable_domain(li
 )
 def test_registrable_domain_normalization(host, expected):
     assert knowledge_lifecycle._registrable_source_domain(host) == expected
+
+
+def test_worker_deduplicates_sibling_hosts_before_spending_model_calls(lifecycle_store, monkeypatch):
+    job = learning.create_job("Sibling source hosts")
+    candidate_id, _digest = _candidate(job["id"])
+    urls = [
+        "https://docs.example.test/guide",
+        "https://api.example.test/reference",
+    ]
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE temporary_knowledge_candidates SET source_urls_json=? WHERE id=?",
+            (json.dumps(urls), candidate_id),
+        )
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda url, *_args, **_kwargs: SimpleNamespace(
+            text="A sufficiently long page describing the same source organization and its documented behavior.",
+            title=url,
+        ),
+    )
+    model_list_called = False
+
+    def list_models():
+        nonlocal model_list_called
+        model_list_called = True
+        return []
+
+    monkeypatch.setattr("app.ollama.list_models", list_models)
+    result = knowledge_lifecycle.validate_candidate_with_models(candidate_id)
+
+    assert result["status"] == "awaiting_evidence"
+    assert result["ready_for_promotion"] is False
+    assert model_list_called is False
