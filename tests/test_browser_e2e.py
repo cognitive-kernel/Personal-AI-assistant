@@ -1515,3 +1515,81 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
         )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_ai_to_ai_learning_dashboard_saves_and_displays_unverified_lesson():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    posted = []
+    lesson = {
+        "id": 91,
+        "course_id": 7,
+        "position": 1,
+        "topic": "Indexes",
+        "status": "completed",
+        "trust_status": "unverified",
+        "content": "Sample lesson text",
+        "source_url": "https://chatgpt.com/c/demo",
+        "prompt_sha256": "a" * 64,
+        "content_sha256": "b" * 64,
+        "error": None,
+        "created_at": "2026-10-26 00:00:00",
+        "updated_at": "2026-10-26 00:00:00",
+    }
+    completed_course = {
+        "id": 7,
+        "topic": "SQL Server 2002",
+        "title": "SQL Server course",
+        "status": "completed",
+        "max_lessons": 1,
+        "outline_sha256": "c" * 64,
+        "outline_json": '{"topics":["Indexes"]}',
+        "error": None,
+        "lessons": [lesson],
+    }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def route_browser_learning(route):
+            request = route.request
+            if request.method == "POST":
+                posted.append(request.post_data_json)
+                route.fulfill(status=202, content_type="application/json", body=json.dumps({
+                    "id": 7, "topic": "SQL Server 2002", "title": None, "status": "queued",
+                    "max_lessons": 1, "error": None
+                }))
+            elif request.url.endswith("/api/learning/browser/courses?limit=50"):
+                route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                    "courses": [{
+                        "id": 7, "topic": "SQL Server 2002", "title": "SQL Server course",
+                        "status": "completed", "max_lessons": 1, "error": None
+                    }]
+                }))
+            elif request.url.endswith("/api/learning/browser/courses/7"):
+                route.fulfill(status=200, content_type="application/json", body=json.dumps(completed_course))
+            else:
+                route.fulfill(status=404, content_type="application/json", body='{"detail":"not found"}')
+
+        page.route("**/api/learning/browser/courses**", route_browser_learning)
+        _goto_section(page, base_url, "learning-section")
+        assert page.locator("#browser-learning-form").is_visible()
+        page.locator("#browser-learning-topic").fill("SQL Server 2002")
+        page.locator("#browser-learning-cdp").fill("http://127.0.0.1:9222")
+        page.locator("#browser-learning-max-lessons").fill("1")
+        page.locator("#browser-learning-start").click()
+        page.wait_for_function(
+            "() => document.querySelector('#browser-learning-output').textContent.includes('درس‌های ذخیره‌شده: 1 از 1')",
+            timeout=10000,
+        )
+        assert posted == [{
+            "topic": "SQL Server 2002",
+            "cdp_url": "http://127.0.0.1:9222",
+            "max_lessons": 1,
+        }]
+        page.get_by_role("button", name="نمایش سرفصل‌ها و درس‌های ذخیره‌شده").click()
+        assert page.locator(".browser-learning-detail").get_by_text("unverified").is_visible()
+        assert page.locator(".browser-learning-detail pre").inner_text() == "Sample lesson text"
+        browser.close()
