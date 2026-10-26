@@ -152,3 +152,52 @@ def test_assessment_score_adapts_review_interval_and_low_score_resets_it(tmp_pat
     assert low["interval_days"] == 1
     assert low["repetitions"] == 0
     assert low["rating_mapping_version"] == 1
+
+
+
+def test_latest_independent_semantic_review_adds_concept_level_gap(tmp_path, monkeypatch):
+    path_id, topic_ids = _setup(tmp_path, monkeypatch, [
+        {"topic": "Semantic gap topic", "status": "completed", "score": 95},
+    ])
+    with learning_connection() as connection:
+        job_id = connection.execute(
+            """INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id, assessment_json)
+               VALUES (?, 'completed', 'web_retrieved', ?, ?)""",
+            ("Semantic gap topic", topic_ids[0], '{"questions":["q"],"answer_key":["a"]}'),
+        ).lastrowid
+        attempt_id = connection.execute(
+            """INSERT INTO assessment_attempts(
+                   job_id, answers_json, score, correct_count, question_count, scoring_method
+               ) VALUES (?, ?, 95, 2, 3, 'normalized_exact_match')""",
+            (job_id, '["answer"]'),
+        ).lastrowid
+        review = {
+            "kind": "model_assisted_advisory",
+            "model": "independent-reviewer",
+            "evaluator_digest": "digest-independent",
+            "rubric_version": "learning-assessment-semantic-v1",
+            "independent_evaluator": True,
+            "independent_verification": False,
+            "review": {
+                "items": [
+                    {"index": 1, "judgment": "incorrect", "rationale": "The key concept is missing.", "missing_concepts": ["transaction isolation"]},
+                    {"index": 2, "judgment": "partial", "rationale": "The answer covers only part of the mechanism.", "missing_concepts": ["locking behavior"]},
+                    {"index": 3, "judgment": "matches", "rationale": "The answer is semantically equivalent.", "missing_concepts": []},
+                ],
+                "overall_note": "Advisory concept-level feedback.",
+            },
+        }
+        connection.execute(
+            """INSERT INTO assessment_semantic_reviews(attempt_id, job_id, model, review_json, created_at)
+               VALUES (?, ?, ?, ?, ?)""",
+            (attempt_id, job_id, "independent-reviewer", json.dumps(review), "2026-10-26T00:00:00Z"),
+        )
+
+    result = learning_recommendations.get_learning_recommendations(path_id=path_id)
+    recommendation = result["recommendations"][0]
+    assert recommendation["topic_id"] == topic_ids[0]
+    assert recommendation["recommendation_type"] == "semantic_knowledge_gap"
+    assert recommendation["semantic_gap"]["incorrect"] == 1
+    assert recommendation["semantic_gap"]["partial"] == 1
+    assert "transaction isolation" in recommendation["semantic_gap"]["missing_concepts"]
+    assert recommendation["semantic_gap"]["advisory_only"] is True
