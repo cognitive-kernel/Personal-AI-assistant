@@ -37,6 +37,15 @@ A durable job queue with exact browser-session continuation, robust DOM-independ
 - Automatic lesson capture processes one topic per run so pausing a topic can cancel its active capture without cancelling a different topic. Paused topics are excluded from automatic continuation until resumed.
 - Course-level and per-topic/per-lesson percentages show captured/reviewed/published workflow stages; they do not claim to measure actual model understanding.
 - During a response, pause waits without counting paused time against the response timeout. Lesson generation checks the flag between batches.
-- After a power loss, restart the application and use **ادامه / بازیابی پس از قطعی برق** in the dashboard. A persisted in-flight run is retried from its saved prompt; if no run remains in flight, the workflow continues with approved topics that do not yet have lessons.
+- After a power loss, restart the application and use **ادامه / بازیابی پس از قطعی برق** in the dashboard. A persisted in-flight run is retried from its saved prompt; if no run remains in flight, the workflow continues with approved topics that do not yet have valid, non-empty lesson content.
 - Completed outline/topic/lesson/version transactions remain stored. An answer that ChatGPT generated but that was not committed to SQLite may need to be requested again. A repeated outline import deduplicates existing topic titles; lessons are only considered complete after their content transaction commits.
 - Pause is cooperative, not an emergency kill: the current browser action may finish before the worker reaches a safe pause point. The existing per-run cancel action remains separate and terminal.
+
+
+## Bulk review and empty-content recovery
+
+- The topic list supports selecting all visible topics, approving selected topics, and approving every topic in the selected course.
+- Opening **درس‌ها** on a topic displays that topic's lessons. Each lesson can be selected; bulk review marks selected lesson versions as reviewed but does not publish them. The course-wide bulk review control has the same review-only behavior.
+- The global resume action starts or continues lesson capture for approved topics whose lessons have no non-empty captured content, including legacy lesson records whose saved content is empty. A retry reuses the existing empty lesson record and creates a new version instead of duplicating the lesson.
+- A version is not counted as 75–100% complete merely because an empty content row exists; valid content is required. Published means the content workflow is published, not that factual correctness or model mastery has been independently verified.
+- In the lesson card, use **مشاهده متن** to expand a saved version's Markdown content. If it still appears blank, inspect the execution's captured response and local browser log before approving or publishing it.
