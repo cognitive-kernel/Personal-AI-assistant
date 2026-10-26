@@ -1,18 +1,20 @@
 from __future__ import annotations
 import hashlib
 import json
+import logging
 import platform
 import re
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
-from . import ollama, learning_cost_manager, learning_knowledge_graph
+from . import ollama, learning_cost_manager, learning_knowledge_graph, task_manager
 from . import curricula, factual_knowledge, learning_evidence_gate, learning_source_sync, learning_prerequisites
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
 
 LESSON_GENERATION_PROMPT_VERSION = "learning-lesson-v2-adaptive-difficulty"
+logger = logging.getLogger("personal_ai_assistant.learning")
 
 
 def _adaptive_difficulty_guidance(score: float | int | None) -> dict[str, str]:
@@ -958,6 +960,26 @@ def run_job(job_id: int) -> None:
                 conn.execute("DELETE FROM learning_source_text WHERE job_id=?", (job_id,))
                 conn.execute("UPDATE learning_evidence SET note=? WHERE job_id=? AND evidence_type='user_text'",
                     ("منشأ ورودی ثبت شد، اما متن منبع به دلیل رد کیفیت درس حذف شد.", job_id))
+        if quality["accepted"]:
+            try:
+                with learning_connection() as conn:
+                    staged = conn.execute(
+                        "SELECT id, content_sha256 FROM temporary_knowledge_candidates WHERE job_id=?",
+                        (job_id,),
+                    ).fetchone()
+                if staged is not None:
+                    task_manager.create_task(
+                        "learning.validate_candidate",
+                        {"candidate_id": int(staged["id"]), "candidate_sha256": str(staged["content_sha256"])},
+                        max_attempts=1,
+                        dedupe_key=f"knowledge-validate:{int(staged['id'])}:{str(staged['content_sha256'])}",
+                    )
+            except Exception as enqueue_error:
+                # Candidate remains in temporary memory; a later explicit retry can enqueue it.
+                logger.warning(
+                    "Could not queue temporary knowledge validation for job %s: %s",
+                    job_id, type(enqueue_error).__name__,
+                )
     except Exception as exc:
         with learning_connection() as conn:
             conn.execute("UPDATE learning_jobs SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",
