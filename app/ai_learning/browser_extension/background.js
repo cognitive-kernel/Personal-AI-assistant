@@ -89,6 +89,28 @@ async function completeCapturedRun(runId,tabId,text) {
     await saveStatus({run_id:runId,status:completed.status,message:completed.error_message || (completed.status==="succeeded"?"Answer captured and saved.":"Answer captured; manual review is required."),topics:completed.topics||[]});
     await setBadge(completed.status==="succeeded"?"OK":completed.status==="needs_user_action"?"!":"ERR",completed.status==="succeeded"?"#247a43":"#a66b00");
     if(completed.status==="succeeded" || completed.status==="needs_user_action") await refreshLearningTabs();
+    // A successful outline starts the lesson stage automatically. Only newly parsed outline
+    // topics are approved here; lesson content still remains in needs_review and is never published.
+    if(completed.status==="succeeded" && completed.run_type==="outline" && (completed.topics||[]).length>0) {
+      try {
+        const topicIds=completed.topics.map(topic=>Number(topic.topic_id||topic.id)).filter(id=>Number.isInteger(id)&&id>0);
+        if(topicIds.length) {
+          await api("/topics/decision",{method:"POST",body:JSON.stringify({topic_ids:topicIds,decision:"approved"})});
+          await saveStatus({run_id:runId,status:"succeeded",message:"سرفصل‌ها ثبت شدند؛ مرحلهٔ تولید درس به‌صورت خودکار شروع می‌شود."});
+          await prepareRun({
+            course_id:Number(completed.course_id),
+            run_type:"lesson",
+            topic_ids:[],
+            selection_mode:"all_approved",
+            request_key:"auto-lessons-after-outline-"+runId
+          });
+        }
+      } catch(error) {
+        await saveStatus({run_id:runId,status:"needs_user_action",message:"سرفصل‌ها ذخیره شدند، اما شروع خودکار درس‌ها ناموفق بود: "+String(error.message||error)});
+        await setBadge("MAN","#a66b00");
+        await refreshLearningTabs();
+      }
+    }
     return {run_id:runId,status:completed.status,topics:completed.topics||[],error_message:completed.error_message||null};
   } finally {
     completingRuns.delete(runId);
