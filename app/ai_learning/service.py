@@ -169,11 +169,11 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 raise ValueError("No active topics are associated with this run.")
             sections: list[tuple[int, str, str]] = []
             if len(topics) == 1:
-                title_match = re.search(r"(?m)^#\\s+(.{1,300})$", response_text)
+                title_match = re.search(r"(?m)^#\s+(.{1,300})$", response_text)
                 title = title_match.group(1).strip() if title_match else topics[0]["title"]
                 sections = [(int(topics[0]["id"]), title, response_text)]
             else:
-                matches = list(re.finditer(r"(?im)^\\s*(?:#{1,6}\\s*)?\\[TOPIC_ID:(\\d+)\\]\\s*(.*?)\\s*$", response_text))
+                matches = list(re.finditer(r"(?im)^\s*(?:#{1,6}\s*)?\[TOPIC_ID:(\d+)\]\s*(.*?)\s*$", response_text))
                 if not matches:
                     conn.execute(
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_ambiguous',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
