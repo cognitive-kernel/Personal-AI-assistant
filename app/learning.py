@@ -704,7 +704,7 @@ def run_job(job_id: int) -> None:
             if budget is not None and (
                 isinstance(budget, bool) or not isinstance(budget, int) or budget < 0
             ):
-                budget = None
+                raise ValueError("learning_task_budget_microusd must be a non-negative integer or null.")
             minimum_quality = settings.get("learning_model_minimum_quality_score", 0.0)
             if isinstance(minimum_quality, bool) or not isinstance(minimum_quality, (int, float)) or not 0 <= minimum_quality <= 1:
                 minimum_quality = 0.0
