@@ -698,18 +698,33 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
         return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
 
 def review_content(version_id: int, decision: str) -> dict[str, Any]:
-    if decision not in {"reviewed", "rejected"}:
-        raise ValueError("decision must be reviewed or rejected.")
+    if decision not in {"needs_review", "reviewed", "rejected"}:
+        raise ValueError("decision must be needs_review, reviewed, or rejected.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone()
         if row is None:
             raise NotFoundError("Content version not found.")
         if row["review_status"] in {"published", "withdrawn", "superseded"}:
-            raise ValueError("Published or inactive versions cannot be reviewed in place; create a new version.")
+            raise ValueError("Published or inactive versions cannot be reviewed in place; use the unpublish action or create a new version.")
         conn.execute("UPDATE content_versions SET review_status=? WHERE id=?", (decision, version_id))
         conn.execute("UPDATE lessons SET status=? WHERE id=?",
                      ("ready" if decision == "reviewed" else "needs_review", row["lesson_id"]))
+        return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
+
+
+def unpublish_content(version_id: int) -> dict[str, Any]:
+    """Withdraw a mistakenly published version while preserving its content for later review."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone()
+        if row is None:
+            raise NotFoundError("Content version not found.")
+        if row["review_status"] != "published":
+            raise ValueError("Only a published version can be withdrawn.")
+        conn.execute("UPDATE chunks SET active=0 WHERE content_version_id=?", (version_id,))
+        conn.execute("UPDATE content_versions SET review_status='reviewed' WHERE id=?", (version_id,))
+        conn.execute("UPDATE lessons SET status='ready',updated_at=CURRENT_TIMESTAMP WHERE id=?", (row["lesson_id"],))
         return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
 
 def list_lessons(topic_id: int) -> list[dict[str, Any]]:
