@@ -893,6 +893,9 @@ async function refreshLearningCapabilities() {
       "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count +
       "\nحالات انتقال عملی: " + (item.transfer_case_count || 0) +
       "؛ انتقال تکرارپذیر: " + (item.transfer_repeatable ? "بله (موقت)" : "خیر/شواهد ناکافی") +
+      "\nروش تمایز سناریوها: " + (item.transfer_novelty_method === "token_set_jaccard"
+        ? "شباهت واژگانی؛ آستانه " + Math.round((item.transfer_novelty_threshold || 0.8) * 100) + "%"
+        : "نامشخص") +
       "\nمصرف مدل: " + item.prompt_tokens + " ورودی / " + item.completion_tokens + " خروجی توکن" +
       "؛ زمان استنتاج: " + item.inference_duration_ms + " میلی‌ثانیه" +
       "؛ امتیاز نظری به‌ازای ۱۰۰۰ توکن خروجی: " + (item.score_points_per_1000_output_tokens == null ? "ناموجود" : item.score_points_per_1000_output_tokens) +
