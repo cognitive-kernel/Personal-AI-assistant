@@ -27,4 +27,5 @@ def test_main_dashboard_links_to_ai_learning_module():
     dashboard = Path(__file__).resolve().parents[1] / "app" / "static" / "index.html"
     html = dashboard.read_text(encoding="utf-8")
     assert 'href="/ai-learning"' in html
+    assert 'data-page="ai-learning"' not in html  # page-navigation rewrites data-page links
     assert "یادگیری از هوش مصنوعی" in html
