@@ -103,3 +103,50 @@ def test_outline_import_rejects_unstructured_response(isolated_store):
     course = service.create_course(title="SQL Server")
     with pytest.raises(ValueError, match="No numbered"):
         service.import_outline(course["id"], "This is a paragraph without an outline.")
+
+def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store):
+    course = service.create_course(title="SQL Server")
+    run = service.create_run(course["id"], run_type="outline", request_key="outline-test-1")
+    assert run["status"] == "queued"
+    assert "numbered topics" in run["prompt_text"]
+    service.start_run(run["id"])
+    finished = service.complete_run(run["id"], "1. Architecture\n2. Query processing")
+    assert finished["status"] == "succeeded"
+    assert len(finished["topics"]) == 2
+    assert all(topic["approval_status"] == "pending" for topic in finished["topics"])
+
+
+def test_lesson_run_creates_reviewable_version_not_published(isolated_store):
+    course = service.create_course(title="SQL Server")
+    topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]], request_key="lesson-test-1")
+    service.start_run(run["id"])
+    finished = service.complete_run(run["id"], "# Index fundamentals\n\nIndexes speed up data access.")
+    assert finished["status"] == "succeeded"
+    lessons = service.list_lessons(topic["id"])
+    assert len(lessons) == 1
+    versions = service.list_versions(lessons[0]["id"])
+    assert versions[0]["review_status"] == "needs_review"
+    with connection() as conn:
+        stored = conn.execute("SELECT run_id,raw_response FROM content_versions WHERE id=?", (versions[0]["id"],)).fetchone()
+    assert stored["run_id"] == run["id"]
+    assert stored["raw_response"] == "# Index fundamentals\n\nIndexes speed up data access."
+
+
+def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store):
+    course = service.create_course(title="Database topics")
+    a = service.add_topic(course["id"], "Indexes")
+    b = service.add_topic(course["id"], "Transactions")
+    service.decide_topics([a["id"], b["id"]], "approved")
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[a["id"], b["id"]],
+                             selection_mode="selected", request_key="batch-test-1")
+    service.start_run(run["id"])
+    ambiguous = service.complete_run(run["id"], "Here are two sections, but no topic markers.")
+    assert ambiguous["status"] == "needs_user_action"
+    assert service.list_lessons(a["id"]) == []
+    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content.\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content."
+    completed = service.complete_run(run["id"], corrected)
+    assert completed["status"] == "succeeded"
+    assert len(service.list_lessons(a["id"])) == 1
+    assert len(service.list_lessons(b["id"])) == 1
