@@ -11,7 +11,7 @@ import json
 import math
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from . import ollama
 from .db import get_settings
@@ -83,6 +83,28 @@ def adjudicate_assessment(assessment: dict[str, Any]) -> ReviewDecision:
     )
 
 
+def extract_url_version(source_url: str) -> str:
+    """Extract major.minor from common versioned documentation URL forms."""
+    try:
+        parsed = urlparse(source_url)
+    except (TypeError, ValueError):
+        return ""
+    query = parse_qs(parsed.query)
+    for key in ("version", "v", "release"):
+        for value in query.get(key, []):
+            match = re.fullmatch(r"(\d+)\.(\d+)(?:\.\d+)?", value.strip())
+            if match:
+                return match.group(1) + "." + match.group(2)
+    for part in reversed([item for item in parsed.path.split("/") if item]):
+        match = re.fullmatch(r"(\d+)\.(\d+)(?:\.\d+)?(?:\.html?)?", part)
+        if match:
+            return match.group(1) + "." + match.group(2)
+        match = re.fullmatch(r"(\d+)_(\d+)(?:_(\d+))?(?:\.html?)?", part)
+        if match:
+            return match.group(1) + "." + match.group(2)
+    return ""
+
+
 def versions_compatible(source_version: str, claim_version: str) -> bool:
     """Return true only when a numeric source version is a prefix of the claim version."""
     if not isinstance(source_version, str) or not isinstance(claim_version, str):
@@ -144,8 +166,7 @@ def review_claim_against_source(
     parsed_source_url = urlparse(source_url)
     if parsed_source_url.scheme != "https" or not parsed_source_url.hostname or parsed_source_url.username or parsed_source_url.password:
         raise ValueError("source_url must be an absolute HTTPS URL without embedded credentials")
-    source_path_parts = [part for part in parsed_source_url.path.split("/") if part]
-    url_version = source_path_parts[0] if source_path_parts and len(source_path_parts[0].split(".")) == 2 and all(part.isdigit() for part in source_path_parts[0].split(".")) else ""
+    url_version = extract_url_version(source_url)
     if not url_version or not (
         versions_compatible(url_version, source_version)
         or versions_compatible(source_version, url_version)
