@@ -123,6 +123,11 @@ def list_courses(limit: int = Query(default=50, ge=1, le=100)) -> dict[str, Any]
     items = _call(service.list_courses, limit)
     return {"items": items, "count": len(items)}
 
+@router.delete("/courses/{course_id}")
+def delete_course(course_id: int) -> dict[str, Any]:
+    # Archive to keep existing course/lesson history rather than destroying it.
+    return _call(service.soft_delete_course, course_id)
+
 @router.get("/courses/{course_id}")
 def get_course(course_id: int) -> dict[str, Any]:
     return _call(service.get_course, course_id)
