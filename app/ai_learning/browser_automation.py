@@ -445,6 +445,7 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
 
 def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
     """Approve captured topics and fetch lessons one topic at a time for safe pause/resume."""
+    global _ACTIVE_RUN_ID
     course = service.get_course(course_id)
     pending_ids = [int(topic["id"]) for topic in course.get("topics", [])
                    if topic.get("approval_status") == "pending"]
