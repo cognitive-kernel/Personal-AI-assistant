@@ -211,7 +211,7 @@ def list_factual_source_review_queue(
 def list_factual_test_queue(
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
-    """List sourced, active Python L1 claims that may be manually submitted for testing."""
+    """List sourced, active Python/SQLite L1 claims that may be manually submitted for testing."""
     try:
         with learning_connection() as connection:
             rows = connection.execute(
@@ -219,8 +219,8 @@ def list_factual_test_queue(
                           k.environment_version, k.evidence_level, k.lifecycle_status,
                           k.risk_level, k.updated_at
                    FROM factual_knowledge AS k
-                   WHERE k.domain_name='python'
-                     AND k.environment_name='python'
+                   WHERE k.domain_name IN ('python','sqlite')
+                     AND k.environment_name=k.domain_name
                      AND k.evidence_level='L1_sourced'
                      AND k.lifecycle_status='active'
                      AND k.risk_level NOT IN ('high','critical')
