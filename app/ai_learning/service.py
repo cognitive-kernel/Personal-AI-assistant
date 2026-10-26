@@ -294,6 +294,7 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
 def _lesson_has_substantive_body(text: str) -> bool:
     """Reject title-only or near-empty ChatGPT captures before they become lesson versions."""
     paragraphs: list[str] = []
+    has_markdown_heading = False
     for paragraph in re.split(r"\n\s*\n+", text.strip()):
         lines = []
         for raw_line in paragraph.splitlines():
@@ -303,14 +304,16 @@ def _lesson_has_substantive_body(text: str) -> bool:
             if re.match(r"(?i)^chatgpt said:?\s*$", line):
                 continue
             if re.match(r"^#{1,6}\s+", line):
+                has_markdown_heading = True
                 continue
             lines.append(line)
         if lines:
             paragraphs.append(" ".join(lines))
     body = " ".join(paragraphs).strip()
-    # A one-line answer is usually just a title or a failed generation.
+    # A one-line answer without a title/body structure is usually just a title
+    # or failed generation. A heading plus a real paragraph is valid.
     if len(paragraphs) <= 1:
-        return len(body) >= 160
+        return len(body) >= (20 if has_markdown_heading else 160)
     return len(body) >= 20
 
 
