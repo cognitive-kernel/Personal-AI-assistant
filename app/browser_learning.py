@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import sqlite3
 import time
 from urllib.parse import urlparse
 from typing import Any
@@ -13,7 +12,6 @@ from .db import learning_connection
 MAX_TOPIC_CHARS = 300
 MAX_LESSONS = 40
 CHATGPT_URL = "https://chatgpt.com/"
-SOURCE_URL = "https://chatgpt.com/"
 
 
 class BrowserLearningError(RuntimeError):
