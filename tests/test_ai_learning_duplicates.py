@@ -62,3 +62,36 @@ def test_outline_parser_deduplicates_normalized_titles():
         "1. ایندکس‌ها در SQL Server\n2. ایندکسها در SQL Server!\n3. پشتیبان‌گیری"
     )
     assert titles == ["ایندکس‌ها در SQL Server", "پشتیبان‌گیری"]
+
+
+
+def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
+    learning_store, monkeypatch
+):
+    course = service.create_course(title="دوره محتوای درس")
+    first_topic = service.add_topic(course["id"], "موضوع اول")
+    second_topic = service.add_topic(course["id"], "موضوع دوم")
+    service.decide_topics([first_topic["id"], second_topic["id"]], "approved")
+    lesson = service.create_lesson(first_topic["id"], "درس اول")
+    existing_body = "An index helps SQL Server locate rows efficiently."
+    candidate_body = "SQL Server uses indexes to find rows more efficiently."
+    digest = service.hashlib.sha256(existing_body.encode("utf-8")).hexdigest()
+    with db.connection() as conn:
+        conn.execute(
+            """INSERT INTO content_versions(
+                   lesson_id,version_no,markdown,raw_response,content_sha256,
+                   review_status,source_kind,provider
+               ) VALUES(?,1,?,?,?,'needs_review','manual','test')""",
+            (lesson["id"], existing_body, existing_body, digest),
+        )
+        monkeypatch.setattr(
+            service,
+            "ollama_embed",
+            lambda texts, model: [[1.0, 0.0] for _ in texts],
+        )
+        duplicate = service._find_semantic_duplicate_content(
+            conn, candidate_body, exclude_topic_id=second_topic["id"]
+        )
+    assert duplicate is not None
+    assert duplicate["method"] == "semantic"
+    assert duplicate["topic_id"] == first_topic["id"]
