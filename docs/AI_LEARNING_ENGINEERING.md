@@ -24,7 +24,7 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 - app/ai_learning/service.py: course/topic/version rules, chunking and lexical retrieval.
 - app/ai_learning/routes.py: HTTP contracts and error mapping.
 - app/ai_learning/providers/: future provider interfaces and adapters.
-- app/ai_learning/browser_extension/: future browser agent with least privilege, explicit-send confirmation and completion detection.
+- app/ai_learning/browser_extension/: Manifest V3 bridge with minimal host permissions, explicit user submission and manual capture of the latest visible answer.
 - tests/test_ai_learning_*.py: unit and integration tests that do not require internet, a real account or a live model.
 
 ## Code quality requirements
@@ -58,4 +58,4 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 
 ## Current implementation status
 
-The initial code provides isolated storage, course/topic management foundations, topic approval/rejection and ordering, lesson/version creation, manual review/publish, chunking and lexical retrieval. Chrome automation, automatic outline/lesson generation, a dedicated durable job workflow, embeddings and integration into the existing chat response path are not yet implemented and must not be represented as available.
+The initial code provides isolated storage, course/topic management foundations, topic approval/rejection and ordering, lesson/version creation, manual review/publish, chunking and lexical retrieval. The user-confirmed Chrome bridge is implemented, including prompt insertion and explicit answer capture. Automatic sending, resilient DOM parsing, a dedicated durable queue with pause/resume, embeddings and integration into the existing chat response path are not implemented and must not be represented as available.
