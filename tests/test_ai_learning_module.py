@@ -639,3 +639,60 @@ def test_chatgpt_capture_skips_semantically_duplicate_lesson(isolated_store, mon
         assert conn.execute(
             "SELECT processing_status FROM topics WHERE id=?", (topic_b["id"],)
         ).fetchone()[0] == "skipped"
+
+
+
+def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store, monkeypatch):
+    course = service.create_course(title="Database course")
+    first_topic = service.add_topic(course["id"], "Indexes")
+    second_topic = service.add_topic(course["id"], "Lookup acceleration")
+    service.decide_topics([first_topic["id"], second_topic["id"]], "approved")
+    run = service.create_run(
+        course["id"],
+        run_type="lesson",
+        topic_ids=[first_topic["id"], second_topic["id"]],
+        selection_mode="selected",
+        request_key="semantic-duplicate-batch",
+    )
+    first_body = (
+        "A database index improves lookup speed by locating matching records without scanning "
+        "every row. It uses an additional data structure to make searches more efficient."
+    )
+    second_body = (
+        "Indexes make database searches faster by finding matching records directly instead of "
+        "scanning the entire table. The extra structure improves lookup efficiency."
+    )
+    response = (
+        f"[TOPIC_ID:{first_topic['id']}] Index basics\n\n{first_body}\n\n"
+        f"[TOPIC_ID:{second_topic['id']}] Faster lookups\n\n{second_body}"
+    )
+
+    def fake_embed(texts, model=None):
+        vectors = {
+            first_body: [1.0, 0.0, 0.0],
+            second_body: [0.98, 0.18, 0.0],
+        }
+        return [vectors[text] for text in texts]
+
+    monkeypatch.setattr(service, "ollama_embed", fake_embed)
+    completed = service.complete_run(run["id"], response)
+    assert completed["status"] == "succeeded"
+
+    with connection() as conn:
+        first_count = conn.execute(
+            """SELECT COUNT(*) FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
+               WHERE l.topic_id=?""",
+            (first_topic["id"],),
+        ).fetchone()[0]
+        second_count = conn.execute(
+            """SELECT COUNT(*) FROM lessons l JOIN content_versions cv ON cv.lesson_id=l.id
+               WHERE l.topic_id=?""",
+            (second_topic["id"],),
+        ).fetchone()[0]
+        statuses = dict(conn.execute(
+            "SELECT topic_id,status FROM run_topics WHERE run_id=?", (run["id"],)
+        ).fetchall())
+    assert first_count == 1
+    assert second_count == 0
+    assert statuses[first_topic["id"]] == "parsed"
+    assert statuses[second_topic["id"]] == "skipped"
