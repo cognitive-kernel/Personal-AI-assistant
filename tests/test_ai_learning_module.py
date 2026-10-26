@@ -369,3 +369,31 @@ def test_empty_content_cannot_be_published(isolated_store):
         conn.execute("UPDATE content_versions SET markdown='   ' WHERE id=?", (version["id"],))
     with pytest.raises(ValueError, match="متن درس خالی است"):
         service.publish_content(version["id"])
+
+
+
+def test_chatgpt_sources_are_persisted_with_content_versions(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    topic = service.add_topic(course["id"], "Memory management")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Memory management in SQL Server")
+    version = service.add_content_version(
+        lesson["id"],
+        "Lesson body.\n\n## منابع\n[Microsoft Learn](https://learn.microsoft.com/sql/)\n"
+        "Additional reference: https://learn.microsoft.com/sql/relational-databases/",
+        raw_response="ChatGPT answer with https://learn.microsoft.com/sql/",
+        source_kind="chatgpt_ui",
+        provider="ChatGPT",
+    )
+    sources = service.list_content_sources(version["id"])
+    assert len(sources) == 2
+    assert all(source["validation_status"] == "unverified" for source in sources)
+    assert any(source["title"] == "Microsoft Learn" for source in sources)
+    assert all(source["content_version_id"] == version["id"] for source in sources)
+
+
+def test_source_extraction_deduplicates_urls():
+    text = "[Microsoft](https://learn.microsoft.com/sql/) and https://learn.microsoft.com/sql/"
+    sources = service._extract_references(text)
+    assert len(sources) == 1
+    assert sources[0]["url"] == "https://learn.microsoft.com/sql/"
