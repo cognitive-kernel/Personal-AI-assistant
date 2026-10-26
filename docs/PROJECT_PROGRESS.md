@@ -30,7 +30,7 @@ The implementation log is the detailed record of merged changes and acceptance l
 |---|---|---|
 | Local task runtime and recovery | CI-covered; still needs broader fault-injection across task types | Test worker crash, lease expiry, retry/cancel races, and restart recovery with deterministic fault injection |
 | Research, source claims, and experience memory | Feature path implemented; quality evidence incomplete | Run versioned Persian/English answer-quality set; report retrieval Recall@5 and MRR; test source freshness and contradiction handling |
-| Learning assessment | Deterministic scoring plus optional model-assisted semantic review | Compare against a human-labeled dataset; never treat model self-review as independent verification |
+| Learning subsystem | See [the consolidated learning guide](LEARNING.md) for current behavior, evidence gates, assessment, and remaining work | Do not duplicate learning status here; model self-review is not independent verification |
 | Docker sandbox | Policy and integration tests exist | Run the manual integration workflow with an approved digest-pinned image; archive the exact run and inspect isolation controls |
 | Safe self-improvement | Proposal/test-runner components exist; end-to-end promotion/rollback acceptance incomplete | Demonstrate a patch from proposal to isolated tests, human approval, staged promotion, and verified rollback; no autonomous production promotion |
 | Backup/restore/retention | Verified snapshot, staging restore, preview-first backup and staging cleanup, opt-in scheduler | Run an operational restore drill; monitor disk use; test shutdown during snapshot; establish encrypted/off-device backup policy |
