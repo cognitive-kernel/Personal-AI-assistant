@@ -113,17 +113,23 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
   if(message&&message.type==="answer-ready") {
     const runId=message.runId,tabId=sender.tab&&sender.tab.id;
     if(!Number.isInteger(runId)||!Number.isInteger(tabId)||typeof message.text!=="string") return false;
-    completeCapturedRun(runId,tabId,message.text).catch(async error=>{await setBadge("ERR","#b42318");await saveStatus({run_id:runId,status:"needs_user_action",message:"Automatic capture failed: "+error.message});});
-    return false;
+    completeCapturedRun(runId,tabId,message.text).then(result=>sendResponse({ok:true,result})).catch(async error=>{
+      await setBadge("ERR","#b42318");
+      await saveStatus({run_id:runId,status:"needs_user_action",message:"Automatic capture failed: "+error.message});
+      sendResponse({ok:false,error:error.message});
+    });
+    return true;
   }
   if(message&&message.type==="answer-monitor-timeout") {
     const runId=message.runId;
     chrome.storage.local.get(ACTIVE_KEYS).then(async stored=>{
-      if(stored.activeRunId!==runId) return;
-      await setBadge("MAN","#a66b00");
-      await saveStatus({run_id:runId,status:"needs_user_action",message:message.error||"Automatic capture timed out; use manual capture."});
-    });
-    return false;
+      if(stored.activeRunId===runId) {
+        await setBadge("MAN","#a66b00");
+        await saveStatus({run_id:runId,status:"needs_user_action",message:message.error||"Automatic capture timed out; use manual capture."});
+      }
+      sendResponse({ok:true});
+    }).catch(error=>sendResponse({ok:false,error:error.message}));
+    return true;
   }
   return false;
 });
