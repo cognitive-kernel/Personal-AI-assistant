@@ -50,6 +50,7 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
     if (run_type == "outline" and topic_ids) or (run_type == "lesson" and not topic_ids):
         raise ValueError("Outline runs do not take topic IDs; lesson runs require at least one topic.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         existing = conn.execute("SELECT id FROM runs WHERE request_key=?", (request_key,)).fetchone()
         if existing is not None:
             return get_run(int(existing["id"]))
@@ -108,6 +109,7 @@ def get_run(run_id: int) -> dict[str, Any]:
 
 def start_run(run_id: int) -> dict[str, Any]:
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -136,6 +138,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
     response_text = _clean_text(response_text, "response_text", 100_000)
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -236,6 +239,7 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
     if not candidates:
         raise ValueError("No numbered, bulleted, or Markdown-heading outline items were found.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
             raise NotFoundError("Course not found.")
         cursor = conn.execute(
@@ -283,6 +287,7 @@ def add_topic(course_id: int, title: str, description: str = "", parent_topic_id
     if len(description) > 4000:
         raise ValueError("description cannot exceed 4000 characters.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
             raise NotFoundError("Course not found.")
         if parent_topic_id is not None and conn.execute(
@@ -314,6 +319,7 @@ def edit_topic(topic_id: int, *, title: str | None = None, description: str | No
         raise ValueError("At least one field must be supplied.")
     updates.append("updated_at=CURRENT_TIMESTAMP")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone() is None:
             raise NotFoundError("Topic not found.")
         conn.execute(f"UPDATE topics SET {','.join(updates)} WHERE id=?", (*params, topic_id))
@@ -323,6 +329,7 @@ def reorder_topics(course_id: int, topic_ids: list[int]) -> list[dict[str, Any]]
     if not topic_ids or len(topic_ids) > 500 or len(set(topic_ids)) != len(topic_ids):
         raise ValueError("topic_ids must be a non-empty list of unique topic IDs.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         current = [int(r[0]) for r in conn.execute(
             "SELECT id FROM topics WHERE course_id=? AND deleted_at IS NULL ORDER BY position,id",
             (course_id,)).fetchall()]
@@ -344,6 +351,7 @@ def decide_topics(topic_ids: list[int], decision: str) -> int:
         raise ValueError("topic_ids must be a non-empty list of unique IDs.")
     marks = ",".join("?" for _ in topic_ids)
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         found = conn.execute(
             f"SELECT id FROM topics WHERE id IN ({marks}) AND deleted_at IS NULL", tuple(topic_ids)).fetchall()
         if len(found) != len(topic_ids):
@@ -355,6 +363,7 @@ def decide_topics(topic_ids: list[int], decision: str) -> int:
 def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
     title = _clean_text(title, "title", 300)
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         topic = conn.execute("SELECT id,approval_status FROM topics WHERE id=? AND deleted_at IS NULL",
                              (topic_id,)).fetchone()
         if topic is None:
@@ -378,6 +387,7 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
     if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
         raise ValueError("Unsupported source_kind.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
         if lesson is None:
             raise NotFoundError("Lesson not found.")
@@ -396,6 +406,7 @@ def review_content(version_id: int, decision: str) -> dict[str, Any]:
     if decision not in {"reviewed", "rejected"}:
         raise ValueError("decision must be reviewed or rejected.")
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone()
         if row is None:
             raise NotFoundError("Content version not found.")
@@ -426,6 +437,7 @@ def list_versions(lesson_id: int) -> list[dict[str, Any]]:
 
 def soft_delete_topic(topic_id: int) -> dict[str, Any]:
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         topic = conn.execute("SELECT id FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone()
         if topic is None:
             raise NotFoundError("Topic not found.")
@@ -436,6 +448,7 @@ def soft_delete_topic(topic_id: int) -> dict[str, Any]:
 
 def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         if conn.execute("SELECT 1 FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone() is None:
             raise NotFoundError("Lesson not found.")
         conn.execute("UPDATE lessons SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
@@ -472,6 +485,7 @@ def _chunk_text(markdown: str) -> list[tuple[str, str]]:
 def publish_content(version_id: int) -> dict[str, Any]:
     """Publish only reviewed content; replace active chunks atomically."""
     with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         version = conn.execute(
             """SELECT cv.*,l.topic_id FROM content_versions cv JOIN lessons l ON l.id=cv.lesson_id
                JOIN topics t ON t.id=l.topic_id WHERE cv.id=? AND l.deleted_at IS NULL AND t.deleted_at IS NULL""",
