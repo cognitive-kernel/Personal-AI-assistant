@@ -693,6 +693,7 @@ def run_job(job_id: int) -> None:
             "reason": "No eligible configured cost profile; use the administrator-selected learning model.",
             "fallback_model": configured_model,
         }
+        budget_configured = settings.get("learning_task_budget_microusd") is not None
         try:
             installed_names = [
                 str(item.get("name", "")).strip()
@@ -724,6 +725,10 @@ def run_job(job_id: int) -> None:
                 "error_kind": type(selection_error).__name__,
                 "fallback_model": configured_model,
             }
+        if budget_configured and not model_selection.get("selected_model"):
+            raise ValueError(
+                "A learning task budget is configured but no installed model has an explicit cost/quality profile within it; inference was not started."
+            )
         request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
         response = _request("/api/chat", {
             "model": model, "stream": False, "format": "json",
