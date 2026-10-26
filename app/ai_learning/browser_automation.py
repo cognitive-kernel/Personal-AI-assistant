@@ -434,23 +434,23 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     pass
                 page.wait_for_timeout(1200)
                 _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
-                # A logged-out welcome page can look like a valid ChatGPT landing page,
-                # but it cannot reliably create the conversation needed for this job.
-                # Give the user a chance to sign in through the visible UI; never save
-                # the welcome page as lesson content.
+                # Guest mode is an explicit supported attempt: try the visible composer
+                # instead of requiring sign-in before submitting. ChatGPT may still impose
+                # an account, rate-limit, or human-verification gate; never bypass it.
                 if _anonymous_landing_visible(page):
-                    _log_event("prompt_not_sent_reason", reason="chatgpt_logged_out",
-                               explanation="پنجره اختصاصی Playwright در صفحه مهمان است؛ قبل از ورود، ارسال prompt انجام نمی‌شود.",
-                               url=page.url, dom=_dom_diagnostics(page))
-                    _log_event("anonymous_landing_detected", url=page.url)
-                    # The dedicated persistent profile may need a one-time interactive sign-in.
-                    # Keep the visible browser available long enough for the user to complete it.
-                    login_timeout_seconds = 180
-                    login_deadline = time.monotonic() + login_timeout_seconds
-                    _log_event("login_required_wait_started", timeout_seconds=login_timeout_seconds, url=page.url)
-                    last_login_wait_log = 0
-                    while time.monotonic() < login_deadline and _anonymous_landing_visible(page):
-                        if cancel_event is not None and cancel_event.is_set():
+                    _log_event(
+                        "guest_mode_attempt",
+                        url=page.url,
+                        explanation="Anonymous ChatGPT landing detected; attempting normal visible-UI submission.",
+                        dom=_dom_diagnostics(page),
+                    )
+                if "login" in page.url.casefold() or "auth.openai.com" in page.url.casefold():
+                    _log_event("guest_auth_gate", url=page.url)
+                    raise BrowserAutomationError(
+                        "guest_send_unavailable",
+                        "ChatGPT برای این درخواست به صفحهٔ ورود هدایت کرد؛ ارسال در حالت مهمان در این وضعیت در دسترس نیست. هیچ ورود یا محدودیت امنیتی دور زده نشد.",
+                    )
+                if cancel_event is not None and cancel_event.is_set():
                             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
                         elapsed = int(login_timeout_seconds - (login_deadline - time.monotonic()))
                         if elapsed // 10 > last_login_wait_log:
