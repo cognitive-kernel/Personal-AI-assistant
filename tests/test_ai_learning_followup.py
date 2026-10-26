@@ -1,6 +1,6 @@
 from __future__ import annotations
 import pytest
-from app.ai_learning import service
+from app.ai_learning import service, browser_automation
 from app.ai_learning.db import initialize_store
 
 @pytest.fixture
@@ -166,3 +166,22 @@ def test_cancel_run_rejects_terminal_runs(isolated_store):
 
     with pytest.raises(ValueError, match="Only queued or running"):
         service.cancel_run(run["id"])
+
+
+
+def test_chatgpt_logged_out_welcome_page_is_detected():
+    body = (
+        "Get responses tailored to you\\n"
+        "Log in to get answers\\n"
+        "Where should we begin?"
+    )
+    assert browser_automation._is_anonymous_landing_text(
+        "https://chatgpt.com/?noauth_recent_chat_failed=1", body
+    )
+
+
+def test_chatgpt_logged_in_conversation_is_not_mistaken_for_guest_landing():
+    body = "What can I do for you?\\nSQL Server 2025 lesson content"
+    assert not browser_automation._is_anonymous_landing_text(
+        "https://chatgpt.com/c/abc123", body
+    )
