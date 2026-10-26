@@ -100,7 +100,7 @@ def recover_interrupted_courses() -> int:
             """UPDATE browser_learning_courses
                SET status='interrupted', error='برنامه پیش از پایان دوره متوقف شد؛ اجرای دوباره لازم است.',
                    updated_at=CURRENT_TIMESTAMP
-               WHERE status='running'"""
+               WHERE status IN ('queued','running')"""
         )
         conn.execute(
             """UPDATE browser_learning_lessons SET status='queued',
@@ -200,7 +200,8 @@ def _chatgpt_answer(page: Any, prompt: str, *, timeout_seconds: int = 180) -> st
             assistants = page.locator("[data-message-author-role='assistant']")
             count = assistants.count()
             current = assistants.last.inner_text(timeout=1500).strip() if count else ""
-            stop_visible = page.locator("button[data-testid='stop-button']").count() > 0
+            stop_locator = page.locator("button[data-testid='stop-button']")
+            stop_visible = stop_locator.count() > 0 and stop_locator.last.is_visible()
             if current and (count > before or current != old_text):
                 if current == last_text and not stop_visible:
                     stable += 1
