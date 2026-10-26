@@ -509,6 +509,9 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='lesson_content_empty',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                         (response_text, "پاسخ فقط شامل عنوان یا متن بسیار کوتاه است؛ درس خالی ذخیره نشد. دریافت مجدد را اجرا کنید.", run_id),
                     )
+                    conn.execute("""UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
+                                    WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                                      AND processing_status <> 'paused'""", (run_id,))
                     conn.commit()
                     return get_run(run_id)
                 title_match = re.search(r"(?m)^#{1,6}\s+(.{1,300})$", response_text)
@@ -520,6 +523,9 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     conn.execute(
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_ambiguous',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                         (response_text, "The batch response did not include topic markers; map each section manually before saving.", run_id))
+                    conn.execute("""UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
+                                    WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                                      AND processing_status <> 'paused'""", (run_id,))
                     conn.commit()
                     return get_run(run_id)
                 allowed = {int(topic["id"]): topic for topic in topics}
@@ -536,6 +542,9 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     conn.execute(
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_incomplete',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
                         (response_text, "One or more requested topics were not mapped; no lesson was created.", run_id))
+                    conn.execute("""UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
+                                    WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                                      AND processing_status <> 'paused'""", (run_id,))
                     conn.commit()
                     return get_run(run_id)
             for topic_id, title, body in sections:
