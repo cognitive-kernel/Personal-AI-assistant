@@ -1072,7 +1072,7 @@ async function refreshFactualTestQueue() {
   for(const item of items) {
    const card=document.createElement("article");
    const heading=document.createElement("h4");
-   heading.textContent="#"+item.id+" — Python "+item.environment_version;
+   heading.textContent="#"+item.id+" — "+(item.domain_name==="sqlite" ? "SQLite" : "Python")+" "+item.environment_version;
    const claim=document.createElement("p");
    claim.textContent=item.claim;
    const sources=document.createElement("ul");
@@ -1087,7 +1087,7 @@ async function refreshFactualTestQueue() {
    testName.placeholder="نام آزمون (مثلاً assert روی شرط نادرست)";
    const sourceCode=document.createElement("textarea");
    sourceCode.rows=6; sourceCode.maxLength=65536; sourceCode.required=true;
-   sourceCode.placeholder="کد Python آزمون؛ باید دست‌کم یک assert داشته باشد";
+   sourceCode.placeholder=item.domain_name==="sqlite" ? "کد Python برای آزمون SQLite؛ از sqlite3 در حافظه استفاده کنید و دست‌کم یک assert داشته باشد" : "کد Python آزمون؛ باید دست‌کم یک assert داشته باشد";
    const oracleNote=document.createElement("textarea");
    oracleNote.rows=3; oracleNote.maxLength=1000; oracleNote.required=true;
    oracleNote.placeholder="توضیح اینکه آزمون با کدام oracle مستقل تطبیق داده شده (حداقل ۲۰ نویسه)";
