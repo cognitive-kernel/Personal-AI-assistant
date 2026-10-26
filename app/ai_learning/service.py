@@ -267,6 +267,52 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
         add(item)
     return candidates if len(candidates) >= 3 else []
 
+def _extract_references(text: str) -> list[dict[str, str | None]]:
+    """Extract explicitly supplied source links from provider content without validating their claims."""
+    found: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    markdown_links = re.compile(r"\[([^\]]{1,300})\]\((https?://[^)\s]+)\)", re.IGNORECASE)
+    for match in markdown_links.finditer(text):
+        title, url = match.group(1).strip(), match.group(2).rstrip(".,;")
+        if url not in seen:
+            seen.add(url)
+            found.append({"title": title or url, "url": url})
+    for match in re.finditer(r"https?://[^\s<>\])}]+", text, re.IGNORECASE):
+        url = match.group(0).rstrip(".,;:!?")
+        if url not in seen:
+            seen.add(url)
+            found.append({"title": url, "url": url})
+        if len(found) >= 100:
+            break
+    return found[:100]
+
+
+def _store_content_sources(conn: sqlite3.Connection, version_id: int, text: str) -> int:
+    """Persist links quoted by ChatGPT; links remain unverified until a human checks them."""
+    sources = _extract_references(text)
+    for source in sources:
+        url = str(source["url"])
+        publisher_match = re.match(r"https?://([^/]+)", url, re.IGNORECASE)
+        publisher = publisher_match.group(1).lower() if publisher_match else ""
+        conn.execute(
+            """INSERT INTO sources(content_version_id,title,url,publisher,source_type,accessed_at,excerpt,validation_status)
+               VALUES(?,?,?,?, 'chatgpt_citation',CURRENT_TIMESTAMP,'','unverified')""",
+            (version_id, str(source["title"] or url)[:300], url, publisher[:300]),
+        )
+    return len(sources)
+
+
+def list_content_sources(version_id: int) -> list[dict[str, Any]]:
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM content_versions WHERE id=?", (version_id,)).fetchone() is None:
+            raise NotFoundError("Content version not found.")
+        rows = conn.execute(
+            "SELECT id,content_version_id,title,url,publisher,source_type,accessed_at,excerpt,validation_status,created_at FROM sources WHERE content_version_id=? ORDER BY id",
+            (version_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
     response_text = _clean_text(response_text, "response_text", 100_000)
@@ -377,6 +423,8 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     """INSERT INTO content_versions(lesson_id,version_no,markdown,raw_response,content_sha256,
                        review_status,source_kind,provider,run_id) VALUES(?,?,?,?,?,'needs_review','chatgpt_ui','ChatGPT',?)""",
                     (lesson_id, version_no, body, response_text, digest, run_id))
+                stored_version_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                _store_content_sources(conn, stored_version_id, body + "\n\n" + response_text)
                 conn.execute("UPDATE run_topics SET status='parsed' WHERE run_id=? AND topic_id=?", (run_id, topic_id))
                 conn.execute("""UPDATE topics SET processing_status='needs_review',updated_at=CURRENT_TIMESTAMP
                                 WHERE id=? AND processing_status <> 'paused'""", (topic_id,))
@@ -747,6 +795,7 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
                review_status,source_kind,provider,model_name) VALUES(?,?,?,?,?,'needs_review',?,?,?)""",
             (lesson_id, version_no, markdown, raw_response, digest, source_kind, provider, model_name))
         version_id = int(cursor.lastrowid)
+        _store_content_sources(conn, version_id, markdown + "\n\n" + (raw_response or ""))
         conn.execute("UPDATE lessons SET status='needs_review',updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
         return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
 
