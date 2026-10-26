@@ -89,7 +89,7 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
         topic = str(row["knowledge_topic"]).strip().casefold()
         knowledge_id = row["originating_knowledge_id"]
         problem = row["problem"]
-        if topic not in topics or not isinstance(knowledge_id, int) or not isinstance(problem, str) or not problem.strip():
+        if topic not in topics or not isinstance(knowledge_id, int) or not isinstance(problem, str) or len(problem.strip()) < 20:
             continue
         try:
             results = json.loads(row["test_results_json"])
@@ -109,6 +109,7 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
             if not isinstance(sources, list) or not sources or not all(
                 isinstance(source, dict)
                 and isinstance(source.get("url"), str)
+                and source["url"].startswith("https://")
                 and isinstance(source.get("live_content_sha256"), str)
                 and _SHA256.fullmatch(source["live_content_sha256"])
                 and isinstance(source.get("excerpt_sha256"), str)
@@ -122,15 +123,22 @@ def _transfer_evidence_map(connection, topics: set[str]) -> dict[str, dict[str, 
     result: dict[str, dict[str, Any]] = {}
     for topic in topics:
         per_knowledge = by_topic.get(topic.casefold(), {})
-        best = max(per_knowledge.values(), key=len, default=set())
+        candidates = []
+        for knowledge_id, attempts in per_knowledge.items():
+            scenario_hashes = {scenario for _name, _source, scenario in attempts}
+            test_names = {name for name, _source, _scenario in attempts}
+            source_hashes = {source for _name, source, _scenario in attempts}
+            repeatable = len(scenario_hashes) >= 2 and len(test_names) >= 2 and len(source_hashes) >= 2
+            candidates.append((repeatable, len(scenario_hashes), len(attempts), -knowledge_id, knowledge_id, attempts))
+        if candidates:
+            repeatable, _scenario_count, _attempt_count, _negative_id, best_knowledge_id, best = max(candidates)
+        else:
+            repeatable, best_knowledge_id, best = False, None, set()
         scenario_hashes = {scenario for _name, _source, scenario in best}
-        test_names = {name for name, _source, _scenario in best}
-        source_hashes = {source for _name, source, _scenario in best}
-        repeatable = len(scenario_hashes) >= 2 and len(test_names) >= 2 and len(source_hashes) >= 2
         result[topic] = {
             "transfer_case_count": len(scenario_hashes),
             "transfer_attempt_count": len(best),
-            "transfer_repeatable": repeatable,
+            "transfer_repeatable": bool(repeatable),
             "transfer_evidence_knowledge_ids": [
                 knowledge_id for knowledge_id, attempts in per_knowledge.items()
                 if len({scenario for _name, _source, scenario in attempts}) >= 2
