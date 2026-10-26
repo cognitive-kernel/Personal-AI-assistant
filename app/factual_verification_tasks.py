@@ -152,6 +152,7 @@ def _wrapped_harness(source_code: str, runner_language: str = "python") -> tuple
     if runner_language == "javascript":
         wrapper = (
             "console.log('__PAI_NODE_VERSION__:' + process.versions.node);\n"
+            "const assert = require('node:assert/strict');\n"
             "(async () => {\n"
             + source_code + "\n"
             + f"console.log({json.dumps(completion_marker)});\n"
