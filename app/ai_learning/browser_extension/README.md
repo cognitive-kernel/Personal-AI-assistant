@@ -11,12 +11,12 @@ The Manifest V3 extension connects the local learning module to the user's exist
 
 ## Run a course
 
-1. In the extension popup, choose **دریافت سرفصل‌ها** and click **شروع؛ بازکردن ChatGPT و ارسال خودکار** once to start the workflow.
-2. The extension opens the normal ChatGPT page, inserts the prompt, and attempts to click the visible Send button. No manual navigation to ChatGPT, manual sending, or manual answer capture should be needed in the normal successful path.
-3. When the outline answer is stable, the extension saves it to the local database. Existing topic titles are skipped using normalized, case-insensitive title matching.
+1. In `http://127.0.0.1:8000/ai-learning`, select any course and click **بازخوانی**. The dashboard bridge asks the extension to start an outline run for the selected course; no course ID or title is hard-coded.
+2. The extension opens the normal ChatGPT page (or activates an existing ChatGPT tab), inserts the course-specific prompt, and attempts to click the visible Send button. The user does not need to open the extension popup or manually send/capture the response.
+3. The extension waits until the assistant response is no longer generating and its text is stable, then saves the answer in the local learning database. It does not rely on ChatGPT conversation history being persisted. Existing topic titles are skipped using normalized, case-insensitive title matching.
 4. Pending topics are approved automatically to allow unattended progression. The extension then generates lessons in small batches for approved topics that do not already have a lesson. This continues after each successfully captured batch.
 5. Lesson content remains in `needs_review`; it is **not automatically published**. Review and publication remain explicit quality controls.
-6. If a browser selector changes, the browser closes, ChatGPT does not finish, or the provider asks for an extra interaction, the run is retained in local history and may require recovery. These are exception paths, not the intended normal workflow.
+6. The dashboard reload button reports whether the extension accepted the run. Completion or errors are reflected by the local run history and dashboard refresh. If ChatGPT changes its interface, the browser closes, or the page fails to expose a composer/send control, the run may require recovery.
 
 ## Duplicate protection
 
@@ -27,7 +27,7 @@ The Manifest V3 extension connects the local learning module to the user's exist
 
 ## Safety and limitations
 
-- Automation starts only after the user explicitly starts the course workflow from the extension popup; it does not launch unsolicited prompts.
+- Automation starts only after the user explicitly clicks the dashboard refresh button; it does not launch unsolicited prompts.
 - Only the visible ChatGPT UI is used; no private API or hidden endpoint is called.
 - DOM selectors may change, and automatic submission/capture cannot be guaranteed if ChatGPT changes its UI or requests additional user interaction.
 - The local API remains loopback-only and the module is disabled by default.
