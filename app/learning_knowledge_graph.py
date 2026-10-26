@@ -14,6 +14,24 @@ _RELATIONS = {"supports", "causes", "depends_on", "contradicts", "supersedes"}
 _VERDICTS = {"supports", "contradicts", "inconclusive"}
 
 
+def _would_create_cycle(connection, source_id: int, target_id: int, relation_type: str) -> bool:
+    if relation_type not in {"causes", "depends_on", "supersedes"}:
+        return False
+    row = connection.execute(
+        """WITH RECURSIVE reachable(id) AS (
+               SELECT ?
+               UNION
+               SELECT e.target_knowledge_id
+               FROM learning_knowledge_graph_edges e
+               JOIN reachable r ON e.source_knowledge_id=r.id
+               WHERE e.relation_type=? AND e.status='accepted'
+           )
+           SELECT 1 FROM reachable WHERE id=? LIMIT 1""",
+        (target_id, relation_type, source_id),
+    ).fetchone()
+    return row is not None
+
+
 def propose_edge(
     source_knowledge_id: int,
     target_knowledge_id: int,
@@ -51,6 +69,8 @@ def propose_edge(
             raise KeyError(source_knowledge_id if source_knowledge_id not in by_id else target_knowledge_id)
         if any(status != "retained_after_review" for status in by_id.values()):
             raise ValueError("Graph edges can only connect retained_after_review knowledge items.")
+        if _would_create_cycle(connection, source_knowledge_id, target_knowledge_id, relation_type):
+            raise ValueError("Accepted graph edges would form a cycle for this relation type.")
         connection.execute(
             """INSERT INTO learning_knowledge_graph_edges(
                    source_knowledge_id, target_knowledge_id, relation_type,
@@ -178,10 +198,27 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
             "verdict": verdict, "rationale": rationale.strip(),
             "input_sha256": input_hash, "output_sha256": output_hash,
         })
+    latest_installed = ollama.list_models()
+    latest_digests = {
+        str(item.get("name", "")).strip(): str(item.get("digest", "")).strip()
+        for item in latest_installed if isinstance(item, dict)
+    }
+    if any(latest_digests.get(item["model"]) != item["digest"] for item in reviews):
+        return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
+            "status": "inconclusive",
+            "reason": "Reviewer model identity changed during inference; no graph edge was accepted.",
+            "reviews": reviews,
+        })
     verdicts = [item["verdict"] for item in reviews]
     status = "accepted" if verdicts == ["supports", "supports"] else (
         "rejected" if verdicts == ["contradicts", "contradicts"] else "conflicting"
     )
+    if status == "accepted":
+        with learning_connection() as connection:
+            if _would_create_cycle(
+                connection, int(row["source_knowledge_id"]), int(row["target_knowledge_id"]), str(row["relation_type"])
+            ):
+                status = "conflicting"
     report = {
         "status": status,
         "relation_type": row["relation_type"],
@@ -198,7 +235,7 @@ def _store_edge_review(edge_id: int, source_hash: str, status: str, report: dict
         connection.execute(
             """UPDATE learning_knowledge_graph_edges
                SET status=?, review_json=?, reviewed_at=CURRENT_TIMESTAMP
-               WHERE id=? AND source_sha256=? AND status='proposed'""",
+               WHERE id=? AND source_sha256=? AND status IN ('proposed','conflicting')""",
             (status, json.dumps(report, ensure_ascii=False, sort_keys=True), edge_id, source_hash),
         )
         row = connection.execute(
