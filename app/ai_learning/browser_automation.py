@@ -428,7 +428,11 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 # the welcome page as lesson content.
                 if _anonymous_landing_visible(page):
                     _log_event("anonymous_landing_detected", url=page.url)
-                    login_deadline = time.monotonic() + 180
+                    # Do not leave the dashboard showing "receiving response" for minutes
+                    # when ChatGPT is clearly logged out. Allow a short window for the user
+                    # to sign in in the visible browser, then persist a clear actionable error.
+                    login_deadline = time.monotonic() + 45
+                    _log_event("login_required_wait_started", timeout_seconds=45, url=page.url)
                     while time.monotonic() < login_deadline and _anonymous_landing_visible(page):
                         if cancel_event is not None and cancel_event.is_set():
                             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
