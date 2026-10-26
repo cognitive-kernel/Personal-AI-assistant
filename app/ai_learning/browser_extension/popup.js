@@ -11,6 +11,7 @@ async function api(path){
 async function loadTopics(){
   const courseId=el("course").value,wrap=el("topics-wrap"),output=el("topics");
   output.replaceChildren();
+  el("select-all-topics").textContent="انتخاب همه سرفصل‌های تأییدشده";
   if(!courseId||el("run-type").value!=="lesson"){wrap.hidden=true;return;}
   wrap.hidden=false;
   const course=await api("/courses/"+courseId);
