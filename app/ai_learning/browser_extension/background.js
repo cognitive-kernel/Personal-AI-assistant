@@ -40,7 +40,7 @@ async function prepareRun(payload) {
   const started = await api("/runs/" + created.id + "/start", {method:"POST"});
   const tab = await findOrOpenChatTab();
   if (tab.id === undefined) throw new Error("Could not open a ChatGPT tab.");
-  await chrome.storage.local.set({activeRunId:started.id, activeRunTabId:tab.id});
+  await chrome.storage.local.set({activeRunId:started.id, activeRunTabId:tab.id, baselineMessageCount:null, baselineAnswer:""});
   await new Promise((resolve, reject) => {
     let done = false;
     const finish = (fn, value) => {
@@ -53,6 +53,11 @@ async function prepareRun(payload) {
     const deliver = async () => {
       try {
         await ensureContentScript(tab.id);
+        const baseline = await sendToTab(tab.id, {type:"get-latest-answer"});
+        await chrome.storage.local.set({
+          baselineMessageCount: baseline.state.messageCount,
+          baselineAnswer: baseline.state.text || ""
+        });
         const result = await sendToTab(tab.id, {type:"insert-prompt", prompt:started.prompt_text});
         finish(resolve, {run_id:started.id, tab_id:tab.id, inserted:result.inserted});
       } catch (error) { finish(reject, error); }
@@ -68,7 +73,7 @@ async function prepareRun(payload) {
   });
 }
 async function captureRun() {
-  const stored = await chrome.storage.local.get(["activeRunId","activeRunTabId"]);
+  const stored = await chrome.storage.local.get(["activeRunId","activeRunTabId","baselineMessageCount","baselineAnswer"]);
   const runId = stored.activeRunId;
   if (!runId) throw new Error("No active learning run. Prepare a prompt first.");
   const tabs = await chrome.tabs.query({active:true, currentWindow:true});
@@ -76,10 +81,15 @@ async function captureRun() {
   if (!tab || tab.id === undefined) throw new Error("No active tab found.");
   if (stored.activeRunTabId !== tab.id) throw new Error("Switch to the same ChatGPT tab where this prompt was inserted before capturing.");
   const result = await sendToTab(tab.id, {type:"capture-answer"});
+  if (Number.isInteger(stored.baselineMessageCount) &&
+      result.messageCount <= stored.baselineMessageCount &&
+      result.text === (stored.baselineAnswer || "")) {
+    throw new Error("No new assistant response was detected for this run. Send the prepared prompt, wait for completion, then capture again.");
+  }
   const completed = await api("/runs/" + runId + "/complete", {
     method:"POST", body:JSON.stringify({response_text:result.text})
   });
-  if (completed.status === "succeeded") await chrome.storage.local.remove(["activeRunId","activeRunTabId"]);
+  if (completed.status === "succeeded") await chrome.storage.local.remove(["activeRunId","activeRunTabId","baselineMessageCount","baselineAnswer"]);
   return {run_id:runId,status:completed.status,topics:completed.topics || [],error_message:completed.error_message || null};
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
