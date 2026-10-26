@@ -551,7 +551,50 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                                       AND processing_status <> 'paused'""", (run_id,))
                     conn.commit()
                     return get_run(run_id)
+            duplicate_sections: dict[int, dict[str, Any]] = {}
+            # Check every section before inserting any lesson version. If the embedding
+            # service is unavailable, do not partially save a batch without deduplication.
+            for topic_id, _title, body in sections:
+                try:
+                    duplicate = _find_semantic_duplicate_content(
+                        conn, body, exclude_topic_id=topic_id
+                    )
+                except Exception as exc:
+                    conn.execute(
+                        """UPDATE runs SET response_text=?,status='needs_user_action',
+                           error_code='semantic_duplicate_check_unavailable',error_message=?,
+                           finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (
+                            response_text,
+                            "بررسی معنایی تکراری نبودن درس انجام نشد؛ برای جلوگیری از ثبت آموزش تکراری، هیچ بخشی از این دسته ذخیره نشد. "
+                            f"جزئیات فنی: {type(exc).__name__}",
+                            run_id,
+                        ),
+                    )
+                    conn.commit()
+                    return get_run(run_id)
+                if duplicate is not None:
+                    duplicate_sections[topic_id] = duplicate
+
             for topic_id, title, body in sections:
+                duplicate = duplicate_sections.get(topic_id)
+                if duplicate is not None:
+                    conn.execute(
+                        "UPDATE run_topics SET status='skipped',error_message=? WHERE run_id=? AND topic_id=?",
+                        (
+                            "محتوای این بخش با درس موجود بسیار مشابه است؛ ذخیره تکراری انجام نشد. "
+                            f"مطابقت: {duplicate['topic_title']} / {duplicate['lesson_title']} "
+                            f"(similarity={float(duplicate['score']):.3f}).",
+                            run_id,
+                            topic_id,
+                        ),
+                    )
+                    conn.execute(
+                        """UPDATE topics SET processing_status='skipped',updated_at=CURRENT_TIMESTAMP
+                           WHERE id=? AND processing_status<>'paused'""",
+                        (topic_id,),
+                    )
+                    continue
                 # Reuse a prior lesson shell when its captured content was empty; do not
                 # create duplicate lessons just to recover a failed/blank capture.
                 if "[FORCE_RETRY_EXISTING_LESSON]" in str(run["prompt_text"]):
