@@ -1003,7 +1003,8 @@ async function loadBrowserLearningCourse(courseId, card) {
   const summary = document.createElement("p");
   const lessons = course.lessons || [];
   const completed = lessons.filter(lesson => lesson.status === "completed").length;
-  summary.textContent = "پیشرفت: " + completed + " از " + lessons.length + " درس ذخیره شده | وضعیت دوره: " + course.status;
+  summary.textContent = "پیشرفت: " + completed + " از " + lessons.length + " درس ذخیره شده | وضعیت دوره: " + course.status +
+   (course.outline_sha256 ? " | SHA-256 سرفصل: " + course.outline_sha256 : "");
   detail.append(summary);
   for (const lesson of lessons) {
    const section = document.createElement("details");
