@@ -261,13 +261,13 @@ def run_course(course_id: int) -> None:
             if not contexts:
                 raise BrowserLearningError("Chrome هیچ نشست فعالی در اختیار نگذاشت.")
             context = contexts[0]
-            pages = context.pages
-            page = next((item for item in reversed(pages) if _is_chatgpt_url(item.url)), None)
-            if page is None:
-                page = context.new_page()
-                page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
+            # Isolate each course in a fresh tab so unrelated chat history cannot leak into lesson prompts.
+            page = context.new_page()
+            page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
             if not _is_chatgpt_url(page.url):
-                page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
+                raise BrowserLearningError(
+                    "Chrome به صفحهٔ ChatGPT واردشده نرسید؛ نشست را بازبینی و دوباره تلاش کنید."
+                )
 
             if course.get("outline_json"):
                 saved_outline = json.loads(course["outline_json"])
