@@ -53,6 +53,7 @@ def record_candidate_review(
     source_sha256: str | None = None,
     input_sha256: str | None = None,
     output_sha256: str | None = None,
+    _trusted_adapter: bool = False,
 ) -> dict[str, Any]:
     """Append immutable, content-bound evidence; caller-supplied verdicts are not proof."""
     init_databases()
@@ -61,6 +62,8 @@ def record_candidate_review(
     candidate_sha256 = _digest(candidate_sha256, "candidate_sha256")
     if review_kind not in _REVIEW_KINDS or verdict not in _VERDICTS:
         raise ValueError("Unsupported review kind or verdict.")
+    if review_kind != "source" and _trusted_adapter is not True:
+        raise ValueError("AI/test evidence can only be written by a trusted internal adapter, not the public API.")
     if not isinstance(reviewer_id, str) or not 1 <= len(reviewer_id.strip()) <= 200:
         raise ValueError("reviewer_id must contain 1–200 characters.")
     if not isinstance(note, str) or not 20 <= len(note.strip()) <= 2000:
