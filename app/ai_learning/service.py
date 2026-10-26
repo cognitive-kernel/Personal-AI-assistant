@@ -1,6 +1,7 @@
 """Use cases for the isolated AI-learning knowledge store."""
 from __future__ import annotations
 import hashlib
+import json
 import re
 import sqlite3
 from typing import Any
@@ -528,6 +529,23 @@ def publish_content(version_id: int) -> dict[str, Any]:
 
 def _like_term(term: str) -> str:
     return "%" + term.replace("%", "").replace("_", "") + "%"
+
+def record_query_trace(query: str, chunk_ids: list[int]) -> int:
+    """Record selected chunk IDs and a one-way query hash; never persist raw query text."""
+    query = _clean_text(query, "query", 2000)
+    normalized_ids = []
+    for chunk_id in chunk_ids[:20]:
+        if isinstance(chunk_id, bool) or not isinstance(chunk_id, int) or chunk_id < 1:
+            raise ValueError("chunk_ids must contain positive integer IDs.")
+        if chunk_id not in normalized_ids:
+            normalized_ids.append(chunk_id)
+    digest = hashlib.sha256(query.casefold().encode("utf-8")).hexdigest()
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        cursor = conn.execute(
+            "INSERT INTO query_traces(query_sha256,result_chunk_ids_json,result_count) VALUES(?,?,?)",
+            (digest, json.dumps(normalized_ids), len(normalized_ids)))
+        return int(cursor.lastrowid)
 
 def search_knowledge(query: str, limit: int = 8) -> dict[str, Any]:
     """Bounded lexical retrieval over published, active chunks only."""
