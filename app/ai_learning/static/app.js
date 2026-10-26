@@ -79,6 +79,17 @@ $("resume-learning").onclick=()=>act(async()=>{
  await loadRuns();
  say(result.message||"فرایند یادگیری ادامه یافت.");
 });
+$("reset-learning-data").onclick=()=>act(async()=>{
+ if(!confirm("همهٔ سرفصل‌ها، درس‌ها، نسخه‌های محتوا، سوابق اجرا و ردپاهای جست‌وجوی این ماژول پاک می‌شوند. تعریف دوره‌ها باقی می‌ماند. ادامه می‌دهید؟"))return;
+ const phrase=prompt("برای تأیید پاک‌سازی کامل، عبارت RESET را وارد کنید:");
+ if(phrase!=="RESET") { say("پاک‌سازی لغو شد."); return; }
+ const result=await api("/reset-learning-data",{method:"POST"});
+ await loadCourses(courseId||undefined);
+ $("select-all-topics").checked=false;
+ $("select-all-course-lessons").checked=false;
+ $("select-all-runs").checked=false;
+ say("پاک‌سازی انجام شد. سرفصل‌ها: "+result.deleted.topics+"، درس‌ها: "+result.deleted.lessons+"، نسخه‌ها: "+result.deleted.versions+"، سوابق اجرا: "+result.deleted.runs+" حذف شدند؛ دوره‌ها باقی ماندند و آماده شروع مجدد هستند.");
+});
 loadCourses(Number(localStorage.getItem("aiLearningCourseId"))||undefined)
  .then(async()=>{await refreshLearningControl();say("ماژول آماده است. مکث و بازیابی برای دریافت سرفصل و تولید دسته‌های درس فعال است؛ محتوای درس‌ها پیش از انتشار نیازمند بازبینی است.");window.setInterval(()=>refreshLearningControl().catch(()=>{}),5000)})
  .catch(e=>say(e.message,true));
