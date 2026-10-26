@@ -8,11 +8,12 @@ This is an optional, user-confirmed Manifest V3 extension. It connects the local
 2. Open chrome://extensions.
 3. Enable Developer mode and choose Load unpacked.
 4. Select this directory: app/ai_learning/browser_extension.
-5. Open the local module at http://127.0.0.1:8000/ai-learning and create a course.
-6. Open the extension icon from any tab. Choose a course and either outline or one or more approved topics.
-7. Click “Start; open ChatGPT and send automatically”. The extension opens the normal ChatGPT tab, inserts the prompt, and clicks the visible Send button only after this explicit user action and only when the button can be identified confidently.
-8. The extension watches the visible page for a changed, stable assistant answer and saves it automatically. The dashboard tab is refreshed after successful capture. If the Send button or response completion cannot be identified, the extension shows a manual-recovery status; send the prompt yourself and use “Capture answer manually”.
-9. In the dashboard, inspect the run history. If parsing needs attention, use “View and edit response” and retry processing. Outlines remain pending approval and lesson versions remain unpublished until reviewed.
+5. After pulling newer code, return to chrome://extensions and click the extension's Reload icon; the manifest version is now 0.2.0.
+6. Open the local module at http://127.0.0.1:8000/ai-learning and create a course.
+7. Open the extension icon from any tab. Choose a course and either outline or one or more approved topics.
+8. Click “Start; open ChatGPT and send automatically”. The extension opens the normal ChatGPT tab, inserts the prompt, and clicks the visible Send button only after this explicit user action and only when the button can be identified confidently.
+9. The extension watches the visible page for a changed, stable assistant answer and saves it automatically. The dashboard tab is refreshed after successful capture. If the Send button or response completion cannot be identified, the extension shows a manual-recovery status; send the prompt yourself and use “Capture answer manually”.
+10. In the dashboard, inspect the run history. If parsing needs attention, use “View and edit response” and retry processing. Outlines remain pending approval and lesson versions remain unpublished until reviewed.
 
 ## Safety and limitations
 
