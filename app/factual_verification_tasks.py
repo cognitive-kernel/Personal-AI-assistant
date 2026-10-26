@@ -230,36 +230,6 @@ def _bounded_summary_json(summary: dict[str, Any]) -> str:
     return json.dumps(essential, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def _runtime_version(
-    stdout: str, completion_marker: str, environment_name: str = "python"
-) -> tuple[str | None, bool, str]:
-    lines = stdout.splitlines()
-    if not lines:
-        return None, False, ""
-    python_match = _RUNTIME_MARKER.fullmatch(lines[0].strip())
-    if python_match is None:
-        return None, False, stdout[:2000]
-    sqlite_match = next(
-        (
-            match for line in lines[1:3]
-            if (match := _SQLITE_RUNTIME_MARKER.fullmatch(line.strip())) is not None
-        ),
-        None,
-    )
-    runtime_match = sqlite_match if environment_name == "sqlite" else python_match
-    completed = lines[-1].strip() == completion_marker
-    output_lines = [
-        line for line in (lines[1:-1] if completed else lines[1:])
-        if _RUNTIME_MARKER.fullmatch(line.strip()) is None
-        and _SQLITE_RUNTIME_MARKER.fullmatch(line.strip()) is None
-    ]
-    return (
-        runtime_match.group(1) if runtime_match is not None else None,
-        completed,
-        "\n".join(output_lines)[:2000],
-    )
-
-
 def _build_handler(
     sandbox_handler: Callable[[dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]],
 ) -> Callable[[dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]]:
@@ -285,7 +255,8 @@ def _build_handler(
         if not isinstance(test_name, str) or not test_name.strip() or len(test_name) > 300:
             raise ValueError("test_name must contain 1–300 characters.")
         source_code = payload.get("source_code")
-        validate_test_harness(source_code)
+        candidate = get_verification_candidate(knowledge_id)
+        _validate_domain_test_harness(source_code, candidate["runner_language"])
         timeout_seconds = payload.get("timeout_seconds")
         max_output_bytes = payload.get("max_output_bytes")
         if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 120:
@@ -295,7 +266,6 @@ def _build_handler(
         if not sandbox_consent.is_enabled():
             raise ValueError("Sandbox execution requires explicit, current user consent.")
 
-        candidate = get_verification_candidate(knowledge_id)
         original_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
         with learning_connection() as connection:
             oracle_review = factual_knowledge.get_oracle_review(
@@ -544,7 +514,7 @@ def handler_from_environment(
 ) -> Callable[[dict[str, Any], dict[str, Any] | None, TaskContext], dict[str, Any]] | None:
     """Expose claim verification only when the administrator-configured sandbox exists."""
     if sandbox_handler is None:
-        sandbox_handler = sandbox_tasks.handler_from_environment()
+        sandbox_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
     if sandbox_handler is None:
         return None
     return _build_handler(sandbox_handler)
