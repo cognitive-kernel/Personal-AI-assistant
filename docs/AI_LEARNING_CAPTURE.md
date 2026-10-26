@@ -130,7 +130,6 @@
 | learning_objectives | TEXT NULL | هدف‌های یادگیری استخراج‌شده |
 | approval_status | TEXT | وضعیت تصمیم کاربر: pending, approved, rejected |
 | status | TEXT | وضعیت دریافت آموزش |
-| current_content_id | INTEGER NULL | نسخه جاری محتوا، در صورت وجود |
 | created_at | TEXT | زمان ثبت |
 | updated_at | TEXT | آخرین تغییر |
 
@@ -138,7 +137,7 @@
 
 مقادیر پیشنهادی approval_status: pending, approved, rejected. این وضعیت مستقل از وضعیت پردازش آموزش است.
 
-مقادیر پیشنهادی status: pending, queued, generating, received, needs_review, failed, skipped.
+مقادیر پیشنهادی status برای پردازش سرفصل: pending, queued, generating, received, paused, needs_review, failed, skipped. وضعیت آماده‌بودن برای استفاده دستیار جداگانه در سطح نسخه محتوا نگهداری می‌شود.
 
 ### 4.4. جدول ai_learning_lessons — درس‌های تفکیک‌شده
 
@@ -166,7 +165,7 @@
 |---|---|---|
 | id | INTEGER PK | شناسه نسخه محتوا |
 | lesson_id | INTEGER FK | درس مستقلی که این نسخه متعلق به آن است |
-| version_no | INTEGER | شماره نسخه برای همان سرفصل |
+| version_no | INTEGER | شماره نسخه برای همان درس |
 | content_markdown | TEXT NOT NULL | متن آموزش قالب‌بندی‌شده |
 | raw_response | TEXT NULL | پاسخ خام دریافت‌شده از سرویس |
 | provider_id | INTEGER FK | سرویس واقعی منبع این نسخه |
