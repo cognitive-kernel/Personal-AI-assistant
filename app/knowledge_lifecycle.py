@@ -216,7 +216,8 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
     test_review_passed = any(item["review_kind"] == "test_review" and item["verdict"] == "supports" for item in reviews)
     checks = {
         "content_hash_valid": True,
-        "two_supporting_source_hosts": len(sources) >= 2,
+        "two_supporting_source_hosts": len(sources) >= 2,  # Legacy key; now counts registrable domains.
+        "two_supporting_source_domains": len(sources) >= 2,
         "two_distinct_independent_ai_reviewers": len(independent_models) >= 2,
         "controlled_test_passed": executed_test_passed and test_review_passed,
         "no_unresolved_contradictions": not contradictions,
@@ -234,7 +235,8 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         "evidence_counts": {
             "current_hash_reviews": len(reviews),
             "historical_hash_reviews": all_reviews - len(reviews),
-            "supporting_source_hosts": len(sources),
+            "supporting_source_hosts": len(sources),  # Legacy key; now counts registrable domains.
+            "supporting_source_domains": len(sources),
             "supporting_ai_models": len(ai_models),
             "independent_ai_models": len(independent_models),
             "contradictions": len(contradictions),
