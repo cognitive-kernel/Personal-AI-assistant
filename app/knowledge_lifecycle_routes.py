@@ -17,7 +17,7 @@ router = APIRouter(
 
 class CandidateReviewRequest(BaseModel):
     candidate_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    review_kind: Literal["source", "ai_review", "test_review"]
+    review_kind: Literal["source"]
     verdict: Literal["supports", "contradicts", "inconclusive"]
     reviewer_id: str = Field(min_length=1, max_length=200)
     note: str = Field(min_length=20, max_length=2000)
