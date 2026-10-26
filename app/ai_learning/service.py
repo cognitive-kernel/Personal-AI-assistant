@@ -171,7 +171,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 conn.commit()
                 return get_run(run_id)
             position = int(conn.execute(
-                "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=? AND deleted_at IS NULL",
+                "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
             for offset, title in enumerate(titles):
                 cur = conn.execute(
@@ -262,7 +262,7 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             (course_id, raw_response))
         run_id = int(cursor.lastrowid)
         position = int(conn.execute(
-            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=? AND deleted_at IS NULL",
+            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
             (course_id,)).fetchone()[0])
         created = []
         for offset, title in enumerate(candidates):
@@ -341,7 +341,7 @@ def add_topic(course_id: int, title: str, description: str = "", parent_topic_id
             (parent_topic_id, course_id)).fetchone() is None:
             raise ValueError("Parent topic must belong to the same course.")
         position = int(conn.execute(
-            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=? AND deleted_at IS NULL",
+            "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
             (course_id,)).fetchone()[0])
         cursor = conn.execute(
             "INSERT INTO topics(course_id,parent_topic_id,position,title,description) VALUES(?,?,?,?,?)",
