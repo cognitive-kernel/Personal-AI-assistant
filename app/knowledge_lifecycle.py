@@ -28,12 +28,14 @@ def _candidate_row(connection, candidate_id: int):
     row = connection.execute(
         """SELECT id, job_id, topic, content, source_kind, source_urls_json,
                   content_sha256, quality_report_json, status, test_plan_json,
-                  test_results_json, promoted_knowledge_id
+                  test_results_json, promoted_knowledge_id, failure_reason
            FROM temporary_knowledge_candidates WHERE id=?""",
         (candidate_id,),
     ).fetchone()
     if row is None:
         raise KeyError(candidate_id)
+    if row["status"] == "failed" and str(row["failure_reason"] or "").startswith("rejected_after_review:") and not str(row["content"]):
+        return row
     actual = hashlib.sha256(str(row["content"]).encode("utf-8")).hexdigest()
     if actual != row["content_sha256"]:
         raise ValueError("Candidate content hash mismatch; review and promotion are blocked.")
@@ -108,6 +110,8 @@ def record_candidate_review(
     with learning_connection() as connection:
         connection.execute("BEGIN IMMEDIATE")
         candidate = _candidate_row(connection, candidate_id)
+        if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
+            raise ValueError("Rejected candidate content has been scrubbed and cannot be reviewed again.")
         if candidate_sha256 != candidate["content_sha256"]:
             raise ValueError("Review candidate hash is stale; refresh the candidate before recording evidence.")
         cursor = connection.execute(
@@ -135,6 +139,20 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
     init_databases()
     with learning_connection() as connection:
         candidate = _candidate_row(connection, candidate_id)
+        if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
+            total_reviews = int(connection.execute(
+                "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?", (candidate_id,)
+            ).fetchone()[0])
+            return {
+                "candidate_id": candidate_id,
+                "candidate_sha256": candidate["content_sha256"],
+                "status": "rejected_after_review",
+                "ready_for_promotion": False,
+                "checks": {"content_scrubbed": True, "promotion_blocked": True},
+                "evidence_counts": {"review_records": total_reviews},
+                "contradictions": [],
+                "note": "Rejected content was scrubbed after multi-source review; audit hashes and review records remain.",
+            }
         reviews = [dict(row) for row in connection.execute(
             """SELECT * FROM knowledge_candidate_reviews
                WHERE candidate_id=? AND candidate_sha256=?
@@ -532,11 +550,17 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                 (json.dumps([test_result], ensure_ascii=False, sort_keys=True), candidate_id, current_hash),
             )
     elif all_contradict and len(source_hosts_contradicting) >= 2:
-        reason = "rejected_after_review: two digest-distinct reviewers and at least two distinct live source hosts contradicted this candidate."
+        reason = "rejected_after_review: two digest-distinct reviewers and at least two distinct live source hosts contradicted this candidate; content scrubbed, hashes retained."
         with learning_connection() as connection:
             connection.execute(
+                "DELETE FROM knowledge_items WHERE job_id=? AND status='unverified'",
+                (candidate["job_id"],),
+            )
+            connection.execute(
                 """UPDATE temporary_knowledge_candidates
-                   SET status='failed', failure_reason=?, updated_at=CURRENT_TIMESTAMP
+                   SET content='', source_urls_json='[]', quality_report_json='{}',
+                       test_plan_json='[]', status='failed', failure_reason=?,
+                       updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL""",
                 (reason, candidate_id, current_hash),
             )
