@@ -524,7 +524,7 @@ def test_force_retry_keeps_existing_lesson_and_creates_a_new_version(isolated_st
     assert len(lessons) == 1
     versions = service.list_versions(lessons[0]["id"])
     assert len(versions) == 2
-    assert versions[0]["markdown"].startswith("# Updated memory management")
+    assert service.get_content_version(versions[0]["id"])["markdown"].startswith("# Updated memory management")
 
 
 def test_extract_references_keeps_clickable_markdown_urls(isolated_store):
