@@ -1106,6 +1106,7 @@ LEARNING_MIGRATIONS = (
                 cdp_url TEXT NOT NULL CHECK(cdp_url LIKE 'http://127.0.0.1:%' OR cdp_url LIKE 'http://localhost:%' OR cdp_url LIKE 'http://[::1]:%'),
                 max_lessons INTEGER NOT NULL CHECK(max_lessons BETWEEN 1 AND 40),
                 outline_json TEXT,
+                outline_sha256 TEXT CHECK(outline_sha256 IS NULL OR length(outline_sha256) = 64),
                 status TEXT NOT NULL DEFAULT 'queued'
                     CHECK(status IN ('queued','running','completed','failed','interrupted')),
                 error TEXT CHECK(error IS NULL OR length(error) <= 1000),
@@ -1119,6 +1120,8 @@ LEARNING_MIGRATIONS = (
                 topic TEXT NOT NULL CHECK(length(trim(topic)) BETWEEN 1 AND 300),
                 status TEXT NOT NULL DEFAULT 'queued'
                     CHECK(status IN ('queued','running','completed','failed')),
+                trust_status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(trust_status IN ('unverified','accepted','rejected')),
                 content TEXT,
                 source_url TEXT CHECK(source_url IS NULL OR source_url = 'https://chatgpt.com/'),
                 prompt_sha256 TEXT CHECK(prompt_sha256 IS NULL OR length(prompt_sha256) = 64),
