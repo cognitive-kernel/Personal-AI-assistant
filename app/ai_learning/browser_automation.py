@@ -524,6 +524,8 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Create and queue an outline run, then process it in a single background browser worker."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    if service.get_learning_control()["paused"]:
+        raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
     with _LOCK:
         if _ACTIVE:
             raise ValueError("یک کار مرورگر در حال اجراست؛ تا پایان آن صبر کنید.")
