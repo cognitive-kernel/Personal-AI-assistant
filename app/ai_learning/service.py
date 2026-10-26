@@ -278,22 +278,32 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                    JOIN topics t ON t.id=l.topic_id
                    WHERE t.course_id=? AND t.deleted_at IS NULL AND l.deleted_at IS NULL
                      AND s.url IS NOT NULL AND length(trim(s.url))>0
-                   GROUP BY s.url ORDER BY MAX(s.id) DESC LIMIT 20""",
+                   GROUP BY s.url ORDER BY MAX(s.id) DESC LIMIT 8""",
                 (course_id,),
             ).fetchall()
             if prior_sources:
-                references = "\n".join(
-                    "- " + str(row["title"] or row["url"]) + " — " + str(row["url"])
-                    + (" (" + str(row["publisher"]) + ")" if row["publisher"] else "")
-                    for row in prior_sources
-                )
-                prompt += (
-                    "\n\nPreviously saved source links from this course (UNVERIFIED; use only if relevant, "
-                    "check them when possible, and never claim to have checked a link unless you did):\n"
-                    + references
-                    + "\nIf a lesson is difficult or a fact is uncertain, use these links as possible starting points, "
-                    "then explain any uncertainty and cite only sources actually consulted."
-                )
+                # Keep inherited context bounded so even a single-topic prompt remains
+                # below the browser limit in courses with many long source URLs.
+                reference_lines = []
+                reference_chars = 0
+                for row in prior_sources:
+                    url = str(row["url"] or "")[:500]
+                    title = str(row["title"] or url)[:200]
+                    publisher = str(row["publisher"] or "")[:100]
+                    line = "- " + title + " — " + url + (" (" + publisher + ")" if publisher else "")
+                    if reference_chars + len(line) + 1 > 3000:
+                        break
+                    reference_lines.append(line)
+                    reference_chars += len(line) + 1
+                references = "\n".join(reference_lines)
+                if references:
+                    prompt += (
+                        "\n\nPreviously saved source links from this course (UNVERIFIED; use only if relevant, "
+                        "check them when possible, and never claim to have checked a link unless you did):\n"
+                        + references
+                        + "\nIf a lesson is difficult or a fact is uncertain, use these links as possible starting points, "
+                        "then explain any uncertainty and cite only sources actually consulted."
+                    )
         if len(prompt) > 20_000:
             raise ValueError("Generated prompt exceeds the 20,000-character browser limit; select fewer topics or shorten the scope.")
         cursor = conn.execute(
