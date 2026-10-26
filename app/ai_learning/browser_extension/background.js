@@ -69,16 +69,23 @@ async function prepareRun(payload) {
     chrome.tabs.get(tab.id).then(current=>{if(current.status==="complete")deliver();}).catch(error=>finish(reject,error));
   });
 }
+const completingRuns = new Set();
 async function completeCapturedRun(runId,tabId,text) {
-  const stored=await chrome.storage.local.get(ACTIVE_KEYS);
-  if(stored.activeRunId!==runId || stored.activeRunTabId!==tabId) return {ignored:true};
-  const completed=await api("/runs/"+runId+"/complete",{method:"POST",body:JSON.stringify({response_text:text})});
-  const terminal=["succeeded","needs_user_action","failed","cancelled"].includes(completed.status);
-  if(terminal) await chrome.storage.local.remove(ACTIVE_KEYS);
-  await saveStatus({run_id:runId,status:completed.status,message:completed.error_message || (completed.status==="succeeded"?"Answer captured and saved.":"Answer captured; manual review is required."),topics:completed.topics||[]});
-  await setBadge(completed.status==="succeeded"?"OK":completed.status==="needs_user_action"?"!":"ERR",completed.status==="succeeded"?"#247a43":"#a66b00");
-  if (completed.status === "succeeded" || completed.status === "needs_user_action") await refreshLearningTabs();
-  return {run_id:runId,status:completed.status,topics:completed.topics||[],error_message:completed.error_message||null};
+  if(completingRuns.has(runId)) return {ignored:true};
+  completingRuns.add(runId);
+  try {
+    const stored=await chrome.storage.local.get(ACTIVE_KEYS);
+    if(stored.activeRunId!==runId || stored.activeRunTabId!==tabId) return {ignored:true};
+    const completed=await api("/runs/"+runId+"/complete",{method:"POST",body:JSON.stringify({response_text:text})});
+    const terminal=["succeeded","needs_user_action","failed","cancelled"].includes(completed.status);
+    if(terminal) await chrome.storage.local.remove(ACTIVE_KEYS);
+    await saveStatus({run_id:runId,status:completed.status,message:completed.error_message || (completed.status==="succeeded"?"Answer captured and saved.":"Answer captured; manual review is required."),topics:completed.topics||[]});
+    await setBadge(completed.status==="succeeded"?"OK":completed.status==="needs_user_action"?"!":"ERR",completed.status==="succeeded"?"#247a43":"#a66b00");
+    if(completed.status==="succeeded" || completed.status==="needs_user_action") await refreshLearningTabs();
+    return {run_id:runId,status:completed.status,topics:completed.topics||[],error_message:completed.error_message||null};
+  } finally {
+    completingRuns.delete(runId);
+  }
 }
 async function captureRun() {
   const stored=await chrome.storage.local.get(ACTIVE_KEYS);
