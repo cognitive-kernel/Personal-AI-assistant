@@ -128,8 +128,8 @@ def _visible_response_with_index(page: Any) -> tuple[str, int | None]:
                 const text = (node.innerText || '').trim();
                 if (text.length >= 20) {
                   return text
-                    .replace(/^(Copy response|Copy)\\s*/i, '')
-                    .replace(/\\s+(Copy response|Read aloud|Good response|Bad response|Regenerate)\\s*$/i, '')
+                    .replace(/^(Copy response|Copy)\s*/i, '')
+                    .replace(/\s+(Copy response|Read aloud|Good response|Bad response|Regenerate)\s*$/i, '')
                     .trim();
                 }
               }
