@@ -37,3 +37,19 @@ def test_duplicate_batch_topic_marker_fails_without_partial_lessons(isolated_sto
     result=service.complete_run(run["id"],response)
     assert result["status"]=="needs_user_action"
     assert service.list_lessons(a["id"])==[] and service.list_lessons(b["id"])==[]
+
+
+def test_course_run_history_and_outline_recovery(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    run = service.create_run(course["id"], run_type="outline", request_key="outline-recovery")
+    service.start_run(run["id"])
+    failed = service.complete_run(run["id"], "This response has no parseable outline items.")
+    assert failed["status"] == "needs_user_action"
+    history = service.list_course_runs(course["id"])
+    assert history[0]["id"] == run["id"]
+    assert history[0]["status"] == "needs_user_action"
+    recovered = service.complete_run(run["id"], "1. Fundamentals\n2. Installation\n3. Security")
+    assert recovered["status"] == "succeeded"
+    assert [topic["title"] for topic in service.get_course(course["id"])["topics"]] == [
+        "Fundamentals", "Installation", "Security"
+    ]
