@@ -117,8 +117,8 @@ def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store
         "2. آموزش موضوع کاملاً تازه",
     )
 
-    assert result["imported"] == 0
-    assert result["skipped_existing"] == 2
+    assert result["imported"] == 1
+    assert result["skipped_existing"] == 1
     assert result["skipped_duplicates"][0]["duplicate_of"] == existing["title"]
     assert result["skipped_duplicates"][0]["method"] == "embedding"
 
