@@ -95,8 +95,18 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
             (knowledge_id,),
         ).fetchone()[0]
     item = dict(row)
-    if (item["domain_name"], item["environment_name"]) not in {("python", "python"), ("sqlite", "sqlite")}:
-        raise ValueError("The current Docker verification runner supports Python and SQLite factual claims only.")
+    runner_languages = {
+        ("python", "python"): "python",
+        ("sqlite", "sqlite"): "sqlite",
+        ("javascript", "javascript"): "javascript",
+        ("javascript", "node"): "javascript",
+        ("node", "node"): "javascript",
+        ("rust", "rust"): "rust",
+    }
+    runner_language = runner_languages.get((item["domain_name"], item["environment_name"]))
+    if runner_language is None:
+        raise ValueError("The current Docker verification runner supports Python, SQLite, JavaScript/Node, and Rust factual claims only.")
+    item["runner_language"] = runner_language
     if item["evidence_level"] != "L1_sourced" or item["lifecycle_status"] != "active":
         raise ValueError("Only active L1_sourced claims can be submitted for sandbox verification.")
     if evidence_count < 1:
@@ -104,19 +114,90 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
     return item
 
 
-def _wrapped_harness(source_code: str, environment_name: str = "python") -> tuple[str, str]:
-    encoded = json.dumps(source_code, ensure_ascii=False)
+def _validate_domain_test_harness(source_code: str, runner_language: str) -> None:
+    if runner_language in {"python", "sqlite"}:
+        _validate_domain_test_harness(source_code, candidate["runner_language"])
+        return
+    if not isinstance(source_code, str) or not source_code.strip() or len(source_code.encode("utf-8")) > 64 * 1024 or "\\x00" in source_code:
+        raise ValueError("Test harness must be non-empty text no larger than 64 KiB.")
+    if runner_language == "javascript":
+        if not re.search(r"(?:\\bassert(?:\\.|\\s*\\()|throw\\s+new\\s+Error\\s*\\()", source_code):
+            raise ValueError("JavaScript factual tests must contain an explicit assertion or throw new Error.")
+        return
+    if runner_language == "rust":
+        if not re.search(r"\\bassert(?:_eq|_ne)?!\\s*\\(", source_code):
+            raise ValueError("Rust factual tests must contain assert!, assert_eq!, or assert_ne!.")
+        if "fn main" in source_code:
+            raise ValueError("Rust test input must be statements for the isolated main wrapper, not a custom program.")
+        return
+    raise ValueError("Unsupported factual test runner language.")
+
+
+def _wrapped_harness(source_code: str, runner_language: str = "python") -> tuple[str, str]:
     completion_marker = "__PAI_TEST_COMPLETED__:" + secrets.token_hex(16)
-    wrapper = (
-        "import json as __pai_json, platform as __pai_platform\n"
-        "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\n"
-        "import sqlite3 as __pai_sqlite\n"
-        "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\n"
-        f"__pai_source = __pai_json.loads({json.dumps(encoded)})\n"
-        "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\n"
-        f"print({json.dumps(completion_marker)}, flush=True)\n"
-    )
-    return wrapper, completion_marker
+    if runner_language in {"python", "sqlite"}:
+        encoded = json.dumps(source_code, ensure_ascii=False)
+        wrapper = (
+            "import json as __pai_json, platform as __pai_platform\\n"
+            "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\\n"
+            "import sqlite3 as __pai_sqlite\\n"
+            "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\\n"
+            f"__pai_source = __pai_json.loads({json.dumps(encoded)})\\n"
+            "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\\n"
+            f"print({json.dumps(completion_marker)}, flush=True)\\n"
+        )
+        return wrapper, completion_marker
+    if runner_language == "javascript":
+        wrapper = (
+            "console.log('__PAI_NODE_VERSION__:' + process.versions.node);\\n"
+            "(async () => {\\n"
+            + source_code + "\\n"
+            + f"console.log({json.dumps(completion_marker)});\\n"
+            + "})().catch((error) => { console.error(error); process.exitCode = 1; });\\n"
+        )
+        return wrapper, completion_marker
+    if runner_language == "rust":
+        wrapper = (
+            "fn main() {\\n"
+            + source_code + "\\n"
+            + f"println!({json.dumps(completion_marker)});\\n"
+            + "}\\n"
+        )
+        return wrapper, completion_marker
+    raise ValueError("Unsupported factual test runner language.")
+
+
+def _runtime_version(
+    stdout: str, completion_marker: str, runner_language: str = "python"
+) -> tuple[str | None, bool, str]:
+    lines = stdout.splitlines()
+    if not lines:
+        return None, False, ""
+    if runner_language == "javascript":
+        runtime_match = _NODE_RUNTIME_MARKER.fullmatch(lines[0].strip())
+    elif runner_language == "rust":
+        runtime_match = _RUST_RUNTIME_MARKER.fullmatch(lines[0].strip())
+    else:
+        python_match = _RUNTIME_MARKER.fullmatch(lines[0].strip())
+        sqlite_match = next(
+            (
+                match for line in lines[1:3]
+                if (match := _SQLITE_RUNTIME_MARKER.fullmatch(line.strip())) is not None
+            ),
+            None,
+        )
+        runtime_match = sqlite_match if runner_language == "sqlite" else python_match
+    if runtime_match is None:
+        return None, False, stdout[:2000]
+    completed = lines[-1].strip() == completion_marker
+    output_lines = [
+        line for line in (lines[1:-1] if completed else lines[1:])
+        if _RUNTIME_MARKER.fullmatch(line.strip()) is None
+        and _SQLITE_RUNTIME_MARKER.fullmatch(line.strip()) is None
+        and _NODE_RUNTIME_MARKER.fullmatch(line.strip()) is None
+        and _RUST_RUNTIME_MARKER.fullmatch(line.strip()) is None
+    ]
+    return runtime_match.group(1), completed, "\\n".join(output_lines)[:2000]
 
 
 def _bounded_summary_json(summary: dict[str, Any]) -> str:
@@ -331,7 +412,7 @@ def _build_handler(
             raise ValueError("Independent factual semantic review failed closed: " + str(exc)[:300]) from exc
         if not semantic_decision.accepted:
             raise ValueError("Independent factual review did not pass the fail-closed rubric.")
-        wrapped, completion_marker = _wrapped_harness(source_code, candidate["environment_name"])
+        wrapped, completion_marker = _wrapped_harness(source_code, candidate["runner_language"])
         context.checkpoint({
             "phase": "factual_claim_test_started",
             "knowledge_id": knowledge_id,
@@ -351,7 +432,7 @@ def _build_handler(
 
         stdout = str(result.get("stdout", ""))
         stderr = str(result.get("stderr", ""))
-        runtime_version, harness_completed, _bounded_stdout = _runtime_version(stdout, completion_marker, candidate["environment_name"])
+        runtime_version, harness_completed, _bounded_stdout = _runtime_version(stdout, completion_marker, candidate["runner_language"])
         execution_status = str(result.get("execution_status", "unknown"))
         exit_code = result.get("exit_code")
         log_hash = hashlib.sha256((stdout + "\n" + stderr).encode("utf-8")).hexdigest()
