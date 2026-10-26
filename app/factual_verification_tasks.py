@@ -20,6 +20,8 @@ _ALLOWED_PAYLOAD_KEYS = {
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
 _SQLITE_RUNTIME_MARKER = re.compile(r"^__PAI_SQLITE_VERSION__:(\d+\.\d+\.\d+)$")
+_NODE_RUNTIME_MARKER = re.compile(r"^__PAI_NODE_VERSION__:(\d+\.\d+\.\d+)$")
+_RUST_RUNTIME_MARKER = re.compile(r"^__PAI_RUST_VERSION__:(\d+\.\d+\.\d+)$")
 _OFFICIAL_SOURCE_HOSTS = (
     "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org",
     "doc.rust-lang.org", "rust-lang.org", "help.mikrotik.com", "mikrotik.com",
@@ -116,16 +118,16 @@ def get_verification_candidate(knowledge_id: int) -> dict[str, Any]:
 
 def _validate_domain_test_harness(source_code: str, runner_language: str) -> None:
     if runner_language in {"python", "sqlite"}:
-        _validate_domain_test_harness(source_code, candidate["runner_language"])
+        factual_knowledge.validate_test_harness(source_code)
         return
-    if not isinstance(source_code, str) or not source_code.strip() or len(source_code.encode("utf-8")) > 64 * 1024 or "\\x00" in source_code:
+    if not isinstance(source_code, str) or not source_code.strip() or len(source_code.encode("utf-8")) > 64 * 1024 or "\x00" in source_code:
         raise ValueError("Test harness must be non-empty text no larger than 64 KiB.")
     if runner_language == "javascript":
-        if not re.search(r"(?:\\bassert(?:\\.|\\s*\\()|throw\\s+new\\s+Error\\s*\\()", source_code):
+        if not re.search(r"(?:\bassert(?:\.|\s*\()|throw\s+new\s+Error\s*\()", source_code):
             raise ValueError("JavaScript factual tests must contain an explicit assertion or throw new Error.")
         return
     if runner_language == "rust":
-        if not re.search(r"\\bassert(?:_eq|_ne)?!\\s*\\(", source_code):
+        if not re.search(r"\bassert(?:_eq|_ne)?!\s*\(", source_code):
             raise ValueError("Rust factual tests must contain assert!, assert_eq!, or assert_ne!.")
         if "fn main" in source_code:
             raise ValueError("Rust test input must be statements for the isolated main wrapper, not a custom program.")
@@ -138,30 +140,30 @@ def _wrapped_harness(source_code: str, runner_language: str = "python") -> tuple
     if runner_language in {"python", "sqlite"}:
         encoded = json.dumps(source_code, ensure_ascii=False)
         wrapper = (
-            "import json as __pai_json, platform as __pai_platform\\n"
-            "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\\n"
-            "import sqlite3 as __pai_sqlite\\n"
-            "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\\n"
-            f"__pai_source = __pai_json.loads({json.dumps(encoded)})\\n"
-            "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\\n"
-            f"print({json.dumps(completion_marker)}, flush=True)\\n"
+            "import json as __pai_json, platform as __pai_platform\n"
+            "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\n"
+            "import sqlite3 as __pai_sqlite\n"
+            "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\n"
+            f"__pai_source = __pai_json.loads({json.dumps(encoded)})\n"
+            "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\n"
+            f"print({json.dumps(completion_marker)}, flush=True)\n"
         )
         return wrapper, completion_marker
     if runner_language == "javascript":
         wrapper = (
-            "console.log('__PAI_NODE_VERSION__:' + process.versions.node);\\n"
-            "(async () => {\\n"
-            + source_code + "\\n"
-            + f"console.log({json.dumps(completion_marker)});\\n"
-            + "})().catch((error) => { console.error(error); process.exitCode = 1; });\\n"
+            "console.log('__PAI_NODE_VERSION__:' + process.versions.node);\n"
+            "(async () => {\n"
+            + source_code + "\n"
+            + f"console.log({json.dumps(completion_marker)});\n"
+            + "})().catch((error) => { console.error(error); process.exitCode = 1; });\n"
         )
         return wrapper, completion_marker
     if runner_language == "rust":
         wrapper = (
-            "fn main() {\\n"
-            + source_code + "\\n"
-            + f"println!({json.dumps(completion_marker)});\\n"
-            + "}\\n"
+            "fn main() {\n"
+            + source_code + "\n"
+            + f"println!({json.dumps(completion_marker)});\n"
+            + "}\n"
         )
         return wrapper, completion_marker
     raise ValueError("Unsupported factual test runner language.")
@@ -197,7 +199,7 @@ def _runtime_version(
         and _NODE_RUNTIME_MARKER.fullmatch(line.strip()) is None
         and _RUST_RUNTIME_MARKER.fullmatch(line.strip()) is None
     ]
-    return runtime_match.group(1), completed, "\\n".join(output_lines)[:2000]
+    return runtime_match.group(1), completed, "\n".join(output_lines)[:2000]
 
 
 def _bounded_summary_json(summary: dict[str, Any]) -> str:
@@ -424,6 +426,7 @@ def _build_handler(
             "source_code": wrapped,
             "timeout_seconds": timeout_seconds,
             "max_output_bytes": max_output_bytes,
+            "language": candidate["runner_language"],
         }, checkpoint, context)
         if context.control_status() != "running":
             raise RuntimeError("Factual claim test stopped before evidence could be recorded.")
