@@ -433,6 +433,9 @@ def test_title_only_chatgpt_response_is_not_saved_as_lesson_content(isolated_sto
     assert result["status"] == "needs_user_action"
     assert result["error_code"] == "lesson_content_empty"
     assert service.list_lessons(topic["id"]) == []
+    current_topic = service.get_course(course["id"])["topics"][0]
+    assert current_topic["progress_percent"] == 0
+    assert "دریافت ناموفق" in current_topic["progress_label"]
 
 
 def test_lesson_capture_requires_body_and_preserves_course_context(isolated_store):
