@@ -32,6 +32,10 @@ async function setBadge(text,color) {
 async function saveStatus(status) {
   await chrome.storage.local.set({lastRunStatus:{...status,updatedAt:new Date().toISOString()}});
 }
+async function refreshLearningTabs() {
+  const tabs = await chrome.tabs.query({url:["http://127.0.0.1:8000/ai-learning*","http://localhost:8000/ai-learning*"]});
+  await Promise.all(tabs.filter(tab => Number.isInteger(tab.id)).map(tab => chrome.tabs.reload(tab.id).catch(() => {})));
+}
 async function prepareRun(payload) {
   const created=await api("/runs",{method:"POST",body:JSON.stringify(payload)});
   const started=await api("/runs/"+created.id+"/start",{method:"POST"});
@@ -73,6 +77,7 @@ async function completeCapturedRun(runId,tabId,text) {
   if(terminal) await chrome.storage.local.remove(ACTIVE_KEYS);
   await saveStatus({run_id:runId,status:completed.status,message:completed.error_message || (completed.status==="succeeded"?"Answer captured and saved.":"Answer captured; manual review is required."),topics:completed.topics||[]});
   await setBadge(completed.status==="succeeded"?"OK":completed.status==="needs_user_action"?"!":"ERR",completed.status==="succeeded"?"#247a43":"#a66b00");
+  if (completed.status === "succeeded") await refreshLearningTabs();
   return {run_id:runId,status:completed.status,topics:completed.topics||[],error_message:completed.error_message||null};
 }
 async function captureRun() {
