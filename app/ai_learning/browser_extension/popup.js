@@ -55,7 +55,20 @@ el("prepare").addEventListener("click",async()=>{
     const payload={course_id:Number(el("course").value),run_type:type,topic_ids:topicIds,selection_mode:topicIds.length>1?"selected":"single",request_key:"chrome-"+crypto.randomUUID()};
     const response=await chrome.runtime.sendMessage({type:"prepare-run",payload});
     if(!response||!response.ok)throw new Error(response&&response.error?response.error:"Browser bridge failed.");
-    status(response.result.submitted?"درخواست ارسال شد؛ پاسخ پس از کامل‌شدن به‌صورت خودکار ثبت می‌شود.":"درخواست در ChatGPT درج شد اما ارسال خودکار انجام نشد؛ آن را دستی ارسال کنید.");
+    const result=response.result;
+    if(!result||typeof result!=="object"){
+      const active=await chrome.runtime.sendMessage({type:"get-active-run"}).catch(()=>null);
+      if(active&&active.run_id){
+        status("اجرای #"+active.run_id+" شروع شده، اما افزونه نتیجهٔ شروع را کامل برنگرداند. وضعیت اجرا را بررسی کنید؛ اگر درخواست در ChatGPT درج نشده، افزونه را در chrome://extensions بازخوانی کنید.",true);
+        return;
+      }
+      throw new Error("افزونه نتیجهٔ شروع را برنگرداند. در chrome://extensions افزونهٔ پل یادگیری را Reload کنید و دوباره تلاش کنید.");
+    }
+    if(typeof result.submitted!=="boolean"){
+      status("اجرای #"+(result.run_id||"؟")+" شروع شده، اما وضعیت ارسال خودکار نامشخص است. صفحهٔ ChatGPT را بررسی کنید و در صورت نیاز درخواست را دستی ارسال کنید.",true);
+      return;
+    }
+    status(result.submitted?"درخواست ارسال شد؛ پاسخ پس از کامل‌شدن به‌صورت خودکار ثبت می‌شود.":"درخواست در ChatGPT درج شد اما ارسال خودکار انجام نشد؛ آن را دستی ارسال کنید.");
   }catch(error){status(error.message,true);}
   finally{el("prepare").disabled=false;}
 });
