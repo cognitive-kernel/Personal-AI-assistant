@@ -892,8 +892,8 @@ def list_courses(limit: int = 50) -> list[dict[str, Any]]:
 
 def delete_course_runs(course_id: int, run_ids: list[int]) -> dict[str, Any]:
     """Delete selected terminal run-history entries for one course; never delete active runs."""
-    if not run_ids or len(run_ids) > 50 or len(set(run_ids)) != len(run_ids):
-        raise ValueError("run_ids must be a non-empty list of up to 50 unique run IDs.")
+    if not run_ids or len(run_ids) > 500 or len(set(run_ids)) != len(run_ids):
+        raise ValueError("run_ids must be a non-empty list of up to 500 unique run IDs.")
     marks = ",".join("?" for _ in run_ids)
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1139,8 +1139,12 @@ def reorder_topics(course_id: int, topic_ids: list[int]) -> list[dict[str, Any]]
             (course_id,)).fetchall()]
         if set(current) != set(topic_ids):
             raise ValueError("topic_ids must contain every active topic in this course exactly once.")
-        # Use positions above the current maximum; fixed offsets collide once courses exceed 999 topics.
-        temporary_base = max(current, default=0) + len(topic_ids)
+        # Temporary positions must exceed the largest current position, not merely the topic IDs.
+        max_position = int(conn.execute(
+            "SELECT COALESCE(MAX(position),0) FROM topics WHERE course_id=? AND deleted_at IS NULL",
+            (course_id,),
+        ).fetchone()[0])
+        temporary_base = max_position + len(topic_ids)
         for offset, topic_id in enumerate(topic_ids, 1):
             conn.execute("UPDATE topics SET position=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (temporary_base + offset, topic_id))
         for position, topic_id in enumerate(topic_ids, 1):
@@ -1152,8 +1156,8 @@ def reorder_topics(course_id: int, topic_ids: list[int]) -> list[dict[str, Any]]
 def decide_topics(topic_ids: list[int], decision: str) -> int:
     if decision not in {"approved", "rejected"}:
         raise ValueError("decision must be approved or rejected.")
-    if not topic_ids or len(topic_ids) > 500 or len(set(topic_ids)) != len(topic_ids):
-        raise ValueError("topic_ids must be a non-empty list of unique IDs.")
+    if not topic_ids or len(topic_ids) > 10000 or len(set(topic_ids)) != len(topic_ids):
+        raise ValueError("topic_ids must be a non-empty list of up to 10000 unique IDs.")
     # Chunk SQL parameters to remain below SQLite's conservative 999-variable limit.
     chunk_size = 400
     with connection() as conn:
