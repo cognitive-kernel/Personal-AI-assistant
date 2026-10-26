@@ -11,7 +11,17 @@ function renderTopics(){const root=$("topics");root.replaceChildren();if(!topics
 async function move(i,d){const j=i+d;if(j<0||j>=topics.length)return;[topics[i],topics[j]]=[topics[j],topics[i]];topics.forEach((t,k)=>t.position=k+1);renderTopics();say("ترتیب محلی تغییر کرد؛ برای ذخیره، «ذخیره ترتیب» را بزنید.")}
 async function decide(ids,decision){if(!ids.length)throw Error("حداقل یک سرفصل انتخاب کنید.");await api("/topics/decision",{method:"POST",body:JSON.stringify({topic_ids:ids,decision})});await loadCourse();say("وضعیت سرفصل‌ها به‌روزرسانی شد.")}
 $("course-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const payload=data(form);act(async()=>{await api("/courses",{method:"POST",body:JSON.stringify(payload)});form.reset();await loadCourses();say("دوره ایجاد شد.")})};
-$("reload").onclick=()=>act(()=>loadCourses(courseId));$("course-select").onchange=()=>act(loadCourse);
+$("reload").onclick=()=>act(()=>loadCourses(courseId));
+$("delete-course").onclick=()=>act(async()=>{
+ if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");
+ const selected=$("course-select").selectedOptions[0]?.textContent||("شناسه "+courseId);
+ if(!confirm("دوره «"+selected+"» از فهرست فعال حذف شود؟ محتوای آن پاک نمی‌شود و برای حفظ سابقه بایگانی خواهد شد."))return;
+ await api("/courses/"+courseId,{method:"DELETE"});
+ courseId=null;
+ await loadCourses();
+ say("دوره بایگانی شد و از فهرست فعال حذف شد.");
+});
+$("course-select").onchange=()=>act(loadCourse);
 $("outline-form").onsubmit=e=>{e.preventDefault();act(async()=>{if(!courseId)throw Error("ابتدا دوره ایجاد کنید.");const raw=$("outline-text").value;if(!raw.trim())throw Error("پاسخ سرفصل‌ها را وارد کنید.");const r=await api("/courses/"+courseId+"/outline/import",{method:"POST",body:JSON.stringify({raw_response:raw,provider:"manual"})});$("outline-text").value="";await loadCourse();say(r.imported+" سرفصل در انتظار تأیید اضافه شد.")})};
 $("topic-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const payload=data(form);act(async()=>{if(!courseId)throw Error("ابتدا دوره ایجاد کنید.");await api("/courses/"+courseId+"/topics",{method:"POST",body:JSON.stringify(payload)});form.reset();await loadCourse();say("سرفصل اضافه شد.")})};
 $("approve-selected").onclick=()=>act(()=>decide(Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id)),"approved"));
