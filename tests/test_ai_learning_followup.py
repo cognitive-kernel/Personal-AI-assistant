@@ -73,3 +73,45 @@ def test_browser_timeout_is_recoverable(isolated_store):
     assert marked["status"] == "needs_user_action"
     recovered = service.complete_run(run["id"], "1. Basics\n2. Query processing")
     assert recovered["status"] == "succeeded"
+
+
+def test_outline_completion_skips_existing_topic_titles(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    existing = service.add_topic(course["id"], "Basics")
+    run = service.create_run(course["id"], run_type="outline", request_key="dedupe-outline")
+    service.start_run(run["id"])
+    completed = service.complete_run(run["id"], "1. Basics\n2. Installation\n3.  Query processing ")
+    titles = [topic["title"] for topic in service.get_course(course["id"])["topics"]]
+    assert completed["status"] == "succeeded"
+    assert titles.count("Basics") == 1
+    assert "Installation" in titles
+    assert "Query processing" in titles
+
+
+def test_outline_import_skips_existing_topics(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    service.add_topic(course["id"], "Basics")
+    imported = service.import_outline(course["id"], "1. Basics\n2. Indexes")
+    titles = [topic["title"] for topic in service.get_course(course["id"])["topics"]]
+    assert imported["imported"] == 1
+    assert imported["skipped_existing"] == 1
+    assert titles.count("Basics") == 1
+    assert "Indexes" in titles
+
+
+def test_lesson_run_excludes_topics_with_existing_lessons(isolated_store):
+    course = service.create_course(title="Databases")
+    done = service.add_topic(course["id"], "Basics")
+    todo = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([done["id"], todo["id"]], "approved")
+    service.create_lesson(done["id"], "Existing lesson")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[done["id"], todo["id"]],
+        selection_mode="selected", request_key="skip-existing-lessons"
+    )
+    assert [topic["topic_id"] for topic in run["topics"]] == [todo["id"]]
+    with pytest.raises(ValueError, match="already have lessons"):
+        service.create_run(
+            course["id"], run_type="lesson", topic_ids=[done["id"]],
+            selection_mode="single", request_key="skip-only-existing"
+        )
