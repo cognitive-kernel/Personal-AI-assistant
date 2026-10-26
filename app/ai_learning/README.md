@@ -26,3 +26,13 @@ Durable pause/resume and crash-recovery jobs, robust DOM-independent provider pa
 - Search results include lesson/topic/course/version identifiers.
 - SQL values are parameterized; user-controlled SQL identifiers are not accepted.
 - Unknown existing schemas and migration checksum mismatches fail closed.
+
+
+## Pause, resume, and power-loss recovery
+
+- The dashboard exposes global pause/resume controls for ChatGPT outline capture and lesson batches.
+- The pause flag is stored in the AI-learning SQLite database and survives a process or machine restart.
+- During a response, pause waits without counting paused time against the response timeout. Lesson generation checks the flag between batches.
+- After a power loss, restart the application and use **ادامه / بازیابی پس از قطعی برق** in the dashboard. A persisted in-flight run is retried from its saved prompt; if no run remains in flight, the workflow continues with approved topics that do not yet have lessons.
+- Completed outline/topic/lesson/version transactions remain stored. An answer that ChatGPT generated but that was not committed to SQLite may need to be requested again. A repeated outline import deduplicates existing topic titles; lessons are only considered complete after their content transaction commits.
+- Pause is cooperative, not an emergency kill: the current browser action may finish before the worker reaches a safe pause point. The existing per-run cancel action remains separate and terminal.
