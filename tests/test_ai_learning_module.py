@@ -179,3 +179,28 @@ def test_browser_bridge_uses_narrow_permissions_and_never_auto_sends():
     content_script = (extension / "content.js").read_text(encoding="utf-8")
     assert ".click(" not in content_script
     assert "Send button yourself" in content_script
+
+def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_store, monkeypatch):
+    from app.ai_learning import integration
+    monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
+    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    course = service.create_course(title="SQL Server")
+    topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Index basics")
+    version = service.add_content_version(lesson["id"], "# Indexes\n\nIndexes can improve query performance.")
+    service.review_content(version["id"], "reviewed")
+    service.publish_content(version["id"])
+    context = integration.retrieve_context("indexes improve performance")
+    assert len(context) == 1
+    assert context[0]["course_title"] == "SQL Server"
+    assert context[0]["lesson_title"] == "Index basics"
+    assert context[0]["content_version_id"] == version["id"]
+    assert context[0]["chunk_id"] > 0
+
+
+def test_opt_in_retrieval_adapter_is_off_when_flag_is_disabled(isolated_store, monkeypatch):
+    from app.ai_learning import integration
+    monkeypatch.setenv("AI_LEARNING_ENABLED", "0")
+    monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
+    assert integration.retrieve_context("anything") == []
