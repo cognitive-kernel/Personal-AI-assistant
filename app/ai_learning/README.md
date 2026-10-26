@@ -16,7 +16,7 @@ Isolated SQLite schema and checksummed migrations, course/topic management, expl
 
 ## Not implemented yet
 
-Chrome extension/browser automation, automatic outline/lesson generation, robust provider-response parsing, durable pause/resume jobs, semantic embeddings, answer synthesis, and the opt-in hook into the existing chat response pipeline. These are not simulated. The current content intake is manual until browser automation is separately reviewed and tested.
+Automatic background outline/lesson generation, robust DOM-independent provider parsing, durable pause/resume jobs, semantic embeddings, answer synthesis, and the opt-in hook into the existing chat response pipeline. A user-confirmed Chrome extension now inserts prompts into ChatGPT and captures the latest visible answer, but the user must submit the prompt and request capture explicitly. The extension is DOM-sensitive and is not a durable queue. Content is still unreviewed until explicitly reviewed and published.
 
 ## Safety
 
