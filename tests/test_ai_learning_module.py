@@ -162,6 +162,21 @@ def test_all_approved_run_selects_all_approved_topics(isolated_store):
     assert pending["id"] not in [topic["topic_id"] for topic in run["topics"]]
 
 
+def test_lesson_prompt_includes_course_context_and_specific_topic(isolated_store):
+    course = service.create_course(title="SQL Server 2025", language="fa")
+    topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        request_key="course-context-lesson-prompt",
+    )
+    prompt = run["prompt_text"]
+    assert "Course / main subject: SQL Server 2025" in prompt
+    assert "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی" in prompt
+    assert "in the context of SQL Server 2025" in prompt
+    assert "never an empty response or title-only lesson" in prompt
+
+
 def test_run_request_key_is_idempotent(isolated_store):
     course = service.create_course(title="SQL Server")
     first = service.create_run(course["id"], run_type="outline", request_key="same-key")
