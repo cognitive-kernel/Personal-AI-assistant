@@ -150,7 +150,7 @@ def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(is
     run = service.create_run(course["id"], run_type="outline", request_key="large-outline-response")
     service.start_run(run["id"])
     titles = [f"سرفصل آزمایشی شماره {index:04d} با شرح تکمیلی" for index in range(1, 1401)]
-    raw = "\\n".join(titles)
+    raw = "\n".join(titles)
     assert len(raw) > 100_000
     result = service.complete_run(run["id"], raw)
     assert result["status"] == "succeeded"
