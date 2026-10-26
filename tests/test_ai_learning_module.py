@@ -197,6 +197,11 @@ def test_opt_in_retrieval_adapter_returns_traceable_published_context(isolated_s
     assert context[0]["lesson_title"] == "Index basics"
     assert context[0]["content_version_id"] == version["id"]
     assert context[0]["chunk_id"] > 0
+    with connection() as conn:
+        trace = conn.execute("SELECT query_sha256,result_chunk_ids_json,result_count FROM query_traces ORDER BY id DESC LIMIT 1").fetchone()
+    assert trace["result_count"] == 1
+    assert str(context[0]["chunk_id"]) in trace["result_chunk_ids_json"]
+    assert "indexes improve performance" not in trace["query_sha256"]
 
 
 def test_opt_in_retrieval_adapter_is_off_when_flag_is_disabled(isolated_store, monkeypatch):
