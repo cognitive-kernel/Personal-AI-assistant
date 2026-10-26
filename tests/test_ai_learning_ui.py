@@ -39,3 +39,16 @@ def test_active_dashboard_exposes_global_pause_and_recovery_controls():
     assert 'id="pause-learning"' in html
     assert 'id="resume-learning"' in html
     assert "بازیابی پس از قطعی برق" in html
+
+
+def test_active_dashboard_exposes_progress_and_per_item_controls():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    script = (root / "app.js").read_text(encoding="utf-8")
+    assert 'id="course-progress"' in html
+    assert "progressMeter" in script
+    assert '"/topics/"+t.id+"/pause"' in script
+    assert '"/lessons/"+l.id+"/pause"' in script
+    assert "باقی‌مانده" in script
