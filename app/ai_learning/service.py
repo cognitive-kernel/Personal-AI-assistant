@@ -796,6 +796,10 @@ def get_course(course_id: int) -> dict[str, Any]:
             progress, label = 10, "در حال دریافت"
         elif item["processing_status"] == "paused":
             progress, label = 0, "متوقف‌شده"
+        elif item["processing_status"] == "failed":
+            progress, label = 0, "دریافت ناموفق؛ پاسخ را در سوابق بررسی یا دریافت مجدد را اجرا کنید"
+        elif item["processing_status"] == "needs_review":
+            progress, label = 0, "پاسخ دریافت شده؛ نیازمند بررسی"
         elif item["approval_status"] == "approved":
             progress, label = 0, "در انتظار دریافت درس"
         else:
