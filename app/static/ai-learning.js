@@ -220,9 +220,35 @@ byId("search-form").addEventListener("submit", async event => {
     });
   } catch (error) { output.replaceChildren(node("p", error.message, "error")); }
 });
+async function refreshLearningControl() {
+  const state = await api("/api/ai-learning/control");
+  byId("learning-control-status").textContent = state.paused
+    ? "وضعیت: مکث فعال است. این وضعیت پس از خاموشی نیز حفظ می‌شود."
+    : "وضعیت: مکث فعال نیست. فرایندهای در حال اجرا می‌توانند ادامه پیدا کنند.";
+  byId("pause-learning").disabled = !!state.paused;
+  byId("resume-learning").disabled = !state.paused;
+}
+byId("pause-learning").addEventListener("click", async () => {
+  try {
+    await api("/api/ai-learning/pause", {method:"POST"});
+    await refreshLearningControl();
+    message("مکث سراسری ثبت شد؛ پاسخ‌گیری و تولید درس در اولین نقطه امن متوقف می‌شود.");
+  } catch (error) { message(error.message, true); }
+});
+byId("resume-learning").addEventListener("click", async () => {
+  try {
+    const state = await api("/api/ai-learning/resume", jsonOptions("POST", {course_id:selectedCourse}));
+    await refreshLearningControl();
+    message(state.message || "فرایند یادگیری ادامه یافت.");
+  } catch (error) { message(error.message, true); }
+});
 (async function init() {
   try {
     const enabled = await loadStatus();
-    if (enabled) await loadCourses();
+    if (enabled) {
+      await loadCourses();
+      await refreshLearningControl();
+      window.setInterval(() => refreshLearningControl().catch(() => {}), 5000);
+    }
   } catch (error) { message(error.message, true); }
 })();
