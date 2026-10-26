@@ -462,7 +462,7 @@ def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
         eligible = [int(topic["id"]) for topic in course.get("topics", [])
                     if topic.get("approval_status") == "approved"
                     and topic.get("processing_status") != "paused"
-                    and int(topic.get("lesson_count") or 0) == 0]
+                    and int(topic.get("lesson_content_ready_count") or 0) == 0]
         if not eligible:
             return
         # One topic per run makes per-topic pause/cancel deterministic and recoverable.
