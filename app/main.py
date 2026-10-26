@@ -23,6 +23,7 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
+from . import knowledge_lifecycle_tasks
 from .knowledge_lifecycle_routes import router as knowledge_lifecycle_router
 from .schema_migrations import UntrackedSchemaError
 
@@ -176,7 +177,10 @@ def startup() -> None:
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
         research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
-    learning_handlers = {LEARNING_TASK_TYPE: handle_learning_job}
+    learning_handlers = {
+        LEARNING_TASK_TYPE: handle_learning_job,
+        knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE: knowledge_lifecycle_tasks.handle_validate_candidate,
+    }
     programming_handlers: dict[str, Any] = {
         programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
     }
