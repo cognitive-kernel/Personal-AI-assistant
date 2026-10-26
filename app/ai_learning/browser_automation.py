@@ -233,9 +233,11 @@ def _send_prompt(page: Any, prompt: str) -> None:
         composer.fill(prompt, timeout=10000)
         _log_event("prompt_filled", selector=chosen_selector, prompt_chars=len(prompt))
     except Exception as exc:
+        _log_event("prompt_fill_failed", selector=chosen_selector, exception_type=type(exc).__name__,
+                   message=str(exc)[:300], dom=_dom_diagnostics(page))
         raise BrowserAutomationError(
             "chatgpt_composer_unavailable",
-            "کادر نوشتن ChatGPT قابل استفاده نیست؛ اگر صفحه ورود یا تأیید انسانی می‌خواهد، آن را در مرورگر تکمیل کنید.",
+            "کادر نوشتن ChatGPT قابل استفاده نیست؛ جزئیات در data/logs/ai_learning_browser.log ثبت شده است. اگر صفحه ورود یا تأیید انسانی می‌خواهد، آن را در مرورگر تکمیل کنید.",
         ) from exc
 
     send_candidates = [
@@ -247,20 +249,30 @@ def _send_prompt(page: Any, prompt: str) -> None:
     for selector in send_candidates:
         button = page.locator(selector).last
         try:
-            if button.count() and button.is_visible(timeout=800) and button.is_enabled():
+            count = button.count()
+            visible = bool(count and button.is_visible(timeout=800))
+            enabled = bool(visible and button.is_enabled())
+            _log_event("send_button_probe", selector=selector, count=count, visible=visible, enabled=enabled)
+            if enabled:
                 button.click(timeout=5000)
                 _log_event("prompt_submitted", method="button", selector=selector)
                 return
-        except Exception:
+        except Exception as exc:
+            _log_event("send_button_probe_failed", selector=selector, exception_type=type(exc).__name__,
+                       message=str(exc)[:240])
             continue
     # Keyboard submission is only used after the visible composer was positively found.
     try:
+        _log_event("send_button_unavailable_keyboard_fallback", selector=chosen_selector,
+                   dom=_dom_diagnostics(page))
         composer.press("Enter", timeout=3000)
-        _log_event("prompt_submitted", method="enter")
+        _log_event("prompt_submitted", method="enter", selector=chosen_selector)
     except Exception as exc:
+        _log_event("prompt_submit_failed", selector=chosen_selector, exception_type=type(exc).__name__,
+                   message=str(exc)[:300], dom=_dom_diagnostics(page))
         raise BrowserAutomationError(
             "chatgpt_send_not_found",
-            "دکمه ارسال پیدا نشد و ارسال با صفحه‌کلید هم موفق نبود.",
+            "دکمه ارسال پیدا نشد و ارسال با صفحه‌کلید هم موفق نبود؛ جزئیات در data/logs/ai_learning_browser.log ثبت شده است.",
         ) from exc
 
 
@@ -427,6 +439,9 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 # Give the user a chance to sign in through the visible UI; never save
                 # the welcome page as lesson content.
                 if _anonymous_landing_visible(page):
+                    _log_event("prompt_not_sent_reason", reason="chatgpt_logged_out",
+                               explanation="پنجره اختصاصی Playwright در صفحه مهمان است؛ قبل از ورود، ارسال prompt انجام نمی‌شود.",
+                               url=page.url, dom=_dom_diagnostics(page))
                     _log_event("anonymous_landing_detected", url=page.url)
                     # The dedicated persistent profile may need a one-time interactive sign-in.
                     # Keep the visible browser available long enough for the user to complete it.
