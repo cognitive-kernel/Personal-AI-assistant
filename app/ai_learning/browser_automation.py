@@ -513,14 +513,8 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
 def _continue_lessons(course_id: int, cancel_event: threading.Event) -> None:
     """Approve captured topics and fetch lessons one topic at a time for safe pause/resume."""
     global _ACTIVE_RUN_ID
-    course = service.get_course(course_id)
-    pending_ids = [int(topic["id"]) for topic in course.get("topics", [])
-                   if topic.get("approval_status") == "pending"]
-    for offset in range(0, len(pending_ids), 500):
-        batch = pending_ids[offset:offset + 500]
-        if batch:
-            service.decide_topics(batch, "approved")
-
+    # Never approve topics as a side effect of background learning. Approval is a
+    # deliberate dashboard action so users can review the outline before lesson capture.
     while True:
         if service.get_learning_control()["paused"]:
             _log_event("lesson_followup_paused", course_id=course_id)
