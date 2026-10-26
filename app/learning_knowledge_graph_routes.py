@@ -29,13 +29,26 @@ class EdgeProposalRequest(BaseModel):
 @router.post("/edges", status_code=201)
 def create_graph_edge_proposal(request: EdgeProposalRequest) -> dict[str, Any]:
     try:
-        return learning_knowledge_graph.propose_edge(
+        edge = learning_knowledge_graph.propose_edge(
             request.source_knowledge_id,
             request.target_knowledge_id,
             relation_type=request.relation_type,
             source_url=request.source_url,
             source_excerpt=request.source_excerpt,
         )
+        task = None
+        if edge["status"] in {"proposed", "conflicting"}:
+            try:
+                task = task_manager.create_task(
+                    KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE,
+                    {"edge_id": int(edge["id"]), "source_sha256": str(edge["source_sha256"])},
+                    max_attempts=1,
+                    dedupe_key=f"knowledge-graph-review:{edge['id']}:{edge['source_sha256']}",
+                )
+            except Exception:
+                # Keep the proposal staged; it remains excluded from graph retrieval until reviewed.
+                task = None
+        return {**edge, "review_task": task}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Retained knowledge item not found.") from exc
     except ValueError as exc:
