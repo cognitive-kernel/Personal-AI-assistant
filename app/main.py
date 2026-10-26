@@ -4,12 +4,12 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from typing import Any, Literal
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
-from . import backup_scheduler, assessment_review, curriculum_evolution_routes, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, learning_source_sync_routes, ollama, programming_tasks, research_tasks, research_planner, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, browser_learning, curriculum_evolution_routes, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, learning_source_sync_routes, ollama, programming_tasks, research_tasks, research_planner, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from .task_runtime import TaskRuntime
 from .config import defaults
@@ -155,6 +155,7 @@ def startup() -> None:
     _startup_storage_error = None
     try:
         db.init_databases()
+        browser_learning.recover_interrupted_courses()
     except UntrackedSchemaError:
         # Fail closed for data mutations, but keep the local UI and health endpoint
         # available so the operator gets a useful recovery instruction instead of
@@ -299,6 +300,14 @@ class SettingsPatch(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+
+class BrowserLearningRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    cdp_url: str = Field(default="http://127.0.0.1:9222", min_length=1, max_length=200)
+    max_lessons: int = Field(default=20, ge=1, le=40)
+
+    model_config = ConfigDict(extra="forbid")
+
 
 class LearningEscalationResolveRequest(BaseModel):
     status: Literal["reviewed", "dismissed"]
@@ -509,6 +518,50 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 @app.get("/api/learning/jobs")
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
+
+
+@app.post("/api/learning/browser/courses", status_code=202)
+def create_browser_learning_course(
+    request: BrowserLearningRequest,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    """Start phase-one AI-to-AI learning through the user's authenticated Chrome session."""
+    try:
+        course = browser_learning.create_course(request.topic, request.cdp_url, request.max_lessons)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except browser_learning.BrowserLearningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(browser_learning.run_course, int(course["id"]))
+    return course
+
+
+@app.get("/api/learning/browser/courses")
+def list_browser_learning_courses(limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+    return {"courses": browser_learning.list_courses(limit)}
+
+
+@app.get("/api/learning/browser/courses/{course_id}")
+def get_browser_learning_course(course_id: int) -> dict[str, Any]:
+    try:
+        return browser_learning.get_course(course_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Browser learning course not found.") from exc
+
+
+@app.post("/api/learning/browser/courses/{course_id}/retry", status_code=202)
+def retry_browser_learning_course(
+    course_id: int,
+    background_tasks: BackgroundTasks,
+) -> dict[str, Any]:
+    try:
+        course = browser_learning.retry_course(course_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Browser learning course not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(browser_learning.run_course, course_id)
+    return course
 
 
 @app.get("/api/learning/escalations")
