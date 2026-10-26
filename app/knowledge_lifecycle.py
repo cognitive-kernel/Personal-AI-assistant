@@ -175,11 +175,12 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         str(settings.get("ollama_model", "")).strip(),
     } - {""}
     independent_models = {model for model in ai_models if model.split("@", 1)[0] not in generation_models}
+    test_review_passed = any(item["review_kind"] == "test_review" and item["verdict"] == "supports" for item in reviews)
     checks = {
         "content_hash_valid": True,
         "two_supporting_source_hosts": len(sources) >= 2,
         "two_distinct_independent_ai_reviewers": len(independent_models) >= 2,
-        "controlled_test_passed": executed_test_passed,
+        "controlled_test_passed": executed_test_passed and test_review_passed,
         "no_unresolved_contradictions": not contradictions,
         "not_already_promoted": candidate["promoted_knowledge_id"] is None,
     }
@@ -199,6 +200,7 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
             "supporting_ai_models": len(ai_models),
             "independent_ai_models": len(independent_models),
             "contradictions": len(contradictions),
+            "passing_test_reviews": sum(1 for item in reviews if item["review_kind"] == "test_review" and item["verdict"] == "supports"),
         },
         "contradictions": contradictions,
         "note": (
@@ -248,9 +250,11 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
             test_results = json.loads(candidate["test_results_json"])
         except (TypeError, json.JSONDecodeError):
             test_results = []
+        test_review_passed = any(item["review_kind"] == "test_review" and item["verdict"] == "supports" for item in reviews)
         tested = (
             candidate["status"] == "passed" and isinstance(test_results, list) and bool(test_results)
             and any(isinstance(item, dict) and item.get("passed") is True for item in test_results)
+            and test_review_passed
         )
         if not (len(sources) >= 2 and len(independent_models) >= 2 and tested and not contradictions):
             raise ValueError("Candidate has not met every multi-source, independent-review, and executed-test gate.")
@@ -377,7 +381,7 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
     for item in installed:
         name = str(item.get("name", "")).strip()
         digest = str(item.get("digest", "")).strip()
-        if not name or not digest or name in primary_names or digest in seen_digests:
+        if not name or not digest or len(name) + 1 + len(digest) > 200 or name in primary_names or digest in seen_digests:
             continue
         reviewers.append((name, digest))
         seen_digests.add(digest)
