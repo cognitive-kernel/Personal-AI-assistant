@@ -13,12 +13,13 @@ def graph_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
     ids = []
+    entries = [
+        ("Cache invalidation", "Retained knowledge about cache invalidation and stale reads."),
+        ("Transaction visibility", "Retained knowledge about transaction visibility and committed writes."),
+    ]
+    jobs = [learning.create_job(topic) for topic, _body in entries]
     with db.learning_connection() as connection:
-        for topic, body in (
-            ("Cache invalidation", "Retained knowledge about cache invalidation and stale reads."),
-            ("Transaction visibility", "Retained knowledge about transaction visibility and committed writes."),
-        ):
-            job = learning.create_job(topic)
+        for (topic, body), job in zip(entries, jobs, strict=True):
             ids.append(int(connection.execute(
                 """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
                    VALUES (?, ?, ?, 1, 'retained_after_review', ?)""",
