@@ -16,7 +16,7 @@ Isolated SQLite schema and checksummed migrations, course/topic management, expl
 
 ## Not implemented yet
 
-Automatic background outline/lesson generation, robust DOM-independent provider parsing, durable pause/resume jobs, semantic embeddings, query feedback and broader quality evaluation. Retrieval traces store a one-way hash of the query and the IDs of retrieved chunks, not the raw query text. A user-confirmed Chrome extension now inserts prompts into ChatGPT and captures the latest visible answer, but the user must submit the prompt and request capture explicitly. The extension is DOM-sensitive and is not a durable queue. Content is still unreviewed until explicitly reviewed and published. The chat hook does not change the configured model; it adds bounded internal context only when both feature flags are enabled and matching published knowledge exists.
+Durable pause/resume and crash-recovery jobs, robust DOM-independent provider parsing, semantic embeddings, query feedback and broader quality evaluation. Retrieval traces store a one-way hash of the query and the IDs of retrieved chunks, not the raw query text. A user-confirmed Chrome extension opens ChatGPT, inserts the prompt, attempts to click the visible Send button after the user's explicit Start action, watches for a changed stable answer, and captures it automatically. Manual capture remains a fallback. The extension is DOM-sensitive and is not a durable queue. Content is still unreviewed until explicitly reviewed and published. The chat hook does not change the configured model; it adds bounded internal context only when both feature flags are enabled and matching published knowledge exists.
 
 ## Safety
 
