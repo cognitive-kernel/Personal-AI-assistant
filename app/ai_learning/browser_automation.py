@@ -88,13 +88,19 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
             "ChatGPT تأیید انسانی می‌خواهد؛ آن را در مرورگر انجام دهید و سپس کار را بازیابی کنید.",
         )
     rate_limit_phrases = (
-        "too many requests",
         "you've reached the limit of messages",
         "you have reached the limit of messages",
         "message limit reached",
-        "try again later",
     )
-    if any(phrase in text for phrase in rate_limit_phrases):
+    explicit_too_many_requests = (
+        text.startswith("too many requests")
+        and ("try again later" in text or text in {"too many requests", "too many requests."})
+    )
+    explicit_retry_later = (
+        text.startswith("try again later")
+        and len(text) < 180
+    )
+    if any(phrase in text for phrase in rate_limit_phrases) or explicit_too_many_requests or explicit_retry_later:
         return BrowserAutomationError(
             "provider_rate_limited",
             "ChatGPT محدودیت موقت درخواست اعمال کرده است؛ پس از رفع محدودیت، اجرا را دوباره ادامه دهید.",
