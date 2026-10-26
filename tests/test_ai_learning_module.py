@@ -409,3 +409,43 @@ def test_active_learning_run_blocks_destructive_topic_deletion(isolated_store):
     service.start_run(run["id"])
     with pytest.raises(ValueError, match="اجرای فعال"):
         service.soft_delete_topic(topic["id"])
+
+
+
+def test_title_only_chatgpt_response_is_not_saved_as_lesson_content(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    topic = service.add_topic(course["id"], "مدیریت حافظه و منابع سیستمی")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                             request_key="title-only-lesson")
+    service.start_run(run["id"])
+    result = service.complete_run(run["id"], "# مدیریت حافظه و منابع سیستمی")
+    assert result["status"] == "needs_user_action"
+    assert result["error_code"] == "lesson_content_empty"
+    assert service.list_lessons(topic["id"]) == []
+
+
+def test_lesson_capture_requires_body_and_preserves_course_context(isolated_store):
+    course = service.create_course(title="SQL Server 2025")
+    topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
+                             request_key="contextual-lesson-prompt")
+    assert "Course / main subject: SQL Server 2025" in run["prompt_text"]
+    assert "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی" in run["prompt_text"]
+    assert "not as a generic operating-system lesson" in run["prompt_text"]
+    service.start_run(run["id"])
+    answer = (
+        "# مدیریت حافظه در SQL Server 2025\n\n"
+        "در SQL Server 2025، مدیریت حافظه بخشی از کنترل منابع موتور پایگاه داده است. "
+        "برای عیب‌یابی باید مصرف حافظه، فشار حافظه و اثر بار کاری را همراه با شاخص‌های سیستم بررسی کرد.\n\n"
+        "## روش بررسی\n\n"
+        "از نماهای مدیریتی و مستندات رسمی برای بررسی وضعیت استفاده کنید و پیش از تغییر تنظیمات، "
+        "اثر تغییر را در محیط آزمایشی بسنجید."
+    )
+    result = service.complete_run(run["id"], answer)
+    assert result["status"] == "succeeded"
+    lesson = service.list_lessons(topic["id"])[0]
+    version = service.get_content_version(service.list_versions(lesson["id"])[0]["id"])
+    assert len(version["markdown"]) > 100
+    assert "مدیریت حافظه" in version["markdown"]
