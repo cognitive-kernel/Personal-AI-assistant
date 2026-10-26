@@ -558,7 +558,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 try:
                     duplicate = _find_semantic_duplicate_content(
                         conn, body, exclude_topic_id=topic_id,
-                        ensure_candidate_embedding=True,
+                        ensure_candidate_embedding=len(sections) > 1,
                     )
                 except Exception as exc:
                     conn.execute(
@@ -1067,7 +1067,7 @@ def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
             (topic_id, position, title))
         return dict(conn.execute("SELECT * FROM lessons WHERE id=?", (int(cursor.lastrowid),)).fetchone())
 
-SEMANTIC_DUPLICATE_THRESHOLD = 0.92
+SEMANTIC_DUPLICATE_THRESHOLD = 0.90
 
 
 def _dedupe_normalize(value: str) -> str:
