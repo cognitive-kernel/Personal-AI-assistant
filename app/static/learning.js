@@ -1042,8 +1042,10 @@ async function pollBrowserLearningCourse(courseId) {
    output.textContent = "دوره #" + courseId + " — " + (course.title || course.topic) +
     "\nوضعیت: " + course.status + "\nدرس‌های ذخیره‌شده: " + completed + " از " + lessons.length +
     (course.error ? "\nخطا: " + course.error : "");
-   await refreshBrowserLearningCourses();
-   if (!["queued", "running"].includes(course.status)) return;
+   if (!["queued", "running"].includes(course.status)) {
+    await refreshBrowserLearningCourses();
+    return;
+   }
   } catch (error) {
    output.textContent = "وضعیت دوره قابل دریافت نیست: " + error.message;
    return;
