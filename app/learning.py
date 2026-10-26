@@ -707,13 +707,16 @@ def run_job(job_id: int) -> None:
                         review=claim_review_result,
                     )
             if quality["accepted"]:
-                normalized_lesson = " ".join(result["lesson"].casefold().split())
+                def normalize_lesson_content(value: str) -> str:
+                    value = value.casefold().replace("ي", "ی").replace("ك", "ک")
+                    return re.sub(r"[\\W_]+", " ", value, flags=re.UNICODE).strip()
+
+                normalized_lesson = normalize_lesson_content(result["lesson"])
                 existing_lessons = conn.execute(
-                    "SELECT id, content FROM knowledge_items WHERE lower(topic)=lower(?)",
-                    (topic,),
+                    "SELECT content FROM knowledge_items"
                 ).fetchall()
                 duplicate_lesson = any(
-                    " ".join(str(item["content"]).casefold().split()) == normalized_lesson
+                    normalize_lesson_content(str(item["content"])) == normalized_lesson
                     for item in existing_lessons
                 )
                 if duplicate_lesson:
@@ -945,20 +948,26 @@ def enroll_curriculum(slug: str) -> dict[str, Any]:
         )
         path = conn.execute("SELECT id FROM learning_paths WHERE curriculum_slug=?", (course["slug"],)).fetchone()
         path_id = int(path["id"])
-        existing = {row["topic"] for row in conn.execute(
-            "SELECT topic FROM learning_path_topics WHERE path_id=?", (path_id,)
-        ).fetchall()}
+        normalize_topic = lambda value: " ".join(str(value).casefold().split())
+        existing = {
+            normalize_topic(row["topic"])
+            for row in conn.execute(
+                "SELECT topic FROM learning_path_topics WHERE path_id=?", (path_id,)
+            ).fetchall()
+        }
         next_position = int(conn.execute(
             "SELECT COALESCE(MAX(position), 0) AS position FROM learning_path_topics WHERE path_id=?",
             (path_id,),
         ).fetchone()["position"])
         for topic in course["topics"]:
-            if topic not in existing:
+            normalized_topic = normalize_topic(topic)
+            if normalized_topic and normalized_topic not in existing:
                 next_position += 1
                 conn.execute(
                     "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
-                    (path_id, topic, next_position),
+                    (path_id, topic.strip(), next_position),
                 )
+                existing.add(normalized_topic)
         conn.execute("UPDATE learning_paths SET title=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
                      (course["title"], path_id))
     return get_learning_path(path_id)
