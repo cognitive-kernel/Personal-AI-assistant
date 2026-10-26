@@ -146,3 +146,26 @@ def test_related_but_distinct_outline_topics_are_not_filtered(learning_store, mo
 
     assert result["imported"] == 2
     assert result["skipped_existing"] == 0
+
+
+def test_persian_content_duplicate_normalizes_arabic_yeh_and_kaf_without_embeddings(
+    learning_store,
+):
+    course = service.create_course(title="تشخیص تکرار فارسی")
+    first_topic = service.add_topic(course["id"], "موضوع اول")
+    second_topic = service.add_topic(course["id"], "موضوع دوم")
+    service.decide_topics([first_topic["id"], second_topic["id"]], "approved")
+    first_lesson = service.create_lesson(first_topic["id"], "درس اول")
+    second_lesson = service.create_lesson(second_topic["id"], "درس دوم")
+    service.add_content_version(
+        first_lesson["id"],
+        "مدیریت ایندکس در پایگاه داده برای بهبود جست‌وجوی رکوردها",
+    )
+
+    with pytest.raises(ValueError, match="محتوا با درس دیگری"):
+        service.add_content_version(
+            second_lesson["id"],
+            "مديريت ايندكس در پايگاه داده براي بهبود جست‌وجوي ركوردها",
+        )
+
+    assert service.list_versions(second_lesson["id"]) == []

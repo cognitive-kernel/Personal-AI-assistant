@@ -66,6 +66,48 @@ class BrowserAutomationError(RuntimeError):
         self.code = code
 
 
+def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError | None:
+    """Classify explicit visible provider gates; never attempt to bypass them."""
+    lowered_url = (url or "").casefold()
+    text = " ".join((visible_text or "").casefold().split())
+    if "auth.openai.com" in lowered_url or "/auth/login" in lowered_url or "/login" in lowered_url:
+        return BrowserAutomationError(
+            "guest_send_unavailable",
+            "ChatGPT برای این درخواست به صفحهٔ ورود هدایت کرد؛ ورود باید توسط کاربر انجام شود.",
+        )
+    human_gate_phrases = (
+        "verify you are human",
+        "confirm you're not a robot",
+        "confirm you are not a robot",
+        "complete the security check",
+        "captcha verification required",
+    )
+    if any(phrase in text for phrase in human_gate_phrases):
+        return BrowserAutomationError(
+            "human_verification_required",
+            "ChatGPT تأیید انسانی می‌خواهد؛ آن را در مرورگر انجام دهید و سپس کار را بازیابی کنید.",
+        )
+    rate_limit_phrases = (
+        "you've reached the limit of messages",
+        "you have reached the limit of messages",
+        "message limit reached",
+    )
+    explicit_too_many_requests = (
+        text.startswith("too many requests")
+        and ("try again later" in text or text in {"too many requests", "too many requests."})
+    )
+    explicit_retry_later = (
+        text.startswith("try again later")
+        and len(text) < 180
+    )
+    if any(phrase in text for phrase in rate_limit_phrases) or explicit_too_many_requests or explicit_retry_later:
+        return BrowserAutomationError(
+            "provider_rate_limited",
+            "ChatGPT محدودیت موقت درخواست اعمال کرده است؛ پس از رفع محدودیت، اجرا را دوباره ادامه دهید.",
+        )
+    return None
+
+
 def _chrome_path() -> str | None:
     configured = os.getenv("AI_LEARNING_CHROME_PATH", "").strip()
     candidates = [configured] if configured else []
@@ -300,6 +342,23 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
             _log_event("response_wait_cancelled", elapsed_seconds=round(time.monotonic() - started, 1))
             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
         try:
+            # Inspect only visible alert/error surfaces during streaming; do not scan
+            # the whole conversation, which may legitimately discuss these phrases.
+            try:
+                alerts = page.locator('[role="alert"],[data-testid*="error"]')
+                for alert_index in range(max(0, alerts.count() - 3), alerts.count()):
+                    try:
+                        alert_text = alerts.nth(alert_index).inner_text(timeout=300)
+                    except Exception:
+                        continue
+                    gate_error = _provider_gate_error(page.url, alert_text)
+                    if gate_error is not None:
+                        _log_event("provider_gate_detected", error_code=gate_error.code, url=page.url)
+                        raise gate_error
+            except BrowserAutomationError:
+                raise
+            except Exception:
+                pass
             current, current_message_index = _visible_response_with_index(page)
             new_message_seen = (
                 previous_message_count is not None
@@ -434,6 +493,17 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     pass
                 page.wait_for_timeout(1200)
                 _log_event("page_ready", url=page.url, assistant_message_count=_assistant_message_count(page), dom=_dom_diagnostics(page))
+                # On an empty landing page, classify explicit security/rate-limit gates
+                # before submitting. Existing conversations may legitimately discuss these terms.
+                if _assistant_message_count(page) == 0:
+                    try:
+                        landing_text = page.locator("body").inner_text(timeout=1500)
+                    except Exception:
+                        landing_text = ""
+                    gate_error = _provider_gate_error(page.url, landing_text)
+                    if gate_error is not None:
+                        _log_event("provider_gate_detected", error_code=gate_error.code, url=page.url)
+                        raise gate_error
                 # Guest mode is an explicit supported attempt: try the visible composer
                 # instead of requiring sign-in before submitting. ChatGPT may still impose
                 # an account, rate-limit, or human-verification gate; never bypass it.
@@ -599,6 +669,69 @@ def _worker(
             _ACTIVE_RUN_ID = None
             _ACTIVE_COURSE_ID = None
             _CANCEL_EVENTS.pop(run_id, None)
+        # Drain only requests that were explicitly persisted by a user/API call.
+        # Do not auto-create new lessons during startup recovery.
+        try:
+            _dispatch_next_persisted_run()
+        except Exception as exc:
+            _log_event("persisted_queue_dispatch_failed", exception_type=type(exc).__name__,
+                       message=str(exc)[:300])
+
+
+def _dispatch_next_persisted_run() -> dict[str, Any]:
+    """Claim the oldest persisted queued/interrupted run and start its browser worker."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    if service.get_learning_control()["paused"]:
+        return {"status": "paused", "active": False}
+    with _LOCK:
+        if _ACTIVE:
+            return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
+        candidates: list[dict[str, Any]] = []
+        for course in service.list_courses(100):
+            candidates.extend(service.list_course_runs(int(course["id"]), 50))
+        pending = [item for item in candidates if item.get("status") in {"queued", "running"}]
+        if not pending:
+            return {"status": "idle", "active": False}
+        # Stable FIFO order across restart: oldest creation timestamp, then DB ID.
+        pending.sort(key=lambda item: (str(item.get("created_at") or ""), int(item["id"])))
+        selected = pending[0]
+        run_id = int(selected["id"])
+        course_id = int(selected["course_id"])
+        run = service.start_run(run_id)
+        cancel_event = threading.Event()
+        _ACTIVE = True
+        _ACTIVE_RUN_ID = run_id
+        _ACTIVE_COURSE_ID = course_id
+        _CANCEL_EVENTS[run_id] = cancel_event
+        thread = threading.Thread(
+            target=_worker,
+            args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
+            name=f"ai-learning-durable-run-{run_id}",
+            daemon=True,
+        )
+        try:
+            thread.start()
+        except Exception:
+            _ACTIVE = False
+            _ACTIVE_RUN_ID = None
+            _ACTIVE_COURSE_ID = None
+            _CANCEL_EVENTS.pop(run_id, None)
+            raise
+        _log_event("persisted_queue_run_dispatched", run_id=run_id, course_id=course_id,
+                   run_type=run.get("run_type"), recovered_status=selected.get("status"))
+        return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+
+
+def recover_pending_runs() -> dict[str, Any]:
+    """Recover explicit queued/running records after process restart; never invent work."""
+    from .db import initialize_store
+
+    initialize_store()
+    if service.get_learning_control()["paused"]:
+        return {"status": "paused", "active": False, "message": "Global learning pause is active."}
+    result = _dispatch_next_persisted_run()
+    _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
+    return result
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:

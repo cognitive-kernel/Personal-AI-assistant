@@ -25,6 +25,7 @@ from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
 from .ai_learning.routes import router as ai_learning_router
 from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
+from .ai_learning import browser_automation as ai_learning_browser_automation
 from .ai_learning.ui import router as ai_learning_ui_router
 from .schema_migrations import UntrackedSchemaError
 
@@ -168,6 +169,13 @@ def startup() -> None:
         logger.exception("Cloud resource discovery could not be initialized or scheduled.")
     # Repair the crash window between creating a learning record and enqueueing it.
     reconcile_queued_learning_tasks()
+    # Recover only explicit, persisted AI-learning runs. This never auto-generates
+    # new topics/lessons and respects the durable global pause flag.
+    if ai_learning_config.is_enabled():
+        try:
+            ai_learning_browser_automation.recover_pending_runs()
+        except Exception:
+            logger.exception("AI-learning persisted queue recovery failed; the dashboard remains available.")
     if any(runtime.is_running for runtime in _task_runtimes):
         backup_scheduler.start_backup_scheduler()
         return
