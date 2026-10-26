@@ -93,5 +93,5 @@ def test_semantically_duplicate_lesson_content_is_detected_without_saving_again(
             conn, candidate_body, exclude_topic_id=second_topic["id"]
         )
     assert duplicate is not None
-    assert duplicate["method"] == "semantic"
+    assert duplicate["method"] == "embedding"
     assert duplicate["topic_id"] == first_topic["id"]
