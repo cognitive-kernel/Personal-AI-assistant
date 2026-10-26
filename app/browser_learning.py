@@ -48,6 +48,14 @@ def create_course(topic: str, cdp_url: str = "http://127.0.0.1:9222", max_lesson
         raise ValueError(f"تعداد سرفصل‌ها باید بین ۱ تا {MAX_LESSONS} باشد.")
     cdp_url = _valid_cdp_url(cdp_url)
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        active = conn.execute(
+            "SELECT id FROM browser_learning_courses WHERE status IN ('queued','running') LIMIT 1"
+        ).fetchone()
+        if active is not None:
+            raise BrowserLearningError(
+                "یک دورهٔ هوش‌به‌هوش دیگر در حال اجرا یا در صف است؛ ابتدا همان دوره را تمام یا متوقف کنید."
+            )
         cursor = conn.execute(
             """INSERT INTO browser_learning_courses(topic, cdp_url, max_lessons, status)
                VALUES (?, ?, ?, 'queued')""",
@@ -238,22 +246,30 @@ def run_course(course_id: int) -> None:
             if not page.url.startswith(("https://chatgpt.com", "https://chat.openai.com")):
                 page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
 
-            syllabus_prompt = (
-                "برای درخواست یادگیری زیر یک سرفصل‌بندی آموزشی دقیق و مرحله‌ای تهیه کن. "
-                "اگر نام نسخه مبهم یا نادرست است، آن را در title/notes توضیح بده اما موضوع درخواستی را خودسرانه عوض نکن. "
-                "پاسخ را فقط به صورت JSON معتبر با ساختار "
-                '{"title":"عنوان دوره","topics":["سرفصل ۱","سرفصل ۲"],"notes":"یادداشت نسخه"} '
-                "برگردان. سرفصل‌ها باید از مقدماتی به پیشرفته مرتب باشند، تکراری نباشند و به‌صورت مستقل قابل آموزش باشند. "
-                f"حداکثر {int(course['max_lessons'])} سرفصل ارائه کن. موضوع: {course['topic']}"
-            )
-            outline_response = _chatgpt_answer(page, syllabus_prompt)
-            title, topics = _parse_outline(outline_response, int(course["max_lessons"]))
-            with learning_connection() as conn:
-                conn.execute(
-                    """UPDATE browser_learning_courses SET title=?, outline_json=?, status='running',
-                       updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                    (title, json.dumps({"topics": topics, "response": outline_response}, ensure_ascii=False), course_id),
+            if course.get("outline_json"):
+                saved_outline = json.loads(course["outline_json"])
+                topics = [str(item) for item in saved_outline.get("topics", []) if isinstance(item, str)]
+                title = str(course.get("title") or ("دورهٔ " + course["topic"]))
+                if not topics:
+                    raise BrowserLearningError("طرح ذخیره‌شدهٔ دوره قابل بازیابی نیست.")
+            else:
+                syllabus_prompt = (
+                    "برای درخواست یادگیری زیر یک سرفصل‌بندی آموزشی دقیق و مرحله‌ای تهیه کن. "
+                    "اگر نام نسخه مبهم یا نادرست است، آن را در title/notes توضیح بده اما موضوع درخواستی را خودسرانه عوض نکن. "
+                    "پاسخ را فقط به صورت JSON معتبر با ساختار "
+                    '{"title":"عنوان دوره","topics":["سرفصل ۱","سرفصل ۲"],"notes":"یادداشت نسخه"} '
+                    "برگردان. سرفصل‌ها باید از مقدماتی به پیشرفته مرتب باشند، تکراری نباشند و به‌صورت مستقل قابل آموزش باشند. "
+                    f"حداکثر {int(course['max_lessons'])} سرفصل ارائه کن. موضوع: {course['topic']}"
                 )
+                outline_response = _chatgpt_answer(page, syllabus_prompt)
+                title, topics = _parse_outline(outline_response, int(course["max_lessons"]))
+                with learning_connection() as conn:
+                    conn.execute(
+                        """UPDATE browser_learning_courses SET title=?, outline_json=?, status='running',
+                           updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                        (title, json.dumps({"topics": topics, "response": outline_response}, ensure_ascii=False), course_id),
+                    )
+            with learning_connection() as conn:
                 for position, topic in enumerate(topics, 1):
                     conn.execute(
                         """INSERT OR IGNORE INTO browser_learning_lessons(course_id, position, topic, status)
@@ -326,11 +342,18 @@ def _fail_course(course_id: int, error: str) -> None:
 
 def retry_course(course_id: int) -> dict[str, Any]:
     with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT status FROM browser_learning_courses WHERE id=?", (course_id,)).fetchone()
         if row is None:
             raise KeyError(course_id)
         if row["status"] in {"queued", "running"}:
             raise ValueError("این دوره هنوز در حال اجرا است.")
+        active = conn.execute(
+            "SELECT id FROM browser_learning_courses WHERE id<>? AND status IN ('queued','running') LIMIT 1",
+            (course_id,),
+        ).fetchone()
+        if active is not None:
+            raise ValueError("یک دورهٔ دیگر در حال اجرا یا در صف است.")
         conn.execute(
             """UPDATE browser_learning_courses SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP
                WHERE id=?""",
