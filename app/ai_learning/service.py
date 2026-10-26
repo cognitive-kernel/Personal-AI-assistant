@@ -190,8 +190,8 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
     seen: set[str] = set()
 
     def add(value: str) -> None:
-        title = re.sub(r"\\s+#+\\s*$", "", value.strip().strip("*").strip())
-        title = re.sub(r"^\\[[^]]{1,80}\\]\\s*", "", title).strip()
+        title = re.sub(r"\s+#+\s*$", "", value.strip().strip("*").strip())
+        title = re.sub(r"^\[[^]]{1,80}\]\s*", "", title).strip()
         key = " ".join(title.split()).casefold()
         if 2 <= len(title) <= 300 and key not in seen and len(candidates) < 200:
             seen.add(key)
@@ -201,12 +201,12 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
     for raw_line in raw_response.splitlines():
         line = raw_line.strip()
         # Browser copy/paste can add separators or a "ChatGPT said:" prefix.
-        if not line or re.fullmatch(r"[\\\\/|]+", line) or re.match(r"(?i)^chatgpt said:?\\s*$", line):
+        if not line or re.fullmatch(r"[\\/|]+", line) or re.match(r"(?i)^chatgpt said:?\s*$", line):
             continue
         cleaned_lines.append(line)
 
     marker = re.compile(
-        r"^(?:#{1,6}\\s+|(?:[0-9٠-٩۰-۹]+(?:\\.[0-9٠-٩۰-۹]+)*[.)]?|[-*+•])\\s+)(.+?)\\s*$"
+        r"^(?:#{1,6}\s+|(?:[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*[.)]?|[-*+•])\s+)(.+?)\s*$"
     )
     for line in cleaned_lines:
         match = marker.match(line)
@@ -218,16 +218,16 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
     # Some ChatGPT UI responses omit numbering despite the prompt. Accept only
     # multiple distinct, short standalone paragraphs; a single prose paragraph
     # must never be imported as a topic outline.
-    paragraphs = re.split(r"\\n\\s*\\n+", raw_response.strip())
+    paragraphs = re.split(r"\n\s*\n+", raw_response.strip())
     for paragraph in paragraphs:
         lines = [line.strip() for line in paragraph.splitlines()
-                 if line.strip() and not re.fullmatch(r"[\\\\/|]+", line.strip())]
+                 if line.strip() and not re.fullmatch(r"[\\/|]+", line.strip())]
         if len(lines) != 1:
             continue
         item = lines[0]
         if re.match(r"(?i)^(chatgpt said:|here is|here's|certainly|sure[,!:.])", item):
             continue
-        if marker.match(item) or re.match(r"^#{1,6}\\s+", item):
+        if marker.match(item) or re.match(r"^#{1,6}\s+", item):
             continue
         add(item)
     return candidates if len(candidates) >= 3 else []
