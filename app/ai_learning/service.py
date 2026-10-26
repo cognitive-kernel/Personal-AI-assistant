@@ -291,6 +291,29 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
         add(item)
     return candidates if len(candidates) >= 3 else []
 
+def _lesson_has_substantive_body(text: str) -> bool:
+    """Reject title-only or near-empty ChatGPT captures before they become lesson versions."""
+    paragraphs: list[str] = []
+    for paragraph in re.split(r"\n\s*\n+", text.strip()):
+        lines = []
+        for raw_line in paragraph.splitlines():
+            line = raw_line.strip()
+            if not line or re.fullmatch(r"[-*_]{3,}", line):
+                continue
+            if re.match(r"(?i)^chatgpt said:?\s*$", line):
+                continue
+            if re.match(r"^#{1,6}\s+", line):
+                continue
+            lines.append(line)
+        if lines:
+            paragraphs.append(" ".join(lines))
+    body = " ".join(paragraphs).strip()
+    # A one-line answer is usually just a title or a failed generation.
+    if len(paragraphs) <= 1:
+        return len(body) >= 160
+    return len(body) >= 20
+
+
 def _extract_references(text: str) -> list[dict[str, str | None]]:
     """Extract explicitly supplied source links from provider content without validating their claims."""
     found: list[dict[str, str | None]] = []
@@ -386,7 +409,14 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 raise ValueError("No active topics are associated with this run.")
             sections: list[tuple[int, str, str]] = []
             if len(topics) == 1:
-                title_match = re.search(r"(?m)^#\s+(.{1,300})$", response_text)
+                if not _lesson_has_substantive_body(response_text):
+                    conn.execute(
+                        "UPDATE runs SET response_text=?,status='needs_user_action',error_code='lesson_content_empty',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
+                        (response_text, "پاسخ فقط شامل عنوان یا متن بسیار کوتاه است؛ درس خالی ذخیره نشد. دریافت مجدد را اجرا کنید.", run_id),
+                    )
+                    conn.commit()
+                    return get_run(run_id)
+                title_match = re.search(r"(?m)^#{1,6}\\s+(.{1,300})$", response_text)
                 title = title_match.group(1).strip() if title_match else topics[0]["title"]
                 sections = [(int(topics[0]["id"]), title, response_text)]
             else:
@@ -405,7 +435,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     end = matches[index + 1].start() if index + 1 < len(matches) else len(response_text)
                     body = response_text[match.end():end].strip()
                     title = match.group(2).strip() or allowed[topic_id]["title"]
-                    if body:
+                    if _lesson_has_substantive_body(body):
                         sections.append((topic_id, title[:300], body))
                 if len(sections) != len(topics) or len({section[0] for section in sections}) != len(topics):
                     conn.execute(
