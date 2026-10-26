@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
+from . import ollama, learning_cost_manager
 from . import curricula, factual_knowledge, learning_evidence_gate, learning_source_sync, learning_prerequisites
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
@@ -673,7 +674,45 @@ def run_job(job_id: int) -> None:
             "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
             "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
         }, detect_hardware())
-        model = str(settings.get("learning_ollama_model", settings["ollama_model"]))
+        configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"]))
+        model = configured_model
+        model_selection: dict[str, Any] = {
+            "selected_model": None,
+            "status": "configured_fallback",
+            "reason": "No eligible configured cost profile; use the administrator-selected learning model.",
+            "fallback_model": configured_model,
+        }
+        try:
+            installed_names = [
+                str(item.get("name", "")).strip()
+                for item in ollama.list_models()
+                if isinstance(item, dict) and str(item.get("name", "")).strip()
+            ]
+            budget = settings.get("learning_task_budget_microusd")
+            if budget is not None and (
+                isinstance(budget, bool) or not isinstance(budget, int) or budget < 0
+            ):
+                budget = None
+            minimum_quality = settings.get("learning_model_minimum_quality_score", 0.0)
+            if isinstance(minimum_quality, bool) or not isinstance(minimum_quality, (int, float)) or not 0 <= minimum_quality <= 1:
+                minimum_quality = 0.0
+            model_selection = learning_cost_manager.select_learning_model(
+                settings, installed_names,
+                estimated_prompt_tokens=max(1, len(serialized_prompt) // 4),
+                estimated_completion_tokens=1200,
+                minimum_quality_score=float(minimum_quality),
+                budget_microusd=budget,
+            )
+            if isinstance(model_selection.get("selected_model"), str):
+                model = model_selection["selected_model"]
+        except Exception as selection_error:
+            model_selection = {
+                "selected_model": None,
+                "status": "selection_unavailable",
+                "reason": "Model selection failed safely; the configured learning model remains selected.",
+                "error_kind": type(selection_error).__name__,
+                "fallback_model": configured_model,
+            }
         request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
         response = _request("/api/chat", {
             "model": model, "stream": False, "format": "json",
@@ -707,6 +746,7 @@ def run_job(job_id: int) -> None:
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
         assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"], assessment["learning_outcomes"])
+        quality["model_selection"] = model_selection
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
         # Make one targeted quality-repair attempt for any rejected lesson, not only short output.
