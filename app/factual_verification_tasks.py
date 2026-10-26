@@ -23,7 +23,7 @@ _SQLITE_RUNTIME_MARKER = re.compile(r"^__PAI_SQLITE_VERSION__:(\d+\.\d+\.\d+)$")
 _NODE_RUNTIME_MARKER = re.compile(r"^__PAI_NODE_VERSION__:(\d+\.\d+\.\d+)$")
 _RUST_RUNTIME_MARKER = re.compile(r"^__PAI_RUST_VERSION__:(\d+\.\d+\.\d+)$")
 _OFFICIAL_SOURCE_HOSTS = (
-    "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org",
+    "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org", "nodejs.org",
     "doc.rust-lang.org", "rust-lang.org", "nodejs.org", "help.mikrotik.com", "mikrotik.com",
     "docs.vmware.com", "knowledge.broadcom.com", "developer.android.com",
     "developer.apple.com", "developer.mozilla.org", "docs.docker.com",
