@@ -18,6 +18,8 @@ from . import service
 
 _LOCK = threading.Lock()
 _ACTIVE = False
+_ACTIVE_RUN_ID: int | None = None
+_ACTIVE_COURSE_ID: int | None = None
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
 _RESPONSE_TIMEOUT_SECONDS = 600
 _STABLE_SECONDS = 4.0
@@ -250,6 +252,15 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
     stable_since: float | None = None
     last_stop_visible = False
     while time.monotonic() < deadline:
+        # The pause flag is stored in SQLite, so it survives a process restart.
+        try:
+            paused = service.get_learning_control()["paused"]
+        except Exception:
+            paused = False
+        if paused:
+            page.wait_for_timeout(1000)
+            deadline += 1.0
+            continue
         if cancel_event is not None and cancel_event.is_set():
             _log_event("response_wait_cancelled", elapsed_seconds=round(time.monotonic() - started, 1))
             raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
@@ -443,6 +454,9 @@ def _continue_lessons(course_id: int) -> None:
             service.decide_topics(batch, "approved")
 
     while True:
+        if service.get_learning_control()["paused"]:
+            _log_event("lesson_followup_paused", course_id=course_id)
+            return
         course = service.get_course(course_id)
         eligible = [int(topic["id"]) for topic in course.get("topics", [])
                     if topic.get("approval_status") == "approved"
@@ -466,7 +480,7 @@ def _continue_lessons(course_id: int) -> None:
 
 
 def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Event) -> None:
-    global _ACTIVE
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
     _log_event("worker_started", run_id=run_id, course_id=course_id, prompt_chars=len(prompt))
     try:
@@ -502,12 +516,14 @@ def _worker(run_id: int, course_id: int, prompt: str, cancel_event: threading.Ev
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
             _ACTIVE = False
+            _ACTIVE_RUN_ID = None
+            _ACTIVE_COURSE_ID = None
             _CANCEL_EVENTS.pop(run_id, None)
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Create and queue an outline run, then process it in a single background browser worker."""
-    global _ACTIVE
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     with _LOCK:
         if _ACTIVE:
             raise ValueError("یک کار مرورگر در حال اجراست؛ تا پایان آن صبر کنید.")
@@ -519,6 +535,8 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
             raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره بازخوانی را دوباره بزنید.")
         service.start_run(int(run["id"]))
         _ACTIVE = True
+        _ACTIVE_RUN_ID = int(run["id"])
+        _ACTIVE_COURSE_ID = course_id
         cancel_event = threading.Event()
         _CANCEL_EVENTS[int(run["id"])] = cancel_event
         thread = threading.Thread(
@@ -536,3 +554,76 @@ def cancel_run(run_id: int) -> dict[str, Any]:
         if event is not None:
             event.set()
     return service.cancel_run(run_id)
+
+
+def pause_learning() -> dict[str, Any]:
+    """Pause all ChatGPT outline and lesson capture, preserving completed database work."""
+    state = service.set_learning_paused(True, "توقف سراسری توسط کاربر")
+    _log_event("learning_paused", active_run_id=_ACTIVE_RUN_ID, active_course_id=_ACTIVE_COURSE_ID)
+    return {**state, "active": _ACTIVE, "active_run_id": _ACTIVE_RUN_ID}
+
+
+def resume_learning(course_id: int | None = None) -> dict[str, Any]:
+    """Resume an active worker, recover a persisted in-flight run, or continue remaining lesson batches."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    service.set_learning_paused(False)
+    with _LOCK:
+        if _ACTIVE:
+            return {"status": "resumed", "active": True, "run_id": _ACTIVE_RUN_ID,
+                    "course_id": _ACTIVE_COURSE_ID, "message": "فرایند فعال ادامه پیدا می‌کند."}
+
+        candidates: list[dict[str, Any]] = []
+        if course_id is not None:
+            candidates = service.list_course_runs(course_id, 50)
+        else:
+            for course in service.list_courses(100):
+                candidates.extend(service.list_course_runs(int(course["id"]), 50))
+        in_flight = next((item for item in candidates if item.get("status") in {"running", "queued"}), None)
+        if in_flight is not None:
+            run = service.start_run(int(in_flight["id"]))
+            run_id = int(run["id"])
+            target_course = int(run["course_id"])
+            _ACTIVE = True
+            _ACTIVE_RUN_ID = run_id
+            _ACTIVE_COURSE_ID = target_course
+            cancel_event = threading.Event()
+            _CANCEL_EVENTS[run_id] = cancel_event
+            thread = threading.Thread(
+                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
+                name=f"ai-learning-resume-{run_id}", daemon=True,
+            )
+            thread.start()
+            _log_event("learning_run_recovered", run_id=run_id, course_id=target_course, run_type=run["run_type"])
+            return {"status": "resumed", "active": True, "run_id": run_id, "course_id": target_course,
+                    "message": "اجرای ناتمام دوباره آغاز شد؛ پاسخ‌های ثبت‌شده حفظ شده‌اند."}
+
+        courses = ([service.get_course(course_id)] if course_id is not None
+                   else service.list_courses(100))
+        for course in courses:
+            cid = int(course["id"])
+            eligible = [int(topic["id"]) for topic in course.get("topics", [])
+                        if topic.get("approval_status") == "approved"
+                        and int(topic.get("lesson_count") or 0) == 0]
+            if not eligible:
+                continue
+            topic_ids = eligible[:3]
+            request_key = f"playwright-lessons-{cid}-" + "-".join(map(str, topic_ids))
+            request_key += "-resume-" + str(int(time.time()))
+            run = service.create_run(cid, run_type="lesson", topic_ids=topic_ids,
+                                     selection_mode="selected", request_key=request_key)
+            run = service.start_run(int(run["id"]))
+            run_id = int(run["id"])
+            _ACTIVE = True
+            _ACTIVE_RUN_ID = run_id
+            _ACTIVE_COURSE_ID = cid
+            cancel_event = threading.Event()
+            _CANCEL_EVENTS[run_id] = cancel_event
+            thread = threading.Thread(
+                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
+                name=f"ai-learning-resume-{run_id}", daemon=True,
+            )
+            thread.start()
+            _log_event("lesson_workflow_resumed", run_id=run_id, course_id=cid, topic_ids=topic_ids)
+            return {"status": "resumed", "active": True, "run_id": run_id, "course_id": cid,
+                    "message": "تولید درس‌ها از سرفصل‌های تأییدشده‌ای که هنوز درس ندارند ادامه یافت."}
+        return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
