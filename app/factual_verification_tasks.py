@@ -19,6 +19,7 @@ _ALLOWED_PAYLOAD_KEYS = {
     "oracle_reviewed", "oracle_review_note", "oracle_review_id",
 }
 _RUNTIME_MARKER = re.compile(r"^__PAI_PYTHON_VERSION__:(\d+\.\d+\.\d+)$")
+_SQLITE_RUNTIME_MARKER = re.compile(r"^__PAI_SQLITE_VERSION__:(\d+\.\d+\.\d+)$")
 _OFFICIAL_SOURCE_HOSTS = (
     "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org",
     "doc.rust-lang.org", "rust-lang.org", "help.mikrotik.com", "mikrotik.com",
@@ -107,13 +108,13 @@ def _wrapped_harness(source_code: str, environment_name: str = "python") -> tupl
     encoded = json.dumps(source_code, ensure_ascii=False)
     completion_marker = "__PAI_TEST_COMPLETED__:" + secrets.token_hex(16)
     wrapper = (
-        "import json as __pai_json, platform as __pai_platform\\n"
-        "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\\n"
-        "import sqlite3 as __pai_sqlite\\n"
-        "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\\n"
-        f"__pai_source = __pai_json.loads({json.dumps(encoded)})\\n"
-        "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\\n"
-        f"print({json.dumps(completion_marker)}, flush=True)\\n"
+        "import json as __pai_json, platform as __pai_platform\n"
+        "print('__PAI_PYTHON_VERSION__:' + __pai_platform.python_version(), flush=True)\n"
+        "import sqlite3 as __pai_sqlite\n"
+        "print('__PAI_SQLITE_VERSION__:' + __pai_sqlite.sqlite_version, flush=True)\n"
+        f"__pai_source = __pai_json.loads({json.dumps(encoded)})\n"
+        "exec(compile(__pai_source, '<factual-claim-test>', 'exec'), {'__name__': '__main__'})\n"
+        f"print({json.dumps(completion_marker)}, flush=True)\n"
     )
     return wrapper, completion_marker
 
@@ -172,7 +173,7 @@ def _runtime_version(
     return (
         runtime_match.group(1) if runtime_match is not None else None,
         completed,
-        "\\n".join(output_lines)[:2000],
+        "\n".join(output_lines)[:2000],
     )
 
 
