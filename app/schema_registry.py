@@ -1039,6 +1039,22 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_candidate_reviews_candidate ON knowledge_candidate_reviews(candidate_id, created_at DESC, id DESC)",
             "CREATE INDEX idx_candidate_reviews_verdict ON knowledge_candidate_reviews(candidate_id, verdict, review_kind)",
         ),
+    ),
+    Migration(
+        29,
+        "explicit-learning-prerequisite-dag",
+        (
+            "ALTER TABLE learning_paths ADD COLUMN prerequisite_mode TEXT NOT NULL DEFAULT 'linear' CHECK(prerequisite_mode IN ('linear','custom'))",
+            """CREATE TABLE learning_topic_prerequisites (
+                topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                prerequisite_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(topic_id, prerequisite_topic_id),
+                CHECK(topic_id <> prerequisite_topic_id)
+            )""",
+            "CREATE INDEX idx_learning_prerequisites_by_topic ON learning_topic_prerequisites(topic_id, prerequisite_topic_id)",
+            "CREATE INDEX idx_learning_prerequisites_by_prerequisite ON learning_topic_prerequisites(prerequisite_topic_id, topic_id)",
+        ),
     )
 )
 
