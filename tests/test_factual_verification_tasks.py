@@ -239,7 +239,7 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
 def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_store, monkeypatch):
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(factual_verification_routes.sandbox_consent, "get_consent", lambda: {"enabled": True})
-    monkeypatch.setattr(factual_verification_routes, "_configured", lambda: True)
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda *_args: True)
     monkeypatch.setattr(factual_verification_routes, "_reviewer_configured", lambda: True)
     captured = {}
 
