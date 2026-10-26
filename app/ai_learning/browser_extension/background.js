@@ -93,7 +93,6 @@ async function markNeedsAction(runId,errorCode,errorMessage) {
   try {
     await api("/runs/"+runId+"/needs-user-action",{method:"POST",body:JSON.stringify({error_code:errorCode,error_message:errorMessage})});
   } catch (_) {}
-  await chrome.storage.local.remove(ACTIVE_KEYS);
   await saveStatus({run_id:runId,status:"needs_user_action",message:errorMessage});
   await setBadge("MAN","#a66b00");
   await refreshLearningTabs();
