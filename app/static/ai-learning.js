@@ -119,10 +119,16 @@ function renderTopics() {
   });
 }
 function returnToTopic(topicId) {
+  // Returning to a parent topic means closing the lesson detail panel and
+  // bringing the exact topic card back into view.
+  const panel = byId("lessons-panel");
+  if (panel) panel.hidden = true;
   const card = byId("topic-card-" + topicId);
   if (!card) return;
-  card.scrollIntoView({behavior:"smooth", block:"center"});
-  try { card.focus({preventScroll:true}); } catch (_) { card.focus(); }
+  window.requestAnimationFrame(() => {
+    card.scrollIntoView({behavior:"smooth", block:"start"});
+    try { card.focus({preventScroll:true}); } catch (_) { card.focus(); }
+  });
 }
 
 async function pauseTopic(topic, paused) {
@@ -134,6 +140,7 @@ async function showLessons(topic) {
   if (lessonsTopicId !== Number(topic.id)) selectedLessonIds.clear();
   lessonsTopicId = Number(topic.id);
   const panel = byId("lessons-panel");
+  panel.hidden = false;
   panel.replaceChildren(node("p", "در حال دریافت درس‌ها…"));
   try {
     const result = await api("/api/ai-learning/topics/" + topic.id + "/lessons");
@@ -199,9 +206,9 @@ async function showLessons(topic) {
           if (version.review_status === "needs_review") {
             vbuttons.append(action("تأیید بازبینی", async () => {
               await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"reviewed"}));
-              await showLessons(topic);
+              await loadCourseDetails();
               returnToTopic(topic.id);
-              message("بازبینی تأیید شد؛ به سرفصل مربوط برگشتید.");
+              message("بازبینی تأیید شد؛ صفحه به همان سرفصل برگشت.");
             }));
             vbuttons.append(action("رد نسخه", async () => {
               await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"rejected"}));
@@ -219,9 +226,9 @@ async function showLessons(topic) {
             vbuttons.append(action("انتشار", async () => {
               if (!window.confirm("این نسخه منتشر شود؟")) return;
               await api("/api/ai-learning/versions/" + version.id + "/publish", {method:"POST"});
-              await showLessons(topic);
+              await loadCourseDetails();
               returnToTopic(topic.id);
-              message("انتشار انجام شد؛ به سرفصل مربوط برگشتید.");
+              message("انتشار انجام شد؛ صفحه به همان سرفصل برگشت.");
             }));
           }
           if (version.review_status === "published") {
