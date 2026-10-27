@@ -523,6 +523,33 @@ def _outline_normalized_duplicates(raw_response: str) -> list[dict[str, Any]]:
     return duplicates
 
 
+def _parse_outline_levels(raw_response: str) -> dict[str, int]:
+    """Return nesting depth encoded by numbered or Markdown-heading outline markers."""
+    levels: dict[str, int] = {}
+    marker = re.compile(
+        r"^(?:(?P<heading>#{1,6})\\s+|(?P<number>[0-9٠-٩۰-۹]+(?:\\.[0-9٠-٩۰-۹]+)*)(?:[.)])?\\s+|[-*+•]\\s+)(?P<title>.+?)\\s*$"
+    )
+    for raw_line in raw_response.splitlines():
+        line = raw_line.strip().lstrip("\\ufeff")
+        if not line or re.match(r"(?i)^AUDIT\\s*:", line):
+            continue
+        match = marker.match(line)
+        if not match:
+            continue
+        title = re.sub(r"\\s+#+\\s*$", "", match.group("title").strip().strip("*").strip())
+        key = _dedupe_normalize(title)
+        if not key:
+            continue
+        if match.group("heading"):
+            depth = len(match.group("heading"))
+        elif match.group("number"):
+            depth = match.group("number").count(".") + 1
+        else:
+            depth = 1
+        levels[key] = depth
+    return levels
+
+
 def _parse_outline_titles(raw_response: str) -> list[str]:
     """Parse numbered, bulleted, headed, or plain one-topic-per-line outlines."""
     candidates: list[str] = []
@@ -1037,9 +1064,11 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
             raise NotFoundError("Course not found.")
         existing_rows = conn.execute(
-            "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
+            "SELECT id,title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
         existing_titles = [str(row["title"]) for row in existing_rows]
+        existing_by_key = {_dedupe_normalize(str(row["title"])): int(row["id"]) for row in existing_rows}
+        hierarchy_levels = _parse_outline_levels(raw_response)
         # Always compare incoming titles with both persisted titles and earlier
         # candidates in this same batch. This is essential when the course is empty:
         # otherwise semantically duplicate items in a first outline could both be saved.
@@ -1055,13 +1084,29 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?", (course_id,)
         ).fetchone()[0])
         created = []
-        for offset, title in enumerate(new_candidates):
+        new_candidate_keys = {_dedupe_normalize(title) for title in new_candidates}
+        hierarchy_stack: list[tuple[int, int]] = []
+        for title in candidates:
+            key = _dedupe_normalize(title)
+            depth = hierarchy_levels.get(key, 1)
+            while hierarchy_stack and hierarchy_stack[-1][0] >= depth:
+                hierarchy_stack.pop()
+            existing_id = existing_by_key.get(key)
+            if existing_id is not None:
+                hierarchy_stack.append((depth, existing_id))
+                continue
+            if key not in new_candidate_keys:
+                continue
+            parent_topic_id = hierarchy_stack[-1][1] if depth > 1 and hierarchy_stack else None
+            topic_position = position + len(created)
             cur = conn.execute(
-                "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
-                (course_id, position + offset, title))
+                "INSERT INTO topics(course_id,parent_topic_id,position,title,approval_status,processing_status) VALUES(?,?,?,?,?,'received')",
+                (course_id, parent_topic_id, topic_position, title, "pending"))
             topic_id = int(cur.lastrowid)
             conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
-            created.append({"id": topic_id, "title": title, "position": position + offset, "approval_status": "pending"})
+            created.append({"id": topic_id, "parent_topic_id": parent_topic_id, "title": title,
+                            "position": topic_position, "approval_status": "pending"})
+            hierarchy_stack.append((depth, topic_id))
         conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (course_id,))
     return {"run_id": run_id, "provider": provider, "imported": len(created),
             "skipped_existing": len(skipped_duplicates), "skipped_duplicates": skipped_duplicates,
