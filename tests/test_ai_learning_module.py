@@ -936,3 +936,21 @@ def test_response_capture_waits_longer_and_supports_continue_generation():
     assert "_RESPONSE_TIMEOUT_SECONDS = 1800" in source
     assert 'button:has-text("Continue generating")' in source
     assert "_STABLE_SECONDS = 20.0" in source
+    assert "partial_response=last_text or None" in source
+
+
+def test_needs_user_action_preserves_partial_provider_response(isolated_store):
+    course = service.create_course(title="Partial response recovery")
+    topic = service.add_topic(course["id"], "Long response topic")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="single", request_key="partial-response-preserved",
+    )
+    service.start_run(run["id"])
+    partial = "# Long lesson\\n\\nFirst part of the lesson was received, but the answer stopped before completion."
+    saved = service.mark_run_needs_user_action(
+        run["id"], "chatgpt_response_timeout", "Timed out", partial
+    )
+    assert saved["status"] == "needs_user_action"
+    assert saved["response_text"] == partial
