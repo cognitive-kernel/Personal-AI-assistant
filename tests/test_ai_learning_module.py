@@ -1235,5 +1235,5 @@ def test_active_learning_ui_shows_inline_progress_and_hierarchical_topics():
     assert 'status+" · "+(Number(t.progress_percent)||0)+"٪"' in script
     assert 'const byParent=new Map()' in script
     assert 'const renderOne=(t,i,ancestors=new Set())' in script
-    assert 'await loadCourse();returnToTopic(parentTopicId);' in script
+    assert 'try{await loadCourse()}finally{returnToTopic(parentTopicId)}' in script
     assert 'id="topic-parent" name="parent_topic_id"' in html
