@@ -37,6 +37,7 @@ footer{margin-top:28px}
 .progress-summary{display:grid;gap:6px;margin:12px 0}
 progress{width:100%;height:14px;accent-color:#287d45}
 .lessons-panel{display:grid;gap:12px;margin-top:12px}
+.lessons-panel[hidden]{display:none!important}
 .lesson-card{margin:8px 0;background:color-mix(in srgb,Canvas 93%,CanvasText 7%)}
 .version-card{border-top:1px solid color-mix(in srgb,CanvasText 18%,transparent);margin-top:12px;padding-top:10px}
 .version-card pre{max-height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;border-radius:6px;background:color-mix(in srgb,CanvasText 6%,Canvas)}
