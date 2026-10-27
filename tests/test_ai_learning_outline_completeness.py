@@ -48,3 +48,9 @@ def test_missing_domains_are_not_marked_complete():
     text = _outline(missing="security, troubleshooting")
     error = _outline_completion_error(text, ["Topic 1", "Topic 2", "Topic 3"])
     assert error and "حوزه" in error
+
+
+def test_duplicate_audit_lines_are_rejected():
+    text = _outline() + "\\nAUDIT: status=COMPLETE; total_topics=3; missing_domains=none; end_reason=duplicate"
+    error = _outline_completion_error(text, ["Topic 1", "Topic 2", "Topic 3"])
+    assert error and "AUDIT" in error
