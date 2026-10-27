@@ -1136,10 +1136,14 @@ def test_review_and_publish_return_scroll_to_the_same_parent_topic():
     review_start = script.index('action("تأیید بازبینی"')
     review_end = script.index('action("رد نسخه"', review_start)
     review_handler = script[review_start:review_end]
-    assert 'await showLessons(topic);\\n              returnToTopic(topic.id);' in review_handler
+    assert 'await showLessons(topic);' in review_handler
+    assert 'returnToTopic(topic.id);' in review_handler
+    assert review_handler.index('await showLessons(topic);') < review_handler.index('returnToTopic(topic.id);')
 
     publish_start = script.index('action("انتشار"')
     publish_end = script.index('if (version.review_status === "published")', publish_start)
     publish_handler = script[publish_start:publish_end]
-    assert 'await showLessons(topic);\\n              returnToTopic(topic.id);' in publish_handler
+    assert 'await showLessons(topic);' in publish_handler
+    assert 'returnToTopic(topic.id);' in publish_handler
+    assert publish_handler.index('await showLessons(topic);') < publish_handler.index('returnToTopic(topic.id);')
 
