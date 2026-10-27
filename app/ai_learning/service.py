@@ -407,12 +407,11 @@ def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]
         run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
-        if run["status"] not in {"queued", "running", "needs_user_action"}:
-            return get_run(run_id)
-        conn.execute(
-            "UPDATE runs SET response_text=? WHERE id=?",
-            (response_text, run_id),
-        )
+        if run["status"] in {"queued", "running", "needs_user_action"}:
+            conn.execute(
+                "UPDATE runs SET response_text=? WHERE id=?",
+                (response_text, run_id),
+            )
     return get_run(run_id)
 
 def mark_run_needs_user_action(
