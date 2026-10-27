@@ -70,6 +70,7 @@ class TopicCreate(BaseModel):
 class TopicEdit(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     description: str | None = Field(default=None, max_length=4000)
+    parent_topic_id: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
 
 class PauseState(BaseModel):
@@ -223,7 +224,7 @@ def add_topic(course_id: int, request: TopicCreate) -> dict[str, Any]:
 
 @router.patch("/topics/{topic_id}")
 def edit_topic(topic_id: int, request: TopicEdit) -> dict[str, Any]:
-    return _call(service.edit_topic, topic_id, **request.model_dump(exclude_unset=True))
+    return _call(service.edit_topic, topic_id, **request.model_dump(exclude_unset=True), update_parent="parent_topic_id" in request.model_fields_set)
 
 @router.post("/topics/{topic_id}/pause")
 def pause_topic(topic_id: int, request: PauseState) -> dict[str, Any]:
