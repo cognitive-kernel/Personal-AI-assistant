@@ -269,6 +269,8 @@ def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(iso
         request_key="lesson-multipart-completion-contract",
     )
     assert "1200–1800 words per response part" in run["prompt_text"]
+    assert "The requested deliverable is always the complete lesson, never a short version" in run["prompt_text"]
+    assert "Only after the complete lesson has been captured and saved may a separate optional summary be derived" in run["prompt_text"]
     assert "LESSON_STATUS: CONTINUE_REQUIRED" in run["prompt_text"]
     assert "LESSON_STATUS: COMPLETE" in run["prompt_text"]
 
