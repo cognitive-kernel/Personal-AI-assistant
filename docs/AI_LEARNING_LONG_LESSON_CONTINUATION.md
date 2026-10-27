@@ -3,6 +3,8 @@
 ## Implementation checklist
 
 - [x] Lesson prompts request substantial, detailed parts of approximately 1200–1800 words instead of forcing a broad topic into one answer.
+- [x] The full lesson is the single source of truth: never generate a short lesson first or replace missing sections with a summary.
+- [x] An optional summary is derived only from the complete saved lesson and never overwrites or triggers regeneration of the full text.
 - [x] Every response part is instructed to end with `LESSON_STATUS: CONTINUE_REQUIRED` or `LESSON_STATUS: COMPLETE`.
 - [x] Browser automation continues the same visible ChatGPT conversation when continuation is requested or the status marker is missing.
 - [x] Captured parts are merged and internal status markers are removed before the lesson is stored.
