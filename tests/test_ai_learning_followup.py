@@ -48,7 +48,7 @@ def test_course_run_history_and_outline_recovery(isolated_store):
     history = service.list_course_runs(course["id"])
     assert history[0]["id"] == run["id"]
     assert history[0]["status"] == "needs_user_action"
-    recovered = service.complete_run(run["id"], "1. Fundamentals\n2. Installation\n3. Security")
+    recovered = service.complete_run(run["id"], "1. Fundamentals\n2. Installation\n3. Security\nAUDIT: status=COMPLETE; total_topics=3; missing_domains=none; end_reason=all_applicable_domains_covered")
     assert recovered["status"] == "succeeded"
     assert [topic["title"] for topic in service.get_course(course["id"])["topics"]] == [
         "Fundamentals", "Installation", "Security"
@@ -71,7 +71,7 @@ def test_browser_timeout_is_recoverable(isolated_store):
     service.start_run(run["id"])
     marked = service.mark_run_needs_user_action(run["id"], "response_timeout", "Timed out waiting for ChatGPT.")
     assert marked["status"] == "needs_user_action"
-    recovered = service.complete_run(run["id"], "1. Basics\n2. Query processing")
+    recovered = service.complete_run(run["id"], "1. Basics\n2. Query processing\nAUDIT: status=COMPLETE; total_topics=2; missing_domains=none; end_reason=all_applicable_domains_covered")
     assert recovered["status"] == "succeeded"
 
 
@@ -80,7 +80,7 @@ def test_outline_completion_skips_existing_topic_titles(isolated_store):
     existing = service.add_topic(course["id"], "Basics")
     run = service.create_run(course["id"], run_type="outline", request_key="dedupe-outline")
     service.start_run(run["id"])
-    completed = service.complete_run(run["id"], "1. Basics\n2. Installation\n3.  Query processing ")
+    completed = service.complete_run(run["id"], "1. Basics\n2. Installation\n3.  Query processing \nAUDIT: status=COMPLETE; total_topics=3; missing_domains=none; end_reason=all_applicable_domains_covered")
     titles = [topic["title"] for topic in service.get_course(course["id"])["topics"]]
     assert completed["status"] == "succeeded"
     assert titles.count("Basics") == 1
