@@ -887,7 +887,8 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
             """SELECT t.* FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
                WHERE rt.run_id=? AND t.deleted_at IS NULL ORDER BY t.position""", (run_id,)).fetchall()
         if run["run_type"] == "outline":
-            titles = _parse_outline_titles(response_text)
+            outline_items = _parse_outline_items(response_text)
+            titles = [str(item["title"]) for item in outline_items]
             if not titles:
                 conn.execute(
                     "UPDATE runs SET response_text=?,status='needs_user_action',error_code='outline_parse_failed',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -896,7 +897,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 return get_run(run_id)
             outline_error = _outline_completion_error(response_text, titles)
             existing_rows = conn.execute(
-                "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
+                "SELECT id,title,parent_topic_id FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
             existing_titles = [str(row["title"]) for row in existing_rows]
             try:
@@ -920,12 +921,9 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
-            for offset, title in enumerate(new_titles):
-                cur = conn.execute(
-                    "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
-                    (run["course_id"], position + offset, title))
-                topic_id = int(cur.lastrowid)
-                conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
+            _insert_outline_items(
+                conn, int(run["course_id"]), outline_items, new_titles, existing_rows, position, run_id=run_id
+            )
             conn.execute(
                 """UPDATE runs SET response_text=?,status=?,error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
@@ -1165,7 +1163,8 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
     raw_response = _clean_required_text(raw_response, "raw_response")
     provider = _clean_text(provider, "provider", 80)
     in_batch_duplicates = _outline_normalized_duplicates(raw_response)
-    candidates = _parse_outline_titles(raw_response)
+    outline_items = _parse_outline_items(raw_response)
+    candidates = [str(item["title"]) for item in outline_items]
     if not candidates:
         raise ValueError("No numbered, bulleted, Markdown-heading, or valid one-topic-per-line outline items were found. Paste one topic per line or use numbering, bullets, or Markdown headings.")
     with connection() as conn:
@@ -1173,7 +1172,7 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
             raise NotFoundError("Course not found.")
         existing_rows = conn.execute(
-            "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
+            "SELECT id,title,parent_topic_id FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
         existing_titles = [str(row["title"]) for row in existing_rows]
         # Always compare incoming titles with both persisted titles and earlier
@@ -1190,14 +1189,9 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
         position = int(conn.execute(
             "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?", (course_id,)
         ).fetchone()[0])
-        created = []
-        for offset, title in enumerate(new_candidates):
-            cur = conn.execute(
-                "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
-                (course_id, position + offset, title))
-            topic_id = int(cur.lastrowid)
-            conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
-            created.append({"id": topic_id, "title": title, "position": position + offset, "approval_status": "pending"})
+        created = _insert_outline_items(
+            conn, course_id, outline_items, new_candidates, existing_rows, position, run_id=run_id
+        )
         conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (course_id,))
     return {"run_id": run_id, "provider": provider, "imported": len(created),
             "skipped_existing": len(skipped_duplicates), "skipped_duplicates": skipped_duplicates,
