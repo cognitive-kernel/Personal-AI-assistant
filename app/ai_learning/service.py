@@ -39,9 +39,6 @@ def _dedupe_normalize(value: str) -> str:
     return re.sub(r"[\W_]+", " ", value, flags=re.UNICODE).strip()
 
 
-TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.90
-
-
 def _title_embeddings(texts: list[str]) -> list[list[float]]:
     settings = get_settings()
     model = str(settings.get("ollama_embedding_model") or os.getenv("OLLAMA_EMBEDDING_MODEL") or "nomic-embed-text").strip()
