@@ -12,7 +12,7 @@ Do not expose the host service beyond loopback. The host application intentional
 
 ## Implemented
 
-Isolated SQLite schema and checksummed migrations, course/topic management, explicit topic approval/rejection, topic ordering, lesson/version creation, review-before-publish, return-to-parent-topic navigation after review or publish, chunking, lexical retrieval over published content only, an optional fail-open retrieval hook in the existing chat path, persistent global pause/resume, per-topic pause/resume, per-lesson review-workflow pause/resume, and workflow-stage progress indicators. The chat hook is disabled by default.
+Isolated SQLite schema and checksummed migrations, course/topic management, explicit topic approval/rejection, topic ordering, lesson/version creation, review-before-publish, return-to-parent-topic navigation after lesson publishing, return-to-parent-topic navigation after review or publish, chunking, lexical retrieval over published content only, an optional fail-open retrieval hook in the existing chat path, persistent global pause/resume, per-topic pause/resume, per-lesson review-workflow pause/resume, and workflow-stage progress indicators. The chat hook is disabled by default.
 
 The lesson review and publish actions also scroll the page back to the same parent topic and focus its topic card, so the operator can continue from the topic just reviewed.
 
