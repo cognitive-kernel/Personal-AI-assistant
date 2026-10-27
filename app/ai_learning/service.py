@@ -675,10 +675,9 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 (run["course_id"],)).fetchall()
             existing_titles = [str(row["title"]) for row in existing_rows]
             try:
-                if existing_titles:
-                    new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
-                else:
-                    new_titles, skipped_titles = titles, []
+                # Run duplicate detection against existing titles and within the
+                # newly received outline, even when this course has no topics yet.
+                new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
             except ValueError as exc:
                 # Preserve the complete provider response even when semantic
                 # deduplication is unavailable. Do not insert uncertain duplicates.
@@ -952,12 +951,12 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
         existing_titles = [str(row["title"]) for row in existing_rows]
-        # The parser has already removed normalized duplicates within the incoming batch.
-        # Avoid embedding the entire 1,000+ topic outline when the course is empty.
-        if existing_titles:
-            new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
-        else:
-            new_candidates, skipped_duplicates = candidates, []
+        # Always compare incoming titles with both persisted titles and earlier
+        # candidates in this same batch. This is essential when the course is empty:
+        # otherwise semantically duplicate items in a first outline could both be saved.
+        # The duplicate filter performs normalized checks first and fails closed if
+        # semantic comparison is required but the embedding service is unavailable.
+        new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
         skipped_duplicates = in_batch_duplicates + skipped_duplicates
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
