@@ -472,28 +472,28 @@ def start_run(run_id: int) -> dict[str, Any]:
     return get_run(run_id)
 
 def cancel_run(run_id: int) -> dict[str, Any]:
-    """Cancel an active run; terminal history can then be deleted normally."""
+    """Cancel an active run; repeated or late cancellation returns its actual status."""
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT id,status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
-        if run["status"] not in {"queued", "running"}:
-            raise ValueError("Only queued or running executions can be cancelled.")
-        conn.execute(
-            """UPDATE runs SET status='cancelled',error_code='user_cancelled',
-               error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
-               WHERE id=? AND status IN ('queued','running')""",
-            (run_id,),
-        )
-        conn.execute(
-            """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
-               WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
-                 AND processing_status='running'""",
-            (run_id,),
-        )
+        # The UI can still show a stop button just after a worker finishes.
+        # Treat that race as an idempotent no-op instead of returning HTTP 422.
+        if run["status"] in {"queued", "running"}:
+            conn.execute(
+                """UPDATE runs SET status='cancelled',error_code='user_cancelled',
+                   error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status IN ('queued','running')""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                     AND processing_status='running'""",
+                (run_id,),
+            )
     return get_run(run_id)
-
 
 def _outline_normalized_duplicates(raw_response: str) -> list[dict[str, Any]]:
     """Report repeated normalized titles inside a structured outline without importing them twice."""
