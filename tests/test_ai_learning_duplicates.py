@@ -30,8 +30,13 @@ def test_topic_titles_are_unique_on_create_and_edit(learning_store, monkeypatch)
     assert first["title"] == "ایندکس‌ها در SQL Server"
 
 
-def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning_store):
+def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
+    monkeypatch.setattr(
+        service,
+        "ollama_embed",
+        lambda texts, model: [[1.0, float(index)] for index, _ in enumerate(texts)],
+    )
     result = service.import_outline(
         course["id"],
         "1. ایندکس‌ها در SQL Server\n2. ایندکسها در SQL Server!\n3. پشتیبان‌گیری و بازیابی",
