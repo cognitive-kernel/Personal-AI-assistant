@@ -130,11 +130,11 @@ def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store
 
 def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
-    service.add_topic(course["id"], "مبانی")
+    service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی در SQL Server")
     monkeypatch.setattr(service, "ollama_embed", lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")))
 
     with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
-        service.add_topic(course["id"], "موضوع دیگر")
+        service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی برای SQL Server")
 
 
 
