@@ -281,6 +281,9 @@ def test_browser_lesson_completion_marker_helpers():
         "## Complete lesson\ncontent\nLESSON_STATUS: COMPLETE"
     ) == "COMPLETE"
     assert browser_automation._lesson_completion_status("## Incomplete lesson\ncontent") is None
+    assert browser_automation._lesson_completion_status(
+        "## Lesson\nLESSON_STATUS: COMPLETE\nextra text after the marker"
+    ) is None
     assert browser_automation._strip_lesson_status_markers(
         "## Lesson\ncontent\nLESSON_STATUS: COMPLETE"
     ) == "## Lesson\ncontent"
