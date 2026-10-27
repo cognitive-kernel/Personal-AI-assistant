@@ -260,6 +260,21 @@ def test_all_approved_run_selects_all_approved_topics(isolated_store):
     assert pending["id"] not in [topic["topic_id"] for topic in run["topics"]]
 
 
+def test_save_run_partial_response_checkpoints_running_lesson(isolated_store):
+    course = service.create_course(title="SQL Server", language="fa")
+    topic = service.add_topic(course["id"], "Transactions")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        request_key="lesson-durable-checkpoint",
+    )
+    service.start_run(run["id"])
+    partial = "# درس کامل\n\nبخش اول"
+    saved = service.save_run_partial_response(run["id"], partial)
+    assert saved["status"] == "running"
+    assert saved["response_text"] == partial
+
+
 def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
     topic = service.add_topic(course["id"], "7. آشنایی با SQL و تفاوت‌های T-SQL")
@@ -331,6 +346,8 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "_capture_lesson_until_complete" in automation
     assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
     assert "lesson_continuation_limit" in automation
+    assert "service.save_run_partial_response(run_id, text)" in automation
+    assert "lesson_checkpoint_failed" in automation
     assert '"chatgpt_page_closed"' in automation
     assert "Keep the wait inside the guarded block" in automation
     assert "retain that answer instead of discarding it" in automation
