@@ -283,15 +283,24 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "CONTINUATION RULE: if the full outline cannot be completed in this response for any reason, return as many complete topics as possible, preserve continuous numbering, and explicitly mark CONTINUE_REQUIRED in the audit line with the exact last topic number, the remaining domains, and the actual reason the response stopped. Do not summarize the remaining topics or silently end. The next response must continue from last_topic+1, must not repeat previous topics, and must continue until the coverage audit passes. A response ending mid-topic or without the audit line is incomplete. Do not state token/output limits as the reason unless that is actually the reason the response stopped."
             )
         else:
-            topic_lines = "\n".join("[TOPIC_ID:" + str(row["id"]) + "] " + row["title"] for row in topics)
+            topic_lines = "\n".join(
+                "[TOPIC_ID:" + str(row["id"]) + "] " + row["title"]
+                + ("\nTopic description: " + str(row["description"]).strip() if str(row["description"] or "").strip() else "")
+                for row in topics
+            )
             prompt = (
                 "You are creating a lesson within a larger course. Always establish the course context "
                 "before teaching the individual topic.\n"
                 "Course / main subject: " + course["title"] + "\n"
                 "Course language: " + course["language"] + "\n"
-                "Requested lesson topic(s):\n" + topic_lines + "\n\n"
+                "Target learning level: " + course["target_level"] + "\n"
+                "Course scope and user-provided context: " + str(course["scope_notes"] or "(none provided)") + "\n"
+                "Requested lesson topic(s), including any saved descriptions:\n" + topic_lines + "\n\n"
                 "Write educational lesson content in Markdown for the approved topic(s) above. "
                 "The course title is the broad subject and each topic is a specific subtopic within it. "
+                "Use the saved topic description, target level, course scope notes, prerequisites, and distinct concepts to determine depth and section order. "
+                "When explaining how a database fits into a specific application architecture, distinguish general SQL Server concepts from facts about the actual local application. "
+                "Do not claim the application itself uses SQL Server (or any other engine) unless that fact is explicitly provided or verified; if the engine is unknown, say so and keep the distinction clear. "
                 "For example, if the course is 'SQL Server 2025' and the topic is "
                 "'134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی', teach that topic specifically "
                 "in the context of SQL Server 2025, not as a generic operating-system lesson. "
