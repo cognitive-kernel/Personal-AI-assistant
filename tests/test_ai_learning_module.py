@@ -309,6 +309,51 @@ def test_browser_lesson_completion_marker_helpers():
     ) == "## Lesson\ncontent"
 
 
+
+def test_short_lesson_marked_complete_is_continued_until_minimum_depth(monkeypatch):
+    first = (
+        "## مختصر\n\n"
+        + "تعریف کوتاه. " * 20
+        + "\nLESSON_STATUS: COMPLETE"
+    )
+    next_parts = [
+        "## توضیح عمیق\n\n"
+        + "شرح مفصل و نکته آموزشی. " * 300
+        + "\nLESSON_STATUS: CONTINUE_REQUIRED; next_section=examples",
+        "## مثال‌ها و عیب‌یابی\n\n"
+        + "مثال کاربردی و توضیح مرحله‌ای. " * 650
+        + "\nLESSON_STATUS: COMPLETE",
+    ]
+    prompts = []
+    checkpoints = []
+
+    monkeypatch.setattr(browser_automation, "_visible_response", lambda page: "last visible response")
+    monkeypatch.setattr(browser_automation, "_assistant_message_count", lambda page: 1)
+    monkeypatch.setattr(browser_automation, "_send_prompt", lambda page, prompt: prompts.append(prompt))
+
+    def next_response(page, previous, cancel_event=None, previous_message_count=None):
+        return next_parts.pop(0)
+
+    monkeypatch.setattr(browser_automation, "_wait_for_complete_answer", next_response)
+    completed = browser_automation._capture_lesson_until_complete(
+        object(), first, on_checkpoint=checkpoints.append
+    )
+
+    assert len(prompts) == 2
+    assert "claimed COMPLETE prematurely" in prompts[0]
+    assert "at least 1200 words" in prompts[0]
+    assert browser_automation._lesson_word_count(completed) >= 1200
+    assert "LESSON_STATUS:" not in completed
+    assert checkpoints[-1] == completed
+
+
+def test_lesson_word_count_ignores_internal_completion_markers():
+    short = "## Topic\n\n" + "some substantive word " * 30 + "\nLESSON_STATUS: COMPLETE"
+    long = "## Topic\n\n" + "some substantive word " * 500 + "\nLESSON_STATUS: COMPLETE"
+    assert browser_automation._lesson_word_count(short) < 1200
+    assert browser_automation._lesson_word_count(long) >= 1200
+
+
 def test_lesson_prompt_includes_course_context_and_specific_topic(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
     topic = service.add_topic(
