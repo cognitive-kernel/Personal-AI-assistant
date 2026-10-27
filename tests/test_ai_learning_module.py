@@ -1172,15 +1172,15 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'function returnToTopic(topicId)' in script
     assert 'const catalog=$("catalog-menu");if(catalog)catalog.open=true;' in script
     assert 'const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;' in script
-    assert 'card.open=true;window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"center"});' in script
+    assert 'card.open=true;window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"start"});' in script
 
     publish_start = script.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
     publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
     publish_handler = script[publish_start:publish_end]
     assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
-    assert 'await loadLessons(parentTopicId)' in publish_handler
+    assert 'await loadCourse()' in publish_handler
     assert 'returnToTopic(parentTopicId)' in publish_handler
-    assert publish_handler.index('await loadLessons(parentTopicId)') < publish_handler.index('returnToTopic(parentTopicId)')
+    assert publish_handler.index('await loadCourse()') < publish_handler.index('returnToTopic(parentTopicId)')
     assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
 
 
