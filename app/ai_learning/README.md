@@ -14,7 +14,7 @@ Do not expose the host service beyond loopback. The host application intentional
 
 Isolated SQLite schema and checksummed migrations, course/topic management, explicit topic approval/rejection, topic ordering, lesson/version creation, review-before-publish, chunking, lexical retrieval over published content only, an optional fail-open retrieval hook in the existing chat path, persistent global pause/resume, per-topic pause/resume, per-lesson review-workflow pause/resume, and workflow-stage progress indicators. The chat hook is disabled by default.
 
-The lesson review and publish actions also scroll the page back to the same parent topic and focus its topic card, so the operator can continue from the sرفصل just reviewed.
+The lesson review and publish actions also scroll the page back to the same parent topic and focus its topic card, so the operator can continue from the topic just reviewed.
 
 Progress percentages describe **content workflow completion**, not a verified measurement of model mastery: 0% pending, 10% active capture, 25% lesson record created, 75% content captured and awaiting review, 90% reviewed, and 100% published. ChatGPT-provided Markdown links and URLs are stored against the matching content version in the sources table and shown in the lesson review panel. These references are marked unverified; persistence does not mean that the URL, source, or claim has been independently checked.
 
