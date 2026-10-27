@@ -734,11 +734,11 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
 def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> str | None:
     """Validate declared topic count and hierarchical numbering; retain raw output on failure."""
     audit_lines = [line.strip() for line in response_text.splitlines()
-                   if re.match(r"(?i)^\\s*AUDIT\\s*:", line)]
+                   if re.match(r"(?i)^\s*AUDIT\s*:", line)]
     numbered: list[tuple[int, ...]] = []
     digit_translation = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
     for line in response_text.splitlines():
-        match = re.match(r"^\\s*((?:[0-9٠-٩۰-۹]+)(?:\\.[0-9٠-٩۰-۹]+)*)[.)]?\\s+\\S", line)
+        match = re.match(r"^\s*((?:[0-9٠-٩۰-۹]+)(?:\.[0-9٠-٩۰-۹]+)*)[.)]?\s+\S", line)
         if not match:
             continue
         try:
@@ -749,7 +749,7 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
     if len(audit_lines) != 1:
         return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را اصلاح کنید."
     fields = {key.casefold(): value.strip() for key, value in
-              re.findall(r"([A-Za-z_]+)\\s*=\\s*([^;]+)", audit_lines[0].split(":", 1)[1])}
+              re.findall(r"([A-Za-z_]+)\s*=\s*([^;]+)", audit_lines[0].split(":", 1)[1])}
     if fields.get("status", "").upper() != "COMPLETE":
         return "فهرست خام و سرفصل‌های قابل استخراج ذخیره شدند، اما ChatGPT صریحاً تکمیل فهرست را تأیید نکرده است؛ ادامهٔ فهرست را دریافت کنید."
     try:
