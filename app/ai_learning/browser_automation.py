@@ -801,7 +801,7 @@ def _worker(
         _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc))
+            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
         except Exception as mark_exc:
             print(f"Could not mark AI-learning run {run_id}: {mark_exc}", flush=True)
     except Exception as exc:
