@@ -77,8 +77,9 @@ function renderTopics() {
   progress.replaceChildren();
   const total = courseTopics.length;
   const complete = courseTopics.filter(t => Number(t.progress_percent) >= 100).length;
-  const overall = total ? Math.round(courseTopics.reduce((sum,t) => sum + Number(t.progress_percent || 0), 0) / total) : 0;
-  const summary = node("div", "پیشرفت کل: " + overall + "% · تکمیل‌شده: " + complete + " از " + total + " سرفصل · باقی‌مانده: " + (total-complete));
+  const overall = total ? courseTopics.reduce((sum,t) => sum + Number(t.progress_percent || 0), 0) / total : 0;
+  const overallLabel = overall.toLocaleString("fa-IR", {minimumFractionDigits: overall > 0 && overall < 1 ? 1 : 0, maximumFractionDigits: 1});
+  const summary = node("div", "پیشرفت کل: " + overallLabel + "% · تکمیل‌شده: " + complete + " از " + total + " سرفصل · باقی‌مانده: " + (total-complete));
   const meter = node("progress"); meter.max = 100; meter.value = overall; meter.setAttribute("aria-label","درصد پیشرفت کل");
   progress.append(summary, meter);
   byId("select-all-topics").checked = total > 0 && courseTopics.every(t => selectedTopicIds.has(Number(t.id)));
