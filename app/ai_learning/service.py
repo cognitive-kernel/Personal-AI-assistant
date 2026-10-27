@@ -1424,7 +1424,15 @@ def set_lesson_paused(lesson_id: int, paused: bool) -> dict[str, Any]:
         return dict(conn.execute("SELECT * FROM lessons WHERE id=?", (lesson_id,)).fetchone())
 
 
-def edit_topic(topic_id: int, *, title: str | None = None, description: str | None = None) -> dict[str, Any]:
+def edit_topic(
+    topic_id: int,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    parent_topic_id: int | None = None,
+    update_parent: bool = False,
+) -> dict[str, Any]:
+    """Edit a topic and optionally move it within the course hierarchy."""
     updates: list[str] = []
     params: list[Any] = []
     if title is not None:
@@ -1435,17 +1443,46 @@ def edit_topic(topic_id: int, *, title: str | None = None, description: str | No
             raise ValueError("description cannot exceed 4000 characters.")
         updates.append("description=?")
         params.append(description)
+    if update_parent:
+        updates.append("parent_topic_id=?")
+        params.append(parent_topic_id)
     if not updates:
         raise ValueError("At least one field must be supplied.")
     updates.append("updated_at=CURRENT_TIMESTAMP")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        current = conn.execute("SELECT id,course_id FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)).fetchone()
+        current = conn.execute(
+            "SELECT id,course_id FROM topics WHERE id=? AND deleted_at IS NULL", (topic_id,)
+        ).fetchone()
         if current is None:
             raise NotFoundError("Topic not found.")
         if title is not None:
-            _ensure_unique_title(conn, table="topics", title=title, scope_column="course_id",
-                                 scope_id=int(current["course_id"]), exclude_id=topic_id)
+            _ensure_unique_title(
+                conn, table="topics", title=title, scope_column="course_id",
+                scope_id=int(current["course_id"]), exclude_id=topic_id,
+            )
+        if update_parent and parent_topic_id is not None:
+            parent = conn.execute(
+                """SELECT id FROM topics
+                   WHERE id=? AND course_id=? AND deleted_at IS NULL""",
+                (parent_topic_id, int(current["course_id"])),
+            ).fetchone()
+            if parent is None:
+                raise ValueError("Parent topic must belong to the same course.")
+            if int(parent_topic_id) == int(topic_id):
+                raise ValueError("A topic cannot be its own parent.")
+            descendant = conn.execute(
+                """WITH RECURSIVE descendants(id) AS (
+                       SELECT id FROM topics WHERE parent_topic_id=? AND deleted_at IS NULL
+                       UNION ALL
+                       SELECT t.id FROM topics t JOIN descendants d ON t.parent_topic_id=d.id
+                       WHERE t.deleted_at IS NULL
+                   )
+                   SELECT 1 FROM descendants WHERE id=? LIMIT 1""",
+                (topic_id, parent_topic_id),
+            ).fetchone()
+            if descendant is not None:
+                raise ValueError("A topic cannot be moved underneath one of its own descendants.")
         conn.execute(f"UPDATE topics SET {','.join(updates)} WHERE id=?", (*params, topic_id))
         return dict(conn.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone())
 
