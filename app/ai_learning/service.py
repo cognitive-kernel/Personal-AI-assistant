@@ -278,9 +278,9 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "PRIMARY GOAL: cover every materially distinct concept, skill, workflow, subsystem, and practical task within the requested scope. Completeness and breadth matter more than keeping the outline short. Do not stop at a conventional overview, a convenient round number, or a fixed target. The number of topics must emerge from the full subject coverage; for a broad subject such as SQL Server 2025, 110 or more distinct topics may be appropriate, but do not add filler solely to reach a number.\n"
                 "First construct an internal coverage matrix of all relevant domains, subdomains, and levels (foundational, intermediate, advanced, production/operations, troubleshooting, and hands-on projects). Expand every domain into its distinct teachable topics. Keep related-but-different subjects separate: concepts vs implementation, configuration vs monitoring, administration vs troubleshooting, fundamentals vs advanced techniques, and each materially different feature or workflow. Merge only genuine duplicates, not topics that merely share vocabulary or belong to the same domain.\n"
                 "For SQL Server 2025, consider as applicable: architecture and internals; relational modeling and normalization; T-SQL syntax and advanced querying; data types and conversion; built-in functions; programmability; transactions, locking and concurrency; indexes and query plans; performance tuning; memory, CPU and I/O; installation, configuration and upgrades; administration and monitoring; security and auditing; backup, restore, high availability and disaster recovery; replication and distributed data; import/export, ETL and integration; reporting, analytics and warehousing; JSON, XML, full-text search, regular expressions and vector/AI features; cloud/hybrid operation; automation, deployment, migration, capacity planning, incident response, and end-to-end projects. Adapt this list to the actual course rather than forcing irrelevant domains. Include version-specific capabilities only when supportable; mark preview/version-dependent features and do not invent features.\n"
-                "Before finalizing, audit the outline against the coverage matrix. Identify missing domains and add their distinct topics. Then count the actual numbered topic lines and verify numbering is continuous from 1 with no gaps or repeated numbers. Ensure each title is specific, independently teachable, and not a duplicate. Do not claim completeness unless every applicable domain has been covered.\n"
-                "OUTPUT FORMAT: return numbered topics, one numbered topic per line in exactly this form: '1. Topic title'. Use continuous numbering across all parts. No sub-bullets, no introductory prose, and no unnumbered topic lines. At the very end, append exactly one machine-readable audit line that is not a topic: 'AUDIT: status=COMPLETE; total_topics=N; missing_domains=none; end_reason=all_applicable_domains_covered' when complete, replacing N with the actual count. If any part remains unfinished, append: 'AUDIT: status=CONTINUE_REQUIRED; total_topics=N; last_topic=N; missing_domains=...; end_reason=...'. Never label an incomplete outline COMPLETE.\n"
-                "CONTINUATION RULE: if the full outline cannot be completed in this response for any reason, return as many complete topics as possible, preserve continuous numbering, and explicitly mark CONTINUE_REQUIRED in the audit line with the exact last topic number, the remaining domains, and the actual reason the response stopped. Do not summarize the remaining topics or silently end. The next response must continue from last_topic+1, must not repeat previous topics, and must continue until the coverage audit passes. A response ending mid-topic or without the audit line is incomplete. Do not state token/output limits as the reason unless that is actually the reason the response stopped."
+                "Before finalizing, audit the outline against the coverage matrix. Identify missing domains and add their distinct topics. Group related teachable topics beneath clear top-level subject areas. Use hierarchical numbering: top-level subjects as 1., 2., 3.; their subtopics as 1.1, 1.2, 2.1; and deeper topics as 1.1.1, 1.1.2. Every child must follow its parent, and sibling numbering must be sequential without gaps or duplicates. Count all subject and subtopic lines as topics. Ensure each title is specific, independently teachable, and not a duplicate. Do not claim completeness unless every applicable domain has been covered.\n"
+                "OUTPUT FORMAT: return one hierarchical numbered topic per line, with parent subjects followed by their children; use forms such as '1. Subject area', '1.1 Subtopic', '1.2 Subtopic', '2. Another subject', '2.1 Subtopic'. Do not use bullets or unnumbered topic lines. At the very end, append exactly one machine-readable audit line that is not a topic: 'AUDIT: status=COMPLETE; total_topics=N; missing_domains=none; end_reason=all_applicable_domains_covered' when complete, replacing N with the actual count. If unfinished, append 'AUDIT: status=CONTINUE_REQUIRED; total_topics=N; last_topic=HIERARCHICAL_NUMBER; missing_domains=...; end_reason=...' where HIERARCHICAL_NUMBER is the last emitted path such as 3.4. Never label an incomplete outline COMPLETE.\n"
+                "CONTINUATION RULE: if the full outline cannot be completed in this response for any reason, return as many complete topics as possible, explicitly mark CONTINUE_REQUIRED with the exact last hierarchical number and remaining domains. Continue from the next missing sibling or child under the correct parent; if that parent is complete, proceed to the next top-level subject. Do not repeat prior items, restart numbering, or flatten the hierarchy. Continue until the coverage audit passes. A response ending mid-topic or without the audit line is incomplete. Do not state token/output limits as the reason unless that is actually the reason the response stopped."
             )
         else:
             topic_lines = "\n".join(
@@ -732,20 +732,24 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
 
 
 def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> str | None:
-    """Return a recovery message unless the outline's explicit completion audit is valid.
-
-    The provider response is retained even when this check fails. This is a
-    structural completeness check only; it does not assess factual correctness.
-    """
+    """Validate declared topic count and hierarchical numbering; retain raw output on failure."""
     audit_lines = [line.strip() for line in response_text.splitlines()
-                   if re.match(r"(?i)^\s*AUDIT\s*:", line)]
-    numbered = [int(match.group(1)) for line in response_text.splitlines()
-                if (match := re.match(r"^\s*(\d+)\.\s+\S", line))]
+                   if re.match(r"(?i)^\\s*AUDIT\\s*:", line)]
+    numbered: list[tuple[int, ...]] = []
+    digit_translation = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+    for line in response_text.splitlines():
+        match = re.match(r"^\\s*((?:[0-9٠-٩۰-۹]+)(?:\\.[0-9٠-٩۰-۹]+)*)[.)]?\\s+\\S", line)
+        if not match:
+            continue
+        try:
+            path = tuple(int(part.translate(digit_translation)) for part in match.group(1).split("."))
+        except ValueError:
+            continue
+        numbered.append(path)
     if len(audit_lines) != 1:
-        return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را ادامه دهید و سپس دوباره ثبت کنید."
-    audit = audit_lines[0]
+        return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را اصلاح کنید."
     fields = {key.casefold(): value.strip() for key, value in
-              re.findall(r"([A-Za-z_]+)\s*=\s*([^;]+)", audit.split(":", 1)[1])}
+              re.findall(r"([A-Za-z_]+)\\s*=\\s*([^;]+)", audit_lines[0].split(":", 1)[1])}
     if fields.get("status", "").upper() != "COMPLETE":
         return "فهرست خام و سرفصل‌های قابل استخراج ذخیره شدند، اما ChatGPT صریحاً تکمیل فهرست را تأیید نکرده است؛ ادامهٔ فهرست را دریافت کنید."
     try:
@@ -756,11 +760,21 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
         return (f"تعداد سرفصل‌های ممیزی‌شده با پاسخ هم‌خوان نیست "
                 f"(ممیزی={declared_total}، قابل‌استخراج={len(parsed_titles)}، شماره‌دار={len(numbered)}). "
                 "پاسخ خام ذخیره شده؛ فهرست را ادامه دهید.")
-    if numbered != list(range(1, declared_total + 1)):
-        return "شماره‌گذاری سرفصل‌ها پیوسته از ۱ نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح/تکمیل شود."
-    if (fields.get("missing_domains", "").casefold() != "none"
-            or fields.get("end_reason", "").casefold() != "all_applicable_domains_covered"):
-        return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبرِ تکمیل همهٔ حوزه‌های مرتبط را نشان نمی‌دهد؛ پاسخ خام ذخیره شده و فهرست باید تکمیل شود."
+    seen: set[tuple[int, ...]] = set()
+    sibling_counts: dict[tuple[int, ...], int] = {}
+    for path in numbered:
+        parent = path[:-1]
+        if parent and parent not in seen:
+            return "ساختار درختی نامعتبر است؛ هر سرفصل فرعی باید بعد از مبحث والد خودش بیاید."
+        expected = sibling_counts.get(parent, 0) + 1
+        if path[-1] != expected:
+            return "شماره‌گذاری سرفصل‌ها یا زیرمجموعه‌ها پیوسته نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح شود."
+        sibling_counts[parent] = expected
+        if path in seen:
+            return "شماره‌گذاری تکراری در فهرست پیدا شد؛ پاسخ خام ذخیره شده و فهرست باید اصلاح شود."
+        seen.add(path)
+    if fields.get("missing_domains", "").casefold() != "none" or fields.get("end_reason", "").casefold() != "all_applicable_domains_covered":
+        return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبرِ تکمیل همهٔ حوزه‌های مرتبط را نشان نمی‌دهد؛ فهرست را تکمیل کنید."
     return None
 
 
