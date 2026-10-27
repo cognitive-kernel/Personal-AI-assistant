@@ -89,6 +89,8 @@ function renderTopics() {
   }
   courseTopics.forEach((topic, index) => {
     const card = node("article", undefined, "topic-card");
+    card.id = "topic-card-" + topic.id;
+    card.tabIndex = -1;
     const top = node("div", undefined, "topic-top");
     const title = node("div");
     const check = node("input"); check.type = "checkbox"; check.checked = selectedTopicIds.has(Number(topic.id));
@@ -116,6 +118,13 @@ function renderTopics() {
     list.append(card);
   });
 }
+function returnToTopic(topicId) {
+  const card = byId("topic-card-" + topicId);
+  if (!card) return;
+  card.scrollIntoView({behavior:"smooth", block:"center"});
+  try { card.focus({preventScroll:true}); } catch (_) { card.focus(); }
+}
+
 async function pauseTopic(topic, paused) {
   await api("/api/ai-learning/topics/" + topic.id + "/pause", jsonOptions("POST", {paused}));
   await loadCourseDetails();
@@ -191,6 +200,8 @@ async function showLessons(topic) {
             vbuttons.append(action("تأیید بازبینی", async () => {
               await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"reviewed"}));
               await showLessons(topic);
+              returnToTopic(topic.id);
+              message("بازبینی تأیید شد؛ به سرفصل مربوط برگشتید.");
             }));
             vbuttons.append(action("رد نسخه", async () => {
               await api("/api/ai-learning/versions/" + version.id + "/review", jsonOptions("POST", {decision:"rejected"}));
@@ -209,6 +220,8 @@ async function showLessons(topic) {
               if (!window.confirm("این نسخه منتشر شود؟")) return;
               await api("/api/ai-learning/versions/" + version.id + "/publish", {method:"POST"});
               await showLessons(topic);
+              returnToTopic(topic.id);
+              message("انتشار انجام شد؛ به سرفصل مربوط برگشتید.");
             }));
           }
           if (version.review_status === "published") {
