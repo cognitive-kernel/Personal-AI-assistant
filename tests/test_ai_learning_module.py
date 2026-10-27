@@ -1147,3 +1147,18 @@ def test_review_and_publish_return_scroll_to_the_same_parent_topic():
     assert 'returnToTopic(topic.id);' in publish_handler
     assert publish_handler.index('await showLessons(topic);') < publish_handler.index('returnToTopic(topic.id);')
 
+    decision_start = script.index("async function decide(topicId, decision)")
+    decision_end = script.index("async function editTopic", decision_start)
+    assert "returnToTopic(topicId);" in script[decision_start:decision_end]
+
+    bulk_start = script.index("async function bulkReviewLessons(ids)")
+    bulk_end = script.index('byId("approve-all-lessons")', bulk_start)
+    bulk_handler = script[bulk_start:bulk_end]
+    assert "returnToTopic(topic.id);" in bulk_handler
+
+    manual_start = script.index("async function createLesson(topic)")
+    manual_end = script.index("byId(\"course-form\")", manual_start)
+    manual_handler = script[manual_start:manual_end]
+    assert "returnToTopic(topic.id);" in manual_handler
+
+
