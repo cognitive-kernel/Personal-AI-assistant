@@ -187,7 +187,7 @@ def test_first_outline_import_skips_semantically_duplicate_items(learning_store,
 
     result = service.import_outline(
         course["id"],
-        "1. مدیریت ایندکس‌های ترکیبی در SQL Server\\n"
+        "1. مدیریت ایندکس‌های ترکیبی در SQL Server\n"
         "2. مدیریت ایندکس‌های ترکیبی برای SQL Server",
     )
 
@@ -209,8 +209,8 @@ def test_first_generated_outline_skips_semantically_duplicate_items(learning_sto
         lambda texts, model: [[1.0, 0.0] for _ in texts],
     )
     response = (
-        "1. مدیریت ایندکس‌های ترکیبی در SQL Server\\n"
-        "2. مدیریت ایندکس‌های ترکیبی برای SQL Server\\n"
+        "1. مدیریت ایندکس‌های ترکیبی در SQL Server\n"
+        "2. مدیریت ایندکس‌های ترکیبی برای SQL Server\n"
         "AUDIT: status=COMPLETE; total_topics=2; missing_domains=none; "
         "end_reason=all_applicable_domains_covered"
     )
@@ -234,7 +234,7 @@ def test_first_outline_import_fails_closed_if_semantic_comparison_is_unavailable
     with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
         service.import_outline(
             course["id"],
-            "1. مدیریت ایندکس‌های ترکیبی در SQL Server\\n"
+            "1. مدیریت ایندکس‌های ترکیبی در SQL Server\n"
             "2. مدیریت ایندکس‌های ترکیبی برای SQL Server",
         )
 
