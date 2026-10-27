@@ -8,6 +8,7 @@
 - [x] The full lesson is the single source of truth: never generate a short lesson first or replace missing sections with a summary.
 - [x] An optional summary is derived only from the complete saved lesson and never overwrites or triggers regeneration of the full text.
 - [x] Every response part is instructed to end with `LESSON_STATUS: CONTINUE_REQUIRED` or `LESSON_STATUS: COMPLETE`.
+- [x] A response marked `COMPLETE` is not accepted as a finished single-topic lesson until the merged lesson reaches at least 1200 words; short responses trigger continued expansion in the same conversation.
 - [x] Browser automation continues the same visible ChatGPT conversation when continuation is requested or the status marker is missing.
 - [x] Captured parts are merged and internal status markers are removed before the lesson is stored.
 - [x] Each newly captured part is checkpointed to the local run record immediately, before requesting the next part.
