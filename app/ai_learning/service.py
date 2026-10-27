@@ -304,7 +304,15 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "and body text (never an empty response or title-only lesson). For multiple topics, begin each "
                 "section with a separate line in this exact format: [TOPIC_ID:123] Lesson title, replacing 123 "
                 "with that topic's numeric ID. Keep sections clearly separated and include actual lesson body "
-                "text under every section."
+                "text under every section. "
+                "LENGTH AND COMPLETION CONTRACT: Do not try to fit a very broad lesson into one short response. "
+                "Write a substantial, detailed lesson in parts when necessary, targeting roughly 1200–1800 words per response part. "
+                "Preserve technical depth, examples, expected outputs, caveats, and exercises; do not replace missing material with a summary. "
+                "At the end of EVERY response part, put exactly one final status line: "
+                "'LESSON_STATUS: CONTINUE_REQUIRED; next_section=... ' when any planned teaching, examples, troubleshooting, recap, or exercises remain, "
+                "or 'LESSON_STATUS: COMPLETE' only after the entire requested lesson is finished. "
+                "If continuing, state the last completed heading and the next heading on the status line. "
+                "Never claim COMPLETE while a section, example, answer key, or required source section remains unfinished."
             )
         if run_type == "lesson" and force_retry:
             prompt += (
