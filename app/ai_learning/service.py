@@ -801,9 +801,11 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 return get_run(run_id)
             outline_error = _outline_completion_error(response_text, titles)
             existing_rows = conn.execute(
-                "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
+                "SELECT id,title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
             existing_titles = [str(row["title"]) for row in existing_rows]
+            existing_by_key = {_dedupe_normalize(str(row["title"])): int(row["id"]) for row in existing_rows}
+            hierarchy_levels = _parse_outline_levels(response_text)
             try:
                 # Run duplicate detection against existing titles and within the
                 # newly received outline, even when this course has no topics yet.
@@ -825,12 +827,28 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
-            for offset, title in enumerate(new_titles):
+            new_title_keys = {_dedupe_normalize(title) for title in new_titles}
+            hierarchy_stack: list[tuple[int, int]] = []
+            created_offset = 0
+            for title in titles:
+                key = _dedupe_normalize(title)
+                depth = hierarchy_levels.get(key, 1)
+                while hierarchy_stack and hierarchy_stack[-1][0] >= depth:
+                    hierarchy_stack.pop()
+                existing_id = existing_by_key.get(key)
+                if existing_id is not None:
+                    hierarchy_stack.append((depth, existing_id))
+                    continue
+                if key not in new_title_keys:
+                    continue
+                parent_topic_id = hierarchy_stack[-1][1] if depth > 1 and hierarchy_stack else None
                 cur = conn.execute(
-                    "INSERT INTO topics(course_id,position,title,approval_status,processing_status) VALUES(?,?,?,'pending','received')",
-                    (run["course_id"], position + offset, title))
+                    "INSERT INTO topics(course_id,parent_topic_id,position,title,approval_status,processing_status) VALUES(?,?,?,?, 'pending','received')",
+                    (run["course_id"], parent_topic_id, position + created_offset, title))
                 topic_id = int(cur.lastrowid)
                 conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
+                hierarchy_stack.append((depth, topic_id))
+                created_offset += 1
             conn.execute(
                 """UPDATE runs SET response_text=?,status=?,error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
