@@ -1123,3 +1123,23 @@ def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
     script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
     assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
     assert 'ids.join("-") + "-" + Date.now()' not in script
+
+def test_review_and_publish_return_scroll_to_the_same_parent_topic():
+    from pathlib import Path
+
+    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
+    assert 'card.id = "topic-card-" + topic.id;' in script
+    assert 'function returnToTopic(topicId)' in script
+    assert 'card.scrollIntoView({behavior:"smooth", block:"center"});' in script
+    assert 'card.focus({preventScroll:true})' in script
+
+    review_start = script.index('action("تأیید بازبینی"')
+    review_end = script.index('action("رد نسخه"', review_start)
+    review_handler = script[review_start:review_end]
+    assert 'await showLessons(topic);\\n              returnToTopic(topic.id);' in review_handler
+
+    publish_start = script.index('action("انتشار"')
+    publish_end = script.index('if (version.review_status === "published")', publish_start)
+    publish_handler = script[publish_start:publish_end]
+    assert 'await showLessons(topic);\\n              returnToTopic(topic.id);' in publish_handler
+
