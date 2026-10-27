@@ -526,7 +526,7 @@ def _capture_lesson_until_complete(
     continuation_count = 0
 
     def checkpoint() -> None:
-        combined = "\\n\\n".join(_strip_lesson_status_markers(part) for part in parts)
+        combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
         if on_checkpoint is None or not combined.strip():
             return
         try:
