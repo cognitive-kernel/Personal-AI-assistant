@@ -142,6 +142,12 @@ async def enforce_loopback_only(request, call_next):
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Serve the local app icon so browsers do not log a missing favicon."""
+    return FileResponse(STATIC_DIR / "favicon.ico", media_type="image/vnd.microsoft.icon")
+
 _task_runtimes: list[TaskRuntime] = []
 _startup_storage_error: str | None = None
 
