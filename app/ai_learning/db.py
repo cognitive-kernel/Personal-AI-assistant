@@ -130,6 +130,16 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
         )""",
         "CREATE INDEX idx_ai_semantic_embedding_model ON semantic_embedding_cache(embedding_model,content_sha256)",
     )),
+    (4, "ai-learning-query-feedback", (
+        """CREATE TABLE query_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            query_trace_id INTEGER NOT NULL UNIQUE REFERENCES query_traces(id) ON DELETE CASCADE,
+            rating INTEGER NOT NULL CHECK(rating IN (-1,1)),
+            comment TEXT NOT NULL DEFAULT '' CHECK(length(comment) <= 1000),
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "CREATE INDEX idx_ai_query_feedback_created ON query_feedback(created_at DESC,id DESC)",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):
