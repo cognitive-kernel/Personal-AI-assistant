@@ -1123,3 +1123,42 @@ def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
     script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
     assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
     assert 'ids.join("-") + "-" + Date.now()' not in script
+
+def test_review_and_publish_return_scroll_to_the_same_parent_topic():
+    from pathlib import Path
+
+    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
+    assert 'card.id = "topic-card-" + topic.id;' in script
+    assert 'function returnToTopic(topicId)' in script
+    assert 'card.scrollIntoView({behavior:"smooth", block:"center"});' in script
+    assert 'card.focus({preventScroll:true})' in script
+
+    review_start = script.index('action("تأیید بازبینی"')
+    review_end = script.index('action("رد نسخه"', review_start)
+    review_handler = script[review_start:review_end]
+    assert 'await showLessons(topic);' in review_handler
+    assert 'returnToTopic(topic.id);' in review_handler
+    assert review_handler.index('await showLessons(topic);') < review_handler.index('returnToTopic(topic.id);')
+
+    publish_start = script.index('action("انتشار"')
+    publish_end = script.index('if (version.review_status === "published")', publish_start)
+    publish_handler = script[publish_start:publish_end]
+    assert 'await showLessons(topic);' in publish_handler
+    assert 'returnToTopic(topic.id);' in publish_handler
+    assert publish_handler.index('await showLessons(topic);') < publish_handler.index('returnToTopic(topic.id);')
+
+    decision_start = script.index("async function decide(topicId, decision)")
+    decision_end = script.index("async function editTopic", decision_start)
+    assert "returnToTopic(topicId);" in script[decision_start:decision_end]
+
+    bulk_start = script.index("async function bulkReviewLessons(ids)")
+    bulk_end = script.index('byId("approve-all-lessons")', bulk_start)
+    bulk_handler = script[bulk_start:bulk_end]
+    assert "returnToTopic(topic.id);" in bulk_handler
+
+    manual_start = script.index("async function createLesson(topic)")
+    manual_end = script.index("byId(\"course-form\")", manual_start)
+    manual_handler = script[manual_start:manual_end]
+    assert "returnToTopic(topic.id);" in manual_handler
+
+
