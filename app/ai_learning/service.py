@@ -642,8 +642,9 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
                 "پاسخ خام ذخیره شده؛ فهرست را ادامه دهید.")
     if numbered != list(range(1, declared_total + 1)):
         return "شماره‌گذاری سرفصل‌ها پیوسته از ۱ نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح/تکمیل شود."
-    if fields.get("missing_domains", "").casefold() != "none" or not fields.get("end_reason"):
-        return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبر را نشان می‌دهد؛ پاسخ خام ذخیره شده و فهرست باید تکمیل شود."
+    if (fields.get("missing_domains", "").casefold() != "none"
+            or fields.get("end_reason", "").casefold() != "all_applicable_domains_covered"):
+        return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبرِ تکمیل همهٔ حوزه‌های مرتبط را نشان نمی‌دهد؛ پاسخ خام ذخیره شده و فهرست باید تکمیل شود."
     return None
 
 
