@@ -196,6 +196,13 @@ async function showLessons(topic) {
               await showLessons(topic);
             }, false, true));
           }
+          if (version.review_status === "rejected") {
+            vbuttons.append(action("حذف نسخه ردشده", async () => {
+              if (!window.confirm("متن این نسخهٔ ردشده و منابع وابسته برای همیشه حذف شود؟ این کار قابل بازگشت نیست.")) return;
+              await api("/api/ai-learning/versions/" + version.id, {method:"DELETE"});
+              await showLessons(topic);
+            }, false, true));
+          }
           if (version.review_status === "reviewed") {
             vbuttons.append(action("انتشار", async () => {
               if (!window.confirm("این نسخه منتشر شود؟")) return;
@@ -224,7 +231,7 @@ async function editLessonContent(lesson, topic) {
     const latest = await api("/api/ai-learning/versions/" + versions.items[0].id);
     current = latest.markdown || "";
   }
-  const markdown = window.prompt("متن کامل درس را ویرایش کنید. ذخیره، نسخه جدید می‌سازد و نسخه قبلی را حذف نمی‌کند:", current);
+  const markdown = window.prompt("متن کامل درس را ویرایش کنید. محدودیت طول ثابت ندارد؛ ذخیره، نسخه جدید می‌سازد و نسخه قبلی را حذف نمی‌کند:", current);
   if (markdown === null) return;
   if (!markdown.trim()) { message("متن خالی ذخیره نشد. برای پاسخ ناقص، نسخه اصلاحی با متن کامل ثبت کنید.", true); return; }
   await api("/api/ai-learning/lessons/" + lesson.id + "/versions", jsonOptions("POST", {
