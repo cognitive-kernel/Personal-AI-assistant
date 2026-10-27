@@ -506,6 +506,37 @@ def test_resume_reuses_lesson_shell_with_empty_content(isolated_store):
     assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content."
 
 
+
+def test_complete_run_uses_position_after_soft_deleted_lesson(isolated_store):
+    course = service.create_course(title="Lesson position recovery")
+    topic = service.add_topic(course["id"], "Recovery handling")
+    service.decide_topics([topic["id"]], "approved")
+    with connection() as conn:
+        conn.execute(
+            """INSERT INTO lessons(topic_id,position,title,status,deleted_at)
+               VALUES(?,1,'Old deleted lesson','archived',CURRENT_TIMESTAMP)""",
+            (topic["id"],),
+        )
+
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        request_key="lesson-position-soft-delete-collision",
+    )
+    service.start_run(run["id"])
+    response = (
+        "# Recovery handling\n\n"
+        "This lesson explains how to recover a database workflow safely, preserve "
+        "consistent state, validate the next step, and avoid writing over records "
+        "that still participate in database uniqueness constraints."
+    )
+    completed = service.complete_run(run["id"], response)
+
+    assert completed["status"] == "succeeded"
+    lessons = service.list_lessons(topic["id"])
+    assert len(lessons) == 1
+    assert lessons[0]["position"] == 2
+
+
 def test_published_version_can_be_withdrawn_and_review_reset(isolated_store):
     course = service.create_course(title="SQL Server")
     topic = service.add_topic(course["id"], "Transactions")
