@@ -44,10 +44,17 @@ def _title_embeddings(texts: list[str]) -> list[list[float]]:
     model = str(settings.get("ollama_embedding_model") or os.getenv("OLLAMA_EMBEDDING_MODEL") or "nomic-embed-text").strip()
     if not model:
         raise RuntimeError("No local embedding model is configured for title duplicate checks.")
-    vectors = ollama_embed(texts, model=model)
-    if len(vectors) != len(texts) or any(not vector for vector in vectors):
-        raise RuntimeError("Embedding model returned incomplete title vectors.")
-    return [[float(value) for value in vector] for vector in vectors]
+    # Keep large outlines from becoming one oversized local-model request.
+    vectors: list[list[float]] = []
+    for offset in range(0, len(texts), 64):
+        batch = texts[offset:offset + 64]
+        batch_vectors = ollama_embed(batch, model=model)
+        if len(batch_vectors) != len(batch) or any(not vector for vector in batch_vectors):
+            raise RuntimeError("Embedding model returned incomplete title vectors.")
+        vectors.extend([[float(value) for value in vector] for vector in batch_vectors])
+    if vectors and any(len(vector) != len(vectors[0]) for vector in vectors):
+        raise RuntimeError("Embedding model returned title vectors with inconsistent dimensions.")
+    return vectors
 
 
 TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.985
@@ -94,25 +101,31 @@ def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) 
         ) from exc
     base_vectors = vectors[:len(base_titles)]
     candidate_vectors = vectors[len(base_titles):]
-    accepted_vectors: list[tuple[str, list[float]]] = list(zip(base_titles, base_vectors))
+    accepted_vectors: list[tuple[str, list[float], set[str]]] = [
+        (title, vector, _title_tokens(title)) for title, vector in zip(base_titles, base_vectors)
+    ]
     for title, vector in zip(pending, candidate_vectors):
         candidate_tokens = _title_tokens(title)
         best: tuple[str, float] | None = None
-        for existing, existing_vector in accepted_vectors:
-            score = _embedding_cosine(vector, existing_vector)
-            existing_tokens = _title_tokens(existing)
+        for existing, existing_vector, existing_tokens in accepted_vectors:
+            # Cheap lexical filtering first avoids expensive vector comparisons for
+            # the many unrelated pairs in large, otherwise comprehensive outlines.
+            shared = len(candidate_tokens & existing_tokens)
             union = candidate_tokens | existing_tokens
-            overlap = len(candidate_tokens & existing_tokens) / len(union) if union else 0.0
-            # Title embeddings alone often confuse two distinct subtopics in the same domain.
+            overlap = shared / len(union) if union else 0.0
+            if overlap < 0.65 or shared < 3:
+                continue
+            score = _embedding_cosine(vector, existing_vector)
+            # Embeddings alone often confuse distinct subtopics in the same domain.
             # Require both exceptionally high semantic similarity and strong lexical overlap.
-            if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD and overlap >= 0.65 and len(candidate_tokens & existing_tokens) >= 3:
+            if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
                 if best is None or score > best[1]:
                     best = (existing, score)
         if best:
             skipped.append({"title": title, "duplicate_of": best[0], "score": round(best[1], 4), "method": "embedding+token_overlap"})
         else:
             accepted.append(title)
-            accepted_vectors.append((title, vector))
+            accepted_vectors.append((title, vector, candidate_tokens))
     return accepted, skipped
 
 
