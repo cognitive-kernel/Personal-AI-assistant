@@ -13,7 +13,7 @@ import threading
 import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from . import service
 
@@ -518,11 +518,27 @@ def _capture_lesson_until_complete(
     page: Any,
     first_answer: str,
     cancel_event: threading.Event | None = None,
+    on_checkpoint: Callable[[str], None] | None = None,
 ) -> str:
-    """Continue a long lesson in the same visible ChatGPT conversation until explicitly complete."""
+    """Continue a long lesson and durably checkpoint the accumulated text after each part."""
     parts = [first_answer]
     status = _lesson_completion_status(first_answer)
     continuation_count = 0
+
+    def checkpoint() -> None:
+        combined = "\\n\\n".join(_strip_lesson_status_markers(part) for part in parts)
+        if on_checkpoint is None or not combined.strip():
+            return
+        try:
+            on_checkpoint(combined)
+        except Exception as exc:
+            raise BrowserAutomationError(
+                "lesson_checkpoint_failed",
+                f"ذخیرهٔ مرحله‌ای درس در پایگاه داده ناموفق بود: {type(exc).__name__}",
+                partial_response=combined,
+            ) from exc
+
+    checkpoint()
     while status != "COMPLETE":
         if cancel_event is not None and cancel_event.is_set():
             raise BrowserAutomationError(
@@ -580,6 +596,7 @@ def _capture_lesson_until_complete(
             )
         parts.append(next_part)
         status = _lesson_completion_status(next_part)
+        checkpoint()
         _log_event("lesson_continuation_captured", continuation=continuation_count,
                    part_chars=len(next_part), total_chars=sum(len(part) for part in parts),
                    completion_status=status or "missing")
@@ -591,7 +608,11 @@ def _capture_lesson_until_complete(
     return combined
 
 
-def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -> str:
+def _browser_capture(
+    prompt: str,
+    cancel_event: threading.Event | None = None,
+    on_lesson_checkpoint: Callable[[str], None] | None = None,
+) -> str:
     capture_started = time.monotonic()
     _log_event("capture_started", prompt_chars=len(prompt), cancelled=bool(cancel_event and cancel_event.is_set()))
     try:
@@ -679,7 +700,7 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                     page, previous, cancel_event, previous_message_count=previous_message_count
                 )
                 if "Write educational lesson content in Markdown" in prompt:
-                    answer = _capture_lesson_until_complete(page, answer, cancel_event)
+                    answer = _capture_lesson_until_complete(page, answer, cancel_event, on_lesson_checkpoint)
                 _log_event("capture_succeeded", elapsed_seconds=round(time.monotonic() - capture_started, 1),
                            answer_chars=len(answer))
                 return answer
@@ -755,7 +776,7 @@ def _continue_lessons(
             _ACTIVE_RUN_ID = run_id
             _CANCEL_EVENTS[run_id] = cancel_event
         try:
-            answer = _browser_capture(run["prompt_text"], cancel_event)
+            answer = _browser_capture(\n                run[\"prompt_text\"], cancel_event,\n                lambda text: service.save_run_partial_response(run_id, text),\n            )
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
             service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
@@ -784,7 +805,7 @@ def _worker(
     run_type = service.get_run(run_id).get("run_type")
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
     try:
-        answer = _browser_capture(prompt, cancel_event)
+        checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == \"lesson\" else None\n        answer = _browser_capture(prompt, cancel_event, checkpoint)
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
