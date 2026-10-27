@@ -499,12 +499,10 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
 
 
 def _lesson_completion_status(text: str) -> str | None:
-    """Read the explicit completion contract at the end of a lesson response."""
-    matches = re.findall(
-        r"(?im)^\s*LESSON_STATUS:\s*(COMPLETE|CONTINUE_REQUIRED)\b[^\n]*$",
-        text or "",
-    )
-    return matches[-1].upper() if matches else None
+    """Read the explicit completion contract only when it is the final non-empty line."""
+    last_line = next((line.strip() for line in reversed((text or "").splitlines()) if line.strip()), "")
+    match = re.fullmatch(r"LESSON_STATUS:\s*(COMPLETE|CONTINUE_REQUIRED)\b[^\n]*", last_line, re.IGNORECASE)
+    return match.group(1).upper() if match else None
 
 
 def _strip_lesson_status_markers(text: str) -> str:
