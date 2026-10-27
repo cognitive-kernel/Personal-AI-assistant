@@ -295,7 +295,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "For example, if the course is 'SQL Server 2025' and the topic is "
                 "'134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی', teach that topic specifically "
                 "in the context of SQL Server 2025, not as a generic operating-system lesson. "
-                "Create a complete, high-quality lesson rather than a brief summary. For each topic, teach the concept from foundations to practical use at the appropriate level. Include learning objectives, prerequisite concepts where needed, accurate explanations, step-by-step implementation, runnable T-SQL examples with expected results where appropriate, real-world use cases, performance/security/reliability implications, common mistakes and troubleshooting, a short recap, and practice exercises with answer keys. Do not pad the lesson with repetition; give advanced topics the depth they require and preserve distinctions between related topics. For a batch, each topic must have its own substantive self-contained section rather than sharing one generic explanation. "
+                "STAGE 1 — SCOPE ANALYSIS BEFORE WRITING: Before drafting this lesson, analyze the exact topic title and description, course/main subject, target level, explicit or implied prerequisites, and the number of distinct concepts, procedures, and examples that must be taught. Build an internal coverage checklist and logical section order. Estimate whether the scope is broad enough to require multiple response parts; do not use title length alone as the size signal. Regardless of estimated size, the deliverable remains the complete lesson. "
+            "Create a complete, high-quality lesson rather than a brief summary. For each topic, teach the concept from foundations to practical use at the appropriate level. Include learning objectives, prerequisite concepts where needed, accurate explanations, step-by-step implementation, runnable T-SQL examples with expected results where appropriate, real-world use cases, performance/security/reliability implications, common mistakes and troubleshooting, a short recap, and practice exercises with answer keys. Do not pad the lesson with repetition; give advanced topics the depth they require and preserve distinctions between related topics. For a batch, each topic must have its own substantive self-contained section rather than sharing one generic explanation. "
                 "Explain relevant SQL Server 2025 concepts, mechanisms, configuration, practical examples, "
                 "and troubleshooting where applicable. Do not invent product features or unsupported facts; "
                 "state uncertainty and cite sources or references only when known. When relying on external documentation, include a final Markdown section named \"منابع\" (or \"Sources\") where every source is a clickable Markdown link in the exact form [source title](https://full-url), not a title-only citation; use the full working URL for each source actually used, never invent URLs, and never claim a source was consulted if it was not. If a source title is known but no verified URL is available, explicitly mark the URL as unavailable instead of presenting the title as a linked source. Treat topic titles as labels, "
@@ -1217,8 +1218,9 @@ def get_course(course_id: int) -> dict[str, Any]:
 
     result = dict(course)
     result["topics"] = topic_items
+    # Keep fractional progress visible for large courses; e.g. 6 of 1400 is 0.4%, not 0%.
     result["progress_percent"] = round(
-        sum(topic["progress_percent"] for topic in topic_items) / len(topic_items)
+        sum(topic["progress_percent"] for topic in topic_items) / len(topic_items), 1
     ) if topic_items else 0
     result["topic_total"] = len(topic_items)
     result["topic_completed"] = sum(1 for topic in topic_items if topic["progress_percent"] == 100)
