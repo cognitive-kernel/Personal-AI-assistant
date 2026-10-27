@@ -83,3 +83,18 @@ def test_dashboard_exposes_course_wide_lesson_selection_and_generation_controls(
     assert "هشدار: متن این نسخه خالی است" in script
     assert "تلاش مجدد با منابع به‌روز" in script
     assert '"/sources/"+source.id+"/check"' in script
+
+
+def test_topic_and_lesson_catalog_is_one_collapsible_menu():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    script = (root / "app.js").read_text(encoding="utf-8")
+    assert '<details id="catalog-menu">' in html
+    assert '<details id="lesson-list-details">' in html
+    assert html.count('id="topics"') == 1
+    assert html.count('id="lessons"') == 1
+    assert 'const card=el("details",undefined,"topic")' in script
+    assert 'if(catalog)catalog.open=true' in script
+    assert 'if(lessonDetails)lessonDetails.open=true' in script

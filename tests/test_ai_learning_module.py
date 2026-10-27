@@ -112,8 +112,9 @@ def test_feature_flags_are_off_by_default(monkeypatch):
     assert config.is_enabled() is False
     assert config.retrieval_is_enabled() is False
 
-def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store):
+def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2005")
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
     raw = "1. Architecture\n2. Indexes\n3. Backup and restore"
     result = service.import_outline(course["id"], raw, provider="chatgpt_ui")
     assert result["imported"] == 3
@@ -171,12 +172,14 @@ def test_outline_import_accepts_plain_line_outline_and_preserves_raw_response(is
     assert saved["response_text"] == raw
 
 
-def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(isolated_store):
+def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2025")
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
     run = service.create_run(course["id"], run_type="outline", request_key="large-outline-response")
     service.start_run(run["id"])
     titles = [f"سرفصل آزمایشی شماره {index:04d} با شرح تکمیلی و توضیحات بیشتر برای پوشش کامل موضوعات آموزشی" for index in range(1, 1401)]
-    raw = "\n".join(titles)
+    raw = "\n".join(f"{index}. {title}" for index, title in enumerate(titles, 1))
+    raw += "\nAUDIT: status=COMPLETE; total_topics=1400; missing_domains=none; end_reason=all_applicable_domains_covered"
     assert len(raw) > 100_000
     result = service.complete_run(run["id"], raw)
     assert result["status"] == "succeeded"
@@ -189,13 +192,14 @@ def test_outline_import_rejects_unstructured_response(isolated_store):
     with pytest.raises(ValueError, match="No numbered"):
         service.import_outline(course["id"], "This is a paragraph without an outline.")
 
-def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store):
+def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server")
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
     run = service.create_run(course["id"], run_type="outline", request_key="outline-test-1")
     assert run["status"] == "queued"
     assert "numbered topics" in run["prompt_text"]
     service.start_run(run["id"])
-    finished = service.complete_run(run["id"], "1. Architecture\n2. Query processing")
+    finished = service.complete_run(run["id"], "1. Architecture\n2. Query processing\nAUDIT: status=COMPLETE; total_topics=2; missing_domains=none; end_reason=all_applicable_domains_covered")
     assert finished["status"] == "succeeded"
     assert len(finished["topics"]) == 2
     assert all(topic["approval_status"] == "pending" for topic in finished["topics"])

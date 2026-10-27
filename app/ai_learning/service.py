@@ -44,10 +44,17 @@ def _title_embeddings(texts: list[str]) -> list[list[float]]:
     model = str(settings.get("ollama_embedding_model") or os.getenv("OLLAMA_EMBEDDING_MODEL") or "nomic-embed-text").strip()
     if not model:
         raise RuntimeError("No local embedding model is configured for title duplicate checks.")
-    vectors = ollama_embed(texts, model=model)
-    if len(vectors) != len(texts) or any(not vector for vector in vectors):
-        raise RuntimeError("Embedding model returned incomplete title vectors.")
-    return [[float(value) for value in vector] for vector in vectors]
+    # Keep large outlines from becoming one oversized local-model request.
+    vectors: list[list[float]] = []
+    for offset in range(0, len(texts), 64):
+        batch = texts[offset:offset + 64]
+        batch_vectors = ollama_embed(batch, model=model)
+        if len(batch_vectors) != len(batch) or any(not vector for vector in batch_vectors):
+            raise RuntimeError("Embedding model returned incomplete title vectors.")
+        vectors.extend([[float(value) for value in vector] for vector in batch_vectors])
+    if vectors and any(len(vector) != len(vectors[0]) for vector in vectors):
+        raise RuntimeError("Embedding model returned title vectors with inconsistent dimensions.")
+    return vectors
 
 
 TITLE_SEMANTIC_DUPLICATE_THRESHOLD = 0.985
@@ -60,61 +67,91 @@ def _title_tokens(value: str) -> set[str]:
 
 
 def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) -> tuple[list[str], list[dict[str, Any]]]:
-    """Skip exact duplicates and only near-identical semantic titles, never broad topic overlap."""
+    """Skip normalized and near-identical titles, comparing embeddings only for lexical candidates."""
     accepted: list[str] = []
     skipped: list[dict[str, Any]] = []
-    known: list[str] = []
-    seen: set[str] = set()
+    canonical_existing: list[str] = []
+    known_by_key: dict[str, str] = {}
     for title in existing_titles:
         key = _dedupe_normalize(title)
-        if key and key not in seen:
-            seen.add(key)
-            known.append(title)
+        if key and key not in known_by_key:
+            known_by_key[key] = title
+            canonical_existing.append(title)
+
     pending: list[str] = []
     for title in candidates:
         key = _dedupe_normalize(title)
-        exact = next((value for value in known if _dedupe_normalize(value) == key), None)
-        if exact is not None or not key:
-            skipped.append({"title": title, "duplicate_of": exact or title, "score": 1.0, "method": "normalized"})
-        else:
-            pending.append(title)
-            known.append(title)
-            seen.add(key)
+        duplicate_of = known_by_key.get(key) if key else None
+        if duplicate_of is not None or not key:
+            skipped.append({
+                "title": title, "duplicate_of": duplicate_of or title,
+                "score": 1.0, "method": "normalized",
+            })
+            continue
+        known_by_key[key] = title
+        pending.append(title)
+
     if not pending:
         return accepted, skipped
-    if not existing_titles and len(pending) == 1:
-        return pending, skipped
-    base_titles = list(existing_titles)
-    try:
-        vectors = _title_embeddings(base_titles + pending)
-    except Exception as exc:
-        raise ValueError(
-            "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
-            f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
-        ) from exc
-    base_vectors = vectors[:len(base_titles)]
-    candidate_vectors = vectors[len(base_titles):]
-    accepted_vectors: list[tuple[str, list[float]]] = list(zip(base_titles, base_vectors))
-    for title, vector in zip(pending, candidate_vectors):
+
+    embedding_cache: dict[str, list[float]] = {}
+
+    def vector_for(title: str, related_titles: list[str]) -> list[float]:
+        key = _dedupe_normalize(title)
+        missing: list[str] = []
+        missing_keys: set[str] = set()
+        for candidate in [title, *related_titles]:
+            candidate_key = _dedupe_normalize(candidate)
+            if candidate_key not in embedding_cache and candidate_key not in missing_keys:
+                missing.append(candidate)
+                missing_keys.add(candidate_key)
+        if missing:
+            try:
+                vectors = _title_embeddings(missing)
+            except Exception as exc:
+                raise ValueError(
+                    "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
+                    f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
+                ) from exc
+            embedding_cache.update({
+                _dedupe_normalize(candidate): vector
+                for candidate, vector in zip(missing, vectors)
+            })
+        return embedding_cache[key]
+
+    accepted_vectors: list[tuple[str, set[str]]] = [
+        (title, _title_tokens(title)) for title in canonical_existing
+    ]
+    for title in pending:
         candidate_tokens = _title_tokens(title)
-        best: tuple[str, float] | None = None
-        for existing, existing_vector in accepted_vectors:
-            score = _embedding_cosine(vector, existing_vector)
-            existing_tokens = _title_tokens(existing)
+        relevant: list[str] = []
+        for existing, existing_tokens in accepted_vectors:
+            shared = len(candidate_tokens & existing_tokens)
             union = candidate_tokens | existing_tokens
-            overlap = len(candidate_tokens & existing_tokens) / len(union) if union else 0.0
-            # Title embeddings alone often confuse two distinct subtopics in the same domain.
-            # Require both exceptionally high semantic similarity and strong lexical overlap.
-            if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD and overlap >= 0.65 and len(candidate_tokens & existing_tokens) >= 3:
-                if best is None or score > best[1]:
-                    best = (existing, score)
+            overlap = shared / len(union) if union else 0.0
+            if shared >= 3 and overlap >= 0.65:
+                relevant.append(existing)
+
+        best: tuple[str, float] | None = None
+        if relevant:
+            candidate_vector = vector_for(title, relevant)
+            for existing in relevant:
+                score = _embedding_cosine(
+                    candidate_vector,
+                    embedding_cache[_dedupe_normalize(existing)],
+                )
+                if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
+                    if best is None or score > best[1]:
+                        best = (existing, score)
         if best:
-            skipped.append({"title": title, "duplicate_of": best[0], "score": round(best[1], 4), "method": "embedding+token_overlap"})
+            skipped.append({
+                "title": title, "duplicate_of": best[0],
+                "score": round(best[1], 4), "method": "embedding+token_overlap",
+            })
         else:
             accepted.append(title)
-            accepted_vectors.append((title, vector))
+            accepted_vectors.append((title, candidate_tokens))
     return accepted, skipped
-
 
 def _ensure_unique_title(conn: sqlite3.Connection, *, table: str, title: str,
                          scope_column: str, scope_id: int, exclude_id: int | None = None) -> None:
@@ -615,6 +652,39 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> str | None:
+    """Return a recovery message unless the outline's explicit completion audit is valid.
+
+    The provider response is retained even when this check fails. This is a
+    structural completeness check only; it does not assess factual correctness.
+    """
+    audit_lines = [line.strip() for line in response_text.splitlines()
+                   if re.match(r"(?i)^\s*AUDIT\s*:", line)]
+    numbered = [int(match.group(1)) for line in response_text.splitlines()
+                if (match := re.match(r"^\s*(\d+)\.\s+\S", line))]
+    if len(audit_lines) != 1:
+        return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را ادامه دهید و سپس دوباره ثبت کنید."
+    audit = audit_lines[0]
+    fields = {key.casefold(): value.strip() for key, value in
+              re.findall(r"([A-Za-z_]+)\s*=\s*([^;]+)", audit.split(":", 1)[1])}
+    if fields.get("status", "").upper() != "COMPLETE":
+        return "فهرست خام و سرفصل‌های قابل استخراج ذخیره شدند، اما ChatGPT صریحاً تکمیل فهرست را تأیید نکرده است؛ ادامهٔ فهرست را دریافت کنید."
+    try:
+        declared_total = int(fields.get("total_topics", ""))
+    except (TypeError, ValueError):
+        return "ممیزی فهرست تعداد معتبر سرفصل‌ها را اعلام نکرده است؛ پاسخ را اصلاح/ادامه دهید."
+    if declared_total != len(parsed_titles) or declared_total != len(numbered):
+        return (f"تعداد سرفصل‌های ممیزی‌شده با پاسخ هم‌خوان نیست "
+                f"(ممیزی={declared_total}، قابل‌استخراج={len(parsed_titles)}، شماره‌دار={len(numbered)}). "
+                "پاسخ خام ذخیره شده؛ فهرست را ادامه دهید.")
+    if numbered != list(range(1, declared_total + 1)):
+        return "شماره‌گذاری سرفصل‌ها پیوسته از ۱ نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح/تکمیل شود."
+    if (fields.get("missing_domains", "").casefold() != "none"
+            or fields.get("end_reason", "").casefold() != "all_applicable_domains_covered"):
+        return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبرِ تکمیل همهٔ حوزه‌های مرتبط را نشان نمی‌دهد؛ پاسخ خام ذخیره شده و فهرست باید تکمیل شود."
+    return None
+
+
 def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
     response_text = _clean_text(response_text, "response_text", 500_000)
@@ -636,14 +706,29 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     (response_text, "No numbered, bulleted, or Markdown-heading outline items were detected.", run_id))
                 conn.commit()
                 return get_run(run_id)
+            outline_error = _outline_completion_error(response_text, titles)
             existing_rows = conn.execute(
                 "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
             existing_titles = [str(row["title"]) for row in existing_rows]
-            if existing_titles:
+            try:
+                # Run duplicate detection against existing titles and within the
+                # newly received outline, even when this course has no topics yet.
                 new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
-            else:
-                new_titles, skipped_titles = titles, []
+            except ValueError as exc:
+                # Preserve the complete provider response even when semantic
+                # deduplication is unavailable. Do not insert uncertain duplicates.
+                conn.execute(
+                    """UPDATE runs SET response_text=?,status='needs_user_action',
+                       error_code='outline_duplicate_check_unavailable',error_message=?,
+                       finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (response_text,
+                     "متن خام فهرست ذخیره شد، اما بررسی تکراری‌بودن سرفصل‌ها در دسترس نیست؛ "
+                     "Ollama/مدل embedding را بررسی و اجرا را دوباره امتحان کنید. "
+                     f"جزئیات: {type(exc).__name__}", run_id),
+                )
+                conn.commit()
+                return get_run(run_id)
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
@@ -654,8 +739,10 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 topic_id = int(cur.lastrowid)
                 conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
             conn.execute(
-                "UPDATE runs SET response_text=?,status='succeeded',error_code=NULL,error_message=NULL,finished_at=CURRENT_TIMESTAMP WHERE id=?",
-                (response_text, run_id))
+                """UPDATE runs SET response_text=?,status=?,error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (response_text, "needs_user_action" if outline_error else "succeeded",
+                 "outline_incomplete" if outline_error else None, outline_error, run_id))
             conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (run["course_id"],))
         else:
             if not topics:
@@ -901,12 +988,12 @@ def import_outline(course_id: int, raw_response: str, *, provider: str = "manual
             "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL", (course_id,)
         ).fetchall()
         existing_titles = [str(row["title"]) for row in existing_rows]
-        # The parser has already removed normalized duplicates within the incoming batch.
-        # Avoid embedding the entire 1,000+ topic outline when the course is empty.
-        if existing_titles:
-            new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
-        else:
-            new_candidates, skipped_duplicates = candidates, []
+        # Always compare incoming titles with both persisted titles and earlier
+        # candidates in this same batch. This is essential when the course is empty:
+        # otherwise semantically duplicate items in a first outline could both be saved.
+        # The duplicate filter performs normalized checks first and fails closed if
+        # semantic comparison is required but the embedding service is unavailable.
+        new_candidates, skipped_duplicates = _filter_duplicate_titles(candidates, existing_titles)
         skipped_duplicates = in_batch_duplicates + skipped_duplicates
         cursor = conn.execute(
             "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,response_text,started_at,finished_at) VALUES(?,'outline','single','succeeded','Manual outline import',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",

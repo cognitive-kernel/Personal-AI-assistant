@@ -77,6 +77,10 @@ The management dashboard exposes global pause and resume controls. The pause fla
 - This is a persisted single-worker queue, not a distributed queue: it has no cross-process lease/heartbeat and is not safe to run multiple application processes against the same AI-learning database or browser profile. A prompt interrupted before its response is committed may be reissued on recovery. The Chrome extension is retained because it remains a documented fallback and is covered by permission/packaging tests; no legacy code was removed without evidence that it was unused.
 
 
+## Knowledge validation policy
+
+The proposed methodology for evidence-based knowledge validation, with a primary focus on IT and programming, is documented in [AI_LEARNING_KNOWLEDGE_VALIDATION.md](AI_LEARNING_KNOWLEDGE_VALIDATION.md). This is documentation only: it does not implement automatic factual adjudication, alter publication gates, or treat user usefulness feedback as truth evidence.
+
 ## AI-learning status and acceptance
 
 See [AI_LEARNING_STATUS.md](AI_LEARNING_STATUS.md) for the implementation checklist, automated CI evidence, known limitations, and the remaining target-machine checks. Query feedback is available through the search UI and the loopback-only API. It is a usefulness signal, not a verification signal: feedback must never mark a source or lesson as factually verified. A new migration stores one replaceable feedback record per retrieval trace; deleting a trace cascades its feedback. Do not expose this API beyond loopback without a separately reviewed authentication and abuse-control design.

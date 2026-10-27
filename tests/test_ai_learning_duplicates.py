@@ -30,8 +30,13 @@ def test_topic_titles_are_unique_on_create_and_edit(learning_store, monkeypatch)
     assert first["title"] == "ایندکس‌ها در SQL Server"
 
 
-def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning_store):
+def test_outline_import_skips_punctuation_and_persian_letter_duplicates(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
+    monkeypatch.setattr(
+        service,
+        "ollama_embed",
+        lambda texts, model: [[1.0, float(index)] for index, _ in enumerate(texts)],
+    )
     result = service.import_outline(
         course["id"],
         "1. ایندکس‌ها در SQL Server\n2. ایندکسها در SQL Server!\n3. پشتیبان‌گیری و بازیابی",
@@ -125,11 +130,11 @@ def test_outline_import_skips_semantically_duplicate_topic_titles(learning_store
 
 def test_semantic_title_check_fails_closed_if_embedding_unavailable(learning_store, monkeypatch):
     course = service.create_course(title="SQL Server")
-    service.add_topic(course["id"], "مبانی")
+    service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی در SQL Server")
     monkeypatch.setattr(service, "ollama_embed", lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")))
 
     with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
-        service.add_topic(course["id"], "موضوع دیگر")
+        service.add_topic(course["id"], "مدیریت ایندکس‌های ترکیبی برای SQL Server")
 
 
 
@@ -169,3 +174,68 @@ def test_persian_content_duplicate_normalizes_arabic_yeh_and_kaf_without_embeddi
         )
 
     assert service.list_versions(second_lesson["id"]) == []
+
+
+
+def test_first_outline_import_skips_semantically_duplicate_items(learning_store, monkeypatch):
+    course = service.create_course(title="SQL Server")
+    monkeypatch.setattr(
+        service,
+        "ollama_embed",
+        lambda texts, model: [[1.0, 0.0] for _ in texts],
+    )
+
+    result = service.import_outline(
+        course["id"],
+        "1. مدیریت ایندکس‌های ترکیبی در SQL Server\n"
+        "2. مدیریت ایندکس‌های ترکیبی برای SQL Server",
+    )
+
+    assert result["imported"] == 1
+    assert result["skipped_existing"] == 1
+    assert result["skipped_duplicates"][0]["method"] == "embedding+token_overlap"
+    assert len(service.get_course(course["id"])["topics"]) == 1
+
+
+def test_first_generated_outline_skips_semantically_duplicate_items(learning_store, monkeypatch):
+    course = service.create_course(title="SQL Server")
+    run = service.create_run(
+        course["id"], run_type="outline", request_key="first-outline-semantic-duplicates"
+    )
+    service.start_run(run["id"])
+    monkeypatch.setattr(
+        service,
+        "ollama_embed",
+        lambda texts, model: [[1.0, 0.0] for _ in texts],
+    )
+    response = (
+        "1. مدیریت ایندکس‌های ترکیبی در SQL Server\n"
+        "2. مدیریت ایندکس‌های ترکیبی برای SQL Server\n"
+        "AUDIT: status=COMPLETE; total_topics=2; missing_domains=none; "
+        "end_reason=all_applicable_domains_covered"
+    )
+
+    result = service.complete_run(run["id"], response)
+
+    assert result["status"] == "succeeded"
+    assert len(service.get_course(course["id"])["topics"]) == 1
+
+
+def test_first_outline_import_fails_closed_if_semantic_comparison_is_unavailable(
+    learning_store, monkeypatch
+):
+    course = service.create_course(title="SQL Server")
+    monkeypatch.setattr(
+        service,
+        "ollama_embed",
+        lambda texts, model: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+
+    with pytest.raises(ValueError, match="بررسی معنایی عنوان‌های تکراری"):
+        service.import_outline(
+            course["id"],
+            "1. مدیریت ایندکس‌های ترکیبی در SQL Server\n"
+            "2. مدیریت ایندکس‌های ترکیبی برای SQL Server",
+        )
+
+    assert service.get_course(course["id"])["topics"] == []
