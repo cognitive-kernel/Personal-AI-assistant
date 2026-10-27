@@ -67,67 +67,91 @@ def _title_tokens(value: str) -> set[str]:
 
 
 def _filter_duplicate_titles(candidates: list[str], existing_titles: list[str]) -> tuple[list[str], list[dict[str, Any]]]:
-    """Skip exact duplicates and only near-identical semantic titles, never broad topic overlap."""
+    """Skip normalized and near-identical titles, comparing embeddings only for lexical candidates."""
     accepted: list[str] = []
     skipped: list[dict[str, Any]] = []
-    known: list[str] = []
-    seen: set[str] = set()
+    canonical_existing: list[str] = []
+    known_by_key: dict[str, str] = {}
     for title in existing_titles:
         key = _dedupe_normalize(title)
-        if key and key not in seen:
-            seen.add(key)
-            known.append(title)
+        if key and key not in known_by_key:
+            known_by_key[key] = title
+            canonical_existing.append(title)
+
     pending: list[str] = []
     for title in candidates:
         key = _dedupe_normalize(title)
-        exact = next((value for value in known if _dedupe_normalize(value) == key), None)
-        if exact is not None or not key:
-            skipped.append({"title": title, "duplicate_of": exact or title, "score": 1.0, "method": "normalized"})
-        else:
-            pending.append(title)
-            known.append(title)
-            seen.add(key)
+        duplicate_of = known_by_key.get(key) if key else None
+        if duplicate_of is not None or not key:
+            skipped.append({
+                "title": title, "duplicate_of": duplicate_of or title,
+                "score": 1.0, "method": "normalized",
+            })
+            continue
+        known_by_key[key] = title
+        pending.append(title)
+
     if not pending:
         return accepted, skipped
-    if not existing_titles and len(pending) == 1:
-        return pending, skipped
-    base_titles = list(existing_titles)
-    try:
-        vectors = _title_embeddings(base_titles + pending)
-    except Exception as exc:
-        raise ValueError(
-            "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
-            f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
-        ) from exc
-    base_vectors = vectors[:len(base_titles)]
-    candidate_vectors = vectors[len(base_titles):]
-    accepted_vectors: list[tuple[str, list[float], set[str]]] = [
-        (title, vector, _title_tokens(title)) for title, vector in zip(base_titles, base_vectors)
+
+    embedding_cache: dict[str, list[float]] = {}
+
+    def vector_for(title: str, related_titles: list[str]) -> list[float]:
+        key = _dedupe_normalize(title)
+        missing: list[str] = []
+        missing_keys: set[str] = set()
+        for candidate in [title, *related_titles]:
+            candidate_key = _dedupe_normalize(candidate)
+            if candidate_key not in embedding_cache and candidate_key not in missing_keys:
+                missing.append(candidate)
+                missing_keys.add(candidate_key)
+        if missing:
+            try:
+                vectors = _title_embeddings(missing)
+            except Exception as exc:
+                raise ValueError(
+                    "بررسی معنایی عنوان‌های تکراری در دسترس نیست؛ برای جلوگیری از ثبت موارد تکراری، عملیات انجام نشد. "
+                    f"بررسی کنید Ollama و مدل embedding فعال باشند ({type(exc).__name__})."
+                ) from exc
+            embedding_cache.update({
+                _dedupe_normalize(candidate): vector
+                for candidate, vector in zip(missing, vectors)
+            })
+        return embedding_cache[key]
+
+    accepted_vectors: list[tuple[str, set[str]]] = [
+        (title, _title_tokens(title)) for title in canonical_existing
     ]
-    for title, vector in zip(pending, candidate_vectors):
+    for title in pending:
         candidate_tokens = _title_tokens(title)
-        best: tuple[str, float] | None = None
-        for existing, existing_vector, existing_tokens in accepted_vectors:
-            # Cheap lexical filtering first avoids expensive vector comparisons for
-            # the many unrelated pairs in large, otherwise comprehensive outlines.
+        relevant: list[str] = []
+        for existing, existing_tokens in accepted_vectors:
             shared = len(candidate_tokens & existing_tokens)
             union = candidate_tokens | existing_tokens
             overlap = shared / len(union) if union else 0.0
-            if overlap < 0.65 or shared < 3:
-                continue
-            score = _embedding_cosine(vector, existing_vector)
-            # Embeddings alone often confuse distinct subtopics in the same domain.
-            # Require both exceptionally high semantic similarity and strong lexical overlap.
-            if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
-                if best is None or score > best[1]:
-                    best = (existing, score)
+            if shared >= 3 and overlap >= 0.65:
+                relevant.append(existing)
+
+        best: tuple[str, float] | None = None
+        if relevant:
+            candidate_vector = vector_for(title, relevant)
+            for existing in relevant:
+                score = _embedding_cosine(
+                    candidate_vector,
+                    embedding_cache[_dedupe_normalize(existing)],
+                )
+                if score >= TITLE_SEMANTIC_DUPLICATE_THRESHOLD:
+                    if best is None or score > best[1]:
+                        best = (existing, score)
         if best:
-            skipped.append({"title": title, "duplicate_of": best[0], "score": round(best[1], 4), "method": "embedding+token_overlap"})
+            skipped.append({
+                "title": title, "duplicate_of": best[0],
+                "score": round(best[1], 4), "method": "embedding+token_overlap",
+            })
         else:
             accepted.append(title)
-            accepted_vectors.append((title, vector, candidate_tokens))
+            accepted_vectors.append((title, candidate_tokens))
     return accepted, skipped
-
 
 def _ensure_unique_title(conn: sqlite3.Connection, *, table: str, title: str,
                          scope_column: str, scope_id: int, exclude_id: int | None = None) -> None:
