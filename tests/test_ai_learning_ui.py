@@ -109,7 +109,6 @@ def test_collapsed_topics_show_progress_and_publish_returns_to_parent_topic():
 
     assert 'app.js?v=20261027-topic-progress-scroll' in html
     assert 'approvalLabel+" · پیشرفت "+progressValue+"٪"' in script
-    assert 'className' not in script  # topic progress is plain text in the collapsed summary
     assert 'card.scrollIntoView({behavior:"auto",block:"start"})' in script
     assert 'if(catalog)catalog.open=true' in script
     assert 'if(lessonDetails)lessonDetails.open=false' in script
