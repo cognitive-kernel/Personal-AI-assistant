@@ -296,7 +296,7 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "api.openai.com" not in automation
     assert "context.cookies(" not in automation
     assert "storage_state(" not in automation
-    assert "required_stability = 25.0 if stop_visible else _STABLE_SECONDS" in automation
+    assert "required_stability = 45.0 if stop_visible else _STABLE_SECONDS" in automation
     assert '"chatgpt_page_closed"' in automation
     assert "Keep the wait inside the guarded block" in automation
     assert "retain that answer instead of discarding it" in automation
@@ -892,3 +892,82 @@ def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_st
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+
+
+def test_long_lesson_content_is_not_rejected_by_arbitrary_size_limit(isolated_store, monkeypatch):
+    course = service.create_course(title="Long lesson course")
+    topic = service.add_topic(course["id"], "Long lesson topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Long lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    markdown = "# Long lesson\n\n" + ("Detailed instructional content. " * 20000)
+    assert len(markdown) > 500_000
+    version = service.add_content_version(lesson["id"], markdown, raw_response=markdown)
+    assert len(version["markdown"]) == len(markdown)
+
+
+def test_only_rejected_lesson_versions_can_be_deleted(isolated_store, monkeypatch):
+    course = service.create_course(title="Rejected version deletion")
+    topic = service.add_topic(course["id"], "Version deletion topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Version deletion lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    rejected = service.add_content_version(lesson["id"], "# Bad version\n\nIncomplete response.")
+    service.review_content(rejected["id"], "rejected")
+    deleted = service.delete_rejected_content_version(rejected["id"])
+    assert deleted["deleted"] is True
+    assert service.list_versions(lesson["id"]) == []
+
+
+def test_non_rejected_lesson_version_cannot_be_deleted(isolated_store, monkeypatch):
+    course = service.create_course(title="Keep reviewed versions")
+    topic = service.add_topic(course["id"], "Keep version topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Keep version lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    version = service.add_content_version(lesson["id"], "# Valid version\n\nSubstantive lesson content.")
+    with pytest.raises(ValueError, match="فقط نسخه"):
+        service.delete_rejected_content_version(version["id"])
+
+
+def test_response_capture_waits_longer_and_supports_continue_generation():
+    from pathlib import Path
+    source = Path(browser_automation.__file__).read_text(encoding="utf-8")
+    assert "_RESPONSE_TIMEOUT_SECONDS = 1800" in source
+    assert 'button:has-text("Continue generating")' in source
+    assert "_STABLE_SECONDS = 20.0" in source
+    assert "partial_response=last_text or None" in source
+
+
+def test_needs_user_action_preserves_partial_provider_response(isolated_store):
+    course = service.create_course(title="Partial response recovery")
+    topic = service.add_topic(course["id"], "Long response topic")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="single", request_key="partial-response-preserved",
+    )
+    service.start_run(run["id"])
+    partial = "# Long lesson\n\nFirst part of the lesson was received, but the answer stopped before completion."
+    saved = service.mark_run_needs_user_action(
+        run["id"], "chatgpt_response_timeout", "Timed out", partial
+    )
+    assert saved["status"] == "needs_user_action"
+    assert saved["response_text"] == partial
+
+
+
+def test_provider_network_error_is_actionable():
+    error = browser_automation._provider_gate_error(
+        "https://chatgpt.com/", "Network error. Trying to reconnect."
+    )
+    assert error is not None
+    assert error.code == "chatgpt_network_error"
+    assert "VPN" in str(error)
+
+
+def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
+    from pathlib import Path
+    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
+    assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
+    assert 'ids.join("-") + "-" + Date.now()' not in script

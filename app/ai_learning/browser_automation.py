@@ -21,8 +21,8 @@ _ACTIVE = False
 _ACTIVE_RUN_ID: int | None = None
 _ACTIVE_COURSE_ID: int | None = None
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
-_RESPONSE_TIMEOUT_SECONDS = 600
-_STABLE_SECONDS = 4.0
+_RESPONSE_TIMEOUT_SECONDS = 1800
+_STABLE_SECONDS = 20.0
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 
@@ -61,9 +61,10 @@ def _log_event(event: str, **fields: Any) -> None:
 
 
 class BrowserAutomationError(RuntimeError):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, partial_response: str | None = None):
         super().__init__(message)
         self.code = code
+        self.partial_response = partial_response
 
 
 def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError | None:
@@ -86,6 +87,20 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
         return BrowserAutomationError(
             "human_verification_required",
             "ChatGPT تأیید انسانی می‌خواهد؛ آن را در مرورگر انجام دهید و سپس کار را بازیابی کنید.",
+        )
+    network_error_phrases = (
+        "network error",
+        "connection lost",
+        "connection interrupted",
+        "trying to reconnect",
+        "unable to connect",
+        "connection failed",
+        "something went wrong",
+    )
+    if any(phrase in text for phrase in network_error_phrases):
+        return BrowserAutomationError(
+            "chatgpt_network_error",
+            "ارتباط مرورگر با ChatGPT قطع یا ناپایدار شده است. وضعیت اینترنت، DNS و اتصال WebSocket را بررسی کنید؛ اگر بدون VPN کار نمی‌کند، از VPN پایدار استفاده کنید و سپس اجرای متوقف‌شده را از داشبورد ادامه دهید. خطا در data/logs/ai_learning_browser.log ثبت شده است.",
         )
     rate_limit_phrases = (
         "you've reached the limit of messages",
@@ -328,6 +343,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
     last_text = ""
     stable_since: float | None = None
     last_stop_visible = False
+    last_continue_signature: tuple[int, str] | None = None
     while time.monotonic() < deadline:
         # The pause flag is stored in SQLite, so it survives a process restart.
         try:
@@ -377,6 +393,21 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                         break
                 except Exception:
                     pass
+            continue_button = None
+            continue_button_text = ""
+            for selector in (
+                'button:has-text("Continue generating")',
+                'button:has-text("Continue response")',
+                'button:has-text("ادامه تولید")',
+            ):
+                try:
+                    candidate = page.locator(selector).last
+                    if candidate.is_visible(timeout=100):
+                        continue_button = candidate
+                        continue_button_text = (candidate.inner_text(timeout=200) or "").strip()[:80]
+                        break
+                except Exception:
+                    continue
             elapsed = time.monotonic() - started
             if elapsed >= next_diagnostic_at:
                 _log_event("response_poll", elapsed_seconds=round(elapsed, 1),
@@ -386,15 +417,36 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                            stable_seconds=round(time.monotonic() - stable_since, 1) if stable_since else 0,
                            dom=_dom_diagnostics(page))
                 next_diagnostic_at = elapsed + 10.0
-            # Some ChatGPT UI versions leave a stale/hidden stop-generation control
-            # visible after the answer has finished. Track text stability independently
-            # and use a longer grace period when that control remains visible.
+            # If ChatGPT explicitly offers to continue a truncated response, click that
+            # visible continuation control once per captured text snapshot and keep waiting.
+            # Never resubmit the original prompt, which could create duplicate lessons.
+            if continue_button is not None and current and current == last_text:
+                if stable_since is None:
+                    stable_since = time.monotonic()
+                stable_for = time.monotonic() - stable_since
+                signature = (len(current), continue_button_text.casefold())
+                if stable_for >= 2.0 and signature != last_continue_signature:
+                    try:
+                        continue_button.click(timeout=1500)
+                        last_continue_signature = signature
+                        stable_since = None
+                        _log_event("response_continuation_clicked", elapsed_seconds=round(elapsed, 1),
+                                   answer_chars=len(current), button_text=continue_button_text)
+                        page.wait_for_timeout(1000)
+                        continue
+                    except Exception as exc:
+                        _log_event("response_continuation_click_failed", exception_type=type(exc).__name__,
+                                   message=str(exc)[:200])
+            # Require a meaningful quiet window so a long lesson's temporary pause
+            # is not mistaken for completion.
             if current and (current != previous_answer or new_message_seen) and current == last_text:
                 if stable_since is None:
                     stable_since = time.monotonic()
                 stable_for = time.monotonic() - stable_since
-                required_stability = 25.0 if stop_visible else _STABLE_SECONDS
-                if stable_for >= required_stability:
+                required_stability = 45.0 if stop_visible else _STABLE_SECONDS
+                if continue_button is not None:
+                    required_stability = max(required_stability, 45.0)
+                if continue_button is None and stable_for >= required_stability:
                     if len(current) < 20:
                         raise BrowserAutomationError(
                             "chatgpt_response_too_short",
@@ -439,7 +491,8 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                last_stop_visible=last_stop_visible, stable_since_set=stable_since is not None)
     raise BrowserAutomationError(
         "chatgpt_response_timeout",
-        "در مهلت ۱۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. اجرای کار برای بررسی در داشبورد نگه داشته شد.",
+        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. بخش دریافت‌شده در سابقهٔ اجرا حفظ شد؛ پس از بررسی شبکه، از داشبورد ادامه دهید.",
+        partial_response=last_text or None,
     )
 
 
@@ -608,7 +661,7 @@ def _continue_lessons(
             answer = _browser_capture(run["prompt_text"], cancel_event)
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc))
+            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
             return
         except Exception as exc:
             service.mark_run_needs_user_action(

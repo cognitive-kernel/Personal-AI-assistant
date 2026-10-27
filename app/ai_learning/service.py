@@ -16,7 +16,6 @@ from .db import connection
 from ..db import get_settings
 from ..ollama import embed as ollama_embed
 
-MAX_CONTENT_CHARS = 500_000
 CHUNK_TARGET_CHARS = 1_800
 CHUNK_OVERLAP_CHARS = 180
 
@@ -29,6 +28,17 @@ def _clean_text(value: str, field: str, maximum: int) -> str:
     value = value.strip()
     if not value or len(value) > maximum:
         raise ValueError(f"{field} must contain 1–{maximum} characters.")
+    return value
+
+
+def _clean_required_text(value: str, field: str) -> str:
+    """Validate non-empty lesson/response text without an arbitrary content-length ceiling."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be text.")
+    # Validate blankness without rewriting the captured content. In particular,
+    # preserve trailing spaces/newlines in long provider responses for faithful recovery.
+    if not value.strip():
+        raise ValueError(f"{field} must not be empty.")
     return value
 
 
@@ -379,8 +389,10 @@ def get_run(run_id: int) -> dict[str, Any]:
     result["topics"] = [dict(row) for row in topics]
     return result
 
-def mark_run_needs_user_action(run_id: int, error_code: str, error_message: str) -> dict[str, Any]:
-    """Persist recoverable browser/provider failures without discarding a captured response."""
+def mark_run_needs_user_action(
+    run_id: int, error_code: str, error_message: str, response_text: str | None = None
+) -> dict[str, Any]:
+    """Persist recoverable browser/provider failures and any partial response for later recovery."""
     error_code = _clean_text(error_code, "error_code", 80)
     error_message = _clean_text(error_message, "error_message", 1000)
     with connection() as conn:
@@ -390,10 +402,12 @@ def mark_run_needs_user_action(run_id: int, error_code: str, error_message: str)
             raise NotFoundError("Run not found.")
         if run["status"] in {"succeeded", "failed", "cancelled"}:
             return get_run(run_id)
+        if response_text is not None:
+            response_text = _clean_required_text(response_text, "response_text")
         conn.execute(
-            """UPDATE runs SET status='needs_user_action',error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
-               WHERE id=?""",
-            (error_code, error_message, run_id),
+            """UPDATE runs SET status='needs_user_action',error_code=?,error_message=?,
+               response_text=COALESCE(?,response_text),finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (error_code, error_message, response_text, run_id),
         )
         conn.execute(
             """UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
@@ -687,7 +701,7 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
 
 def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
-    response_text = _clean_text(response_text, "response_text", 500_000)
+    response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -974,7 +988,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
 
 def import_outline(course_id: int, raw_response: str, *, provider: str = "manual") -> dict[str, Any]:
     """Import a large outline idempotently; supports plain one-title-per-line output."""
-    raw_response = _clean_text(raw_response, "raw_response", 500_000)
+    raw_response = _clean_required_text(raw_response, "raw_response")
     provider = _clean_text(provider, "provider", 80)
     in_batch_duplicates = _outline_normalized_duplicates(raw_response)
     candidates = _parse_outline_titles(raw_response)
@@ -1480,9 +1494,9 @@ def _find_semantic_duplicate_content(
 def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | None = None,
                         source_kind: str = "manual", provider: str = "manual",
                         model_name: str | None = None) -> dict[str, Any]:
-    markdown = _clean_text(markdown, "markdown", MAX_CONTENT_CHARS)
-    if raw_response is not None and len(raw_response) > MAX_CONTENT_CHARS:
-        raise ValueError("raw_response is too large.")
+    markdown = _clean_required_text(markdown, "markdown")
+    if raw_response is not None and not isinstance(raw_response, str):
+        raise ValueError("raw_response must be text.")
     if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
         raise ValueError("Unsupported source_kind.")
     with connection() as conn:
@@ -1518,6 +1532,36 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
         _store_content_sources(conn, version_id, markdown + "\n\n" + (raw_response or ""))
         conn.execute("UPDATE lessons SET status='needs_review',updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
         return dict(conn.execute("SELECT * FROM content_versions WHERE id=?", (version_id,)).fetchone())
+
+def delete_rejected_content_version(version_id: int) -> dict[str, Any]:
+    """Permanently remove only a rejected lesson version and its dependent artifacts."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT id,lesson_id,review_status FROM content_versions WHERE id=?",
+            (version_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError("Content version not found.")
+        if row["review_status"] != "rejected":
+            raise ValueError("فقط نسخهٔ ردشده قابل حذف است؛ نسخه‌های دیگر برای حفظ سابقه نگه داشته می‌شوند.")
+        lesson_id = int(row["lesson_id"])
+        conn.execute("DELETE FROM content_versions WHERE id=?", (version_id,))
+        latest = conn.execute(
+            "SELECT review_status FROM content_versions WHERE lesson_id=? ORDER BY version_no DESC LIMIT 1",
+            (lesson_id,),
+        ).fetchone()
+        status = "needs_review"
+        if latest is not None:
+            status = {"published": "ready", "reviewed": "ready", "withdrawn": "ready"}.get(
+                str(latest["review_status"]), "needs_review"
+            )
+        conn.execute(
+            "UPDATE lessons SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (status, lesson_id),
+        )
+        return {"deleted": True, "version_id": version_id, "lesson_id": lesson_id}
+
 
 def review_content(version_id: int, decision: str) -> dict[str, Any]:
     if decision not in {"needs_review", "reviewed", "rejected"}:

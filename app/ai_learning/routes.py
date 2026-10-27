@@ -47,16 +47,17 @@ class RunHistoryDelete(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class RunComplete(BaseModel):
-    response_text: str = Field(min_length=1, max_length=500000)
+    response_text: str = Field(min_length=1)
     model_config = ConfigDict(extra="forbid")
 
 class RunNeedsAction(BaseModel):
     error_code: str = Field(min_length=1, max_length=80)
     error_message: str = Field(min_length=1, max_length=1000)
+    response_text: str | None = None
     model_config = ConfigDict(extra="forbid")
 
 class OutlineImport(BaseModel):
-    raw_response: str = Field(min_length=1, max_length=500000)
+    raw_response: str = Field(min_length=1)
     provider: str = Field(default="manual", min_length=1, max_length=80)
     model_config = ConfigDict(extra="forbid")
 
@@ -89,8 +90,8 @@ class LessonCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class ContentCreate(BaseModel):
-    markdown: str = Field(min_length=1, max_length=200000)
-    raw_response: str | None = Field(default=None, max_length=200000)
+    markdown: str = Field(min_length=1)
+    raw_response: str | None = None
     source_kind: str = Field(default="manual", max_length=40)
     provider: str = Field(default="manual", max_length=80)
     model_name: str | None = Field(default=None, max_length=120)
@@ -178,7 +179,7 @@ def complete_run(run_id: int, request: RunComplete) -> dict[str, Any]:
 
 @router.post("/runs/{run_id}/needs-user-action")
 def run_needs_user_action(run_id: int, request: RunNeedsAction) -> dict[str, Any]:
-    return _call(service.mark_run_needs_user_action, run_id, request.error_code, request.error_message)
+    return _call(service.mark_run_needs_user_action, run_id, request.error_code, request.error_message, request.response_text)
 
 @router.post("/courses", status_code=201)
 def create_course(request: CourseCreate) -> dict[str, Any]:
@@ -286,6 +287,11 @@ def edit_lesson(lesson_id: int, request: LessonCreate) -> dict[str, Any]:
 @router.post("/versions/{version_id}/review")
 def review_content(version_id: int, request: ReviewDecision) -> dict[str, Any]:
     return _call(service.review_content, version_id, request.decision)
+
+
+@router.delete("/versions/{version_id}")
+def delete_rejected_content_version(version_id: int) -> dict[str, Any]:
+    return _call(service.delete_rejected_content_version, version_id)
 
 @router.post("/versions/{version_id}/publish")
 def publish_content(version_id: int) -> dict[str, Any]:
