@@ -284,6 +284,9 @@ def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(iso
         request_key="lesson-multipart-completion-contract",
     )
     assert "1200–1800 words per response part" in run["prompt_text"]
+    assert "STAGE 1 — SCOPE ANALYSIS BEFORE WRITING" in run["prompt_text"]
+    assert "target level, explicit or implied prerequisites" in run["prompt_text"]
+    assert "do not use title length alone as the size signal" in run["prompt_text"]
     assert "The requested deliverable is always the complete lesson, never a short version" in run["prompt_text"]
     assert "Only after the complete lesson has been captured and saved may a separate optional summary be derived" in run["prompt_text"]
     assert "LESSON_STATUS: CONTINUE_REQUIRED" in run["prompt_text"]
@@ -438,6 +441,18 @@ def test_learning_pause_state_is_persistent_and_resumable(isolated_store):
     resumed = service.set_learning_paused(False)
     assert resumed["paused"] is False
     assert resumed["reason"] == ""
+
+
+def test_course_progress_keeps_fractional_percentage_for_large_courses(isolated_store):
+    course = service.create_course(title="Large course progress")
+    topics = [service.add_topic(course["id"], f"Topic {i}") for i in range(10)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+    lesson = service.create_lesson(topics[0]["id"], "First lesson")
+    service.add_content_version(lesson["id"], "Complete lesson content.")
+    course_state = service.get_course(course["id"])
+    assert course_state["progress_percent"] == 7.5
+    assert course_state["topic_total"] == 10
+    assert course_state["topic_completed"] == 0
 
 
 def test_topic_and_lesson_pause_resume_and_progress_metrics(isolated_store):
