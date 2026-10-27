@@ -88,6 +88,20 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
             "human_verification_required",
             "ChatGPT تأیید انسانی می‌خواهد؛ آن را در مرورگر انجام دهید و سپس کار را بازیابی کنید.",
         )
+    network_error_phrases = (
+        "network error",
+        "connection lost",
+        "connection interrupted",
+        "trying to reconnect",
+        "unable to connect",
+        "connection failed",
+        "something went wrong",
+    )
+    if any(phrase in text for phrase in network_error_phrases):
+        return BrowserAutomationError(
+            "chatgpt_network_error",
+            "ارتباط مرورگر با ChatGPT قطع یا ناپایدار شده است. وضعیت اینترنت، DNS و اتصال WebSocket را بررسی کنید؛ اگر بدون VPN کار نمی‌کند، از VPN پایدار استفاده کنید و سپس اجرای متوقف‌شده را از داشبورد ادامه دهید. خطا در data/logs/ai_learning_browser.log ثبت شده است.",
+        )
     rate_limit_phrases = (
         "you've reached the limit of messages",
         "you have reached the limit of messages",
