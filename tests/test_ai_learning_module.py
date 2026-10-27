@@ -900,7 +900,7 @@ def test_long_lesson_content_is_not_rejected_by_arbitrary_size_limit(isolated_st
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Long lesson")
     monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
-    markdown = "# Long lesson\\n\\n" + ("Detailed instructional content. " * 20000)
+    markdown = "# Long lesson\n\n" + ("Detailed instructional content. " * 20000)
     assert len(markdown) > 500_000
     version = service.add_content_version(lesson["id"], markdown, raw_response=markdown)
     assert len(version["markdown"]) == len(markdown)
@@ -912,7 +912,7 @@ def test_only_rejected_lesson_versions_can_be_deleted(isolated_store, monkeypatc
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Version deletion lesson")
     monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
-    rejected = service.add_content_version(lesson["id"], "# Bad version\\n\\nIncomplete response.")
+    rejected = service.add_content_version(lesson["id"], "# Bad version\n\nIncomplete response.")
     service.review_content(rejected["id"], "rejected")
     deleted = service.delete_rejected_content_version(rejected["id"])
     assert deleted["deleted"] is True
@@ -925,7 +925,7 @@ def test_non_rejected_lesson_version_cannot_be_deleted(isolated_store, monkeypat
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Keep version lesson")
     monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
-    version = service.add_content_version(lesson["id"], "# Valid version\\n\\nSubstantive lesson content.")
+    version = service.add_content_version(lesson["id"], "# Valid version\n\nSubstantive lesson content.")
     with pytest.raises(ValueError, match="فقط نسخه"):
         service.delete_rejected_content_version(version["id"])
 
@@ -948,7 +948,7 @@ def test_needs_user_action_preserves_partial_provider_response(isolated_store):
         selection_mode="single", request_key="partial-response-preserved",
     )
     service.start_run(run["id"])
-    partial = "# Long lesson\\n\\nFirst part of the lesson was received, but the answer stopped before completion."
+    partial = "# Long lesson\n\nFirst part of the lesson was received, but the answer stopped before completion."
     saved = service.mark_run_needs_user_action(
         run["id"], "chatgpt_response_timeout", "Timed out", partial
     )
