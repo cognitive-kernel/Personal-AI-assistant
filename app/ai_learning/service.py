@@ -35,8 +35,9 @@ def _clean_required_text(value: str, field: str) -> str:
     """Validate non-empty lesson/response text without an arbitrary content-length ceiling."""
     if not isinstance(value, str):
         raise ValueError(f"{field} must be text.")
-    value = value.strip()
-    if not value:
+    # Validate blankness without rewriting the captured content. In particular,
+    # preserve trailing spaces/newlines in long provider responses for faithful recovery.
+    if not value.strip():
         raise ValueError(f"{field} must not be empty.")
     return value
 
