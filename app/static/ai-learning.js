@@ -269,7 +269,8 @@ function action(label, callback, disabled, danger) {
 async function decide(topicId, decision) {
   await api("/api/ai-learning/topics/decision", jsonOptions("POST", {topic_ids:[topicId],decision:decision}));
   await loadCourseDetails();
-  message("تصمیم سرفصل ذخیره شد.");
+  returnToTopic(topicId);
+  message("تصمیم سرفصل ذخیره شد؛ به همان سرفصل برگشتید.");
 }
 async function editTopic(topic) {
   const title = window.prompt("عنوان سرفصل:", topic.title);
@@ -314,6 +315,7 @@ async function createLesson(topic) {
   } else {
     message("نسخه بازبینی شد اما منتشر نشد.");
   }
+  returnToTopic(topic.id);
 }
 byId("course-form").addEventListener("submit", async event => {
   event.preventDefault();
@@ -411,8 +413,11 @@ async function bulkReviewLessons(ids) {
     reviewed++;
   }
   const topic = courseTopics.find(t => Number(t.id) === lessonsTopicId);
-  if (topic) await showLessons(topic);
-  message("بازبینی تأیید شد: " + reviewed + " درس؛ رد از تأیید خودکار/بدون متن: " + skipped + ". انتشار خودکار انجام نشد.");
+  if (topic) {
+    await showLessons(topic);
+    returnToTopic(topic.id);
+  }
+  message("بازبینی تأیید شد: " + reviewed + " درس؛ رد از تأیید خودکار/بدون متن: " + skipped + ". انتشار خودکار انجام نشد؛ به همان سرفصل برگشتید.");
 }
 byId("approve-all-lessons").addEventListener("click", async () => {
   if (!lessonsTopicId) { message("ابتدا روی «درس‌ها و محتوا» برای یک سرفصل بزنید.", true); return; }
