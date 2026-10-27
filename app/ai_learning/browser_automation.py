@@ -25,6 +25,7 @@ _CANCEL_EVENTS: dict[int, threading.Event] = {}
 _RESPONSE_TIMEOUT_SECONDS = 1800
 _STABLE_SECONDS = 20.0
 _MAX_LESSON_CONTINUATIONS = 8
+_MIN_COMPLETE_LESSON_WORDS = 1200
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 
@@ -514,6 +515,12 @@ def _strip_lesson_status_markers(text: str) -> str:
     ).rstrip()
 
 
+def _lesson_word_count(text: str) -> int:
+    """Count Unicode words in the merged lesson body, excluding internal status markers."""
+    clean = _strip_lesson_status_markers(text)
+    return len(re.findall(r"[\w]+(?:[-’'][\w]+)*", clean, flags=re.UNICODE))
+
+
 def _capture_lesson_until_complete(
     page: Any,
     first_answer: str,
@@ -539,7 +546,9 @@ def _capture_lesson_until_complete(
             ) from exc
 
     checkpoint()
-    while status != "COMPLETE":
+    while status != "COMPLETE" or _lesson_word_count(
+        "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+    ) < _MIN_COMPLETE_LESSON_WORDS:
         if cancel_event is not None and cancel_event.is_set():
             raise BrowserAutomationError(
                 "run_cancelled",
@@ -561,17 +570,37 @@ def _capture_lesson_until_complete(
         previous_message_count = _assistant_message_count(page)
         clean_previous = _strip_lesson_status_markers(parts[-1])
         tail = clean_previous[-3500:]
+        merged_word_count = _lesson_word_count(
+            "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+        )
+        if status == "COMPLETE" and merged_word_count < _MIN_COMPLETE_LESSON_WORDS:
+            continuation_instruction = (
+                "The previous response claimed COMPLETE prematurely, but the merged lesson has only "
+                + str(merged_word_count) + " words. This is not acceptable as a complete lesson. "
+                "Continue from the exact stopping point and substantially expand the lesson without repeating prior text. "
+                "Add the missing instructional depth: explain underlying mechanisms, give step-by-step practical examples, "
+                "show expected outputs where relevant, cover edge cases and troubleshooting, discuss security/performance/reliability, "
+                "and finish with recap, exercises, and answer key where appropriate. The merged lesson must reach at least "
+                + str(_MIN_COMPLETE_LESSON_WORDS) + " words before you may use LESSON_STATUS: COMPLETE. "
+            )
+        else:
+            continuation_instruction = (
+                "Continue with the next missing heading, examples, expected outputs, troubleshooting, recap, exercises/answer key, "
+                "and sources as applicable. The full merged lesson must contain at least "
+                + str(_MIN_COMPLETE_LESSON_WORDS) + " words before it may be marked COMPLETE. "
+                "If any planned teaching or the minimum length remains unfinished, use CONTINUE_REQUIRED. "
+            )
         continuation_prompt = (
             "Continue the SAME lesson from the exact point where the previous response ended. "
             "Do not restart, repeat earlier paragraphs, or summarize content already written. "
             "Keep the course, topic, language, Markdown structure, technical depth, and terminology consistent. "
-            "Continue with the next missing heading, examples, expected outputs, troubleshooting, recap, exercises/answer key, "
-            "and sources as applicable. The previous part's final 3500 characters for context follow; treat them as context only, "
+            + continuation_instruction
+            + "The previous part's final 3500 characters for context follow; treat them as context only, "
             "not as text to repeat:\n\n" + tail + "\n\n"
-            "If any required lesson content remains, end with one final line "
-            "'LESSON_STATUS: CONTINUE_REQUIRED; next_section=last completed heading -> next heading'. "
-            "Only when the entire lesson is complete, end with exactly 'LESSON_STATUS: COMPLETE'. "
-            "Do not omit the status line. Output only the continuation, not the earlier lesson."
+            "End with one final status line: use 'LESSON_STATUS: CONTINUE_REQUIRED; next_section=last completed heading -> next heading' "
+            "if anything remains or the merged lesson is below the minimum, and use exactly 'LESSON_STATUS: COMPLETE' only "
+            "when the whole lesson is finished and the merged word count meets the minimum. "
+            "Do not omit the status line. Output only new/expanded content, not the earlier lesson."
         )
         _log_event("lesson_continuation_requested", continuation=continuation_count,
                    prior_chars=sum(len(part) for part in parts), completion_status=status)
