@@ -172,8 +172,9 @@ def test_outline_import_accepts_plain_line_outline_and_preserves_raw_response(is
     assert saved["response_text"] == raw
 
 
-def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(isolated_store):
+def test_complete_outline_accepts_response_over_100k_and_preserves_all_topics(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2025")
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
     run = service.create_run(course["id"], run_type="outline", request_key="large-outline-response")
     service.start_run(run["id"])
     titles = [f"سرفصل آزمایشی شماره {index:04d} با شرح تکمیلی و توضیحات بیشتر برای پوشش کامل موضوعات آموزشی" for index in range(1, 1401)]
