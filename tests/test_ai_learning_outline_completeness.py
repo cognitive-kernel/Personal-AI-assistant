@@ -88,3 +88,12 @@ def test_raw_outline_is_preserved_if_semantic_duplicate_check_fails(isolated_sto
     assert result["error_code"] == "outline_duplicate_check_unavailable"
     assert result["response_text"] == response
     assert len(service.get_course(course["id"])["topics"]) == 1
+
+
+def test_complete_status_with_noncompletion_end_reason_is_rejected():
+    text = _outline().replace(
+        "end_reason=all_applicable_domains_covered",
+        "end_reason=output_limit_reached",
+    )
+    error = _outline_completion_error(text, ["Topic 1", "Topic 2", "Topic 3"])
+    assert error and "دلیل پایان" in error
