@@ -607,7 +607,10 @@ def test_title_only_chatgpt_response_is_not_saved_as_lesson_content(isolated_sto
 
 def test_lesson_capture_requires_body_and_preserves_course_context(isolated_store):
     course = service.create_course(title="SQL Server 2025")
-    topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
+    topic = service.add_topic(
+        course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی",
+        description="نقش منابع در معماری نرم‌افزار و تفاوت با موتور پایگاه داده محلی برنامه",
+    )
     service.decide_topics([topic["id"]], "approved")
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                              request_key="contextual-lesson-prompt")
