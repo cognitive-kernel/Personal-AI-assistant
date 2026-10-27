@@ -190,8 +190,9 @@ def test_outline_import_rejects_unstructured_response(isolated_store):
     with pytest.raises(ValueError, match="No numbered"):
         service.import_outline(course["id"], "This is a paragraph without an outline.")
 
-def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store):
+def test_run_lifecycle_imports_outline_without_auto_approval(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server")
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
     run = service.create_run(course["id"], run_type="outline", request_key="outline-test-1")
     assert run["status"] == "queued"
     assert "numbered topics" in run["prompt_text"]
