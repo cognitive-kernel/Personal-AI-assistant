@@ -615,6 +615,38 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> str | None:
+    """Return a recovery message unless the outline's explicit completion audit is valid.
+
+    The provider response is retained even when this check fails. This is a
+    structural completeness check only; it does not assess factual correctness.
+    """
+    audit_lines = [line.strip() for line in response_text.splitlines()
+                   if re.match(r"(?i)^\\s*AUDIT\\s*:", line)]
+    numbered = [int(match.group(1)) for line in response_text.splitlines()
+                if (match := re.match(r"^\\s*(\\d+)\\.\\s+\\S", line))]
+    if len(audit_lines) != 1:
+        return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را ادامه دهید و سپس دوباره ثبت کنید."
+    audit = audit_lines[0]
+    fields = {key.casefold(): value.strip() for key, value in
+              re.findall(r"([A-Za-z_]+)\\s*=\\s*([^;]+)", audit.split(":", 1)[1])}
+    if fields.get("status", "").upper() != "COMPLETE":
+        return "فهرست خام و سرفصل‌های قابل استخراج ذخیره شدند، اما ChatGPT صریحاً تکمیل فهرست را تأیید نکرده است؛ ادامهٔ فهرست را دریافت کنید."
+    try:
+        declared_total = int(fields.get("total_topics", ""))
+    except (TypeError, ValueError):
+        return "ممیزی فهرست تعداد معتبر سرفصل‌ها را اعلام نکرده است؛ پاسخ را اصلاح/ادامه دهید."
+    if declared_total != len(parsed_titles) or declared_total != len(numbered):
+        return (f"تعداد سرفصل‌های ممیزی‌شده با پاسخ هم‌خوان نیست "
+                f"(ممیزی={declared_total}، قابل‌استخراج={len(parsed_titles)}، شماره‌دار={len(numbered)}). "
+                "پاسخ خام ذخیره شده؛ فهرست را ادامه دهید.")
+    if numbered != list(range(1, declared_total + 1)):
+        return "شماره‌گذاری سرفصل‌ها پیوسته از ۱ نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح/تکمیل شود."
+    if fields.get("missing_domains", "").casefold() != "none" or not fields.get("end_reason"):
+        return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبر را نشان می‌دهد؛ پاسخ خام ذخیره شده و فهرست باید تکمیل شود."
+    return None
+
+
 def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
     response_text = _clean_text(response_text, "response_text", 500_000)
@@ -636,6 +668,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     (response_text, "No numbered, bulleted, or Markdown-heading outline items were detected.", run_id))
                 conn.commit()
                 return get_run(run_id)
+            outline_error = _outline_completion_error(response_text, titles)
             existing_rows = conn.execute(
                 "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
@@ -654,8 +687,10 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 topic_id = int(cur.lastrowid)
                 conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')", (run_id, topic_id))
             conn.execute(
-                "UPDATE runs SET response_text=?,status='succeeded',error_code=NULL,error_message=NULL,finished_at=CURRENT_TIMESTAMP WHERE id=?",
-                (response_text, run_id))
+                """UPDATE runs SET response_text=?,status=?,error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (response_text, "needs_user_action" if outline_error else "succeeded",
+                 "outline_incomplete" if outline_error else None, outline_error, run_id))
             conn.execute("UPDATE courses SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (run["course_id"],))
         else:
             if not topics:
