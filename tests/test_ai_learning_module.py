@@ -1182,3 +1182,29 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'returnToTopic(parentTopicId)' in publish_handler
     assert publish_handler.index('await loadLessons(parentTopicId)') < publish_handler.index('returnToTopic(parentTopicId)')
     assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
+
+
+def test_cancel_run_is_idempotent_for_cancelled_and_finished_runs(isolated_store):
+    course = service.create_course(title="Cancellation race regression")
+
+    cancellable = service.create_run(
+        course["id"], run_type="outline", request_key="cancel-idempotent-cancelled"
+    )
+    first_cancel = service.cancel_run(cancellable["id"])
+    repeated_cancel = service.cancel_run(cancellable["id"])
+    assert first_cancel["status"] == "cancelled"
+    assert repeated_cancel["status"] == "cancelled"
+
+    completed = service.create_run(
+        course["id"], run_type="outline", request_key="cancel-idempotent-succeeded"
+    )
+    service.start_run(completed["id"])
+    result = service.complete_run(
+        completed["id"],
+        "1. Architecture\n"
+        "AUDIT: status=COMPLETE; total_topics=1; missing_domains=none; "
+        "end_reason=all_applicable_domains_covered",
+    )
+    assert result["status"] == "succeeded"
+    after_completion = service.cancel_run(completed["id"])
+    assert after_completion["status"] == "succeeded"
