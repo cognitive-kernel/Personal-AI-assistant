@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from logging.handlers import RotatingFileHandler
@@ -23,6 +24,7 @@ _ACTIVE_COURSE_ID: int | None = None
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
 _RESPONSE_TIMEOUT_SECONDS = 1800
 _STABLE_SECONDS = 20.0
+_MAX_LESSON_CONTINUATIONS = 8
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 
@@ -496,6 +498,101 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
     )
 
 
+def _lesson_completion_status(text: str) -> str | None:
+    """Read the explicit completion contract at the end of a lesson response."""
+    matches = re.findall(
+        r"(?im)^\s*LESSON_STATUS:\s*(COMPLETE|CONTINUE_REQUIRED)\b[^\n]*$",
+        text or "",
+    )
+    return matches[-1].upper() if matches else None
+
+
+def _strip_lesson_status_markers(text: str) -> str:
+    """Remove internal continuation markers from saved lesson Markdown."""
+    return re.sub(
+        r"(?im)^\s*LESSON_STATUS:\s*(?:COMPLETE|CONTINUE_REQUIRED)\b[^\n]*(?:\n|$)",
+        "",
+        text or "",
+    ).rstrip()
+
+
+def _capture_lesson_until_complete(
+    page: Any,
+    first_answer: str,
+    cancel_event: threading.Event | None = None,
+) -> str:
+    """Continue a long lesson in the same visible ChatGPT conversation until explicitly complete."""
+    parts = [first_answer]
+    status = _lesson_completion_status(first_answer)
+    continuation_count = 0
+    while status != "COMPLETE":
+        if cancel_event is not None and cancel_event.is_set():
+            raise BrowserAutomationError(
+                "run_cancelled",
+                "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.",
+                partial_response="\n\n".join(_strip_lesson_status_markers(part) for part in parts),
+            )
+        if continuation_count >= _MAX_LESSON_CONTINUATIONS:
+            combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+            _log_event("lesson_continuation_limit", continuation_count=continuation_count,
+                       answer_chars=len(combined), completion_status=status)
+            raise BrowserAutomationError(
+                "lesson_continuation_limit",
+                "درس پس از چند مرحله ادامه هنوز نشانگر تکمیل معتبر ندارد؛ متن دریافت‌شده ذخیرهٔ موقت شده و باید از داشبورد ادامه داده شود.",
+                partial_response=combined or None,
+            )
+
+        continuation_count += 1
+        previous = _visible_response(page)
+        previous_message_count = _assistant_message_count(page)
+        clean_previous = _strip_lesson_status_markers(parts[-1])
+        tail = clean_previous[-3500:]
+        continuation_prompt = (
+            "Continue the SAME lesson from the exact point where the previous response ended. "
+            "Do not restart, repeat earlier paragraphs, or summarize content already written. "
+            "Keep the course, topic, language, Markdown structure, technical depth, and terminology consistent. "
+            "Continue with the next missing heading, examples, expected outputs, troubleshooting, recap, exercises/answer key, "
+            "and sources as applicable. The previous part's final 3500 characters for context follow; treat them as context only, "
+            "not as text to repeat:\n\n" + tail + "\n\n"
+            "If any required lesson content remains, end with one final line "
+            "'LESSON_STATUS: CONTINUE_REQUIRED; next_section=last completed heading -> next heading'. "
+            "Only when the entire lesson is complete, end with exactly 'LESSON_STATUS: COMPLETE'. "
+            "Do not omit the status line. Output only the continuation, not the earlier lesson."
+        )
+        _log_event("lesson_continuation_requested", continuation=continuation_count,
+                   prior_chars=sum(len(part) for part in parts), completion_status=status)
+        _send_prompt(page, continuation_prompt)
+        try:
+            next_part = _wait_for_complete_answer(
+                page, previous, cancel_event, previous_message_count=previous_message_count
+            )
+        except BrowserAutomationError as exc:
+            combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+            if exc.partial_response:
+                combined += "\n\n" + _strip_lesson_status_markers(exc.partial_response)
+            raise BrowserAutomationError(
+                exc.code, str(exc), partial_response=combined or None
+            ) from exc
+        if not next_part.strip() or next_part.strip() == previous.strip():
+            combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+            raise BrowserAutomationError(
+                "lesson_continuation_no_progress",
+                "ادامهٔ درس محتوای تازه‌ای تولید نکرد؛ متن قبلی حفظ شد و برای ادامه نیاز به بررسی دارد.",
+                partial_response=combined or None,
+            )
+        parts.append(next_part)
+        status = _lesson_completion_status(next_part)
+        _log_event("lesson_continuation_captured", continuation=continuation_count,
+                   part_chars=len(next_part), total_chars=sum(len(part) for part in parts),
+                   completion_status=status or "missing")
+    combined = "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+    if not combined.strip():
+        raise BrowserAutomationError("lesson_response_empty", "محتوای درس خالی است.")
+    _log_event("lesson_continuation_complete", continuation_count=continuation_count,
+               answer_chars=len(combined))
+    return combined
+
+
 def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -> str:
     capture_started = time.monotonic()
     _log_event("capture_started", prompt_chars=len(prompt), cancelled=bool(cancel_event and cancel_event.is_set()))
@@ -583,6 +680,8 @@ def _browser_capture(prompt: str, cancel_event: threading.Event | None = None) -
                 answer = _wait_for_complete_answer(
                     page, previous, cancel_event, previous_message_count=previous_message_count
                 )
+                if "Write educational lesson content in Markdown" in prompt:
+                    answer = _capture_lesson_until_complete(page, answer, cancel_event)
                 _log_event("capture_succeeded", elapsed_seconds=round(time.monotonic() - capture_started, 1),
                            answer_chars=len(answer))
                 return answer
