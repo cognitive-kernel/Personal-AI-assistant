@@ -283,19 +283,29 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "CONTINUATION RULE: if the full outline cannot be completed in this response for any reason, return as many complete topics as possible, preserve continuous numbering, and explicitly mark CONTINUE_REQUIRED in the audit line with the exact last topic number, the remaining domains, and the actual reason the response stopped. Do not summarize the remaining topics or silently end. The next response must continue from last_topic+1, must not repeat previous topics, and must continue until the coverage audit passes. A response ending mid-topic or without the audit line is incomplete. Do not state token/output limits as the reason unless that is actually the reason the response stopped."
             )
         else:
-            topic_lines = "\n".join("[TOPIC_ID:" + str(row["id"]) + "] " + row["title"] for row in topics)
+            topic_lines = "\n".join(
+                "[TOPIC_ID:" + str(row["id"]) + "] " + row["title"]
+                + ("\nTopic description: " + str(row["description"]).strip() if str(row["description"] or "").strip() else "")
+                for row in topics
+            )
             prompt = (
                 "You are creating a lesson within a larger course. Always establish the course context "
                 "before teaching the individual topic.\n"
                 "Course / main subject: " + course["title"] + "\n"
                 "Course language: " + course["language"] + "\n"
-                "Requested lesson topic(s):\n" + topic_lines + "\n\n"
+                "Target learning level: " + course["target_level"] + "\n"
+                "Course scope and user-provided context: " + str(course["scope_notes"] or "(none provided)") + "\n"
+                "Requested lesson topic(s), including any saved descriptions:\n" + topic_lines + "\n\n"
                 "Write educational lesson content in Markdown for the approved topic(s) above. "
                 "The course title is the broad subject and each topic is a specific subtopic within it. "
+                "Use the saved topic description, target level, course scope notes, prerequisites, and distinct concepts to determine depth and section order. "
+                "When explaining how a database fits into a specific application architecture, distinguish general SQL Server concepts from facts about the actual local application. "
+                "Do not claim the application itself uses SQL Server (or any other engine) unless that fact is explicitly provided or verified; if the engine is unknown, say so and keep the distinction clear. "
                 "For example, if the course is 'SQL Server 2025' and the topic is "
                 "'134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی', teach that topic specifically "
                 "in the context of SQL Server 2025, not as a generic operating-system lesson. "
-                "Create a complete, high-quality lesson rather than a brief summary. For each topic, teach the concept from foundations to practical use at the appropriate level. Include learning objectives, prerequisite concepts where needed, accurate explanations, step-by-step implementation, runnable T-SQL examples with expected results where appropriate, real-world use cases, performance/security/reliability implications, common mistakes and troubleshooting, a short recap, and practice exercises with answer keys. Do not pad the lesson with repetition; give advanced topics the depth they require and preserve distinctions between related topics. For a batch, each topic must have its own substantive self-contained section rather than sharing one generic explanation. "
+                "STAGE 1 — SCOPE ANALYSIS BEFORE WRITING: Before drafting this lesson, analyze the exact topic title and description, course/main subject, target level, explicit or implied prerequisites, and the number of distinct concepts, procedures, and examples that must be taught. Build an internal coverage checklist and logical section order. Estimate whether the scope is broad enough to require multiple response parts; do not use title length alone as the size signal. Regardless of estimated size, the deliverable remains the complete lesson. "
+            "Create a complete, high-quality lesson rather than a brief summary. For each topic, teach the concept from foundations to practical use at the appropriate level. Include learning objectives, prerequisite concepts where needed, accurate explanations, step-by-step implementation, runnable T-SQL examples with expected results where appropriate, real-world use cases, performance/security/reliability implications, common mistakes and troubleshooting, a short recap, and practice exercises with answer keys. Do not pad the lesson with repetition; give advanced topics the depth they require and preserve distinctions between related topics. For a batch, each topic must have its own substantive self-contained section rather than sharing one generic explanation. "
                 "Explain relevant SQL Server 2025 concepts, mechanisms, configuration, practical examples, "
                 "and troubleshooting where applicable. Do not invent product features or unsupported facts; "
                 "state uncertainty and cite sources or references only when known. When relying on external documentation, include a final Markdown section named \"منابع\" (or \"Sources\") where every source is a clickable Markdown link in the exact form [source title](https://full-url), not a title-only citation; use the full working URL for each source actually used, never invent URLs, and never claim a source was consulted if it was not. If a source title is known but no verified URL is available, explicitly mark the URL as unavailable instead of presenting the title as a linked source. Treat topic titles as labels, "
@@ -304,7 +314,16 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "and body text (never an empty response or title-only lesson). For multiple topics, begin each "
                 "section with a separate line in this exact format: [TOPIC_ID:123] Lesson title, replacing 123 "
                 "with that topic's numeric ID. Keep sections clearly separated and include actual lesson body "
-                "text under every section."
+                "text under every section. "
+                "FULL-LESSON SOURCE OF TRUTH: The requested deliverable is always the complete lesson, never a short version. Do not generate a separate summary first, do not substitute a summary for missing sections, and do not restart the lesson to obtain a longer version. Continue the same lesson in sequential parts and combine them into one complete stored lesson. Only after the complete lesson has been captured and saved may a separate optional summary be derived from that stored full text; summary generation must not replace, overwrite, or trigger regeneration of the full lesson. " 
+                "LENGTH AND COMPLETION CONTRACT: Do not try to fit a very broad lesson into one short response. "
+                "Write a substantial, detailed lesson in parts when necessary, targeting roughly 1200–1800 words per response part. "
+                "Preserve technical depth, examples, expected outputs, caveats, and exercises; do not replace missing material with a summary. "
+                "At the end of EVERY response part, put exactly one final status line: "
+                "'LESSON_STATUS: CONTINUE_REQUIRED; next_section=... ' when any planned teaching, examples, troubleshooting, recap, or exercises remain, "
+                "or 'LESSON_STATUS: COMPLETE' only after the entire requested lesson is finished. "
+                "If continuing, state the last completed heading and the next heading on the status line. "
+                "Never claim COMPLETE while a section, example, answer key, or required source section remains unfinished."
             )
         if run_type == "lesson" and force_retry:
             prompt += (
@@ -388,6 +407,22 @@ def get_run(run_id: int) -> dict[str, Any]:
     result = dict(run)
     result["topics"] = [dict(row) for row in topics]
     return result
+
+
+def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]:
+    """Durably checkpoint an in-progress lesson after each captured response part."""
+    response_text = _clean_required_text(response_text, "response_text")
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise NotFoundError("Run not found.")
+        if run["status"] in {"queued", "running", "needs_user_action"}:
+            conn.execute(
+                "UPDATE runs SET response_text=? WHERE id=?",
+                (response_text, run_id),
+            )
+    return get_run(run_id)
 
 def mark_run_needs_user_action(
     run_id: int, error_code: str, error_message: str, response_text: str | None = None
@@ -1192,8 +1227,9 @@ def get_course(course_id: int) -> dict[str, Any]:
 
     result = dict(course)
     result["topics"] = topic_items
+    # Keep fractional progress visible for large courses; e.g. 6 of 1400 is 0.4%, not 0%.
     result["progress_percent"] = round(
-        sum(topic["progress_percent"] for topic in topic_items) / len(topic_items)
+        sum(topic["progress_percent"] for topic in topic_items) / len(topic_items), 1
     ) if topic_items else 0
     result["topic_total"] = len(topic_items)
     result["topic_completed"] = sum(1 for topic in topic_items if topic["progress_percent"] == 100)

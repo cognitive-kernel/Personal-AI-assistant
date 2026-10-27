@@ -260,9 +260,61 @@ def test_all_approved_run_selects_all_approved_topics(isolated_store):
     assert pending["id"] not in [topic["topic_id"] for topic in run["topics"]]
 
 
+def test_save_run_partial_response_checkpoints_running_lesson(isolated_store):
+    course = service.create_course(title="SQL Server", language="fa")
+    topic = service.add_topic(course["id"], "Transactions")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        request_key="lesson-durable-checkpoint",
+    )
+    service.start_run(run["id"])
+    partial = "# درس کامل\n\nبخش اول"
+    saved = service.save_run_partial_response(run["id"], partial)
+    assert saved["status"] == "running"
+    assert saved["response_text"] == partial
+
+
+def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(isolated_store):
+    course = service.create_course(title="SQL Server 2025", language="fa")
+    topic = service.add_topic(course["id"], "7. آشنایی با SQL و تفاوت‌های T-SQL")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        request_key="lesson-multipart-completion-contract",
+    )
+    assert "1200–1800 words per response part" in run["prompt_text"]
+    assert "STAGE 1 — SCOPE ANALYSIS BEFORE WRITING" in run["prompt_text"]
+    assert "target level, explicit or implied prerequisites" in run["prompt_text"]
+    assert "do not use title length alone as the size signal" in run["prompt_text"]
+    assert "The requested deliverable is always the complete lesson, never a short version" in run["prompt_text"]
+    assert "Only after the complete lesson has been captured and saved may a separate optional summary be derived" in run["prompt_text"]
+    assert "LESSON_STATUS: CONTINUE_REQUIRED" in run["prompt_text"]
+    assert "LESSON_STATUS: COMPLETE" in run["prompt_text"]
+
+
+def test_browser_lesson_completion_marker_helpers():
+    assert browser_automation._lesson_completion_status(
+        "## Part one\ncontent\nLESSON_STATUS: CONTINUE_REQUIRED; next_section=examples"
+    ) == "CONTINUE_REQUIRED"
+    assert browser_automation._lesson_completion_status(
+        "## Complete lesson\ncontent\nLESSON_STATUS: COMPLETE"
+    ) == "COMPLETE"
+    assert browser_automation._lesson_completion_status("## Incomplete lesson\ncontent") is None
+    assert browser_automation._lesson_completion_status(
+        "## Lesson\nLESSON_STATUS: COMPLETE\nextra text after the marker"
+    ) is None
+    assert browser_automation._strip_lesson_status_markers(
+        "## Lesson\ncontent\nLESSON_STATUS: COMPLETE"
+    ) == "## Lesson\ncontent"
+
+
 def test_lesson_prompt_includes_course_context_and_specific_topic(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
-    topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
+    topic = service.add_topic(
+        course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی",
+        description="نقش منابع در معماری نرم‌افزار و تفاوت با موتور پایگاه داده محلی برنامه",
+    )
     service.decide_topics([topic["id"]], "approved")
     run = service.create_run(
         course["id"], run_type="lesson", topic_ids=[topic["id"]],
@@ -297,6 +349,11 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "context.cookies(" not in automation
     assert "storage_state(" not in automation
     assert "required_stability = 45.0 if stop_visible else _STABLE_SECONDS" in automation
+    assert "_capture_lesson_until_complete" in automation
+    assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
+    assert "lesson_continuation_limit" in automation
+    assert "service.save_run_partial_response(run_id, text)" in automation
+    assert "lesson_checkpoint_failed" in automation
     assert '"chatgpt_page_closed"' in automation
     assert "Keep the wait inside the guarded block" in automation
     assert "retain that answer instead of discarding it" in automation
@@ -387,6 +444,18 @@ def test_learning_pause_state_is_persistent_and_resumable(isolated_store):
     resumed = service.set_learning_paused(False)
     assert resumed["paused"] is False
     assert resumed["reason"] == ""
+
+
+def test_course_progress_keeps_fractional_percentage_for_large_courses(isolated_store):
+    course = service.create_course(title="Large course progress")
+    topics = [service.add_topic(course["id"], f"Topic {i}") for i in range(10)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+    lesson = service.create_lesson(topics[0]["id"], "First lesson")
+    service.add_content_version(lesson["id"], "Complete lesson content.")
+    course_state = service.get_course(course["id"])
+    assert course_state["progress_percent"] == 7.5
+    assert course_state["topic_total"] == 10
+    assert course_state["topic_completed"] == 0
 
 
 def test_topic_and_lesson_pause_resume_and_progress_metrics(isolated_store):
@@ -538,11 +607,17 @@ def test_title_only_chatgpt_response_is_not_saved_as_lesson_content(isolated_sto
 
 def test_lesson_capture_requires_body_and_preserves_course_context(isolated_store):
     course = service.create_course(title="SQL Server 2025")
-    topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
+    topic = service.add_topic(
+        course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی",
+        description="نقش منابع در معماری نرم‌افزار و تفاوت با موتور پایگاه داده محلی برنامه",
+    )
     service.decide_topics([topic["id"]], "approved")
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                              request_key="contextual-lesson-prompt")
     assert "Course / main subject: SQL Server 2025" in run["prompt_text"]
+    assert "Target learning level: beginner_to_advanced" in run["prompt_text"]
+    assert "نقش منابع در معماری نرم‌افزار و تفاوت با موتور پایگاه داده محلی برنامه" in run["prompt_text"]
+    assert "Do not claim the application itself uses SQL Server" in run["prompt_text"]
     assert "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی" in run["prompt_text"]
     assert "not as a generic operating-system lesson" in run["prompt_text"]
     service.start_run(run["id"])
@@ -937,6 +1012,7 @@ def test_response_capture_waits_longer_and_supports_continue_generation():
     assert 'button:has-text("Continue generating")' in source
     assert "_STABLE_SECONDS = 20.0" in source
     assert "partial_response=last_text or None" in source
+    assert "service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)" in source
 
 
 def test_needs_user_action_preserves_partial_provider_response(isolated_store):
