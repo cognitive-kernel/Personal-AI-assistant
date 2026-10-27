@@ -388,8 +388,10 @@ def get_run(run_id: int) -> dict[str, Any]:
     result["topics"] = [dict(row) for row in topics]
     return result
 
-def mark_run_needs_user_action(run_id: int, error_code: str, error_message: str) -> dict[str, Any]:
-    """Persist recoverable browser/provider failures without discarding a captured response."""
+def mark_run_needs_user_action(
+    run_id: int, error_code: str, error_message: str, response_text: str | None = None
+) -> dict[str, Any]:
+    """Persist recoverable browser/provider failures and any partial response for later recovery."""
     error_code = _clean_text(error_code, "error_code", 80)
     error_message = _clean_text(error_message, "error_message", 1000)
     with connection() as conn:
@@ -399,10 +401,12 @@ def mark_run_needs_user_action(run_id: int, error_code: str, error_message: str)
             raise NotFoundError("Run not found.")
         if run["status"] in {"succeeded", "failed", "cancelled"}:
             return get_run(run_id)
+        if response_text is not None:
+            response_text = _clean_required_text(response_text, "response_text")
         conn.execute(
-            """UPDATE runs SET status='needs_user_action',error_code=?,error_message=?,finished_at=CURRENT_TIMESTAMP
-               WHERE id=?""",
-            (error_code, error_message, run_id),
+            """UPDATE runs SET status='needs_user_action',error_code=?,error_message=?,
+               response_text=COALESCE(?,response_text),finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (error_code, error_message, response_text, run_id),
         )
         conn.execute(
             """UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
