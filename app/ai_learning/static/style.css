@@ -9,3 +9,9 @@
 .topic[open]>summary{margin-bottom:10px}
 .topic>summary:focus-visible,#catalog-menu>summary:focus-visible,#lesson-list-details>summary:focus-visible{outline:2px solid #3478c8;outline-offset:3px;border-radius:5px}
 #lessons .lesson{margin-inline-start:12px}
+
+/* Hierarchical subject/topic display. */
+.topic-children{display:grid;gap:10px;margin:12px 0 0 18px;padding-inline-start:12px;border-inline-start:3px solid color-mix(in srgb,#3478c8 45%,transparent)}
+.topic-children>.topic{background:color-mix(in srgb,CanvasText 2%,transparent)}
+.topic{scroll-margin-top:14px}
+.topic-head .small{white-space:nowrap;font-weight:700;opacity:1}
