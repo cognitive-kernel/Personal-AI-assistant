@@ -1666,6 +1666,53 @@ def record_query_trace(query: str, chunk_ids: list[int]) -> int:
             (digest, json.dumps(normalized_ids), len(normalized_ids)))
         return int(cursor.lastrowid)
 
+def submit_query_feedback(query_trace_id: int, rating: int, comment: str = "") -> dict[str, Any]:
+    """Upsert a user's usefulness rating for a trace without storing the raw query."""
+    if isinstance(query_trace_id, bool) or not isinstance(query_trace_id, int) or query_trace_id < 1:
+        raise ValueError("query_trace_id must be a positive integer.")
+    if isinstance(rating, bool) or rating not in (-1, 1):
+        raise ValueError("rating must be 1 (helpful) or -1 (not helpful).")
+    if not isinstance(comment, str) or len(comment) > 1000:
+        raise ValueError("comment must be text no longer than 1000 characters.")
+    comment = comment.strip()
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        trace = conn.execute("SELECT id FROM query_traces WHERE id=?", (query_trace_id,)).fetchone()
+        if trace is None:
+            raise NotFoundError("Retrieval trace not found.")
+        conn.execute(
+            """INSERT INTO query_feedback(query_trace_id,rating,comment) VALUES(?,?,?)
+               ON CONFLICT(query_trace_id) DO UPDATE SET rating=excluded.rating,
+               comment=excluded.comment,created_at=CURRENT_TIMESTAMP""",
+            (query_trace_id, rating, comment),
+        )
+        row = conn.execute(
+            "SELECT id,query_trace_id,rating,comment,created_at FROM query_feedback WHERE query_trace_id=?",
+            (query_trace_id,),
+        ).fetchone()
+        return dict(row)
+
+
+def query_feedback_summary() -> dict[str, Any]:
+    """Return aggregate feedback counts only; never expose raw query or comment text."""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT COUNT(*) AS total,
+                      SUM(CASE WHEN rating=1 THEN 1 ELSE 0 END) AS helpful,
+                      SUM(CASE WHEN rating=-1 THEN 1 ELSE 0 END) AS not_helpful
+               FROM query_feedback"""
+        ).fetchone()
+    total = int(row["total"] or 0)
+    helpful = int(row["helpful"] or 0)
+    not_helpful = int(row["not_helpful"] or 0)
+    return {
+        "total": total,
+        "helpful": helpful,
+        "not_helpful": not_helpful,
+        "helpful_rate": round(helpful / total, 4) if total else None,
+    }
+
+
 def search_knowledge(query: str, limit: int = 8) -> dict[str, Any]:
     """Bounded lexical retrieval over published, active chunks only."""
     query = _clean_text(query, "query", 2000)
