@@ -311,7 +311,10 @@ def test_browser_lesson_completion_marker_helpers():
 
 def test_lesson_prompt_includes_course_context_and_specific_topic(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
-    topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
+    topic = service.add_topic(
+        course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی",
+        description="نقش منابع در معماری نرم‌افزار و تفاوت با موتور پایگاه داده محلی برنامه",
+    )
     service.decide_topics([topic["id"]], "approved")
     run = service.create_run(
         course["id"], run_type="lesson", topic_ids=[topic["id"]],
@@ -609,6 +612,9 @@ def test_lesson_capture_requires_body_and_preserves_course_context(isolated_stor
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                              request_key="contextual-lesson-prompt")
     assert "Course / main subject: SQL Server 2025" in run["prompt_text"]
+    assert "Target learning level: beginner_to_advanced" in run["prompt_text"]
+    assert "نقش منابع در معماری نرم‌افزار و تفاوت با موتور پایگاه داده محلی برنامه" in run["prompt_text"]
+    assert "Do not claim the application itself uses SQL Server" in run["prompt_text"]
     assert "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی" in run["prompt_text"]
     assert "not as a generic operating-system lesson" in run["prompt_text"]
     service.start_run(run["id"])
