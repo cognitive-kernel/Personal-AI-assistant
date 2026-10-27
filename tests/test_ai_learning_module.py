@@ -892,3 +892,23 @@ def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_st
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+
+
+def test_provider_network_error_is_actionable():
+    from app.ai_learning.browser_automation import _provider_gate_error
+
+    error = _provider_gate_error(
+        "https://chatgpt.com/",
+        "Network error. Trying to reconnect.",
+    )
+    assert error is not None
+    assert error.code == "chatgpt_network_error"
+    assert "VPN" in str(error)
+
+
+def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
+    from pathlib import Path
+
+    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
+    assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
+    assert 'ids.join("-") + "-" + Date.now()' not in script
