@@ -159,17 +159,15 @@ def test_cancel_run_makes_history_deletable(isolated_store):
     assert result["deleted"] == 1
 
 
-def test_cancel_run_rejects_terminal_runs(isolated_store):
+def test_cancel_run_is_harmless_after_run_needs_user_action(isolated_store):
     course = service.create_course(title="SQL Server")
     run = service.create_run(course["id"], run_type="outline", request_key="already-done")
     service.start_run(run["id"])
     service.complete_run(run["id"], "1. Fundamentals\n2. Query processing")
 
-    with pytest.raises(ValueError, match="Only queued or running"):
-        service.cancel_run(run["id"])
-
-
-
+    result = service.cancel_run(run["id"])
+    assert result["status"] == "needs_user_action"
+    assert result["cancelled_by_request"] is False
 def test_chatgpt_logged_out_welcome_page_is_detected():
     body = (
         "Get responses tailored to you\\n"

@@ -50,7 +50,7 @@ def test_active_dashboard_exposes_progress_and_per_item_controls():
     script = (root / "app.js").read_text(encoding="utf-8")
     assert 'id="course-progress"' in html
     assert "progressMeter" in script
-    assert '"/topics/"+t.id+"/pause"' in script
+    assert '"/topics/"+topic.id+"/pause"' in script
     assert '"/lessons/"+l.id+"/pause"' in script
     assert "باقی‌مانده" in script
 

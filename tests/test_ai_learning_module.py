@@ -1172,7 +1172,9 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'function returnToTopic(topicId)' in script
     assert 'const catalog=$("catalog-menu");if(catalog)catalog.open=true;' in script
     assert 'const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;' in script
-    assert 'card.open=true;window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"center"});' in script
+    assert 'card.open=true;' in script
+    assert 'while(ancestor){ancestor.open=true;ancestor=ancestor.parentElement.closest("details.topic")}' in script
+    assert 'card.scrollIntoView({behavior:"smooth",block:"start"});' in script
 
     publish_start = script.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
     publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
@@ -1182,3 +1184,117 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'returnToTopic(parentTopicId)' in publish_handler
     assert publish_handler.index('await loadLessons(parentTopicId)') < publish_handler.index('returnToTopic(parentTopicId)')
     assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
+
+
+def test_outline_parser_keeps_subject_chapter_hierarchy():
+    raw = (
+        "1. مبحث: معماری SQL Server\n"
+        "1.1 سرفصل: معماری داخلی\n"
+        "1.2 سرفصل: فایل‌ها و صفحات داده\n"
+        "2. مبحث: عملکرد و بهینه‌سازی\n"
+        "2.1 سرفصل: شاخص‌ها و طرح‌های اجرا\n"
+        "AUDIT: status=COMPLETE; total_topics=5; missing_domains=none; end_reason=all_applicable_domains_covered"
+    )
+    items = service._parse_outline_items(raw)
+    assert [item["title"] for item in items] == [
+        "معماری SQL Server",
+        "معماری داخلی",
+        "فایل‌ها و صفحات داده",
+        "عملکرد و بهینه‌سازی",
+        "شاخص‌ها و طرح‌های اجرا",
+    ]
+    assert [item["path"] for item in items] == [(1,), (1, 1), (1, 2), (2,), (2, 1)]
+
+
+def test_manual_outline_import_preserves_parent_child_links(isolated_store, monkeypatch):
+    course = service.create_course(title="SQL Server hierarchy")
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
+    raw = (
+        "1. مبحث: معماری SQL Server\n"
+        "1.1 سرفصل: معماری داخلی\n"
+        "1.2 سرفصل: فایل‌ها و صفحات داده\n"
+        "2. مبحث: عملکرد و بهینه‌سازی\n"
+        "2.1 سرفصل: شاخص‌ها و طرح‌های اجرا"
+    )
+    imported = service.import_outline(course["id"], raw)
+    assert imported["imported"] == 5
+    by_title = {topic["title"]: topic for topic in service.get_course(course["id"])["topics"]}
+    assert by_title["معماری SQL Server"]["parent_topic_id"] is None
+    assert by_title["معماری داخلی"]["parent_topic_id"] == by_title["معماری SQL Server"]["id"]
+    assert by_title["فایل‌ها و صفحات داده"]["parent_topic_id"] == by_title["معماری SQL Server"]["id"]
+    assert by_title["عملکرد و بهینه‌سازی"]["parent_topic_id"] is None
+    assert by_title["شاخص‌ها و طرح‌های اجرا"]["parent_topic_id"] == by_title["عملکرد و بهینه‌سازی"]["id"]
+
+
+def test_generated_outline_completion_preserves_parent_child_links(isolated_store, monkeypatch):
+    course = service.create_course(title="SQL Server hierarchy")
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
+    run = service.create_run(course["id"], run_type="outline", request_key="hierarchical-outline")
+    service.start_run(run["id"])
+    raw = (
+        "1. مبحث: معماری SQL Server\n"
+        "1.1 سرفصل: معماری داخلی\n"
+        "1.2 سرفصل: فایل‌ها و صفحات داده\n"
+        "2. مبحث: عملکرد و بهینه‌سازی\n"
+        "2.1 سرفصل: شاخص‌ها و طرح‌های اجرا\n"
+        "AUDIT: status=COMPLETE; total_topics=5; missing_domains=none; end_reason=all_applicable_domains_covered"
+    )
+    result = service.complete_run(run["id"], raw)
+    assert result["status"] == "succeeded"
+    by_title = {topic["title"]: topic for topic in service.get_course(course["id"])["topics"]}
+    assert by_title["معماری داخلی"]["parent_topic_id"] == by_title["معماری SQL Server"]["id"]
+    assert by_title["فایل‌ها و صفحات داده"]["parent_topic_id"] == by_title["معماری SQL Server"]["id"]
+    assert by_title["شاخص‌ها و طرح‌های اجرا"]["parent_topic_id"] == by_title["عملکرد و بهینه‌سازی"]["id"]
+
+
+def test_cancel_run_is_idempotent_after_it_is_already_cancelled(isolated_store):
+    course = service.create_course(title="Cancel race")
+    run = service.create_run(course["id"], run_type="outline", request_key="cancel-race")
+    first = service.cancel_run(run["id"])
+    second = service.cancel_run(run["id"])
+    assert first["status"] == "cancelled"
+    assert first["cancelled_by_request"] is True
+    assert second["status"] == "cancelled"
+    assert second["cancelled_by_request"] is False
+
+
+def test_active_learning_topic_tree_shows_percentage_and_manual_parent_selector():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    script = (root / "app.js").read_text(encoding="utf-8")
+    html = (root / "index.html").read_text(encoding="utf-8")
+    assert 'status+" · "+percent+"٪"' in script
+    assert 'el("div",undefined,"topic-children")' in script
+    assert 'function childTopics(topicId)' in script
+    assert 'payload.parent_topic_id=payload.parent_topic_id?Number(payload.parent_topic_id):null' in script
+    assert 'id="topic-parent-select"' in html
+
+
+def test_existing_topic_can_be_reparented_and_cycles_are_rejected(isolated_store):
+    course = service.create_course(title="Topic parent edits")
+    root = service.add_topic(course["id"], "Main subject")
+    child = service.add_topic(course["id"], "Child chapter")
+    grandchild = service.add_topic(course["id"], "Nested chapter", parent_topic_id=child["id"])
+
+    moved = service.edit_topic(child["id"], parent_topic_id=root["id"], update_parent=True)
+    assert moved["parent_topic_id"] == root["id"]
+    assert service.edit_topic(child["id"], title="Renamed chapter")["parent_topic_id"] == root["id"]
+
+    with pytest.raises(ValueError, match="descendants"):
+        service.edit_topic(root["id"], parent_topic_id=grandchild["id"], update_parent=True)
+
+    promoted = service.edit_topic(child["id"], parent_topic_id=None, update_parent=True)
+    assert promoted["parent_topic_id"] is None
+
+
+def test_topic_edit_api_accepts_explicit_parent_clear_but_omission_preserves_parent():
+    from app.ai_learning.routes import TopicEdit
+
+    omitted = TopicEdit(title="Rename only")
+    assert "parent_topic_id" not in omitted.model_fields_set
+    clear = TopicEdit(parent_topic_id=None)
+    assert "parent_topic_id" in clear.model_fields_set
+    assert clear.parent_topic_id is None
+
+
