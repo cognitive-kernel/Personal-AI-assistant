@@ -622,14 +622,14 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
     structural completeness check only; it does not assess factual correctness.
     """
     audit_lines = [line.strip() for line in response_text.splitlines()
-                   if re.match(r"(?i)^\\s*AUDIT\\s*:", line)]
+                   if re.match(r"(?i)^\s*AUDIT\s*:", line)]
     numbered = [int(match.group(1)) for line in response_text.splitlines()
-                if (match := re.match(r"^\\s*(\\d+)\\.\\s+\\S", line))]
+                if (match := re.match(r"^\s*(\d+)\.\s+\S", line))]
     if len(audit_lines) != 1:
         return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را ادامه دهید و سپس دوباره ثبت کنید."
     audit = audit_lines[0]
     fields = {key.casefold(): value.strip() for key, value in
-              re.findall(r"([A-Za-z_]+)\\s*=\\s*([^;]+)", audit.split(":", 1)[1])}
+              re.findall(r"([A-Za-z_]+)\s*=\s*([^;]+)", audit.split(":", 1)[1])}
     if fields.get("status", "").upper() != "COMPLETE":
         return "فهرست خام و سرفصل‌های قابل استخراج ذخیره شدند، اما ChatGPT صریحاً تکمیل فهرست را تأیید نکرده است؛ ادامهٔ فهرست را دریافت کنید."
     try:
