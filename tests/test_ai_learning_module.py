@@ -15,6 +15,7 @@ def isolated_store(tmp_path, monkeypatch):
 
 def test_topic_approval_lesson_version_review_and_publish(isolated_store):
     course = service.create_course(title="SQL Server 2005")
+    monkeypatch.setattr(service, "_filter_duplicate_titles", lambda candidates, existing: (list(candidates), []))
     topic = service.add_topic(course["id"], "Indexes")
     with pytest.raises(ValueError, match="approved topic"):
         service.create_lesson(topic["id"], "Index basics")
@@ -112,7 +113,7 @@ def test_feature_flags_are_off_by_default(monkeypatch):
     assert config.is_enabled() is False
     assert config.retrieval_is_enabled() is False
 
-def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store):
+def test_outline_import_creates_pending_topics_and_preserves_raw_response(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2005")
     raw = "1. Architecture\n2. Indexes\n3. Backup and restore"
     result = service.import_outline(course["id"], raw, provider="chatgpt_ui")
