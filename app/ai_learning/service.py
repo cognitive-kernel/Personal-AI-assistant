@@ -999,7 +999,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     )
                 else:
                     position = int(conn.execute(
-                        "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
+                        "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=?",
                         (topic_id,)).fetchone()[0])
                     cursor = conn.execute(
                         "INSERT INTO lessons(topic_id,position,title,status) VALUES(?,?,?,'needs_review')",
@@ -1376,7 +1376,7 @@ def create_lesson(topic_id: int, title: str) -> dict[str, Any]:
             raise ValueError("A lesson can only be created under an approved topic.")
         _ensure_unique_title(conn, table="lessons", title=title, scope_column="topic_id", scope_id=topic_id)
         position = int(conn.execute(
-            "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
+            "SELECT COALESCE(MAX(position),0)+1 FROM lessons WHERE topic_id=?",
             (topic_id,)).fetchone()[0])
         cursor = conn.execute(
             "INSERT INTO lessons(topic_id,position,title,status) VALUES(?,?,?,'needs_review')",
