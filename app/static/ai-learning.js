@@ -447,7 +447,8 @@ byId("fetch-selected-lessons").addEventListener("click", async () => {
   if (!ids.length) { message("سرفصل تأییدشده و آمادهٔ دریافت درس انتخاب نشده است.", true); return; }
   if (ids.length > 100) { message("در هر اجرا حداکثر ۱۰۰ سرفصل انتخاب کنید.", true); return; }
   try {
-    const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + ids.join("-") + "-" + Date.now();
+    // Topic IDs are already in the body; keep the idempotency key below the API's 100-char cap.
+    const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();
     const result = await api("/api/ai-learning/browser/lessons", jsonOptions("POST", {
       course_id:selectedCourse, topic_ids:ids, request_key:requestKey, force_retry:false
     }));
