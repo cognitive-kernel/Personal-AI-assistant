@@ -1182,3 +1182,58 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'returnToTopic(parentTopicId)' in publish_handler
     assert publish_handler.index('await loadLessons(parentTopicId)') < publish_handler.index('returnToTopic(parentTopicId)')
     assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
+
+
+def test_import_outline_preserves_nested_subject_hierarchy(isolated_store):
+    course = service.create_course(title="Hierarchical curriculum")
+    raw = "\n".join([
+        "1. Database foundations",
+        "1.1 Architecture",
+        "1.2 Data types",
+        "2. Administration",
+        "2.1 Backup and restore",
+    ])
+    result = service.import_outline(course["id"], raw, provider="manual")
+    assert result["imported"] == 5
+    topics = service.get_course(course["id"])["topics"]
+    by_title = {item["title"]: item for item in topics}
+    assert by_title["Database foundations"]["parent_topic_id"] is None
+    assert by_title["Architecture"]["parent_topic_id"] == by_title["Database foundations"]["id"]
+    assert by_title["Data types"]["parent_topic_id"] == by_title["Database foundations"]["id"]
+    assert by_title["Administration"]["parent_topic_id"] is None
+    assert by_title["Backup and restore"]["parent_topic_id"] == by_title["Administration"]["id"]
+
+
+def test_hierarchical_outline_completion_audit_accepts_nested_numbering():
+    raw = "\n".join([
+        "1. Database foundations",
+        "1.1 Architecture",
+        "1.2 Data types",
+        "2. Administration",
+        "2.1 Backup and restore",
+        "AUDIT: status=COMPLETE; total_topics=5; missing_domains=none; end_reason=all_applicable_domains_covered",
+    ])
+    assert service._outline_completion_error(raw, service._parse_outline_titles(raw)) is None
+
+
+def test_hierarchical_outline_completion_rejects_missing_parent():
+    raw = "\n".join([
+        "1. Database foundations",
+        "1.2 Data types",
+        "AUDIT: status=COMPLETE; total_topics=2; missing_domains=none; end_reason=all_applicable_domains_covered",
+    ])
+    error = service._outline_completion_error(raw, service._parse_outline_titles(raw))
+    assert error and "والد" in error
+
+
+def test_active_learning_ui_shows_inline_progress_and_hierarchical_topics():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    script = (root / "app.js").read_text(encoding="utf-8")
+    html = (root / "index.html").read_text(encoding="utf-8")
+    assert 'status+" · "+(Number(t.progress_percent)||0)+"٪"' in script
+    assert 'const byParent=new Map()' in script
+    assert 'const renderOne=(t,i,ancestors=new Set())' in script
+    assert 'await loadCourse();returnToTopic(parentTopicId);' in script
+    assert 'id="topic-parent" name="parent_topic_id"' in html
