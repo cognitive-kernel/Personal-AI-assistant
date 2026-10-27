@@ -279,8 +279,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "First construct an internal coverage matrix of all relevant domains, subdomains, and levels (foundational, intermediate, advanced, production/operations, troubleshooting, and hands-on projects). Expand every domain into its distinct teachable topics. Keep related-but-different subjects separate: concepts vs implementation, configuration vs monitoring, administration vs troubleshooting, fundamentals vs advanced techniques, and each materially different feature or workflow. Merge only genuine duplicates, not topics that merely share vocabulary or belong to the same domain.\n"
                 "For SQL Server 2025, consider as applicable: architecture and internals; relational modeling and normalization; T-SQL syntax and advanced querying; data types and conversion; built-in functions; programmability; transactions, locking and concurrency; indexes and query plans; performance tuning; memory, CPU and I/O; installation, configuration and upgrades; administration and monitoring; security and auditing; backup, restore, high availability and disaster recovery; replication and distributed data; import/export, ETL and integration; reporting, analytics and warehousing; JSON, XML, full-text search, regular expressions and vector/AI features; cloud/hybrid operation; automation, deployment, migration, capacity planning, incident response, and end-to-end projects. Adapt this list to the actual course rather than forcing irrelevant domains. Include version-specific capabilities only when supportable; mark preview/version-dependent features and do not invent features.\n"
                 "Before finalizing, audit the outline against the coverage matrix. Identify missing domains and add their distinct topics. Then count the actual numbered topic lines and verify numbering is continuous from 1 with no gaps or repeated numbers. Ensure each title is specific, independently teachable, and not a duplicate. Do not claim completeness unless every applicable domain has been covered.\n"
-                "OUTPUT FORMAT: return numbered topics, one numbered topic per line in exactly this form: '1. Topic title'. Use continuous numbering across all parts. No sub-bullets, no introductory prose, and no unnumbered topic lines. At the very end, append exactly one machine-readable audit line that is not a topic: 'AUDIT: status=COMPLETE; total_topics=N; missing_domains=none; end_reason=all_applicable_domains_covered' when complete, replacing N with the actual count. If any part remains unfinished, append: 'AUDIT: status=CONTINUE_REQUIRED; total_topics=N; last_topic=N; missing_domains=...; end_reason=...'. Never label an incomplete outline COMPLETE.\n"
-                "CONTINUATION RULE: if the full outline cannot be completed in this response for any reason, return as many complete topics as possible, preserve continuous numbering, and explicitly mark CONTINUE_REQUIRED in the audit line with the exact last topic number, the remaining domains, and the actual reason the response stopped. Do not summarize the remaining topics or silently end. The next response must continue from last_topic+1, must not repeat previous topics, and must continue until the coverage audit passes. A response ending mid-topic or without the audit line is incomplete. Do not state token/output limits as the reason unless that is actually the reason the response stopped."
+                "OUTPUT FORMAT: return numbered topics as a two-level hierarchy. Each main subject must be a root item like '1. مبحث: معماری و اجزای اصلی'; every teachable chapter/topic under it uses dotted numbering like '1.1 سرفصل: معماری داخلی' and '1.2 سرفصل: مدیریت حافظه'. Start the next main subject as '2. مبحث: ...' and its children as '2.1 سرفصل: ...'. Continue this hierarchy for the entire course; do not print every chapter as a top-level item. Each root subject must appear before its child chapters. Keep root numbering continuous from 1; within each parent, child numbering starts at 1 and is continuous. Count every main subject and every chapter in total_topics. No introductory prose, no unnumbered topics, and no duplicate items. At the very end, append exactly one machine-readable audit line that is not a topic: 'AUDIT: status=COMPLETE; total_topics=N; missing_domains=none; end_reason=all_applicable_domains_covered' when complete, replacing N with the actual count of all subjects and chapters. If any part remains unfinished, append 'AUDIT: status=CONTINUE_REQUIRED; total_topics=N; last_topic=N; missing_domains=...; end_reason=...'. Never label an incomplete outline COMPLETE.\n"
+                "CONTINUATION RULE: if the full outline cannot be completed in this response for any reason, return as many complete hierarchy entries as possible, preserve dotted parent/child numbering, and explicitly mark CONTINUE_REQUIRED with the actual last entry and remaining domains. Do not summarize the remaining chapters or silently end. Continue the same hierarchy without renumbering previous entries; use the next child number for an unfinished parent, or the next main-subject number when starting a new parent. Do not repeat previous entries, and continue until the coverage audit passes. A response ending mid-entry or without the audit line is incomplete.\n"
             )
         else:
             topic_lines = "\n".join(
@@ -472,27 +472,32 @@ def start_run(run_id: int) -> dict[str, Any]:
     return get_run(run_id)
 
 def cancel_run(run_id: int) -> dict[str, Any]:
-    """Cancel an active run; terminal history can then be deleted normally."""
+    """Cancel an active run; repeated clicks are harmless if it already finished."""
+    cancelled = False
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT id,status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
-        if run["status"] not in {"queued", "running"}:
-            raise ValueError("Only queued or running executions can be cancelled.")
-        conn.execute(
-            """UPDATE runs SET status='cancelled',error_code='user_cancelled',
-               error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
-               WHERE id=? AND status IN ('queued','running')""",
-            (run_id,),
-        )
-        conn.execute(
-            """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
-               WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
-                 AND processing_status='running'""",
-            (run_id,),
-        )
-    return get_run(run_id)
+        if run["status"] in {"queued", "running"}:
+            conn.execute(
+                """UPDATE runs SET status='cancelled',error_code='user_cancelled',
+                   error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status IN ('queued','running')""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                     AND processing_status='running'""",
+                (run_id,),
+            )
+            cancelled = True
+    result = get_run(run_id)
+    result["cancelled_by_request"] = cancelled
+    if not cancelled and result["status"] != "cancelled":
+        result["message"] = "اجرا پیش از درخواست توقف به وضعیت نهایی رسیده بود؛ وضعیت فعلی حفظ شد."
+    return result
 
 
 def _outline_normalized_duplicates(raw_response: str) -> list[dict[str, Any]]:
@@ -523,26 +528,42 @@ def _outline_normalized_duplicates(raw_response: str) -> list[dict[str, Any]]:
     return duplicates
 
 
-def _parse_outline_titles(raw_response: str) -> list[str]:
-    """Parse numbered, bulleted, headed, or plain one-topic-per-line outlines."""
-    candidates: list[str] = []
+def _parse_outline_items(raw_response: str) -> list[dict[str, Any]]:
+    """Parse outline entries and retain dotted-number or Markdown-heading hierarchy.
+
+    Flat numbered lists stay flat for backward compatibility. Entries such as
+    2.1, 2.2 are attached to parent 2; Markdown heading levels map to the same
+    parent/child path representation.
+    """
+    items: list[dict[str, Any]] = []
     seen: set[str] = set()
     marker = re.compile(
-        r"^(?:#{1,6}\s+|(?:[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*[.)]?|[-*+•])\s+)(.+?)\s*$"
+        r"^(?:(?P<heading>#{1,6})\s+|(?P<number>[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*[.)]?)\s+|(?P<bullet>[-*+•])\s+)(?P<title>.+?)\s*$"
     )
     audit = re.compile(r"(?i)^AUDIT\s*:")
     wrapper = re.compile(
         r"(?i)^(?:chatgpt said:?|here is(?: the)?|here's(?: the)?|certainly[,!:.]?|sure[,!:.]?|"
         r"در ادامه(?:،|:)?|فهرست(?: زیر)?(?:،|:)?|این هم(?:،|:)?).*$"
     )
+    digits = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+    heading_counts = [0] * 6
 
-    def add(value: str) -> None:
+    def clean_title(value: str) -> str:
         title = re.sub(r"\s+#+\s*$", "", value.strip().strip("*").strip())
         title = re.sub(r"^\[[^]]{1,80}\]\s*", "", title).strip()
+        title = re.sub(
+            r"(?i)^(?:مبحث|سرفصل|موضوع|subject|chapter)\s*[:：\-]\s*",
+            "",
+            title,
+        ).strip()
+        return title
+
+    def add(value: str, path: tuple[int, ...] | None, marker_type: str) -> None:
+        title = clean_title(value)
         key = _dedupe_normalize(title)
         if 2 <= len(title) <= 300 and key and key not in seen:
             seen.add(key)
-            candidates.append(title)
+            items.append({"title": title, "path": path, "marker_type": marker_type})
 
     cleaned_lines: list[str] = []
     for raw_line in raw_response.splitlines():
@@ -553,26 +574,107 @@ def _parse_outline_titles(raw_response: str) -> list[str]:
             continue
         cleaned_lines.append(line)
 
-    # Prefer explicit structural markers when present, preserving their order.
+    # Prefer explicit structure when available, preserving original ordering.
     for line in cleaned_lines:
         match = marker.match(line)
-        if match:
-            add(match.group(1))
-    if candidates:
-        return candidates
+        if not match:
+            continue
+        if match.group("heading"):
+            level = len(match.group("heading"))
+            heading_counts[level - 1] += 1
+            for index in range(level, len(heading_counts)):
+                heading_counts[index] = 0
+            path = tuple(heading_counts[:level])
+            add(match.group("title"), path, "heading")
+        elif match.group("number"):
+            number = match.group("number").rstrip(".)").translate(digits)
+            try:
+                path = tuple(int(part) for part in number.split("."))
+            except ValueError:
+                path = None
+            add(match.group("title"), path, "numbered")
+        else:
+            # Bulleted outlines remain flat unless they use explicit dotted numbering.
+            add(match.group("title"), None, "bullet")
+    if items:
+        return items
 
-    # Plain text exports often contain exactly one topic per line, without
-    # Markdown markers. Ignore common wrapper/introduction text and audit footers.
+    # Plain exports may contain one title per line without structural markers.
     for line in cleaned_lines:
         if audit.match(line) or wrapper.match(line):
             continue
         if re.match(r"(?i)^(?:total_topics|missing_domains|end_reason|status)\s*=", line):
             continue
-        # Do not import obvious multi-sentence explanatory prose as a topic.
         if len(line) > 300:
             continue
-        add(line)
-    return candidates if len(candidates) >= 3 else []
+        add(line, None, "plain")
+    return items if len(items) >= 3 else []
+
+
+def _parse_outline_titles(raw_response: str) -> list[str]:
+    """Compatibility wrapper returning outline titles without hierarchy metadata."""
+    return [str(item["title"]) for item in _parse_outline_items(raw_response)]
+
+
+def _insert_outline_items(
+    conn: sqlite3.Connection,
+    course_id: int,
+    items: list[dict[str, Any]],
+    accepted_titles: list[str],
+    existing_rows: list[sqlite3.Row] | list[dict[str, Any]],
+    start_position: int,
+    *,
+    run_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Insert outline nodes while preserving their parent links."""
+    accepted = set(accepted_titles)
+    existing_roots: dict[str, int] = {}
+    for row in existing_rows:
+        try:
+            parent_id = row["parent_topic_id"]
+        except (KeyError, IndexError):
+            parent_id = None
+        if parent_id is None:
+            existing_roots.setdefault(_dedupe_normalize(str(row["title"])), int(row["id"]))
+
+    path_to_id: dict[tuple[int, ...], int] = {}
+    created: list[dict[str, Any]] = []
+    for item in items:
+        title = str(item["title"])
+        path = item.get("path")
+        path_tuple = tuple(path) if path else None
+        if title not in accepted:
+            if path_tuple and len(path_tuple) == 1:
+                existing_id = existing_roots.get(_dedupe_normalize(title))
+                if existing_id is not None:
+                    path_to_id[path_tuple] = existing_id
+            continue
+
+        parent_id = path_to_id.get(path_tuple[:-1]) if path_tuple and len(path_tuple) > 1 else None
+        position = start_position + len(created)
+        cursor = conn.execute(
+            """INSERT INTO topics(course_id,parent_topic_id,position,title,approval_status,processing_status)
+               VALUES(?,?,?,?,'pending','received')""",
+            (course_id, parent_id, position, title),
+        )
+        topic_id = int(cursor.lastrowid)
+        if path_tuple:
+            path_to_id[path_tuple] = topic_id
+        if run_id is not None:
+            conn.execute(
+                "INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'parsed')",
+                (run_id, topic_id),
+            )
+        created.append({
+            "id": topic_id,
+            "title": title,
+            "position": position,
+            "parent_topic_id": parent_id,
+            "approval_status": "pending",
+            "processing_status": "received",
+        })
+    return created
+
 
 def _lesson_has_substantive_body(text: str) -> bool:
     """Reject title-only or near-empty ChatGPT captures before they become lesson versions."""
@@ -705,34 +807,68 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
 
 
 def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> str | None:
-    """Return a recovery message unless the outline's explicit completion audit is valid.
-
-    The provider response is retained even when this check fails. This is a
-    structural completeness check only; it does not assess factual correctness.
-    """
-    audit_lines = [line.strip() for line in response_text.splitlines()
-                   if re.match(r"(?i)^\s*AUDIT\s*:", line)]
-    numbered = [int(match.group(1)) for line in response_text.splitlines()
-                if (match := re.match(r"^\s*(\d+)\.\s+\S", line))]
+    """Reject incomplete outlines, including broken parent/child numbering."""
+    audit_lines = [
+        line.strip() for line in response_text.splitlines()
+        if re.match(r"(?i)^\s*AUDIT\s*:", line)
+    ]
     if len(audit_lines) != 1:
         return "فهرست خام ذخیره شد، اما خط ممیزی AUDIT کامل/یکتا ندارد؛ برای تکمیل سرفصل‌ها پاسخ را ادامه دهید و سپس دوباره ثبت کنید."
     audit = audit_lines[0]
-    fields = {key.casefold(): value.strip() for key, value in
-              re.findall(r"([A-Za-z_]+)\s*=\s*([^;]+)", audit.split(":", 1)[1])}
+    fields = {
+        key.casefold(): value.strip()
+        for key, value in re.findall(r"([A-Za-z_]+)\s*=\s*([^;]+)", audit.split(":", 1)[1])
+    }
     if fields.get("status", "").upper() != "COMPLETE":
         return "فهرست خام و سرفصل‌های قابل استخراج ذخیره شدند، اما ChatGPT صریحاً تکمیل فهرست را تأیید نکرده است؛ ادامهٔ فهرست را دریافت کنید."
     try:
         declared_total = int(fields.get("total_topics", ""))
     except (TypeError, ValueError):
-        return "ممیزی فهرست تعداد معتبر سرفصل‌ها را اعلام نکرده است؛ پاسخ را اصلاح/ادامه دهید."
-    if declared_total != len(parsed_titles) or declared_total != len(numbered):
-        return (f"تعداد سرفصل‌های ممیزی‌شده با پاسخ هم‌خوان نیست "
-                f"(ممیزی={declared_total}، قابل‌استخراج={len(parsed_titles)}، شماره‌دار={len(numbered)}). "
-                "پاسخ خام ذخیره شده؛ فهرست را ادامه دهید.")
-    if numbered != list(range(1, declared_total + 1)):
-        return "شماره‌گذاری سرفصل‌ها پیوسته از ۱ نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح/تکمیل شود."
-    if (fields.get("missing_domains", "").casefold() != "none"
-            or fields.get("end_reason", "").casefold() != "all_applicable_domains_covered"):
+        return "ممیزی فهرست تعداد معتبر موضوعات/سرفصل‌ها را اعلام نکرده است؛ پاسخ را اصلاح/ادامه دهید."
+
+    items = _parse_outline_items(response_text)
+    if declared_total != len(parsed_titles) or declared_total != len(items):
+        return (
+            f"تعداد موارد ممیزی‌شده با پاسخ هم‌خوان نیست "
+            f"(ممیزی={declared_total}، قابل‌استخراج={len(parsed_titles)}). پاسخ خام ذخیره شده؛ فهرست را ادامه دهید."
+        )
+
+    paths = [item.get("path") for item in items]
+    if not paths or any(path is None for path in paths):
+        return "شماره‌گذاری ساختاری برای فهرست کامل نیست؛ هر مبحث و سرفصل باید شماره‌گذاری شود."
+    paths = [tuple(path) for path in paths]
+    if len(set(paths)) != len(paths):
+        return "شمارهٔ یک یا چند مبحث/سرفصل تکراری است؛ پاسخ خام ذخیره شده و فهرست باید اصلاح شود."
+
+    if all(len(path) == 1 for path in paths):
+        if [path[0] for path in paths] != list(range(1, declared_total + 1)):
+            return "شماره‌گذاری سرفصل‌ها پیوسته از ۱ نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح/تکمیل شود."
+    else:
+        seen_paths: set[tuple[int, ...]] = set()
+        child_numbers: dict[tuple[int, ...], list[int]] = {}
+        root_numbers: list[int] = []
+        for path in paths:
+            if any(part < 1 for part in path):
+                return "شماره‌گذاری سلسله‌مراتبی نامعتبر است؛ هر بخش باید با عدد مثبت مشخص شود."
+            if len(path) == 1:
+                root_numbers.append(path[0])
+            else:
+                if path[:-1] not in seen_paths:
+                    return "یک سرفصل پیش از مبحث والدش آمده یا مبحث والد ندارد؛ ساختار سلسله‌مراتبی را اصلاح کنید."
+                child_numbers.setdefault(path[:-1], []).append(path[-1])
+            seen_paths.add(path)
+        if root_numbers != list(range(1, len(root_numbers) + 1)):
+            return "شماره‌گذاری مبحث‌های اصلی از ۱ پیوسته نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح شود."
+        for parent_path, numbers in child_numbers.items():
+            if numbers != list(range(1, len(numbers) + 1)):
+                return "شماره‌گذاری سرفصل‌های زیرمجموعهٔ یک مبحث پیوسته نیست؛ پاسخ خام ذخیره شده و فهرست باید اصلاح شود."
+            if parent_path not in seen_paths:
+                return "مبحث والد یکی از سرفصل‌ها در فهرست وجود ندارد."
+
+    if (
+        fields.get("missing_domains", "").casefold() != "none"
+        or fields.get("end_reason", "").casefold() != "all_applicable_domains_covered"
+    ):
         return "ممیزی هنوز نبود حوزه یا دلیل پایان معتبرِ تکمیل همهٔ حوزه‌های مرتبط را نشان نمی‌دهد؛ پاسخ خام ذخیره شده و فهرست باید تکمیل شود."
     return None
 
