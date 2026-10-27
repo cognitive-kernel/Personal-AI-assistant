@@ -9,3 +9,6 @@
 .topic[open]>summary{margin-bottom:10px}
 .topic>summary:focus-visible,#catalog-menu>summary:focus-visible,#lesson-list-details>summary:focus-visible{outline:2px solid #3478c8;outline-offset:3px;border-radius:5px}
 #lessons .lesson{margin-inline-start:12px}
+
+.topic-approval-progress{white-space:nowrap;font-weight:600}
+.topic>summary{scroll-margin-top:12px}
