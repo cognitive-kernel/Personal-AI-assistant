@@ -3,6 +3,10 @@
 These tests intentionally do not judge factual correctness; that belongs to a
 separate user-review phase.
 """
+import pytest
+
+from app.ai_learning import service
+from app.ai_learning.db import initialize_store
 from app.ai_learning.service import _outline_completion_error
 
 
@@ -54,3 +58,33 @@ def test_duplicate_audit_lines_are_rejected():
     text = _outline() + "\\nAUDIT: status=COMPLETE; total_topics=3; missing_domains=none; end_reason=duplicate"
     error = _outline_completion_error(text, ["Topic 1", "Topic 2", "Topic 3"])
     assert error and "AUDIT" in error
+
+
+@pytest.fixture
+def isolated_store(tmp_path, monkeypatch):
+    monkeypatch.setenv("AI_LEARNING_DB_PATH", str(tmp_path / "ai_learning.db"))
+    initialize_store()
+
+
+def test_raw_outline_is_preserved_if_semantic_duplicate_check_fails(isolated_store, monkeypatch):
+    course = service.create_course(title="Outline recovery test")
+    service.add_topic(course["id"], "Existing topic")
+    run = service.create_run(
+        course["id"], run_type="outline", request_key="outline-dedup-failure-test"
+    )
+    monkeypatch.setattr(
+        service, "_filter_duplicate_titles",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("embedding unavailable")),
+    )
+    response = (
+        "1. New topic\n"
+        "AUDIT: status=COMPLETE; total_topics=1; "
+        "missing_domains=none; end_reason=all_applicable_domains_covered"
+    )
+
+    result = service.complete_run(run["id"], response)
+
+    assert result["status"] == "needs_user_action"
+    assert result["error_code"] == "outline_duplicate_check_unavailable"
+    assert result["response_text"] == response
+    assert len(service.get_course(course["id"])["topics"]) == 1
