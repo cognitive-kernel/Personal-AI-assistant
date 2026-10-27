@@ -14,6 +14,18 @@ $("delete-selected-runs").onclick=()=>act(async()=>{if(!courseId)throw Error("ا
 function childTopics(topicId) {
  return topics.filter(item=>Number(item.parent_topic_id||0)===Number(topicId));
 }
+function topicDescendantIds(topicId) {
+ const found=new Set();
+ const visit=id=>{
+  for(const child of childTopics(id)){
+   const childId=Number(child.id);
+   if(found.has(childId))continue;
+   found.add(childId);visit(childId);
+  }
+ };
+ visit(Number(topicId));
+ return found;
+}
 function topicProgress(topic,trail=new Set()) {
  const id=Number(topic.id);
  const own=Math.max(0,Math.min(100,Number(topic.progress_percent)||0));
@@ -95,6 +107,31 @@ function renderTopics(){
    const description=prompt("توضیحات",topic.description||"");if(description===null)return;
    await api("/topics/"+topic.id,{method:"PATCH",body:JSON.stringify({title,description})});
    await loadCourse();say("سرفصل ویرایش شد.");
+  },true);
+  button("تغییر مبحث والد",async()=>{
+   const existing=card.querySelector(".parent-editor");
+   if(existing){existing.remove();return;}
+   const editor=el("div",undefined,"actions parent-editor");
+   const label=el("label","مبحث والد");label.className="parent-editor-label";
+   const selector=el("select");selector.setAttribute("aria-label","انتخاب مبحث والد برای "+topic.title);
+   const rootOption=el("option","بدون مبحث والد (مبحث اصلی)");rootOption.value="";selector.append(rootOption);
+   const excluded=topicDescendantIds(topic.id);excluded.add(Number(topic.id));
+   for(const candidate of topics){
+    if(excluded.has(Number(candidate.id)))continue;
+    const option=el("option",candidate.position+". "+candidate.title);
+    option.value=String(candidate.id);selector.append(option);
+   }
+   selector.value=topic.parent_topic_id?String(topic.parent_topic_id):"";
+   label.append(selector);
+   const save=el("button","ذخیره مبحث والد");save.type="button";
+   save.onclick=()=>act(async()=>{
+    const parentId=selector.value?Number(selector.value):null;
+    await api("/topics/"+topic.id,{method:"PATCH",body:JSON.stringify({parent_topic_id:parentId})});
+    await loadCourse();returnToTopic(topic.id);
+    say(parentId?"سرفصل زیرمجموعه مبحث انتخاب‌شده شد.":"سرفصل به مبحث اصلی منتقل شد.");
+   });
+   const cancel=el("button","انصراف","secondary");cancel.type="button";cancel.onclick=()=>editor.remove();
+   label.append(save,cancel);editor.append(label);actions.after(editor);
   },true);
   button("تأیید",()=>decide([topic.id],"approved"));
   button("رد",()=>decide([topic.id],"rejected"),true);
