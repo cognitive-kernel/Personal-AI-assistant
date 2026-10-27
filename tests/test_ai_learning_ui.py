@@ -98,3 +98,21 @@ def test_topic_and_lesson_catalog_is_one_collapsible_menu():
     assert 'const card=el("details",undefined,"topic")' in script
     assert 'if(catalog)catalog.open=true' in script
     assert 'if(lessonDetails)lessonDetails.open=true' in script
+
+
+def test_collapsed_topics_show_progress_and_publish_returns_to_parent_topic():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    script = (root / "app.js").read_text(encoding="utf-8")
+
+    assert 'app.js?v=20261027-topic-progress-scroll' in html
+    assert 'approvalLabel+" · پیشرفت "+progressValue+"٪"' in script
+    assert 'className' not in script  # topic progress is plain text in the collapsed summary
+    assert 'card.scrollIntoView({behavior:"auto",block:"start"})' in script
+    assert 'if(catalog)catalog.open=true' in script
+    assert 'if(lessonDetails)lessonDetails.open=false' in script
+    assert 'await loadCourse();returnToTopic(parentTopicId)' in script
+    assert 'const scrollAnchor=visibleAnchor?' in script
+    assert 'window.scrollBy({top:delta,behavior:"auto"})' in script
