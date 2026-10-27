@@ -61,9 +61,10 @@ def _log_event(event: str, **fields: Any) -> None:
 
 
 class BrowserAutomationError(RuntimeError):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, *, partial_response: str | None = None):
         super().__init__(message)
         self.code = code
+        self.partial_response = partial_response
 
 
 def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError | None:
@@ -431,7 +432,7 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                 required_stability = 45.0 if stop_visible else _STABLE_SECONDS
                 if continue_button is not None:
                     required_stability = max(required_stability, 45.0)
-                if stable_for >= required_stability:
+                if continue_button is None and stable_for >= required_stability:
                     if len(current) < 20:
                         raise BrowserAutomationError(
                             "chatgpt_response_too_short",
@@ -476,7 +477,8 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                last_stop_visible=last_stop_visible, stable_since_set=stable_since is not None)
     raise BrowserAutomationError(
         "chatgpt_response_timeout",
-        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. اجرای کار برای بررسی در داشبورد نگه داشته شد.",
+        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. بخش دریافت‌شده در سابقهٔ اجرا حفظ شد؛ پس از بررسی شبکه، از داشبورد ادامه دهید.",
+        partial_response=last_text or None,
     )
 
 
@@ -645,7 +647,7 @@ def _continue_lessons(
             answer = _browser_capture(run["prompt_text"], cancel_event)
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc))
+            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
             return
         except Exception as exc:
             service.mark_run_needs_user_action(
