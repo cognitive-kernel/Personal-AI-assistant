@@ -527,16 +527,16 @@ def _parse_outline_levels(raw_response: str) -> dict[str, int]:
     """Return nesting depth encoded by numbered or Markdown-heading outline markers."""
     levels: dict[str, int] = {}
     marker = re.compile(
-        r"^(?:(?P<heading>#{1,6})\\s+|(?P<number>[0-9٠-٩۰-۹]+(?:\\.[0-9٠-٩۰-۹]+)*)(?:[.)])?\\s+|[-*+•]\\s+)(?P<title>.+?)\\s*$"
+        r"^(?:(?P<heading>#{1,6})\s+|(?P<number>[0-9٠-٩۰-۹]+(?:\.[0-9٠-٩۰-۹]+)*)(?:[.)])?\s+|[-*+•]\s+)(?P<title>.+?)\s*$"
     )
     for raw_line in raw_response.splitlines():
-        line = raw_line.strip().lstrip("\\ufeff")
-        if not line or re.match(r"(?i)^AUDIT\\s*:", line):
+        line = raw_line.strip().lstrip("\ufeff")
+        if not line or re.match(r"(?i)^AUDIT\s*:", line):
             continue
         match = marker.match(line)
         if not match:
             continue
-        title = re.sub(r"\\s+#+\\s*$", "", match.group("title").strip().strip("*").strip())
+        title = re.sub(r"\s+#+\s*$", "", match.group("title").strip().strip("*").strip())
         key = _dedupe_normalize(title)
         if not key:
             continue
