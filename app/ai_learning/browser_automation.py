@@ -776,7 +776,10 @@ def _continue_lessons(
             _ACTIVE_RUN_ID = run_id
             _CANCEL_EVENTS[run_id] = cancel_event
         try:
-            answer = _browser_capture(\n                run[\"prompt_text\"], cancel_event,\n                lambda text: service.save_run_partial_response(run_id, text),\n            )
+            answer = _browser_capture(
+                run["prompt_text"], cancel_event,
+                lambda text: service.save_run_partial_response(run_id, text),
+            )
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
             service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
@@ -805,7 +808,8 @@ def _worker(
     run_type = service.get_run(run_id).get("run_type")
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
     try:
-        checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == \"lesson\" else None\n        answer = _browser_capture(prompt, cancel_event, checkpoint)
+        checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == "lesson" else None
+        answer = _browser_capture(prompt, cancel_event, checkpoint)
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
