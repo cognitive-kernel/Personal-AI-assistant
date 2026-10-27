@@ -81,7 +81,7 @@ function renderTopics(){
   summary.append(stats);
  }
  if(!topics.length){root.append(el("p","سرفصلی وجود ندارد."));refreshTopicParentOptions();return}
- const renderOne=(topic,depth=0,trail=new Set())=>{
+ const renderOne=(topic,depth=0,trail=new Set(),numberPath=String(topic.position))=>{
   const card=el("details",undefined,"topic");
   card.dataset.id=String(topic.id);
   card.dataset.parentTopicId=String(topic.parent_topic_id||"");
@@ -94,7 +94,7 @@ function renderTopics(){
   check.onchange=()=>{if(check.checked)selectedTopicIds.add(Number(topic.id));else selectedTopicIds.delete(Number(topic.id))};
   const percent=topicProgress(topic);
   const status=topic.approval_status==="approved"?"تأییدشده":topic.approval_status==="rejected"?"ردشده":"در انتظار";
-  head.append(check,el("strong",topic.position+". "+topic.title),el("span",status+" · "+percent+"٪","small topic-state"));
+  head.append(check,el("strong",numberPath+". "+topic.title),el("span",status+" · "+percent+"٪","small topic-state"));
   card.append(head);
   if(topic.description)card.append(el("p",topic.description,"muted"));
   card.append(progressMeter(percent,childrenOf(topic.id).length?"پیشرفت این مبحث و زیرمجموعه‌ها":topic.progress_label));
@@ -164,17 +164,17 @@ function renderTopics(){
   if(children.length){
    const nested=el("div",undefined,"topic-children");
    const nextTrail=new Set(trail);nextTrail.add(Number(topic.id));
-   for(const child of children){
-    if(nextTrail.has(Number(child.id)))continue;
-    nested.append(renderOne(child,depth+1,nextTrail));
-   }
+   children.forEach((child,index)=>{
+    if(nextTrail.has(Number(child.id)))return;
+    nested.append(renderOne(child,depth+1,nextTrail,numberPath+"."+(index+1)));
+   });
    card.append(nested);
   }
   return card;
  };
- for(const topic of topics.filter(isRoot))root.append(renderOne(topic));
+ topics.filter(isRoot).forEach((topic,index)=>root.append(renderOne(topic,0,new Set(),String(index+1))));
  const renderedIds=new Set(Array.from(root.querySelectorAll("details.topic")).map(card=>Number(card.dataset.id)));
- for(const topic of topics)if(!renderedIds.has(Number(topic.id)))root.append(renderOne(topic));
+ for(const topic of topics)if(!renderedIds.has(Number(topic.id)))root.append(renderOne(topic,0,new Set(),String(topics.filter(isRoot).length+1)));
  refreshTopicParentOptions();
  if($("select-all-topics"))$("select-all-topics").checked=topics.length>0&&topics.every(topic=>selectedTopicIds.has(Number(topic.id)));
 }
