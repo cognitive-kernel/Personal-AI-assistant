@@ -1172,7 +1172,7 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'function returnToTopic(topicId)' in script
     assert 'const catalog=$("catalog-menu");if(catalog)catalog.open=true;' in script
     assert 'const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;' in script
-    assert 'card.open=true;window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"start"});' in script
+    assert 'card.open=true;window.requestAnimationFrame(()=>window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"start"});' in script
 
     publish_start = script.index('if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی")')
     publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
@@ -1219,7 +1219,7 @@ def test_hierarchical_outline_completion_audit_accepts_nested_numbering():
 def test_hierarchical_outline_completion_rejects_missing_parent():
     raw = "\n".join([
         "1. Database foundations",
-        "1.2 Data types",
+        "2.1 Data types",
         "AUDIT: status=COMPLETE; total_topics=2; missing_domains=none; end_reason=all_applicable_domains_covered",
     ])
     error = service._outline_completion_error(raw, service._parse_outline_titles(raw))
