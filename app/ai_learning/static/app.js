@@ -29,7 +29,7 @@ function refreshTopicParentOptions() {
  const select=$("topic-parent-select");
  if(!select)return;
  const selected=select.value;
- select.replaceChildren(el("option","بدون مبحث والد (مبحث اصلی)"));
+ const rootOption=el("option","بدون مبحث والد (مبحث اصلی)");rootOption.value="";select.replaceChildren(rootOption);
  const byId=new Map(topics.map(item=>[Number(item.id),item]));
  const depthOf=topic=>{
   let depth=0,parent=byId.get(Number(topic.parent_topic_id||0)),guard=new Set([Number(topic.id)]);
