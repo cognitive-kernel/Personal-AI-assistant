@@ -25,7 +25,7 @@ The user starts a course workflow once. The extension retrieves and stores the o
 - A separate database, data/ai_learning.db, has its own checksummed migrations. The current learning database is not migrated or modified.
 - AI_LEARNING_ENABLED=0 and AI_LEARNING_RETRIEVAL_ENABLED=0 are the defaults.
 - Knowledge-store errors must not break the existing chat path.
-- Lexical search is the initial retrieval implementation. Embeddings and semantic search are future optional additions.
+- Lexical search is the current retrieval implementation; semantic duplicate checks optionally use a local Ollama embedding model. Deterministic offline retrieval/answer regression metrics and privacy-preserving query feedback are implemented.
 - Model-generated and web-extracted text are untrusted data; embedded instructions never outrank system policy.
 
 ## Data model
@@ -34,7 +34,7 @@ The isolated schema contains courses, topics, lessons, content versions, runs, b
 
 ## Implementation boundary today
 
-The initial stage includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking and lexical search. The Chrome extension opens the existing ChatGPT UI, inserts and attempts to send the prompt after one explicit Start action, and monitors for a changed stable assistant response before capturing it. Successful outline capture automatically advances to deduplicated lesson batches. Manual recovery is reserved for browser/UI/provider failures. Run history exposes ambiguous captures for editing and reprocessing. Durable queue/pause-resume, crash recovery, resilient provider-independent parsing, embeddings and detailed query trace/feedback are not yet implemented. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
+The current implementation includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking, lexical search, semantic duplicate checks when a local embedding model is available, and deterministic quality evaluation. The Playwright worker interacts with the visible ChatGPT UI, detects common login/human-verification/rate-limit gates, and persists run state for single-instance startup recovery. Explicit user approval is required before lessons are generated from topics, and lessons remain unpublished until reviewed. Search traces store a one-way query hash and selected chunk IDs; the search UI accepts helpful/not-helpful feedback. The worker is still DOM-sensitive and does not provide cross-process leases or exact remote-generation continuation. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
 
 ## Acceptance criteria
 

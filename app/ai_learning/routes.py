@@ -100,6 +100,12 @@ class ReviewDecision(BaseModel):
     decision: str
     model_config = ConfigDict(extra="forbid")
 
+class QueryFeedback(BaseModel):
+    query_trace_id: int = Field(ge=1)
+    rating: Literal[1, -1]
+    comment: str = Field(default="", max_length=1000)
+    model_config = ConfigDict(extra="forbid")
+
 def _ready() -> None:
     if not config.is_enabled():
         raise HTTPException(status_code=404, detail="AI-learning module is disabled.")
@@ -293,4 +299,21 @@ def unpublish_content(version_id: int) -> dict[str, Any]:
 def search(query: str = Query(min_length=1, max_length=2000), limit: int = Query(default=8, ge=1, le=20)) -> dict[str, Any]:
     if not config.retrieval_is_enabled():
         raise HTTPException(status_code=404, detail="AI-learning knowledge retrieval is disabled.")
-    return _call(service.search_knowledge, query, limit)
+    result = _call(service.search_knowledge, query, limit)
+    trace_id = _call(service.record_query_trace, query, [int(item["chunk_id"]) for item in result["items"]])
+    return {**result, "trace_id": trace_id}
+
+
+@router.post("/feedback", status_code=201)
+def submit_query_feedback(request: QueryFeedback) -> dict[str, Any]:
+    return _call(
+        service.submit_query_feedback,
+        request.query_trace_id,
+        request.rating,
+        request.comment,
+    )
+
+
+@router.get("/feedback/summary")
+def get_query_feedback_summary() -> dict[str, Any]:
+    return _call(service.query_feedback_summary)
