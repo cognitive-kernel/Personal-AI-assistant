@@ -88,8 +88,9 @@ def test_outline_completion_skips_existing_topic_titles(isolated_store):
     assert "Query processing" in titles
 
 
-def test_outline_import_skips_existing_topics(isolated_store):
+def test_outline_import_skips_existing_topics(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2025")
+    monkeypatch.setattr(service, "ollama_embed", lambda texts, model: [[float(i + 1), 1.0] for i, _ in enumerate(texts)])
     service.add_topic(course["id"], "Basics")
     imported = service.import_outline(course["id"], "1. Basics\n2. Indexes")
     titles = [topic["title"] for topic in service.get_course(course["id"])["topics"]]
