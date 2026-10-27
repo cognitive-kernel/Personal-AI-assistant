@@ -7,6 +7,7 @@ def test_favicon_is_served_as_a_valid_ico(monkeypatch):
     # Avoid starting database workers: this endpoint only serves a static asset.
     monkeypatch.setattr(main, "startup", lambda: None)
     monkeypatch.setattr(main, "shutdown", lambda: None)
+    monkeypatch.setattr(main, "_startup_storage_error", None)
 
     with TestClient(main.app) as client:
         response = client.get("/favicon.ico")
