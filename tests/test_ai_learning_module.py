@@ -1269,3 +1269,32 @@ def test_active_learning_topic_tree_shows_percentage_and_manual_parent_selector(
     assert 'function childTopics(topicId)' in script
     assert 'payload.parent_topic_id=payload.parent_topic_id?Number(payload.parent_topic_id):null' in script
     assert 'id="topic-parent-select"' in html
+
+
+def test_existing_topic_can_be_reparented_and_cycles_are_rejected(isolated_store):
+    course = service.create_course(title="Topic parent edits")
+    root = service.add_topic(course["id"], "Main subject")
+    child = service.add_topic(course["id"], "Child chapter")
+    grandchild = service.add_topic(course["id"], "Nested chapter", parent_topic_id=child["id"])
+
+    moved = service.edit_topic(child["id"], parent_topic_id=root["id"], update_parent=True)
+    assert moved["parent_topic_id"] == root["id"]
+    assert service.edit_topic(child["id"], title="Renamed chapter")["parent_topic_id"] == root["id"]
+
+    with pytest.raises(ValueError, match="descendants"):
+        service.edit_topic(root["id"], parent_topic_id=grandchild["id"], update_parent=True)
+
+    promoted = service.edit_topic(child["id"], parent_topic_id=None, update_parent=True)
+    assert promoted["parent_topic_id"] is None
+
+
+def test_topic_edit_api_accepts_explicit_parent_clear_but_omission_preserves_parent():
+    from app.ai_learning.routes import TopicEdit
+
+    omitted = TopicEdit(title="Rename only")
+    assert "parent_topic_id" not in omitted.model_fields_set
+    clear = TopicEdit(parent_topic_id=None)
+    assert "parent_topic_id" in clear.model_fields_set
+    assert clear.parent_topic_id is None
+
+
