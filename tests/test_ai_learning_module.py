@@ -892,3 +892,47 @@ def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_st
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+
+
+def test_long_lesson_content_is_not_rejected_by_arbitrary_size_limit(isolated_store, monkeypatch):
+    course = service.create_course(title="Long lesson course")
+    topic = service.add_topic(course["id"], "Long lesson topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Long lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    markdown = "# Long lesson\\n\\n" + ("Detailed instructional content. " * 20000)
+    assert len(markdown) > 500_000
+    version = service.add_content_version(lesson["id"], markdown, raw_response=markdown)
+    assert len(version["markdown"]) == len(markdown)
+
+
+def test_only_rejected_lesson_versions_can_be_deleted(isolated_store, monkeypatch):
+    course = service.create_course(title="Rejected version deletion")
+    topic = service.add_topic(course["id"], "Version deletion topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Version deletion lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    rejected = service.add_content_version(lesson["id"], "# Bad version\\n\\nIncomplete response.")
+    service.review_content(rejected["id"], "rejected")
+    deleted = service.delete_rejected_content_version(rejected["id"])
+    assert deleted["deleted"] is True
+    assert service.list_versions(lesson["id"]) == []
+
+
+def test_non_rejected_lesson_version_cannot_be_deleted(isolated_store, monkeypatch):
+    course = service.create_course(title="Keep reviewed versions")
+    topic = service.add_topic(course["id"], "Keep version topic")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Keep version lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    version = service.add_content_version(lesson["id"], "# Valid version\\n\\nSubstantive lesson content.")
+    with pytest.raises(ValueError, match="فقط نسخه"):
+        service.delete_rejected_content_version(version["id"])
+
+
+def test_response_capture_waits_longer_and_supports_continue_generation():
+    from pathlib import Path
+    source = Path(browser_automation.__file__).read_text(encoding="utf-8")
+    assert "_RESPONSE_TIMEOUT_SECONDS = 1800" in source
+    assert 'button:has-text("Continue generating")' in source
+    assert "_STABLE_SECONDS = 20.0" in source
