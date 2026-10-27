@@ -8,6 +8,8 @@
 - [x] Every response part is instructed to end with `LESSON_STATUS: CONTINUE_REQUIRED` or `LESSON_STATUS: COMPLETE`.
 - [x] Browser automation continues the same visible ChatGPT conversation when continuation is requested or the status marker is missing.
 - [x] Captured parts are merged and internal status markers are removed before the lesson is stored.
+- [x] Each newly captured part is checkpointed to the local run record immediately, before requesting the next part.
+- [x] If the process or browser fails mid-lesson, the latest saved checkpoint remains available for recovery.
 - [x] Automatic continuation is capped at eight follow-up responses to avoid an infinite loop.
 - [x] If completion cannot be confirmed, the run remains recoverable as `needs_user_action` and the accumulated partial response is preserved rather than silently accepted as complete.
 - [x] Regression tests cover the prompt contract and completion-marker parsing/removal.
