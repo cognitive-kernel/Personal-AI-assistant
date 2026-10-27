@@ -1265,7 +1265,7 @@ def test_active_learning_topic_tree_shows_percentage_and_manual_parent_selector(
     script = (root / "app.js").read_text(encoding="utf-8")
     html = (root / "index.html").read_text(encoding="utf-8")
     assert 'status+" · "+percent+"٪"' in script
-    assert 'class="topic-children"' in script
+    assert 'el("div",undefined,"topic-children")' in script
     assert 'function childTopics(topicId)' in script
     assert 'payload.parent_topic_id=payload.parent_topic_id?Number(payload.parent_topic_id):null' in script
     assert 'id="topic-parent-select"' in html
