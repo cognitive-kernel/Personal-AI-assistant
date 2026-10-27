@@ -673,10 +673,25 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 "SELECT title FROM topics WHERE course_id=? AND deleted_at IS NULL",
                 (run["course_id"],)).fetchall()
             existing_titles = [str(row["title"]) for row in existing_rows]
-            if existing_titles:
-                new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
-            else:
-                new_titles, skipped_titles = titles, []
+            try:
+                if existing_titles:
+                    new_titles, skipped_titles = _filter_duplicate_titles(titles, existing_titles)
+                else:
+                    new_titles, skipped_titles = titles, []
+            except ValueError as exc:
+                # Preserve the complete provider response even when semantic
+                # deduplication is unavailable. Do not insert uncertain duplicates.
+                conn.execute(
+                    """UPDATE runs SET response_text=?,status='needs_user_action',
+                       error_code='outline_duplicate_check_unavailable',error_message=?,
+                       finished_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (response_text,
+                     "متن خام فهرست ذخیره شد، اما بررسی تکراری‌بودن سرفصل‌ها در دسترس نیست؛ "
+                     "Ollama/مدل embedding را بررسی و اجرا را دوباره امتحان کنید. "
+                     f"جزئیات: {type(exc).__name__}", run_id),
+                )
+                conn.commit()
+                return get_run(run_id)
             position = int(conn.execute(
                 "SELECT COALESCE(MAX(position),0)+1 FROM topics WHERE course_id=?",
                 (run["course_id"],)).fetchone()[0])
