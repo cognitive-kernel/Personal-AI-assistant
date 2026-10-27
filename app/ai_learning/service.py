@@ -398,6 +398,23 @@ def get_run(run_id: int) -> dict[str, Any]:
     result["topics"] = [dict(row) for row in topics]
     return result
 
+
+def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]:
+    """Durably checkpoint an in-progress lesson after each captured response part."""
+    response_text = _clean_required_text(response_text, "response_text")
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise NotFoundError("Run not found.")
+        if run["status"] not in {"queued", "running", "needs_user_action"}:
+            return get_run(run_id)
+        conn.execute(
+            "UPDATE runs SET response_text=? WHERE id=?",
+            (response_text, run_id),
+        )
+    return get_run(run_id)
+
 def mark_run_needs_user_action(
     run_id: int, error_code: str, error_message: str, response_text: str | None = None
 ) -> dict[str, Any]:
