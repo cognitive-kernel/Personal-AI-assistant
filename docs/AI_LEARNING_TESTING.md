@@ -54,3 +54,12 @@
 - پس از انتشار آزمایشی، «لغو انتشار» را اجرا کنید و تأیید کنید محتوا و تاریخچه باقی مانده اما قطعه‌های آن از جست‌وجوی فعال خارج شده‌اند.
 - مکث همه، مکث یک سرفصل، مکث یک درس، ادامه و بازیابی پس از راه‌اندازی مجدد را جداگانه تست کنید. در مکث/بازیابی، نباید دو worker مرورگر هم‌زمان فعال شوند.
 - دکمهٔ پاک‌سازی را بدون واردکردن RESET لغو کنید؛ سپس در محیط آزمایشی با RESET تأیید کنید. اگر worker فعال است، عملیات باید رد شود و هیچ داده‌ای حذف نشود.
+
+
+## Hierarchical topic catalog and progress visibility
+
+- [ ] Generate or import an outline using hierarchical numbering: `1. Subject`, `1.1 Subtopic`, `1.2 Subtopic`, `2. Subject`, `2.1 Subtopic`. Confirm that subtopics appear nested under their parent subject rather than as one flat list.
+- [ ] Add a topic manually and select a parent in **مبحث والد**. Confirm it appears nested under that parent after saving.
+- [ ] Confirm each topic summary displays its approval state and progress percentage together (for example, **تأییدشده · 75٪**) without opening the topic.
+- [ ] Publish a reviewed lesson. Confirm the catalog reopens, the lesson details panel collapses, the parent topic expands, and the viewport scrolls back to that topic below the catalog dropdown.
+- [ ] Verify a top-level topic without children and a child topic both remain accessible; course-level totals still include all topics.
