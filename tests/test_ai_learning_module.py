@@ -954,3 +954,20 @@ def test_needs_user_action_preserves_partial_provider_response(isolated_store):
     )
     assert saved["status"] == "needs_user_action"
     assert saved["response_text"] == partial
+
+
+
+def test_provider_network_error_is_actionable():
+    error = browser_automation._provider_gate_error(
+        "https://chatgpt.com/", "Network error. Trying to reconnect."
+    )
+    assert error is not None
+    assert error.code == "chatgpt_network_error"
+    assert "VPN" in str(error)
+
+
+def test_selected_lesson_request_key_does_not_embed_all_topic_ids():
+    from pathlib import Path
+    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "ai-learning.js").read_text(encoding="utf-8")
+    assert 'const requestKey = "ui-selected-lessons-" + selectedCourse + "-" + Date.now();' in script
+    assert 'ids.join("-") + "-" + Date.now()' not in script
