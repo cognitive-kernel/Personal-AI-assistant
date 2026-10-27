@@ -11,7 +11,147 @@ async function loadCourse(){const nextCourseId=$("course-select").value?Number($
 async function loadRuns(){const root=$("runs");if(!root)return;root.replaceChildren();const selectAll=$("select-all-runs");if(selectAll)selectAll.checked=false;if(!courseId){root.append(el("p","ابتدا یک دوره انتخاب کنید.","muted"));return}const d=await api("/courses/"+courseId+"/runs?limit=50");if(!d.items.length){root.append(el("p","برای این دوره هنوز اجرای خودکاری ثبت نشده است.","muted"));return}for(const run of d.items){const card=el("article",undefined,"run"),type=run.run_type==="outline"?"دریافت سرفصل":"تولید درس",states={queued:"در صف",running:"در حال اجرا",succeeded:"با موفقیت ثبت شد",needs_user_action:"نیازمند بررسی",failed:"ناموفق",cancelled:"لغو شده"};card.dataset.runId=String(run.id);card.dataset.runStatus=run.status;const head=el("div",undefined,"topic-head"),check=el("input");check.type="checkbox";check.className="run-check";check.value=String(run.id);check.setAttribute("aria-label","انتخاب اجرای شماره "+run.id);check.disabled=["queued","running"].includes(run.status);head.append(check,el("h4","اجرای #"+run.id+" — "+type+" — "+(states[run.status]||run.status)));card.append(head);card.append(el("p","ایجاد: "+run.created_at,"muted"));if(["queued","running"].includes(run.status)){const cancel=el("button","توقف اجرا","secondary");cancel.type="button";cancel.className="run-cancel";cancel.onclick=()=>act(async()=>{if(!confirm("اجرای شماره "+run.id+" متوقف شود؟"))return;await api("/runs/"+run.id+"/cancel",{method:"POST"});await loadRuns();say("اجرای شماره "+run.id+" متوقف شد و اکنون قابل حذف است.")});card.append(cancel)}if(run.error_message)card.append(el("p",run.error_message,"error"));if(run.status==="needs_user_action"){const reveal=el("button","مشاهده و اصلاح پاسخ","secondary");reveal.type="button";reveal.onclick=()=>act(async()=>{const full=await api("/runs/"+run.id);const area=el("textarea");area.rows=10;area.maxLength=500000;area.value=full.response_text||"";area.placeholder="پاسخ ذخیره‌شده ChatGPT را بررسی یا اصلاح کن…";const save=el("button","پردازش دوباره و ذخیره سرفصل/درس");save.type="button";save.onclick=()=>act(async()=>{if(!area.value.trim())throw Error("پاسخ خالی است.");const result=await api("/runs/"+run.id+"/complete",{method:"POST",body:JSON.stringify({response_text:area.value})});await loadCourse();say(result.status==="succeeded"?"پاسخ اصلاح‌شده پردازش و ذخیره شد.":(result.error_message||"پاسخ هنوز نیازمند اصلاح است."),result.status!=="succeeded")});card.append(area,save);reveal.disabled=true});card.append(reveal)}root.append(card)}if(selectAll)selectAll.onchange=()=>{document.querySelectorAll(".run-check:not(:disabled)").forEach(check=>{check.checked=selectAll.checked})}}
 $("stop-active-runs").onclick=()=>act(async()=>{const ids=Array.from(document.querySelectorAll(".run-cancel")).map(b=>Number(b.closest(".run").dataset.runId));if(!ids.length)throw Error("اجرای فعالی برای توقف وجود ندارد.");if(!confirm("تعداد "+ids.length+" اجرای فعال متوقف شود؟"))return;let stopped=0;for(const id of ids){try{await api("/runs/"+id+"/cancel",{method:"POST"});stopped++}catch(e){}}await loadRuns();say(stopped+" اجرا متوقف شد؛ سوابق متوقف‌شده را اکنون می‌توانید انتخاب و حذف کنید.",stopped!==ids.length)});
 $("delete-selected-runs").onclick=()=>act(async()=>{if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");const ids=Array.from(document.querySelectorAll(".run-check:checked")).map(x=>Number(x.value));if(!ids.length)throw Error("حداقل یک سابقه قابل حذف انتخاب کنید.");if(!confirm("تعداد "+ids.length+" سابقه انتخاب‌شده حذف شود؟ پاسخ‌های ذخیره‌شده این اجراها نیز حذف می‌شوند؛ درس‌ها و سرفصل‌های ثبت‌شده باقی می‌مانند."))return;const result=await api("/courses/"+courseId+"/runs",{method:"DELETE",body:JSON.stringify({run_ids:ids})});await loadRuns();say(result.deleted+" سابقه اجرا حذف شد.")});
-function renderTopics(){const root=$("topics");const expandedTopicIds=new Set(Array.from(root.querySelectorAll("details.topic[open]")).map(x=>Number(x.dataset.id)));root.replaceChildren();const summary=$("course-progress");if(summary){summary.replaceChildren();const total=topics.length,completed=topics.filter(t=>Number(t.progress_percent)===100).length,paused=topics.filter(t=>t.processing_status==="paused").length,avg=total?Math.round(topics.reduce((sum,t)=>sum+(Number(t.progress_percent)||0),0)/total):0;summary.append(el("h3","پیشرفت کلی دوره"));summary.append(progressMeter(avg,"پیشرفت دریافت و آماده‌سازی محتوا"));const stats=el("div",undefined,"progress-stats");stats.append(el("span","کل سرفصل‌ها: "+total),el("span","تکمیل و منتشرشده: "+completed),el("span","باقی‌مانده: "+(total-completed)),el("span","متوقف‌شده: "+paused));summary.append(stats)}if(!topics.length){root.append(el("p","سرفصلی وجود ندارد."));return}topics.forEach((t,i)=>{const card=el("details",undefined,"topic");card.dataset.id=t.id;card.open=expandedTopicIds.has(Number(t.id));const head=el("summary",undefined,"topic-head"),check=el("input");check.type="checkbox";check.className="topic-check";check.checked=selectedTopicIds.has(Number(t.id));check.setAttribute("aria-label","انتخاب "+t.title);check.onclick=e=>e.stopPropagation();check.onchange=()=>{if(check.checked)selectedTopicIds.add(Number(t.id));else selectedTopicIds.delete(Number(t.id))};head.append(check,el("strong",t.position+". "+t.title),el("span",t.approval_status==="approved"?"تأییدشده":t.approval_status==="rejected"?"ردشده":"در انتظار","small"));card.append(head);if(t.description)card.append(el("p",t.description,"muted"));card.append(progressMeter(t.progress_percent,t.progress_label));const actions=el("div",undefined,"actions");const button=(label,fn,secondary=false)=>{const b=el("button",label,secondary?"secondary":"");b.type="button";b.onclick=()=>act(fn);actions.append(b)};button("ویرایش",async()=>{const title=prompt("عنوان سرفصل",t.title);if(title===null)return;const description=prompt("توضیحات",t.description||"");if(description===null)return;await api("/topics/"+t.id,{method:"PATCH",body:JSON.stringify({title,description})});await loadCourse();say("سرفصل ویرایش شد.")},true);button("تأیید",()=>decide([t.id],"approved"));button("رد",()=>decide([t.id],"rejected"),true);button("مشاهده درس‌ها و محتوا",async()=>{const menu=$("catalog-menu");if(menu)menu.open=true;await loadLessons(t.id);$("lessons").scrollIntoView({behavior:"smooth",block:"start"})},true);button("تلاش مجدد دریافت/اصلاح درس",async()=>{if(t.approval_status!=="approved")throw Error("ابتدا سرفصل را تأیید کنید.");if(!confirm("برای این سرفصل یک تلاش تازه انجام شود؟ نسخه قبلی حفظ می‌شود و محتوای جدید برای بازبینی ثبت خواهد شد."))return;const result=await api("/browser/lessons",{method:"POST",body:JSON.stringify({course_id:courseId,topic_ids:[t.id],request_key:"playwright-retry-topic-"+t.id+"-"+Date.now(),force_retry:true})});await loadCourse();await loadRuns();say("تلاش مجدد آغاز شد؛ اجرای #"+result.run_id+" در سوابق دیده می‌شود.")},true);button(t.processing_status==="paused"?"ادامه سرفصل":"مکث سرفصل",async()=>{await api("/topics/"+t.id+"/pause",{method:"POST",body:JSON.stringify({paused:t.processing_status!=="paused"})});await loadCourse();say(t.processing_status==="paused"?"ادامه این سرفصل ثبت شد.":"این سرفصل متوقف شد؛ کار جاری آن لغو و سایر سرفصل‌ها ادامه‌پذیر می‌مانند.")},true);button("حذف",async()=>{if(!confirm("سرفصل از فهرست فعال حذف شود؟"))return;await api("/topics/"+t.id,{method:"DELETE"});await loadCourse();say("سرفصل حذف نرم شد.")},true);button("بالا",()=>move(i,-1),true);button("پایین",()=>move(i,1),true);card.append(actions);root.append(card)})}
+function childTopics(topicId) {
+ return topics.filter(item=>Number(item.parent_topic_id||0)===Number(topicId));
+}
+function topicProgress(topic,trail=new Set()) {
+ const id=Number(topic.id);
+ const own=Math.max(0,Math.min(100,Number(topic.progress_percent)||0));
+ if(trail.has(id))return own;
+ const next=new Set(trail);next.add(id);
+ const children=childTopics(id);
+ if(!children.length)return own;
+ const childValues=children.map(child=>topicProgress(child,next));
+ if(Number(topic.lesson_count||0)>0)childValues.push(own);
+ return Math.round(childValues.reduce((sum,value)=>sum+value,0)/childValues.length);
+}
+function refreshTopicParentOptions() {
+ const select=$("topic-parent-select");
+ if(!select)return;
+ const selected=select.value;
+ select.replaceChildren(el("option","بدون مبحث والد (مبحث اصلی)"));
+ const byId=new Map(topics.map(item=>[Number(item.id),item]));
+ const depthOf=topic=>{
+  let depth=0,parent=byId.get(Number(topic.parent_topic_id||0)),guard=new Set([Number(topic.id)]);
+  while(parent&&!guard.has(Number(parent.id))){guard.add(Number(parent.id));depth++;parent=byId.get(Number(parent.parent_topic_id||0))}
+  return Math.min(depth,6);
+ };
+ for(const topic of topics){
+  const option=el("option","　".repeat(depthOf(topic))+topic.position+". "+topic.title);
+  option.value=String(topic.id);select.append(option);
+ }
+ if(Array.from(select.options).some(option=>option.value===selected))select.value=selected;
+}
+function renderTopics(){
+ const root=$("topics");
+ const expandedTopicIds=new Set(Array.from(root.querySelectorAll("details.topic[open]")).map(item=>Number(item.dataset.id)));
+ root.replaceChildren();
+ const summary=$("course-progress");
+ const childrenByParent=new Map();
+ const topicById=new Map(topics.map(topic=>[Number(topic.id),topic]));
+ for(const topic of topics){
+  const parent=Number(topic.parent_topic_id||0);
+  if(!childrenByParent.has(parent))childrenByParent.set(parent,[]);
+  childrenByParent.get(parent).push(topic);
+ }
+ const childrenOf=id=>childrenByParent.get(Number(id))||[];
+ const isRoot=topic=>!topic.parent_topic_id||!topicById.has(Number(topic.parent_topic_id))||Number(topic.parent_topic_id)===Number(topic.id);
+ const progressTopics=topics.filter(topic=>!childrenOf(topic.id).length||Number(topic.lesson_count||0)>0);
+ const completed=progressTopics.filter(topic=>topicProgress(topic)===100).length;
+ const paused=progressTopics.filter(topic=>topic.processing_status==="paused").length;
+ const avg=progressTopics.length?Math.round(progressTopics.reduce((sum,topic)=>sum+topicProgress(topic),0)/progressTopics.length):0;
+ if(summary){
+  summary.replaceChildren();
+  summary.append(el("h3","پیشرفت کلی دوره"));
+  summary.append(progressMeter(avg,"پیشرفت دریافت و آماده‌سازی محتوا"));
+  const stats=el("div",undefined,"progress-stats");
+  stats.append(el("span","کل موضوعات و سرفصل‌ها: "+topics.length),el("span","تکمیل‌شده: "+completed),el("span","باقی‌مانده: "+(progressTopics.length-completed)),el("span","متوقف‌شده: "+paused));
+  summary.append(stats);
+ }
+ if(!topics.length){root.append(el("p","سرفصلی وجود ندارد."));refreshTopicParentOptions();return}
+ const renderOne=(topic,depth=0,trail=new Set())=>{
+  const card=el("details",undefined,"topic");
+  card.dataset.id=String(topic.id);
+  card.dataset.parentTopicId=String(topic.parent_topic_id||"");
+  card.style.setProperty("--topic-depth",String(depth));
+  card.open=expandedTopicIds.has(Number(topic.id));
+  const head=el("summary",undefined,"topic-head"),check=el("input");
+  check.type="checkbox";check.className="topic-check";check.checked=selectedTopicIds.has(Number(topic.id));
+  check.setAttribute("aria-label","انتخاب "+topic.title);
+  check.onclick=event=>event.stopPropagation();
+  check.onchange=()=>{if(check.checked)selectedTopicIds.add(Number(topic.id));else selectedTopicIds.delete(Number(topic.id))};
+  const percent=topicProgress(topic);
+  const status=topic.approval_status==="approved"?"تأییدشده":topic.approval_status==="rejected"?"ردشده":"در انتظار";
+  head.append(check,el("strong",topic.position+". "+topic.title),el("span",status+" · "+percent+"٪","small topic-state"));
+  card.append(head);
+  if(topic.description)card.append(el("p",topic.description,"muted"));
+  card.append(progressMeter(percent,childrenOf(topic.id).length?"پیشرفت این مبحث و زیرمجموعه‌ها":topic.progress_label));
+  const actions=el("div",undefined,"actions");
+  const button=(label,fn,secondary=false)=>{
+   const b=el("button",label,secondary?"secondary":"");b.type="button";b.onclick=()=>act(fn);actions.append(b);
+  };
+  button("ویرایش",async()=>{
+   const title=prompt("عنوان سرفصل",topic.title);if(title===null)return;
+   const description=prompt("توضیحات",topic.description||"");if(description===null)return;
+   await api("/topics/"+topic.id,{method:"PATCH",body:JSON.stringify({title,description})});
+   await loadCourse();say("سرفصل ویرایش شد.");
+  },true);
+  button("تأیید",()=>decide([topic.id],"approved"));
+  button("رد",()=>decide([topic.id],"rejected"),true);
+  button("مشاهده درس‌ها و محتوا",async()=>{
+   const menu=$("catalog-menu");if(menu)menu.open=true;
+   await loadLessons(topic.id);
+   $("lessons").scrollIntoView({behavior:"smooth",block:"start"});
+  },true);
+  button("تلاش مجدد دریافت/اصلاح درس",async()=>{
+   if(topic.approval_status!=="approved")throw Error("ابتدا سرفصل را تأیید کنید.");
+   if(!confirm("برای این سرفصل یک تلاش تازه انجام شود؟ نسخه قبلی حفظ می‌شود و محتوای جدید برای بازبینی ثبت خواهد شد."))return;
+   const result=await api("/browser/lessons",{method:"POST",body:JSON.stringify({course_id:courseId,topic_ids:[topic.id],request_key:"playwright-retry-topic-"+topic.id+"-"+Date.now(),force_retry:true})});
+   await loadCourse();await loadRuns();say("تلاش مجدد آغاز شد؛ اجرای #"+result.run_id+" در سوابق دیده می‌شود.");
+  },true);
+  button(topic.processing_status==="paused"?"ادامه سرفصل":"مکث سرفصل",async()=>{
+   const paused=topic.processing_status!=="paused";
+   await api("/topics/"+topic.id+"/pause",{method:"POST",body:JSON.stringify({paused})});
+   await loadCourse();say(paused?"این سرفصل متوقف شد؛ محتوای ذخیره‌شده حفظ شد.":"ادامه این سرفصل ثبت شد.");
+  },true);
+  button("حذف",async()=>{
+   if(!confirm("سرفصل از فهرست فعال حذف شود؟"))return;
+   await api("/topics/"+topic.id,{method:"DELETE"});await loadCourse();say("سرفصل حذف نرم شد.");
+  },true);
+  const siblings=childrenOf(Number(topic.parent_topic_id||0));
+  const siblingIndex=siblings.findIndex(item=>Number(item.id)===Number(topic.id));
+  button("بالا",()=>moveInHierarchy(topic,-1),true);
+  button("پایین",()=>moveInHierarchy(topic,1),true);
+  card.append(actions);
+  const children=childrenOf(topic.id);
+  if(children.length){
+   const nested=el("div",undefined,"topic-children");
+   const nextTrail=new Set(trail);nextTrail.add(Number(topic.id));
+   for(const child of children){
+    if(nextTrail.has(Number(child.id)))continue;
+    nested.append(renderOne(child,depth+1,nextTrail));
+   }
+   card.append(nested);
+  }
+  return card;
+ };
+ for(const topic of topics.filter(isRoot))root.append(renderOne(topic));
+ const renderedIds=new Set(Array.from(root.querySelectorAll("details.topic")).map(card=>Number(card.dataset.id)));
+ for(const topic of topics)if(!renderedIds.has(Number(topic.id)))root.append(renderOne(topic));
+ refreshTopicParentOptions();
+ if($("select-all-topics"))$("select-all-topics").checked=topics.length>0&&topics.every(topic=>selectedTopicIds.has(Number(topic.id)));
+}
+async function moveInHierarchy(topic,delta){
+ const siblings=childTopics(Number(topic.parent_topic_id||0));
+ const index=siblings.findIndex(item=>Number(item.id)===Number(topic.id));
+ const target=index+delta;if(target<0||target>=siblings.length)return;
+ const reordered=topics.slice();
+ const currentIndex=reordered.findIndex(item=>Number(item.id)===Number(topic.id));
+ const otherIndex=reordered.findIndex(item=>Number(item.id)===Number(siblings[target].id));
+ [reordered[currentIndex],reordered[otherIndex]]=[reordered[otherIndex],reordered[currentIndex]];
+ await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:reordered.map(item=>item.id)})});
+ await loadCourse();say("ترتیب سرفصل در همین مبحث ذخیره شد.");
+}
 async function move(i,d){const j=i+d;if(j<0||j>=topics.length)return;[topics[i],topics[j]]=[topics[j],topics[i]];topics.forEach((t,k)=>t.position=k+1);renderTopics();say("ترتیب محلی تغییر کرد؛ برای ذخیره، «ذخیره ترتیب» را بزنید.")}
 async function decide(ids,decision){if(!ids.length)throw Error("حداقل یک سرفصل انتخاب کنید.");await api("/topics/decision",{method:"POST",body:JSON.stringify({topic_ids:ids,decision})});await loadCourse();say("وضعیت سرفصل‌ها به‌روزرسانی شد.")}
 $("course-form").onsubmit=e=>{e.preventDefault();const form=e.currentTarget;const payload=data(form);act(async()=>{await api("/courses",{method:"POST",body:JSON.stringify(payload)});form.reset();await loadCourses();say("دوره ایجاد شد.")})};
@@ -46,7 +186,17 @@ $("learn-selected-topics").onclick=()=>act(async()=>{
 $("approve-all-lessons").onclick=()=>act(async()=>{if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");if(!confirm("تمام نسخه‌های دارای محتوای نیازمند بازبینی در این دوره تأیید بازبینی شوند؟ این کار آن‌ها را منتشر نمی‌کند."))return;let reviewed=0;for(const t of topics){const d=await api("/topics/"+t.id+"/lessons");for(const l of d.items){const vs=await api("/lessons/"+l.id+"/versions");if(vs.items[0]?.review_status==="needs_review"){const v=vs.items[0],content=await api("/versions/"+v.id);if((content.markdown||"").replace(/^#{1,6}\s+.*$/gm,"").trim().length>=10){await api("/versions/"+v.id+"/review",{method:"POST",body:JSON.stringify({decision:"reviewed"})});reviewed++}}}}await loadCourse();say(reviewed+" نسخهٔ درس تأیید بازبینی شد؛ انتشار انجام نشد.")});
 $("reject-selected").onclick=()=>act(()=>decide(Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id)),"rejected"));
 $("save-order").onclick=()=>act(async()=>{if(!courseId||!topics.length)throw Error("سرفصلی برای مرتب‌سازی وجود ندارد.");await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:topics.map(t=>t.id)})});await loadCourse();say("ترتیب ذخیره شد.")});
-function returnToTopic(topicId){const root=$("topics");if(!root)return;const card=Array.from(root.querySelectorAll("details.topic")).find(item=>Number(item.dataset.id)===Number(topicId));if(!card)return;const catalog=$("catalog-menu");if(catalog)catalog.open=true;const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;card.open=true;window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"center"});const summary=card.querySelector("summary");if(summary){summary.setAttribute("tabindex","-1");try{summary.focus({preventScroll:true})}catch(_){summary.focus()}}})}
+function returnToTopic(topicId){
+ const root=$("topics");if(!root)return;
+ const card=Array.from(root.querySelectorAll("details.topic")).find(item=>Number(item.dataset.id)===Number(topicId));
+ if(!card)return;
+ const catalog=$("catalog-menu");if(catalog)catalog.open=true;
+ const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=false;
+ let ancestor=card.parentElement.closest("details.topic");
+ while(ancestor){ancestor.open=true;ancestor=ancestor.parentElement.closest("details.topic")}
+ card.open=true;
+ window.requestAnimationFrame(()=>{card.scrollIntoView({behavior:"smooth",block:"start"});const summary=card.querySelector(":scope > summary");if(summary){summary.setAttribute("tabindex","-1");try{summary.focus({preventScroll:true})}catch(_){summary.focus()}}});
+}
 async function loadLessons(topicId){const catalog=$("catalog-menu");if(catalog)catalog.open=true;const lessonDetails=$("lesson-list-details");if(lessonDetails)lessonDetails.open=true;allCourseLessonsVisible=!topicId;const topicIds=topicId?[topicId]:topics.map(x=>x.id);const t=topics.find(x=>x.id===topicId),root=$("lessons");root.replaceChildren(el("h3",topicId?(t?t.title:"درس‌ها"):"همهٔ درس‌های دوره"));const bulk=el("div",undefined,"toolbar"),all=el("input");all.type="checkbox";all.id="select-all-lessons";const allLabel=el("label",topicId?"انتخاب همهٔ درس‌های این سرفصل":"انتخاب همهٔ درس‌های دوره","inline-check");allLabel.prepend(all);bulk.append(allLabel);const approveBulk=el("button","تأیید درس‌های انتخاب‌شده");approveBulk.type="button";approveBulk.onclick=()=>act(async()=>{const ids=Array.from(root.querySelectorAll(".lesson-check:checked")).map(x=>Number(x.closest(".lesson").dataset.lessonId));if(!ids.length)throw Error("ابتدا درس‌ها را انتخاب کنید.");let count=0;for(const id of ids){const vs=await api("/lessons/"+id+"/versions");if(vs.items[0]?.review_status==="needs_review"){const v=vs.items[0],content=await api("/versions/"+v.id);if((content.markdown||"").replace(/^#{1,6}\s+.*$/gm,"").trim().length>=10){await api("/versions/"+v.id+"/review",{method:"POST",body:JSON.stringify({decision:"reviewed"})});count++}}}await loadLessons(topicId);say(count+" نسخهٔ درس تأیید بازبینی شد؛ انتشار انجام نشد.")});bulk.append(approveBulk);root.append(bulk);all.onchange=()=>root.querySelectorAll(".lesson-check").forEach(x=>x.checked=all.checked);const form=el("form",undefined,"grid");form.innerHTML='<label>عنوان درس<input name="title" required maxlength="300"></label><button type="submit">ایجاد درس</button>';form.onsubmit=e=>{e.preventDefault();act(async()=>{await api("/topics/"+topicId+"/lessons",{method:"POST",body:JSON.stringify(data(e.currentTarget))});await loadLessons(topicId);say("درس ایجاد شد.")})};root.append(form);const allLessons=[];for(const tid of topicIds){const d=await api("/topics/"+tid+"/lessons");const parent=topics.find(x=>x.id===tid);for(const item of d.items)allLessons.push({...item,_topicId:tid,_topicTitle:parent?parent.title:"سرفصل"});}if(!allLessons.length)root.append(el("p","برای این انتخاب هنوز درسی ثبت نشده است.","muted"));for(const l of allLessons){const card=el("article",undefined,"lesson");card.dataset.lessonId=String(l.id);card.dataset.topicId=String(l._topicId||topicId);if(!topicId)card.append(el("p","سرفصل: "+l._topicTitle,"muted"));const lessonHead=el("div",undefined,"topic-head"),lessonCheck=el("input");lessonCheck.type="checkbox";lessonCheck.className="lesson-check";lessonCheck.setAttribute("aria-label","انتخاب درس "+l.title);lessonHead.append(lessonCheck,el("h4",l.position+". "+l.title));card.append(lessonHead);card.append(progressMeter(l.progress_percent,l.progress_label));const actions=el("div",undefined,"actions"),pause=el("button",l.status==="paused"?"ادامه درس":"مکث درس","secondary");pause.type="button";pause.onclick=()=>act(async()=>{await api("/lessons/"+l.id+"/pause",{method:"POST",body:JSON.stringify({paused:l.status!=="paused"})});await loadLessons(topicId);say(l.status==="paused"?"درس برای ادامه آماده شد؛ نسخه‌های قبلی حفظ شدند.":"این درس متوقف شد؛ نسخه‌های ذخیره‌شده حفظ شدند.")});actions.append(pause);const retryLesson=el("button","تلاش مجدد با منابع به‌روز","secondary");retryLesson.type="button";retryLesson.onclick=()=>act(async()=>{const parent=topics.find(x=>Number(x.id)===Number(l._topicId||topicId));if(!parent||parent.approval_status!=="approved")throw Error("ابتدا سرفصل مربوط را تأیید کنید.");if(!confirm("نسخه تازه‌ای از این درس با بررسی و به‌روزرسانی پیوندهای منابع دریافت شود؟ نسخه‌های قبلی حفظ می‌شوند."))return;const result=await api("/browser/lessons",{method:"POST",body:JSON.stringify({course_id:courseId,topic_ids:[Number(l._topicId||topicId)],request_key:"playwright-retry-lesson-"+l.id+"-"+Date.now(),force_retry:true})});await loadRuns();say("تلاش مجدد آغاز شد؛ اجرای #"+result.run_id+" در سوابق نمایش داده می‌شود.")});actions.append(retryLesson);const edit=el("button","ویرایش عنوان","secondary");edit.type="button";edit.onclick=()=>act(async()=>{const title=prompt("عنوان درس",l.title);if(title===null)return;await api("/lessons/"+l.id,{method:"PATCH",body:JSON.stringify({title})});await loadLessons(topicId);say("عنوان درس ویرایش شد.")});actions.append(edit);const del=el("button","حذف درس","secondary");del.type="button";del.onclick=()=>act(async()=>{if(!confirm("حذف نرم درس؟"))return;await api("/lessons/"+l.id,{method:"DELETE"});await loadLessons(topicId);say("درس حذف شد.")});actions.append(del);card.append(actions);const f=el("form");f.innerHTML='<label>متن درس (Markdown)<textarea name="markdown" rows="5" maxlength="200000" required></textarea></label><label>منبع<input name="provider" value="manual" maxlength="80"></label><button type="submit">ثبت نسخه جدید</button>';f.onsubmit=e=>{e.preventDefault();act(async()=>{const x=data(e.currentTarget);await api("/lessons/"+l.id+"/versions",{method:"POST",body:JSON.stringify({...x,source_kind:"manual"})});await loadLessons(topicId);say("نسخه جدید در انتظار بازبینی است.")})};card.append(f);const vs=await api("/lessons/"+l.id+"/versions");for(const v of vs.items){const box=el("div",undefined,"version");box.append(el("p","نسخه "+v.version_no+" — "+v.review_status+" — "+v.content_sha256,"small"));const full=await api("/versions/"+v.id);const sourceResult=await api("/versions/"+v.id+"/sources");if(sourceResult.items.length){const sourceBox=el("div",undefined,"source-list");sourceBox.append(el("strong","منابع ذخیره‌شده (هنوز تأییدنشده)"));for(const source of sourceResult.items){const row=el("p",undefined,"small");const link=el("a",source.title||source.url);link.href=source.url;link.target="_blank";link.rel="noopener noreferrer";row.append(link,document.createTextNode(" — "+(source.publisher||"ناشر نامشخص")+" · "+(source.validation_status==="reviewed"?"پیوند در دسترس":source.validation_status==="rejected"?"پیوند نامعتبر/نیازمند جایگزین":"بررسی‌نشده")));if(source.excerpt)row.append(document.createTextNode(" · "+source.excerpt));const checkLink=el("button","بررسی پیوند","secondary");checkLink.type="button";checkLink.onclick=()=>act(async()=>{checkLink.disabled=true;try{const checked=await api("/sources/"+source.id+"/check",{method:"POST"});await loadLessons(topicId);say(checked.validation_status==="reviewed"?"پیوند پاسخ داد؛ صحت محتوای منبع جداگانه باید بررسی شود.":"پیوند در دسترس نیست یا تغییر مسیر دارد؛ برای دریافت نسخه با منابع تازه، «تلاش مجدد دریافت/اصلاح درس» را بزنید.",checked.validation_status!=="reviewed")}finally{checkLink.disabled=false}});row.append(checkLink);sourceBox.append(row)}box.append(sourceBox)}else box.append(el("p","منبع دارای پیوندی در پاسخ ثبت نشده است.","small"));if(full.markdown&&full.markdown.trim())box.append(el("pre",full.markdown,"content"));else {box.append(el("p","هشدار: متن این نسخه خالی است؛ وضعیت انتشار به‌تنهایی به معنی وجود محتوای قابل استفاده نیست. دریافت مجدد یا ثبت نسخهٔ اصلاح‌شده لازم است.","error"));if(full.raw_response&&full.raw_response.trim()){const rawToggle=el("button","نمایش پاسخ خام ذخیره‌شده از ChatGPT","secondary");rawToggle.type="button";rawToggle.onclick=()=>{const existing=box.querySelector(".raw-response");if(existing)existing.remove();else box.append(el("pre",full.raw_response,"content raw-response"))};box.append(rawToggle);const recover=el("button","استفاده از پاسخ خام برای نسخهٔ اصلاحی","secondary");recover.type="button";recover.onclick=()=>{const textarea=card.querySelector('textarea[name="markdown"]');if(!textarea){say("کادر ثبت نسخه پیدا نشد.",true);return}textarea.value=full.raw_response;textarea.focus();textarea.scrollIntoView({behavior:"smooth",block:"center"});say("پاسخ خام کپی شد؛ آن را بررسی کن و با «ثبت نسخه جدید» ذخیره کن.")};box.append(recover)}}const a=el("div",undefined,"actions"),view=el("button","نمایش/پنهان‌کردن متن","secondary");view.type="button";view.onclick=()=>{const existing=box.querySelector(".content");if(existing)existing.remove();else if(full.markdown&&full.markdown.trim())box.append(el("pre",full.markdown,"content"));else say("متن این نسخه خالی است؛ امکان نمایش محتوا وجود ندارد.",true)};a.append(view);const editContent=el("button","ویرایش محتوا (ایجاد نسخهٔ اصلاحی)","secondary");editContent.type="button";editContent.onclick=()=>{const textarea=card.querySelector('textarea[name="markdown"]');if(!textarea){say("کادر ثبت نسخه پیدا نشد.",true);return}textarea.value=full.markdown||"";textarea.focus();textarea.scrollIntoView({behavior:"smooth",block:"center"});say("متن نسخه در کادر ثبت نسخهٔ جدید کپی شد؛ با ثبت آن، نسخهٔ قبلی حفظ می‌شود.")};a.append(editContent);if(v.review_status==="needs_review"){for(const [label,decision] of [["تأیید بازبینی","reviewed"],["رد نسخه","rejected"]]){const b=el("button",label,decision==="rejected"?"secondary":"");b.type="button";b.onclick=()=>act(async()=>{await api("/versions/"+v.id+"/review",{method:"POST",body:JSON.stringify({decision})});await loadLessons(topicId);say("وضعیت بازبینی ثبت شد.")});a.append(b)}}if(v.review_status==="reviewed"||v.review_status==="rejected"){const reset=el("button","بازگردانی به نیازمند بازبینی","secondary");reset.type="button";reset.onclick=()=>act(async()=>{await api("/versions/"+v.id+"/review",{method:"POST",body:JSON.stringify({decision:"needs_review"})});await loadLessons(topicId);say("نسخه به وضعیت نیازمند بازبینی برگشت.")});a.append(reset)}if(v.review_status==="published"){const unpublish=el("button","لغو انتشار / بازگشت به بازبینی","secondary");unpublish.type="button";unpublish.onclick=()=>act(async()=>{if(!confirm("این نسخه از دانش قابل بازیابی خارج شود؟ متن حفظ می‌شود و می‌توان آن را دوباره بازبینی و منتشر کرد."))return;await api("/versions/"+v.id+"/unpublish",{method:"POST"});await loadLessons(topicId);say("انتشار لغو شد؛ متن حفظ شده و نسخه به وضعیت بازبینی برگشت.")});a.append(unpublish)}if(v.review_status==="reviewed"){const b=el("button","انتشار برای بازیابی");b.type="button";b.onclick=()=>act(async()=>{const parentTopicId=Number(l._topicId||topicId);if(!parentTopicId)throw Error("سرفصل والد این درس شناسایی نشد.");await api("/versions/"+v.id+"/publish",{method:"POST"});await loadLessons(parentTopicId);returnToTopic(parentTopicId);say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")});a.append(b)}box.append(a);card.append(box)}root.append(card)}}
 $("show-all-lessons").onclick=()=>act(()=>loadLessons(null));
 $("select-all-course-lessons").onchange=()=>document.querySelectorAll("#lessons .lesson-check").forEach(x=>x.checked=$("select-all-course-lessons").checked);
