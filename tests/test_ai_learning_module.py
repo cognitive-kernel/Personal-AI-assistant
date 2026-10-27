@@ -260,6 +260,32 @@ def test_all_approved_run_selects_all_approved_topics(isolated_store):
     assert pending["id"] not in [topic["topic_id"] for topic in run["topics"]]
 
 
+def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(isolated_store):
+    course = service.create_course(title="SQL Server 2025", language="fa")
+    topic = service.add_topic(course["id"], "7. آشنایی با SQL و تفاوت‌های T-SQL")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        request_key="lesson-multipart-completion-contract",
+    )
+    assert "1200–1800 words per response part" in run["prompt_text"]
+    assert "LESSON_STATUS: CONTINUE_REQUIRED" in run["prompt_text"]
+    assert "LESSON_STATUS: COMPLETE" in run["prompt_text"]
+
+
+def test_browser_lesson_completion_marker_helpers():
+    assert browser_automation._lesson_completion_status(
+        "## Part one\ncontent\nLESSON_STATUS: CONTINUE_REQUIRED; next_section=examples"
+    ) == "CONTINUE_REQUIRED"
+    assert browser_automation._lesson_completion_status(
+        "## Complete lesson\ncontent\nLESSON_STATUS: COMPLETE"
+    ) == "COMPLETE"
+    assert browser_automation._lesson_completion_status("## Incomplete lesson\ncontent") is None
+    assert browser_automation._strip_lesson_status_markers(
+        "## Lesson\ncontent\nLESSON_STATUS: COMPLETE"
+    ) == "## Lesson\ncontent"
+
+
 def test_lesson_prompt_includes_course_context_and_specific_topic(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
     topic = service.add_topic(course["id"], "134. مدیریت حافظه، پردازنده، ورودی‌ـ‌خروجی و منابع سیستمی")
@@ -297,6 +323,9 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "context.cookies(" not in automation
     assert "storage_state(" not in automation
     assert "required_stability = 45.0 if stop_visible else _STABLE_SECONDS" in automation
+    assert "_capture_lesson_until_complete" in automation
+    assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
+    assert "lesson_continuation_limit" in automation
     assert '"chatgpt_page_closed"' in automation
     assert "Keep the wait inside the guarded block" in automation
     assert "retain that answer instead of discarding it" in automation
