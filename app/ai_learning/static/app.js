@@ -142,14 +142,29 @@ function renderTopics(){
  if($("select-all-topics"))$("select-all-topics").checked=topics.length>0&&topics.every(topic=>selectedTopicIds.has(Number(topic.id)));
 }
 async function moveInHierarchy(topic,delta){
- const siblings=childTopics(Number(topic.parent_topic_id||0));
+ const parentId=Number(topic.parent_topic_id||0);
+ const siblings=childTopics(parentId).slice();
  const index=siblings.findIndex(item=>Number(item.id)===Number(topic.id));
  const target=index+delta;if(target<0||target>=siblings.length)return;
- const reordered=topics.slice();
- const currentIndex=reordered.findIndex(item=>Number(item.id)===Number(topic.id));
- const otherIndex=reordered.findIndex(item=>Number(item.id)===Number(siblings[target].id));
- [reordered[currentIndex],reordered[otherIndex]]=[reordered[otherIndex],reordered[currentIndex]];
- await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:reordered.map(item=>item.id)})});
+ [siblings[index],siblings[target]]=[siblings[target],siblings[index]];
+ const byParent=new Map();
+ for(const item of topics){
+  const key=Number(item.parent_topic_id||0);
+  if(!byParent.has(key))byParent.set(key,[]);
+  byParent.get(key).push(item);
+ }
+ byParent.set(parentId,siblings);
+ const ordered=[];
+ const visit=parent=>{
+  for(const child of byParent.get(Number(parent))||[]){
+   ordered.push(child);
+   visit(Number(child.id));
+  }
+ };
+ visit(0);
+ const seen=new Set(ordered.map(item=>Number(item.id)));
+ for(const item of topics)if(!seen.has(Number(item.id))){ordered.push(item);seen.add(Number(item.id))}
+ await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:ordered.map(item=>item.id)})});
  await loadCourse();say("ترتیب سرفصل در همین مبحث ذخیره شد.");
 }
 async function move(i,d){const j=i+d;if(j<0||j>=topics.length)return;[topics[i],topics[j]]=[topics[j],topics[i]];topics.forEach((t,k)=>t.position=k+1);renderTopics();say("ترتیب محلی تغییر کرد؛ برای ذخیره، «ذخیره ترتیب» را بزنید.")}
