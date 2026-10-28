@@ -151,9 +151,7 @@ def test_capability_map_reports_measured_model_tokens_and_inference_time(tmp_pat
             "INSERT INTO learning_jobs(topic, status, source_kind, path_topic_id) VALUES ('Not assessed', 'completed', 'model_knowledge_no_external_source', ?)",
             (topic_ids[0],),
         ).lastrowid
-    task = task_manager.create_task("learning.generate_lesson", {"job_id": int(job_id)})
-    with learning_connection() as connection:
-        connection.execute("UPDATE learning_jobs SET task_id=? WHERE id=?", (task["id"], job_id))
+    task = task_manager.create_task("learning.run_job", {"job_id": int(job_id)})
     with usage_metrics.capture_task(task["id"]):
         assert usage_metrics.record_ollama_response(
             purpose="learning", model="local-test-model",
