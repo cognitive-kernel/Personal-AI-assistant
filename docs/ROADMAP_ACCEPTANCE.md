@@ -2,7 +2,7 @@
 
 This file is the release-gate ledger for tracking issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290). It distinguishes repository implementation and CI evidence from target-host operations, live-model evaluation, human adjudication, and independent review. A merged PR is not by itself proof that an acceptance gate passed.
 
-**Status at 2026-10-28:** not accepted for release. Do not describe the project as 100% complete while any required gate below is blocked or unverified.
+**Consolidation status at 2026-10-28:** all currently open PRs have been merged; Issues #52 and #290 are being administratively closed to establish a clean consolidation baseline. This is not a release acceptance or a claim that their remaining gates are complete. The unresolved work remains explicitly tracked in this ledger and must be resumed before release. Do not describe the project as 100% complete while any required gate below is blocked or unverified.
 
 ## Gate ledger
 
@@ -42,5 +42,5 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 ## Close criteria
 
 - Issue #296 was closed on 2026-10-28 after the project owner confirmed the migration is complete and the application is operating on the new database; the confirmation is not independently backed by an attached test log.
-- Close issue #52 only after an independent security reviewer records the assessment and required remediations pass retesting.
-- Close issue #290 only when every gate is either supported by recorded evidence or explicitly accepted as an intentionally disabled/non-goal by the project owner. A required external prerequisite must remain marked blocked; do not claim full acceptance while it is unresolved.
+- Issue #52 may be administratively closed for the consolidation baseline only; the Ollama independent security review remains **unresolved**. Reopen or create a follow-up issue when work resumes, and do not claim security sign-off without an independent assessment and retested remediations.
+- Issue #290 may be administratively closed for the consolidation baseline only; the acceptance gates listed above remain authoritative and several are **unresolved**. Reopen or create a follow-up issue when acceptance work resumes. Closing the tracker does not mark the project accepted or any gate passed.
