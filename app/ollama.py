@@ -162,8 +162,8 @@ def chat(
     purpose: str = "chat",
     model_override: str | None = None,
 ) -> str:
-    if purpose not in {"chat", "learning", "programming", "factual_review"}:
-        raise ValueError("purpose must be chat, learning, programming, or factual_review.")
+    if purpose not in {"chat", "learning", "programming", "factual_review", "research_plan"}:
+        raise ValueError("purpose must be chat, learning, programming, factual_review, or research_plan.")
     settings = get_settings()
     prefix = purpose
     hardware = detect_hardware()
@@ -176,7 +176,7 @@ def chat(
     }, hardware)
     keep_alive = model_keep_alive(purpose, hardware, settings)
     request_timeout = int(settings.get(f"{prefix}_ollama_timeout_seconds", settings.get("ollama_timeout_seconds", 120)))
-    if purpose == "factual_review":
+    if purpose in {"factual_review", "research_plan"}:
         request_timeout = max(1, min(request_timeout, 45))
     model = str(model_override if model_override is not None else settings.get(f"{prefix}_ollama_model", settings.get("ollama_model", "qwen2.5:7b"))).strip()
     if not model or len(model) > 200:
@@ -195,6 +195,9 @@ def chat(
     if purpose == "factual_review":
         options["num_ctx"] = min(int(options["num_ctx"]), 4096)
         options["num_predict"] = 500
+    elif purpose == "research_plan":
+        options["num_ctx"] = min(int(options["num_ctx"]), 4096)
+        options["num_predict"] = 700
     response = _request("/api/chat", {
         "model": model, "stream": False, "messages": messages, "keep_alive": keep_alive,
         "options": options,
@@ -202,6 +205,8 @@ def chat(
     result = response.get("message", {}).get("content")
     if not isinstance(result, str) or not result.strip():
         raise OllamaError("Ollama returned an empty or unexpected chat response.", retryable=True)
+    from . import usage_metrics
+    usage_metrics.record_ollama_response(purpose=purpose, model=model, response=response)
     return result
 
 
