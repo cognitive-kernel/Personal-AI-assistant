@@ -7,6 +7,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
 from .ollama import _request
+from . import learning_prerequisites
 from . import curricula, factual_knowledge, learning_evidence_gate
 from .hardware import detect_hardware, runtime_limits
 from .learning_quality import evaluate_learning_value
@@ -51,6 +52,18 @@ def create_job(
         # Acquire the SQLite write reservation before checking for an active job.
         if path_topic_id is not None:
             conn.execute("BEGIN IMMEDIATE")
+            topic_row = conn.execute(
+                "SELECT id FROM learning_path_topics WHERE id=?", (path_topic_id,)
+            ).fetchone()
+            if topic_row is None:
+                raise KeyError(f"Learning path topic {path_topic_id} not found.")
+            blocked = learning_prerequisites.blocked_prerequisites(conn, path_topic_id)
+            if blocked:
+                first_blocked = blocked[0]
+                raise ValueError(
+                    "Prerequisite topic is not completed: "
+                    + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
+                )
             existing = conn.execute(
                 "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
                 "ORDER BY id DESC LIMIT 1",
