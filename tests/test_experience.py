@@ -123,6 +123,36 @@ def test_public_update_cannot_promote_record_to_verified(tmp_path, monkeypatch):
 
 
 
+def test_learning_generation_gets_bounded_failed_experience_warnings(tmp_path, monkeypatch):
+    from app import learning
+
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience(
+        "Python candidate review",
+        "Candidate 42 failed a sandbox output comparison.",
+        "Review the expected output before reusing this approach.",
+    )
+    experience.update_experience(
+        item["id"],
+        status="failed",
+        test_plan=[{"test": "exact stdout comparison"}],
+        test_results=[{
+            "test": "exact stdout comparison",
+            "passed": False,
+            "status": "failed",
+            "reason": "actual output did not match the reviewed expected output",
+        }],
+        takeaway="Treat this result as a warning and review the test plan.",
+    )
+
+    warnings = learning._failure_warnings_for_topic("Python candidate review")
+    assert len(warnings) == 1
+    assert warnings[0]["status"] == "failed"
+    assert warnings[0]["test_results"][0]["passed"] is False
+    assert "failed a sandbox output comparison" in warnings[0]["problem"]
+    assert len(warnings[0]["problem"]) <= 1000
+
+
 def test_failed_experiences_are_retrieved_as_warnings_not_verified_guidance(tmp_path, monkeypatch):
     setup_learning_db(tmp_path, monkeypatch)
     item = experience.create_experience(
