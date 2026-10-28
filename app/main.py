@@ -28,6 +28,7 @@ from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
 from .learning_review_routes import router as learning_review_router
 from .learning_source_sync_routes import router as learning_source_sync_router
+from .knowledge_base_routes import router as knowledge_base_router
 from .curriculum_evolution_routes import router as curriculum_evolution_router
 from .learning_prerequisites_routes import router as learning_prerequisites_router
 from .learning_knowledge_graph_routes import router as learning_knowledge_graph_router
@@ -70,6 +71,7 @@ app.include_router(curriculum_evolution_router)
 app.include_router(learning_prerequisites_router)
 app.include_router(learning_knowledge_graph_router)
 app.include_router(knowledge_lifecycle_router)
+app.include_router(knowledge_base_router)
 app.include_router(learning_capabilities_routes.router)
 app.include_router(ai_learning_router)
 app.include_router(ai_learning_ui_router)
