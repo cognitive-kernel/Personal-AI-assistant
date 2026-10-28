@@ -70,9 +70,21 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
     monkeypatch.setattr(learning, "_discover_and_store_sources", discover)
     monkeypatch.setattr(
         learning,
-        "_request",
-        lambda *_args, **_kwargs: {"message": {"content": json.dumps(generated_lesson)}},
+        "_indexed_knowledge_for_topic",
+        lambda _topic: [{
+            "title": "Python list reference",
+            "url": "https://learn.microsoft.com/en-us/sql/",
+            "content": "Retrieved index excerpt; not independently verified.",
+            "retrieval": "sqlite_fts5",
+        }],
     )
+    captured_requests = []
+
+    def fake_request(_path, payload, **_kwargs):
+        captured_requests.append(payload)
+        return {"message": {"content": json.dumps(generated_lesson)}}
+
+    monkeypatch.setattr(learning, "_request", fake_request)
     monkeypatch.setattr(
         learning,
         "evaluate_learning_value",
@@ -134,6 +146,14 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         assert detail["quality"]["accepted"] is True
         assert detail["quality"]["score"] == 95
         generation = detail["quality"]["generation_provenance"]
+        prompt_payload = json.loads(captured_requests[0]["messages"][1]["content"])
+        assert "Retrieved index excerpt; not independently verified." in prompt_payload["indexed_knowledge_context"]
+        assert prompt_payload["indexed_knowledge_sources"] == [{
+            "title": "Python list reference",
+            "url": "https://learn.microsoft.com/en-us/sql/",
+            "retrieval": "sqlite_fts5",
+        }]
+        assert "not independently verified facts" in prompt_payload["indexed_knowledge_policy"]
         assert generation["prompt_version"] == learning.LESSON_GENERATION_PROMPT_VERSION
         assert len(generation["prompt_sha256"]) == 64
         assert generation["repair_prompt_sha256"] is None
