@@ -894,6 +894,36 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_factual_source_checks_claim_checked ON factual_source_checks(knowledge_id, checked_at DESC, id DESC)",
             "CREATE INDEX idx_factual_source_checks_outcome_checked ON factual_source_checks(outcome, checked_at DESC)",
         ),
+    ),
+    Migration(
+        24,
+        "learning-candidate-channel-run-ledger",
+        (
+            """CREATE TABLE learning_candidate_channel_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL
+                    REFERENCES temporary_knowledge_candidates(id) ON DELETE RESTRICT,
+                channel TEXT NOT NULL CHECK(channel IN ('research_web','peer_ai','sandbox')),
+                idempotency_key TEXT NOT NULL CHECK(length(idempotency_key) BETWEEN 1 AND 128),
+                candidate_content_sha256 TEXT NOT NULL CHECK(length(candidate_content_sha256) = 64),
+                status TEXT NOT NULL DEFAULT 'running'
+                    CHECK(status IN ('running','succeeded','failed','skipped')),
+                result_json TEXT NOT NULL DEFAULT '{}',
+                result_sha256 TEXT,
+                error_code TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                finished_at TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, channel, idempotency_key),
+                CHECK(
+                    (status = 'running' AND finished_at IS NULL) OR
+                    (status != 'running' AND finished_at IS NOT NULL)
+                )
+            )""",
+            "CREATE INDEX idx_learning_candidate_channel_status ON learning_candidate_channel_runs(candidate_id, status, id)",
+            "CREATE INDEX idx_learning_candidate_channel_finished ON learning_candidate_channel_runs(channel, finished_at DESC, id DESC)",
+        ),
     )
 )
 
