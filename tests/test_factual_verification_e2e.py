@@ -2,7 +2,7 @@ import hashlib
 import json
 import re
 
-from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent
+from app import db, factual_knowledge, factual_semantic_review, factual_verification_routes, factual_verification_tasks, sandbox_consent
 from app.task_worker import TaskWorker
 
 
@@ -19,7 +19,7 @@ def _create_active_sourced_claim(version="3.12.3"):
             connection,
             claim_id,
             source_type="official_docs",
-            source_ref="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+            source_ref="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
             source_hash="sha256:python-assert-reference",
             excerpt="The assert statement raises AssertionError when its expression is false.",
         )
@@ -32,6 +32,24 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    monkeypatch.setattr(
+        factual_verification_tasks,
+        "_verify_live_source_excerpt",
+        lambda _url, excerpt: hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+    )
+    monkeypatch.setattr(
+        factual_semantic_review,
+        "review_claim_against_source",
+        lambda **_kwargs: factual_semantic_review.ReviewDecision(
+            verdict="supports",
+            accepted=True,
+            score=1.0,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_stub_independent_reviewer",),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        ),
+    )
     claim_id = _create_active_sourced_claim()
 
     monkeypatch.setattr(
@@ -39,15 +57,19 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
         "get_consent",
         lambda: {"enabled": True},
     )
-    monkeypatch.setattr(factual_verification_routes, "_configured", lambda: True)
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda *_args: True)
+    monkeypatch.setattr(factual_verification_routes, "_reviewer_configured", lambda: True)
     monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
 
+    test_source_code = "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise RuntimeError('assert did not fail')"
     request = factual_verification_routes.FactualClaimTestRequest(
         confirm=True,
         oracle_reviewed=True,
         oracle_review_note="Compared this exact test with the official Python assert reference.",
+        oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_hash=hashlib.sha256(b"The assert statement raises AssertionError when its expression is false.").hexdigest(),
         test_name="Python assert raises on false condition",
-        source_code="try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise RuntimeError('assert did not fail')",
+        source_code=test_source_code,
         timeout_seconds=5,
         max_output_bytes=2048,
     )
@@ -103,3 +125,34 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     assert tests[0]["environment_version"] == "3.12.3"
     assert len(tests[0]["command_hash"]) == 64
     assert len(tests[0]["log_hash"]) == 64
+
+def test_sqlite_factual_claim_is_visible_in_the_manual_test_queue(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    with db.learning_connection() as connection:
+        claim_id = factual_knowledge.create_claim(
+            connection,
+            "SQLite SELECT statements return rows matching the query result.",
+            environment_name="sqlite",
+            environment_version="3.45.0",
+            scope={"topic": "SQLite SELECT"},
+        )
+        factual_knowledge.add_evidence(
+            connection,
+            claim_id,
+            source_type="official_docs",
+            source_ref="https://sqlite.org/lang_select.html",
+            source_hash="sha256:sqlite-select-reference",
+            excerpt="A SELECT statement is used to query the database.",
+        )
+        factual_knowledge.transition_evidence_level(connection, claim_id, "L1_sourced")
+        factual_knowledge.transition_lifecycle(connection, claim_id, "active")
+
+    result = factual_verification_routes.list_factual_test_queue(limit=50)
+    item = next(row for row in result["items"] if row["id"] == claim_id)
+    assert item["domain_name"] == "sqlite"
+    assert item["environment_name"] == "sqlite"
+    assert item["environment_version"] == "3.45.0"
+    assert item["evidence"][0]["source_ref"] == "https://sqlite.org/lang_select.html"
+
