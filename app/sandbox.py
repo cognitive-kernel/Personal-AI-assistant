@@ -456,6 +456,7 @@ def run_python(
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
     control_check: Callable[[], str] | None = None,
     task_id: int | None = None,
+    stdin_text: str | None = None,
 ) -> SandboxResult:
     """Run one Python file in a bounded, no-network Docker container."""
     if not isinstance(source_code, str) or not source_code.strip():
@@ -474,6 +475,11 @@ def run_python(
         raise ValueError("timeout_seconds must be an integer from 1 to 120.")
     if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 65536:
         raise ValueError("max_output_bytes must be an integer from 1 to 65536.")
+    if stdin_text is not None and (
+        not isinstance(stdin_text, str) or "\x00" in stdin_text
+        or len(stdin_text.encode("utf-8")) > 16 * 1024
+    ):
+        raise ValueError("stdin_text must be NUL-free text no larger than 16 KiB.")
 
     executable = Path(docker_executable).expanduser()
     if not executable.is_absolute() or not executable.is_file():
@@ -489,8 +495,19 @@ def run_python(
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="personal-ai-sandbox-") as directory:
         workspace = Path(directory).resolve()
-        source_path = workspace / "main.py"
-        source_path.write_text(source_code, encoding="utf-8", newline="\n")
+        if stdin_text is None:
+            source_path = workspace / "main.py"
+            source_path.write_text(source_code, encoding="utf-8", newline="\n")
+        else:
+            source_path = workspace / "learner.py"
+            source_path.write_text(source_code, encoding="utf-8", newline="\n")
+            (workspace / "input.txt").write_text(stdin_text, encoding="utf-8", newline="\n")
+            runner = (
+                "import runpy,sys\\n"
+                "sys.stdin=open('/workspace/input.txt', encoding='utf-8')\\n"
+                "runpy.run_path('/workspace/learner.py', run_name='__main__')\\n"
+            )
+            (workspace / "main.py").write_text(runner, encoding="utf-8", newline="\n")
         try:
             source_path.chmod(0o444)
             workspace.chmod(0o755)

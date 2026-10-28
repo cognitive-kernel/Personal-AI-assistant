@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import sandbox
+from app import sandbox, db, learning, learning_capabilities_routes, learning_practical
 
 
 IMAGE = "python:3.12-slim@sha256:" + "a" * 64
@@ -80,6 +80,44 @@ def test_sandbox_runs_only_digest_pinned_python_in_no_network_container(tmp_path
     assert kwargs["stdin"] == subprocess.DEVNULL
     assert "KAGGLE_API_TOKEN" not in kwargs["env"]
     assert kwargs["env"]["DOCKER_HOST"] == "unix:///var/run/docker.sock"
+
+
+def test_sandbox_stdin_is_bounded_and_mounted_read_only(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    executable = _configured_docker(tmp_path)
+    captured = {}
+    process = FakeProcess([], stdout=b"ok\\n")
+
+    def fake_popen(args, **kwargs):
+        mount = args[args.index("--mount") + 1]
+        workspace = Path(mount.split("source=", 1)[1].split(",target=", 1)[0])
+        captured["runner"] = (workspace / "main.py").read_text(encoding="utf-8")
+        captured["learner"] = (workspace / "learner.py").read_text(encoding="utf-8")
+        captured["input"] = (workspace / "input.txt").read_text(encoding="utf-8")
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return process
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    payload = '{"values":[2,4]}'
+    code = "print('ok')"
+    result = sandbox.run_python(
+        code, docker_executable=executable, image=IMAGE, stdin_text=payload
+    )
+
+    assert result.status == "succeeded"
+    assert captured["input"] == payload
+    assert captured["learner"] == code
+    assert "runpy.run_path('/workspace/learner.py'" in captured["runner"]
+    assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
+    assert "--network=none" in captured["args"]
+
+    with pytest.raises(ValueError, match="16 KiB"):
+        sandbox.run_python(
+            "print(1)", docker_executable=executable, image=IMAGE,
+            stdin_text="x" * (16 * 1024 + 1),
+        )
 
 
 def test_sandbox_returns_unavailable_without_docker_and_never_falls_back(tmp_path):
@@ -516,3 +554,34 @@ def test_language_sandbox_is_digest_pinned_no_network_and_resource_bounded(
     else:
         assert "--memory=256m" in args
         assert "node" in args
+
+
+
+def test_practical_catalog_hides_expected_outputs():
+    items = learning_practical.list_exercises()
+    assert len(items) == 3
+    assert all("expected" not in str(item) for item in items)
+
+
+def test_practical_grader_rejects_failed_execution():
+    case = learning_practical.get_test_cases(learning_practical.EXERCISE_ID)[0]
+    assert not learning_practical.grade_case_output(
+        learning_practical.EXERCISE_ID, case["id"], "failed", 1, "6"
+    )
+
+
+def test_practical_submit_requires_explicit_sandbox_consent(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Python JSON processing")
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET status='completed' WHERE id=?", (job["id"],))
+    monkeypatch.setattr(learning_capabilities_routes.sandbox_consent, "get_consent", lambda: {"enabled": False})
+    monkeypatch.setattr(learning_capabilities_routes, "_practical_sandbox_available", lambda: True)
+    with pytest.raises(Exception) as exc:
+        learning_capabilities_routes.submit_practical_exercise(
+            "python-json-sum-v1",
+            learning_capabilities_routes.PracticalSubmission(job_id=job["id"], source_code="print(1)"),
+        )
+    assert getattr(exc.value, "status_code", None) == 409
