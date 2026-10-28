@@ -223,3 +223,63 @@ def test_terminal_container_cleanup_is_disabled_when_sandbox_is_off(
     sandbox_tasks.cleanup_terminal_containers()
     assert executable.is_file()
     assert called == []
+
+
+@pytest.mark.parametrize(
+    ("language", "env_name", "image", "runner_name"),
+    [
+        ("javascript", "SANDBOX_NODE_IMAGE", "node:22-bookworm-slim@sha256:" + "b" * 64, "run_language"),
+        ("rust", "SANDBOX_RUST_IMAGE", "rust:1.84-slim@sha256:" + "c" * 64, "run_language"),
+    ],
+)
+def test_language_runner_uses_only_configured_digest_pinned_image(
+    monkeypatch, tmp_path, language, env_name, image, runner_name
+):
+    executable = _configure(monkeypatch, tmp_path)
+    monkeypatch.setenv(env_name, image)
+    monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
+    captured = {}
+
+    def fake_run(source, **kwargs):
+        captured.update(source=source, **kwargs)
+        return SandboxResult("succeeded", 0, "ok", "", 5)
+
+    monkeypatch.setattr(sandbox_tasks.sandbox, runner_name, fake_run)
+    handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
+    context = FakeContext()
+    result = handler(
+        {
+            "language": language,
+            "source_code": "assertion harness",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        },
+        None,
+        context,
+    )
+
+    assert result["execution_status"] == "succeeded"
+    assert captured["language"] == language
+    assert captured["image"] == image
+    assert captured["docker_executable"] == executable
+    assert captured["task_id"] == context.task_id
+    assert context.checkpoints[0]["language"] == language
+
+
+def test_language_runner_requires_image_and_is_not_enabled_by_default(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
+    with pytest.raises(ValueError, match="SANDBOX_NODE_IMAGE"):
+        handler(
+            {"language": "javascript", "source_code": "assert.equal(1, 1)"},
+            None,
+            FakeContext(),
+        )
+
+    default_handler = sandbox_tasks.handler_from_environment()
+    with pytest.raises(ValueError, match="unsupported fields"):
+        default_handler(
+            {"language": "javascript", "source_code": "assert.equal(1, 1)"},
+            None,
+            FakeContext(),
+        )
