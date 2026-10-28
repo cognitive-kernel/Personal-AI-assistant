@@ -237,8 +237,9 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
                            COUNT(u.estimated_cost_microusd) AS cost_estimate_count,
                            GROUP_CONCAT(DISTINCT u.model_name) AS models
                     FROM model_usage_events u
-                    JOIN learning_jobs j ON j.task_id=u.task_id
-                    WHERE j.path_topic_id IN ({placeholders})
+                    JOIN task_queue q ON q.id=u.task_id
+                    JOIN learning_jobs j ON j.id=CAST(json_extract(q.payload_json, '$.job_id') AS INTEGER)
+                    WHERE q.task_type = 'learning.run_job' AND j.path_topic_id IN ({placeholders})
                     GROUP BY j.path_topic_id""",
                 topic_ids,
             ).fetchall()
