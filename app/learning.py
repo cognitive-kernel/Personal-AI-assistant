@@ -768,7 +768,17 @@ def run_job(job_id: int) -> None:
             }
         raw_outcomes = result.get("learning_outcomes")
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
-        assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        from .learning_rubric import validate_rubric
+        generated_rubric = result.get("rubric")
+        rubric_valid = validate_rubric(generated_rubric, len(result["questions"][:3]))
+        assessment = {
+            "learning_outcomes": outcomes,
+            "questions": result["questions"][:3],
+            "answer_key": result["answer_key"][:3],
+            "rubric": generated_rubric if rubric_valid else None,
+            "rubric_version": "concept-coverage-v1" if rubric_valid else None,
+            "independently_verified": False,
+        }
         from .learning_rubric import RUBRIC_VERSION, validate_rubric
         if validate_rubric(result.get("rubric"), len(assessment["questions"])):
             assessment["rubric"] = result["rubric"]
@@ -795,7 +805,7 @@ def run_job(job_id: int) -> None:
             retry_prompt["instruction"] = (
                 "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ این بار با توجه به دلیل‌های مشخص زیر، آن را کامل بازنویسی کن: "
                 + "؛ ".join(quality.get("reasons", []))
-                + ". فقط یک شیء JSON معتبر با کلیدهای lesson و learning_outcomes و questions و answer_key و rubric برگردان؛ rubric باید دقیقاً 3 شیء، یکی برای هر سؤال، با 2 تا 5 معیار مشخص، id یکتا، weight بین 1 تا 10 و 1 تا 6 عبارت پذیرفته‌شدهٔ معنادار برای هر معیار داشته باشد. معیارها باید مفاهیم ضروری پاسخ را پوشش دهند، نه واژه‌های عمومی؛ برای سؤال کاربردی، هم تصمیم و هم استدلال/هزینهٔ مبادله را بسنج. "
+                + ". فقط یک شیء JSON معتبر با کلیدهای lesson و learning_outcomes و questions و answer_key و rubric برگردان؛ rubric باید سه مورد داشته باشد و هر مورد شامل 2 تا 5 معیار با id یکتا، weight بین 1 تا 10 و 1 تا 6 عبارت پذیرفته‌شدهٔ دقیق و منطبق با answer_key باشد؛ rubric باید دقیقاً 3 شیء، یکی برای هر سؤال، با 2 تا 5 معیار مشخص، id یکتا، weight بین 1 تا 10 و 1 تا 6 عبارت پذیرفته‌شدهٔ معنادار برای هر معیار داشته باشد. معیارها باید مفاهیم ضروری پاسخ را پوشش دهند، نه واژه‌های عمومی؛ برای سؤال کاربردی، هم تصمیم و هم استدلال/هزینهٔ مبادله را بسنج. "
                 "متن lesson باید فارسی روان و آموزشی و بین 200 تا 260 واژه فارسی باشد و مطلقاً کمتر از 180 واژه نباشد؛ "
                 "پس از نوشتن، طول متن را بررسی کن و اگر کوتاه است پیش از پاسخ گسترش بده. "
                 "متن را در 5 تا 7 بند منسجم بنویس: تعریف دقیق، اجزای اصلی، نقش هر جزء، روند کار مرحله‌به‌مرحله، "
@@ -1085,48 +1095,159 @@ def _normalize_answer(value: str) -> str:
     return re.sub(r"\W+", "", value.casefold(), flags=re.UNICODE)
 
 
-def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
+def submit_assessment(
+    job_id: int,
+    answers: list[str],
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    if idempotency_key is not None and (
+        not isinstance(idempotency_key, str)
+        or not 16 <= len(idempotency_key) <= 128
+        or re.fullmatch(r"[A-Za-z0-9._:-]+", idempotency_key) is None
+    ):
+        raise ValueError("Idempotency key must be 16–128 safe ASCII characters.")
     if not isinstance(answers, list) or not answers or len(answers) > 3:
         raise ValueError("Submit between 1 and 3 answers.")
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
         raise ValueError("Every answer must contain 1–2000 characters.")
+    serialized_answers = json.dumps(answers, ensure_ascii=False)
+
+    def replay(existing: Any) -> dict[str, Any]:
+        if existing["answers_json"] != serialized_answers:
+            raise ValueError("Idempotency key was already used with different answers.")
+        try:
+            details = json.loads(existing["result_details_json"] or "{}")
+            if not isinstance(details, dict):
+                details = {}
+        except (TypeError, json.JSONDecodeError):
+            details = {}
+        return {
+            "attempt_id": int(existing["id"]),
+            "job_id": job_id,
+            "score": float(existing["score"]),
+            "correct_count": int(existing["correct_count"]),
+            "question_count": int(existing["question_count"]),
+            "scoring_method": str(existing["scoring_method"]),
+            "independent_verification": False,
+            "idempotent_replay": True,
+            **details,
+        }
+
     with learning_connection() as conn:
-        row = conn.execute("SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute(
+            "SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?",
+            (job_id,),
+        ).fetchone()
         if row is None:
             raise KeyError(job_id)
         if row["status"] != "completed" or not row["assessment_json"]:
             raise ValueError("This learning job has no available assessment yet.")
-        path_topic_id = row["path_topic_id"]
         assessment = json.loads(row["assessment_json"])
         questions = assessment.get("questions", [])
         answer_key = assessment.get("answer_key", [])
-        if len(answers) != len(questions) or len(answer_key) != len(questions):
+        if (
+            not isinstance(questions, list) or not isinstance(answer_key, list)
+            or len(answers) != len(questions) or len(answer_key) != len(questions)
+        ):
             raise ValueError("Answer count must match the assessment question count.")
-        normalized_key = [_normalize_answer(str(item)) for item in answer_key]
-        normalized_answers = [_normalize_answer(item) for item in answers]
-        correct_count = sum(1 for answer, expected in zip(normalized_answers, normalized_key) if answer and answer == expected)
-        score = round(100 * correct_count / len(questions), 2) if questions else 0.0
-        cursor = conn.execute(
-            """INSERT INTO assessment_attempts(job_id, answers_json, score, correct_count, question_count, scoring_method)
-               VALUES (?, ?, ?, ?, ?, 'normalized_exact_match')""",
-            (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions)),
-        )
-        attempt_id = int(cursor.lastrowid)
+
+        if idempotency_key is not None:
+            existing = conn.execute(
+                """SELECT id, answers_json, score, correct_count, question_count,
+                          scoring_method, result_details_json
+                   FROM assessment_attempts WHERE job_id=? AND idempotency_key=?""",
+                (job_id, idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                return replay(existing)
+
+        from .learning_rubric import RUBRIC_VERSION, score_with_rubric, validate_rubric
+
+        rubric = assessment.get("rubric")
+        if validate_rubric(rubric, len(questions)):
+            rubric_result = score_with_rubric(answers, rubric)
+            score = float(rubric_result["score"])
+            correct_count = int(rubric_result["correct_count"])
+            scoring_method = rubric_result["scoring_method"]
+            score_kind = "learner_rubric"
+            completion_threshold = 80.0
+            result_details: dict[str, Any] = {
+                "rubric_version": rubric_result["rubric_version"],
+                "per_question": rubric_result["per_question"],
+                "note": rubric_result["note"],
+            }
+        else:
+            normalized_key = [_normalize_answer(str(item)) for item in answer_key]
+            normalized_answers = [_normalize_answer(item) for item in answers]
+            correct_count = sum(
+                1 for answer, expected in zip(normalized_answers, normalized_key)
+                if answer and answer == expected
+            )
+            score = round(100 * correct_count / len(questions), 2) if questions else 0.0
+            scoring_method = "normalized_exact_match"
+            score_kind = "legacy_exact_match"
+            completion_threshold = 70.0
+            result_details = {
+                "note": (
+                    "این آزمون rubric معتبر ندارد؛ نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ "
+                    "محاسبه شده و فهم معنایی یا صحت علمی را اثبات نمی‌کند."
+                )
+            }
+
+        path_topic_id = row["path_topic_id"]
         path_topic_status = None
         if path_topic_id is not None:
-            path_topic_status = "completed" if score >= 70 else "in_progress"
+            path_topic_status = "completed" if score >= completion_threshold else "in_progress"
+        result_details["path_topic_status"] = path_topic_status
+        cursor = conn.execute(
+            """INSERT INTO assessment_attempts(
+                   job_id, answers_json, score, correct_count, question_count,
+                   scoring_method, idempotency_key, result_details_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING""",
+            (
+                job_id, serialized_answers, score, correct_count, len(questions),
+                scoring_method, idempotency_key,
+                json.dumps(result_details, ensure_ascii=False, sort_keys=True),
+            ),
+        )
+        if cursor.rowcount == 0:
+            if idempotency_key is not None:
+                existing = conn.execute(
+                    """SELECT id, answers_json, score, correct_count, question_count,
+                              scoring_method, result_details_json
+                       FROM assessment_attempts WHERE job_id=? AND idempotency_key=?""",
+                    (job_id, idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    return replay(existing)
+            raise ValueError("Assessment submission conflicted with an existing record.")
+
+        attempt_id = int(cursor.lastrowid)
+        if path_topic_id is not None:
             conn.execute(
-                "UPDATE learning_path_topics SET status=?, latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (path_topic_status, score, path_topic_id),
+                """UPDATE learning_path_topics
+                   SET status=?, latest_score=?, latest_score_kind=?, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=?""",
+                (path_topic_status, score, score_kind, path_topic_id),
+            )
+            conn.execute(
+                """UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP
+                   WHERE id=(SELECT path_id FROM learning_path_topics WHERE id=?)""",
+                (path_topic_id,),
             )
     return {
-        "attempt_id": attempt_id, "job_id": job_id, "score": score,
-        "correct_count": correct_count, "question_count": len(questions),
-        "scoring_method": "normalized_exact_match",
-        "path_topic_status": path_topic_status,
+        "attempt_id": attempt_id,
+        "job_id": job_id,
+        "score": score,
+        "correct_count": correct_count,
+        "question_count": len(questions),
+        "scoring_method": scoring_method,
         "independent_verification": False,
-        "note": "نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و تأیید علمی یا فهم معنایی را اثبات نمی‌کند.",
+        "idempotent_replay": False,
+        **result_details,
     }
+
 
 def submit_lesson_review(job_id: int, outcomes: list[str], value_rating: int, takeaway: str = "", issues: str = "") -> dict[str, Any]:
     if not isinstance(outcomes, list) or not 1 <= len(outcomes) <= 5:
