@@ -74,11 +74,6 @@ def run_workspace_syntax_check(
         raise ValueError("timeout_seconds must be an integer from 1 to 120.")
     if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 65536:
         raise ValueError("max_output_bytes must be an integer from 1 to 65536.")
-    if stdin_text is not None and (
-        not isinstance(stdin_text, str) or "\x00" in stdin_text
-        or len(stdin_text.encode("utf-8")) > 16 * 1024
-    ):
-        raise ValueError("stdin_text must be NUL-free text no larger than 16 KiB.")
 
     executable = Path(docker_executable).expanduser()
     if not executable.is_absolute() or not executable.is_file():
@@ -461,7 +456,6 @@ def run_python(
     max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
     control_check: Callable[[], str] | None = None,
     task_id: int | None = None,
-    stdin_text: str | None = None,
 ) -> SandboxResult:
     """Run one Python file in a bounded, no-network Docker container."""
     if not isinstance(source_code, str) or not source_code.strip():
@@ -511,7 +505,6 @@ def run_python(
             str(executable),
             "run",
             "--rm",
-            *(["--interactive"] if stdin_text is not None else []),
             "--pull=never",
             "--label",
             f"{_SANDBOX_LABEL}=true",
@@ -540,7 +533,7 @@ def run_python(
         try:
             process = subprocess.Popen(
                 command,
-                stdin=subprocess.PIPE if stdin_text is not None else subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
@@ -556,16 +549,6 @@ def run_python(
                 duration_ms=int((time.monotonic() - started) * 1000),
                 reason="Docker could not be started; no local execution fallback is permitted.",
             )
-
-        if stdin_text is not None and process.stdin is not None:
-            try:
-                process.stdin.write(stdin_text.encode("utf-8"))
-                process.stdin.close()
-            except (BrokenPipeError, OSError):
-                try:
-                    process.stdin.close()
-                except OSError:
-                    pass
 
         stdout_buffer = bytearray()
         stderr_buffer = bytearray()
