@@ -148,4 +148,4 @@ def test_rubric_migration_adds_idempotency_and_score_provenance_columns(tmp_path
         migration = conn.execute("SELECT MAX(version) AS version FROM schema_migrations").fetchone()
     assert {"idempotency_key", "result_details_json"} <= attempt_columns
     assert "latest_score_kind" in topic_columns
-    assert migration["version"] == 37
+    assert migration["version"] == 38
