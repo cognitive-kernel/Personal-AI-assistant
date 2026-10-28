@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 from typing import Any
 from urllib.parse import urlparse
@@ -11,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from . import factual_knowledge, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
-from .db import learning_connection
+from .db import get_settings, learning_connection
 from .task_routes import require_loopback_client
 
 router = APIRouter(
@@ -33,6 +34,8 @@ class FactualClaimTestRequest(BaseModel):
     confirm: StrictBool
     oracle_reviewed: StrictBool
     oracle_review_note: str = Field(min_length=20, max_length=1000)
+    oracle_source_url: str = Field(min_length=9, max_length=2048)
+    oracle_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     test_name: str = Field(min_length=1, max_length=300)
     source_code: str = Field(min_length=1, max_length=65536)
     timeout_seconds: StrictInt = Field(default=10, ge=1, le=120)
@@ -42,11 +45,29 @@ class FactualClaimTestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-def _configured() -> bool:
+def _configured(runner_language: str = "python") -> bool:
     try:
-        return sandbox_tasks.handler_from_environment() is not None
+        handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
     except ValueError:
         return False
+    if handler is None:
+        return False
+    if runner_language == "javascript":
+        return bool(os.getenv("SANDBOX_NODE_IMAGE", "").strip())
+    if runner_language == "rust":
+        return bool(os.getenv("SANDBOX_RUST_IMAGE", "").strip())
+    return runner_language in {"python", "sqlite"}
+
+
+def _reviewer_configured() -> bool:
+    settings = get_settings()
+    reviewer = str(settings.get("factual_review_ollama_model", "")).strip()
+    generation_models = {
+        str(settings.get(key, "")).strip()
+        for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model")
+        if str(settings.get(key, "")).strip()
+    }
+    return bool(reviewer and reviewer not in generation_models)
 
 
 @router.get("/test-history")
@@ -84,15 +105,19 @@ def queue_factual_claim_test(
     if request.oracle_reviewed is not True:
         raise HTTPException(status_code=422, detail="Explicit attestation that the test matches an independent oracle is required.")
     try:
-        factual_verification_tasks.get_verification_candidate(knowledge_id)
+        candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Factual claim not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     try:
-        factual_verification_tasks.validate_test_harness(request.source_code)
+        factual_verification_tasks._validate_domain_test_harness(
+            request.source_code, candidate["runner_language"]
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    test_source_hash = hashlib.sha256(request.source_code.encode("utf-8")).hexdigest()
 
     try:
         consent = sandbox_consent.get_consent()
@@ -100,14 +125,42 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=503, detail="Sandbox consent storage is unavailable.") from exc
     if not consent["enabled"]:
         raise HTTPException(status_code=409, detail="Factual claim testing requires explicit current sandbox consent.")
-    if not _configured():
-        raise HTTPException(status_code=409, detail="Factual claim testing requires a configured digest-pinned Docker sandbox.")
+    if not _configured(candidate["runner_language"]):
+        raise HTTPException(
+            status_code=409,
+            detail="Factual claim testing requires a configured digest-pinned Docker image for this runtime.",
+        )
+    if not _reviewer_configured():
+        raise HTTPException(status_code=409, detail="Configure a distinct factual-review Ollama model before queueing factual verification.")
 
+    parsed_oracle_url = urlparse(request.oracle_source_url)
+    if (
+        parsed_oracle_url.scheme != "https"
+        or not parsed_oracle_url.hostname
+        or parsed_oracle_url.username is not None
+        or parsed_oracle_url.password is not None
+    ):
+        raise HTTPException(status_code=422, detail="Oracle reference must be an absolute HTTPS URL without embedded credentials.")
     source_hash = hashlib.sha256(request.source_code.encode("utf-8")).hexdigest()
+    try:
+        with learning_connection() as connection:
+            candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+            oracle_review_id = factual_knowledge.record_oracle_review(
+                connection,
+                knowledge_id,
+                claim_hash=candidate["claim_hash"],
+                test_source_hash=source_hash,
+                oracle_source_url=request.oracle_source_url,
+                oracle_source_hash=request.oracle_source_hash,
+                review_note=request.oracle_review_note.strip(),
+            )
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Oracle review audit could not be saved.") from exc
     payload = {
         "knowledge_id": knowledge_id,
         "oracle_reviewed": request.oracle_reviewed,
         "oracle_review_note": request.oracle_review_note.strip(),
+        "oracle_review_id": oracle_review_id,
         "test_name": request.test_name.strip(),
         "source_code": request.source_code,
         "timeout_seconds": request.timeout_seconds,
@@ -125,7 +178,8 @@ def queue_factual_claim_test(
         raise HTTPException(status_code=503, detail="Factual claim test could not be queued.") from exc
     return {
         "task": task,
-        "message": "Factual claim test queued in the isolated sandbox; any L2 promotion requires the reviewed independent oracle and an exact Python-version match.",
+        "oracle_review_id": oracle_review_id,
+        "message": "Factual claim test queued in the isolated sandbox. The independent-oracle attestation is audit-bound to this claim revision, test hash, HTTPS reference and reference hash; L2 promotion also requires a passing exact-version run.",
     }
 
 
@@ -170,7 +224,7 @@ def list_factual_source_review_queue(
 def list_factual_test_queue(
     limit: int = Query(default=50, ge=1, le=200),
 ) -> dict[str, Any]:
-    """List sourced, active Python L1 claims that may be manually submitted for testing."""
+    """List sourced L1 claims for runtimes whose digest-pinned sandbox image is configured."""
     try:
         with learning_connection() as connection:
             rows = connection.execute(
@@ -178,8 +232,12 @@ def list_factual_test_queue(
                           k.environment_version, k.evidence_level, k.lifecycle_status,
                           k.risk_level, k.updated_at
                    FROM factual_knowledge AS k
-                   WHERE k.domain_name='python'
-                     AND k.environment_name='python'
+                   WHERE (
+                       (k.domain_name IN ('python','sqlite') AND k.environment_name=k.domain_name)
+                       OR (k.domain_name='javascript' AND k.environment_name IN ('javascript','node'))
+                       OR (k.domain_name='node' AND k.environment_name='node')
+                       OR (k.domain_name='rust' AND k.environment_name='rust')
+                   )
                      AND k.evidence_level='L1_sourced'
                      AND k.lifecycle_status='active'
                      AND k.risk_level NOT IN ('high','critical')
@@ -210,6 +268,13 @@ def list_factual_test_queue(
             items = []
             for row in rows:
                 item = dict(row)
+                runner_language = (
+                    "javascript" if item["domain_name"] in {"javascript", "node"}
+                    else "rust" if item["domain_name"] == "rust"
+                    else item["environment_name"]
+                )
+                if not _configured(runner_language):
+                    continue
                 evidence = connection.execute(
                     """SELECT source_type, source_ref, source_hash, excerpt
                        FROM factual_evidence
