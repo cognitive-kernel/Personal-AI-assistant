@@ -18,6 +18,7 @@ def _create_path(*, topics):
             ("test-learning-path", "Test learning path"),
         )
         path_id = int(cursor.lastrowid)
+        connection.execute("UPDATE learning_paths SET prerequisite_mode='linear' WHERE id=?", (path_id,))
         topic_ids = []
         for position, topic in enumerate(topics, start=1):
             cursor = connection.execute(
