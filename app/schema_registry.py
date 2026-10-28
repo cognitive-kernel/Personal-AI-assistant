@@ -1266,6 +1266,7 @@ LEARNING_MIGRATIONS = (
         "deterministic-learning-assessment-rubric-and-idempotency",
         (
             "ALTER TABLE assessment_attempts ADD COLUMN idempotency_key TEXT",
+            "ALTER TABLE assessment_attempts ADD COLUMN result_details_json TEXT NOT NULL DEFAULT '{}'",
             "CREATE UNIQUE INDEX idx_assessment_attempts_idempotency ON assessment_attempts(job_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
             """ALTER TABLE learning_path_topics ADD COLUMN latest_score_kind TEXT NOT NULL
                DEFAULT 'legacy_unknown'
