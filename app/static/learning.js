@@ -431,6 +431,8 @@ function renderLessonResult(output, job, path, topic) {
    semanticReviewButton.disabled = false;
   }
  });
+ const assessmentIdempotencyKey = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+  ? crypto.randomUUID() : ("assessment-" + job.id + "-" + Date.now() + "-" + Math.random().toString(36).slice(2));
  form.addEventListener("submit", async event => {
   event.preventDefault();
   submit.disabled = true;
@@ -438,7 +440,7 @@ function renderLessonResult(output, job, path, topic) {
   try {
    const outcome = await learningApi("/api/learning/jobs/" + job.id + "/assessment", {
     method: "POST",
-    body: JSON.stringify({answers: fields.map(field => field.value)})
+    body: JSON.stringify({answers: fields.map(field => field.value), idempotency_key: assessmentIdempotencyKey})
    });
    latestAttemptId = outcome.attempt_id;
    semanticReviewButton.hidden = false;
