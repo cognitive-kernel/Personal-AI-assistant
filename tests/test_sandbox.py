@@ -5,10 +5,26 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app import sandbox
+from app import sandbox, db, learning, learning_capabilities_routes, learning_practical
 
 
 IMAGE = "python:3.12-slim@sha256:" + "a" * 64
+
+
+class FakeInput:
+    def __init__(self):
+        self.data = bytearray()
+        self.closed = False
+
+    def write(self, value):
+        self.data.extend(value)
+        return len(value)
+
+    def close(self):
+        self.closed = True
+
+    def getvalue(self):
+        return bytes(self.data)
 
 
 class FakeProcess:
@@ -16,7 +32,7 @@ class FakeProcess:
         self.args = args
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
-        self.stdin = io.BytesIO()
+        self.stdin = FakeInput()
         self.returncode = returncode
         self.terminated = False
         self.killed = False
@@ -548,3 +564,34 @@ def test_language_sandbox_is_digest_pinned_no_network_and_resource_bounded(
     else:
         assert "--memory=256m" in args
         assert "node" in args
+
+
+
+def test_practical_catalog_hides_expected_outputs():
+    items = learning_practical.list_exercises()
+    assert len(items) == 3
+    assert all("expected" not in str(item) for item in items)
+
+
+def test_practical_grader_rejects_failed_execution():
+    case = learning_practical.get_test_cases(learning_practical.EXERCISE_ID)[0]
+    assert not learning_practical.grade_case_output(
+        learning_practical.EXERCISE_ID, case["id"], "failed", 1, "6"
+    )
+
+
+def test_practical_submit_requires_explicit_sandbox_consent(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("Python JSON processing")
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE learning_jobs SET status='completed' WHERE id=?", (job["id"],))
+    monkeypatch.setattr(learning_capabilities_routes.sandbox_consent, "get_consent", lambda: {"enabled": False})
+    monkeypatch.setattr(learning_capabilities_routes, "_practical_sandbox_available", lambda: True)
+    with pytest.raises(Exception) as exc:
+        learning_capabilities_routes.submit_practical_exercise(
+            "python-json-sum-v1",
+            learning_capabilities_routes.PracticalSubmission(job_id=job["id"], source_code="print(1)"),
+        )
+    assert getattr(exc.value, "status_code", None) == 409
