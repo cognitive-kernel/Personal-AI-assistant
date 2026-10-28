@@ -23,7 +23,7 @@ SANDBOX_LANGUAGE_TASK_TYPE = "sandbox.run_language"
 _IMAGE_REF = re.compile(
     r"^(?:python|docker\.io/library/python):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$"
 )
-_ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes"}
+_ALLOWED_PAYLOAD_KEYS = {"source_code", "timeout_seconds", "max_output_bytes", "learning_practical"}
 
 
 def handler_from_environment(*, allow_language_runners: bool = False) -> Callable[
@@ -81,6 +81,25 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
         if len(source_code.encode("utf-8")) > 64 * 1024 or "\x00" in source_code:
             raise ValueError("source_code exceeds the allowed size or contains NUL characters.")
 
+        practical_metadata = payload.get("learning_practical")
+        learner_source_code = source_code
+        if practical_metadata is not None:
+            if language != "python":
+                raise ValueError("Practical learning assessment supports Python only.")
+            if (
+                not isinstance(practical_metadata, dict)
+                or set(practical_metadata) != {"exercise_id", "job_id"}
+                or not isinstance(practical_metadata.get("exercise_id"), str)
+                or isinstance(practical_metadata.get("job_id"), bool)
+                or not isinstance(practical_metadata.get("job_id"), int)
+                or practical_metadata["job_id"] < 1
+            ):
+                raise ValueError("Learning practical metadata is invalid.")
+            from .learning_practical import build_grader_source
+            source_code = build_grader_source(practical_metadata["exercise_id"], learner_source_code)
+            if len(source_code.encode("utf-8")) > 64 * 1024:
+                raise ValueError("Generated practical grader exceeds the sandbox source limit.")
+
         timeout_seconds = payload.get("timeout_seconds", 10)
         max_output_bytes = payload.get("max_output_bytes", 32 * 1024)
         if (
@@ -99,7 +118,7 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
         if not sandbox_consent.is_enabled():
             raise ValueError("Sandbox execution requires explicit, current user consent.")
 
-        source_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
+        source_hash = hashlib.sha256(learner_source_code.encode("utf-8")).hexdigest()
         context.checkpoint(
             {
                 "phase": "sandbox_started",
@@ -124,7 +143,60 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
                     return "control_unavailable"
             return "running"
 
-        if language in {"javascript", "rust"}:
+        practical_assessment = None
+        practical_completed = False
+        practical_case_count = 0
+        if practical_metadata is not None:
+            import json
+            from .learning_practical import (
+                build_grade_report, get_test_cases, grade_case_output, record_practical_attempt,
+            )
+            case_results = []
+            total_duration_ms = 0
+            result = None
+            cases = get_test_cases(practical_metadata["exercise_id"])
+            practical_case_count = len(cases)
+            for case in cases:
+                preflight_status = control_check()
+                if preflight_status != "running":
+                    stopped_status = "paused" if preflight_status in {"pause_requested", "paused"} else "cancelled"
+                    result = sandbox.SandboxResult(
+                        stopped_status, None, "", "", total_duration_ms,
+                        "Practical grading stopped before all test cases completed.",
+                    )
+                    break
+                case_result = sandbox.run_python(
+                    learner_source_code,
+                    docker_executable=executable,
+                    image=selected_image,
+                    timeout_seconds=timeout_seconds,
+                    max_output_bytes=max_output_bytes,
+                    stdin_text=json.dumps(case["input"], ensure_ascii=False),
+                    control_check=control_check,
+                    task_id=context.task_id,
+                )
+                total_duration_ms += case_result.duration_ms
+                if case_result.status in {"unavailable", "paused", "cancelled"}:
+                    result = sandbox.SandboxResult(
+                        case_result.status, case_result.exit_code, "", "", total_duration_ms,
+                        case_result.reason,
+                    )
+                    break
+                case_results.append({
+                    "case_id": case["id"],
+                    "passed": grade_case_output(
+                        practical_metadata["exercise_id"], case["id"],
+                        case_result.status, case_result.exit_code, case_result.stdout,
+                    ),
+                })
+            if result is None:
+                grading_report = build_grade_report(practical_metadata["exercise_id"], case_results)
+                result = sandbox.SandboxResult(
+                    "succeeded", 0, json.dumps(grading_report, separators=(",", ":")),
+                    "", total_duration_ms,
+                )
+                practical_completed = True
+        elif language in {"javascript", "rust"}:
             result = sandbox.run_language(
                 source_code,
                 language=language,
@@ -153,15 +225,29 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
             "execution_status": result.status,
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
+            **({"practical_case_count": practical_case_count, "practical_completed": practical_completed}
+               if practical_metadata is not None else {}),
         }
         context.checkpoint(evidence)
         if consent_revoked:
             raise RuntimeError("Sandbox execution stopped because user consent was revoked.")
+        if practical_metadata is not None and practical_completed:
+            try:
+                grading_report = json.loads(result.stdout)
+                practical_assessment = record_practical_attempt(
+                    practical_metadata["job_id"],
+                    practical_metadata["exercise_id"],
+                    grading_report,
+                    learner_source_code,
+                )
+            except (KeyError, TypeError, ValueError, OSError) as exc:
+                raise RuntimeError("Practical grading output could not be validated or recorded.") from exc
         return {
             **evidence,
             "stdout": result.stdout,
             "stderr": result.stderr,
             "reason": result.reason,
+            **({"practical_assessment": practical_assessment} if practical_assessment is not None else {}),
         }
 
     return handle
