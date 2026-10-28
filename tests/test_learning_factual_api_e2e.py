@@ -4,7 +4,7 @@ import time
 
 from fastapi.testclient import TestClient
 
-from app import claim_review, db, learning
+from app import claim_review, db, learning, learning_review_channels as review
 from app.main import app
 
 
@@ -183,6 +183,43 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         applicability = json.loads(evidence[0]["applicability_json"])
         assert applicability["model_assisted_review_only"] is True
         assert applicability["independent_verification"] is False
+
+        # The durable budget created during generation is reused by candidate review.
+        from app.learning_durable_budget import get_job_budget
+        generation_budget = get_job_budget(created["id"])
+        assert generation_budget["calls_used"] == 1
+        assert generation_budget["predict_tokens_reserved"] == 1200
+
+        with db.learning_connection() as conn:
+            candidate = conn.execute(
+                "SELECT id FROM temporary_knowledge_candidates WHERE job_id=?",
+                (created["id"],),
+            ).fetchone()
+        assert candidate is not None
+        from app.learning_review_tasks import handle_candidate_review
+        monkeypatch.setattr(
+            review, "research_candidate_online",
+            lambda *_args, **_kwargs: {"status": "unavailable"},
+        )
+        monkeypatch.setattr(
+            review, "consult_configured_peer_ais",
+            lambda *_args, **_kwargs: {"status": "unconfigured"},
+        )
+
+        class ReviewContext:
+            task_id = 991
+            def checkpoint(self, _value): pass
+
+        review_result = handle_candidate_review(
+            {"candidate_id": int(candidate["id"]), "query": "Python list behavior", "web_mode": "search"},
+            None,
+            ReviewContext(),
+        )
+        assert review_result["promoted"] is False
+        final_budget = get_job_budget(created["id"])
+        assert final_budget["calls_used"] == 5
+        assert final_budget["predict_tokens_reserved"] == 7500
+        assert final_budget["scope"] == "durable_single_learning_job_across_generation_and_review_channels"
 
 
 
