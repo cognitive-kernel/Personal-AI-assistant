@@ -14,6 +14,24 @@ def _setup(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     monkeypatch.setattr(db.defaults, "cloud_resources_db_path", str(tmp_path / "cloud_resources.db"))
     db.init_databases()
+    evaluator_settings = {
+        "factual_review_ollama_model": "independent-reviewer:1",
+        "ollama_model": "chat-generator:1",
+        "chat_ollama_model": "chat-generator:1",
+        "learning_ollama_model": "lesson-generator:1",
+        "programming_ollama_model": "code-generator:1",
+    }
+    monkeypatch.setattr(assessment_review, "get_settings", lambda: dict(evaluator_settings))
+    monkeypatch.setattr(
+        assessment_review.ollama,
+        "list_models",
+        lambda: [
+            {"name": "independent-reviewer:1", "digest": "b" * 64},
+            {"name": "chat-generator:1", "digest": "a" * 64},
+            {"name": "lesson-generator:1", "digest": "c" * 64},
+            {"name": "code-generator:1", "digest": "d" * 64},
+        ],
+    )
     job = learning.create_job("Semantic review contract")
     assessment = {
         "questions": ["What does a database index help with?"],
