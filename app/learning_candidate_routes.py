@@ -219,9 +219,13 @@ def save_candidate_test_plan(
             if coverage_request:
                 from .claim_test_coverage import evaluate_claim_test_coverage, extract_candidate_claims
                 claims = extract_candidate_claims(candidate["content"], candidate_id)
+                coverage_plan = [
+                    {"test": item.get("name"), "claim_ids": item.get("claim_ids")}
+                    for item in plan["tests"]
+                ]
                 coverage = evaluate_claim_test_coverage(
                     [claim["claim_id"] for claim in claims],
-                    plan["tests"],
+                    coverage_plan,
                 )
                 if not coverage["complete"]:
                     raise HTTPException(
