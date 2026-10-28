@@ -387,6 +387,8 @@ function renderLessonResult(output, job, path, topic) {
  form.append(semanticReviewButton, semanticReviewResult);
  let latestAttemptId = Array.isArray(job.assessment_attempts) && job.assessment_attempts.length
   ? job.assessment_attempts[0].id : null;
+ let pendingSubmissionKey = null;
+ let pendingAnswersSnapshot = null;
  semanticReviewButton.hidden = !latestAttemptId;
  semanticReviewResult.textContent = latestAttemptId
   ? "برای آخرین تلاش آزمون می‌توانید بازبینی ذخیره‌شده را ببینید یا بازبینی کمکی تازه‌ای ایجاد کنید."
@@ -435,18 +437,38 @@ function renderLessonResult(output, job, path, topic) {
   event.preventDefault();
   submit.disabled = true;
   result.textContent = "در حال ارزیابی پاسخ‌ها…";
+  const answers = fields.map(field => field.value);
+  const answersSnapshot = JSON.stringify(answers);
+  if (!pendingSubmissionKey || pendingAnswersSnapshot !== answersSnapshot) {
+   pendingAnswersSnapshot = answersSnapshot;
+   pendingSubmissionKey = "assessment-" + job.id + "-" + Date.now().toString(36) + "-" +
+    Math.random().toString(36).slice(2, 12);
+  }
   try {
    const outcome = await learningApi("/api/learning/jobs/" + job.id + "/assessment", {
     method: "POST",
-    body: JSON.stringify({answers: fields.map(field => field.value)})
+    body: JSON.stringify({answers, idempotency_key: pendingSubmissionKey})
    });
+   pendingSubmissionKey = null;
+   pendingAnswersSnapshot = null;
    latestAttemptId = outcome.attempt_id;
    semanticReviewButton.hidden = false;
    semanticReviewResult.textContent = "آزمون ثبت شد. بازبینی معنایی اختیاری است و نمره قطعی را تغییر نمی‌دهد.";
+   const rubricBased = outcome.scoring_method === "rubric_concept_coverage_v1";
+   const scoreUnit = rubricBased ? "پوشش معیارهای مفهومی" : "پاسخ منطبق";
+   const threshold = rubricBased ? 80 : 70;
+   const pathStatus = outcome.path_topic_status === "completed"
+    ? "سرفصل با عبور از آستانهٔ " + threshold + " تکمیل شد."
+    : "برای تکمیل سرفصل باید حداقل " + threshold + " از 100 کسب شود.";
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
-    outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
-    outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
-   result.textContent += " این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود.";
+    outcome.correct_count + " " + scoreUnit + " از " + outcome.question_count + "). " +
+    pathStatus + " " + outcome.note;
+   if (Array.isArray(outcome.per_question)) {
+    result.textContent += " نمرهٔ هر سؤال: " + outcome.per_question.map(item =>
+     item.question_index + ": " + item.score
+    ).join("، ") + ".";
+   }
+   result.textContent += " این نمره به‌تنهایی اثبات فهم کامل یا صحت علمی مستقل نیست.";
   } catch (error) {
    result.textContent = "خطا در ثبت آزمون: " + error.message;
    submit.disabled = false;
@@ -454,7 +476,7 @@ function renderLessonResult(output, job, path, topic) {
  });
  output.append(form);
  const caveat = document.createElement("p");
- caveat.textContent = "این آزمون بر اساس تطبیق متنی پاسخ‌ها نمره می‌دهد و تأیید علمی مستقل یا فهم معنایی را اثبات نمی‌کند.";
+ caveat.textContent = "در صورت وجود rubric معتبر، نمره بر اساس پوشش معیارهای مفهومی محاسبه می‌شود؛ در آزمون‌های قدیمی از تطبیق متنی استفاده می‌شود. هیچ‌کدام به‌تنهایی اثبات قطعی فهم یا تأیید علمی مستقل نیستند.";
  output.append(caveat);
 }
 
