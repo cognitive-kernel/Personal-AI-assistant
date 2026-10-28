@@ -197,7 +197,7 @@ def save_candidate_test_plan(
             raise HTTPException(status_code=422, detail="oracle_id, oracle_version, and claim must be provided together.")
         has_oracle_reference = has_oracle_reference or all(oracle_fields)
         has_claim_mapping = has_claim_mapping or item.claim_ids is not None
-    plan_tests = [item.model_dump() for item in request.tests]
+    plan_tests = [item.model_dump(exclude_none=True) for item in request.tests]
     coverage_request = bool(has_claim_mapping)
     plan = {
         "version": 4 if has_claim_mapping else (3 if has_oracle_reference else 2),
