@@ -127,6 +127,7 @@ def test_factual_claim_route_queue_worker_and_result_are_end_to_end(tmp_path, mo
     assert len(tests[0]["log_hash"]) == 64
 
 def test_sqlite_factual_claim_is_visible_in_the_manual_test_queue(tmp_path, monkeypatch):
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda language: language == "sqlite")
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
