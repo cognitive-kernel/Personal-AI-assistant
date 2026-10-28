@@ -343,9 +343,12 @@ def get_capability_map(*, path_id: int | None = None, limit: int = 200) -> dict[
             usage["cost_status"] = "partial_estimate"
         else:
             usage["cost_status"] = "configured_estimate"
+        history_scores = score_history.get(int(row["topic_id"]), [])
+        prior_score = history_scores[1] if len(history_scores) > 1 else None
+        current_score = history_scores[0] if history_scores else (float(score) if valid else None)
         value_metrics = learning_cost_manager.learning_value_metrics(
-            prior_score=(score_history.get(int(row["topic_id"]), [None, None])[1]),
-            current_score=(score_history.get(int(row["topic_id"]), [float(score) if valid else None])[0]),
+            prior_score=prior_score,
+            current_score=current_score,
             estimated_cost_microusd=usage["estimated_cost_microusd"],
             prompt_tokens=usage["prompt_tokens"],
             completion_tokens=usage["completion_tokens"],
