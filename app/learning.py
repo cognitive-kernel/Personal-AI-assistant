@@ -1075,6 +1075,9 @@ def get_job(job_id: int) -> dict[str, Any]:
                 assessment["answer_key"] = assessment.get("answer_key", [])
             else:
                 assessment.pop("answer_key", None)
+            # Rubric phrases are scoring metadata; never expose answer cues.
+            assessment.pop("rubric", None)
+            assessment.pop("rubric_version", None)
         result["assessment"] = assessment
         result["assessment_attempts"] = attempts
         latest_review = conn.execute(
@@ -1455,10 +1458,20 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         raise ValueError("Score must be between 0 and 100.")
     with learning_connection() as conn:
         exists = conn.execute(
-            "SELECT id FROM learning_path_topics WHERE id=? AND path_id=?", (topic_id, path_id)
+            """SELECT id, latest_score, latest_score_kind FROM learning_path_topics
+               WHERE id=? AND path_id=?""",
+            (topic_id, path_id),
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
+        if exists["latest_score_kind"] == "learner_rubric":
+            stored_score = exists["latest_score"]
+            if latest_score is not None and latest_score != stored_score:
+                raise ValueError("A rubric-derived score cannot be manually overridden.")
+            if status == "completed" and (
+                stored_score is None or float(stored_score) < 80.0
+            ):
+                raise ValueError("A rubric-scored topic requires at least 80/100 to be completed.")
         conn.execute(
             "UPDATE learning_path_topics SET status=?, latest_score=COALESCE(?, latest_score), updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (status, latest_score, topic_id, path_id),
