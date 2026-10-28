@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-28  
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `026d914426af0ccbbeb002b20bc21f7be35d5d75`  
+> commit مبنا: `28b18088267eca759e78c15930425e3f0698f19d`  
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -10,6 +10,19 @@
 مخزن در commit مبنا از قبل به‌صورت ماژولار سازمان‌دهی شده است؛ `app/main.py` نقطهٔ ترکیب FastAPI، middlewareها، lifecycle و بخشی از endpointهای اصلی است و routerها و زیرسامانه‌های مستقل در فایل‌های جدا قرار دارند. انتقال تمام کدها به یک فایل `main.py` ادغام استاندارد محسوب نمی‌شود: این کار coupling را بالا می‌برد، تست واحد را دشوارتر می‌کند و خطر regression را افزایش می‌دهد. بنابراین ساختار ماژولار حفظ می‌شود و ادغام در `main` باید از طریق تغییرات کوچک، قابل بازبینی و CI-پذیرفته انجام شود.
 
 این گزارش به‌خودی‌خود ادعای اجرای محلی کل مجموعهٔ تست یا ممیزی خط‌به‌خط تمام 276 فایل نیست. برای چنین ادعایی باید checkout کامل، اجرای تست‌ها و ارزیابی عملی روی میزبان هدف در دسترس باشد.
+
+## 1.1 تغییرات تأییدشده پس از بازبینی قبلی
+
+در snapshot فعلی، تغییرات زیر به‌صورت مرحله‌ای به `main` رسیده‌اند:
+
+- PR [#483](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/483): migration 24 و دفتر idempotent ثبت اجرای کانال‌های بازبینی نامزد؛ نتیجهٔ ثبت‌شده به‌تنهایی موجب ارتقای اعتماد نمی‌شود.
+- PR [#484](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/484): بررسی لینک‌های Markdown محلی در CI.
+- PR [#485](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/485): تبدیل بررسی چرخه‌های import زمان بارگذاری به گیت شکست CI.
+- PR [#486](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/486): pin کردن اتصال HTTP(S) به IP عمومی اعتبارسنجی‌شده، حفظ نام میزبان TLS و آزمون رگرسیون DNS/redirect.
+
+آزمون‌های PR برای هر تغییر بالا موفق بودند. اجرای CI روی commit نهایی `main` نیز باید جداگانه از صفحهٔ Actions تأیید شود؛ این گزارش ادعای اجرای محلی checkout یا تست زندهٔ میزبان را ندارد.
+
+PRهای دارای قابلیت‌های منحصربه‌فرد و هنوز نیازمند ادغام مرحله‌ای: [#462](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/462)، [#459](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/459)، [#370](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/370) و [#369](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/369). تغییرات متداخل آن‌ها نباید با ادغام اجباری یا جایگزینی کورکورانهٔ فایل‌های موجود اعمال شوند.
 
 ## 2. نمای مخزن در commit مبنا
 
