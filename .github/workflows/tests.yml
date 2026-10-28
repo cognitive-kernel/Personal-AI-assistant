@@ -22,6 +22,8 @@ jobs:
         run: pytest
       - name: Verify generated learning artifacts
         run: python scripts/generate_learning_artifacts.py --check
+      - name: Validate repository-local Markdown links
+        run: python scripts/check_markdown_links.py
       - name: Report Python import-cycle components
         run: python scripts/check_import_cycles.py
       - name: Run deterministic lexical retrieval benchmark
