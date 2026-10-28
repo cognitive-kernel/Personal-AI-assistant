@@ -867,6 +867,51 @@ async function loadLearningPaths() {
  } catch (error) { learningEl("paths-output").textContent = error.message; }
 }
 
+async function refreshLearningCapabilities() {
+ const output = learningEl("capability-map-output");
+ if (!output) return;
+ output.textContent = "در حال ساخت نقشه از ارزیابی‌های ذخیره‌شده…";
+ try {
+  const result = await learningApi("/api/learning/capabilities?limit=200");
+  const items = result.capabilities || [];
+  const labels = {
+   not_assessed: "ارزیابی نشده",
+   invalid_evidence: "شواهد نامعتبر",
+   needs_reinforcement: "نیازمند تقویت",
+   provisional: "شواهد اولیه",
+   repeated_provisional: "شواهد اولیهٔ تکرارشده",
+   practical_provisional: "شواهد عملی تکرارشده (موقت)",
+   transfer_provisional: "انتقال عملی از دانش تأییدشده (موقت)",
+   conflicting_evidence: "تعارض بین آزمون نظری و عملی"
+  };
+  output.textContent = items.length
+   ? items.map(item =>
+      item.path_title + " — " + item.capability +
+      "\nوضعیت: " + (labels[item.status] || item.status) +
+      "\nآخرین نمره: " + (item.latest_score == null ? "ندارد" : item.latest_score + "/100") +
+      "؛ تعداد آزمون نظری معتبر: " + item.assessment_count +
+      "\nآزمون عملی معتبر: " + item.practical_attempt_count +
+      "؛ برنامه‌های آزمون مستقل: " + item.practical_source_count +
+      "\nحالات انتقال عملی: " + (item.transfer_case_count || 0) +
+      "؛ انتقال تکرارپذیر: " + (item.transfer_repeatable ? "بله (موقت)" : "خیر/شواهد ناکافی") +
+      "\nروش تمایز سناریوها: " + (item.transfer_novelty_method === "token_set_jaccard"
+        ? "شباهت واژگانی؛ آستانه " + Math.round((item.transfer_novelty_threshold || 0.8) * 100) + "%"
+        : "نامشخص") +
+      "\nمصرف مدل: " + item.prompt_tokens + " ورودی / " + item.completion_tokens + " خروجی توکن" +
+      "؛ زمان استنتاج: " + item.inference_duration_ms + " میلی‌ثانیه" +
+      "؛ امتیاز نظری به‌ازای ۱۰۰۰ توکن خروجی: " + (item.score_points_per_1000_output_tokens == null ? "ناموجود" : item.score_points_per_1000_output_tokens) +
+      "\nهزینهٔ تخمینی: " + (item.estimated_cost_microusd == null ? "نامشخص؛ نرخ هزینه تنظیم نشده" : item.estimated_cost_microusd + " میکرو‌دلار") +
+      "؛ وضعیت هزینه: " + (item.cost_status || "نامشخص") +
+      "\nشاخص ارزش: " + (item.learning_value_cost && item.learning_value_cost.provisional_value_points != null ? item.learning_value_cost.provisional_value_points : "ناموجود") +
+      "؛ هزینه به‌ازای هر واحد ارزش: " + (item.learning_value_cost && item.learning_value_cost.estimated_cost_microusd_per_value_point != null ? item.learning_value_cost.estimated_cost_microusd_per_value_point : "ناموجود؛ هزینه یا خط مبنای کافی نیست")
+     ).join("\n\n") +
+     "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال مهارت عملی را اثبات نمی‌کند."
+   : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
+ } catch (error) {
+  output.textContent = "ساخت نقشهٔ قابلیت‌ها ناموفق بود: " + error.message;
+ }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
  const enroll = learningEl("enroll-curriculum");
  if (!enroll) return;
@@ -882,8 +927,164 @@ document.addEventListener("DOMContentLoaded", () => {
  learningEl("refresh-paths").addEventListener("click", loadLearningPaths);
  learningEl("refresh-due-reviews").addEventListener("click", refreshDueLearningReviews);
  learningEl("refresh-learning-recommendations").addEventListener("click", refreshLearningRecommendations);
+ learningEl("refresh-capability-map").addEventListener("click", refreshLearningCapabilities);
  loadLearningCurricula();
  loadLearningPaths();
  refreshDueLearningReviews();
  refreshLearningRecommendations();
 });
+
+
+// Phase one: acquire lessons through the user's authenticated ChatGPT tab in local Chrome.
+async function refreshBrowserLearningCourses() {
+ const container = learningEl("browser-learning-courses");
+ if (!container) return;
+ container.textContent = "در حال بارگذاری دوره‌های هوش‌به‌هوش…";
+ try {
+  const result = await learningApi("/api/learning/browser/courses?limit=50");
+  container.replaceChildren();
+  const courses = result.courses || [];
+  if (!courses.length) {
+   container.textContent = "هنوز دوره‌ای ثبت نشده است.";
+   return;
+  }
+  for (const item of courses) {
+   const card = document.createElement("article");
+   card.className = "browser-learning-course";
+   const heading = document.createElement("h4");
+   heading.textContent = "#" + item.id + " — " + (item.title || item.topic);
+   const meta = document.createElement("p");
+   meta.textContent = "وضعیت: " + item.status + " | موضوع: " + item.topic;
+   card.append(heading, meta);
+   if (item.error) {
+    const error = document.createElement("p");
+    error.className = "muted";
+    error.textContent = "جزئیات خطا: " + item.error;
+    card.append(error);
+   }
+   const open = document.createElement("button");
+   open.type = "button";
+   open.textContent = "نمایش سرفصل‌ها و درس‌های ذخیره‌شده";
+   open.addEventListener("click", () => loadBrowserLearningCourse(item.id, card));
+   card.append(open);
+   if (["failed", "interrupted"].includes(item.status)) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.textContent = "ادامه / تلاش دوباره";
+    retry.addEventListener("click", async () => {
+     retry.disabled = true;
+     try {
+      await learningApi("/api/learning/browser/courses/" + item.id + "/retry", {method: "POST", body: "{}"});
+      await refreshBrowserLearningCourses();
+      pollBrowserLearningCourse(item.id);
+     } catch (error) {
+      retry.disabled = false;
+      learningEl("browser-learning-output").textContent = "ادامهٔ دوره ناموفق بود: " + error.message;
+     }
+    });
+    card.append(retry);
+   }
+   container.append(card);
+  }
+ } catch (error) {
+  container.textContent = "بارگذاری فهرست دوره‌ها ناموفق بود: " + error.message;
+ }
+}
+
+async function loadBrowserLearningCourse(courseId, card) {
+ try {
+  const course = await learningApi("/api/learning/browser/courses/" + courseId);
+  let detail = card.querySelector(".browser-learning-detail");
+  if (detail) detail.remove();
+  detail = document.createElement("div");
+  detail.className = "browser-learning-detail";
+  const heading = document.createElement("h5");
+  heading.textContent = "سرفصل‌های دوره — " + (course.title || course.topic);
+  detail.append(heading);
+  const summary = document.createElement("p");
+  const lessons = course.lessons || [];
+  const completed = lessons.filter(lesson => lesson.status === "completed").length;
+  summary.textContent = "پیشرفت: " + completed + " از " + lessons.length + " درس ذخیره شده | وضعیت دوره: " + course.status +
+   (course.outline_sha256 ? " | SHA-256 سرفصل: " + course.outline_sha256 : "");
+  detail.append(summary);
+  for (const lesson of lessons) {
+   const section = document.createElement("details");
+   const title = document.createElement("summary");
+   title.textContent = lesson.position + ". " + lesson.topic + " — " + lesson.status;
+   section.append(title);
+   if (lesson.error) {
+    const error = document.createElement("p");
+    error.textContent = "خطا: " + lesson.error;
+    section.append(error);
+   }
+   if (lesson.content) {
+    const provenance = document.createElement("p");
+    provenance.textContent = "اعتماد: " + (lesson.trust_status || "unverified") +
+      " | منبع: " + (lesson.source_url || "نامشخص") +
+      " | SHA-256 محتوا: " + (lesson.content_sha256 || "ثبت نشده") +
+      " | SHA-256 درخواست: " + (lesson.prompt_sha256 || "ثبت نشده");
+    const body = document.createElement("pre");
+    body.textContent = lesson.content;
+    section.append(provenance, body);
+   }
+   detail.append(section);
+  }
+  card.append(detail);
+ } catch (error) {
+  learningEl("browser-learning-output").textContent = "دریافت جزئیات دوره ناموفق بود: " + error.message;
+ }
+}
+
+async function pollBrowserLearningCourse(courseId) {
+ const output = learningEl("browser-learning-output");
+ for (let attempt = 0; attempt < 1800; attempt += 1) {
+  try {
+   const course = await learningApi("/api/learning/browser/courses/" + courseId);
+   const lessons = course.lessons || [];
+   const completed = lessons.filter(lesson => lesson.status === "completed").length;
+   output.textContent = "دوره #" + courseId + " — " + (course.title || course.topic) +
+    "\nوضعیت: " + course.status + "\nدرس‌های ذخیره‌شده: " + completed + " از " + lessons.length +
+    (course.error ? "\nخطا: " + course.error : "");
+   if (!["queued", "running"].includes(course.status)) {
+    await refreshBrowserLearningCourses();
+    return;
+   }
+  } catch (error) {
+   output.textContent = "وضعیت دوره قابل دریافت نیست: " + error.message;
+   return;
+  }
+  await learningDelay(3000);
+ }
+ output.textContent = "پایش خودکار پس از ۹۰ دقیقه متوقف شد؛ وضعیت دوره در فهرست ذخیره شده است.";
+}
+
+const browserLearningForm = learningEl("browser-learning-form");
+if (browserLearningForm) {
+ browserLearningForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = learningEl("browser-learning-start");
+  const output = learningEl("browser-learning-output");
+  button.disabled = true;
+  output.textContent = "در حال ثبت دوره و شروع ارتباط با Chrome…";
+  try {
+   const course = await learningApi("/api/learning/browser/courses", {
+    method: "POST",
+    body: JSON.stringify({
+     topic: learningEl("browser-learning-topic").value,
+     cdp_url: learningEl("browser-learning-cdp").value,
+     max_lessons: Number(learningEl("browser-learning-max-lessons").value)
+    })
+   });
+   output.textContent = "دوره #" + course.id + " ثبت شد؛ در حال اتصال به ChatGPT و دریافت سرفصل‌ها…";
+   await refreshBrowserLearningCourses();
+   pollBrowserLearningCourse(course.id);
+  } catch (error) {
+   output.textContent = "شروع یادگیری هوش‌به‌هوش ناموفق بود: " + error.message;
+  } finally {
+   button.disabled = false;
+  }
+ });
+}
+const browserLearningRefresh = learningEl("browser-learning-refresh");
+if (browserLearningRefresh) browserLearningRefresh.addEventListener("click", refreshBrowserLearningCourses);
+refreshBrowserLearningCourses();

@@ -1118,7 +1118,149 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
             "CREATE INDEX idx_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)"
         ),
-    )
+    ),
+    Migration(
+        32,
+        "factual-independent-oracle-audit",
+        (
+            """CREATE TABLE factual_oracle_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
+                claim_hash TEXT NOT NULL CHECK(length(claim_hash) = 64),
+                test_source_hash TEXT NOT NULL CHECK(length(test_source_hash) = 64),
+                oracle_source_url TEXT NOT NULL CHECK(substr(oracle_source_url, 1, 8) = 'https://'),
+                oracle_source_hash TEXT NOT NULL CHECK(length(oracle_source_hash) = 64),
+                reviewer TEXT NOT NULL CHECK(reviewer = 'local_user'),
+                review_note TEXT NOT NULL CHECK(length(trim(review_note)) >= 20),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_factual_oracle_reviews_claim_created ON factual_oracle_reviews(knowledge_id, created_at DESC, id DESC)",
+            "CREATE INDEX idx_factual_oracle_reviews_test_hash ON factual_oracle_reviews(test_source_hash, claim_hash)"
+        ),
+    ),
+    Migration(
+        33,
+        "measured-model-usage-for-learning-value",
+        (
+            """CREATE TABLE model_usage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER NOT NULL REFERENCES task_queue(id) ON DELETE CASCADE,
+                purpose TEXT NOT NULL CHECK(purpose IN ('chat','learning','programming','factual_review','research_plan')),
+                model_name TEXT NOT NULL CHECK(length(trim(model_name)) BETWEEN 1 AND 200),
+                prompt_tokens INTEGER NOT NULL DEFAULT 0 CHECK(prompt_tokens >= 0),
+                completion_tokens INTEGER NOT NULL DEFAULT 0 CHECK(completion_tokens >= 0),
+                total_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(total_duration_ns >= 0),
+                load_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(load_duration_ns >= 0),
+                prompt_eval_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(prompt_eval_duration_ns >= 0),
+                eval_duration_ns INTEGER NOT NULL DEFAULT 0 CHECK(eval_duration_ns >= 0),
+                estimated_cost_microusd INTEGER CHECK(estimated_cost_microusd IS NULL OR estimated_cost_microusd >= 0),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_model_usage_task ON model_usage_events(task_id, id)",
+            "CREATE INDEX idx_model_usage_purpose_created ON model_usage_events(purpose, created_at DESC)",
+            "CREATE INDEX idx_model_usage_cost ON model_usage_events(estimated_cost_microusd, created_at DESC)",
+        ),
+    ),
+    Migration(
+        34,
+        "multi-evidence-temporary-knowledge-review",
+        (
+            """CREATE TABLE knowledge_candidate_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                candidate_sha256 TEXT NOT NULL CHECK(length(candidate_sha256) = 64),
+                review_kind TEXT NOT NULL CHECK(review_kind IN ('source','ai_review','test_review')),
+                verdict TEXT NOT NULL CHECK(verdict IN ('supports','contradicts','inconclusive')),
+                reviewer_id TEXT NOT NULL CHECK(length(trim(reviewer_id)) BETWEEN 1 AND 200),
+                model_id TEXT,
+                source_url TEXT,
+                source_host TEXT,
+                source_sha256 TEXT CHECK(source_sha256 IS NULL OR length(source_sha256) = 64),
+                input_sha256 TEXT CHECK(input_sha256 IS NULL OR length(input_sha256) = 64),
+                output_sha256 TEXT CHECK(output_sha256 IS NULL OR length(output_sha256) = 64),
+                note TEXT NOT NULL CHECK(length(trim(note)) BETWEEN 20 AND 2000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                CHECK(
+                    (review_kind = 'source' AND source_url IS NOT NULL
+                     AND substr(source_url, 1, 8) = 'https://'
+                     AND source_host IS NOT NULL AND source_sha256 IS NOT NULL)
+                    OR review_kind <> 'source'
+                ),
+                CHECK(review_kind <> 'ai_review' OR
+                      (model_id IS NOT NULL AND input_sha256 IS NOT NULL AND output_sha256 IS NOT NULL)),
+                CHECK(review_kind <> 'test_review' OR
+                      (input_sha256 IS NOT NULL AND output_sha256 IS NOT NULL))
+            )""",
+            "CREATE INDEX idx_candidate_reviews_candidate ON knowledge_candidate_reviews(candidate_id, created_at DESC, id DESC)",
+            "CREATE INDEX idx_candidate_reviews_verdict ON knowledge_candidate_reviews(candidate_id, verdict, review_kind)",
+            "ALTER TABLE learning_experiences ADD COLUMN originating_knowledge_id INTEGER REFERENCES knowledge_items(id) ON DELETE SET NULL",
+            "CREATE INDEX idx_experiences_originating_knowledge ON learning_experiences(originating_knowledge_id, id DESC)",
+        ),
+    ),
+    Migration(
+        35,
+        "evidence-reviewed-learning-causal-graph",
+        (
+            """CREATE TABLE learning_knowledge_graph_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_knowledge_id INTEGER NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                target_knowledge_id INTEGER NOT NULL REFERENCES knowledge_items(id) ON DELETE RESTRICT,
+                relation_type TEXT NOT NULL CHECK(relation_type IN ('supports','causes','depends_on','contradicts','supersedes')),
+                source_url TEXT NOT NULL CHECK(substr(source_url, 1, 8) = 'https://'),
+                source_excerpt TEXT NOT NULL CHECK(length(trim(source_excerpt)) BETWEEN 20 AND 1000),
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                status TEXT NOT NULL DEFAULT 'proposed' CHECK(status IN ('proposed','accepted','conflicting','rejected')),
+                review_json TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TEXT,
+                CHECK(source_knowledge_id <> target_knowledge_id),
+                UNIQUE(source_knowledge_id, target_knowledge_id, relation_type, source_sha256)
+            )""",
+            "CREATE INDEX idx_learning_graph_source ON learning_knowledge_graph_edges(source_knowledge_id, status, relation_type)",
+            "CREATE INDEX idx_learning_graph_target ON learning_knowledge_graph_edges(target_knowledge_id, status, relation_type)",
+        ),
+    ),
+    Migration(
+        36,
+        "chrome-chatgpt-learning-phase-one",
+        (
+            """CREATE TABLE browser_learning_courses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                topic TEXT NOT NULL CHECK(length(trim(topic)) BETWEEN 1 AND 300),
+                title TEXT,
+                cdp_url TEXT NOT NULL CHECK(cdp_url LIKE 'http://127.0.0.1:%' OR cdp_url LIKE 'http://localhost:%' OR cdp_url LIKE 'http://[::1]:%'),
+                max_lessons INTEGER NOT NULL CHECK(max_lessons BETWEEN 1 AND 40),
+                outline_json TEXT,
+                outline_sha256 TEXT CHECK(outline_sha256 IS NULL OR length(outline_sha256) = 64),
+                status TEXT NOT NULL DEFAULT 'queued'
+                    CHECK(status IN ('queued','running','completed','failed','interrupted')),
+                error TEXT CHECK(error IS NULL OR length(error) <= 1000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE browser_learning_lessons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL REFERENCES browser_learning_courses(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 40),
+                topic TEXT NOT NULL CHECK(length(trim(topic)) BETWEEN 1 AND 300),
+                status TEXT NOT NULL DEFAULT 'queued'
+                    CHECK(status IN ('queued','running','completed','failed')),
+                trust_status TEXT NOT NULL DEFAULT 'unverified'
+                    CHECK(trust_status IN ('unverified','accepted','rejected')),
+                content TEXT,
+                source_url TEXT CHECK(source_url IS NULL OR source_url = 'https://chatgpt.com/' OR source_url = 'https://chat.openai.com/' OR source_url LIKE 'https://chatgpt.com/%' OR source_url LIKE 'https://chat.openai.com/%'),
+                prompt_sha256 TEXT CHECK(prompt_sha256 IS NULL OR length(prompt_sha256) = 64),
+                content_sha256 TEXT CHECK(content_sha256 IS NULL OR length(content_sha256) = 64),
+                error TEXT CHECK(error IS NULL OR length(error) <= 1000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(course_id, position)
+            )""",
+            "CREATE INDEX idx_browser_learning_courses_status ON browser_learning_courses(status, id DESC)",
+            "CREATE INDEX idx_browser_learning_lessons_course ON browser_learning_lessons(course_id, position)",
+            "CREATE INDEX idx_browser_learning_lessons_status ON browser_learning_lessons(status, course_id)",
+        ),
+    ),
 )
 
 

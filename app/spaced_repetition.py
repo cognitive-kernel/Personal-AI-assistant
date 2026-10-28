@@ -103,6 +103,39 @@ def record_review(path_id: int, topic_id: int, rating: int) -> dict[str, Any]:
     }
 
 
+def record_assessment_result(path_id: int, topic_id: int, score: float) -> dict[str, Any]:
+    """Adapt review spacing from a deterministic assessment score, without asserting mastery."""
+    if (
+        isinstance(path_id, bool) or not isinstance(path_id, int) or path_id < 1
+        or isinstance(topic_id, bool) or not isinstance(topic_id, int) or topic_id < 1
+    ):
+        raise ValueError("path_id and topic_id must be positive integers.")
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= float(score) <= 100:
+        raise ValueError("score must be a number from 0 to 100.")
+    numeric_score = float(score)
+    if numeric_score < 40:
+        rating = 0
+    elif numeric_score < 60:
+        rating = 2
+    elif numeric_score < 80:
+        rating = 3
+    elif numeric_score < 90:
+        rating = 4
+    else:
+        rating = 5
+    result = record_review(path_id, topic_id, rating)
+    result.update({
+        "trigger": "assessment_score",
+        "assessment_score": round(numeric_score, 2),
+        "rating_mapping_version": 1,
+        "note": (
+            "مرور به‌صورت قطعی از نمرهٔ آزمون زمان‌بندی شد؛ این زمان‌بندی به‌تنهایی "
+            "تسلط علمی یا تأیید معنایی را اثبات نمی‌کند."
+        ),
+    })
+    return result
+
+
 def list_due_reviews(limit: int = 50) -> list[dict[str, Any]]:
     if isinstance(limit, bool) or not isinstance(limit, int):
         raise ValueError("limit must be an integer.")

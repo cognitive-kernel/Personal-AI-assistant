@@ -5,12 +5,12 @@ from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
 from typing import Any, Literal
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
-from . import backup_scheduler, assessment_review, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from . import learning_review_tasks
 from .learning_observability import collect_learning_operational_metrics
@@ -30,6 +30,8 @@ from .learning_review_routes import router as learning_review_router
 from .learning_source_sync_routes import router as learning_source_sync_router
 from .curriculum_evolution_routes import router as curriculum_evolution_router
 from .learning_prerequisites_routes import router as learning_prerequisites_router
+from .learning_knowledge_graph_routes import router as learning_knowledge_graph_router
+from .knowledge_lifecycle_routes import router as knowledge_lifecycle_router
 from .ai_learning.routes import router as ai_learning_router
 from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
 from .ai_learning import browser_automation as ai_learning_browser_automation
@@ -66,6 +68,9 @@ app.include_router(learning_review_router)
 app.include_router(learning_source_sync_router)
 app.include_router(curriculum_evolution_router)
 app.include_router(learning_prerequisites_router)
+app.include_router(learning_knowledge_graph_router)
+app.include_router(knowledge_lifecycle_router)
+app.include_router(learning_capabilities_routes.router)
 app.include_router(ai_learning_router)
 app.include_router(ai_learning_ui_router)
 app.include_router(storage_routes.router)
@@ -168,6 +173,7 @@ def startup() -> None:
     _startup_storage_error = None
     try:
         db.init_databases()
+        browser_learning.recover_interrupted_courses()
     except UntrackedSchemaError:
         # Fail closed for data mutations, but keep the local UI and health endpoint
         # available so the operator gets a useful recovery instruction instead of
@@ -199,11 +205,14 @@ def startup() -> None:
     settings = db.get_settings()
     chat_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
+        research_planner.RESEARCH_PLAN_TASK_TYPE: research_planner.handle_research_plan_task,
     }
     learning_handlers = {
         LEARNING_TASK_TYPE: handle_learning_job,
         learning_review_tasks.LEARNING_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_review,
         learning_review_tasks.LEARNING_SANDBOX_REVIEW_TASK_TYPE: learning_review_tasks.handle_candidate_sandbox_review,
+        knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE: knowledge_lifecycle_tasks.handle_validate_candidate,
+        learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE: learning_knowledge_graph_tasks.handle_review_graph_edge,
     }
     programming_handlers: dict[str, Any] = {
         programming_tasks.PROGRAMMING_TASK_TYPE: programming_tasks.handle_programming_task,
@@ -214,10 +223,13 @@ def startup() -> None:
     sandbox_handler = sandbox_tasks.handler_from_environment()
     if sandbox_handler is not None:
         programming_handlers[sandbox_tasks.SANDBOX_TASK_TYPE] = sandbox_handler
+    sandbox_language_handler = sandbox_tasks.handler_from_environment(allow_language_runners=True)
+    if sandbox_language_handler is not None:
+        programming_handlers[sandbox_tasks.SANDBOX_LANGUAGE_TASK_TYPE] = sandbox_language_handler
     experience_test_handler = experience_tasks.handler_from_environment()
     if experience_test_handler is not None:
         programming_handlers[experience_tasks.EXPERIENCE_TEST_TASK_TYPE] = experience_test_handler
-    factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_handler)
+    factual_verification_handler = factual_verification_tasks.handler_from_environment(sandbox_language_handler)
     if factual_verification_handler is not None:
         programming_handlers[factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE] = factual_verification_handler
 
@@ -324,6 +336,13 @@ class SettingsPatch(BaseModel):
 class LearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     source_text: str | None = Field(default=None, max_length=100000)
+
+class BrowserLearningRequest(BaseModel):
+    topic: str = Field(min_length=1, max_length=300)
+    cdp_url: str = Field(default="http://127.0.0.1:9222", min_length=1, max_length=200)
+    max_lessons: int = Field(default=20, ge=1, le=40)
+
+    model_config = ConfigDict(extra="forbid")
 
 class LearningEscalationResolveRequest(BaseModel):
     status: Literal["reviewed", "dismissed"]
@@ -553,6 +572,43 @@ def create_learning_job(request: LearningRequest) -> dict[str, Any]:
 @app.get("/api/learning/jobs")
 def learning_jobs(limit: int = 50) -> dict[str, Any]:
     return {"jobs": learning.list_jobs(limit)}
+
+
+@app.post("/api/learning/browser/courses", status_code=202)
+def create_browser_learning_course(request: BrowserLearningRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    try:
+        course = browser_learning.create_course(request.topic, request.cdp_url, request.max_lessons)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except browser_learning.BrowserLearningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(browser_learning.run_course, int(course["id"]))
+    return course
+
+
+@app.get("/api/learning/browser/courses")
+def list_browser_learning_courses(limit: int = Query(default=50, ge=1, le=200)) -> dict[str, Any]:
+    return {"courses": browser_learning.list_courses(limit)}
+
+
+@app.get("/api/learning/browser/courses/{course_id}")
+def get_browser_learning_course(course_id: int) -> dict[str, Any]:
+    try:
+        return browser_learning.get_course(course_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Browser learning course not found.") from exc
+
+
+@app.post("/api/learning/browser/courses/{course_id}/retry", status_code=202)
+def retry_browser_learning_course(course_id: int, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    try:
+        course = browser_learning.retry_course(course_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Browser learning course not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    background_tasks.add_task(browser_learning.run_course, course_id)
+    return course
 
 
 @app.get("/api/learning/escalations")

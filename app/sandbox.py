@@ -225,10 +225,10 @@ def run_workspace_tests(
         "--label", f"{_SANDBOX_LABEL}=true",
         "--network=none", "--read-only", "--cap-drop=ALL",
         "--security-opt=no-new-privileges", "--pids-limit=128",
-        "--memory=1g", "--memory-swap=1g", "--cpus=2",
+        "--memory=2g", "--memory-swap=2g", "--cpus=2",
         "--stop-timeout=1", "--user=65534:65534",
         "--workdir=/workspace",
-        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m,uid=65534,gid=65534",
+        "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=768m,uid=65534,gid=65534",
         "--env=HOME=/tmp", "--env=TMPDIR=/tmp",
         "--env=SETTINGS_DB_PATH=/tmp/settings.db", "--env=LEARNING_DB_PATH=/tmp/learning.db",
         "--env=PYTHONDONTWRITEBYTECODE=1",
@@ -619,6 +619,163 @@ def run_python(
                 "output_limit_exceeded", exit_code, stdout, stderr, duration_ms,
                 "Sandbox output exceeded the configured per-stream limit.",
             )
+        if exit_code == 0:
+            return SandboxResult("succeeded", exit_code, stdout, stderr, duration_ms)
+        return SandboxResult("failed", exit_code, stdout, stderr, duration_ms)
+
+
+
+_NODE_IMAGE = re.compile(r"^(?:node|docker\.io/library/node):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$")
+_RUST_IMAGE = re.compile(r"^(?:rust|docker\.io/library/rust):[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$")
+
+
+def is_valid_language_image_reference(image: str, language: str) -> bool:
+    """Only immutable official Node/Rust image references are eligible."""
+    if not isinstance(image, str):
+        return False
+    if language == "javascript":
+        return bool(_NODE_IMAGE.fullmatch(image))
+    if language == "rust":
+        return bool(_RUST_IMAGE.fullmatch(image))
+    return False
+
+
+def run_language(
+    source_code: str,
+    *,
+    language: str,
+    docker_executable: str | Path,
+    image: str,
+    timeout_seconds: int = 20,
+    max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES,
+    control_check: Callable[[], str] | None = None,
+    task_id: int | None = None,
+) -> SandboxResult:
+    """Run a JavaScript or Rust assertion harness in a digest-pinned no-network container."""
+    if language not in {"javascript", "rust"}:
+        raise ValueError("language must be javascript or rust.")
+    if not isinstance(source_code, str) or not source_code.strip():
+        raise ValueError("source_code must be non-empty text.")
+    if "\x00" in source_code or len(source_code.encode("utf-8")) > _MAX_SOURCE_BYTES:
+        raise ValueError("source_code exceeds the 64 KiB limit or contains NUL characters.")
+    if task_id is not None and (
+        isinstance(task_id, bool) or not isinstance(task_id, int) or task_id < 1
+    ):
+        raise ValueError("task_id must be a positive integer when provided.")
+    if not is_valid_language_image_reference(image, language):
+        raise ValueError("language image must be an official Node/Rust image pinned by SHA-256 digest.")
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 120:
+        raise ValueError("timeout_seconds must be an integer from 1 to 120.")
+    if isinstance(max_output_bytes, bool) or not isinstance(max_output_bytes, int) or not 1 <= max_output_bytes <= 65536:
+        raise ValueError("max_output_bytes must be an integer from 1 to 65536.")
+    executable = Path(docker_executable).expanduser()
+    if not executable.is_absolute() or not executable.is_file():
+        return SandboxResult(
+            status="unavailable", exit_code=None, stdout="", stderr="", duration_ms=0,
+            reason="Docker executable is not available at the configured absolute path.",
+        )
+
+    started = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="personal-ai-language-sandbox-") as directory:
+        workspace = Path(directory).resolve()
+        filename = "main.js" if language == "javascript" else "main.rs"
+        source_path = workspace / filename
+        source_path.write_text(source_code, encoding="utf-8", newline="\n")
+        try:
+            source_path.chmod(0o444)
+            workspace.chmod(0o755)
+        except OSError:
+            pass
+        mount_source = str(workspace)
+        if "," in mount_source:
+            raise ValueError("Sandbox workspace path cannot contain commas.")
+        tmpfs = (
+            "--tmpfs=/tmp:rw,nosuid,nodev,exec,size=128m,uid=65534,gid=65534"
+            if language == "rust"
+            else "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65534,gid=65534"
+        )
+        command = [
+            str(executable), "run", "--rm", "--pull=never",
+            "--label", f"{_SANDBOX_LABEL}=true",
+            *(["--label", f"{_TASK_ID_LABEL}={task_id}"] if task_id is not None else []),
+            "--network=none", "--read-only", "--cap-drop=ALL",
+            "--security-opt=no-new-privileges", "--pids-limit=64",
+            "--memory=512m" if language == "rust" else "--memory=256m",
+            "--memory-swap=512m" if language == "rust" else "--memory-swap=256m",
+            "--cpus=1", "--stop-timeout=1", "--user=65534:65534",
+            "--workdir=/workspace", tmpfs,
+            "--mount", f"type=bind,source={mount_source},target=/workspace,readonly",
+            image,
+        ]
+        if language == "javascript":
+            command.extend(["node", "--disable-proto=throw", "/workspace/main.js"])
+        else:
+            command.extend([
+                "sh", "-lc",
+                "printf '__PAI_RUST_VERSION__:'; rustc --version | awk '{print $2}'; "
+                "rustc --edition=2021 /workspace/main.rs -o /tmp/main && /tmp/main",
+            ])
+        try:
+            process = subprocess.Popen(
+                command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, shell=False, close_fds=True, env=_docker_environment(),
+            )
+        except (FileNotFoundError, PermissionError, OSError):
+            return SandboxResult(
+                status="unavailable", exit_code=None, stdout="", stderr="",
+                duration_ms=int((time.monotonic() - started) * 1000),
+                reason="Docker could not be started; no host execution fallback is permitted.",
+            )
+        stdout_buffer = bytearray()
+        stderr_buffer = bytearray()
+        overflow = threading.Event()
+        readers = [
+            threading.Thread(target=_read_bounded, args=(process.stdout, stdout_buffer, max_output_bytes, overflow), daemon=True),
+            threading.Thread(target=_read_bounded, args=(process.stderr, stderr_buffer, max_output_bytes, overflow), daemon=True),
+        ]
+        for reader in readers:
+            reader.start()
+        timed_out = False
+        interrupted_status: str | None = None
+        interruption_reason: str | None = None
+        while process.poll() is None:
+            if control_check is not None:
+                try:
+                    control = control_check()
+                except Exception:
+                    control = "control_unavailable"
+                if control in {"pause_requested", "paused"}:
+                    interrupted_status = "paused"
+                    interruption_reason = "Sandbox stopped at a task pause request."
+                elif control in {"cancel_requested", "cancelled"}:
+                    interrupted_status = "cancelled"
+                    interruption_reason = "Sandbox stopped at a task cancellation request."
+                elif control != "running":
+                    interrupted_status = "cancelled"
+                    interruption_reason = "Sandbox stopped because task control/lease state was unavailable."
+                if interrupted_status is not None:
+                    _stop_process(process)
+                    break
+            if overflow.is_set():
+                _stop_process(process)
+                break
+            if time.monotonic() - started >= timeout_seconds:
+                timed_out = True
+                _stop_process(process)
+                break
+            time.sleep(0.02)
+        exit_code = process.wait()
+        for reader in readers:
+            reader.join(timeout=2)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        stdout = stdout_buffer.decode("utf-8", errors="replace")
+        stderr = stderr_buffer.decode("utf-8", errors="replace")
+        if interrupted_status is not None:
+            return SandboxResult(interrupted_status, exit_code, stdout, stderr, duration_ms, interruption_reason)
+        if timed_out:
+            return SandboxResult("timed_out", exit_code, stdout, stderr, duration_ms, "Sandbox exceeded its execution time limit.")
+        if overflow.is_set():
+            return SandboxResult("output_limit_exceeded", exit_code, stdout, stderr, duration_ms, "Sandbox output exceeded its configured per-stream limit.")
         if exit_code == 0:
             return SandboxResult("succeeded", exit_code, stdout, stderr, duration_ms)
         return SandboxResult("failed", exit_code, stdout, stderr, duration_ms)

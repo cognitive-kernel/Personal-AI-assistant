@@ -2,12 +2,23 @@
 from __future__ import annotations
 
 import ast
+import hashlib
+import re
+from datetime import datetime, timezone
 from typing import Any, Callable
+from urllib.parse import urlparse
 
-from . import experience, sandbox_consent, sandbox_tasks
+from . import experience, sandbox_consent, sandbox_tasks, web_sources
 from .task_worker import TaskContext
 
 EXPERIENCE_TEST_TASK_TYPE = "experience.run_test"
+_OFFICIAL_SOURCE_HOSTS = (
+    "docs.python.org", "learn.microsoft.com", "dev.mysql.com", "sqlite.org",
+    "doc.rust-lang.org", "rust-lang.org", "help.mikrotik.com", "mikrotik.com",
+    "docs.vmware.com", "knowledge.broadcom.com", "developer.android.com",
+    "developer.apple.com", "developer.mozilla.org", "docs.docker.com",
+    "docs.kernel.org", "cisco.com", "metatrader5.com", "metatrader4.com",
+)
 _ALLOWED_PAYLOAD_KEYS = {
     "experience_id",
     "test_name",
@@ -29,6 +40,53 @@ def validate_test_harness(source_code: str) -> None:
         raise ValueError("source_code must be valid Python.") from exc
     if not any(isinstance(node, ast.Assert) for node in ast.walk(tree)):
         raise ValueError("Test harness must contain at least one Python assert statement.")
+
+
+def _verify_live_source_evidence(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Require exact excerpts from current official pages before sandbox execution."""
+    evidence = item.get("source_evidence")
+    if not isinstance(evidence, list) or not 1 <= len(evidence) <= 3:
+        raise ValueError("Experience needs one to three source evidence excerpts before a test can run.")
+    verified: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for entry in evidence:
+        if not isinstance(entry, dict):
+            raise ValueError("Every source evidence entry must be an object.")
+        url, claim, excerpt = entry.get("url"), entry.get("claim"), entry.get("excerpt")
+        if not isinstance(url, str) or len(url) > 2048:
+            raise ValueError("Every source evidence entry needs a bounded HTTPS URL.")
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("Experience source URL has an invalid port.") from exc
+        if (parsed.scheme.lower() != "https" or not host or parsed.username is not None
+                or parsed.password is not None or port not in (None, 443)
+                or not any(host == allowed or host.endswith("." + allowed) for allowed in _OFFICIAL_SOURCE_HOSTS)):
+            raise ValueError("Experience verification requires an allow-listed official HTTPS source.")
+        if url in seen_urls:
+            raise ValueError("Duplicate source URLs are not accepted in one verification run.")
+        seen_urls.add(url)
+        if not isinstance(claim, str) or not claim.strip() or len(claim) > 300:
+            raise ValueError("Every source evidence entry needs a concise supported-claim description.")
+        if not isinstance(excerpt, str) or not excerpt.strip() or len(excerpt) > 1000:
+            raise ValueError("Every source evidence entry needs an exact excerpt of 1–1000 characters.")
+        try:
+            document = web_sources.fetch_public_document(url, "experience source evidence", max_chars=100000)
+        except Exception as exc:
+            raise ValueError("A source could not be safely fetched live; verification fails closed (" + type(exc).__name__ + ").") from exc
+        normalize = lambda value: re.sub(r"\s+", " ", value).strip()
+        normalized_excerpt = normalize(excerpt)
+        if normalized_excerpt not in normalize(document.text):
+            raise ValueError("A saved evidence excerpt is absent from the current live source page.")
+        verified.append({
+            **entry,
+            "live_content_sha256": hashlib.sha256(document.text.encode("utf-8")).hexdigest(),
+            "excerpt_sha256": hashlib.sha256(normalized_excerpt.encode("utf-8")).hexdigest(),
+            "live_verified_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        })
+    return verified
 
 
 def _validate_experience_test(item: dict[str, Any], test_name: str) -> None:
@@ -83,6 +141,7 @@ def handler_from_environment() -> Callable[
 
         item = experience.get_experience(experience_id)
         _validate_experience_test(item, test_name)
+        verified_evidence = _verify_live_source_evidence(item)
         context.checkpoint({
             "phase": "experience_test_started",
             "experience_id": experience_id,
@@ -117,11 +176,15 @@ def handler_from_environment() -> Callable[
             "duration_ms": result.get("duration_ms"),
             "image": str(result.get("image", "")),
         }
+        test_result["source_evidence"] = [
+            {"url": evidence["url"], "live_content_sha256": evidence["live_content_sha256"], "excerpt_sha256": evidence["excerpt_sha256"]}
+            for evidence in verified_evidence
+        ]
         all_results = list(item.get("test_results") or []) + [test_result]
         updated = experience.update_experience(
             experience_id,
             status="verified" if passed else "failed",
-            source_evidence=item["source_evidence"],
+            source_evidence=verified_evidence,
             test_plan=item["test_plan"],
             test_results=all_results,
             takeaway=item.get("takeaway", ""),

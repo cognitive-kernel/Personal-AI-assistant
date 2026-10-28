@@ -123,6 +123,63 @@ def add_evidence(
     return int(row[0])
 
 
+def record_oracle_review(
+    connection: sqlite3.Connection,
+    knowledge_id: int,
+    *,
+    claim_hash: str,
+    test_source_hash: str,
+    oracle_source_url: str,
+    oracle_source_hash: str,
+    review_note: str,
+) -> int:
+    """Persist a traceable local attestation binding a test to an independent reference."""
+    for field_name, value in (
+        ("claim_hash", claim_hash),
+        ("test_source_hash", test_source_hash),
+        ("oracle_source_hash", oracle_source_hash),
+    ):
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise KnowledgePolicyError(f"{field_name} must be a lowercase SHA-256 digest")
+    if not isinstance(oracle_source_url, str) or not oracle_source_url.startswith("https://"):
+        raise KnowledgePolicyError("oracle_source_url must use HTTPS")
+    if not isinstance(review_note, str) or len(review_note.strip()) < 20 or len(review_note) > 1000:
+        raise KnowledgePolicyError("review_note must contain 20–1000 characters")
+    current = connection.execute(
+        "SELECT claim_hash FROM factual_knowledge WHERE id = ?", (knowledge_id,)
+    ).fetchone()
+    if current is None or current["claim_hash"] != claim_hash:
+        raise KnowledgePolicyError("oracle review does not match the current claim revision")
+    cursor = connection.execute(
+        """INSERT INTO factual_oracle_reviews(
+               knowledge_id, claim_hash, test_source_hash, oracle_source_url,
+               oracle_source_hash, reviewer, review_note
+           ) VALUES (?, ?, ?, ?, ?, 'local_user', ?)""",
+        (knowledge_id, claim_hash, test_source_hash, oracle_source_url,
+         oracle_source_hash, review_note.strip()),
+    )
+    return int(cursor.lastrowid)
+
+
+def get_oracle_review(
+    connection: sqlite3.Connection,
+    review_id: int,
+    *,
+    knowledge_id: int,
+    claim_hash: str,
+    test_source_hash: str,
+) -> dict[str, Any] | None:
+    """Return an audit record only when it binds the exact claim revision and test."""
+    row = connection.execute(
+        """SELECT id, knowledge_id, claim_hash, test_source_hash, oracle_source_url,
+                  oracle_source_hash, reviewer, review_note, created_at
+           FROM factual_oracle_reviews
+           WHERE id = ? AND knowledge_id = ? AND claim_hash = ? AND test_source_hash = ?""",
+        (review_id, knowledge_id, claim_hash, test_source_hash),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
 def record_test(
     connection: sqlite3.Connection,
     knowledge_id: int,
@@ -694,3 +751,81 @@ def search_retrievable_claims(
         reverse=False,
     )
     return [item for _overlap, _level_rank, item in ranked[:limit]]
+
+def traverse_knowledge_relations(
+    connection: sqlite3.Connection,
+    knowledge_id: int,
+    *,
+    max_depth: int = 2,
+    relation_types: tuple[str, ...] | None = None,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Traverse the persisted claim graph deterministically with cycle and scope guards.
+
+    Traversal follows directed knowledge_relations edges. It returns metadata and
+    claim text for explanation/planning; callers must still apply normal retrieval
+    eligibility and evidence gates before using a related claim as factual context.
+    """
+    if isinstance(knowledge_id, bool) or not isinstance(knowledge_id, int) or knowledge_id < 1:
+        raise KnowledgePolicyError("knowledge_id must be a positive integer")
+    if isinstance(max_depth, bool) or not isinstance(max_depth, int) or not 1 <= max_depth <= 3:
+        raise KnowledgePolicyError("max_depth must be an integer between 1 and 3")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 200:
+        raise KnowledgePolicyError("limit must be an integer between 1 and 200")
+    if relation_types is not None:
+        if not isinstance(relation_types, tuple) or not relation_types or any(
+            not isinstance(item, str) or item not in RELATION_TYPES for item in relation_types
+        ):
+            raise KnowledgePolicyError("relation_types must be a non-empty tuple of supported relation types")
+        selected_types = tuple(sorted(set(relation_types)))
+    else:
+        selected_types = tuple(sorted(RELATION_TYPES))
+
+    if connection.execute("SELECT 1 FROM factual_knowledge WHERE id=?", (knowledge_id,)).fetchone() is None:
+        raise KnowledgePolicyError(f"unknown knowledge id: {knowledge_id}")
+
+    frontier: list[tuple[int, int, tuple[str, ...]]] = [(knowledge_id, 0, ())]
+    visited = {knowledge_id}
+    results: list[dict[str, Any]] = []
+    placeholders = ",".join("?" for _ in selected_types)
+    while frontier and len(results) < limit:
+        current_id, depth, path = frontier.pop(0)
+        if depth >= max_depth:
+            continue
+        cursor = connection.execute(
+            f"""SELECT r.related_knowledge_id, r.relation_type, k.claim,
+                       k.domain_name, k.environment_name, k.environment_version,
+                       k.evidence_level, k.lifecycle_status
+                FROM knowledge_relations AS r
+                JOIN factual_knowledge AS k ON k.id=r.related_knowledge_id
+                WHERE r.knowledge_id=? AND r.relation_type IN ({placeholders})
+                ORDER BY r.relation_type, r.related_knowledge_id
+                LIMIT ?""",
+            (current_id, *selected_types, limit),
+        )
+        columns = [column[0] for column in cursor.description]
+        for raw_row in cursor.fetchall():
+            row = dict(zip(columns, raw_row))
+            related_id = int(row["related_knowledge_id"])
+            relation_type = str(row["relation_type"])
+            if related_id in visited:
+                continue
+            visited.add(related_id)
+            next_path = path + (relation_type,)
+            results.append({
+                "knowledge_id": related_id,
+                "depth": depth + 1,
+                "relation_path": list(next_path),
+                "relation_type": relation_type,
+                "claim": str(row["claim"]),
+                "domain_name": str(row["domain_name"]),
+                "environment_name": str(row["environment_name"]),
+                "environment_version": str(row["environment_version"]),
+                "evidence_level": str(row["evidence_level"]),
+                "lifecycle_status": str(row["lifecycle_status"]),
+            })
+            frontier.append((related_id, depth + 1, next_path))
+            if len(results) >= limit:
+                break
+    return results
+

@@ -1,9 +1,10 @@
+import hashlib
 import json
 import re
 
 import pytest
 
-from app import db, factual_knowledge, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
+from app import db, factual_knowledge, factual_semantic_review, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
 
 
 class FakeContext:
@@ -25,6 +26,24 @@ def learning_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    monkeypatch.setattr(
+        factual_semantic_review,
+        "review_claim_against_source",
+        lambda **_kwargs: factual_semantic_review.ReviewDecision(
+            verdict="supports",
+            accepted=True,
+            score=1.0,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_stub_independent_reviewer",),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        ),
+    )
+    monkeypatch.setattr(
+        factual_verification_tasks,
+        "_verify_live_source_excerpt",
+        lambda _url, excerpt: hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+    )
     return tmp_path
 
 
@@ -41,13 +60,29 @@ def _active_sourced_python_claim(version="3.12.3"):
             connection,
             knowledge_id,
             source_type="official_docs",
-            source_ref="https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement",
+            source_ref="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
             source_hash="sha256:source-evidence",
             excerpt="The assert statement raises AssertionError when the expression is false.",
         )
         factual_knowledge.transition_evidence_level(connection, knowledge_id, "L1_sourced")
         factual_knowledge.transition_lifecycle(connection, knowledge_id, "active")
     return knowledge_id
+
+
+def _oracle_review_id(knowledge_id, source_code):
+    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+    with db.learning_connection() as connection:
+        return factual_knowledge.record_oracle_review(
+            connection,
+            knowledge_id,
+            claim_hash=candidate["claim_hash"],
+            test_source_hash=hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+            oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+            oracle_source_hash=hashlib.sha256(
+                b"The assert statement raises AssertionError when the expression is false."
+            ).hexdigest(),
+            review_note="Compared the test assertion against the official Python reference excerpt.",
+        )
 
 
 def _sandbox_result(status="succeeded", exit_code=0, version="3.12.3", completion_marker="__PAI_TEST_COMPLETED__:test-token"):
@@ -81,8 +116,9 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
     result = handler({
         "knowledge_id": knowledge_id,
         "test_name": "assert semantics",
-        "source_code": "assert (1 + 1) == 2",
+        "source_code": "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')",
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "try:\n    assert False\nexcept AssertionError:\n    pass\nelse:\n    raise AssertionError('assert did not raise')"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -92,7 +128,7 @@ def test_successful_exact_version_sandbox_run_promotes_l1_to_l2(learning_store, 
     assert result["evidence_level_promoted"] is True
     assert result["runtime_version"] == "3.12.3"
     assert "__PAI_PYTHON_VERSION__" in captured["payload"]["source_code"]
-    assert "assert (1 + 1) == 2" in captured["payload"]["source_code"]
+    assert "assert False" in captured["payload"]["source_code"]
     assert result["test_source_sha256"]
     with db.learning_connection() as connection:
         claim = connection.execute(
@@ -125,6 +161,7 @@ def test_sandbox_version_mismatch_records_environment_failure_without_promotion(
         "test_name": "assert semantics",
         "source_code": "assert True",
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -154,6 +191,7 @@ def test_failed_assertion_is_inconclusive_not_automatic_claim_failure(learning_s
         "test_name": "assert semantics",
         "source_code": "assert False",
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert False"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
@@ -192,6 +230,7 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
             "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
         }, None, FakeContext())
     assert called is False
@@ -200,7 +239,8 @@ def test_factual_claim_sandbox_runner_requires_current_consent(learning_store, m
 def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_store, monkeypatch):
     knowledge_id = _active_sourced_python_claim()
     monkeypatch.setattr(factual_verification_routes.sandbox_consent, "get_consent", lambda: {"enabled": True})
-    monkeypatch.setattr(factual_verification_routes, "_configured", lambda: True)
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda *_args: True)
+    monkeypatch.setattr(factual_verification_routes, "_reviewer_configured", lambda: True)
     captured = {}
 
     def create_task(task_type, payload, **kwargs):
@@ -212,6 +252,8 @@ def test_factual_claim_route_queues_only_explicitly_confirmed_tests(learning_sto
         confirm=True,
         oracle_reviewed=True,
         oracle_review_note="Compared the assertion against the official Python reference for assert semantics.",
+        oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
         timeout_seconds=5,
@@ -249,6 +291,7 @@ def test_claim_change_during_execution_prevents_promotion(learning_store, monkey
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
     }, None, FakeContext())
 
@@ -269,6 +312,8 @@ def test_route_rejects_missing_independent_oracle_attestation():
         confirm=True,
         oracle_reviewed=False,
         oracle_review_note="This note is long enough for schema validation.",
+        oracle_source_url="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+        oracle_source_hash=hashlib.sha256(b"reference excerpt").hexdigest(),
         test_name="assert semantics",
         source_code="assert True",
     )
@@ -276,6 +321,35 @@ def test_route_rejects_missing_independent_oracle_attestation():
         factual_verification_routes.queue_factual_claim_test(1, request)
     assert raised.value.status_code == 422
 
+
+
+def test_missing_or_mismatched_oracle_audit_cannot_execute_or_promote(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    called = {"sandbox": False}
+
+    def sandbox_handler(*_args):
+        called["sandbox"] = True
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="Persisted independent-oracle review"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "assert semantics",
+            "source_code": "assert True",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Compared against the official reference documentation.",
+            "oracle_review_id": 999999,
+        }, None, FakeContext())
+    assert called["sandbox"] is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
 
 
 def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store, monkeypatch):
@@ -291,6 +365,7 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
         "timeout_seconds": 5,
         "max_output_bytes": 1000,
         "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
         "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
     }, None, FakeContext())
 
@@ -303,7 +378,8 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
     assert claim["evidence_level"] == "L1_sourced"
 
 
-def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_test(learning_store):
+def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_test(learning_store, monkeypatch):
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda language: language == "python")
     knowledge_id = _active_sourced_python_claim()
     result = factual_verification_routes.list_factual_test_queue(limit=10)
     assert result["count"] == 1
@@ -330,7 +406,8 @@ def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_
     assert refreshed["count"] == 0
 
 
-def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
+def test_factual_test_queue_hides_claim_with_active_test_task(learning_store, monkeypatch):
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda language: language == "python")
     knowledge_id = _active_sourced_python_claim()
     task_manager.initialize_task_store()
     assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 1
@@ -344,6 +421,7 @@ def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
             "timeout_seconds": 5,
             "max_output_bytes": 1000,
             "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, "assert True"),
             "oracle_review_note": "Reviewed against the official Python reference before queueing.",
         },
         max_attempts=1,
@@ -389,3 +467,399 @@ def test_factual_test_history_exposes_bounded_results_and_current_claim_state(le
     assert item["test_environment_version"] == item["current_environment_version"] == "3.12.3"
     assert item["command_hash"] == "e" * 64
     assert item["log_hash"] == "f" * 64
+
+def test_independent_reviewer_rejection_cannot_execute_or_promote(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        factual_semantic_review,
+        "review_claim_against_source",
+        lambda **_kwargs: factual_semantic_review.ReviewDecision(
+            verdict="insufficient_evidence",
+            accepted=False,
+            score=0.5,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_does_not_directly_check_claim", "fail_closed_no_promotion"),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        ),
+    )
+    called = False
+
+    def sandbox_handler(*_args):
+        nonlocal called
+        called = True
+        return _sandbox_result()
+
+    source_code = "assert True"
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="did not pass"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "unrelated assertion",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+    assert called is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
+
+
+def test_independent_reviewer_receives_exact_claim_source_and_test(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    observed = {}
+    candidate_before = factual_verification_tasks.get_verification_candidate(knowledge_id)
+
+    def review(**kwargs):
+        observed.update(kwargs)
+        return factual_semantic_review.ReviewDecision(
+            verdict="supports",
+            accepted=True,
+            score=1.0,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("test_stub_independent_reviewer",),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        )
+
+    monkeypatch.setattr(factual_semantic_review, "review_claim_against_source", review)
+    source_code = "try:\n    assert False\nexcept AssertionError:\n    pass"
+    handler = factual_verification_tasks._build_handler(
+        lambda payload, *_args: _sandbox_result(completion_marker=_completion_marker(payload["source_code"]))
+    )
+    result = handler({
+        "knowledge_id": knowledge_id,
+        "test_name": "assert false condition",
+        "source_code": source_code,
+        "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+        "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+    }, None, FakeContext())
+    assert result["evidence_level_promoted"] is True
+    assert observed["claim"] == "A Python assertion raises an error when its condition is false."
+    assert observed["claim_hash"] == candidate_before["claim_hash"]
+    assert "[Source 1] URL: https://docs.python.org/3.12" in observed["source_excerpt"]
+    assert "The assert statement raises AssertionError" in observed["source_excerpt"]
+    assert observed["test_source"] == source_code
+
+
+def test_conflicting_evidence_is_sent_to_reviewer_and_prevents_promotion(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    with db.learning_connection() as connection:
+        factual_knowledge.add_evidence(
+            connection,
+            knowledge_id,
+            source_type="official_docs",
+            source_ref="https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement",
+            source_hash=hashlib.sha256(b"contradictory source").hexdigest(),
+            excerpt="The assert statement never raises an exception when the expression is false.",
+            applicability={"source_version": "3.12"},
+        )
+    called = False
+
+    def review(**kwargs):
+        nonlocal called
+        called = True
+        assert "The assert statement raises AssertionError" in kwargs["source_excerpt"]
+        assert "The assert statement never raises an exception" in kwargs["source_excerpt"]
+        return factual_semantic_review.ReviewDecision(
+            verdict="conflict",
+            accepted=False,
+            score=0.875,
+            rubric_version=factual_semantic_review.RUBRIC_VERSION,
+            reasons=("unresolved_source_conflict", "fail_closed_no_promotion"),
+            evaluator_model="test-reviewer",
+            evaluator_digest="b" * 64,
+        )
+
+    monkeypatch.setattr(factual_semantic_review, "review_claim_against_source", review)
+    source_code = "try:\n    assert False\nexcept AssertionError:\n    pass"
+    handler = factual_verification_tasks._build_handler(lambda *_args: pytest.fail("sandbox must not run"))
+    with pytest.raises(ValueError, match="did not pass"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "conflicting source review",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+            "oracle_review_note": "Compared the assertion against the official Python reference for assert semantics.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+    assert called is True
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+    assert claim["evidence_level"] == "L1_sourced"
+
+
+
+@pytest.mark.parametrize("mismatch", ["url", "hash"])
+def test_oracle_attestation_must_match_exact_stored_evidence(learning_store, monkeypatch, mismatch):
+    knowledge_id = _active_sourced_python_claim()
+    source_code = "assert True"
+    candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+    with db.learning_connection() as connection:
+        review_id = factual_knowledge.record_oracle_review(
+            connection,
+            knowledge_id,
+            claim_hash=candidate["claim_hash"],
+            test_source_hash=hashlib.sha256(source_code.encode("utf-8")).hexdigest(),
+            oracle_source_url=(
+                "https://docs.python.org/3.12/reference/other.html"
+                if mismatch == "url"
+                else "https://docs.python.org/3.12/reference/simple_stmts.html#the-assert-statement"
+            ),
+            oracle_source_hash=(
+                "0" * 64
+                if mismatch == "hash"
+                else hashlib.sha256(
+                    b"The assert statement raises AssertionError when the expression is false."
+                ).hexdigest()
+            ),
+            review_note="Compared the exact test to a reference excerpt before execution.",
+        )
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    called = {"sandbox": False}
+
+    def sandbox_handler(*_args, **_kwargs):
+        called["sandbox"] = True
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="exact stored source excerpt"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "assert semantics",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_id": review_id,
+            "oracle_review_note": "Compared the exact test to a reference excerpt before execution.",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+    assert called["sandbox"] is False
+
+
+def test_live_source_mismatch_blocks_sandbox_and_promotion(learning_store, monkeypatch):
+    knowledge_id = _active_sourced_python_claim()
+    source_code = "assert isinstance(1, int)"
+    oracle_review_id = _oracle_review_id(knowledge_id, source_code)
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        factual_verification_tasks,
+        "_verify_live_source_excerpt",
+        lambda *_args: (_ for _ in ()).throw(
+            ValueError("Stored evidence excerpt is absent from the current live source page.")
+        ),
+    )
+    sandbox_called = False
+
+    def sandbox_handler(*_args):
+        nonlocal sandbox_called
+        sandbox_called = True
+        return _sandbox_result()
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    with pytest.raises(ValueError, match="absent from the current live source page"):
+        handler({
+            "knowledge_id": knowledge_id,
+            "test_name": "assert type",
+            "source_code": source_code,
+            "oracle_reviewed": True,
+            "oracle_review_note": "Compared the exact test against the official Python reference excerpt.",
+            "oracle_review_id": oracle_review_id,
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        }, None, FakeContext())
+
+    assert sandbox_called is False
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?",
+            (knowledge_id,),
+        ).fetchone()
+        assert claim["evidence_level"] == "L1_sourced"
+
+
+
+def test_runtime_version_selects_sqlite_runtime_for_sqlite_claims():
+    from app.factual_verification_tasks import _runtime_version
+
+    marker = "__PAI_TEST_COMPLETED__:fixed-marker"
+    stdout = "\n".join([
+        "__PAI_PYTHON_VERSION__:3.12.2",
+        "__PAI_SQLITE_VERSION__:3.45.3",
+        "sqlite assertion output",
+        marker,
+    ])
+    version, completed, output = _runtime_version(stdout, marker, "sqlite")
+    assert version == "3.45.3"
+    assert completed is True
+    assert output == "sqlite assertion output"
+
+
+def test_wrapped_harness_reports_both_python_and_sqlite_versions():
+    from app.factual_verification_tasks import _wrapped_harness
+
+    wrapped, marker = _wrapped_harness("import sqlite3\nassert sqlite3.sqlite_version")
+    assert "__PAI_PYTHON_VERSION__" in wrapped
+    assert "__PAI_SQLITE_VERSION__" in wrapped
+    assert marker in wrapped
+
+
+
+@pytest.mark.parametrize(
+    ("language", "source", "expected"),
+    [
+        ("javascript", "assert.equal(2 + 2, 4);", True),
+        ("javascript", "const value = 4;", False),
+        ("rust", "assert_eq!(2 + 2, 4);", True),
+        ("rust", "let value = 4;", False),
+    ],
+)
+def test_domain_harness_requires_explicit_assertions(language, source, expected):
+    from app.factual_verification_tasks import _validate_domain_test_harness
+
+    if expected:
+        _validate_domain_test_harness(source, language)
+    else:
+        with pytest.raises(ValueError, match="assert"):
+            _validate_domain_test_harness(source, language)
+
+
+def test_node_and_rust_harnesses_bind_runtime_and_completion_markers():
+    from app.factual_verification_tasks import _runtime_version, _wrapped_harness
+
+    node, node_marker = _wrapped_harness("assert.equal(2 + 2, 4);", "javascript")
+    assert "__PAI_NODE_VERSION__" in node
+    version, completed, output = _runtime_version(
+        "__PAI_NODE_VERSION__:22.14.0\nnode assertion passed\n" + node_marker,
+        node_marker, "javascript",
+    )
+    assert version == "22.14.0"
+    assert completed is True
+    assert output == "node assertion passed"
+
+    rust, rust_marker = _wrapped_harness("assert_eq!(2 + 2, 4);", "rust")
+    assert "fn main()" in rust
+    assert "assert_eq!(2 + 2, 4);" in rust
+    version, completed, output = _runtime_version(
+        "__PAI_RUST_VERSION__:1.84.0\nrust assertion passed\n" + rust_marker,
+        rust_marker, "rust",
+    )
+    assert version == "1.84.0"
+    assert completed is True
+    assert output == "rust assertion passed"
+
+
+@pytest.mark.parametrize(
+    ("environment_name", "version", "source_url", "source_excerpt", "test_source", "runtime_marker"),
+    [
+        (
+            "javascript", "22.14.0",
+            "https://nodejs.org/download/release/v22.14.0/docs/api/assert.html",
+            "The assert module provides a set of assertion functions for verifying invariants.",
+            "assert.equal(2 + 2, 4);",
+            "__PAI_NODE_VERSION__",
+        ),
+        (
+            "rust", "1.84.0",
+            "https://doc.rust-lang.org/1.84.0/std/macro.assert_eq.html",
+            "Asserts that two expressions are equal to each other.",
+            "assert_eq!(2 + 2, 4);",
+            "__PAI_RUST_VERSION__",
+        ),
+    ],
+)
+def test_language_runner_promotes_only_after_exact_runtime_and_completed_harness(
+    learning_store, monkeypatch, environment_name, version, source_url,
+    source_excerpt, test_source, runtime_marker,
+):
+    with db.learning_connection() as connection:
+        knowledge_id = factual_knowledge.create_claim(
+            connection,
+            f"A versioned {environment_name} assertion checks equality.",
+            environment_name=environment_name,
+            environment_version=version,
+            scope={"topic": f"{environment_name} assertions"},
+        )
+        factual_knowledge.add_evidence(
+            connection, knowledge_id, source_type="official_docs",
+            source_ref=source_url, source_hash="sha256:language-source",
+            excerpt=source_excerpt,
+        )
+        factual_knowledge.transition_evidence_level(connection, knowledge_id, "L1_sourced")
+        factual_knowledge.transition_lifecycle(connection, knowledge_id, "active")
+        # Read the claim hash from this transaction; a second connection cannot see
+        # the uncommitted claim until the context manager commits.
+        candidate = connection.execute(
+            "SELECT claim_hash FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+        assert candidate is not None
+        oracle_review_id = factual_knowledge.record_oracle_review(
+            connection,
+            knowledge_id,
+            claim_hash=candidate["claim_hash"],
+            test_source_hash=hashlib.sha256(test_source.encode("utf-8")).hexdigest(),
+            oracle_source_url=source_url,
+            oracle_source_hash=hashlib.sha256(source_excerpt.encode("utf-8")).hexdigest(),
+            review_note="Compared this assertion against the exact official versioned runtime reference.",
+        )
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    captured = {}
+
+    def sandbox_handler(payload, *_args):
+        captured.update(payload)
+        marker = _completion_marker(payload["source_code"])
+        return {
+            "execution_status": "succeeded",
+            "exit_code": 0,
+            "stdout": f"{runtime_marker}:{version}\nassertion passed\n{marker}\n",
+            "stderr": "",
+            "duration_ms": 12,
+            "image": (
+                "node:22-bookworm-slim@sha256:" + "b" * 64
+                if environment_name == "javascript"
+                else "rust:1.84-slim@sha256:" + "c" * 64
+            ),
+        }
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    result = handler({
+        "knowledge_id": knowledge_id,
+        "test_name": f"{environment_name} assertion semantics",
+        "source_code": test_source,
+        "oracle_reviewed": True,
+        "oracle_review_id": oracle_review_id,
+        "oracle_review_note": "Compared this assertion against the exact official versioned runtime reference.",
+        "timeout_seconds": 10,
+        "max_output_bytes": 1000,
+    }, None, FakeContext())
+
+    assert captured["language"] == environment_name
+    assert result["outcome"] == "passed"
+    assert result["evidence_level_promoted"] is True
+    assert result["runtime_version"] == version
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+        test = connection.execute(
+            "SELECT outcome, environment_name, environment_version FROM factual_tests WHERE knowledge_id=?",
+            (knowledge_id,),
+        ).fetchone()
+    assert row["evidence_level"] == "L2_tested"
+    assert tuple(test) == ("passed", environment_name, version)
