@@ -25,6 +25,10 @@ class CandidateChannelError(ValueError):
     """A channel run cannot safely be created or finalized."""
 
 
+class CandidateChannelStorageError(CandidateChannelError):
+    """The channel ledger could not be accessed; the durable task may retry."""
+
+
 def _encoded_result(result: dict[str, Any] | None) -> tuple[str, str]:
     if result is None:
         result = {}
@@ -36,17 +40,24 @@ def _encoded_result(result: dict[str, Any] | None) -> tuple[str, str]:
         )
     except (TypeError, ValueError) as exc:
         raise CandidateChannelError("Channel result must contain finite JSON values only.") from exc
-    if len(encoded.encode("utf-8")) > _MAX_RESULT_BYTES:
+    try:
+        encoded_bytes = encoded.encode("utf-8")
+    except UnicodeError as exc:
+        raise CandidateChannelError("Channel result contains invalid Unicode text.") from exc
+    if len(encoded_bytes) > _MAX_RESULT_BYTES:
         raise CandidateChannelError("Channel result exceeds the 16 KiB metadata limit.")
-    return encoded, hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return encoded, hashlib.sha256(encoded_bytes).hexdigest()
 
 
 def _run(row: sqlite3.Row, *, should_execute: bool = False) -> dict[str, Any]:
     result = dict(row)
     try:
-        result["result"] = json.loads(result.pop("result_json"))
+        decoded = json.loads(result.pop("result_json"))
     except (TypeError, json.JSONDecodeError) as exc:
         raise CandidateChannelError("Stored channel result is invalid.") from exc
+    if not isinstance(decoded, dict):
+        raise CandidateChannelError("Stored channel result must be a JSON object.")
+    result["result"] = decoded
     result["should_execute"] = should_execute
     return result
 
@@ -55,9 +66,13 @@ def reserve_channel_run(
     candidate_id: int,
     channel: Channel,
     idempotency_key: str,
+    *,
+    reclaim_running: bool = False,
 ) -> dict[str, Any]:
     """Atomically reserve one channel run; only the first caller may execute it."""
-    if channel not in _ALLOWED_CHANNELS:
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise CandidateChannelError("candidate_id must be a positive integer.")
+    if not isinstance(channel, str) or channel not in _ALLOWED_CHANNELS:
         raise CandidateChannelError("Unsupported candidate review channel.")
     if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key.strip()) <= 128:
         raise CandidateChannelError("Idempotency key must contain 1–128 non-whitespace characters.")
@@ -84,6 +99,23 @@ def reserve_channel_run(
             if existing is not None:
                 if existing["candidate_content_sha256"] != actual_hash:
                     raise CandidateChannelError("Idempotency key is bound to a different candidate content hash.")
+                if existing["status"] == "running" and reclaim_running and candidate["status"] != "awaiting_test":
+                    raise CandidateChannelError("Only candidates awaiting independent tests can resume channel runs.")
+                if existing["status"] == "running" and reclaim_running:
+                    connection.execute(
+                        """UPDATE learning_candidate_channel_runs
+                           SET attempt_generation=attempt_generation+1,
+                               started_at=CURRENT_TIMESTAMP, updated_at=CURRENT_TIMESTAMP
+                           WHERE id=? AND status='running'""",
+                        (int(existing["id"]),),
+                    )
+                    reclaimed = connection.execute(
+                        "SELECT * FROM learning_candidate_channel_runs WHERE id=?",
+                        (int(existing["id"]),),
+                    ).fetchone()
+                    if reclaimed is None:
+                        raise CandidateChannelError("Channel run could not be reclaimed.")
+                    return _run(reclaimed, should_execute=True)
                 return _run(existing, should_execute=False)
 
             if candidate["status"] != "awaiting_test":
@@ -106,7 +138,7 @@ def reserve_channel_run(
     except CandidateChannelError:
         raise
     except sqlite3.Error as exc:
-        raise CandidateChannelError("Candidate channel reservation failed safely.") from exc
+        raise CandidateChannelStorageError("Candidate channel reservation failed safely.") from exc
 
 
 def finish_channel_run(
@@ -115,9 +147,12 @@ def finish_channel_run(
     *,
     result: dict[str, Any] | None = None,
     error_code: str | None = None,
+    attempt_generation: int | None = None,
 ) -> dict[str, Any]:
     """Record immutable terminal metadata; repeated identical completion is idempotent."""
-    if status not in _ALLOWED_TERMINAL:
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
+        raise CandidateChannelError("run_id must be a positive integer.")
+    if not isinstance(status, str) or status not in _ALLOWED_TERMINAL:
         raise CandidateChannelError("Channel runs may finish only as succeeded, failed, or skipped.")
     if error_code is not None and (
         not isinstance(error_code, str) or _ERROR_CODE.fullmatch(error_code) is None
@@ -136,6 +171,15 @@ def finish_channel_run(
             ).fetchone()
             if row is None:
                 raise CandidateChannelError("Learning candidate channel run does not exist.")
+            if attempt_generation is not None and (
+                isinstance(attempt_generation, bool)
+                or not isinstance(attempt_generation, int)
+                or attempt_generation < 1
+            ):
+                raise CandidateChannelError("attempt_generation must be a positive integer.")
+            if row["status"] == "running" and attempt_generation is not None:
+                if int(row["attempt_generation"]) != attempt_generation:
+                    raise CandidateChannelError("A stale channel worker cannot finish a reclaimed run.")
             if row["status"] != "running":
                 same_completion = (
                     row["status"] == status
@@ -165,11 +209,13 @@ def finish_channel_run(
     except CandidateChannelError:
         raise
     except sqlite3.Error as exc:
-        raise CandidateChannelError("Candidate channel result could not be recorded.") from exc
+        raise CandidateChannelStorageError("Candidate channel result could not be recorded.") from exc
 
 
 def list_candidate_channel_runs(candidate_id: int) -> list[dict[str, Any]]:
     """Return bounded audit metadata in creation order; never return candidate text."""
+    if isinstance(candidate_id, bool) or not isinstance(candidate_id, int) or candidate_id < 1:
+        raise CandidateChannelError("candidate_id must be a positive integer.")
     try:
         with learning_connection() as connection:
             candidate = connection.execute(
@@ -187,4 +233,4 @@ def list_candidate_channel_runs(candidate_id: int) -> list[dict[str, Any]]:
     except CandidateChannelError:
         raise
     except sqlite3.Error as exc:
-        raise CandidateChannelError("Candidate channel history is unavailable.") from exc
+        raise CandidateChannelStorageError("Candidate channel history is unavailable.") from exc
