@@ -995,6 +995,22 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_curriculum_proposals_path_status ON curriculum_update_proposals(path_id, status, id DESC)",
             "CREATE INDEX idx_curriculum_proposals_source_event ON curriculum_update_proposals(source_sync_event_id, status)",
         ),
+    ),
+    Migration(
+        27,
+        "explicit-learning-prerequisite-dag",
+        (
+            "ALTER TABLE learning_paths ADD COLUMN prerequisite_mode TEXT NOT NULL DEFAULT 'linear' CHECK(prerequisite_mode IN ('linear','custom'))",
+            """CREATE TABLE learning_topic_prerequisites (
+                topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                prerequisite_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(topic_id, prerequisite_topic_id),
+                CHECK(topic_id <> prerequisite_topic_id)
+            )""",
+            "CREATE INDEX idx_learning_prerequisites_by_topic ON learning_topic_prerequisites(topic_id, prerequisite_topic_id)",
+            "CREATE INDEX idx_learning_prerequisites_by_prerequisite ON learning_topic_prerequisites(prerequisite_topic_id, topic_id)",
+        ),
     )
 )
 
