@@ -1,0 +1,256 @@
+import pytest
+
+from app import db, learning
+from app.learning_durable_budget import (
+    LearningBudgetError,
+    get_job_budget,
+    reserve_job_budget,
+)
+
+
+@pytest.fixture
+def learning_store(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    return tmp_path
+
+
+def test_job_budget_is_shared_across_generation_and_review_stages(learning_store):
+    job = learning.create_job("Budget test")
+    job_id = job["id"]
+
+    first = reserve_job_budget(job_id, "initial_generation", calls=1, predict_tokens=1200)
+    repair = reserve_job_budget(job_id, "quality_repair", calls=1, predict_tokens=1400)
+    web = reserve_job_budget(job_id, "candidate_review_research_web", calls=1, predict_tokens=1800)
+    peer = reserve_job_budget(job_id, "candidate_review_peer_ai", calls=3, predict_tokens=4500)
+    sandbox = reserve_job_budget(job_id, "sandbox_execution_0123456789abcdef", calls=1, predict_tokens=0)
+
+    assert all(item["reserved"] for item in (first, repair, web, peer, sandbox))
+    snapshot = get_job_budget(job_id)
+    assert snapshot["calls_used"] == 7
+    assert snapshot["predict_tokens_reserved"] == 8900
+    assert snapshot["max_calls"] == 7
+    assert snapshot["max_predict_tokens"] == 9000
+    assert snapshot["billing_cost_known"] is False
+
+
+def test_duplicate_stage_reservation_is_idempotent_and_cannot_change_cost(learning_store):
+    job_id = learning.create_job("Budget idempotency")["id"]
+    first = reserve_job_budget(job_id, "initial_generation", calls=1, predict_tokens=1200)
+    repeated = reserve_job_budget(job_id, "initial_generation", calls=1, predict_tokens=1200)
+
+    assert first["reserved"] is True
+    assert repeated["reserved"] is True
+    assert repeated["already_reserved"] is True
+    assert get_job_budget(job_id)["calls_used"] == 1
+    assert get_job_budget(job_id)["predict_tokens_reserved"] == 1200
+
+    with pytest.raises(LearningBudgetError, match="different reservations"):
+        reserve_job_budget(job_id, "initial_generation", calls=2, predict_tokens=1500)
+
+
+def test_job_budget_fails_closed_when_call_or_token_ceiling_would_be_exceeded(learning_store):
+    job_id = learning.create_job("Budget ceiling")["id"]
+    reserve_job_budget(job_id, "generation", calls=1, predict_tokens=1200)
+    denied = reserve_job_budget(job_id, "peer_review", calls=3, predict_tokens=8500)
+
+    assert denied["reserved"] is False
+    assert denied["reason"] == "budget_exhausted"
+    assert get_job_budget(job_id)["calls_used"] == 1
+    assert get_job_budget(job_id)["predict_tokens_reserved"] == 1200
+
+
+def test_job_budget_ceilings_are_immutable(learning_store):
+    job_id = learning.create_job("Budget immutable")["id"]
+    reserve_job_budget(job_id, "generation", calls=1, predict_tokens=1200)
+    with pytest.raises(LearningBudgetError, match="ceilings are immutable"):
+        reserve_job_budget(
+            job_id, "another-stage", calls=1, predict_tokens=100,
+            max_calls=8, max_predict_tokens=10000,
+        )
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"calls": True, "predict_tokens": 1},
+        {"calls": -1, "predict_tokens": 1},
+        {"calls": 1, "predict_tokens": -1},
+        {"calls": 1, "predict_tokens": 0},
+    ],
+)
+def test_job_budget_rejects_invalid_reservations(learning_store, kwargs):
+    job_id = learning.create_job("Budget invalid")["id"]
+    with pytest.raises(LearningBudgetError):
+        reserve_job_budget(job_id, "bad-stage", **kwargs)
+
+
+def test_concurrent_budget_reservations_never_exceed_shared_ceiling(learning_store):
+    from concurrent.futures import ThreadPoolExecutor
+
+    job_id = learning.create_job("Concurrent budget reservations")["id"]
+
+    def reserve(index):
+        return reserve_job_budget(
+            job_id, f"concurrent-stage-{index}", calls=1, predict_tokens=1000
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(reserve, range(8)))
+
+    accepted = [item for item in outcomes if item["reserved"]]
+    denied = [item for item in outcomes if not item["reserved"]]
+    snapshot = get_job_budget(job_id)
+
+    assert len(accepted) == 7
+    assert len(denied) == 1
+    assert all(item["reason"] == "budget_exhausted" for item in denied)
+    assert snapshot["calls_used"] == 7
+    assert snapshot["predict_tokens_reserved"] == 7000
+    assert snapshot["calls_used"] <= snapshot["max_calls"]
+    assert snapshot["predict_tokens_reserved"] <= snapshot["max_predict_tokens"]
+
+def test_daily_global_budget_is_shared_across_distinct_learning_jobs(learning_store):
+    first_job = learning.create_job("First daily budget job")["id"]
+    second_job = learning.create_job("Second daily budget job")["id"]
+
+    accepted = reserve_job_budget(
+        first_job, "initial_generation", calls=1, predict_tokens=1200,
+        max_global_calls_per_day=1, max_global_predict_tokens_per_day=1200,
+    )
+    denied = reserve_job_budget(
+        second_job, "initial_generation", calls=1, predict_tokens=1200,
+        max_global_calls_per_day=1, max_global_predict_tokens_per_day=1200,
+    )
+
+    assert accepted["reserved"] is True
+    assert accepted["global_calls_reserved_today"] == 1
+    assert accepted["global_predict_tokens_reserved_today"] == 1200
+    assert denied["reserved"] is False
+    assert denied["reason"] == "global_budget_exhausted"
+    assert denied["global_budget_exhausted"] is True
+    assert denied["global_calls_reserved_today"] == 1
+    assert get_job_budget(second_job)["calls_used"] == 0
+
+
+def test_daily_global_budget_ceilings_cannot_be_raised_midday(learning_store):
+    job_id = learning.create_job("Global budget immutable")["id"]
+    reserve_job_budget(
+        job_id, "initial_generation", calls=1, predict_tokens=1200,
+        max_global_calls_per_day=2, max_global_predict_tokens_per_day=3000,
+    )
+
+    with pytest.raises(LearningBudgetError, match="Daily global budget ceilings are immutable"):
+        reserve_job_budget(
+            job_id, "quality_repair", calls=1, predict_tokens=1400,
+            max_global_calls_per_day=3, max_global_predict_tokens_per_day=4000,
+        )
+
+def test_daily_global_token_ceiling_is_shared_across_jobs(learning_store):
+    first_job = learning.create_job("First global token budget job")["id"]
+    second_job = learning.create_job("Second global token budget job")["id"]
+
+    accepted = reserve_job_budget(
+        first_job, "initial_generation", calls=1, predict_tokens=800,
+        max_global_calls_per_day=10, max_global_predict_tokens_per_day=1000,
+    )
+    denied = reserve_job_budget(
+        second_job, "initial_generation", calls=1, predict_tokens=300,
+        max_global_calls_per_day=10, max_global_predict_tokens_per_day=1000,
+    )
+
+    assert accepted["reserved"] is True
+    assert denied["reserved"] is False
+    assert denied["reason"] == "global_budget_exhausted"
+    assert denied["global_calls_reserved_today"] == 1
+    assert denied["global_predict_tokens_reserved_today"] == 800
+    assert denied["global_budget_exhausted"] is False
+
+
+def test_concurrent_global_budget_reservations_never_exceed_daily_ceiling(learning_store):
+    from concurrent.futures import ThreadPoolExecutor
+
+    job_ids = [
+        learning.create_job(f"Concurrent global budget {index}")["id"]
+        for index in range(8)
+    ]
+
+    def reserve(job_id):
+        return reserve_job_budget(
+            job_id, "initial_generation", calls=1, predict_tokens=1000,
+            max_global_calls_per_day=3, max_global_predict_tokens_per_day=3000,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(reserve, job_ids))
+
+    accepted = [item for item in outcomes if item["reserved"]]
+    denied = [item for item in outcomes if not item["reserved"]]
+    assert len(accepted) == 3
+    assert len(denied) == 5
+    assert all(item["reason"] == "global_budget_exhausted" for item in denied)
+    snapshot = get_job_budget(job_ids[-1])
+    assert snapshot["global_calls_reserved_today"] == 3
+    assert snapshot["global_predict_tokens_reserved_today"] == 3000
+    assert snapshot["global_calls_reserved_today"] <= snapshot["global_max_calls_per_day"]
+    assert snapshot["global_predict_tokens_reserved_today"] <= snapshot["global_max_predict_tokens_per_day"]
+
+
+
+def test_multiprocess_global_budget_reservations_never_exceed_daily_ceiling(learning_store):
+    import multiprocessing
+
+    if "fork" not in multiprocessing.get_all_start_methods():
+        pytest.skip("This process-level SQLite race test requires fork support.")
+
+    job_ids = [
+        learning.create_job(f"Multiprocess global budget {index}")["id"]
+        for index in range(8)
+    ]
+    context = multiprocessing.get_context("fork")
+    result_queue = context.Queue()
+
+    def reserve_in_process(job_id):
+        try:
+            result_queue.put(reserve_job_budget(
+                job_id,
+                "initial_generation",
+                calls=1,
+                predict_tokens=1000,
+                max_global_calls_per_day=3,
+                max_global_predict_tokens_per_day=3000,
+            ))
+        except BaseException as exc:
+            result_queue.put({"worker_error": type(exc).__name__, "message": str(exc)})
+
+    workers = [
+        context.Process(target=reserve_in_process, args=(job_id,))
+        for job_id in job_ids
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(timeout=30)
+
+    still_running = [worker for worker in workers if worker.is_alive()]
+    for worker in still_running:
+        worker.terminate()
+        worker.join(timeout=5)
+    assert not still_running, "Concurrent budget workers did not terminate."
+    assert all(worker.exitcode == 0 for worker in workers)
+
+    outcomes = [result_queue.get(timeout=5) for _ in workers]
+    result_queue.close()
+    assert not any("worker_error" in item for item in outcomes), outcomes
+    accepted = [item for item in outcomes if item["reserved"]]
+    denied = [item for item in outcomes if not item["reserved"]]
+    assert len(accepted) == 3
+    assert len(denied) == 5
+    assert all(item["reason"] == "global_budget_exhausted" for item in denied)
+
+    snapshot = get_job_budget(job_ids[-1])
+    assert snapshot["global_calls_reserved_today"] == 3
+    assert snapshot["global_predict_tokens_reserved_today"] == 3000
+    assert snapshot["global_calls_reserved_today"] <= snapshot["global_max_calls_per_day"]
+    assert snapshot["global_predict_tokens_reserved_today"] <= snapshot["global_max_predict_tokens_per_day"]
