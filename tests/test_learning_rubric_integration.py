@@ -128,7 +128,7 @@ def test_legacy_assessment_keeps_exact_match_fallback(tmp_path, monkeypatch):
     job_id, _, _ = _ready_job(tmp_path, monkeypatch, rubric=None)
     result = learning.submit_assessment(
         job_id,
-        ["Items can be changed after creation.", "An index selects a position.", "Assign a new value to the item."],
+        ["List items can be modified later.", "Positions are selected by the index.", "Assignment replaces the existing item."],
         "assessment-test-legacy-001",
     )
     assert result["scoring_method"] == "normalized_exact_match"
