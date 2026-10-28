@@ -827,7 +827,7 @@ def test_language_runner_promotes_only_after_exact_runtime_and_completed_harness
         return {
             "execution_status": "succeeded",
             "exit_code": 0,
-            "stdout": f"{runtime_marker}:{version}\\nassertion passed\\n{marker}\\n",
+            "stdout": f"{runtime_marker}:{version}\nassertion passed\n{marker}\n",
             "stderr": "",
             "duration_ms": 12,
             "image": (
