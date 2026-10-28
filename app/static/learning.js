@@ -905,7 +905,7 @@ async function refreshLearningCapabilities() {
       "\nشاخص ارزش: " + (item.learning_value_cost && item.learning_value_cost.provisional_value_points != null ? item.learning_value_cost.provisional_value_points : "ناموجود") +
       "؛ هزینه به‌ازای هر واحد ارزش: " + (item.learning_value_cost && item.learning_value_cost.estimated_cost_microusd_per_value_point != null ? item.learning_value_cost.estimated_cost_microusd_per_value_point : "ناموجود؛ هزینه یا خط مبنای کافی نیست")
      ).join("\n\n") +
-     "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال عمومی مهارت را اثبات نمی‌کند."
+     "\n\nشواهد عملی فقط وقتی تکرارپذیر شمرده می‌شود که دست‌کم دو برنامهٔ آزمون متفاوت با منبع زندهٔ مستند وجود داشته باشد؛ این هم به‌تنهایی انتقال مهارت عملی را اثبات نمی‌کند."
    : "هنوز سرفصلی برای نمایش در نقشهٔ قابلیت‌ها وجود ندارد.";
  } catch (error) {
   output.textContent = "ساخت نقشهٔ قابلیت‌ها ناموفق بود: " + error.message;
