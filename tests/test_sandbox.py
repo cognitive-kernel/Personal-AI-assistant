@@ -395,7 +395,8 @@ def test_workspace_tests_run_only_in_pinned_no_network_container(tmp_path, monke
     assert "--read-only" in args
     assert "--cap-drop=ALL" in args
     assert "--security-opt=no-new-privileges" in args
-    assert "--memory=1g" in args
+    assert "--memory=2g" in args
+    assert "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=768m,uid=65534,gid=65534" in args
     assert "--cpus=2" in args
     assert "--pids-limit=128" in args
     assert "--user=65534:65534" in args
