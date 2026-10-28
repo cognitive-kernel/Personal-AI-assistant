@@ -65,7 +65,7 @@ def list_practical_exercises(job_id: int | None = None) -> dict[str, Any]:
 @router.post("/practical/exercises/{exercise_id}/submit", status_code=202)
 def submit_practical_exercise(exercise_id: str, request: PracticalSubmission) -> dict[str, Any]:
     if (
-        not request.source_code.strip() or "\\x00" in request.source_code
+        not request.source_code.strip() or "\x00" in request.source_code
         or len(request.source_code.encode("utf-8")) > 32 * 1024
     ):
         raise HTTPException(status_code=422, detail="Practical source must be non-empty, NUL-free, and at most 32 KiB.")
