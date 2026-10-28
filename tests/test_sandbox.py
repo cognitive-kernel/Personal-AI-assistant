@@ -16,6 +16,7 @@ class FakeProcess:
         self.args = args
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
+        self.stdin = io.BytesIO()
         self.returncode = returncode
         self.terminated = False
         self.killed = False
@@ -80,6 +81,37 @@ def test_sandbox_runs_only_digest_pinned_python_in_no_network_container(tmp_path
     assert kwargs["stdin"] == subprocess.DEVNULL
     assert "KAGGLE_API_TOKEN" not in kwargs["env"]
     assert kwargs["env"]["DOCKER_HOST"] == "unix:///var/run/docker.sock"
+
+
+def test_sandbox_accepts_bounded_stdin_only_when_requested(tmp_path, monkeypatch):
+    executable = _configured_docker(tmp_path)
+    calls = []
+    process = FakeProcess([], stdout=b"ok\\n")
+
+    def fake_popen(args, **kwargs):
+        calls.append((args, kwargs, process))
+        return process
+
+    monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
+    payload = "bounded input"
+    result = sandbox.run_python(
+        "print('ok')",
+        docker_executable=executable,
+        image=IMAGE,
+        stdin_text=payload,
+    )
+
+    assert result.status == "succeeded"
+    args, kwargs, process = calls[0]
+    assert "--interactive" in args
+    assert kwargs["stdin"] == subprocess.PIPE
+    assert process.stdin.getvalue() == payload.encode("utf-8")
+
+    with pytest.raises(ValueError, match="16 KiB"):
+        sandbox.run_python(
+            "print(1)", docker_executable=executable, image=IMAGE,
+            stdin_text="x" * (16 * 1024 + 1),
+        )
 
 
 def test_sandbox_returns_unavailable_without_docker_and_never_falls_back(tmp_path):
