@@ -27,6 +27,9 @@
 | تولید و مدیریت درس | `app/learning.py` |
 | کارهای پس‌زمینهٔ یادگیری | `app/learning_tasks.py` |
 | کنترل اولیهٔ کیفیت درس | `app/learning_quality.py` |
+| نمره‌دهی مفهومی قطعی | `app/learning_rubric.py` و `tests/fixtures/learning_rubric_calibration.json` |
+| نمایه‌سازی و بازیابی منبع محلی | `app/knowledge_base.py`, `app/knowledge_base_routes.py` |
+| ارزیابی کالیبراسیون rubric | `scripts/evaluate_learning_rubric.py`
 | دوره‌ها و سرفصل‌ها | `app/curricula.py` و `app/curricula_expansion.py` |
 | پیشنهاد گام بعدی | `app/learning_recommendations.py` |
 | مرور فاصله‌دار | `app/spaced_repetition.py` |
