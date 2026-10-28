@@ -1160,7 +1160,7 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_model_usage_purpose_created ON model_usage_events(purpose, created_at DESC)",
             "CREATE INDEX idx_model_usage_cost ON model_usage_events(estimated_cost_microusd, created_at DESC)",
         ),
-    ),,
+    ),
     Migration(
         34,
         "evidence-reviewed-learning-causal-graph",
@@ -1183,7 +1183,7 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_graph_source ON learning_knowledge_graph_edges(source_knowledge_id, status, relation_type)",
             "CREATE INDEX idx_learning_graph_target ON learning_knowledge_graph_edges(target_knowledge_id, status, relation_type)",
         ),
-    ),,
+    ),
     Migration(
         35,
         "chrome-chatgpt-learning-phase-one",
