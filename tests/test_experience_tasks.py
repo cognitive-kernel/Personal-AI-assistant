@@ -2,6 +2,7 @@ import pytest
 
 from app import experience_tasks, sandbox_tasks
 from app.sandbox import SandboxResult
+from types import SimpleNamespace
 
 
 class FakeContext:
@@ -35,7 +36,7 @@ def _experience(status="identified"):
         "hypothesis": "The empty-input branch is missing.",
         "status": status,
         "version": 1,
-        "source_evidence": [{"url": "https://docs.python.org/3/library/", "claim": "Documented behavior"}],
+        "source_evidence": [{"url": "https://docs.python.org/3/library/", "claim": "Documented behavior", "excerpt": "Documented behavior"}],
         "test_plan": [{"test": "empty input regression"}],
         "test_results": [],
         "takeaway": "",
@@ -56,6 +57,7 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
 ):
     _configure(monkeypatch, tmp_path)
     monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: _experience())
+    monkeypatch.setattr(experience_tasks.web_sources, "fetch_public_document", lambda *args, **kwargs: SimpleNamespace(text="Documented behavior"))
     captured = {}
 
     def fake_update(experience_id, **changes):
@@ -96,6 +98,7 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
 def test_controlled_runner_records_failure_without_verification(monkeypatch, tmp_path):
     _configure(monkeypatch, tmp_path)
     monkeypatch.setattr(experience_tasks.experience, "get_experience", lambda _id: _experience())
+    monkeypatch.setattr(experience_tasks.web_sources, "fetch_public_document", lambda *args, **kwargs: SimpleNamespace(text="Documented behavior"))
     captured = {}
 
     def fake_update(experience_id, **changes):
