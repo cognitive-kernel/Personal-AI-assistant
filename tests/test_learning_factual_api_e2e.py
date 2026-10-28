@@ -64,7 +64,21 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         "answer_key": [
             "Its items can be changed after creation.",
             "An index selects a position.",
-            "Yes, an item can be assigned a new value.",
+            "Assigning a new value replaces the existing list item.",
+        ],
+        "rubric": [
+            {"criteria": [
+                {"id": "mutability", "weight": 1, "accepted_phrases": ["items can be changed after creation", "items can be modified after creation"]},
+                {"id": "timing", "weight": 1, "accepted_phrases": ["after creation", "after the list is created"]},
+            ]},
+            {"criteria": [
+                {"id": "index", "weight": 1, "accepted_phrases": ["index selects a position", "an index selects a position"]},
+                {"id": "position", "weight": 1, "accepted_phrases": ["selects a position", "selects the position"]},
+            ]},
+            {"criteria": [
+                {"id": "assignment", "weight": 1, "accepted_phrases": ["assigning a new value", "assign a new value"]},
+                {"id": "replacement", "weight": 1, "accepted_phrases": ["replaces the existing list item", "replace the existing item"]},
+            ]},
         ],
     }
     monkeypatch.setattr(learning, "_discover_and_store_sources", discover)
@@ -145,9 +159,13 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         detail = detail_response.json()
         assert detail["quality"]["accepted"] is True
         assert detail["quality"]["score"] == 95
+        assert detail["quality"]["assessment_rubric_status"] == "available"
+        assert "rubric" not in detail["assessment"]
+        assert "rubric_version" not in detail["assessment"]
         generation = detail["quality"]["generation_provenance"]
         prompt_payload = json.loads(captured_requests[0]["messages"][1]["content"])
         assert "Retrieved index excerpt; not independently verified." in prompt_payload["indexed_knowledge_context"]
+        assert "and rubric" in prompt_payload["instruction"]
         assert prompt_payload["indexed_knowledge_sources"] == [{
             "title": "Python list reference",
             "url": "https://learn.microsoft.com/en-us/sql/",
@@ -167,12 +185,24 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         evidence_types = {item["evidence_type"] for item in detail["evidence"]}
         assert {"web_page", "model_output"} <= evidence_types
 
+        assessment_payload = {
+            "answers": generated_lesson["answer_key"],
+            "idempotency_key": "api-e2e-assessment-key-0001",
+        }
         attempt_response = client.post(
             f"/api/learning/jobs/{created['id']}/assessment",
-            json={"answers": generated_lesson["answer_key"]},
+            json=assessment_payload,
         )
         assert attempt_response.status_code == 200
         assert attempt_response.json()["score"] == 100
+        assert attempt_response.json()["scoring_method"] == "rubric_concept_coverage_v1"
+        replay_response = client.post(
+            f"/api/learning/jobs/{created['id']}/assessment",
+            json=assessment_payload,
+        )
+        assert replay_response.status_code == 200
+        assert replay_response.json()["idempotent_replay"] is True
+        assert replay_response.json()["attempt_id"] == attempt_response.json()["attempt_id"]
         refreshed = client.get(f"/api/learning/jobs/{created['id']}").json()
         assert refreshed["assessment_attempts"][0]["score"] == 100
 
