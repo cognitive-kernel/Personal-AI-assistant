@@ -27,11 +27,11 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 
 | Evidence | Value |
 |---|---|
-| Candidate commit SHA | Not recorded — select and freeze a release candidate first |
-| Exact-head test workflow URL | Pending — user confirms all Windows tests passed; run URL/log not supplied |
-| Exact-head dependency-audit URL | Pending |
-| Exact-head browser E2E URL | Pending |
-| Exact-head Windows storage workflow URL | Pending — user confirms all Windows tests passed; run URL/log not supplied |
+| Main merge commit SHA | `9b029b313af917a8cf3bd50a90ee001951b341a3` (PR #502's validated head: `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0`; main merge commit has not had a separate push-triggered workflow run) |
+| PR-head test workflow URL | [tests #40712989824](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989824) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0`; full suite, generated-artifact checks, Markdown links, import-cycle check, retrieval benchmark, and claim-to-test benchmark succeeded |
+| PR-head dependency-audit URL | [dependency-audit #40712989651](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989651) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0` |
+| PR-head browser E2E URL | [browser-e2e #40712989700](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989700) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0` |
+| PR-head Windows storage workflow URL | [windows-storage-regressions job in tests #40712989824](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989824) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0` |
 | Target-host baseline report location (outside repository) | Pending — Windows tests reported successful by project owner on 2026-10-28; report not attached |
 | Disposable legacy migration row-preservation / restart / health result | Owner confirms migration complete and app running on new DB; separate logs not attached |
 | Live evaluation report + dataset hash + model digest (local only) | Pending |
