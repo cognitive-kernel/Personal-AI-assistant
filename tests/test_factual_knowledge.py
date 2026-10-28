@@ -17,6 +17,7 @@ from app.factual_knowledge import (
     review_cache_key,
     record_test,
     search_retrievable_claims,
+    traverse_knowledge_relations,
     transition_evidence_level,
     transition_lifecycle,
 )
@@ -664,3 +665,50 @@ def test_reverify_due_source_quarantines_unavailable_source(connection):
 def test_source_reverification_rejects_invalid_limits(connection, limit):
     with pytest.raises(KnowledgePolicyError, match="limit"):
         reverify_due_sources(connection, limit=limit)
+
+
+def test_knowledge_graph_traversal_is_bounded_ordered_and_cycle_safe(connection):
+    first = _active_tested_claim(
+        connection,
+        "Python lists preserve order",
+        environment_name="python",
+        environment_version="3.11",
+        level="L3_human_verified",
+    )
+    second = make_claim(connection, "Python tuples preserve order")
+    third = _active_tested_claim(
+        connection,
+        "Python sequences support indexing",
+        environment_name="python",
+        environment_version="3.11",
+        level="L3_human_verified",
+    )
+    fourth = make_claim(connection, "Python dictionaries map keys to values")
+    add_relation(connection, first, second, "depends_on")
+    add_relation(connection, first, third, "supersedes")
+    add_relation(connection, second, third, "depends_on")
+    add_relation(connection, third, first, "contradicts")
+    add_relation(connection, third, fourth, "depends_on")
+
+    result = traverse_knowledge_relations(connection, first, max_depth=3, limit=10)
+    assert [item["knowledge_id"] for item in result] == [second, third, fourth]
+    assert result[0]["relation_path"] == ["depends_on"]
+    assert result[2]["depth"] == 2
+    assert all(item["knowledge_id"] != first for item in result)
+
+
+def test_knowledge_graph_traversal_filters_relations_and_validates_bounds(connection):
+    first = make_claim(connection, "Python list is mutable")
+    second = make_claim(connection, "Python tuple is immutable")
+    third = make_claim(connection, "Python list preserves insertion order")
+    add_relation(connection, first, second, "contradicts")
+    add_relation(connection, first, third, "depends_on")
+
+    result = traverse_knowledge_relations(
+        connection, first, relation_types=("depends_on",), max_depth=1
+    )
+    assert [item["knowledge_id"] for item in result] == [third]
+    with pytest.raises(KnowledgePolicyError, match="max_depth"):
+        traverse_knowledge_relations(connection, first, max_depth=4)
+    with pytest.raises(KnowledgePolicyError, match="unknown knowledge id"):
+        traverse_knowledge_relations(connection, 999999)
