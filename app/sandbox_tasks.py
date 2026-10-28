@@ -165,13 +165,21 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
                         "Practical grading stopped before all test cases completed.",
                     )
                     break
+                input_literal = json.dumps(
+                    json.dumps(case["input"], ensure_ascii=False), ensure_ascii=True
+                )
+                source_literal = json.dumps(learner_source_code, ensure_ascii=True)
+                case_source = (
+                    "import io,json,sys\\n"
+                    f"sys.stdin=io.TextIOWrapper(io.BytesIO(json.loads({input_literal}).encode('utf-8')))\\n"
+                    f"exec(compile(json.loads({source_literal}), '<learner>', 'exec'), {{'__name__':'__main__'}})\\n"
+                )
                 case_result = sandbox.run_python(
-                    learner_source_code,
+                    case_source,
                     docker_executable=executable,
                     image=selected_image,
                     timeout_seconds=timeout_seconds,
                     max_output_bytes=max_output_bytes,
-                    stdin_text=json.dumps(case["input"], ensure_ascii=False),
                     control_check=control_check,
                     task_id=context.task_id,
                 )
