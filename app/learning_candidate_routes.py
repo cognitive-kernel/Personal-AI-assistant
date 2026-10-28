@@ -32,6 +32,7 @@ class CandidateTestPlanItem(BaseModel):
     oracle_id: str | None = Field(default=None, min_length=1, max_length=120)
     oracle_version: int | None = Field(default=None, ge=1, le=1000)
     claim: str | None = Field(default=None, min_length=10, max_length=1000)
+    claim_ids: list[str] | None = Field(default=None, min_length=1, max_length=20)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -120,6 +121,34 @@ def list_learning_oracles() -> dict[str, Any]:
     }
 
 
+@router.get("/{candidate_id}/claims")
+def get_learning_candidate_claims(candidate_id: int) -> dict[str, Any]:
+    """Return stable, positional claim IDs for explicit test-plan coverage mapping."""
+    from .claim_test_coverage import extract_candidate_claims
+
+    try:
+        with learning_connection() as connection:
+            row = connection.execute(
+                f"SELECT {_COLUMNS} FROM temporary_knowledge_candidates WHERE id=?",
+                (candidate_id,),
+            ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Learning candidate not found.")
+        candidate = _candidate(row, include_content=True)
+        claims = extract_candidate_claims(candidate["content"], candidate_id)
+        return {
+            "candidate_id": candidate_id,
+            "content_sha256": candidate["content_sha256"],
+            "coverage_version": "claim-test-coverage-v1",
+            "claims": claims,
+            "complete": bool(claims),
+        }
+    except HTTPException:
+        raise
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Candidate claims are unavailable.") from exc
+
+
 @router.get("/{candidate_id}")
 def get_learning_candidate(candidate_id: int) -> dict[str, Any]:
     try:
@@ -161,16 +190,20 @@ def save_candidate_test_plan(
         ):
             raise HTTPException(status_code=422, detail="python_test_code must be non-empty, NUL-free, and at most 8 KiB.")
     has_oracle_reference = False
+    has_claim_mapping = False
     for item in request.tests:
         oracle_fields = (item.oracle_id is not None, item.oracle_version is not None, item.claim is not None)
         if any(oracle_fields) and not all(oracle_fields):
             raise HTTPException(status_code=422, detail="oracle_id, oracle_version, and claim must be provided together.")
         has_oracle_reference = has_oracle_reference or all(oracle_fields)
+        has_claim_mapping = has_claim_mapping or item.claim_ids is not None
+    plan_tests = [item.model_dump() for item in request.tests]
+    coverage_request = bool(has_claim_mapping)
     plan = {
-        "version": 3 if has_oracle_reference else 2,
+        "version": 4 if has_claim_mapping else (3 if has_oracle_reference else 2),
         "oracle_reviewed": True,
         "review_note": request.review_note.strip(),
-        "tests": [item.model_dump() for item in request.tests],
+        "tests": plan_tests,
     }
     encoded = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     try:
@@ -183,6 +216,20 @@ def save_candidate_test_plan(
             if row is None:
                 raise HTTPException(status_code=404, detail="Learning candidate not found.")
             candidate = _candidate(row, include_content=True)
+            if coverage_request:
+                from .claim_test_coverage import evaluate_claim_test_coverage, extract_candidate_claims
+                claims = extract_candidate_claims(candidate["content"], candidate_id)
+                coverage = evaluate_claim_test_coverage(
+                    [claim["claim_id"] for claim in claims],
+                    plan["tests"],
+                )
+                if not coverage["complete"]:
+                    raise HTTPException(
+                        status_code=422,
+                        detail={"message": "Claim-to-test coverage is incomplete.", "coverage": coverage},
+                    )
+                plan["claim_coverage"] = coverage
+                encoded = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
             if has_oracle_reference:
                 from .learning_oracles import evaluate_candidate_claim
                 for item in plan["tests"]:
