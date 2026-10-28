@@ -444,3 +444,74 @@ def test_workspace_tests_report_failure_without_host_fallback(tmp_path, monkeypa
     assert result.exit_code == 1
     assert result.stdout == "1 failed"
     assert result.stderr == "assertion failed"
+
+
+
+@pytest.mark.parametrize(
+    ("image", "language", "expected"),
+    [
+        ("node:22-bookworm-slim@sha256:" + "a" * 64, "javascript", True),
+        ("rust:1.84-slim@sha256:" + "b" * 64, "rust", True),
+        ("node:latest", "javascript", False),
+        ("python:3.12-slim@sha256:" + "a" * 64, "javascript", False),
+        ("rust:latest", "rust", False),
+    ],
+)
+def test_language_runner_requires_official_digest_pinned_images(image, language, expected):
+    from app.sandbox import is_valid_language_image_reference
+
+    assert is_valid_language_image_reference(image, language) is expected
+
+
+@pytest.mark.parametrize(
+    ("language", "image", "stdout", "required_tmpfs"),
+    [
+        (
+            "javascript", "node:22-bookworm-slim@sha256:" + "b" * 64,
+            b"__PAI_NODE_VERSION__:22.14.0\\n", "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=16m,uid=65534,gid=65534",
+        ),
+        (
+            "rust", "rust:1.84-slim@sha256:" + "c" * 64,
+            b"__PAI_RUST_VERSION__:1.84.0\\n", "--tmpfs=/tmp:rw,nosuid,nodev,exec,size=128m,uid=65534,gid=65534",
+        ),
+    ],
+)
+def test_language_sandbox_is_digest_pinned_no_network_and_resource_bounded(
+    tmp_path, monkeypatch, language, image, stdout, required_tmpfs
+):
+    executable = _configured_docker(tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        sandbox.subprocess,
+        "Popen",
+        lambda args, **kwargs: calls.append((args, kwargs)) or FakeProcess(args, stdout=stdout),
+    )
+
+    result = sandbox.run_language(
+        "assert.equal(1, 1);" if language == "javascript" else "assert_eq!(1, 1);",
+        language=language,
+        docker_executable=executable,
+        image=image,
+        timeout_seconds=5,
+        max_output_bytes=1000,
+        task_id=19,
+    )
+
+    assert result.status == "succeeded"
+    args = calls[0][0]
+    assert "--pull=never" in args
+    assert "--network=none" in args
+    assert "--read-only" in args
+    assert "--cap-drop=ALL" in args
+    assert "--security-opt=no-new-privileges" in args
+    assert "--pids-limit=64" in args
+    assert "--cpus=1" in args
+    assert required_tmpfs in args
+    assert f"{sandbox._TASK_ID_LABEL}=19" in args
+    assert image in args
+    if language == "rust":
+        assert "--memory=512m" in args
+        assert any(arg == "rustc" or "rustc --edition=2021" in arg for arg in args)
+    else:
+        assert "--memory=256m" in args
+        assert "node" in args
