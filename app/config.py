@@ -71,6 +71,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "learning_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
     "learning_max_concurrent_jobs": 1,
     "learning_model_keep_alive": "0",
+    "learning_model_pricing_json": "",
     "learning_source_max_chars": 12000,
     "programming_ollama_model": defaults.programming_ollama_model,
     "factual_review_ollama_model": defaults.factual_review_ollama_model,
