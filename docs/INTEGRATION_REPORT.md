@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-28  
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `28b18088267eca759e78c15930425e3f0698f19d`  
+> commit مبنا: `71fa40ecf5c0a2008d960452b5143172b301f3c8`  
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -19,6 +19,9 @@
 - PR [#484](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/484): بررسی لینک‌های Markdown محلی در CI.
 - PR [#485](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/485): تبدیل بررسی چرخه‌های import زمان بارگذاری به گیت شکست CI.
 - PR [#486](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/486): pin کردن اتصال HTTP(S) به IP عمومی اعتبارسنجی‌شده، حفظ نام میزبان TLS و آزمون رگرسیون DNS/redirect.
+- PR [#488](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/488): ارزیابی معنایی assessment فقط با مدل نصب‌شده‌ای که digest آن از مدل‌های تولید متمایز است؛ نمرهٔ قطعی تغییر نمی‌کند.
+- PR [#492](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/492): DAG پیش‌نیازهای چرخه‌-ایمن؛ مسیرهای قدیمی بدون سیاست صریح، رفتار قبلی موازی را حفظ می‌کنند.
+- PR [#493](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/493): pipeline ممیزی کانال‌های بازبینی، فهرست oracle، promptهای نسخه‌دار، بودجهٔ پایدار در سطح job/روز، معیارهای عملیاتی و مهاجرت‌های 28–31.
 
 آزمون‌های PR برای هر تغییر بالا موفق بودند. اجرای CI روی commit نهایی `main` نیز باید جداگانه از صفحهٔ Actions تأیید شود؛ این گزارش ادعای اجرای محلی checkout یا تست زندهٔ میزبان را ندارد.
 
