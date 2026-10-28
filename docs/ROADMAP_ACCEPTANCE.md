@@ -27,8 +27,9 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 
 | Evidence | Value |
 |---|---|
-| Main merge commit SHA | `9b029b313af917a8cf3bd50a90ee001951b341a3` (PR #502's validated head: `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0`; main merge commit has not had a separate push-triggered workflow run) |
+| Main merge commit SHA | `7c4416793558b272c8da9dee6d93d76b4e8a31d7` (latest code fix from PR #505; validated PR head `0d27bd1b76f6a8be1a1e59fc199a70267d4f52e7`; workflow runs passed on that exact PR head) |
 | PR-head test workflow URL | [tests #40712989824](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989824) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0`; full suite, generated-artifact checks, Markdown links, import-cycle check, retrieval benchmark, and claim-to-test benchmark succeeded |
+| Latest code-fix CI (PR #505) | [tests #40716225886](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40716225886), [dependency audit #40716225963](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40716225963), [browser E2E #40716225868](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40716225868), and [sandbox integration #40716225875](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40716225875) — all passed on exact PR head `0d27bd1b76f6a8be1a1e59fc199a70267d4f52e7`; Windows storage regressions also passed within the test workflow |
 | PR-head dependency-audit URL | [dependency-audit #40712989651](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989651) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0` |
 | PR-head browser E2E URL | [browser-e2e #40712989700](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989700) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0` |
 | PR-head Windows storage workflow URL | [windows-storage-regressions job in tests #40712989824](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40712989824) — passed on PR head `dd5730d8b7f8ac63e3058b2177f9cc1eb3d259d0` |
