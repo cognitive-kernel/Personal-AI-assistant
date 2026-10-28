@@ -67,3 +67,10 @@ def test_custom_mode_with_no_dependencies_makes_topic_eligible(prerequisite_stor
     result = learning_prerequisites.get_topic_prerequisites(path_id, independent_id)
     assert result["prerequisite_mode"] == "custom"
     assert result["prerequisites"] == []
+
+
+def test_linear_mode_explicitly_blocks_later_topics(prerequisite_store):
+    path_id, (_first_id, later_id, _third_id) = prerequisite_store
+    learning_prerequisites.set_path_mode(path_id, "linear")
+    with pytest.raises(ValueError, match="Prerequisite topic is not completed: A foundation"):
+        learning.create_job("Independent branch", path_topic_id=later_id)
