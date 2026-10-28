@@ -425,3 +425,24 @@ def test_ollama_http_status_classifies_retryability(
             server.shutdown()
             thread.join(timeout=2)
 
+
+
+def test_factual_review_uses_bounded_timeout_context_and_model_override(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(ollama, "get_settings", lambda: {"ollama_timeout_seconds": 120})
+    monkeypatch.setattr(ollama, "detect_hardware", lambda: {})
+    monkeypatch.setattr(ollama, "runtime_limits", lambda *_args, **_kwargs: {"num_ctx": 8192, "cpu_threads": 3})
+    monkeypatch.setattr(ollama, "model_keep_alive", lambda *_args, **_kwargs: "0")
+
+    def fake_request(path, payload, *, timeout):
+        captured.update(path=path, payload=payload, timeout=timeout)
+        return {"message": {"content": "review result"}}
+
+    monkeypatch.setattr(ollama, "_request", fake_request)
+    result = ollama.chat("bounded review input", purpose="factual_review", model_override="reviewer:1")
+
+    assert result == "review result"
+    assert captured["payload"]["model"] == "reviewer:1"
+    assert captured["timeout"] == 45
+    assert captured["payload"]["options"]["num_ctx"] == 4096
+    assert captured["payload"]["options"]["num_predict"] == 500
