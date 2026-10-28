@@ -13,7 +13,9 @@ import math
 from typing import Any
 
 from .db import learning_connection
-from .learning import MASTERY_SCORE_THRESHOLD
+
+# Keep practical-path completion aligned with the current learning assessment gate.
+MASTERY_SCORE_THRESHOLD = 70.0
 
 EXERCISE_ID = "python-json-sum-v1"
 EXERCISES = {
