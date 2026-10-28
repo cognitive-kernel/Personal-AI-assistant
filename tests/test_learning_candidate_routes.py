@@ -247,3 +247,42 @@ def test_oracle_catalog_api_is_read_only(candidate_store):
         "python.dict-get-default",
         "sqlite.foreign-key-check",
     }
+
+
+def test_candidate_claim_coverage_is_exposed_and_incomplete_mapping_fails_closed(candidate_store):
+    content = (
+        "Python lists preserve insertion order for each inserted item. "
+        "Python dictionaries preserve insertion order for each inserted key."
+    )
+    job = learning.create_job("Claim coverage candidate")
+    candidate_id = _candidate(job["id"], content=content)
+
+    claims_response = candidate_store.get(f"/api/learning/candidates/{candidate_id}/claims")
+    assert claims_response.status_code == 200
+    claims = claims_response.json()["claims"]
+    assert [item["claim_id"] for item in claims] == [f"{candidate_id}:1", f"{candidate_id}:2"]
+
+    base = {
+        "confirm": True,
+        "oracle_reviewed": True,
+        "review_note": "Each mapped claim has a distinct expected behavior and independent reference.",
+        "tests": [{
+            "name": "insertion order contract",
+            "objective": "Verify the documented ordering behavior for the supported containers.",
+            "expected_result": "Both containers retain insertion order for inserted entries.",
+            "claim_ids": [claims[0]["claim_id"]],
+        }],
+    }
+    incomplete = candidate_store.post(f"/api/learning/candidates/{candidate_id}/test-plan", json=base)
+    assert incomplete.status_code == 422
+    assert "one_or_more_claims_have_no_tests" in incomplete.json()["detail"]["coverage"]["issues"]
+
+    base["tests"][0]["claim_ids"] = [item["claim_id"] for item in claims]
+    saved = candidate_store.post(f"/api/learning/candidates/{candidate_id}/test-plan", json=base)
+    assert saved.status_code == 201
+    plan = saved.json()["test_plan"]
+    assert plan["version"] == 4
+    assert plan["claim_coverage"]["complete"] is True
+    assert plan["claim_coverage"]["covered_claim_count"] == 2
+    assert saved.json()["executed"] is False
+    assert saved.json()["promoted"] is False

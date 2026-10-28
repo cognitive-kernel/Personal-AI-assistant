@@ -1,0 +1,10 @@
+{"id":"coverage-security-001","dataset_version":"v1","domain":"software_security","claim_ids":["C1","C2"],"test_plan":[{"test":"deny-unsafe-input","claim_ids":["C1"]},{"test":"reject-path-traversal","claim_ids":["C2"]}],"expected_decision":"accept"}
+{"id":"coverage-provenance-001","dataset_version":"v1","domain":"source_provenance","claim_ids":["C1","C2"],"test_plan":[{"test":"verify-source-a","claim_ids":["C1"]}],"expected_decision":"reject"}
+{"id":"coverage-data-quality-001","dataset_version":"v1","domain":"data_quality","claim_ids":["C1"],"test_plan":[],"expected_decision":"reject"}
+{"id":"coverage-model-eval-001","dataset_version":"v1","domain":"model_evaluation","claim_ids":[],"test_plan":[{"test":"score-case","claim_ids":["C1"]}],"expected_decision":"reject"}
+{"id":"coverage-runtime-001","dataset_version":"v1","domain":"runtime_behavior","claim_ids":["C1","C2"],"test_plan":[{"test":"check-both","claim_ids":["C1","C2"]}],"expected_decision":"accept"}
+{"id":"coverage-security-002","dataset_version":"v1","domain":"software_security","claim_ids":["C1","C2"],"test_plan":[{"test":"claim-one","claim_ids":["C1"]},{"test":"claim-two","claim_ids":["UNKNOWN"]}],"expected_decision":"reject"}
+{"id":"coverage-provenance-002","dataset_version":"v1","domain":"source_provenance","claim_ids":["C1"],"test_plan":[{"test":"test-without-mapping"}],"expected_decision":"reject"}
+{"id":"coverage-data-quality-002","dataset_version":"v1","domain":"data_quality","claim_ids":["C1","C2"],"test_plan":[{"test":"same-name","claim_ids":["C1"]},{"test":"same-name","claim_ids":["C2"]}],"expected_decision":"reject"}
+{"id":"coverage-model-eval-002","dataset_version":"v1","domain":"model_evaluation","claim_ids":["C1","C2","C3"],"test_plan":[{"test":"claim-one","claim_ids":["C1"]},{"test":"claim-two","claim_ids":["C2"]},{"test":"claim-three","claim_ids":["C3"]}],"expected_decision":"accept"}
+{"id":"coverage-runtime-002","dataset_version":"v1","domain":"runtime_behavior","claim_ids":["C1","C2"],"test_plan":[{"test":"claim-one","claim_ids":["C1"]},{"test":"claim-two","claim_ids":["C2"]},{"test":"unknown-extra","claim_ids":["C9"]}],"expected_decision":"reject"}
