@@ -657,8 +657,8 @@ def run_job(job_id: int) -> None:
         model_source_text = source_text[:source_limit] if source_text else ""
         source_text_truncated = len(source_text) > len(model_source_text)
         indexed_knowledge = _indexed_knowledge_for_topic(topic)
-        indexed_knowledge_context = "\\n\\n".join(
-            f"[Retrieved source: {item['title']} | URL: {item['url']}]\\n{item['content']}"
+        indexed_knowledge_context = "\n\n".join(
+            f"[Retrieved source: {item['title']} | URL: {item['url']}]\n{item['content']}"
             for item in indexed_knowledge
         )[:4000]
     except Exception as exc:
