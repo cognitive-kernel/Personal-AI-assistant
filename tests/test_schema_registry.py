@@ -124,7 +124,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 36
+        assert LEARNING_MIGRATIONS[-1].version == 37
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
@@ -224,12 +224,13 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v34 = fingerprint_for_version(LEARNING_MIGRATIONS, 34)
     learning_v35 = fingerprint_for_version(LEARNING_MIGRATIONS, 35)
     learning_v36 = fingerprint_for_version(LEARNING_MIGRATIONS, 36)
+    learning_v37 = fingerprint_for_version(LEARNING_MIGRATIONS, 37)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len(learning_v20) == len(learning_v21) == len(learning_v22) == len(learning_v23) == len(learning_v24) == len(learning_v25) == len(learning_v26) == len(learning_v27) == len(learning_v28) == len(learning_v29) == len(learning_v30) == len(learning_v31) == len(learning_v32) == len(learning_v33) == len(learning_v34) == len(learning_v35) == len(learning_v36) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20, learning_v21, learning_v22, learning_v23, learning_v24, learning_v25, learning_v26, learning_v27, learning_v28, learning_v29, learning_v30, learning_v31, learning_v32, learning_v33, learning_v34, learning_v35, learning_v36}) == 36
+    assert len(learning_v20) == len(learning_v21) == len(learning_v22) == len(learning_v23) == len(learning_v24) == len(learning_v25) == len(learning_v26) == len(learning_v27) == len(learning_v28) == len(learning_v29) == len(learning_v30) == len(learning_v31) == len(learning_v32) == len(learning_v33) == len(learning_v34) == len(learning_v35) == len(learning_v36) == len(learning_v37) == 64
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20, learning_v21, learning_v22, learning_v23, learning_v24, learning_v25, learning_v26, learning_v27, learning_v28, learning_v29, learning_v30, learning_v31, learning_v32, learning_v33, learning_v34, learning_v35, learning_v36, learning_v37}) == 37
 
 
 
@@ -268,7 +269,7 @@ def test_known_v4_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(4, expected_v4), (5, None), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None)]
+        assert history == [(4, expected_v4), (5, None), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None), (37, None)]
 
 
 def test_known_v5_schema_is_baselined_then_upgraded():
@@ -278,7 +279,7 @@ def test_known_v5_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None)]
+        assert history == [(5, expected_v5), (6, None), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None), (37, None)]
 
 
 def test_known_v6_schema_is_baselined_then_upgraded():
@@ -288,7 +289,7 @@ def test_known_v6_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None)]
+        assert history == [(6, expected_v6), (7, None), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None), (37, None)]
 
 
 def test_known_v7_schema_is_baselined_then_upgraded():
@@ -298,7 +299,7 @@ def test_known_v7_schema_is_baselined_then_upgraded():
         history = connection.execute(
             "SELECT version, baseline_fingerprint FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert history == [(7, expected_v7), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None)]
+        assert history == [(7, expected_v7), (8, None), (9, None), (10, None), (11, None), (12, None), (13, None), (14, None), (15, None), (16, None), (17, None), (18, None), (19, None), (20, None), (21, None), (22, None), (23, None), (24, None), (25, None), (26, None), (27, None), (28, None), (29, None), (30, None), (31, None), (32, None), (33, None), (34, None), (35, None), (36, None), (37, None)]
 
 
 def test_unknown_schema_is_not_mutated_or_auto_adopted():
