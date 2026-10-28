@@ -1027,11 +1027,12 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
     if any(not isinstance(answer, str) or not answer.strip() or len(answer) > 2000 for answer in answers):
         raise ValueError("Every answer must contain 1–2000 characters.")
     with learning_connection() as conn:
-        row = conn.execute("SELECT status, assessment_json FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
+        row = conn.execute("SELECT status, assessment_json, path_topic_id FROM learning_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise KeyError(job_id)
         if row["status"] != "completed" or not row["assessment_json"]:
             raise ValueError("This learning job has no available assessment yet.")
+        path_topic_id = row["path_topic_id"]
         assessment = json.loads(row["assessment_json"])
         questions = assessment.get("questions", [])
         answer_key = assessment.get("answer_key", [])
@@ -1047,10 +1048,18 @@ def submit_assessment(job_id: int, answers: list[str]) -> dict[str, Any]:
             (job_id, json.dumps(answers, ensure_ascii=False), score, correct_count, len(questions)),
         )
         attempt_id = int(cursor.lastrowid)
+        path_topic_status = None
+        if path_topic_id is not None:
+            path_topic_status = "completed" if score >= 70 else "in_progress"
+            conn.execute(
+                "UPDATE learning_path_topics SET status=?, latest_score=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (path_topic_status, score, path_topic_id),
+            )
     return {
         "attempt_id": attempt_id, "job_id": job_id, "score": score,
         "correct_count": correct_count, "question_count": len(questions),
         "scoring_method": "normalized_exact_match",
+        "path_topic_status": path_topic_status,
         "independent_verification": False,
         "note": "نمره فقط بر اساس تطبیق متنی پاسخ با کلید پاسخ محاسبه شده و تأیید علمی یا فهم معنایی را اثبات نمی‌کند.",
     }
