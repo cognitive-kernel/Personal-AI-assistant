@@ -218,6 +218,28 @@ def test_rollback_pr_requires_original_pr_merged(proposal_repo, monkeypatch):
         self_improvement.open_rollback_pull_request(proposal["id"], confirm=True)
 
 
+def test_rollback_pr_rejects_diverged_base_history(proposal_repo, monkeypatch):
+    proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
+    _record_published_pr(proposal, base_sha)
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    merge_sha = "1" * 40
+    current_sha = "2" * 40
+
+    def fake_github_api(method, path, payload=None):
+        if method == "GET" and path == "/pulls/42":
+            return {"merged": True, "merge_commit_sha": merge_sha, "base": {"ref": "main"}}
+        if method == "GET" and path == "/git/ref/heads/main":
+            return {"object": {"sha": current_sha}}
+        if method == "GET" and path == "/compare/" + merge_sha + "..." + current_sha:
+            return {"status": "diverged"}
+        raise AssertionError("Unexpected GitHub API request: " + method + " " + path)
+
+    monkeypatch.setattr(self_improvement, "_github_api", fake_github_api)
+    with pytest.raises(self_improvement.ProposalError, match="not a descendant of the original merge"):
+        self_improvement.open_rollback_pull_request(proposal["id"], confirm=True)
+
+
 def test_rollback_pr_restores_only_unchanged_merged_paths(proposal_repo, monkeypatch):
     proposal, base_sha = _approved_proposal(proposal_repo, monkeypatch)
     _record_published_pr(proposal, base_sha)
@@ -238,6 +260,8 @@ def test_rollback_pr_restores_only_unchanged_merged_paths(proposal_repo, monkeyp
         calls.append((method, path, payload))
         if method == "GET" and path == "/pulls/42":
             return {"merged": True, "merge_commit_sha": merge_sha, "base": {"ref": "main"}}
+        if method == "GET" and path == "/compare/" + merge_sha + "..." + current_sha:
+            return {"status": "ahead"}
         if method == "GET" and path == "/git/ref/heads/main":
             return {"object": {"sha": current_sha}}
         if method == "GET" and path == "/git/commits/" + base_sha:
@@ -292,6 +316,8 @@ def test_rollback_pr_refuses_to_overwrite_later_changes(proposal_repo, monkeypat
     def fake_github_api(method, path, payload=None):
         if method == "GET" and path == "/pulls/42":
             return {"merged": True, "merge_commit_sha": merge_sha, "base": {"ref": "main"}}
+        if method == "GET" and path == "/compare/" + merge_sha + "..." + current_sha:
+            return {"status": "ahead"}
         if method == "GET" and path == "/git/ref/heads/main":
             return {"object": {"sha": current_sha}}
         if method == "GET" and path == "/git/commits/" + base_sha:
