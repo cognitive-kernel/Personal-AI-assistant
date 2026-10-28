@@ -28,6 +28,7 @@ class Defaults:
     chat_ollama_model: str = os.getenv("CHAT_OLLAMA_MODEL", os.getenv("OLLAMA_MODEL", "qwen2.5:7b"))
     learning_ollama_model: str = os.getenv("LEARNING_OLLAMA_MODEL", "qwen3:8b")
     programming_ollama_model: str = os.getenv("PROGRAMMING_OLLAMA_MODEL", "qwen3:14b")
+    factual_review_ollama_model: str = os.getenv("FACTUAL_REVIEW_OLLAMA_MODEL", "")
     settings_db_path: str = os.getenv("SETTINGS_DB_PATH", "data/settings.db")
     learning_db_path: str = os.getenv("LEARNING_DB_PATH", "data/learning.db")
     cloud_resources_db_path: str = os.getenv("CLOUD_RESOURCES_DB_PATH", "data/cloud_resources.db")
@@ -72,6 +73,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "learning_model_keep_alive": "0",
     "learning_source_max_chars": 12000,
     "programming_ollama_model": defaults.programming_ollama_model,
+    "factual_review_ollama_model": defaults.factual_review_ollama_model,
     "programming_ollama_num_ctx": defaults.ollama_num_ctx,
     "programming_ollama_num_thread": defaults.ollama_num_thread,
     "programming_ollama_timeout_seconds": defaults.ollama_timeout_seconds,
