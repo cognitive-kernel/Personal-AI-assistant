@@ -1000,7 +1000,7 @@ LEARNING_MIGRATIONS = (
         27,
         "explicit-learning-prerequisite-dag",
         (
-            "ALTER TABLE learning_paths ADD COLUMN prerequisite_mode TEXT NOT NULL DEFAULT 'linear' CHECK(prerequisite_mode IN ('linear','custom'))",
+            "ALTER TABLE learning_paths ADD COLUMN prerequisite_mode TEXT NOT NULL DEFAULT 'custom' CHECK(prerequisite_mode IN ('linear','custom'))",
             """CREATE TABLE learning_topic_prerequisites (
                 topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
                 prerequisite_topic_id INTEGER NOT NULL REFERENCES learning_path_topics(id) ON DELETE CASCADE,
