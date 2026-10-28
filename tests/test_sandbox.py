@@ -11,28 +11,11 @@ from app import sandbox, db, learning, learning_capabilities_routes, learning_pr
 IMAGE = "python:3.12-slim@sha256:" + "a" * 64
 
 
-class FakeInput:
-    def __init__(self):
-        self.data = bytearray()
-        self.closed = False
-
-    def write(self, value):
-        self.data.extend(value)
-        return len(value)
-
-    def close(self):
-        self.closed = True
-
-    def getvalue(self):
-        return bytes(self.data)
-
-
 class FakeProcess:
     def __init__(self, args, *, stdout=b"hello\n", stderr=b"", returncode=0):
         self.args = args
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr)
-        self.stdin = FakeInput()
         self.returncode = returncode
         self.terminated = False
         self.killed = False
@@ -99,29 +82,36 @@ def test_sandbox_runs_only_digest_pinned_python_in_no_network_container(tmp_path
     assert kwargs["env"]["DOCKER_HOST"] == "unix:///var/run/docker.sock"
 
 
-def test_sandbox_accepts_bounded_stdin_only_when_requested(tmp_path, monkeypatch):
+def test_sandbox_stdin_is_bounded_and_mounted_read_only(tmp_path, monkeypatch):
+    from pathlib import Path
+
     executable = _configured_docker(tmp_path)
-    calls = []
+    captured = {}
     process = FakeProcess([], stdout=b"ok\\n")
 
     def fake_popen(args, **kwargs):
-        calls.append((args, kwargs, process))
+        mount = args[args.index("--mount") + 1]
+        workspace = Path(mount.split("source=", 1)[1].split(",target=", 1)[0])
+        captured["runner"] = (workspace / "main.py").read_text(encoding="utf-8")
+        captured["learner"] = (workspace / "learner.py").read_text(encoding="utf-8")
+        captured["input"] = (workspace / "input.txt").read_text(encoding="utf-8")
+        captured["args"] = args
+        captured["kwargs"] = kwargs
         return process
 
     monkeypatch.setattr(sandbox.subprocess, "Popen", fake_popen)
-    payload = "bounded input"
+    payload = '{"values":[2,4]}'
+    code = "print('ok')"
     result = sandbox.run_python(
-        "print('ok')",
-        docker_executable=executable,
-        image=IMAGE,
-        stdin_text=payload,
+        code, docker_executable=executable, image=IMAGE, stdin_text=payload
     )
 
     assert result.status == "succeeded"
-    args, kwargs, process = calls[0]
-    assert "--interactive" in args
-    assert kwargs["stdin"] == subprocess.PIPE
-    assert process.stdin.getvalue() == payload.encode("utf-8")
+    assert captured["input"] == payload
+    assert captured["learner"] == code
+    assert "runpy.run_path('/workspace/learner.py'" in captured["runner"]
+    assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
+    assert "--network=none" in captured["args"]
 
     with pytest.raises(ValueError, match="16 KiB"):
         sandbox.run_python(
