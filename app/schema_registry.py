@@ -1011,6 +1011,113 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_learning_prerequisites_by_topic ON learning_topic_prerequisites(topic_id, prerequisite_topic_id)",
             "CREATE INDEX idx_learning_prerequisites_by_prerequisite ON learning_topic_prerequisites(prerequisite_topic_id, topic_id)",
         ),
+    ),
+    Migration(
+        28,
+        "durable-learning-pipeline-budget",
+        (
+            """CREATE TABLE learning_pipeline_budgets (
+                job_id INTEGER PRIMARY KEY REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                max_calls INTEGER NOT NULL CHECK(max_calls BETWEEN 1 AND 20),
+                max_predict_tokens INTEGER NOT NULL CHECK(max_predict_tokens BETWEEN 1 AND 100000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE learning_pipeline_budget_reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id INTEGER NOT NULL REFERENCES learning_pipeline_budgets(job_id) ON DELETE CASCADE,
+                stage TEXT NOT NULL CHECK(length(stage) BETWEEN 1 AND 80),
+                calls_reserved INTEGER NOT NULL CHECK(calls_reserved BETWEEN 0 AND 20),
+                predict_tokens_reserved INTEGER NOT NULL CHECK(predict_tokens_reserved BETWEEN 0 AND 100000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(job_id, stage)
+            )""",
+            "CREATE INDEX idx_learning_budget_reservations_job ON learning_pipeline_budget_reservations(job_id, id)",
+        ),
+    ),
+    Migration(
+        29,
+        "daily-global-learning-budget",
+        (
+            """CREATE TABLE learning_global_daily_budgets (
+                budget_date TEXT PRIMARY KEY CHECK(length(budget_date) = 10),
+                max_calls INTEGER NOT NULL CHECK(max_calls BETWEEN 1 AND 100000),
+                max_predict_tokens INTEGER NOT NULL CHECK(max_predict_tokens BETWEEN 1 AND 100000000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE learning_global_budget_reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                budget_date TEXT NOT NULL REFERENCES learning_global_daily_budgets(budget_date) ON DELETE RESTRICT,
+                job_id INTEGER NOT NULL REFERENCES learning_jobs(id) ON DELETE CASCADE,
+                stage TEXT NOT NULL CHECK(length(stage) BETWEEN 1 AND 80),
+                calls_reserved INTEGER NOT NULL CHECK(calls_reserved BETWEEN 0 AND 20),
+                predict_tokens_reserved INTEGER NOT NULL CHECK(predict_tokens_reserved BETWEEN 0 AND 100000),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(budget_date, job_id, stage)
+            )""",
+            "CREATE INDEX idx_learning_global_budget_date ON learning_global_budget_reservations(budget_date, id)",
+            "CREATE INDEX idx_learning_global_budget_job ON learning_global_budget_reservations(job_id, id)",
+        ),
+    ),
+    Migration(
+        30,
+        "learning-experience-direct-relationships",
+        (
+            "ALTER TABLE learning_experiences ADD COLUMN related_knowledge_id INTEGER CHECK(related_knowledge_id IS NULL OR related_knowledge_id > 0)",
+            "ALTER TABLE learning_experiences ADD COLUMN related_consensus_id INTEGER CHECK(related_consensus_id IS NULL OR related_consensus_id > 0)",
+            "CREATE INDEX idx_learning_experiences_related_knowledge ON learning_experiences(related_knowledge_id, id DESC)",
+            "CREATE INDEX idx_learning_experiences_related_consensus ON learning_experiences(related_consensus_id, id DESC)",
+        ),
+    ),
+    Migration(
+        31,
+        "auditable-candidate-review-evidence",
+        (
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN trust_level TEXT NOT NULL DEFAULT 'L0' CHECK(trust_level IN ('L0','L1','L2','L3','L-1'))",
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN learning_status TEXT NOT NULL DEFAULT 'unverified' CHECK(learning_status IN ('unverified','model_consensus','tested','human_verified','failed','conflicting','superseded'))",
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN supersedes_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL",
+            "ALTER TABLE temporary_knowledge_candidates ADD COLUMN replaced_by_candidate_id INTEGER REFERENCES temporary_knowledge_candidates(id) ON DELETE SET NULL",
+            "ALTER TABLE learning_candidate_channel_runs ADD COLUMN attempt_generation INTEGER NOT NULL DEFAULT 1 CHECK(attempt_generation >= 1)",
+            """CREATE TABLE knowledge_review_evidence (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                evidence_kind TEXT NOT NULL CHECK(evidence_kind IN ('supporting','contradicting','context','application')),
+                source_url TEXT NOT NULL,
+                source_title TEXT NOT NULL DEFAULT '',
+                source_sha256 TEXT NOT NULL CHECK(length(source_sha256) = 64),
+                excerpt TEXT NOT NULL,
+                reliability_note TEXT NOT NULL DEFAULT '',
+                fetched_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, source_url, source_sha256)
+            )""",
+            """CREATE TABLE knowledge_peer_consultations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                provider TEXT NOT NULL,
+                model_name TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL,
+                prompt_version TEXT NOT NULL DEFAULT 'legacy_unversioned',
+                response TEXT NOT NULL,
+                claims_json TEXT NOT NULL DEFAULT '[]',
+                citations_json TEXT NOT NULL DEFAULT '[]',
+                stance TEXT NOT NULL DEFAULT 'mixed' CHECK(stance IN ('supports','contradicts','mixed','insufficient_evidence')),
+                independence_note TEXT NOT NULL DEFAULT '',
+                response_sha256 TEXT NOT NULL CHECK(length(response_sha256) = 64),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, provider, model_name, response_sha256, prompt_version)
+            )""",
+            """CREATE TABLE knowledge_review_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id INTEGER NOT NULL REFERENCES temporary_knowledge_candidates(id) ON DELETE CASCADE,
+                channel TEXT NOT NULL CHECK(channel IN ('web_research','peer_ai','sandbox')),
+                status TEXT NOT NULL CHECK(status IN ('completed','unavailable','unconfigured','failed','no_examples','sandbox_unconfigured')),
+                provider TEXT NOT NULL DEFAULT '',
+                details_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_review_evidence_candidate ON knowledge_review_evidence(candidate_id, evidence_kind, id)",
+            "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
+            "CREATE INDEX idx_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)"
+        ),
     )
 )
 

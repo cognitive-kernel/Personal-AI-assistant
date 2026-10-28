@@ -231,18 +231,41 @@ def search_relevant_failures(query: str, query_variants: list[str] | None = None
             tokens.update(re.findall(r"[\w-]{2,}", variant.casefold(), flags=re.UNICODE))
     if not tokens:
         return []
+    # Read candidates in one bounded query. Calling list_experiences() here used to
+    # reopen/initialize the database once per row and made every learning job pay
+    # hundreds of redundant SQLite initializations when failure history grew.
+    init_experience_tables()
+    with learning_connection() as conn:
+        rows = conn.execute(
+            """SELECT * FROM learning_experiences
+               WHERE status IN ('needs_review','failed')
+               ORDER BY updated_at DESC, id DESC LIMIT 400"""
+        ).fetchall()
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            for column, key in (
+                ("source_evidence_json", "source_evidence"),
+                ("test_plan_json", "test_plan"),
+                ("test_results_json", "test_results"),
+            ):
+                item[key] = json.loads(item.pop(column))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        candidates.append(item)
+
     ranked: list[tuple[float, dict[str, Any]]] = []
-    for status in ("needs_review", "failed"):
-        for item in list_experiences(status=status, limit=200):
-            searchable = " ".join([
-                item["topic"], item["problem"], item["hypothesis"], item["takeaway"],
-                " ".join(str(result.get("test", "")) for result in item["test_results"]),
-            ]).casefold()
-            item_tokens = set(re.findall(r"[\w-]{2,}", searchable, flags=re.UNICODE))
-            overlap = len(tokens & item_tokens)
-            if overlap:
-                topic_tokens = set(re.findall(r"[\w-]{2,}", item["topic"].casefold(), flags=re.UNICODE))
-                score = overlap / (len(tokens) ** 0.5) + 1.5 * len(tokens & topic_tokens)
-                ranked.append((score, item))
+    for item in candidates:
+        searchable = " ".join([
+            str(item["topic"]), str(item["problem"]), str(item["hypothesis"]), str(item["takeaway"]),
+            " ".join(str(result.get("test", "")) for result in item["test_results"]),
+        ]).casefold()
+        item_tokens = set(re.findall(r"[\w-]{2,}", searchable, flags=re.UNICODE))
+        overlap = len(tokens & item_tokens)
+        if overlap:
+            topic_tokens = set(re.findall(r"[\w-]{2,}", str(item["topic"]).casefold(), flags=re.UNICODE))
+            score = overlap / (len(tokens) ** 0.5) + 1.5 * len(tokens & topic_tokens)
+            ranked.append((score, item))
     ranked.sort(key=lambda pair: (pair[0], pair[1]["updated_at"], pair[1]["id"]), reverse=True)
     return [item for _, item in ranked[:max(1, min(10, int(limit)))]]
