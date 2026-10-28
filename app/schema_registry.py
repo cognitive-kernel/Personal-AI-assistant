@@ -1119,6 +1119,26 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)"
         ),
     )
+,
+    Migration(
+        32,
+        "factual-independent-oracle-audit",
+        (
+            """CREATE TABLE factual_oracle_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                knowledge_id INTEGER NOT NULL REFERENCES factual_knowledge(id) ON DELETE RESTRICT,
+                claim_hash TEXT NOT NULL CHECK(length(claim_hash) = 64),
+                test_source_hash TEXT NOT NULL CHECK(length(test_source_hash) = 64),
+                oracle_source_url TEXT NOT NULL CHECK(substr(oracle_source_url, 1, 8) = 'https://'),
+                oracle_source_hash TEXT NOT NULL CHECK(length(oracle_source_hash) = 64),
+                reviewer TEXT NOT NULL CHECK(reviewer = 'local_user'),
+                review_note TEXT NOT NULL CHECK(length(trim(review_note)) >= 20),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_factual_oracle_reviews_claim_created ON factual_oracle_reviews(knowledge_id, created_at DESC, id DESC)",
+            "CREATE INDEX idx_factual_oracle_reviews_test_hash ON factual_oracle_reviews(test_source_hash, claim_hash)"
+        ),
+    )
 )
 
 
