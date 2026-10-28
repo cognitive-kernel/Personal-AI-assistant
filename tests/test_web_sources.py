@@ -1,5 +1,6 @@
 import base64
 import urllib.parse
+import urllib.request
 
 import pytest
 
@@ -476,3 +477,39 @@ def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseab
         for host, query_params, _ in requested
     )
     assert len(requested) == 10
+
+
+def test_url_validation_rejects_hostname_with_mixed_public_and_private_dns(monkeypatch):
+    monkeypatch.setattr(
+        web_sources.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+            (2, 1, 6, "", ("10.0.0.7", 443)),
+        ],
+    )
+    with pytest.raises(web_sources.SourceFetchError, match="non-public"):
+        web_sources._validate_public_url("https://mixed-dns.example/docs")
+    with pytest.raises(web_sources.SourceFetchError, match="non-public"):
+        web_sources._resolve_public_ip("https://mixed-dns.example/docs")
+
+
+def test_redirect_handler_revalidates_private_redirect_targets():
+    handler = web_sources._SafeRedirectHandler()
+    request = urllib.request.Request("https://public.example/docs")
+    with pytest.raises(web_sources.SourceFetchError):
+        handler.redirect_request(
+            request, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data/"
+        )
+
+
+def test_public_source_resolver_returns_a_validated_literal_for_ip_pinning(monkeypatch):
+    monkeypatch.setattr(
+        web_sources.socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+            (2, 1, 6, "", ("1.1.1.1", 443)),
+        ],
+    )
+    assert web_sources._resolve_public_ip("https://public.example/docs") == "93.184.216.34"
