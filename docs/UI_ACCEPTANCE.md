@@ -12,7 +12,7 @@
 - [x] Learning-path progress is a native accessible progress bar derived from completed/total topics; tests and Windows storage regressions passed on [code head `83bee038`](https://github.com/cognitive-kernel/Personal-AI-assistant/commit/83bee038ab9af43f89bcadd4809bd3e210a84b01), with [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284798) and [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39367284734) green.
 - [x] Task dashboard distinguishes an empty queue from zero search matches and offers an accessible clear-filters action; exact-head [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001558), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001660), and [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/39368001638) passed on code head `134168220519480a480a60ebafff2bb60dba7f85`.
 - [ ] Full manual keyboard and screen-reader review.
-- [ ] Contrast audit and target-host usability acceptance.
+- [x] Automated WCAG contrast regression for core light/dark design tokens; manual rendered-state contrast review and target-host usability acceptance remain open. The token-level check lives in `tests/test_ui_contrast.py`.
 - [ ] Broader functional parity and operational E2E matrix.
 - [x] Task priority and scheduled-time controls for queued/paused tasks; exact-head CI passed in [PR #355](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/355).
 - [x] Task queue live summary and client-side search over already-loaded task pages; all exact-head CI checks passed in [PR #356](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/356).
