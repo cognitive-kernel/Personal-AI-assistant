@@ -378,7 +378,8 @@ def test_zero_exit_without_completion_marker_cannot_promote_claim(learning_store
     assert claim["evidence_level"] == "L1_sourced"
 
 
-def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_test(learning_store):
+def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_test(learning_store, monkeypatch):
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda language: language == "python")
     knowledge_id = _active_sourced_python_claim()
     result = factual_verification_routes.list_factual_test_queue(limit=10)
     assert result["count"] == 1
@@ -405,7 +406,8 @@ def test_factual_test_queue_lists_only_active_sourced_python_l1_without_passing_
     assert refreshed["count"] == 0
 
 
-def test_factual_test_queue_hides_claim_with_active_test_task(learning_store):
+def test_factual_test_queue_hides_claim_with_active_test_task(learning_store, monkeypatch):
+    monkeypatch.setattr(factual_verification_routes, "_configured", lambda language: language == "python")
     knowledge_id = _active_sourced_python_claim()
     task_manager.initialize_task_store()
     assert factual_verification_routes.list_factual_test_queue(limit=50)["count"] == 1
@@ -801,7 +803,12 @@ def test_language_runner_promotes_only_after_exact_runtime_and_completed_harness
         )
         factual_knowledge.transition_evidence_level(connection, knowledge_id, "L1_sourced")
         factual_knowledge.transition_lifecycle(connection, knowledge_id, "active")
-        candidate = factual_verification_tasks.get_verification_candidate(knowledge_id)
+        # Read the claim hash from this transaction; a second connection cannot see
+        # the uncommitted claim until the context manager commits.
+        candidate = connection.execute(
+            "SELECT claim_hash FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+        assert candidate is not None
         oracle_review_id = factual_knowledge.record_oracle_review(
             connection,
             knowledge_id,
