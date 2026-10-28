@@ -693,7 +693,7 @@ def run_job(job_id: int) -> None:
             "and do not claim the warnings independently prove a technical fact. If irrelevant, ignore them."
         ),
         "verified_factual_context_policy": VERIFIED_FACTUAL_CONTEXT_POLICY,
-        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings). Make every answer key directly answer its corresponding question. Do not claim sources were verified. If both source_text and indexed_knowledge_context are empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text or indexed_knowledge_context exists, distinguish what the supplied excerpts support from additional explanation and include a Sources section with only exact source URLs provided in source_text or indexed_knowledge_sources; do not invent or alter URLs. Indexed excerpts are retrieval aids, not independent factual verification."
+        "instruction": "Write a natural, grammatical Persian technical lesson of 200-260 Persian words (never fewer than 180), in 5-7 paragraphs, with a precise definition, key components, a step-by-step explanation of how they work and why, and one concrete technical example. Explain at least one cause-and-effect relationship explicitly; do not merely name components. Also return learning_outcomes: an array of exactly 3 observable, specific skills or concepts the learner should be able to explain or perform after this lesson. Do not use vague outcomes such as understand the topic. Do not return a status report, disclaimer-only response, or generic troubleshooting text. Return only a JSON object with keys lesson (string), learning_outcomes (array of exactly 3 strings), questions (array of exactly 3 strings), answer_key (array of exactly 3 concise but explanatory strings), rubric (array of exactly 3 objects, one per question; each object has criteria array of 2-5 objects, each criterion has unique id, weight from 1 to 5, and accepted_phrases array of 2-6 short, exact phrases that express the required concept in an answer). Rubric phrases must be grounded in the corresponding answer_key and must not reward unrelated or incorrect claims. Make every answer key directly answer its corresponding question. Do not claim sources were verified. If both source_text and indexed_knowledge_context are empty, briefly state at the end that the lesson is based on model knowledge and needs external verification. If source_text or indexed_knowledge_context exists, distinguish what the supplied excerpts support from additional explanation and include a Sources section with only exact source URLs provided in source_text or indexed_knowledge_sources; do not invent or alter URLs. Indexed excerpts are retrieval aids, not independent factual verification."
     }
     if lesson_review:
         prompt["learner_review"] = lesson_review
@@ -768,7 +768,17 @@ def run_job(job_id: int) -> None:
             }
         raw_outcomes = result.get("learning_outcomes")
         outcomes = raw_outcomes[:3] if isinstance(raw_outcomes, list) else raw_outcomes
-        assessment = {"learning_outcomes": outcomes, "questions": result["questions"][:3], "answer_key": result["answer_key"][:3], "independently_verified": False}
+        from .learning_rubric import validate_rubric
+        generated_rubric = result.get("rubric")
+        rubric_valid = validate_rubric(generated_rubric, len(result["questions"][:3]))
+        assessment = {
+            "learning_outcomes": outcomes,
+            "questions": result["questions"][:3],
+            "answer_key": result["answer_key"][:3],
+            "rubric": generated_rubric if rubric_valid else None,
+            "rubric_version": "concept-coverage-v1" if rubric_valid else None,
+            "independently_verified": False,
+        }
         quality = evaluate_learning_value(result["lesson"], assessment["questions"], assessment["answer_key"], assessment["learning_outcomes"])
         quality["user_provided_source_available"] = user_provided_source_available
         quality["verification_status"] = "needs_review" if source_text else "unverified"
@@ -791,7 +801,7 @@ def run_job(job_id: int) -> None:
             retry_prompt["instruction"] = (
                 "درس قبلی از فیلتر کیفیت آموزشی عبور نکرده است؛ این بار با توجه به دلیل‌های مشخص زیر، آن را کامل بازنویسی کن: "
                 + "؛ ".join(quality.get("reasons", []))
-                + ". فقط یک شیء JSON معتبر با کلیدهای lesson و learning_outcomes و questions و answer_key برگردان. "
+                + ". فقط یک شیء JSON معتبر با کلیدهای lesson و learning_outcomes و questions و answer_key و rubric برگردان؛ rubric باید سه مورد داشته باشد و هر مورد شامل 2 تا 5 معیار با id یکتا، weight بین 1 تا 5 و accepted_phrases شامل 2 تا 6 عبارت دقیق و منطبق با answer_key باشد. "
                 "متن lesson باید فارسی روان و آموزشی و بین 200 تا 260 واژه فارسی باشد و مطلقاً کمتر از 180 واژه نباشد؛ "
                 "پس از نوشتن، طول متن را بررسی کن و اگر کوتاه است پیش از پاسخ گسترش بده. "
                 "متن را در 5 تا 7 بند منسجم بنویس: تعریف دقیق، اجزای اصلی، نقش هر جزء، روند کار مرحله‌به‌مرحله، "
