@@ -23,6 +23,7 @@ from .programming_routes import router as programming_router
 from .self_improvement_routes import router as self_improvement_router
 from .factual_verification_routes import router as factual_verification_router
 from .learning_candidate_routes import router as learning_candidate_router
+from .learning_source_sync_routes import router as learning_source_sync_router
 from .ai_learning.routes import router as ai_learning_router
 from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
 from .ai_learning import browser_automation as ai_learning_browser_automation
@@ -55,6 +56,7 @@ app.include_router(programming_router)
 app.include_router(self_improvement_router)
 app.include_router(factual_verification_router)
 app.include_router(learning_candidate_router)
+app.include_router(learning_source_sync_router)
 app.include_router(ai_learning_router)
 app.include_router(ai_learning_ui_router)
 app.include_router(storage_routes.router)
