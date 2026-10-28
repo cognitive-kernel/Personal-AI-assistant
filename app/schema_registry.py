@@ -1118,8 +1118,7 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_peer_consultations_candidate ON knowledge_peer_consultations(candidate_id, id)",
             "CREATE INDEX idx_review_attempts_candidate ON knowledge_review_attempts(candidate_id, channel, id)"
         ),
-    )
-,
+    ),
     Migration(
         32,
         "factual-independent-oracle-audit",
