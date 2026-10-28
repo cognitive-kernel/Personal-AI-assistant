@@ -1261,6 +1261,17 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_browser_learning_lessons_status ON browser_learning_lessons(status, course_id)",
         ),
     ),
+    Migration(
+        37,
+        "deterministic-learning-assessment-rubric-and-idempotency",
+        (
+            "ALTER TABLE assessment_attempts ADD COLUMN idempotency_key TEXT",
+            "CREATE UNIQUE INDEX idx_assessment_attempts_idempotency ON assessment_attempts(job_id, idempotency_key) WHERE idempotency_key IS NOT NULL",
+            """ALTER TABLE learning_path_topics ADD COLUMN latest_score_kind TEXT NOT NULL
+               DEFAULT 'legacy_unknown'
+               CHECK(latest_score_kind IN ('legacy_unknown','learner_rubric','legacy_exact_match','manual_override'))""",
+        ),
+    ),
 )
 
 
