@@ -1296,6 +1296,16 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX IF NOT EXISTS idx_factual_source_revalidation_history_source_created ON factual_source_revalidation_history(source_ref, checked_at DESC, id DESC)",
         ),
     ),
+    Migration(
+        39,
+        "learning-path-assessment-source-provenance",
+        (
+            """ALTER TABLE learning_path_topics ADD COLUMN latest_score_source TEXT NOT NULL
+               DEFAULT 'legacy_unknown'
+               CHECK(latest_score_source IN ('legacy_unknown','learner_rubric','legacy_exact_match','sandbox_practical_v1','manual_override'))""",
+            "UPDATE learning_path_topics SET latest_score_source=latest_score_kind",
+        ),
+    ),
 )
 
 
