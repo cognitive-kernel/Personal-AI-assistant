@@ -22,7 +22,6 @@ jobs:
       OLLAMA_BASE_URL: http://127.0.0.1:11434
       AI_LEARNING_ENABLED: "1"
       AI_LEARNING_RETRIEVAL_ENABLED: "1"
-      AI_LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/ai_learning.db
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -39,6 +38,7 @@ jobs:
           CLOUD_RESOURCES_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/cloud.db
           SELF_IMPROVEMENT_REPO_ROOT: ${{ github.workspace }}
           DATABASE_BACKUP_DIR: ${{ runner.temp }}/personal-ai-e2e/backups
+          AI_LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/ai_learning.db
         run: |
           mkdir -p "${{ runner.temp }}/personal-ai-e2e"
           python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > "${{ runner.temp }}/personal-ai-e2e/app.log" 2>&1 &
@@ -52,6 +52,8 @@ jobs:
           cat "${{ runner.temp }}/personal-ai-e2e/app.log"
           exit 1
       - name: Run real-browser dashboard smoke test
+        env:
+          AI_LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/ai_learning.db
         run: pytest -q tests/test_browser_e2e.py
       - name: Show app log if browser smoke fails
         if: failure()
