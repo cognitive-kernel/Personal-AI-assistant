@@ -474,7 +474,11 @@ def test_ollama_request_wraps_socket_error_during_response_read(
         def open(self, *_args, **_kwargs):
             return BrokenResponse()
 
-    monkeypatch.setattr(ollama.urllib.request, "build_opener", lambda *_args, **_kwargs: BrokenOpener())
+    monkeypatch.setattr(
+        ollama.urllib.request,
+        "build_opener",
+        lambda *_args, **_kwargs: BrokenOpener(),
+    )
 
     with pytest.raises(ollama.OllamaError, match="ConnectionResetError") as raised:
         ollama._request("/api/tags", timeout=2)
