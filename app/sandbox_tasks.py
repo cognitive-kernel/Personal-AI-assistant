@@ -247,6 +247,7 @@ def handler_from_environment(*, allow_language_runners: bool = False) -> Callabl
                     practical_metadata["exercise_id"],
                     grading_report,
                     learner_source_code,
+                    idempotency_key=f"sandbox-practical-task:{context.task_id}",
                 )
             except (KeyError, TypeError, ValueError, OSError) as exc:
                 raise RuntimeError("Practical grading output could not be validated or recorded.") from exc
