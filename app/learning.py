@@ -1154,7 +1154,7 @@ def submit_assessment(
             if existing is not None:
                 return replay(existing)
 
-        from .learning_rubric import RUBRIC_VERSION, score_with_rubric, validate_rubric
+        from .learning_rubric import score_with_rubric, validate_rubric
 
         rubric = assessment.get("rubric")
         if validate_rubric(rubric, len(questions)):
