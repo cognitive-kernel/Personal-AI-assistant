@@ -1,3 +1,4 @@
+import os
 import sqlite3
 
 import pytest
@@ -58,6 +59,38 @@ def test_backup_and_restore_preserve_both_databases(initialized_databases, tmp_p
         ).fetchone()
         assert saved_task == ("test.backup", f"backup-test:{job_id}")
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_restore_rejects_symlinked_manifest(initialized_databases, tmp_path):
+    settings_path, learning_path, _cloud_path = initialized_databases
+    bundle = tmp_path / "backup"
+    backup_databases(settings_path, learning_path, bundle)
+    external_manifest = tmp_path / "external-manifest.json"
+    external_manifest.write_text((bundle / "manifest.json").read_text(encoding="utf-8"), encoding="utf-8")
+    (bundle / "manifest.json").unlink()
+    try:
+        os.symlink(external_manifest, bundle / "manifest.json")
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Symbolic links are unavailable on this runner: {type(exc).__name__}")
+
+    with pytest.raises(BackupRestoreError, match="manifest.*symbolic link"):
+        restore_databases(bundle, tmp_path / "restored")
+
+
+def test_restore_rejects_symlinked_database_file(initialized_databases, tmp_path):
+    settings_path, learning_path, _cloud_path = initialized_databases
+    bundle = tmp_path / "backup"
+    backup_databases(settings_path, learning_path, bundle)
+    external_database = tmp_path / "external-settings.sqlite3"
+    external_database.write_bytes((bundle / "settings.sqlite3").read_bytes())
+    (bundle / "settings.sqlite3").unlink()
+    try:
+        os.symlink(external_database, bundle / "settings.sqlite3")
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Symbolic links are unavailable on this runner: {type(exc).__name__}")
+
+    with pytest.raises(BackupRestoreError, match="settings.*symbolic link"):
+        restore_databases(bundle, tmp_path / "restored")
 
 
 def test_restore_rejects_modified_backup_file(initialized_databases, tmp_path):
