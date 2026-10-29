@@ -1529,3 +1529,39 @@ def test_topic_edit_api_accepts_explicit_parent_clear_but_omission_preserves_par
     assert clear.parent_topic_id is None
 
 
+
+
+def test_explicit_browser_lesson_retry_recovers_global_pause(isolated_store, monkeypatch):
+    course = service.create_course(title="Retry after global pause")
+    topic = service.add_topic(course["id"], "Interrupted topic")
+    service.decide_topics([topic["id"]], "approved")
+
+    state = {"paused": True}
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(service, "get_learning_control", lambda: dict(state))
+
+    def set_paused(paused, reason=""):
+        state["paused"] = paused
+        return dict(state)
+
+    monkeypatch.setattr(service, "set_learning_paused", set_paused)
+
+    captured = {}
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            captured["args"] = args
+        def start(self):
+            captured["started"] = True
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.start_lesson_run(
+        course["id"], [topic["id"]], "retry-after-global-pause", force_retry=True
+    )
+
+    assert state["paused"] is False
+    assert result["status"] == "running"
+    assert captured["started"] is True
+    assert service.get_run(result["run_id"])["status"] == "running"
