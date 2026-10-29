@@ -280,3 +280,69 @@ def test_startup_recovery_does_not_requeue_an_active_in_process_run(isolated_sto
     assert result["status"] == "already_active"
     assert result["run_id"] == run["id"]
     assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_runtime_watchdog_recovers_orphaned_run_after_worker_disappears(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی دورهٔ رهاشده")
+    run = service.create_run(course["id"], run_type="outline", request_key="runtime-orphan")
+    service.start_run(run["id"])
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.recover_orphaned_runs()
+
+    assert result["status"] == "running"
+    assert result["run_id"] == run["id"]
+    assert len(launched) == 1
+    assert launched[0].args[0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_runtime_watchdog_does_not_requeue_an_active_worker(isolated_store, monkeypatch):
+    course = service.create_course(title="دورهٔ فعال")
+    run = service.create_run(course["id"], run_type="outline", request_key="runtime-active")
+    service.start_run(run["id"])
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", run["id"])
+
+    result = browser_automation.recover_orphaned_runs()
+
+    assert result["status"] == "already_active"
+    assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_runtime_watchdog_never_clears_shutdown_or_restarts_chrome(isolated_store, monkeypatch):
+    course = service.create_course(title="دوره هنگام shutdown")
+    run = service.create_run(course["id"], run_type="outline", request_key="runtime-shutdown")
+    service.start_run(run["id"])
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", True)
+
+    result = browser_automation.recover_orphaned_runs()
+
+    assert result == {"status": "shutting_down", "active": False}
+    assert browser_automation._SHUTTING_DOWN is True
+    assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
+    from app import main
+
+    calls = []
+    monkeypatch.setattr(main.learning, "maintain_factual_knowledge", lambda: calls.append("knowledge"))
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        main.ai_learning_browser_automation,
+        "recover_orphaned_runs",
+        lambda: calls.append("recovery") or {"status": "idle", "active": False},
+    )
+
+    main._maintain_learning_runtime()
+
+    assert calls == ["knowledge", "recovery"]

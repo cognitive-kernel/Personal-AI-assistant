@@ -1299,6 +1299,39 @@ def recover_pending_runs() -> dict[str, Any]:
     return result
 
 
+def recover_orphaned_runs() -> dict[str, Any]:
+    """Reconcile a run whose worker vanished in this process without restarting after shutdown."""
+    from .db import initialize_store
+
+    if _SHUTTING_DOWN:
+        return {"status": "shutting_down", "active": False}
+    initialize_store()
+    if service.get_learning_control()["paused"]:
+        return {"status": "paused", "active": False}
+    with _LOCK:
+        # Recheck under the same lock used by dispatch/start and after storage setup:
+        # shutdown or a new worker may have started while recovery was preparing.
+        if _SHUTTING_DOWN:
+            return {"status": "shutting_down", "active": False}
+        if _ACTIVE:
+            return {
+                "status": "already_active",
+                "active": True,
+                "run_id": _ACTIVE_RUN_ID,
+            }
+        orphaned_ids = service.list_run_ids_by_status("running")
+        for run_id in orphaned_ids:
+            service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime")
+    result = _dispatch_next_persisted_run()
+    _log_event(
+        "orphaned_run_watchdog_recovery",
+        status=result.get("status"),
+        run_id=result.get("run_id"),
+        requeued_count=len(orphaned_ids),
+    )
+    return result
+
+
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Create and queue an outline run, then process it in a single background browser worker."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
