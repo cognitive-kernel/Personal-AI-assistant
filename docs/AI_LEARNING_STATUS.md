@@ -66,3 +66,8 @@
 ## چارچوب روش‌سنجی دانش
 
 روش جامع پیشنهادی برای فناوری اطلاعات و برنامه‌نویسی در [AI_LEARNING_KNOWLEDGE_VALIDATION.md](AI_LEARNING_KNOWLEDGE_VALIDATION.md) آمده است. این سند طراحی است و وضعیت اعتبارسنجی در کد فعلی را تغییر نمی‌دهد.
+
+
+## Worker startup failure recovery
+
+All learning entry points use one worker-start boundary. If `thread.start()` raises, the in-memory active markers and cancellation event are cleared, and the durable run is returned to the queued state for a later dispatch. The failure is logged with its exception type and bounded message; the caller receives a typed `worker_thread_start_failed` error. This avoids leaving a phantom `running` record with no worker. Regression coverage verifies the queue can dispatch the same run after a subsequent successful start. This repository test does not replace target-host Chrome/process-restart acceptance.
