@@ -392,6 +392,41 @@ def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, 
     assert service.get_run(run["id"])["status"] == "running"
 
 
+def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolated_store, monkeypatch):
+    first_course = service.create_course(title="دورهٔ قدیمی با سرفصل ناتمام")
+    topic = service.add_topic(first_course["id"], "سرفصل خارج از صفحه")
+    service.decide_topics([topic["id"]], "approved")
+    other_courses = [
+        service.create_course(title=f"دورهٔ جدید {index:03d}")
+        for index in range(100)
+    ]
+    assert all(
+        int(item["id"]) != int(first_course["id"])
+        for item in service.list_courses(100)
+    )
+    assert service.get_oldest_resumable_run() is None
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.resume_learning()
+
+    assert result["status"] == "resumed"
+    assert result["course_id"] == first_course["id"]
+    assert len(launched) == 1
+    assert launched[0].args[0] == result["run_id"]
+    run = service.get_run(result["run_id"])
+    assert run["course_id"] == first_course["id"]
+    assert [item["topic_id"] for item in run["topics"]] == [topic["id"]]
+    assert run["status"] == "running"
+
+
 def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی خطای ایجاد worker")
     run = service.create_run(course["id"], run_type="outline", request_key="thread-start-fails")
