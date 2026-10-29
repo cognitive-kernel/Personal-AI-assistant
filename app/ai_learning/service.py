@@ -1823,6 +1823,25 @@ def delete_rejected_content_version(version_id: int) -> dict[str, Any]:
         return {"deleted": True, "version_id": version_id, "lesson_id": lesson_id}
 
 
+def _has_textual_source_section(markdown: str) -> bool:
+    """Accept a non-empty textual bibliography even when no URL source rows exist."""
+    text = str(markdown or "").replace("\r", "")
+    match = re.search(
+        r"(?:^|\n)\s{0,3}(?:#{1,6}\s*)?"
+        r"(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|"
+        r"references|sources|bibliography)\s*[:：]?[ \t]*(.*)(?:\n([\s\S]*))?$",
+        text,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return False
+    entries = "\n".join((match.group(1) or "", match.group(2) or ""))
+    return any(
+        line.strip() and not re.fullmatch(r"[-*_]{3,}", line.strip())
+        for line in entries.splitlines()
+    )
+
+
 def review_content(version_id: int, decision: str) -> dict[str, Any]:
     if decision not in {"needs_review", "reviewed", "rejected"}:
         raise ValueError("decision must be needs_review, reviewed, or rejected.")
@@ -1841,7 +1860,7 @@ def review_content(version_id: int, decision: str) -> dict[str, Any]:
             source_count = int(conn.execute(
                 "SELECT COUNT(*) FROM sources WHERE content_version_id=?", (version_id,)
             ).fetchone()[0])
-            if source_count < 1:
+            if source_count < 1 and not _has_textual_source_section(review_text):
                 raise ValueError("منبعی برای این درس ثبت نشده است؛ تأیید بازبینی مجاز نیست.")
         conn.execute("UPDATE content_versions SET review_status=? WHERE id=?", (decision, version_id))
         conn.execute("UPDATE lessons SET status=? WHERE id=?",
@@ -2070,7 +2089,7 @@ def publish_content(version_id: int) -> dict[str, Any]:
             source_count = int(conn.execute(
                 "SELECT COUNT(*) FROM sources WHERE content_version_id=?", (version_id,)
             ).fetchone()[0])
-            if source_count < 1:
+            if source_count < 1 and not _has_textual_source_section(str(version["markdown"] or "")):
                 raise ValueError("منبعی برای این درس ثبت نشده است؛ انتشار مجاز نیست.")
         if version["review_status"] != "reviewed":
             raise ValueError("Only a reviewed content version can be published.")
