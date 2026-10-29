@@ -13,6 +13,46 @@ def isolated_store(tmp_path, monkeypatch):
     initialize_store()
     return path
 
+
+def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store):
+    course = service.create_course(title="Source-required lesson")
+    topic = service.add_topic(course["id"], "Lesson without references")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="single", request_key="generated-lesson-no-source",
+    )
+    service.start_run(run["id"])
+    response = (
+        "# Lesson without references\\n\\n"
+        + ("This is substantive lesson content, but it contains no source URL. " * 5)
+    )
+    result = service.complete_run(run["id"], response)
+    assert result["status"] == "succeeded"
+    assert service.list_lessons(topic["id"]) == []
+    with connection() as conn:
+        status = conn.execute(
+            "SELECT status FROM run_topics WHERE run_id=? AND topic_id=?",
+            (run["id"], topic["id"]),
+        ).fetchone()["status"]
+    assert status == "skipped"
+
+
+def test_generated_lesson_without_source_cannot_be_reviewed(isolated_store, monkeypatch):
+    course = service.create_course(title="No-source review guard")
+    topic = service.add_topic(course["id"], "Generated lesson")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Generated lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    version = service.add_content_version(
+        lesson["id"],
+        "# Generated lesson\\n\\nSubstantive content for this lesson.",
+        source_kind="chatgpt_ui",
+    )
+    with pytest.raises(ValueError, match="منبعی برای این درس"):
+        service.review_content(version["id"], "reviewed")
+
+
 def test_topic_approval_lesson_version_review_and_publish(isolated_store):
     course = service.create_course(title="SQL Server 2005")
     topic = service.add_topic(course["id"], "Indexes")
