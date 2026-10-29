@@ -14,6 +14,8 @@ from .db import learning_connection
 
 MAX_TOPIC_CHARS = 300
 MAX_LESSONS = 40
+MAX_AUTOMATIC_COURSE_RETRIES = 3
+_AUTO_RETRY_DELAYS_SECONDS = (30, 120, 300)
 CHATGPT_URL = "https://chatgpt.com/"
 
 # The legacy CDP worker is intentionally single-instance. The durable course row
@@ -160,7 +162,9 @@ def _assert_course_worker_lease() -> None:
 
 
 class BrowserLearningError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = bool(retryable)
 
 
 class BrowserLearningLeaseLost(BrowserLearningError):
@@ -233,7 +237,7 @@ def list_courses(limit: int = 50) -> list[dict[str, Any]]:
     limit = max(1, min(int(limit), 200))
     with learning_connection() as conn:
         rows = conn.execute(
-            "SELECT id, topic, title, status, max_lessons, error, created_at, updated_at "
+            "SELECT id, topic, title, status, max_lessons, retry_count, next_retry_at, error, created_at, updated_at "
             "FROM browser_learning_courses ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -269,18 +273,18 @@ def recover_interrupted_courses() -> int:
             # Another process owns the browser; never rewrite its live run as stale.
             return 0
         with learning_connection() as conn:
-            cursor = conn.execute(
-                """UPDATE browser_learning_courses
-                   SET status='interrupted', error='برنامه پیش از پایان دوره متوقف شد؛ ادامهٔ خودکار در حال آماده‌سازی است.',
-                       updated_at=CURRENT_TIMESTAMP
-                   WHERE status='running'"""
-            )
-            conn.execute(
-                """UPDATE browser_learning_lessons SET status='queued',
-                       error='پس از توقف برنامه برای ادامه در صف قرار گرفت.', updated_at=CURRENT_TIMESTAMP
-                   WHERE status='running'"""
-            )
-            recovered_count = int(cursor.rowcount)
+            conn.execute("BEGIN IMMEDIATE")
+            running_rows = conn.execute(
+                "SELECT id FROM browser_learning_courses WHERE status='running' ORDER BY id"
+            ).fetchall()
+            for row in running_rows:
+                _schedule_course_retry(
+                    conn,
+                    int(row["id"]),
+                    "برنامه پیش از پایان دوره متوقف شد.",
+                    retryable=True,
+                )
+            recovered_count = len(running_rows)
         # Recovery only needs a short exclusive section. Do not leave an idle
         # process holding the singleton lease until its four-minute expiry.
         try:
@@ -327,34 +331,47 @@ def dispatch_next_course() -> dict[str, Any]:
         with learning_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
-                """SELECT id FROM browser_learning_courses
+                """SELECT id, status, next_retry_at FROM browser_learning_courses
                    WHERE status IN ('queued','interrupted') ORDER BY id ASC LIMIT 1"""
             ).fetchone()
+            retry_wait = None
             if row is not None:
                 candidate_id = int(row["id"])
-                updated = conn.execute(
-                    """UPDATE browser_learning_courses
-                       SET status='running', error=NULL, updated_at=CURRENT_TIMESTAMP
-                       WHERE id=? AND status IN ('queued','interrupted')""",
-                    (candidate_id,),
-                )
-                if updated.rowcount == 1:
-                    course_id = candidate_id
+                current_time = str(conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0])
+                if (
+                    row["status"] == "interrupted"
+                    and row["next_retry_at"] is not None
+                    and str(row["next_retry_at"]) > current_time
+                ):
+                    retry_wait = {
+                        "status": "retry_scheduled",
+                        "course_id": candidate_id,
+                        "next_retry_at": str(row["next_retry_at"]),
+                    }
+                else:
+                    updated = conn.execute(
+                        """UPDATE browser_learning_courses
+                           SET status='running', error=NULL, next_retry_at=NULL,
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE id=? AND status IN ('queued','interrupted')""",
+                        (candidate_id,),
+                    )
+                    if updated.rowcount == 1:
+                        course_id = candidate_id
         if course_id is None:
             _stop_course_worker_lease_heartbeat(release=True)
-            return {"status": "idle"}
+            return retry_wait or {"status": "idle"}
 
         _ACTIVE_COURSE_ID = course_id
         try:
             _start_course_worker_lease_heartbeat()
         except Exception as exc:
             _ACTIVE_COURSE_ID = None
-            with learning_connection() as conn:
-                conn.execute(
-                    """UPDATE browser_learning_courses SET status='interrupted', error=?,
-                       updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'""",
-                    (f"راه‌اندازی heartbeat ناموفق بود: {type(exc).__name__}", course_id),
-                )
+            _fail_course(
+                course_id,
+                f"راه‌اندازی heartbeat ناموفق بود: {type(exc).__name__}",
+                retryable=True,
+            )
             _stop_course_worker_lease_heartbeat(release=True)
             return {"status": "interrupted", "course_id": course_id}
 
@@ -368,12 +385,11 @@ def dispatch_next_course() -> dict[str, Any]:
             worker.start()
         except Exception as exc:
             _ACTIVE_COURSE_ID = None
-            with learning_connection() as conn:
-                conn.execute(
-                    """UPDATE browser_learning_courses SET status='interrupted', error=?,
-                       updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'""",
-                    (f"راه‌اندازی worker ناموفق بود: {type(exc).__name__}", course_id),
-                )
+            _fail_course(
+                course_id,
+                f"راه‌اندازی worker ناموفق بود: {type(exc).__name__}",
+                retryable=True,
+            )
             _stop_course_worker_lease_heartbeat(release=True)
             return {"status": "interrupted", "course_id": course_id}
         return {"status": "running", "course_id": course_id}
@@ -439,7 +455,8 @@ def _chatgpt_answer(page: Any, prompt: str, *, timeout_seconds: int = 180) -> st
             continue
     if editor is None:
         raise BrowserLearningError(
-            "کادر پیام ChatGPT پیدا نشد. صفحهٔ ChatGPT را باز کنید، وارد حساب شوید و دوباره تلاش کنید."
+            "کادر پیام ChatGPT پیدا نشد. صفحهٔ ChatGPT را باز کنید، وارد حساب شوید و دوباره تلاش کنید.",
+            retryable=False,
         )
 
     try:
@@ -511,7 +528,11 @@ def run_course(course_id: int) -> None:
         from playwright.sync_api import sync_playwright
     except ImportError:
         if not _WORKER_LEASE_LOST.is_set():
-            _fail_course(course_id, "وابستگی Playwright نصب نیست؛ بستهٔ اختیاری browser را نصب کنید.")
+            _fail_course(
+                course_id,
+                "وابستگی Playwright نصب نیست؛ بستهٔ اختیاری browser را نصب کنید.",
+                retryable=False,
+            )
         return
 
     try:
@@ -529,7 +550,8 @@ def run_course(course_id: int) -> None:
             _assert_course_worker_lease()
             if not _is_chatgpt_url(page.url):
                 raise BrowserLearningError(
-                    "Chrome به صفحهٔ ChatGPT واردشده نرسید؛ نشست را بازبینی و دوباره تلاش کنید."
+                    "Chrome به صفحهٔ ChatGPT واردشده نرسید؛ نشست را بازبینی و دوباره تلاش کنید.",
+                    retryable=False,
                 )
 
             if course.get("outline_json"):
@@ -537,7 +559,7 @@ def run_course(course_id: int) -> None:
                 topics = [str(item) for item in saved_outline.get("topics", []) if isinstance(item, str)]
                 title = str(course.get("title") or ("دورهٔ " + course["topic"]))
                 if not topics:
-                    raise BrowserLearningError("طرح ذخیره‌شدهٔ دوره قابل بازیابی نیست.")
+                    raise BrowserLearningError("طرح ذخیره‌شدهٔ دوره قابل بازیابی نیست.", retryable=False)
             else:
                 syllabus_prompt = (
                     "برای درخواست یادگیری زیر یک سرفصل‌بندی آموزشی دقیق و مرحله‌ای تهیه کن. "
@@ -623,21 +645,85 @@ def run_course(course_id: int) -> None:
                 ).fetchone()[0]
                 status = "completed" if not remaining else "failed"
                 conn.execute(
-                    "UPDATE browser_learning_courses SET status=?, error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                    (status, None if not remaining else "بخشی از سرفصل‌ها آموزش داده نشد؛ خطاهای هر درس را بررسی کنید.", course_id),
+                    """UPDATE browser_learning_courses
+                       SET status=?, error=?,
+                           retry_count=CASE WHEN ?='completed' THEN 0 ELSE retry_count END,
+                           next_retry_at=NULL, updated_at=CURRENT_TIMESTAMP
+                       WHERE id=?""",
+                    (
+                        status,
+                        None if not remaining else "بخشی از سرفصل‌ها آموزش داده نشد؛ خطاهای هر درس را بررسی کنید.",
+                        status,
+                        course_id,
+                    ),
                 )
     except Exception as exc:
         if isinstance(exc, BrowserLearningLeaseLost) or _WORKER_LEASE_LOST.is_set():
             return
-        _fail_course(course_id, f"{type(exc).__name__}: {str(exc)}"[:1000])
-
-
-def _fail_course(course_id: int, error: str) -> None:
-    with learning_connection() as conn:
-        conn.execute(
-            "UPDATE browser_learning_courses SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-            (error[:1000], course_id),
+        retryable = not isinstance(exc, BrowserLearningError) or exc.retryable
+        _fail_course(
+            course_id,
+            f"{type(exc).__name__}: {str(exc)}"[:1000],
+            retryable=retryable,
         )
+
+
+def _schedule_course_retry(
+    conn: Any, course_id: int, error: str, *, retryable: bool
+) -> str:
+    """Persist a bounded retry without discarding completed lesson content."""
+    row = conn.execute(
+        "SELECT retry_count FROM browser_learning_courses WHERE id=?",
+        (course_id,),
+    ).fetchone()
+    if row is None:
+        return "missing"
+    retry_count = max(0, int(row["retry_count"] or 0))
+    if retryable and retry_count < MAX_AUTOMATIC_COURSE_RETRIES:
+        delay = _AUTO_RETRY_DELAYS_SECONDS[retry_count]
+        next_count = retry_count + 1
+        conn.execute(
+            """UPDATE browser_learning_courses
+               SET status='interrupted', retry_count=?, next_retry_at=datetime(CURRENT_TIMESTAMP, ?),
+                   error=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (
+                next_count,
+                f"+{delay} seconds",
+                f"{error[:700]}؛ تلاش خودکار {next_count}/{MAX_AUTOMATIC_COURSE_RETRIES} پس از {delay} ثانیه برنامه‌ریزی شد."[:1000],
+                course_id,
+            ),
+        )
+        conn.execute(
+            """UPDATE browser_learning_lessons
+               SET status='queued', error='برای تلاش مجدد زمان‌بندی شد.', updated_at=CURRENT_TIMESTAMP
+               WHERE course_id=? AND status IN ('running','failed')""",
+            (course_id,),
+        )
+        return "interrupted"
+    terminal_error = (
+        f"{error[:850]}؛ تلاش خودکار به پایان رسید؛ پس از رفع علت، بازیابی دستی لازم است."
+        if retryable
+        else f"{error[:900]}؛ رفع علت و بازیابی دستی لازم است."
+    )[:1000]
+    conn.execute(
+        """UPDATE browser_learning_courses
+           SET status='failed', next_retry_at=NULL, error=?, updated_at=CURRENT_TIMESTAMP
+           WHERE id=?""",
+        (terminal_error, course_id),
+    )
+    conn.execute(
+        """UPDATE browser_learning_lessons
+           SET status='failed', error=?, updated_at=CURRENT_TIMESTAMP
+           WHERE course_id=? AND status='running'""",
+        (terminal_error, course_id),
+    )
+    return "failed"
+
+
+def _fail_course(course_id: int, error: str, *, retryable: bool = True) -> None:
+    with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        _schedule_course_retry(conn, course_id, error, retryable=retryable)
 
 
 def retry_course(course_id: int) -> dict[str, Any]:
@@ -657,8 +743,9 @@ def retry_course(course_id: int) -> dict[str, Any]:
         if active is not None:
             raise ValueError("یک دورهٔ دیگر در حال اجرا یا در صف است.")
         conn.execute(
-            """UPDATE browser_learning_courses SET status='queued', error=NULL, updated_at=CURRENT_TIMESTAMP
-               WHERE id=?""",
+            """UPDATE browser_learning_courses
+               SET status='queued', error=NULL, retry_count=0, next_retry_at=NULL,
+                   updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (course_id,),
         )
         conn.execute(
@@ -667,3 +754,18 @@ def retry_course(course_id: int) -> dict[str, Any]:
             (course_id,),
         )
     return get_course(course_id)
+
+
+def dispatch_due_retry() -> dict[str, Any]:
+    """Dispatch only when a persisted interrupted course's retry deadline has arrived."""
+    with learning_connection() as conn:
+        row = conn.execute(
+            """SELECT id FROM browser_learning_courses
+               WHERE status='interrupted' AND next_retry_at IS NOT NULL
+                 AND next_retry_at <= CURRENT_TIMESTAMP
+               ORDER BY id ASC LIMIT 1"""
+        ).fetchone()
+    if row is None:
+        return {"status": "idle"}
+    return dispatch_next_course()
+
