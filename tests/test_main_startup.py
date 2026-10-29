@@ -66,13 +66,20 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     class RuntimeStub:
         def __init__(self, handlers, **kwargs):
             self.handlers = handlers
+            self.worker_prefix = kwargs.get("worker_prefix", "stub-worker")
             self.is_running = False
             self.start_count = 0
+            self.stop_count = 0
             constructed.append(self)
 
         def start(self):
             self.start_count += 1
             self.is_running = True
+
+        def stop(self, timeout=10.0):
+            self.stop_count += 1
+            self.is_running = False
+            return True
 
     monkeypatch.setattr(main, "TaskRuntime", RuntimeStub)
     main.startup()
@@ -95,3 +102,16 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     assert {runtime.handlers.keys().__iter__().__next__() for runtime in constructed} >= {
         "research.answer", "learning.run_job", "cloud.discover_resources"
     }
+
+    # A partially stopped runtime set must be rebuilt rather than mistaken for
+    # a healthy startup; all surviving workers stop before replacements start.
+    previous_runtimes = list(constructed)
+    previous_count = len(constructed)
+    previous_runtimes[0].is_running = False
+    main.startup()
+
+    assert len(constructed) > previous_count
+    assert main._task_runtimes != previous_runtimes
+    assert all(not runtime.is_running for runtime in previous_runtimes)
+    assert all(runtime.stop_count == 1 for runtime in previous_runtimes if runtime is not previous_runtimes[0])
+    assert all(runtime.is_running for runtime in main._task_runtimes)
