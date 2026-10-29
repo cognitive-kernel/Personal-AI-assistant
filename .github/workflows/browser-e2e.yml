@@ -20,6 +20,9 @@ jobs:
       E2E_BASE_URL: http://127.0.0.1:8000
       DATABASE_BACKUP_INTERVAL_HOURS: "0"
       OLLAMA_BASE_URL: http://127.0.0.1:11434
+      AI_LEARNING_ENABLED: "1"
+      AI_LEARNING_RETRIEVAL_ENABLED: "1"
+      AI_LEARNING_DB_PATH: ${{ runner.temp }}/personal-ai-e2e/ai_learning.db
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
