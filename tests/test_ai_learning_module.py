@@ -95,6 +95,33 @@ def test_bulk_lesson_actions_never_delete_during_review_or_publish():
     assert "deleteLessonForBulk" not in publish_handler
     assert "deleteLessonForBulk" in lesson_list[delete_start:]
 
+def test_soft_deleted_lesson_can_be_restored(isolated_store):
+    course = service.create_course(title="Restore deleted lessons")
+    topic = service.add_topic(course["id"], "Recovery")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Recoverable lesson")
+    version = service.add_content_version(
+        lesson["id"],
+        "# Recoverable lesson\n\nThis lesson content must remain recoverable after a soft delete.",
+    )
+    service.review_content(version["id"], "reviewed")
+    service.publish_content(version["id"])
+
+    service.soft_delete_lesson(lesson["id"])
+    deleted = service.list_deleted_lessons(course["id"])
+    assert any(item["id"] == lesson["id"] for item in deleted)
+    assert service.list_lessons(topic["id"]) == []
+
+    assert service.restore_soft_deleted_lesson(lesson["id"])["restored"] is True
+    assert any(item["id"] == lesson["id"] for item in service.list_lessons(topic["id"]))
+    with connection() as conn:
+        active_chunks = conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE content_version_id=? AND active=1",
+            (version["id"],),
+        ).fetchone()[0]
+    assert active_chunks > 0
+
+
 def test_topic_approval_lesson_version_review_and_publish(isolated_store):
     course = service.create_course(title="SQL Server 2005")
     topic = service.add_topic(course["id"], "Indexes")
