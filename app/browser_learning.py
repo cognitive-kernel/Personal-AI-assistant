@@ -280,7 +280,15 @@ def recover_interrupted_courses() -> int:
                        error='پس از توقف برنامه برای ادامه در صف قرار گرفت.', updated_at=CURRENT_TIMESTAMP
                    WHERE status='running'"""
             )
-            return int(cursor.rowcount)
+            recovered_count = int(cursor.rowcount)
+        # Recovery only needs a short exclusive section. Do not leave an idle
+        # process holding the singleton lease until its four-minute expiry.
+        try:
+            _release_course_worker_lease()
+        except Exception:
+            # Recovery is already committed; a failed release is bounded by lease expiry.
+            pass
+        return recovered_count
 
 
 def _scheduled_course_worker(course_id: int) -> None:
