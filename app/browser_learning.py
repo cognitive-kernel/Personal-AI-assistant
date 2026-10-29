@@ -569,8 +569,10 @@ def run_course(course_id: int) -> None:
                             (lesson, _chatgpt_source_url(page.url), prompt_hash, lesson_hash, course_id, position),
                         )
                 except Exception as exc:
-                    if isinstance(exc, BrowserLearningLeaseLost):
-                        raise
+                    if isinstance(exc, BrowserLearningLeaseLost) or _WORKER_LEASE_LOST.is_set():
+                        raise BrowserLearningLeaseLost(
+                            "مالکیت اجرای یادگیری از دست رفته است؛ پاسخ جدید ذخیره نشد."
+                        ) from exc
                     with learning_connection() as conn:
                         conn.execute(
                             """UPDATE browser_learning_lessons SET status='failed', error=?,
@@ -590,7 +592,7 @@ def run_course(course_id: int) -> None:
                     (status, None if not remaining else "بخشی از سرفصل‌ها آموزش داده نشد؛ خطاهای هر درس را بررسی کنید.", course_id),
                 )
     except Exception as exc:
-        if isinstance(exc, BrowserLearningLeaseLost):
+        if isinstance(exc, BrowserLearningLeaseLost) or _WORKER_LEASE_LOST.is_set():
             return
         _fail_course(course_id, f"{type(exc).__name__}: {str(exc)}"[:1000])
 
