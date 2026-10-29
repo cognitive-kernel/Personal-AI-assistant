@@ -674,3 +674,20 @@ def test_manual_retry_can_requeue_failed_fifo_head_ahead_of_existing_queue(tmp_p
     assert result["retry_count"] == 0
     assert result["next_retry_at"] is None
     assert browser_learning.get_course(queued["id"])["status"] == "queued"
+
+
+def test_late_failure_cannot_overwrite_a_completed_course(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Already completed", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_courses SET status='completed' WHERE id=?",
+            (course["id"],),
+        )
+
+    browser_learning._fail_course(course["id"], "late stale worker error", retryable=True)
+    result = browser_learning.get_course(course["id"])
+
+    assert result["status"] == "completed"
+    assert result["retry_count"] == 0
+    assert result["next_retry_at"] is None
