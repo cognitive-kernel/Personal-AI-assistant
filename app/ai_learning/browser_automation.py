@@ -22,6 +22,7 @@ _ACTIVE = False
 _ACTIVE_RUN_ID: int | None = None
 _ACTIVE_COURSE_ID: int | None = None
 _CANCEL_EVENTS: dict[int, threading.Event] = {}
+_SHUTTING_DOWN = False
 _RESPONSE_TIMEOUT_SECONDS = 1800
 _STABLE_SECONDS = 20.0
 _MAX_LESSON_CONTINUATIONS = 8
@@ -970,6 +971,8 @@ def _worker(
 def _dispatch_next_persisted_run() -> dict[str, Any]:
     """Claim the oldest explicitly queued run; failed runs require deliberate manual recovery."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    if _SHUTTING_DOWN:
+        return {"status": "shutting_down", "active": False}
     if service.get_learning_control()["paused"]:
         return {"status": "paused", "active": False}
     with _LOCK:
@@ -1011,6 +1014,23 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
         _log_event("persisted_queue_run_dispatched", run_id=run_id, course_id=course_id,
                    run_type=run.get("run_type"), recovered_status=selected.get("status"))
         return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+
+
+def stop_browser_automation() -> dict[str, Any]:
+    """Prevent new browser attempts and signal active workers during application shutdown."""
+    global _SHUTTING_DOWN
+    with _LOCK:
+        _SHUTTING_DOWN = True
+        active_run_id = _ACTIVE_RUN_ID
+        events = list(_CANCEL_EVENTS.values())
+        for event in events:
+            event.set()
+    _log_event(
+        "browser_automation_shutdown",
+        active_run_id=active_run_id,
+        signalled_workers=len(events),
+    )
+    return {"status": "shutting_down", "active_run_id": active_run_id, "signalled_workers": len(events)}
 
 
 def recover_pending_runs() -> dict[str, Any]:
