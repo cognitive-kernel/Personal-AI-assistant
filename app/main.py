@@ -176,6 +176,7 @@ def startup() -> None:
     try:
         db.init_databases()
         browser_learning.recover_interrupted_courses()
+        browser_learning.dispatch_next_course()
     except UntrackedSchemaError:
         # Fail closed for data mutations, but keep the local UI and health endpoint
         # available so the operator gets a useful recovery instruction instead of
