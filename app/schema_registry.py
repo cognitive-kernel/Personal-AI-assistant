@@ -1306,6 +1306,19 @@ LEARNING_MIGRATIONS = (
             "UPDATE learning_path_topics SET latest_score_source=latest_score_kind",
         ),
     ),
+    Migration(
+        40,
+        "browser-learning-worker-lease",
+        (
+            """CREATE TABLE browser_learning_worker_lease (
+                lease_name TEXT PRIMARY KEY CHECK(lease_name='browser-learning'),
+                owner_token TEXT NOT NULL,
+                lease_until REAL NOT NULL,
+                heartbeat_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+            "CREATE INDEX idx_browser_learning_worker_lease_until ON browser_learning_worker_lease(lease_until)",
+        ),
+    ),
 )
 
 

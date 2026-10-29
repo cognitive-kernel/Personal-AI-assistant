@@ -19,4 +19,4 @@ The legacy browser-learning API persisted course and lesson state, but startup o
 
 ## Consequences and limitations
 
-This provides automatic recovery after process restart and FIFO draining of already-persisted courses in a single application process. It does not provide cross-process leases, so this route must not be scaled to multiple web workers without a separate lease/heartbeat design. Runtime provider failures still surface as failed courses for deliberate retry. Target-host behavior must be validated separately.
+This provides automatic recovery after process restart and FIFO draining of already-persisted courses. Cross-process ownership is specified separately in [ADR-004](ADR-004-browser-learning-worker-lease.md). Runtime provider failures still surface as failed courses for deliberate retry. Target-host behavior must be validated separately.

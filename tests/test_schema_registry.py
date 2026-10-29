@@ -124,7 +124,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 39
+        assert LEARNING_MIGRATIONS[-1].version == 40
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
@@ -227,12 +227,13 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v37 = fingerprint_for_version(LEARNING_MIGRATIONS, 37)
     learning_v38 = fingerprint_for_version(LEARNING_MIGRATIONS, 38)
     learning_v39 = fingerprint_for_version(LEARNING_MIGRATIONS, 39)
+    learning_v40 = fingerprint_for_version(LEARNING_MIGRATIONS, 40)
 
     assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
     assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
-    assert len(learning_v20) == len(learning_v21) == len(learning_v22) == len(learning_v23) == len(learning_v24) == len(learning_v25) == len(learning_v26) == len(learning_v27) == len(learning_v28) == len(learning_v29) == len(learning_v30) == len(learning_v31) == len(learning_v32) == len(learning_v33) == len(learning_v34) == len(learning_v35) == len(learning_v36) == len(learning_v37) == len(learning_v38) == len(learning_v39) == 64
-    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20, learning_v21, learning_v22, learning_v23, learning_v24, learning_v25, learning_v26, learning_v27, learning_v28, learning_v29, learning_v30, learning_v31, learning_v32, learning_v33, learning_v34, learning_v35, learning_v36, learning_v37, learning_v38, learning_v39}) == 39
+    assert len(learning_v20) == len(learning_v21) == len(learning_v22) == len(learning_v23) == len(learning_v24) == len(learning_v25) == len(learning_v26) == len(learning_v27) == len(learning_v28) == len(learning_v29) == len(learning_v30) == len(learning_v31) == len(learning_v32) == len(learning_v33) == len(learning_v34) == len(learning_v35) == len(learning_v36) == len(learning_v37) == len(learning_v38) == len(learning_v39) == len(learning_v40) == 64
+    assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20, learning_v21, learning_v22, learning_v23, learning_v24, learning_v25, learning_v26, learning_v27, learning_v28, learning_v29, learning_v30, learning_v31, learning_v32, learning_v33, learning_v34, learning_v35, learning_v36, learning_v37, learning_v38, learning_v39, learning_v40}) == 40
 
 
 
