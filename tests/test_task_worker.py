@@ -330,3 +330,33 @@ def test_worker_retries_when_result_persistence_fails(worker_store, monkeypatch)
     assert saved["status"] == "succeeded"
     assert saved["attempts"] == 2
     assert saved["result"] == {"durable": True}
+
+
+
+def test_worker_requeues_claimed_task_when_heartbeat_thread_cannot_start(worker_store, monkeypatch):
+    task = task_manager.create_task("test.heartbeat-start-failure", {}, max_attempts=2)
+    handler_calls = []
+
+    def handler(*_args):
+        handler_calls.append(True)
+        return {"must_not_run": True}
+
+    worker = TaskWorker("worker-heartbeat-start-failure", {
+        "test.heartbeat-start-failure": handler,
+    })
+
+    class BrokenThread:
+        def start(self):
+            raise RuntimeError("simulated OS thread limit")
+
+    monkeypatch.setattr(
+        worker, "_create_heartbeat_thread", lambda *_args: BrokenThread()
+    )
+
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "queued"
+    assert saved["attempts"] == 1
+    assert saved["result"] is None
+    assert saved["error"] == "HeartbeatStartupError: RuntimeError: simulated OS thread limit"
+    assert handler_calls == []
