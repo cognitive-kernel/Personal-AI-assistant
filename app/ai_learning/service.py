@@ -208,7 +208,8 @@ def create_course(*, title: str, provider: str = "manual", language: str = "fa",
 def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = None,
                selection_mode: str = "single", request_key: str, force_retry: bool = False) -> dict[str, Any]:
     """Create an idempotent provider run and a prompt for explicit user submission."""
-    topic_ids = topic_ids or []
+    requested_topic_ids = list(topic_ids or [])
+    topic_ids = list(requested_topic_ids)
     request_key = _clean_text(request_key, "request_key", 100)
     if run_type not in {"outline", "lesson"}:
         raise ValueError("run_type must be outline or lesson.")
@@ -225,10 +226,40 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             raise ValueError("single selection requires exactly one topic ID.")
         if selection_mode == "selected" and not topic_ids:
             raise ValueError("selected selection requires at least one topic ID.")
+    request_fingerprint = hashlib.sha256(json.dumps(
+        {
+            "course_id": course_id,
+            "run_type": run_type,
+            "topic_ids": sorted(requested_topic_ids),
+            "selection_mode": selection_mode,
+            "force_retry": bool(force_retry),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        existing = conn.execute("SELECT id FROM runs WHERE request_key=?", (request_key,)).fetchone()
+        existing = conn.execute(
+            "SELECT id,course_id,run_type,selection_mode,request_fingerprint "
+            "FROM runs WHERE request_key=?",
+            (request_key,),
+        ).fetchone()
         if existing is not None:
+            # A fingerprint preserves the original request even if the effective
+            # topic set changed after filtering completed lessons or state changed.
+            existing_fingerprint = existing["request_fingerprint"]
+            if existing_fingerprint:
+                same_request = str(existing_fingerprint) == request_fingerprint
+            else:
+                # Legacy rows predate request fingerprints. Validate the fields
+                # they can prove without inventing an original filtered topic set.
+                same_request = (
+                    int(existing["course_id"]) == course_id
+                    and str(existing["run_type"]) == run_type
+                    and str(existing["selection_mode"]) == selection_mode
+                )
+            if not same_request:
+                raise ValueError("request_key was already used for a different run request.")
             return get_run(int(existing["id"]))
         course = conn.execute("SELECT * FROM courses WHERE id=?", (course_id,)).fetchone()
         if course is None:
@@ -373,8 +404,9 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
         if len(prompt) > 20_000:
             raise ValueError("Generated prompt exceeds the 20,000-character browser limit; select fewer topics or shorten the scope.")
         cursor = conn.execute(
-            "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,request_key) VALUES(?,?,?,'queued',?,?)",
-            (course_id, run_type, selection_mode, prompt, request_key))
+            "INSERT INTO runs(course_id,run_type,selection_mode,status,prompt_text,request_key,request_fingerprint) "
+            "VALUES(?,?,?,'queued',?,?,?)",
+            (course_id, run_type, selection_mode, prompt, request_key, request_fingerprint))
         run_id = int(cursor.lastrowid)
         for topic in topics:
             conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'queued')", (run_id, topic["id"]))

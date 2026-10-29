@@ -140,6 +140,9 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
         )""",
         "CREATE INDEX idx_ai_query_feedback_created ON query_feedback(created_at DESC,id DESC)",
     )),
+    (5, "ai-learning-run-request-fingerprint", (
+        "ALTER TABLE runs ADD COLUMN request_fingerprint TEXT",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):
