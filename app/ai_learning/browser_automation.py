@@ -1526,13 +1526,9 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             return {"status": "resumed", "active": True, "run_id": _ACTIVE_RUN_ID,
                     "course_id": _ACTIVE_COURSE_ID, "message": "فرایند فعال ادامه پیدا می‌کند."}
 
-        candidates: list[dict[str, Any]] = []
-        if course_id is not None:
-            candidates = service.list_course_runs(course_id, 50)
-        else:
-            for course in service.list_courses(100):
-                candidates.extend(service.list_course_runs(int(course["id"]), 50))
-        in_flight = next((item for item in candidates if item.get("status") in {"running", "queued", "needs_user_action"}), None)
+        # Resume from the durable global queue, not bounded dashboard pages.
+        # Otherwise older runs can be stranded after the user exceeds page limits.
+        in_flight = service.get_oldest_resumable_run(course_id)
         if in_flight is not None:
             if in_flight.get("status") == "needs_user_action":
                 service.requeue_run_for_resume(int(in_flight["id"]), "manual_resume_recovery")
