@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-29  
-> شاخهٔ مبنای مستندات: `main`، commit `daeb3dcf57200ac6cd6ca9b0c4e8dedf76123d8f` (2026-10-29).  
+> آخرین commit کد بررسی‌شده: `7005626755f9616e9bbca95c4a4521a6af64e20c` در `main` (2026-10-29)؛ این تغییر مستندات فقط شواهد همین مبنای کد را ثبت می‌کند.  
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `daeb3dcf57200ac6cd6ca9b0c4e8dedf76123d8f` اشاره دارد. پس از ادغام PR #539، آزمون کامل، Windows storage regressions، browser E2E و dependency audit روی head دقیق PR و روی commit ادغام‌شدهٔ `main` موفق شدند. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
+**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `7005626755f9616e9bbca95c4a4521a6af64e20c` اشاره دارد. پس از ادغام PR #543، آزمون کامل [#40907604873](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40907604873)، Windows storage regressions، browser E2E [#40907604932](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40907604932) و dependency audit [#40907604799](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40907604799) روی همین commit موفق شدند. این CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
@@ -27,6 +27,8 @@
 - PR [#536](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/536): تلاش مجدد محدود و زمان‌بندی‌شده برای دوره‌های یادگیری مرورگر، بازیابی اجرای مانده با رعایت lease و جلوگیری از تغییر وضعیت دورهٔ تکمیل‌شده توسط worker قدیمی اضافه شد. آزمون‌ها، Windows storage regressions، browser E2E و dependency audit روی head دقیق موفق شدند؛ ادغام `e0c86fb6fae4a83e78f07d56eb3f95af0f1861a3` انجام شد و سه workflow پس از ادغام `main` نیز موفق شدند.
 - PR [#537](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/537): مسیر گفت‌وگوی عادی نیز زبان پاسخ را بررسی می‌کند، یک اصلاح محدود انجام می‌دهد و در صورت شکست اصلاح یا پاسخ خالی به fallback ثابت برمی‌گردد. آزمون‌ها، Windows storage regressions، browser E2E و dependency audit روی head دقیق موفق شدند؛ ادغام `4499e0d59254c1186eb82a0612909dc96f08179b` انجام شد؛ آزمون‌ها، Windows storage regressions، browser E2E و dependency audit پس از ادغام روی `main` نیز موفق شدند.
 - PR [#539](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/539): کنترل‌های مفید/غیرمفید برای پاسخ‌های دستیار به پیام و گفت‌وگوی مشخص متصل شدند؛ migration نسخهٔ 5 بازخورد را جدا از دانش ذخیره می‌کند و حذف پیام/گفتگو را با cascade رعایت می‌کند. API فقط پیام دستیار را می‌پذیرد، امتیاز قابل تغییر است و هیچ ارتقای خودکار دانش رخ نمی‌دهد. آزمون‌های دقیق PR: 1415 موفق، 5 مورد skip؛ Windows storage regressions، browser E2E و dependency audit نیز موفق شدند. ادغام `daeb3dcf57200ac6cd6ca9b0c4e8dedf76123d8f` انجام شد و سه workflow پس از ادغام `main` نیز موفق شدند.
+- PR [#541](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/541): اعتبارسنجی امتیاز بازخورد در API به `StrictInt` تغییر کرد تا مقدارهای boolean و رشتهٔ عددی به‌اشتباه پذیرفته نشوند؛ آزمون کامل، Windows storage regressions، browser E2E و dependency audit روی head دقیق `0d4aa31da97fe1113c533a356e44d469fc6ec575` موفق شدند. ادغام در `main` با commit `7005626755f9616e9bbca95c4a4521a6af64e20c` انجام شد؛ آزمون کامل، browser E2E و dependency audit پس از ادغام روی همین commit نیز موفق شدند.
+- PR [#543](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/543): پاسخ خالی یا غیرمتنی مدل در چت عادی و پژوهشی دیگر به‌عنوان پاسخ معتبر عبور نمی‌کند؛ fallback بومی‌سازی‌شده برگردانده می‌شود و مسیر پژوهش وضعیت `generation_failed` را بدون متن خام ثبت می‌کند و بررسی ادعا را اجرا نمی‌کند. آزمون کامل، Windows storage regressions، browser E2E و dependency audit روی head دقیق `419a3f35838a32d2da97c1aec9a6ce75006bb90c` موفق شدند؛ آزمون کامل 1423 موفق و 5 مورد skip گزارش کرد. ادغام با commit `7005626755f9616e9bbca95c4a4521a6af64e20c` انجام شد؛ آزمون کامل، Windows storage regressions، browser E2E و dependency audit پس از ادغام نیز موفق شدند.
 - این شواهد، آزمون خودکار مخزن هستند؛ جایگزین ارزیابی زنده، پذیرش میزبان هدف، تمرین restore/rollback یا بازبینی امنیتی مستقل نیستند.
 
 ## 2. قابلیت‌های پیاده‌سازی‌شده
