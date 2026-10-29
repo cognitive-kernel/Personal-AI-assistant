@@ -1,3 +1,5 @@
+import http.client
+
 import pytest
 
 from app import db, ollama
@@ -454,3 +456,42 @@ def test_ollama_policy_rejects_scoped_ipv6_hosts(tmp_path, monkeypatch, url):
 
     with pytest.raises(ollama.OllamaError, match="Scoped IPv6"):
         ollama._base_url()
+
+
+@pytest.mark.parametrize(
+    "read_error",
+    [
+        ConnectionResetError("simulated peer disconnect"),
+        http.client.IncompleteRead(b"partial", 10),
+    ],
+)
+def test_ollama_request_wraps_response_read_failures(
+    tmp_path, monkeypatch, read_error
+):
+    configure_ollama_url(tmp_path, monkeypatch, "http://127.0.0.1:11434")
+
+    class BrokenResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _limit):
+            raise read_error
+
+    class BrokenOpener:
+        def open(self, *_args, **_kwargs):
+            return BrokenResponse()
+
+    monkeypatch.setattr(
+        ollama.urllib.request,
+        "build_opener",
+        lambda *_args, **_kwargs: BrokenOpener(),
+    )
+
+    with pytest.raises(ollama.OllamaError, match=type(read_error).__name__) as raised:
+        ollama._request("/api/tags", timeout=2)
+
+    assert raised.value.retryable is True
+    assert str(read_error) not in str(raised.value)
