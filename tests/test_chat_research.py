@@ -539,3 +539,26 @@ def test_direct_chat_fails_closed_if_language_repair_still_mismatches(monkeypatc
 
     assert "couldn't reliably produce an answer in English" in reply
     assert reply == chat_research._language_fallback("Please explain this idea in simple terms.")
+
+
+def test_direct_chat_fails_closed_if_language_repair_raises(monkeypatch):
+    calls = 0
+
+    def fake_chat(message, history=None, system_prompt=None):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return (
+                "Quand deux sources fiables contredisent une affirmation technique, il est préférable de "
+                "identifier les sources et noter leurs positions respectives. Examiner les preuves fournies "
+                "par chaque source pour comprendre leurs arguments et leurs méthodologies. Si aucune source "
+                "supplémentaire n'est disponible, mentionner la contradiction et suggérer une recherche."
+            )
+        raise RuntimeError("private model runtime detail")
+
+    monkeypatch.setattr(ollama, "chat", fake_chat)
+    reply = chat_research.answer("Please explain this idea in simple terms.")
+
+    assert calls == 2
+    assert reply == chat_research._language_fallback("Please explain this idea in simple terms.")
+    assert "private model runtime detail" not in reply
