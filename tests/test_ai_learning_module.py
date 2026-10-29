@@ -614,6 +614,23 @@ def test_run_request_key_rejects_reuse_for_different_topics(isolated_store):
         first_topic["id"]
     ]
 
+
+
+def test_run_request_key_rejects_reuse_with_different_retry_policy(isolated_store):
+    course = service.create_course(title="SQL Server")
+    topic = service.add_topic(course["id"], "Transactions")
+    service.decide_topics([topic["id"]], "approved")
+    service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="single", request_key="retry-policy-key", force_retry=False,
+    )
+
+    with pytest.raises(ValueError, match="different run request"):
+        service.create_run(
+            course["id"], run_type="lesson", topic_ids=[topic["id"]],
+            selection_mode="single", request_key="retry-policy-key", force_retry=True,
+        )
+
 def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narrow():
     import json
     from pathlib import Path
