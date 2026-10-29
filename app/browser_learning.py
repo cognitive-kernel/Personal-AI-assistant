@@ -269,6 +269,12 @@ def recover_interrupted_courses() -> int:
         # Never turn a live in-process course back into an interrupted course.
         if _ACTIVE_COURSE_ID is not None:
             return 0
+        with learning_connection() as conn:
+            has_running_course = conn.execute(
+                "SELECT 1 FROM browser_learning_courses WHERE status='running' LIMIT 1"
+            ).fetchone()
+        if has_running_course is None:
+            return 0
         if not _acquire_course_worker_lease():
             # Another process owns the browser; never rewrite its live run as stale.
             return 0
@@ -317,6 +323,39 @@ def _scheduled_course_worker(course_id: int) -> None:
             _stop_course_worker_lease_heartbeat(release=True)
 
 
+def _course_dispatch_gate(conn: Any) -> tuple[dict[str, Any] | None, Any | None]:
+    """Return a durable queue blocker or the oldest course eligible for dispatch."""
+    row = conn.execute(
+        """SELECT id, status, next_retry_at FROM browser_learning_courses
+           WHERE status IN ('queued','interrupted') ORDER BY id ASC LIMIT 1"""
+    ).fetchone()
+    if row is None:
+        return {"status": "idle"}, None
+    candidate_id = int(row["id"])
+    failed_row = conn.execute(
+        "SELECT id FROM browser_learning_courses WHERE status='failed' AND id<? ORDER BY id LIMIT 1",
+        (candidate_id,),
+    ).fetchone()
+    if failed_row is not None:
+        return {
+            "status": "blocked_by_failed_course",
+            "course_id": candidate_id,
+            "blocked_by_course_id": int(failed_row["id"]),
+        }, None
+    current_time = str(conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0])
+    if (
+        row["status"] == "interrupted"
+        and row["next_retry_at"] is not None
+        and str(row["next_retry_at"]) > current_time
+    ):
+        return {
+            "status": "retry_scheduled",
+            "course_id": candidate_id,
+            "next_retry_at": str(row["next_retry_at"]),
+        }, None
+    return None, row
+
+
 def dispatch_next_course() -> dict[str, Any]:
     """Claim and start the oldest persisted course under a cross-process SQLite lease."""
     global _ACTIVE_COURSE_ID
@@ -324,50 +363,28 @@ def dispatch_next_course() -> dict[str, Any]:
     with _COURSE_DISPATCH_LOCK:
         if _ACTIVE_COURSE_ID is not None:
             return {"status": "already_active", "course_id": _ACTIVE_COURSE_ID}
+        with learning_connection() as conn:
+            gate, _ = _course_dispatch_gate(conn)
+        if gate is not None:
+            return gate
         if not _acquire_course_worker_lease():
             return {"status": "lease_held"}
         _WORKER_LEASE_LOST.clear()
         course_id: int | None = None
         with learning_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            row = conn.execute(
-                """SELECT id, status, next_retry_at FROM browser_learning_courses
-                   WHERE status IN ('queued','interrupted') ORDER BY id ASC LIMIT 1"""
-            ).fetchone()
-            retry_wait = None
-            if row is not None:
+            retry_wait, row = _course_dispatch_gate(conn)
+            if row is not None and retry_wait is None:
                 candidate_id = int(row["id"])
-                failed_row = conn.execute(
-                    "SELECT id FROM browser_learning_courses WHERE status='failed' AND id<? ORDER BY id LIMIT 1",
+                updated = conn.execute(
+                    """UPDATE browser_learning_courses
+                       SET status='running', error=NULL, next_retry_at=NULL,
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND status IN ('queued','interrupted')""",
                     (candidate_id,),
-                ).fetchone()
-                current_time = str(conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0])
-                if failed_row is not None:
-                    retry_wait = {
-                        "status": "blocked_by_failed_course",
-                        "course_id": candidate_id,
-                        "blocked_by_course_id": int(failed_row["id"]),
-                    }
-                elif (
-                    row["status"] == "interrupted"
-                    and row["next_retry_at"] is not None
-                    and str(row["next_retry_at"]) > current_time
-                ):
-                    retry_wait = {
-                        "status": "retry_scheduled",
-                        "course_id": candidate_id,
-                        "next_retry_at": str(row["next_retry_at"]),
-                    }
-                else:
-                    updated = conn.execute(
-                        """UPDATE browser_learning_courses
-                           SET status='running', error=NULL, next_retry_at=NULL,
-                               updated_at=CURRENT_TIMESTAMP
-                           WHERE id=? AND status IN ('queued','interrupted')""",
-                        (candidate_id,),
-                    )
-                    if updated.rowcount == 1:
-                        course_id = candidate_id
+                )
+                if updated.rowcount == 1:
+                    course_id = candidate_id
         if course_id is None:
             _stop_course_worker_lease_heartbeat(release=True)
             return retry_wait or {"status": "idle"}
