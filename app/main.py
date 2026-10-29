@@ -181,9 +181,9 @@ def _maintain_learning_runtime() -> None:
     except Exception:
         logger.exception("Stale browser-learning recovery failed; it will retry next interval.")
     try:
-        browser_learning.dispatch_due_retry()
+        browser_learning.dispatch_next_course()
     except Exception:
-        logger.exception("Scheduled browser-learning retry failed; it will retry next interval.")
+        logger.exception("Browser-learning dispatch failed; it will retry next interval.")
     if ai_learning_config.is_enabled():
         try:
             ai_learning_browser_automation.recover_orphaned_runs()
