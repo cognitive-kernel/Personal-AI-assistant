@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
-from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
+from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_feedback, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from . import learning_review_tasks
 from .learning_observability import collect_learning_operational_metrics
@@ -378,6 +378,9 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     history: list[dict[str, str]] = Field(default_factory=list, max_length=30)
 
+class ChatMessageFeedbackRequest(BaseModel):
+    rating: Literal[-1, 1]
+
 class SettingsPatch(BaseModel):
     values: dict[str, Any]
 
@@ -519,6 +522,27 @@ def list_chat_messages(conversation_id: int) -> dict[str, Any]:
         return {"conversation": conversation, "messages": chat_history.list_messages(conversation_id)}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Chat conversation not found.") from exc
+
+
+@app.post("/api/conversations/{conversation_id}/messages/{message_id}/feedback")
+def set_chat_message_feedback(
+    conversation_id: int,
+    message_id: int,
+    request: ChatMessageFeedbackRequest,
+) -> dict[str, Any]:
+    try:
+        return {
+            "feedback": chat_feedback.set_message_feedback(
+                conversation_id, message_id, request.rating
+            )
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found in this conversation.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/chat")

@@ -48,6 +48,7 @@ def test_current_sqlite_schema_contracts(tmp_path, monkeypatch):
         "experience_auto_capture_consent_events",
         "chat_conversations",
         "chat_messages",
+        "chat_message_feedback",
     }
     assert {"key", "value_json", "updated_at"} <= settings_columns
     assert {

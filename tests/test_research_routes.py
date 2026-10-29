@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app import cloud_resources, db, research_routes, task_manager
+from app import chat_history, cloud_resources, db, research_routes, task_manager
 from app.main import app
 
 
@@ -104,3 +104,43 @@ def test_chat_conversation_api_keeps_old_conversations_and_persists_user_turn(tm
         ]
         conversations = client.get("/api/conversations").json()["conversations"]
         assert {item["id"] for item in conversations} >= {first_id, second_id}
+
+
+def test_chat_message_feedback_api_validates_scope_and_persists_rating(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        created = client.post("/api/conversations")
+        conversation_id = created.json()["conversation"]["id"]
+        user_message = chat_history.append_user_message(conversation_id, "question")
+        assistant_message = chat_history.append_assistant_message(
+            conversation_id, "answer", task_id=998
+        )
+        endpoint = (
+            f"/api/conversations/{conversation_id}/messages/"
+            f"{assistant_message['id']}/feedback"
+        )
+
+        saved = client.post(endpoint, json={"rating": -1})
+        assert saved.status_code == 200
+        assert saved.json()["feedback"]["rating"] == -1
+
+        changed = client.post(endpoint, json={"rating": 1})
+        assert changed.status_code == 200
+        assert changed.json()["feedback"]["rating"] == 1
+
+        history = client.get(f"/api/conversations/{conversation_id}/messages")
+        assert history.status_code == 200
+        assert history.json()["messages"][1]["feedback_rating"] == 1
+
+        user_feedback = client.post(
+            f"/api/conversations/{conversation_id}/messages/{user_message['id']}/feedback",
+            json={"rating": 1},
+        )
+        assert user_feedback.status_code == 422
+        invalid_rating = client.post(endpoint, json={"rating": 0})
+        assert invalid_rating.status_code == 422
+        missing = client.post(
+            f"/api/conversations/{conversation_id}/messages/999999/feedback",
+            json={"rating": 1},
+        )
+        assert missing.status_code == 404

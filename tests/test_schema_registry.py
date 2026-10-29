@@ -19,8 +19,8 @@ from app.schema_registry import (
 def test_settings_schema_can_be_created_from_versioned_migrations():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(SETTINGS_MIGRATIONS)
-        assert runner.apply(connection) == 4
-        assert runner.apply(connection) == 4
+        assert runner.apply(connection) == 5
+        assert runner.apply(connection) == 5
         columns = {row[1] for row in connection.execute("PRAGMA table_info(settings)")}
         assert {"key", "value_json", "updated_at"} <= columns
         consent_columns = {
@@ -47,7 +47,7 @@ def test_settings_schema_can_be_created_from_versioned_migrations():
         assert {"id", "conversation_id", "role", "content", "task_id"} <= message_columns
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,), (4,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,), (5,)]
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -60,7 +60,7 @@ def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
             ("ollama_model", '"custom-local-model"'),
         )
         connection.commit()
-        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 4
+        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 5
         assert connection.execute(
             "SELECT value_json FROM settings WHERE key='ollama_model'"
         ).fetchone() == ('"custom-local-model"',)
@@ -69,7 +69,38 @@ def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
-        assert {"chat_conversations", "chat_messages"} <= tables
+        assert {"chat_conversations", "chat_messages", "chat_message_feedback"} <= tables
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_settings_v4_upgrade_preserves_messages_and_adds_feedback_storage():
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        assert MigrationRunner(SETTINGS_MIGRATIONS[:4]).apply(connection) == 4
+        conversation_id = connection.execute(
+            "INSERT INTO chat_conversations(title) VALUES (?)", ("preserve",)
+        ).lastrowid
+        message_id = connection.execute(
+            "INSERT INTO chat_messages(conversation_id, role, content) VALUES (?, 'assistant', ?)",
+            (conversation_id, "answer to preserve"),
+        ).lastrowid
+        connection.commit()
+
+        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 5
+        assert connection.execute(
+            "SELECT content FROM chat_messages WHERE id=?", (message_id,)
+        ).fetchone() == ("answer to preserve",)
+        connection.execute(
+            "INSERT INTO chat_message_feedback(message_id, rating) VALUES (?, 1)",
+            (message_id,),
+        )
+        assert connection.execute(
+            "SELECT rating FROM chat_message_feedback WHERE message_id=?", (message_id,)
+        ).fetchone() == (1,)
+        connection.execute("DELETE FROM chat_conversations WHERE id=?", (conversation_id,))
+        assert connection.execute(
+            "SELECT COUNT(*) FROM chat_message_feedback WHERE message_id=?", (message_id,)
+        ).fetchone() == (0,)
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -188,6 +219,7 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     settings_v2 = fingerprint_for_version(SETTINGS_MIGRATIONS, 2)
     settings_v3 = fingerprint_for_version(SETTINGS_MIGRATIONS, 3)
     settings_v4 = fingerprint_for_version(SETTINGS_MIGRATIONS, 4)
+    settings_v5 = fingerprint_for_version(SETTINGS_MIGRATIONS, 5)
     learning_v1 = fingerprint_for_version(LEARNING_MIGRATIONS, 1)
     learning_v2 = fingerprint_for_version(LEARNING_MIGRATIONS, 2)
     learning_v3 = fingerprint_for_version(LEARNING_MIGRATIONS, 3)
@@ -229,8 +261,8 @@ def test_registry_exposes_reviewable_canonical_fingerprints():
     learning_v39 = fingerprint_for_version(LEARNING_MIGRATIONS, 39)
     learning_v40 = fingerprint_for_version(LEARNING_MIGRATIONS, 40)
 
-    assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == 64
-    assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4}) == 4
+    assert len(settings_fingerprint) == len(settings_v2) == len(settings_v3) == len(settings_v4) == len(settings_v5) == 64
+    assert len({settings_fingerprint, settings_v2, settings_v3, settings_v4, settings_v5}) == 5
     assert len(learning_v1) == len(learning_v2) == len(learning_v3) == len(learning_v4) == len(learning_v5) == len(learning_v6) == len(learning_v7) == 64
     assert len(learning_v20) == len(learning_v21) == len(learning_v22) == len(learning_v23) == len(learning_v24) == len(learning_v25) == len(learning_v26) == len(learning_v27) == len(learning_v28) == len(learning_v29) == len(learning_v30) == len(learning_v31) == len(learning_v32) == len(learning_v33) == len(learning_v34) == len(learning_v35) == len(learning_v36) == len(learning_v37) == len(learning_v38) == len(learning_v39) == len(learning_v40) == 64
     assert len({learning_v1, learning_v2, learning_v3, learning_v4, learning_v5, learning_v6, learning_v7, learning_v8, learning_v9, learning_v10, learning_v11, learning_v12, learning_v13, learning_v14, learning_v15, learning_v16, learning_v17, learning_v18, learning_v19, learning_v20, learning_v21, learning_v22, learning_v23, learning_v24, learning_v25, learning_v26, learning_v27, learning_v28, learning_v29, learning_v30, learning_v31, learning_v32, learning_v33, learning_v34, learning_v35, learning_v36, learning_v37, learning_v38, learning_v39, learning_v40}) == 40

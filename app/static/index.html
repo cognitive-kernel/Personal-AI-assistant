@@ -256,6 +256,44 @@ function renderChatMessages(messages) {
   time.className = "muted";
   time.textContent = message.created_at || "";
   card.append(heading, body, time);
+  if (message.role === "assistant" && Number.isInteger(Number(message.id)) && Number(message.id) > 0) {
+   const feedback = document.createElement("div");
+   feedback.className = "chat-feedback";
+   feedback.setAttribute("aria-label", "بازخورد پاسخ");
+   const options = [[1, "مفید بود"], [-1, "مفید نبود"]];
+   const buttons = [];
+   for (const [rating, label] of options) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute("aria-label", label);
+    button.setAttribute("aria-pressed", String(Number(message.feedback_rating) === rating));
+    button.addEventListener("click", async () => {
+     for (const item of buttons) item.disabled = true;
+     try {
+      await api(
+       "/api/conversations/" + encodeURIComponent(message.conversation_id) +
+       "/messages/" + encodeURIComponent(message.id) + "/feedback",
+       {method: "POST", body: JSON.stringify({rating})}
+      );
+      message.feedback_rating = rating;
+      for (const item of buttons) {
+       const selected = Number(item.dataset.rating) === rating;
+       item.setAttribute("aria-pressed", String(selected));
+      }
+      el("chat-output").textContent = "بازخورد ثبت شد؛ این امتیاز به‌تنهایی صحت دانش را تأیید نمی‌کند.";
+     } catch(error) {
+      el("chat-output").textContent = "ثبت بازخورد ناموفق بود: " + error.message;
+     } finally {
+      for (const item of buttons) item.disabled = false;
+     }
+    });
+    button.dataset.rating = String(rating);
+    buttons.push(button);
+    feedback.append(button);
+   }
+   card.append(feedback);
+  }
   container.append(card);
  }
 }

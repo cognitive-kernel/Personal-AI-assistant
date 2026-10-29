@@ -107,6 +107,17 @@ SETTINGS_MIGRATIONS = (
             "CREATE INDEX idx_chat_conversations_updated_at ON chat_conversations(updated_at DESC, id DESC)",
         ),
     ),
+    Migration(
+        5,
+        "chat-message-feedback",
+        (
+            """CREATE TABLE chat_message_feedback (
+                message_id INTEGER PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,
+                rating INTEGER NOT NULL CHECK(rating IN (-1, 1)),
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )""",
+        ),
+    ),
 )
 
 LEARNING_MIGRATIONS = (
