@@ -63,7 +63,7 @@ def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_st
         service.review_content(version["id"], "reviewed")
 
 
-def test_bulk_lesson_actions_remove_source_less_or_empty_lessons():
+def test_bulk_lesson_actions_never_delete_during_review_or_publish():
     from pathlib import Path
 
     script = (
@@ -75,10 +75,25 @@ def test_bulk_lesson_actions_remove_source_less_or_empty_lessons():
     assert "sources.items.length>0&&body.length>=10" in script
     assert 'el("button","حذف گروهی درس‌های بدون منبع/متن معتبر","secondary")' in script
     assert 'el("button","انتشار گروهی درس‌های انتخاب‌شده","secondary")' in script
-    assert 'await deleteLessonForBulk(id)' in script
-    assert 'await api("/versions/"+quality.version.id+"/publish",{method:"POST"})' in script
-    assert 'درس بدون منبع یا متن معتبر حذف شد' in script
 
+    approve_all_start = script.index('$("approve-all-lessons").onclick=')
+    approve_all_end = script.index('$("reject-selected").onclick=', approve_all_start)
+    approve_all = script[approve_all_start:approve_all_end]
+    assert "deleteLessonForBulk" not in approve_all
+    assert "حذف نخواهد شد" in approve_all
+    assert "از تأیید رد شد و حذف نشد" in approve_all
+
+    lesson_list_start = script.index("async function loadLessons(")
+    lesson_list_end = script.index("async function ", lesson_list_start + 20)
+    lesson_list = script[lesson_list_start:lesson_list_end]
+    review_start = lesson_list.index('const approveBulk=el("button"')
+    publish_start = lesson_list.index('const publishBulk=el("button"', review_start)
+    delete_start = lesson_list.index('const deleteInvalidBulk=el("button"', publish_start)
+    review_handler = lesson_list[review_start:publish_start]
+    publish_handler = lesson_list[publish_start:delete_start]
+    assert "deleteLessonForBulk" not in review_handler
+    assert "deleteLessonForBulk" not in publish_handler
+    assert "deleteLessonForBulk" in lesson_list[delete_start:]
 
 def test_topic_approval_lesson_version_review_and_publish(isolated_store):
     course = service.create_course(title="SQL Server 2005")
