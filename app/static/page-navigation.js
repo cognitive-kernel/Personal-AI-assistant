@@ -12,7 +12,15 @@
   if (!pages.has("chat-section")) return;
 
   const routeMatch = window.location.pathname.match(/^\/page\/([^/]+)\/?$/);
-  const requested = routeMatch ? decodeURIComponent(routeMatch[1]) : "chat-section";
+  let requested = "chat-section";
+  if (routeMatch) {
+    try {
+      requested = decodeURIComponent(routeMatch[1]);
+    } catch (_error) {
+      // A malformed percent-encoded path must not prevent dashboard initialization.
+      requested = "chat-section";
+    }
+  }
   const pageId = pages.has(requested) ? requested : "chat-section";
   const isStoragePage = pageId === "storage-health-section";
 

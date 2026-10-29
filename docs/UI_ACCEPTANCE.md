@@ -4,6 +4,7 @@
 
 - [x] Local stylesheet and local-only dependencies (no CDN, remote fonts, or telemetry).
 - [x] Navigation anchors resolve to each primary dashboard workflow.
+- [ ] Malformed percent-encoded dashboard routes must fall back to the chat page without a JavaScript exception; covered by `tests/test_browser_e2e.py::test_dashboard_malformed_percent_encoded_route_falls_back_without_script_error` (pending exact-head CI).
 - [x] Persistent navigation marks the current section with `aria-current=location`, updates on scroll/resize/hash navigation, and uses a responsive active indicator.
 - [x] Skip-to-content link and visible focus styling.
 - [x] RTL page direction, text-direction handling for Persian/English, and LTR code/patch fields.
