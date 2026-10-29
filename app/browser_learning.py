@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 import time
 from urllib.parse import urlparse
 from typing import Any
@@ -12,6 +13,11 @@ from .db import learning_connection
 MAX_TOPIC_CHARS = 300
 MAX_LESSONS = 40
 CHATGPT_URL = "https://chatgpt.com/"
+
+# The legacy CDP worker is intentionally single-instance. The durable course row
+# is the recovery source of truth; this lock prevents duplicate workers in-process.
+_COURSE_DISPATCH_LOCK = threading.Lock()
+_ACTIVE_COURSE_ID: int | None = None
 
 
 class BrowserLearningError(RuntimeError):
@@ -109,20 +115,82 @@ def get_course(course_id: int) -> dict[str, Any]:
 
 
 def recover_interrupted_courses() -> int:
-    """Mark work interrupted by a process exit; never pretend a partial course completed."""
-    with learning_connection() as conn:
-        cursor = conn.execute(
-            """UPDATE browser_learning_courses
-               SET status='interrupted', error='برنامه پیش از پایان دوره متوقف شد؛ اجرای دوباره لازم است.',
-                   updated_at=CURRENT_TIMESTAMP
-               WHERE status IN ('queued','running')"""
+    """Mark persisted work interrupted after process exit, preserving completed lessons."""
+    with _COURSE_DISPATCH_LOCK:
+        # startup() can be called more than once in tests or embedded deployments.
+        # Never turn a live in-process course back into an interrupted course.
+        if _ACTIVE_COURSE_ID is not None:
+            return 0
+        with learning_connection() as conn:
+            cursor = conn.execute(
+                """UPDATE browser_learning_courses
+                   SET status='interrupted', error='برنامه پیش از پایان دوره متوقف شد؛ ادامهٔ خودکار در حال آماده‌سازی است.',
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE status IN ('queued','running')"""
+            )
+            conn.execute(
+                """UPDATE browser_learning_lessons SET status='queued',
+                       error='پس از توقف برنامه برای ادامه در صف قرار گرفت.', updated_at=CURRENT_TIMESTAMP
+                   WHERE status='running'"""
+            )
+            return int(cursor.rowcount)
+
+
+def _scheduled_course_worker(course_id: int) -> None:
+    global _ACTIVE_COURSE_ID
+    try:
+        run_course(course_id)
+    finally:
+        with _COURSE_DISPATCH_LOCK:
+            if _ACTIVE_COURSE_ID == course_id:
+                _ACTIVE_COURSE_ID = None
+        # Continue only explicitly persisted courses. Completed lessons are skipped
+        # by run_course; failed courses are terminal until the user retries them.
+        dispatch_next_course()
+
+
+def dispatch_next_course() -> dict[str, Any]:
+    """Claim and start the oldest persisted queued/interrupted course, at most one per process."""
+    global _ACTIVE_COURSE_ID
+    with _COURSE_DISPATCH_LOCK:
+        if _ACTIVE_COURSE_ID is not None:
+            return {"status": "already_active", "course_id": _ACTIVE_COURSE_ID}
+        with learning_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                """SELECT id FROM browser_learning_courses
+                   WHERE status IN ('queued','interrupted') ORDER BY id ASC LIMIT 1"""
+            ).fetchone()
+            if row is None:
+                return {"status": "idle"}
+            course_id = int(row["id"])
+            updated = conn.execute(
+                """UPDATE browser_learning_courses
+                   SET status='running', error=NULL, updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND status IN ('queued','interrupted')""",
+                (course_id,),
+            )
+            if updated.rowcount != 1:
+                return {"status": "idle"}
+        _ACTIVE_COURSE_ID = course_id
+        worker = threading.Thread(
+            target=_scheduled_course_worker,
+            args=(course_id,),
+            name=f"browser-learning-course-{course_id}",
+            daemon=True,
         )
-        conn.execute(
-            """UPDATE browser_learning_lessons SET status='queued',
-                   error='پس از توقف برنامه برای ادامه در صف قرار گرفت.', updated_at=CURRENT_TIMESTAMP
-               WHERE status='running'"""
-        )
-        return int(cursor.rowcount)
+        try:
+            worker.start()
+        except Exception as exc:
+            _ACTIVE_COURSE_ID = None
+            with learning_connection() as conn:
+                conn.execute(
+                    """UPDATE browser_learning_courses SET status='interrupted', error=?,
+                       updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'""",
+                    (f"راه‌اندازی worker ناموفق بود: {type(exc).__name__}", course_id),
+                )
+            return {"status": "interrupted", "course_id": course_id}
+        return {"status": "running", "course_id": course_id}
 
 
 def _parse_outline(response: str, max_lessons: int) -> tuple[str, list[str]]:
