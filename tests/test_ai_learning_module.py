@@ -126,12 +126,13 @@ def test_textual_book_reference_allows_generated_lesson_review_and_publish(isola
     topic = service.add_topic(course["id"], "Data structures")
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Trees")
-    markdown = (
-        "# Trees\n\n"
-        "A tree is a hierarchical data structure used to represent relationships.\n\n"
-        "## منابع\n"
-        "- کتاب ساختمان داده، تننباوم و آگوستین"
-    )
+    markdown = """# Trees
+
+A tree is a hierarchical data structure used to represent relationships.
+
+## منابع
+- کتاب ساختمان داده، تننباوم و آگوستین
+"""
     version = service.add_content_version(lesson["id"], markdown)
     with connection() as conn:
         conn.execute(
