@@ -74,3 +74,52 @@ def test_linear_mode_explicitly_blocks_later_topics(prerequisite_store):
     learning_prerequisites.set_path_mode(path_id, "linear")
     with pytest.raises(ValueError, match="Prerequisite topic is not completed: A foundation"):
         learning.create_job("Independent branch", path_topic_id=later_id)
+
+
+
+def test_blocked_topic_start_does_not_mutate_topic_status(prerequisite_store):
+    path_id, (foundation_id, _independent_id, dependent_id) = prerequisite_store
+    learning_prerequisites.set_path_mode(path_id, "custom")
+    learning_prerequisites.set_topic_prerequisites(path_id, dependent_id, [foundation_id])
+
+    with pytest.raises(ValueError, match="Prerequisite topic is not completed: A foundation"):
+        learning.start_topic_learning(path_id, dependent_id)
+
+    with db.learning_connection() as connection:
+        topic = connection.execute(
+            "SELECT status FROM learning_path_topics WHERE id=?", (dependent_id,)
+        ).fetchone()
+        jobs = connection.execute(
+            "SELECT COUNT(*) AS count FROM learning_jobs WHERE path_topic_id=?", (dependent_id,)
+        ).fetchone()
+    assert topic["status"] == "pending"
+    assert jobs["count"] == 0
+
+
+def test_blocked_regeneration_preserves_existing_lesson(prerequisite_store):
+    path_id, (foundation_id, _independent_id, dependent_id) = prerequisite_store
+    learning_prerequisites.set_path_mode(path_id, "custom")
+    old_job = learning.create_job("Dependent topic", path_topic_id=dependent_id)
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed', lesson=? WHERE id=?",
+            ("Existing lesson that must not be deleted.", old_job["id"]),
+        )
+        connection.execute(
+            "UPDATE learning_path_topics SET status='completed' WHERE id=?", (dependent_id,)
+        )
+    learning_prerequisites.set_topic_prerequisites(path_id, dependent_id, [foundation_id])
+
+    with pytest.raises(ValueError, match="Prerequisite topic is not completed: A foundation"):
+        learning.regenerate_topic_learning(path_id, dependent_id)
+
+    with db.learning_connection() as connection:
+        saved_job = connection.execute(
+            "SELECT status, lesson FROM learning_jobs WHERE id=?", (old_job["id"],)
+        ).fetchone()
+        topic = connection.execute(
+            "SELECT status FROM learning_path_topics WHERE id=?", (dependent_id,)
+        ).fetchone()
+    assert saved_job["status"] == "completed"
+    assert saved_job["lesson"] == "Existing lesson that must not be deleted."
+    assert topic["status"] == "completed"
