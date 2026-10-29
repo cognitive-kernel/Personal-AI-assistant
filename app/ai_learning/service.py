@@ -2084,7 +2084,19 @@ def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
             raise ValueError("سرفصل این درس در اجرای فعال شماره " + str(active["id"]) + " است؛ ابتدا مکث/توقف امن کنید.")
         conn.execute("UPDATE lessons SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?", (lesson_id,))
         conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT id FROM content_versions WHERE lesson_id=?)", (lesson_id,))
-        return {"id": lesson_id, "deleted": True}
+        remaining_lessons = int(conn.execute(
+            "SELECT COUNT(*) FROM lessons WHERE topic_id=? AND deleted_at IS NULL",
+            (lesson["topic_id"],),
+        ).fetchone()[0])
+        if remaining_lessons == 0:
+            # An approved topic with no visible lessons must return to pending capture,
+            # not retain stale received/publishing progress from its deleted lesson.
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND processing_status<>'paused'""",
+                (lesson["topic_id"],),
+            )
+        return {"id": lesson_id, "deleted": True, "remaining_lessons": remaining_lessons}
 
 def _chunk_text(markdown: str) -> list[tuple[str, str]]:
     chunks: list[tuple[str, str]] = []
