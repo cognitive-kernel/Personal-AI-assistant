@@ -144,9 +144,14 @@ def _scheduled_course_worker(course_id: int) -> None:
         with _COURSE_DISPATCH_LOCK:
             if _ACTIVE_COURSE_ID == course_id:
                 _ACTIVE_COURSE_ID = None
-        # Continue only explicitly persisted courses. Completed lessons are skipped
-        # by run_course; failed courses are terminal until the user retries them.
-        dispatch_next_course()
+        # Drain the queue after success only. A provider/authentication/dependency
+        # failure should not cascade across every interrupted course in one startup.
+        try:
+            status = get_course(course_id)["status"]
+        except Exception:
+            return
+        if status == "completed":
+            dispatch_next_course()
 
 
 def dispatch_next_course() -> dict[str, Any]:
