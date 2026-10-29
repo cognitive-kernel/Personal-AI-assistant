@@ -12,7 +12,7 @@ A process-local lock prevents duplicate browser-learning workers only inside one
 
 - Add the `browser_learning_worker_lease` singleton table through registered learning-store migration 40.
 - Claim and renew the lease in `BEGIN IMMEDIATE` transactions; another owner cannot acquire a lease whose expiry is still in the future.
-- Use a process-unique owner token and a 240-second lease, renewed every 15 seconds by a heartbeat thread.
+- Use a process-unique owner token (including a PID-specific identity regenerated after fork) and a 240-second lease, renewed every 15 seconds by a heartbeat thread.
 - Startup recovery must acquire the lease before changing any queued/running course state. If another process owns it, recovery does not mutate that process's live course.
 - If heartbeat renewal fails, mark the local worker's lease as lost and stop persisting new generated content. Do not delete a lease owned by another process; takeover is allowed after expiry.
 - Release the lease after a successful queue drain, a terminal failure, or a controlled worker-start failure.
