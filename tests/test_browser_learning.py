@@ -254,6 +254,12 @@ def test_startup_recovery_queues_interrupted_work_and_preserves_completed_lesson
     course = browser_learning.create_course("Recover a course", "http://127.0.0.1:9222", 2)
     with db.learning_connection() as conn:
         conn.execute(
+            "UPDATE browser_learning_courses SET status='interrupted' WHERE id=?",
+            (course["id"],),
+        )
+    queued_course = browser_learning.create_course("Already queued course", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
             """UPDATE browser_learning_courses SET status='running', title='Saved course',
                outline_json=? WHERE id=?""",
             (json.dumps({"topics": ["Completed lesson", "Pending lesson"]}), course["id"]),
@@ -277,6 +283,7 @@ def test_startup_recovery_queues_interrupted_work_and_preserves_completed_lesson
     assert recovered["lessons"][0]["status"] == "completed"
     assert recovered["lessons"][0]["content"] == "durable completed content"
     assert recovered["lessons"][1]["status"] == "queued"
+    assert browser_learning.get_course(queued_course["id"])["status"] == "queued"
     with db.learning_connection() as conn:
         lease = conn.execute(
             "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
