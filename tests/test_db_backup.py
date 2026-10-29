@@ -133,3 +133,16 @@ def test_configured_backup_includes_all_three_application_stores(initialized_dat
     assert manifest["databases"]["settings"]["filename"] == "settings.sqlite3"
     assert manifest["databases"]["learning"]["filename"] == "learning.sqlite3"
     assert manifest["databases"]["cloud_resources"]["filename"] == "cloud_resources.sqlite3"
+
+
+def test_restore_rejects_destination_inside_source_backup(initialized_databases, tmp_path):
+    settings_path, learning_path, _cloud_path = initialized_databases
+    bundle = tmp_path / "backup"
+    backup_databases(settings_path, learning_path, bundle)
+
+    with pytest.raises(ValueError, match="outside the backup directory"):
+        restore_databases(bundle, bundle / "restored")
+
+    assert sorted(path.name for path in bundle.iterdir()) == [
+        "learning.sqlite3", "manifest.json", "settings.sqlite3"
+    ]
