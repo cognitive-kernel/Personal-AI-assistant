@@ -150,6 +150,8 @@ def restore_databases(
     """Restore a verified bundle into a new directory without overwriting data."""
     source = Path(backup_dir).expanduser().resolve()
     destination = Path(destination_dir).expanduser().resolve()
+    if source == destination or source in destination.parents:
+        raise ValueError("Restore destination must be outside the backup directory.")
     if destination.exists():
         raise FileExistsError(f"Restore destination already exists: {destination}")
     manifest_path = source / MANIFEST_NAME
