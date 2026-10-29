@@ -252,6 +252,11 @@ def test_startup_recovery_queues_interrupted_work_and_preserves_completed_lesson
     _init(tmp_path, monkeypatch)
     monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
     course = browser_learning.create_course("Recover a course", "http://127.0.0.1:9222", 2)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_courses SET status='interrupted' WHERE id=?",
+            (course["id"],),
+        )
     queued_course = browser_learning.create_course("Already queued course", "http://127.0.0.1:9222", 1)
     with db.learning_connection() as conn:
         conn.execute(
