@@ -1198,17 +1198,12 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
-        candidates: list[dict[str, Any]] = []
-        for course in service.list_courses(100):
-            candidates.extend(service.list_course_runs(int(course["id"]), 50))
-        # Do not silently resurrect needs_user_action or stale running records here:
-        # this dispatcher also runs after every worker finishes, so doing so can loop forever.
-        pending = [item for item in candidates if item.get("status") == "queued"]
-        if not pending:
+        # Query the durable store globally rather than scanning the dashboard's
+        # bounded course/run pages. Otherwise old work can starve forever once the
+        # user has more than 100 courses or 50 recent runs per course.
+        selected = service.get_oldest_queued_run()
+        if selected is None:
             return {"status": "idle", "active": False}
-        # Stable FIFO order across restart: oldest creation timestamp, then DB ID.
-        pending.sort(key=lambda item: (str(item.get("created_at") or ""), int(item["id"])))
-        selected = pending[0]
         run_id = int(selected["id"])
         course_id = int(selected["course_id"])
         run = service.start_run(run_id)
@@ -1284,10 +1279,18 @@ def recover_pending_runs() -> dict[str, Any]:
         return {"status": "paused", "active": False, "message": "Global learning pause is active."}
     # Only startup recovery may treat a stale "running" row as an interrupted process.
     # A needs_user_action row is intentionally left alone until the user resumes it.
-    for course in service.list_courses(100):
-        for item in service.list_course_runs(int(course["id"]), 50):
-            if item.get("status") == "running":
-                service.requeue_run_for_resume(int(item["id"]), "startup_interrupted_run")
+    # Read all running IDs directly from storage; dashboard pagination must never
+    # determine which persisted jobs are eligible for crash recovery.
+    with _LOCK:
+        if _ACTIVE:
+            return {
+                "status": "already_active",
+                "active": True,
+                "run_id": _ACTIVE_RUN_ID,
+                "message": "An in-process learning worker is already active.",
+            }
+    for run_id in service.list_run_ids_by_status("running"):
+        service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
     result = _dispatch_next_persisted_run()
     _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
     return result
