@@ -577,6 +577,26 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
     )
 
 
+def _lesson_has_terminal_bibliography(text: str) -> bool:
+    """Recognize a substantive lesson that ends with a non-empty textual bibliography."""
+    source_heading = re.search(
+        r"(?im)^\s{0,3}(?:#{1,6}\s*)?(?:\*\*)?"
+        r"(?:منابع|منبع|مراجع|منابع و مراجع|مراجع و منابع|فهرست منابع|کتابنامه|"
+        r"کتاب‌شناسی|کتاب شناسی|references|sources|bibliography)"
+        r"(?:\*\*)?\s*[:：]?\s*$",
+        text or "",
+    )
+    if source_heading is None:
+        return False
+    source_lines = [
+        line.strip() for line in (text or "").splitlines()[len((text or "")[:source_heading.end()].splitlines()):]
+        if line.strip() and not re.fullmatch(r"\s*[-*_]{3,}\s*", line)
+    ]
+    body = (text or "")[:source_heading.start()]
+    word_count = len(re.findall(r"[\w]+(?:[-’'][\w]+)*", body, flags=re.UNICODE))
+    return bool(source_lines) and word_count >= 500
+
+
 def _lesson_completion_status(text: str) -> str | None:
     """Read explicit status, or recognize a substantive lesson ending in a bibliography."""
     lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
@@ -584,24 +604,9 @@ def _lesson_completion_status(text: str) -> str | None:
     match = re.fullmatch(r"LESSON_STATUS:\s*(COMPLETE|CONTINUE_REQUIRED)\b[^\n]*", last_line, re.IGNORECASE)
     if match:
         return match.group(1).upper()
-
-    # ChatGPT can finish the lesson and provide sources while omitting the internal
-    # marker requested by automation. Do not keep prompting or discard that answer.
-    source_heading = re.search(
-        r"(?im)^\s{0,3}(?:#{1,6}\s*)?"
-        r"(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|"
-        r"references|sources|bibliography)\s*[:：]?\s*$",
-        text or "",
-    )
-    if source_heading and len(lines) >= 4:
-        source_lines = [
-            line for line in (text or "").splitlines()[source_heading.end():]
-            if line.strip() and not re.fullmatch(r"\s*[-*_]{3,}\s*", line)
-        ]
-        body = (text or "")[:source_heading.start()]
-        word_count = len(re.findall(r"[\w]+(?:[-’'][\w]+)*", body, flags=re.UNICODE))
-        if source_lines and word_count >= 500:
-            return "COMPLETE"
+    # ChatGPT may omit the internal status marker despite finishing the sourced lesson.
+    if _lesson_has_terminal_bibliography(text):
+        return "COMPLETE"
     return None
 
 def _strip_lesson_status_markers(text: str) -> str:
@@ -644,9 +649,13 @@ def _capture_lesson_until_complete(
             ) from exc
 
     checkpoint()
-    while status != "COMPLETE" or _lesson_word_count(
-        "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
-    ) < _MIN_COMPLETE_LESSON_WORDS:
+    while status != "COMPLETE" or (
+        _lesson_word_count("\n\n".join(_strip_lesson_status_markers(part) for part in parts))
+        < _MIN_COMPLETE_LESSON_WORDS
+        and not _lesson_has_terminal_bibliography(
+            "\n\n".join(_strip_lesson_status_markers(part) for part in parts)
+        )
+    ):
         if cancel_event is not None and cancel_event.is_set():
             raise BrowserAutomationError(
                 "run_cancelled",
