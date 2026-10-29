@@ -234,6 +234,7 @@ def test_run_course_uses_browser_chatgpt_flow_and_persists_each_lesson(tmp_path,
     monkeypatch.setattr(browser_learning.time, "sleep", lambda _seconds: None)
 
     course = browser_learning.create_course("Demo topic", "http://127.0.0.1:9222", 2)
+    assert browser_learning._acquire_course_worker_lease() is True
     browser_learning.run_course(course["id"])
     result = browser_learning.get_course(course["id"])
 
