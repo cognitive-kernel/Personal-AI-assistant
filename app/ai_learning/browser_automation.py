@@ -1320,7 +1320,7 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
             _log_event(
                 "global_pause_cleared_for_explicit_lesson_retry",
                 course_id=course_id,
-                topic_ids=selected_ids if "selected_ids" in locals() else requested_ids,
+                topic_ids=requested_ids,
             )
         selected_ids = [
             item for item in requested_ids
