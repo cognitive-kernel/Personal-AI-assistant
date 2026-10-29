@@ -139,6 +139,10 @@ def test_chat_message_feedback_api_validates_scope_and_persists_rating(tmp_path,
         assert user_feedback.status_code == 422
         invalid_rating = client.post(endpoint, json={"rating": 0})
         assert invalid_rating.status_code == 422
+        boolean_rating = client.post(endpoint, json={"rating": True})
+        assert boolean_rating.status_code == 422
+        string_rating = client.post(endpoint, json={"rating": "1"})
+        assert string_rating.status_code == 422
         missing = client.post(
             f"/api/conversations/{conversation_id}/messages/999999/feedback",
             json={"rating": 1},

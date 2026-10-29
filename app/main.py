@@ -379,7 +379,7 @@ class ChatRequest(BaseModel):
     history: list[dict[str, str]] = Field(default_factory=list, max_length=30)
 
 class ChatMessageFeedbackRequest(BaseModel):
-    rating: Literal[-1, 1]
+    rating: StrictInt
 
 class SettingsPatch(BaseModel):
     values: dict[str, Any]
