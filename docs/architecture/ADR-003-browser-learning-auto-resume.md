@@ -10,7 +10,7 @@ The legacy browser-learning API persisted course and lesson state, but startup o
 
 ## Decision
 
-- At startup, mark stale queued/running courses as interrupted and reset only lesson rows that were still running to queued.
+- At startup, mark only stale running courses as interrupted; preserve courses that were already queued, and reset only lesson rows that were still running to queued.
 - Dispatch the oldest persisted queued/interrupted course through a single process-local worker slot.
 - Route new course and manual retry requests through the same dispatcher instead of invoking the worker directly.
 - After a course succeeds, dispatch the next persisted queued/interrupted course. If a course fails, stop draining the queue so one systemic provider/authentication/dependency failure does not cascade across all pending courses.
