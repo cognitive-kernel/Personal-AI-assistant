@@ -442,7 +442,7 @@ def test_worker_identity_is_regenerated_after_process_fork(tmp_path, monkeypatch
     old_pid = browser_learning._WORKER_OWNER_PID
     old_token = browser_learning._WORKER_OWNER_TOKEN
     monkeypatch.setattr(browser_learning.os, "getpid", lambda: old_pid + 1)
-    browser_learning._ACTIVE_COURSE_ID = 99
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", 99)
 
     browser_learning._ensure_process_identity()
 
