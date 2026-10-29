@@ -1965,6 +1965,52 @@ def soft_delete_topic(topic_id: int) -> dict[str, Any]:
         conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT cv.id FROM content_versions cv JOIN lessons l ON l.id=cv.lesson_id WHERE l.topic_id=?)", (topic_id,))
         return {"id": topic_id, "deleted": True}
 
+def list_deleted_lessons(course_id: int) -> list[dict[str, Any]]:
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
+            raise NotFoundError("Course not found.")
+        rows = conn.execute(
+            """SELECT l.id,l.title,l.topic_id,l.deleted_at,t.title AS topic_title
+               FROM lessons l JOIN topics t ON t.id=l.topic_id
+               WHERE t.course_id=? AND l.deleted_at IS NOT NULL AND t.deleted_at IS NULL
+               ORDER BY l.deleted_at DESC,l.id DESC""",
+            (course_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def restore_soft_deleted_lesson(lesson_id: int) -> dict[str, Any]:
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        lesson = conn.execute(
+            """SELECT l.id,l.topic_id FROM lessons l
+               JOIN topics t ON t.id=l.topic_id
+               WHERE l.id=? AND l.deleted_at IS NOT NULL AND t.deleted_at IS NULL""",
+            (lesson_id,),
+        ).fetchone()
+        if lesson is None:
+            raise NotFoundError("Deleted lesson not found.")
+        active = conn.execute(
+            """SELECT r.id FROM runs r JOIN run_topics rt ON rt.run_id=r.id
+               WHERE rt.topic_id=? AND r.status IN ('queued','running') LIMIT 1""",
+            (lesson["topic_id"],),
+        ).fetchone()
+        if active is not None:
+            raise ValueError("سرفصل این درس در اجرای فعال شماره " + str(active["id"]) + " است؛ ابتدا مکث/توقف امن کنید.")
+        conn.execute(
+            "UPDATE lessons SET deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (lesson_id,),
+        )
+        conn.execute(
+            """UPDATE chunks SET active=1
+               WHERE content_version_id IN (
+                   SELECT id FROM content_versions WHERE lesson_id=? AND review_status='published'
+               )""",
+            (lesson_id,),
+        )
+        return {"id": lesson_id, "restored": True}
+
+
 def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
