@@ -79,31 +79,31 @@ def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_st
         service.review_content(version["id"], "reviewed")
 
 
-def test_bulk_lesson_actions_use_source_and_body_rules_for_review_and_publish():
+def test_bulk_lesson_actions_never_delete_lessons_and_accept_textual_sources():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     script = (root / "app" / "ai_learning" / "static" / "app.js").read_text(encoding="utf-8")
     html = (root / "app" / "ai_learning" / "static" / "index.html").read_text(encoding="utf-8")
 
-    assert "async function inspectLessonForBulk(lessonId)" in script
-    assert "const hasSource=Array.isArray(sources.items)&&sources.items.length>0" in script
-    assert "const hasBody=body.length>0" in script
-    assert 'el("button","حذف گروهی درس‌های بدون منبع","secondary")' in script
-    assert 'el("button","انتشار گروهی درس‌های انتخاب‌شده","secondary")' in script
-    assert 'id="publish-all-lessons"' in html
+    assert "function hasTrailingSourceSection(markdown)" in script
+    assert "کتابنامه" in script
+    assert "const hasTextSource=hasTrailingSourceSection(markdown)" in script
+    assert 'id="recover-deleted-lessons"' in html
+    assert "بازیابی گروهی انتخاب‌شده‌ها" in script
+    assert '$("recover-deleted-lessons").onclick=' in script
 
     approve_all_start = script.index('$("approve-all-lessons").onclick=')
     approve_all_end = script.index('$("publish-all-lessons").onclick=', approve_all_start)
     approve_all = script[approve_all_start:approve_all_end]
-    assert "if(!quality.hasSource){await deleteLessonForBulk(l.id);deleted++;continue}" in approve_all
-    assert "if(!quality.hasBody){skipped++;continue}" in approve_all
+    assert "if(!quality.hasSource){skipped++;continue}" in approve_all
+    assert "deleteLessonForBulk" not in approve_all
 
     publish_all_start = approve_all_end
     publish_all_end = script.index('$("reject-selected").onclick=', publish_all_start)
     publish_all = script[publish_all_start:publish_all_end]
-    assert "if(!quality.hasSource){await deleteLessonForBulk(l.id);deleted++;continue}" in publish_all
-    assert "if(!quality.hasBody||quality.version.review_status!==\"reviewed\"){skipped++;continue}" in publish_all
+    assert "if(!quality.hasSource){skipped++;continue}" in publish_all
+    assert "deleteLessonForBulk" not in publish_all
 
     lesson_list_start = script.index("async function loadLessons(")
     lesson_list_end = script.index('$("show-all-lessons").onclick=', lesson_list_start)
@@ -111,15 +111,8 @@ def test_bulk_lesson_actions_use_source_and_body_rules_for_review_and_publish():
     review_start = lesson_list.index('const approveBulk=el("button"')
     publish_start = lesson_list.index('const publishBulk=el("button"', review_start)
     delete_start = lesson_list.index('const deleteInvalidBulk=el("button"', publish_start)
-    review_handler = lesson_list[review_start:publish_start]
-    publish_handler = lesson_list[publish_start:delete_start]
-    assert "if(!quality.hasSource){await deleteLessonForBulk(id);deleted++;continue}" in review_handler
-    assert "if(!quality.hasBody){skipped++;continue}" in review_handler
-    assert "if(!quality.hasSource){await deleteLessonForBulk(id);deleted++;continue}" in publish_handler
-    assert "if(!quality.hasBody||quality.version.review_status!==\"reviewed\")" in publish_handler
-    delete_handler = lesson_list[delete_start:]
-    assert "if(!quality.hasSource){await deleteLessonForBulk(id);deleted++}" in delete_handler
-    assert "quality.valid" not in delete_handler
+    assert "deleteLessonForBulk" not in lesson_list[review_start:publish_start]
+    assert "deleteLessonForBulk" not in lesson_list[publish_start:delete_start]
 
 def test_soft_deleted_lesson_can_be_restored(isolated_store):
     course = service.create_course(title="Restore deleted lessons")
