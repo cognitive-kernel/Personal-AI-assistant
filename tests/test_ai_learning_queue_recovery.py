@@ -74,3 +74,62 @@ def test_queue_dispatch_does_not_start_second_worker_when_one_is_active(isolated
     result = browser_automation._dispatch_next_persisted_run()
     assert result == {"status": "already_active", "active": True, "run_id": 123}
     assert service.get_run(run["id"])["status"] == "queued"
+
+
+def test_browser_capture_retries_after_failure_until_success(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی خودکار خطای مرورگر")
+    run = service.create_run(course["id"], run_type="outline", request_key="retry-browser")
+    attempts = []
+
+    def fake_capture(prompt, cancel_event, checkpoint):
+        attempts.append(prompt)
+        if len(attempts) == 1:
+            raise browser_automation.BrowserAutomationError(
+                "playwright_browser_error", "temporary Chrome startup failure"
+            )
+        return "recovered response"
+
+    monkeypatch.setattr(browser_automation, "_browser_capture", fake_capture)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_INITIAL_DELAY_SECONDS", 0)
+    result = browser_automation._capture_with_automatic_retry(
+        run["prompt_text"], threading.Event(), run_id=run["id"], phase="test"
+    )
+
+    assert result == "recovered response"
+    assert len(attempts) == 2
+
+
+def test_browser_capture_retry_stops_when_manually_cancelled(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف دستی بازیابی")
+    run = service.create_run(course["id"], run_type="outline", request_key="manual-stop-retry")
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    def unexpected_capture(*args, **kwargs):
+        raise AssertionError("browser must not launch after a manual stop")
+
+    monkeypatch.setattr(browser_automation, "_browser_capture", unexpected_capture)
+    with pytest.raises(browser_automation.BrowserAutomationError) as error:
+        browser_automation._capture_with_automatic_retry(
+            run["prompt_text"], cancel_event, run_id=run["id"], phase="test"
+        )
+
+    assert error.value.code == "run_cancelled"
+
+
+def test_requeue_recovers_needs_user_action_but_never_resurrects_cancelled_run(isolated_store):
+    course = service.create_course(title="بازیابی وضعیت نیازمند اقدام")
+    run = service.create_run(course["id"], run_type="outline", request_key="needs-action-requeue")
+    service.start_run(run["id"])
+    service.mark_run_needs_user_action(
+        run["id"], "chrome_not_found", "Chrome startup failed"
+    )
+
+    recovered = service.requeue_run_for_resume(run["id"], "test")
+    assert recovered["status"] == "queued"
+    assert recovered["error_code"] is None
+
+    cancelled = service.create_run(course["id"], run_type="outline", request_key="cancelled-not-resurrected")
+    service.cancel_run(cancelled["id"])
+    unchanged = service.requeue_run_for_resume(cancelled["id"], "test")
+    assert unchanged["status"] == "cancelled"
