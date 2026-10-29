@@ -619,7 +619,7 @@ def test_due_retry_dispatches_persisted_course_without_creating_new_work(tmp_pat
 
     monkeypatch.setattr(browser_learning, "_start_course_worker_lease_heartbeat", lambda: None)
     monkeypatch.setattr(browser_learning.threading, "Thread", FakeThread)
-    result = browser_learning.dispatch_due_retry()
+    result = browser_learning.dispatch_next_course()
 
     assert result == {"status": "running", "course_id": course["id"]}
     assert len(launched) == 1
