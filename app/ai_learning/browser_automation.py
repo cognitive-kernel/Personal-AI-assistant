@@ -1204,8 +1204,10 @@ def _start_worker_thread(
         _ACTIVE_RUN_ID = None
         _ACTIVE_COURSE_ID = None
         _CANCEL_EVENTS.pop(run_id, None)
+        durable_status = "recovery_failed"
         try:
-            service.requeue_run_for_resume(run_id, "worker_thread_start_failed")
+            recovered = service.requeue_run_for_resume(run_id, "worker_thread_start_failed")
+            durable_status = str(recovered.get("status") or "unknown")
         except Exception as recovery_exc:
             _log_event(
                 "worker_start_requeue_failed",
@@ -1218,25 +1220,12 @@ def _start_worker_thread(
             run_id=run_id,
             exception_type=type(exc).__name__,
             message=str(exc)[:300],
-            durable_status=(
-                service.get_run(run_id).get("status")
-                if _run_status_readable(run_id)
-                else "unknown"
-            ),
+            durable_status=durable_status,
         )
         raise BrowserAutomationError(
             "worker_thread_start_failed",
             "راه‌اندازی worker یادگیری ناموفق بود؛ اجرا برای بازیابی در صف نگه داشته شد. کمی بعد وضعیت را بازخوانی یا ادامه دهید.",
         ) from exc
-
-
-def _run_status_readable(run_id: int) -> bool:
-    """Return whether a run still exists after a failed worker start."""
-    try:
-        service.get_run(run_id)
-        return True
-    except Exception:
-        return False
 
 
 def _dispatch_next_persisted_run() -> dict[str, Any]:
