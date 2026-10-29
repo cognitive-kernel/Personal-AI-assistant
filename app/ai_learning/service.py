@@ -1757,6 +1757,8 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
         raise ValueError("raw_response must be text.")
     if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
         raise ValueError("Unsupported source_kind.")
+    if source_kind != "manual" and not _extract_references(markdown + "\\n\\n" + (raw_response or "")):
+        raise ValueError("منبع دارای پیوند برای این درس وجود ندارد؛ نسخه ذخیره نشد.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
@@ -2018,6 +2020,12 @@ def publish_content(version_id: int) -> dict[str, Any]:
             raise NotFoundError("Content version or parent lesson/topic not found.")
         if not str(version["markdown"] or "").strip():
             raise ValueError("متن درس خالی است؛ انتشار نسخهٔ بدون محتوا مجاز نیست. متن را دوباره دریافت یا اصلاح کنید.")
+        if version["source_kind"] != "manual":
+            source_count = int(conn.execute(
+                "SELECT COUNT(*) FROM sources WHERE content_version_id=?", (version_id,)
+            ).fetchone()[0])
+            if source_count < 1:
+                raise ValueError("منبعی برای این درس ثبت نشده است؛ انتشار مجاز نیست.")
         if version["review_status"] != "reviewed":
             raise ValueError("Only a reviewed content version can be published.")
         topic = conn.execute("SELECT approval_status FROM topics WHERE id=?", (version["topic_id"],)).fetchone()
