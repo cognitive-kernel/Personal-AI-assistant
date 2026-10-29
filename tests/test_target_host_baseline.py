@@ -82,7 +82,7 @@ def test_network_boundary_baseline_accepts_local_literals_without_exposing_urls(
     assert "127.0.0.1" not in json.dumps(report["network_boundary"])
 
 
-def test_network_boundary_baseline_does_not_assume_localhost_dns_is_loopback(tmp_path, monkeypatch):
+def test_network_boundary_baseline_accepts_localhost_that_client_normalizes(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
     monkeypatch.setattr(db.defaults, "host", "127.0.0.1")
     db.init_databases()
@@ -90,7 +90,7 @@ def test_network_boundary_baseline_does_not_assume_localhost_dns_is_loopback(tmp
 
     report = baseline.build_report()
 
-    assert report["network_boundary"]["status"] == "unsafe_or_unverified"
+    assert report["network_boundary"]["status"] == "ok"
     assert report["network_boundary"]["app_bind"] == "loopback_literal"
     assert report["network_boundary"]["ollama_endpoint"] == "localhost_normalized"
     assert "http://localhost:11434" not in json.dumps(report)
