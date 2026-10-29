@@ -201,9 +201,27 @@ def startup() -> None:
             ai_learning_browser_automation.recover_pending_runs()
         except Exception:
             logger.exception("AI-learning persisted queue recovery failed; the dashboard remains available.")
-    if any(runtime.is_running for runtime in _task_runtimes):
+    if _task_runtimes and all(runtime.is_running for runtime in _task_runtimes):
+        # A fully healthy runtime set makes repeated startup calls idempotent.
         backup_scheduler.start_backup_scheduler()
         return
+    if _task_runtimes:
+        # Do not treat a partially started worker set as healthy: that would leave
+        # missing task lanes permanently offline after a transient startup failure.
+        # Stop the surviving workers before rebuilding the complete set so a retry
+        # cannot create duplicate consumers for the same lane.
+        stopped = True
+        for runtime in _task_runtimes:
+            if runtime.is_running and not runtime.stop(timeout=10.0):
+                stopped = False
+                logger.error(
+                    "Cannot rebuild task runtimes because %s did not stop.",
+                    runtime.worker_prefix,
+                )
+        if not stopped:
+            backup_scheduler.start_backup_scheduler()
+            return
+        _task_runtimes = []
     settings = db.get_settings()
     chat_handlers = {
         research_tasks.RESEARCH_TASK_TYPE: research_tasks.handle_research_task,
