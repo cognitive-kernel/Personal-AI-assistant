@@ -63,6 +63,23 @@ def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_st
         service.review_content(version["id"], "reviewed")
 
 
+def test_bulk_lesson_actions_remove_source_less_or_empty_lessons():
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "ai_learning" / "static" / "app.js"
+    ).read_text(encoding="utf-8")
+
+    assert "async function inspectLessonForBulk(lessonId)" in script
+    assert "sources.items.length>0&&body.length>=10" in script
+    assert 'el("button","حذف گروهی درس‌های بدون منبع/متن معتبر","secondary")' in script
+    assert 'el("button","انتشار گروهی درس‌های انتخاب‌شده","secondary")' in script
+    assert 'await deleteLessonForBulk(id)' in script
+    assert 'await api("/versions/"+quality.version.id+"/publish",{method:"POST"})' in script
+    assert 'درس بدون منبع یا متن معتبر حذف شد' in script
+
+
 def test_topic_approval_lesson_version_review_and_publish(isolated_store):
     course = service.create_course(title="SQL Server 2005")
     topic = service.add_topic(course["id"], "Indexes")
