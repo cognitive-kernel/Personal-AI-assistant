@@ -73,30 +73,51 @@ class TaskRuntime:
             self._stop_event.clear()
             self._maintenance_ready.clear()
             self._threads = []
-            for index in range(self.worker_count):
-                worker = TaskWorker(
-                    f"{self.worker_prefix}-{index + 1}",
-                    self.handlers,
-                    lease_seconds=self.lease_seconds,
-                    restrict_task_types=self.restrict_task_types,
-                    exclude_task_types=self.exclude_task_types,
-                )
-                thread = threading.Thread(
-                    target=self._run_worker,
-                    args=(worker,),
-                    name=f"{self.worker_prefix}-{index + 1}",
-                    daemon=True,
-                )
-                self._threads.append(thread)
-                thread.start()
             self._maintenance_thread = None
-            if self.maintenance_callback is not None:
-                self._maintenance_thread = threading.Thread(
-                    target=self._run_maintenance,
-                    name=f"{self.worker_prefix}-maintenance",
-                    daemon=True,
+            try:
+                for index in range(self.worker_count):
+                    worker = TaskWorker(
+                        f"{self.worker_prefix}-{index + 1}",
+                        self.handlers,
+                        lease_seconds=self.lease_seconds,
+                        restrict_task_types=self.restrict_task_types,
+                        exclude_task_types=self.exclude_task_types,
+                    )
+                    thread = threading.Thread(
+                        target=self._run_worker,
+                        args=(worker,),
+                        name=f"{self.worker_prefix}-{index + 1}",
+                        daemon=True,
+                    )
+                    self._threads.append(thread)
+                    thread.start()
+                if self.maintenance_callback is not None:
+                    self._maintenance_thread = threading.Thread(
+                        target=self._run_maintenance,
+                        name=f"{self.worker_prefix}-maintenance",
+                        daemon=True,
+                    )
+                    self._maintenance_thread.start()
+            except Exception:
+                # Thread creation can fail partway through startup (for example,
+                # when the OS process/thread limit is reached). Roll back every
+                # thread that actually started before exposing the failure so a
+                # later startup retry cannot silently leave duplicate workers.
+                self._stop_event.set()
+                started = [thread for thread in self._threads if thread.is_alive()]
+                if self._maintenance_thread is not None and self._maintenance_thread.is_alive():
+                    started.append(self._maintenance_thread)
+                deadline = time.monotonic() + 5.0
+                for thread in started:
+                    thread.join(max(0.0, deadline - time.monotonic()))
+                self._threads = [thread for thread in self._threads if thread.is_alive()]
+                if self._maintenance_thread is not None and not self._maintenance_thread.is_alive():
+                    self._maintenance_thread = None
+                logger.exception(
+                    "Task runtime %s failed to start completely; started threads were asked to stop.",
+                    self.worker_prefix,
                 )
-                self._maintenance_thread.start()
+                raise
 
     def _run_maintenance(self) -> None:
         callback = self.maintenance_callback
