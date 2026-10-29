@@ -392,7 +392,6 @@ def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, 
     assert service.get_run(run["id"])["status"] == "running"
 
 
-
 def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی خطای ایجاد worker")
     run = service.create_run(course["id"], run_type="outline", request_key="thread-start-fails")
