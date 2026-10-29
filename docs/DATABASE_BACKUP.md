@@ -16,7 +16,7 @@ The backup directory contains `settings.sqlite3`, `learning.sqlite3`, `cloud_res
 
 ## Restore
 
-Call `restore_databases(backup_dir, destination_dir)` to restore into a new directory. The destination must not already exist. The restore path verifies the manifest format, exact expected filenames, SHA-256 values, table inventory, SQLite integrity, and foreign-key constraints before publishing the restored directory. It never overwrites an existing destination.
+Call `restore_databases(backup_dir, destination_dir)` to restore into a new directory. The destination must not already exist. The restore path rejects symbolic links for the manifest and database files, then verifies the manifest format, exact expected filenames, SHA-256 values, table inventory, SQLite integrity, and foreign-key constraints before publishing the restored directory. It never overwrites an existing destination.
 
 Format-version-1 bundles created by the older two-store API remain restorable for compatibility. They contain only settings and learning data; they do not contain cloud-resource discovery state. Format-version-2 bundles contain all three stores. For new backups, use `backup_configured_databases` or pass `cloud_resources_path` to `backup_databases`.
 

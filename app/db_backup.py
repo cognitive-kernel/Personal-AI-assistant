@@ -155,6 +155,8 @@ def restore_databases(
     if destination.exists():
         raise FileExistsError(f"Restore destination already exists: {destination}")
     manifest_path = source / MANIFEST_NAME
+    if manifest_path.is_symlink():
+        raise BackupRestoreError("Backup manifest must not be a symbolic link.")
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -177,6 +179,8 @@ def restore_databases(
         if not isinstance(metadata, dict) or metadata.get("filename") != filename:
             raise BackupRestoreError(f"Invalid manifest entry for {role}.")
         backup_file = source / filename
+        if backup_file.is_symlink():
+            raise BackupRestoreError(f"Backup database for {role} must not be a symbolic link.")
         if not backup_file.is_file() or _sha256(backup_file) != metadata.get("sha256"):
             raise BackupRestoreError(f"Backup checksum verification failed for {role}.")
         actual = _inspect_database(backup_file)
