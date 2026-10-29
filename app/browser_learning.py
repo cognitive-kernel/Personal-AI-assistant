@@ -337,8 +337,18 @@ def dispatch_next_course() -> dict[str, Any]:
             retry_wait = None
             if row is not None:
                 candidate_id = int(row["id"])
+                failed_row = conn.execute(
+                    "SELECT id FROM browser_learning_courses WHERE status='failed' AND id<? ORDER BY id LIMIT 1",
+                    (candidate_id,),
+                ).fetchone()
                 current_time = str(conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0])
-                if (
+                if failed_row is not None:
+                    retry_wait = {
+                        "status": "blocked_by_failed_course",
+                        "course_id": candidate_id,
+                        "blocked_by_course_id": int(failed_row["id"]),
+                    }
+                elif (
                     row["status"] == "interrupted"
                     and row["next_retry_at"] is not None
                     and str(row["next_retry_at"]) > current_time
@@ -737,11 +747,11 @@ def retry_course(course_id: int) -> dict[str, Any]:
         if row["status"] == "completed":
             raise ValueError("این دوره کامل شده است و نیاز به ادامه ندارد.")
         active = conn.execute(
-            "SELECT id FROM browser_learning_courses WHERE id<>? AND status IN ('queued','running') LIMIT 1",
+            "SELECT id FROM browser_learning_courses WHERE id<>? AND status='running' LIMIT 1",
             (course_id,),
         ).fetchone()
         if active is not None:
-            raise ValueError("یک دورهٔ دیگر در حال اجرا یا در صف است.")
+            raise ValueError("یک دورهٔ دیگر در حال اجرا است.")
         conn.execute(
             """UPDATE browser_learning_courses
                SET status='queued', error=NULL, retry_count=0, next_retry_at=NULL,
@@ -757,15 +767,21 @@ def retry_course(course_id: int) -> dict[str, Any]:
 
 
 def dispatch_due_retry() -> dict[str, Any]:
-    """Dispatch only when a persisted interrupted course's retry deadline has arrived."""
+    """Dispatch the FIFO head only when its persisted retry deadline has arrived."""
     with learning_connection() as conn:
         row = conn.execute(
-            """SELECT id FROM browser_learning_courses
-               WHERE status='interrupted' AND next_retry_at IS NOT NULL
-                 AND next_retry_at <= CURRENT_TIMESTAMP
+            """SELECT id, status, next_retry_at FROM browser_learning_courses
+               WHERE status IN ('queued','interrupted')
                ORDER BY id ASC LIMIT 1"""
         ).fetchone()
-    if row is None:
-        return {"status": "idle"}
+        if row is None or row["status"] != "interrupted":
+            return {"status": "idle"}
+        current_time = str(conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0])
+        if row["next_retry_at"] is not None and str(row["next_retry_at"]) > current_time:
+            return {
+                "status": "retry_scheduled",
+                "course_id": int(row["id"]),
+                "next_retry_at": str(row["next_retry_at"]),
+            }
     return dispatch_next_course()
 
