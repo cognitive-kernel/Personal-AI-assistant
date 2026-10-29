@@ -10,6 +10,7 @@ import copy
 import hashlib
 import json
 import math
+import re
 from typing import Any
 
 from .db import learning_connection
@@ -187,10 +188,22 @@ def build_grade_report(exercise_id: str, results: list[dict[str, Any]]) -> dict[
     }
 
 
-def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, Any], source_code: str) -> dict[str, Any]:
-    """Persist a completed sandbox grade and apply mastery only after prerequisites pass."""
+def record_practical_attempt(
+    job_id: int,
+    exercise_id: str,
+    report: dict[str, Any],
+    source_code: str,
+    idempotency_key: str | None = None,
+) -> dict[str, Any]:
+    """Persist a completed sandbox grade once, even if its durable task is retried."""
     if isinstance(job_id, bool) or not isinstance(job_id, int) or job_id < 1:
         raise ValueError("job_id must be a positive integer.")
+    if idempotency_key is not None and (
+        not isinstance(idempotency_key, str)
+        or not 16 <= len(idempotency_key) <= 128
+        or re.fullmatch(r"[A-Za-z0-9._:-]+", idempotency_key) is None
+    ):
+        raise ValueError("Idempotency key must be 16–128 safe ASCII characters.")
     exercise = EXERCISES.get(exercise_id)
     if exercise is None:
         raise KeyError(exercise_id)
@@ -218,6 +231,51 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
 
     score = round(100 * passed / total, 2)
     source_hash = hashlib.sha256(source_code.encode("utf-8")).hexdigest()
+    attempt_payload = {
+        "exercise_id": exercise_id,
+        "grading_version": exercise["grading_version"],
+        "source_sha256": source_hash,
+        "results": results,
+    }
+    serialized_payload = json.dumps(attempt_payload, ensure_ascii=False, sort_keys=True)
+
+    def replay(existing: Any) -> dict[str, Any]:
+        if (
+            existing["scoring_method"] != "sandbox_practical_v1"
+            or existing["answers_json"] != serialized_payload
+        ):
+            raise ValueError("Idempotency key was already used with different practical assessment data.")
+        try:
+            details = json.loads(existing["result_details_json"] or "{}")
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("Stored practical assessment result details are invalid.") from exc
+        if (
+            not isinstance(details, dict)
+            or not isinstance(details.get("mastery_achieved"), bool)
+            or not isinstance(details.get("prerequisites_met"), bool)
+            or details.get("mastery_threshold") != MASTERY_SCORE_THRESHOLD
+            or not isinstance(details.get("note"), str)
+        ):
+            raise ValueError("Stored practical assessment result details are invalid.")
+        return {
+            "attempt_id": int(existing["id"]),
+            "job_id": job_id,
+            "exercise_id": exercise_id,
+            "score": float(existing["score"]),
+            "passed_tests": int(existing["correct_count"]),
+            "total_tests": int(existing["question_count"]),
+            "case_results": results,
+            "scoring_method": "sandbox_practical_v1",
+            "mastery_achieved": details["mastery_achieved"],
+            "mastery_threshold": MASTERY_SCORE_THRESHOLD,
+            "prerequisites_met": details["prerequisites_met"],
+            "source_sha256": source_hash,
+            "independent_execution": True,
+            "independent_scientific_verification": False,
+            "idempotent_replay": True,
+            "note": details["note"],
+        }
+
     with learning_connection() as conn:
         job = conn.execute(
             """SELECT j.status, j.topic, j.path_topic_id, p.curriculum_slug
@@ -236,6 +294,17 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
         if not any(keyword in topic for keyword in exercise["topic_keywords"]) and curriculum_slug != "python":
             raise ValueError("This practical exercise does not match the lesson topic.")
         path_topic_id = job["path_topic_id"]
+
+        if idempotency_key is not None:
+            existing = conn.execute(
+                """SELECT id, answers_json, score, correct_count, question_count,
+                          scoring_method, result_details_json
+                   FROM assessment_attempts WHERE job_id=? AND idempotency_key=?""",
+                (job_id, idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                return replay(existing)
+
         blockers = 0
         if path_topic_id is not None:
             blockers = conn.execute(
@@ -244,22 +313,41 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
                    WHERE current.id=? AND prior.position < current.position AND prior.status != 'completed'""",
                 (int(path_topic_id),),
             ).fetchone()["count"]
+        mastery = path_topic_id is not None and score >= MASTERY_SCORE_THRESHOLD and int(blockers) == 0
+        note = (
+            "امتیاز از اجرای کد در sandbox و عبور آزمون‌های ورودی/خروجی نسخه‌بندی‌شده به دست آمده است؛ "
+            "این نتیجه فقط مهارت همین تمرین را می‌سنجد."
+        )
+        result_details = {
+            "mastery_achieved": mastery,
+            "mastery_threshold": MASTERY_SCORE_THRESHOLD,
+            "prerequisites_met": int(blockers) == 0,
+            "note": note,
+        }
         cursor = conn.execute(
-            """INSERT INTO assessment_attempts(job_id, answers_json, score, correct_count, question_count, scoring_method)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO assessment_attempts(
+                   job_id, answers_json, score, correct_count, question_count,
+                   scoring_method, idempotency_key, result_details_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT DO NOTHING""",
             (
-                job_id,
-                json.dumps({
-                    "exercise_id": exercise_id,
-                    "grading_version": exercise["grading_version"],
-                    "source_sha256": source_hash,
-                    "results": results,
-                }, ensure_ascii=False),
-                score, passed, total, "sandbox_practical_v1",
+                job_id, serialized_payload, score, passed, total, "sandbox_practical_v1",
+                idempotency_key, json.dumps(result_details, ensure_ascii=False, sort_keys=True),
             ),
         )
+        if cursor.rowcount == 0:
+            if idempotency_key is not None:
+                existing = conn.execute(
+                    """SELECT id, answers_json, score, correct_count, question_count,
+                              scoring_method, result_details_json
+                       FROM assessment_attempts WHERE job_id=? AND idempotency_key=?""",
+                    (job_id, idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    return replay(existing)
+            raise ValueError("Practical assessment conflicted with an existing record.")
+
         attempt_id = int(cursor.lastrowid)
-        mastery = path_topic_id is not None and score >= MASTERY_SCORE_THRESHOLD and int(blockers) == 0
         if path_topic_id is not None:
             conn.execute(
                 """UPDATE learning_path_topics SET latest_score=?, latest_score_source='sandbox_practical_v1',
@@ -282,5 +370,6 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
         "source_sha256": source_hash,
         "independent_execution": True,
         "independent_scientific_verification": False,
-        "note": "امتیاز از اجرای کد در sandbox و عبور آزمون‌های ورودی/خروجی نسخه‌بندی‌شده به دست آمده است؛ این نتیجه فقط مهارت همین تمرین را می‌سنجد.",
+        "idempotent_replay": False,
+        "note": note,
     }
