@@ -1295,18 +1295,7 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
     """Queue the selected topics and capture them sequentially, one bounded prompt at a time."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
-    if service.get_learning_control()["paused"]:
-        if not force_retry:
-            raise ValueError("مکث سراسری فعال است؛ ابتدا ادامه / بازیابی را بزنید.")
-        # An explicit retry is a user-directed recovery action. Clear a stale/global
-        # pause before scheduling it; otherwise the retry endpoint returns 422 and
-        # the learning workflow appears unable to recover from an interruption.
-        service.set_learning_paused(False, "شروع مجدد صریح دریافت درس توسط کاربر")
-        _log_event(
-            "global_pause_cleared_for_explicit_lesson_retry",
-            course_id=course_id,
-            topic_ids=list(topic_ids),
-        )
+    globally_paused = service.get_learning_control()["paused"]
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
     if not requested_ids:
         raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
@@ -1322,6 +1311,17 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         ]
         if unapproved:
             raise ValueError("فقط سرفصل‌های تأییدشده قابل دریافت درس هستند.")
+        if globally_paused:
+            if not force_retry:
+                raise ValueError("مکث سراسری فعال است؛ ابتدا ادامه / بازیابی را بزنید.")
+            # An explicit retry is a user-directed recovery action. Clear a stale/global
+            # pause only after validating the requested course and approved topics.
+            service.set_learning_paused(False, "شروع مجدد صریح دریافت درس توسط کاربر")
+            _log_event(
+                "global_pause_cleared_for_explicit_lesson_retry",
+                course_id=course_id,
+                topic_ids=selected_ids if "selected_ids" in locals() else requested_ids,
+            )
         selected_ids = [
             item for item in requested_ids
             if force_retry or int(course_topics[item].get("lesson_content_ready_count") or 0) == 0
