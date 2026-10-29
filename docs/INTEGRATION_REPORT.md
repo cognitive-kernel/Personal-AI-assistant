@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-29  
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `66947d2aa534cc4d17c95ef6d977a701109a2f7a`  
+> commit مبنا: `cca0bae1571eac2bed7f80717156b126046ec32b`  
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -37,6 +37,8 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR [#517](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/517), merge `53e83bc51bf8f734bad782e0722d4e221f04cb67`: جلوگیری از اجرای handler بدون heartbeat و بازیابی retryable در شکست شروع heartbeat.
 - PR [#518](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/518), merge `7622b7bb8d6985b4b5706c6acd63a5f5973396e4`: گیت تکمیل سرفصل بر اساس منشأ ارزیابی و آستانهٔ نمره، با اعتبارسنجی ورودی.
 - PR [#519](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/519), merge `66947d2aa534cc4d17c95ef6d977a701109a2f7a`: migration 39 برای منشأ نمرهٔ assessment و اتصال نتیجهٔ تمرین sandbox به سیاست تکمیل عمومی.
+- PR [#521](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/521), merge `b1b71c20699175dcf4791959a3b295e70fca97f3`: کلید idempotency مبتنی بر شناسهٔ task برای ثبت ارزیابی عملی؛ replay نتیجهٔ قبلی را برمی‌گرداند و از درج attempt تکراری جلوگیری می‌کند. test، dependency audit، browser E2E و sandbox integration CI روی head دقیق موفق شدند.
+- PR [#522](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/522), merge `cca0bae1571eac2bed7f80717156b126046ec32b`: بازیابی یک‌باره و محدود پس از قطع‌شدن Chrome context، با توقف و نیاز به بازیابی دستی در صورت قطع‌شدن مجدد. test، dependency audit و browser E2E روی head دقیق موفق شدند.
 - هر پنج PR روی head دقیق خود در CI آزمون‌ها، audit وابستگی‌ها و browser E2E را گذراندند؛ آزمون‌های storage ویندوز نیز در workflow مربوط موفق شدند. این شواهد خودکار جایگزین پذیرش میزبان هدف، اجرای زنده یا بررسی امنیتی مستقل نیستند.
 
 ## 2. نمای مخزن در commit مبنا
