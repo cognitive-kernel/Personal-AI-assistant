@@ -49,6 +49,7 @@ def _acquire_course_worker_lease(
     owner_token: str | None = None, *, now: float | None = None
 ) -> bool:
     """Atomically acquire/renew the singleton worker lease in the learning database."""
+    _ensure_process_identity()
     owner = owner_token or _WORKER_OWNER_TOKEN
     current_time = time.time() if now is None else float(now)
     with learning_connection() as conn:
@@ -71,6 +72,7 @@ def _acquire_course_worker_lease(
 
 
 def _renew_course_worker_lease() -> bool:
+    _ensure_process_identity()
     with learning_connection() as conn:
         cursor = conn.execute(
             """UPDATE browser_learning_worker_lease
@@ -82,6 +84,7 @@ def _renew_course_worker_lease() -> bool:
 
 
 def _release_course_worker_lease() -> None:
+    _ensure_process_identity()
     with learning_connection() as conn:
         conn.execute(
             "DELETE FROM browser_learning_worker_lease WHERE lease_name='browser-learning' AND owner_token=?",
@@ -90,6 +93,7 @@ def _release_course_worker_lease() -> None:
 
 
 def _course_worker_lease_heartbeat() -> None:
+    _ensure_process_identity()
     while not _WORKER_LEASE_STOP.wait(_WORKER_LEASE_HEARTBEAT_SECONDS):
         try:
             if not _renew_course_worker_lease():
@@ -137,6 +141,7 @@ def _stop_course_worker_lease_heartbeat(*, release: bool) -> None:
 
 
 def _assert_course_worker_lease() -> None:
+    _ensure_process_identity()
     if _WORKER_LEASE_LOST.is_set():
         raise BrowserLearningLeaseLost("مالکیت اجرای یادگیری از دست رفته است؛ این worker دیگر پاسخ را ذخیره نمی‌کند.")
     try:
@@ -254,6 +259,7 @@ def get_course(course_id: int) -> dict[str, Any]:
 
 def recover_interrupted_courses() -> int:
     """Mark persisted work interrupted after process exit, preserving completed lessons."""
+    _ensure_process_identity()
     with _COURSE_DISPATCH_LOCK:
         # startup() can be called more than once in tests or embedded deployments.
         # Never turn a live in-process course back into an interrupted course.
@@ -279,6 +285,7 @@ def recover_interrupted_courses() -> int:
 
 def _scheduled_course_worker(course_id: int) -> None:
     global _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     try:
         run_course(course_id)
     finally:
@@ -301,6 +308,7 @@ def _scheduled_course_worker(course_id: int) -> None:
 def dispatch_next_course() -> dict[str, Any]:
     """Claim and start the oldest persisted course under a cross-process SQLite lease."""
     global _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     with _COURSE_DISPATCH_LOCK:
         if _ACTIVE_COURSE_ID is not None:
             return {"status": "already_active", "course_id": _ACTIVE_COURSE_ID}
@@ -477,6 +485,7 @@ def _chatgpt_answer(page: Any, prompt: str, *, timeout_seconds: int = 180) -> st
 
 def run_course(course_id: int) -> None:
     """Fetch an outline and each lesson through Chrome; persist every completed step."""
+    _ensure_process_identity()
     try:
         _assert_course_worker_lease()
     except BrowserLearningLeaseLost:
