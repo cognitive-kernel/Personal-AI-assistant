@@ -691,3 +691,16 @@ def test_late_failure_cannot_overwrite_a_completed_course(tmp_path, monkeypatch)
     assert result["status"] == "completed"
     assert result["retry_count"] == 0
     assert result["next_retry_at"] is None
+
+
+def test_idle_maintenance_does_not_create_or_delete_worker_lease(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+
+    assert browser_learning.recover_interrupted_courses() == 0
+    assert browser_learning.dispatch_next_course() == {"status": "idle"}
+
+    with db.learning_connection() as conn:
+        lease = conn.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None
