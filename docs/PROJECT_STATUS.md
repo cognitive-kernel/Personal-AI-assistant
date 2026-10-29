@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-29  
-> شاخهٔ مبنای مستندات: `main`، commit `54b56831fe7dcaa719b031d659a3f7e9bf19703d` (2026-10-29).  
+> شاخهٔ مبنای مستندات: `main`، commit `4499e0d59254c1186eb82a0612909dc96f08179b` (2026-10-29).  
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `54b56831fe7dcaa719b031d659a3f7e9bf19703d` اشاره دارد. پس از ادغام PR #534، اجرای CI روی commit ادغام‌شده آغاز شده است؛ تا زمان ثبت این بازبینی، تست کامل همان commit هنوز در حال اجرا بود و نتیجهٔ نهایی آن نباید از نتایج PR-head استنتاج شود. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
+**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `4499e0d59254c1186eb82a0612909dc96f08179b` اشاره دارد. پس از ادغام PR #537، آزمون‌ها، Windows storage regressions، browser E2E، ممیزی وابستگی، بررسی artifactها، لینک‌های Markdown، چرخه‌های import و benchmarkهای deterministic هم روی head دقیق PR و هم روی commit ادغام‌شدهٔ `main` موفق شدند. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
@@ -23,7 +23,10 @@
 - PR [#528](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/528): lease پایدار SQLite با token مختص فرایند و heartbeat برای جلوگیری از claim هم‌زمان دورهٔ یادگیری مرورگر اضافه شد؛ تست، dependency audit، browser E2E و Windows storage regressions روی head دقیق موفق شدند.
 - PR [#531](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/531): lease پس از اتمام recovery هنگام startup آزاد می‌شود تا فرایند بیکار تا انقضای چهار دقیقه‌ای مالکیت را نگه ندارد؛ تست رگرسیون و ADR-004 به‌روزرسانی شدند؛ تمام workflowهای لازم روی head دقیق موفق شدند.
 - PR [#526](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/526): مسیر قدیمی‌تر `/api/learning/browser/courses` اکنون هنگام startup دوره‌های قطع‌شده را به‌طور خودکار بازیابی می‌کند؛ درس‌های کامل حفظ می‌شوند، دوره‌ها با dispatcher تک‌نمونه‌ای به ترتیب اجرا می‌شوند و پس از شکست یک دوره، صف برای جلوگیری از شکست زنجیره‌ای متوقف می‌شود. test، dependency audit، browser E2E و Windows storage regressions موفق شدند.
-- PR [#534](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/534): recovery فقط دوره‌های واقعاً `running` را به `interrupted` تبدیل می‌کند و دوره‌های از قبل `queued` را دست‌نخورده نگه می‌دارد؛ درس‌های تکمیل‌شده حفظ می‌شوند. تست کامل، Windows storage regressions، browser E2E و dependency audit روی head دقیق `d07e3d692650479a010ba2e182e5fee276318fc7` موفق شدند. ادغام در `main` با commit `54b56831fe7dcaa719b031d659a3f7e9bf19703d` انجام شد؛ CI پس از ادغام باید جداگانه بررسی شود.\n- این شواهد، آزمون خودکار مخزن هستند؛ جایگزین ارزیابی زنده، پذیرش میزبان هدف، تمرین restore/rollback یا بازبینی امنیتی مستقل نیستند.
+- PR [#534](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/534): recovery فقط دوره‌های واقعاً `running` را به `interrupted` تبدیل می‌کند و دوره‌های از قبل `queued` را دست‌نخورده نگه می‌دارد؛ درس‌های تکمیل‌شده حفظ می‌شوند. تست کامل، Windows storage regressions، browser E2E و dependency audit روی head دقیق `d07e3d692650479a010ba2e182e5fee276318fc7` موفق شدند. ادغام در `main` با commit `54b56831fe7dcaa719b031d659a3f7e9bf19703d` انجام شد؛ CI پس از ادغام باید جداگانه بررسی شود.
+- PR [#536](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/536): تلاش مجدد محدود و زمان‌بندی‌شده برای دوره‌های یادگیری مرورگر، بازیابی اجرای مانده با رعایت lease و جلوگیری از تغییر وضعیت دورهٔ تکمیل‌شده توسط worker قدیمی اضافه شد. آزمون‌ها، Windows storage regressions، browser E2E و dependency audit روی head دقیق موفق شدند؛ ادغام `e0c86fb6fae4a83e78f07d56eb3f95af0f1861a3` انجام شد و سه workflow پس از ادغام `main` نیز موفق شدند.
+- PR [#537](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/537): مسیر گفت‌وگوی عادی نیز زبان پاسخ را بررسی می‌کند، یک اصلاح محدود انجام می‌دهد و در صورت شکست اصلاح یا پاسخ خالی به fallback ثابت برمی‌گردد. آزمون‌ها، Windows storage regressions، browser E2E و dependency audit روی head دقیق موفق شدند؛ ادغام `4499e0d59254c1186eb82a0612909dc96f08179b` انجام شد؛ آزمون‌ها، Windows storage regressions، browser E2E و dependency audit پس از ادغام روی `main` نیز موفق شدند.
+- این شواهد، آزمون خودکار مخزن هستند؛ جایگزین ارزیابی زنده، پذیرش میزبان هدف، تمرین restore/rollback یا بازبینی امنیتی مستقل نیستند.
 
 ## 2. قابلیت‌های پیاده‌سازی‌شده
 
