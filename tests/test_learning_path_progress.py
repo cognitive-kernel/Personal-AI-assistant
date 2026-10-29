@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import db, learning
+from app import db, learning, learning_practical
 
 
 def _init_learning_db(tmp_path, monkeypatch):
@@ -98,3 +98,70 @@ def test_below_threshold_assessment_keeps_topic_in_progress(tmp_path, monkeypatc
         ).fetchone()
     assert topic["status"] == "in_progress"
     assert topic["latest_score"] == pytest.approx(33.33)
+
+
+def _create_practical_assessment(tmp_path, monkeypatch, *, passing_cases):
+    _init_learning_db(tmp_path, monkeypatch)
+    path_id, topic_ids = _create_path(topics=["Python lists"])
+    job = learning.create_job("Python lists", path_topic_id=topic_ids[0])
+    with db.learning_connection() as connection:
+        connection.execute(
+            "UPDATE learning_jobs SET status='completed' WHERE id=?",
+            (job["id"],),
+        )
+    cases = learning_practical.get_test_cases("python-json-sum-v1")
+    results = [
+        {"case_id": case["id"], "passed": index < passing_cases}
+        for index, case in enumerate(cases)
+    ]
+    report = learning_practical.build_grade_report("python-json-sum-v1", results)
+    return path_id, topic_ids[0], job["id"], report
+
+
+def test_practical_assessment_persists_provenance_and_uses_shared_completion_gate(tmp_path, monkeypatch):
+    path_id, topic_id, job_id, report = _create_practical_assessment(
+        tmp_path, monkeypatch, passing_cases=3
+    )
+
+    result = learning_practical.record_practical_attempt(
+        job_id, "python-json-sum-v1", report, "print(1 + 2)"
+    )
+    assert result["score"] == 75.0
+    assert result["mastery_achieved"] is True
+
+    with db.learning_connection() as connection:
+        topic = connection.execute(
+            "SELECT status, latest_score, latest_score_source FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert topic["status"] == "completed"
+    assert topic["latest_score"] == 75.0
+    assert topic["latest_score_source"] == "sandbox_practical_v1"
+
+    learning.update_path_topic(path_id, topic_id, "completed")
+    with pytest.raises(ValueError, match="assessment-derived score cannot be manually overridden"):
+        learning.update_path_topic(path_id, topic_id, "completed", 100)
+
+
+def test_practical_assessment_below_threshold_cannot_be_manually_completed(tmp_path, monkeypatch):
+    path_id, topic_id, job_id, report = _create_practical_assessment(
+        tmp_path, monkeypatch, passing_cases=2
+    )
+
+    result = learning_practical.record_practical_attempt(
+        job_id, "python-json-sum-v1", report, "print(1 + 2)"
+    )
+    assert result["score"] == 50.0
+    assert result["mastery_achieved"] is False
+
+    with db.learning_connection() as connection:
+        topic = connection.execute(
+            "SELECT status, latest_score, latest_score_source FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert topic["status"] == "in_progress"
+    assert topic["latest_score"] == 50.0
+    assert topic["latest_score_source"] == "sandbox_practical_v1"
+
+    with pytest.raises(ValueError, match="at least 70/100"):
+        learning.update_path_topic(path_id, topic_id, "completed")
