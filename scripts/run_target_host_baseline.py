@@ -126,10 +126,12 @@ def _network_boundary_summary() -> dict[str, Any]:
 
     ollama_value, source = _effective_setting("ollama_base_url")
     ollama_status = _ollama_endpoint_status(ollama_value)
-    # Do not treat a hostname as equivalent to a loopback IP literal. A local
-    # hosts/DNS override can change where "localhost" resolves; this read-only
-    # report deliberately does not resolve names or probe the network.
-    safe = bind_status == "loopback_literal" and ollama_status == "loopback_literal"
+    # The Ollama client rewrites the exact hostname "localhost" to 127.0.0.1
+    # before opening a connection, so this value is safe without DNS resolution.
+    # Other hostnames remain rejected by _ollama_endpoint_status.
+    safe = bind_status == "loopback_literal" and ollama_status in {
+        "loopback_literal", "localhost_normalized"
+    }
     return {
         "status": "ok" if safe else "unsafe_or_unverified",
         "app_bind": bind_status,
