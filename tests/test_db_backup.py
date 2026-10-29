@@ -77,8 +77,18 @@ def test_backup_and_restore_never_overwrite_existing_destinations(initialized_da
     backup_databases(settings_path, learning_path, bundle)
     with pytest.raises(FileExistsError):
         backup_databases(settings_path, learning_path, bundle)
-    with pytest.raises(FileExistsError):
+    # A destination equal to (or nested under) the source bundle is an
+    # invalid restore layout, not an overwrite attempt.
+    with pytest.raises(ValueError, match="outside the backup directory"):
         restore_databases(bundle, bundle)
+
+    existing_destination = tmp_path / "already-restored"
+    existing_destination.mkdir()
+    sentinel = existing_destination / "keep.txt"
+    sentinel.write_text("preserve existing data", encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        restore_databases(bundle, existing_destination)
+    assert sentinel.read_text(encoding="utf-8") == "preserve existing data"
 
 
 def test_backup_requires_distinct_database_paths(tmp_path):

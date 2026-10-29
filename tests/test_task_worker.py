@@ -293,3 +293,40 @@ def test_cancel_requested_before_handler_failure_wins_over_retry(worker_store):
     assert saved["attempts"] == 1
     assert saved["result"] is None
     assert saved["error"] is None
+
+
+def test_worker_retries_when_result_persistence_fails(worker_store, monkeypatch):
+    current = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(task_manager, "_now", lambda: current)
+    monkeypatch.setattr(task_manager.random, "uniform", lambda low, high: 2.0)
+    task = task_manager.create_task("test.result-persistence", {}, max_attempts=2)
+
+    complete = task_manager.complete_task
+    calls = 0
+
+    def fail_first_persist(task_id, worker_id, result):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("simulated result persistence failure")
+        return complete(task_id, worker_id, result)
+
+    monkeypatch.setattr(task_manager, "complete_task", fail_first_persist)
+    worker = TaskWorker(
+        "worker-result-persistence",
+        {"test.result-persistence": lambda *_: {"durable": True}},
+    )
+
+    assert worker.run_once() is True
+    queued = task_manager.get_task(task["id"])
+    assert queued["status"] == "queued"
+    assert queued["attempts"] == 1
+    assert queued["error"] == "RuntimeError: simulated result persistence failure"
+    assert queued["result"] is None
+
+    current += timedelta(seconds=2)
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "succeeded"
+    assert saved["attempts"] == 2
+    assert saved["result"] == {"durable": True}

@@ -319,6 +319,11 @@ def _validate_peer_endpoint(base_url: str) -> tuple[str, str, str]:
     return parsed.scheme, hostname, addresses[0].compressed
 
 
+def _build_peer_opener(*handlers):
+    """Keep peer transport construction patchable without mutating urllib globally."""
+    return urllib.request.build_opener(*handlers)
+
+
 class _RejectPeerRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Peer API redirects are rejected to avoid cross-host credential forwarding."""
 
@@ -413,7 +418,7 @@ def consult_configured_peer_ais(candidate_id: int, *, limit: int = 3) -> dict[st
             # Do not let ambient HTTP(S)_PROXY settings route a validated peer
             # request through a proxy that can change its effective destination.
             pinned_resolver = lambda _url: pinned_ip
-            opener = urllib.request.build_opener(
+            opener = _build_peer_opener(
                 urllib.request.ProxyHandler({}),
                 _RejectPeerRedirectHandler(),
                 PinnedHTTPHandler(pinned_resolver),

@@ -43,5 +43,6 @@ The task queue is initialized idempotently through initialize_task_store() in th
 ## Acceptance gates
 
 - Unit tests cover lifecycle, priority/scheduling, retry limits, checkpoints, pause/resume, cancellation, lease expiry/reclaim, and invalid JSON.
+- Worker regression tests also inject a transient failure while persisting a successful handler result and verify bounded retry, no premature result publication, and eventual durable completion.
 - CI must pass on the exact pull-request head before merge.
 - Integration with FastAPI and allow-listed learning handlers is implemented and covered by repository CI. Target-host crash/restart, sustained-load, full task-type fault injection, and local Windows database acceptance remain separate release gates.
