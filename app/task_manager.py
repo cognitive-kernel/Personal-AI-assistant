@@ -501,6 +501,8 @@ def delete_task(task_id: int) -> dict[str, Any]:
 def request_cancel(task_id: int) -> dict[str, Any]:
     now = _timestamp()
     with db.learning_connection() as conn:
+        # Serialize the status read with worker claims and cooperative settlement.
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise TaskNotFoundError(f"Task {task_id} does not exist.")
@@ -523,6 +525,8 @@ def request_cancel(task_id: int) -> dict[str, Any]:
 def request_pause(task_id: int) -> dict[str, Any]:
     now = _timestamp()
     with db.learning_connection() as conn:
+        # Prevent a queued task from being claimed between status validation and pause.
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise TaskNotFoundError(f"Task {task_id} does not exist.")
@@ -544,6 +548,7 @@ def resume_task(task_id: int, *, scheduled_at: datetime | None = None) -> dict[s
     now = _timestamp()
     due = _timestamp(scheduled_at) if scheduled_at is not None else None
     with db.learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise TaskNotFoundError(f"Task {task_id} does not exist.")
@@ -575,6 +580,7 @@ def update_task_priority(task_id: int, priority: int) -> dict[str, Any]:
         raise ValueError("priority must be an integer.")
     now = _timestamp()
     with db.learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise TaskNotFoundError(f"Task {task_id} does not exist.")
@@ -592,6 +598,7 @@ def reschedule_task(task_id: int, scheduled_at: datetime) -> dict[str, Any]:
     due = _timestamp(scheduled_at)
     now = _timestamp()
     with db.learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
         if row is None:
             raise TaskNotFoundError(f"Task {task_id} does not exist.")
