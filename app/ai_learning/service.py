@@ -456,6 +456,39 @@ def mark_run_needs_user_action(
     return get_run(run_id)
 
 
+def requeue_run_for_resume(run_id: int, reason: str = "automatic_recovery") -> dict[str, Any]:
+    """Return an interrupted run to the durable queue without deleting partial work."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise NotFoundError("Run not found.")
+        status = str(run["status"])
+        # Explicit user cancellation and completed runs must never be resurrected.
+        if status in {"succeeded", "failed", "cancelled"}:
+            pass
+        elif status in {"running", "needs_user_action"}:
+            conn.execute(
+                """UPDATE runs SET status='queued',error_code=NULL,error_message=NULL,
+                   finished_at=NULL WHERE id=? AND status IN ('running','needs_user_action')""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE run_topics SET status='queued',error_message=NULL
+                   WHERE run_id=? AND status IN ('running','failed','needs_user_action')""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                     AND processing_status IN ('running','failed')""",
+                (run_id,),
+            )
+    result = get_run(run_id)
+    result["recovery_reason"] = str(reason or "automatic_recovery")[:100]
+    return result
+
+
 def start_run(run_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
