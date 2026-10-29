@@ -1188,7 +1188,6 @@ def _worker(
                        message=str(exc)[:300])
 
 
-
 def _start_worker_thread(
     thread: threading.Thread,
     run_id: int,
