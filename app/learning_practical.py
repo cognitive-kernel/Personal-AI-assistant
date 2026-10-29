@@ -262,7 +262,7 @@ def record_practical_attempt(job_id: int, exercise_id: str, report: dict[str, An
         mastery = path_topic_id is not None and score >= MASTERY_SCORE_THRESHOLD and int(blockers) == 0
         if path_topic_id is not None:
             conn.execute(
-                """UPDATE learning_path_topics SET latest_score=?,
+                """UPDATE learning_path_topics SET latest_score=?, latest_score_kind='sandbox_practical_v1',
                    status=CASE WHEN status='completed' THEN status WHEN ? THEN 'completed' ELSE 'in_progress' END,
                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                 (score, int(mastery), int(path_topic_id)),
