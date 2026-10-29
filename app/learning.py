@@ -1454,27 +1454,59 @@ def sync_curriculum_path(path_id: int) -> dict[str, Any]:
 def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: float | None = None) -> dict[str, Any]:
     if status not in {"pending", "in_progress", "completed"}:
         raise ValueError("Status must be pending, in_progress, or completed.")
-    if latest_score is not None and not 0 <= latest_score <= 100:
+    if latest_score is not None and (
+        isinstance(latest_score, bool)
+        or not isinstance(latest_score, (int, float))
+        or not math.isfinite(float(latest_score))
+        or not 0 <= latest_score <= 100
+    ):
         raise ValueError("Score must be between 0 and 100.")
     with learning_connection() as conn:
         exists = conn.execute(
-            """SELECT id, latest_score, latest_score_kind FROM learning_path_topics
+            """SELECT id, status, latest_score, latest_score_kind FROM learning_path_topics
                WHERE id=? AND path_id=?""",
             (topic_id, path_id),
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
-        if exists["latest_score_kind"] == "learner_rubric":
-            stored_score = exists["latest_score"]
-            if latest_score is not None and latest_score != stored_score:
-                raise ValueError("A rubric-derived score cannot be manually overridden.")
-            if status == "completed" and (
-                stored_score is None or float(stored_score) < 80.0
+
+        score_kind = str(exists["latest_score_kind"] or "legacy_unknown")
+        stored_score = exists["latest_score"]
+        assessment_score_kinds = {"learner_rubric", "legacy_exact_match"}
+        if score_kind in assessment_score_kinds:
+            if latest_score is not None and (
+                stored_score is None or float(latest_score) != float(stored_score)
             ):
-                raise ValueError("A rubric-scored topic requires at least 80/100 to be completed.")
+                raise ValueError("An assessment-derived score cannot be manually overridden.")
+            if status == "completed":
+                threshold = 80.0 if score_kind == "learner_rubric" else 70.0
+                if stored_score is None or float(stored_score) < threshold:
+                    raise ValueError(
+                        f"An assessment-scored topic requires at least {threshold:g}/100 to be completed."
+                    )
+        elif latest_score is not None and (
+            stored_score is None or float(latest_score) != float(stored_score)
+        ):
+            # Preserve manually supplied progress data for compatibility, but
+            # explicitly mark it untrusted so it cannot satisfy mastery gates.
+            score_kind = "manual_override"
+
+        if status == "completed" and score_kind in {"legacy_unknown", "manual_override"}:
+            score_was_changed = (
+                latest_score is not None
+                and (stored_score is None or float(latest_score) != float(stored_score))
+            )
+            if exists["status"] != "completed" or score_was_changed:
+                raise ValueError(
+                    "Topic completion requires a recorded passing assessment; "
+                    "a manual status or score is not sufficient."
+                )
+
         conn.execute(
-            "UPDATE learning_path_topics SET status=?, latest_score=COALESCE(?, latest_score), updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
-            (status, latest_score, topic_id, path_id),
+            """UPDATE learning_path_topics
+               SET status=?, latest_score=COALESCE(?, latest_score), latest_score_kind=?,
+                   updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?""",
+            (status, latest_score, score_kind, topic_id, path_id),
         )
         conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
     return get_learning_path(path_id)
