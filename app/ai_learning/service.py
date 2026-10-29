@@ -1332,7 +1332,10 @@ def list_run_ids_by_status(status: str) -> list[int]:
         raise ValueError("status must be queued or running.")
     with connection() as conn:
         rows = conn.execute(
-            "SELECT id FROM runs WHERE status=? ORDER BY id ASC",
+            """SELECT r.id FROM runs r
+               JOIN courses c ON c.id=r.course_id
+               WHERE r.status=? AND c.status <> 'archived'
+               ORDER BY r.id ASC""",
             (status,),
         ).fetchall()
     return [int(row["id"]) for row in rows]
