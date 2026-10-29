@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import threading
 import time
@@ -19,12 +20,29 @@ CHATGPT_URL = "https://chatgpt.com/"
 # is the recovery source of truth; this lock prevents duplicate workers in-process.
 _COURSE_DISPATCH_LOCK = threading.Lock()
 _ACTIVE_COURSE_ID: int | None = None
-_WORKER_OWNER_TOKEN = uuid.uuid4().hex
+_WORKER_OWNER_PID = os.getpid()
+_WORKER_OWNER_TOKEN = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
 _WORKER_LEASE_SECONDS = 240.0
 _WORKER_LEASE_HEARTBEAT_SECONDS = 15.0
 _WORKER_LEASE_STOP = threading.Event()
 _WORKER_LEASE_LOST = threading.Event()
 _WORKER_LEASE_THREAD: threading.Thread | None = None
+
+
+def _ensure_process_identity() -> None:
+    """Reset process-local synchronization after fork; never share an owner token across PIDs."""
+    global _WORKER_OWNER_PID, _WORKER_OWNER_TOKEN, _COURSE_DISPATCH_LOCK
+    global _ACTIVE_COURSE_ID, _WORKER_LEASE_STOP, _WORKER_LEASE_LOST, _WORKER_LEASE_THREAD
+    pid = os.getpid()
+    if pid == _WORKER_OWNER_PID:
+        return
+    _WORKER_OWNER_PID = pid
+    _WORKER_OWNER_TOKEN = f"{pid}-{uuid.uuid4().hex}"
+    _COURSE_DISPATCH_LOCK = threading.Lock()
+    _ACTIVE_COURSE_ID = None
+    _WORKER_LEASE_STOP = threading.Event()
+    _WORKER_LEASE_LOST = threading.Event()
+    _WORKER_LEASE_THREAD = None
 
 
 def _acquire_course_worker_lease(
