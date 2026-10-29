@@ -104,7 +104,11 @@ def _stop_course_worker_lease_heartbeat(*, release: bool) -> None:
     worker = _WORKER_LEASE_THREAD
     _WORKER_LEASE_THREAD = None
     if worker is not None and worker is not threading.current_thread():
-        worker.join(timeout=1.0)
+        try:
+            worker.join(timeout=1.0)
+        except RuntimeError:
+            # Thread construction/start may have failed before it became joinable.
+            pass
     if release:
         try:
             _release_course_worker_lease()
@@ -264,7 +268,7 @@ def _scheduled_course_worker(course_id: int) -> None:
 
 
 def dispatch_next_course() -> dict[str, Any]:
-    """Claim and start the oldest persisted queued/interrupted course, at most one per process."""
+    """Claim and start the oldest persisted course under a cross-process SQLite lease."""
     global _ACTIVE_COURSE_ID
     with _COURSE_DISPATCH_LOCK:
         if _ACTIVE_COURSE_ID is not None:
@@ -272,25 +276,27 @@ def dispatch_next_course() -> dict[str, Any]:
         if not _acquire_course_worker_lease():
             return {"status": "lease_held"}
         _WORKER_LEASE_LOST.clear()
+        course_id: int | None = None
         with learning_connection() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 """SELECT id FROM browser_learning_courses
                    WHERE status IN ('queued','interrupted') ORDER BY id ASC LIMIT 1"""
             ).fetchone()
-            if row is None:
-                _stop_course_worker_lease_heartbeat(release=True)
-                return {"status": "idle"}
-            course_id = int(row["id"])
-            updated = conn.execute(
-                """UPDATE browser_learning_courses
-                   SET status='running', error=NULL, updated_at=CURRENT_TIMESTAMP
-                   WHERE id=? AND status IN ('queued','interrupted')""",
-                (course_id,),
-            )
-            if updated.rowcount != 1:
-                _stop_course_worker_lease_heartbeat(release=True)
-                return {"status": "idle"}
+            if row is not None:
+                candidate_id = int(row["id"])
+                updated = conn.execute(
+                    """UPDATE browser_learning_courses
+                       SET status='running', error=NULL, updated_at=CURRENT_TIMESTAMP
+                       WHERE id=? AND status IN ('queued','interrupted')""",
+                    (candidate_id,),
+                )
+                if updated.rowcount == 1:
+                    course_id = candidate_id
+        if course_id is None:
+            _stop_course_worker_lease_heartbeat(release=True)
+            return {"status": "idle"}
+
         _ACTIVE_COURSE_ID = course_id
         try:
             _start_course_worker_lease_heartbeat()
@@ -304,6 +310,7 @@ def dispatch_next_course() -> dict[str, Any]:
                 )
             _stop_course_worker_lease_heartbeat(release=True)
             return {"status": "interrupted", "course_id": course_id}
+
         worker = threading.Thread(
             target=_scheduled_course_worker,
             args=(course_id,),
