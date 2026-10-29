@@ -171,7 +171,7 @@ _startup_storage_error: str | None = None
 
 
 def _maintain_learning_runtime() -> None:
-    """Run routine maintenance and dispatch browser-learning retries whose backoff expired."""
+    """Run routine maintenance and recover/dispatch persisted browser-learning work safely."""
     try:
         learning.maintain_factual_knowledge()
     except Exception:
