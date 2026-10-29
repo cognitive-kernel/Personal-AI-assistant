@@ -167,6 +167,7 @@ class TaskWorker:
             # A task has already been claimed at this point. If the OS refuses
             # to start the lease heartbeat, do not execute a potentially long
             # handler without ownership renewal or strand the task until expiry.
+            heartbeat_stop.set()
             try:
                 task_manager.fail_task(
                     task["id"],
