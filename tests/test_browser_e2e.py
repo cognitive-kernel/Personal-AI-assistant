@@ -1639,11 +1639,14 @@ def test_dashboard_malformed_percent_encoded_route_falls_back_without_script_err
                 history.replaceState({}, "", "/page/%E0%A4%A");
                 const script = document.createElement("script");
                 script.src = "/static/page-navigation.js";
+                script.onload = () => {
+                    document.documentElement.dataset.routeScriptReloaded = "true";
+                };
                 document.body.append(script);
             }"""
         )
         page.wait_for_function(
-            "document.documentElement.dataset.dashboardPage === 'chat-section'"
+            "document.documentElement.dataset.routeScriptReloaded === 'true'"
         )
         assert page.locator("#chat-section").is_visible()
         current_links = page.locator('.dashboard-nav a[aria-current="page"]')
