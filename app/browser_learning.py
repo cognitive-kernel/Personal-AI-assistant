@@ -121,6 +121,19 @@ def _stop_course_worker_lease_heartbeat(*, release: bool) -> None:
 def _assert_course_worker_lease() -> None:
     if _WORKER_LEASE_LOST.is_set():
         raise BrowserLearningLeaseLost("مالکیت اجرای یادگیری از دست رفته است؛ این worker دیگر پاسخ را ذخیره نمی‌کند.")
+    try:
+        if not _renew_course_worker_lease():
+            _WORKER_LEASE_LOST.set()
+            raise BrowserLearningLeaseLost(
+                "مالکیت اجرای یادگیری تغییر کرده است؛ این worker دیگر پاسخ را ذخیره نمی‌کند."
+            )
+    except BrowserLearningLeaseLost:
+        raise
+    except Exception as exc:
+        _WORKER_LEASE_LOST.set()
+        raise BrowserLearningLeaseLost(
+            "اعتبارسنجی lease پایدار ممکن نشد؛ این worker دیگر پاسخ را ذخیره نمی‌کند."
+        ) from exc
 
 
 class BrowserLearningError(RuntimeError):
