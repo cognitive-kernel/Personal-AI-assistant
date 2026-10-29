@@ -206,3 +206,62 @@ def test_requeue_recovers_needs_user_action_but_never_resurrects_cancelled_run(i
     service.cancel_run(cancelled["id"])
     unchanged = service.requeue_run_for_resume(cancelled["id"], "test")
     assert unchanged["status"] == "cancelled"
+
+
+def test_startup_recovers_oldest_run_beyond_recent_run_page(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی کار قدیمی‌تر از صفحهٔ اخیر")
+    runs = [
+        service.create_run(
+            course["id"], run_type="outline", request_key=f"older-than-page-{index}"
+        )
+        for index in range(51)
+    ]
+    service.start_run(runs[0]["id"])
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.recover_pending_runs()
+
+    assert result["status"] == "running"
+    assert result["run_id"] == runs[0]["id"]
+    assert launched[0].args[0] == runs[0]["id"]
+    assert service.get_run(runs[0]["id"])["status"] == "running"
+
+
+def test_dispatch_finds_queued_run_outside_dashboard_course_limit(isolated_store, monkeypatch):
+    courses = [
+        service.create_course(title=f"دورهٔ صف سراسری {index:03d}")
+        for index in range(101)
+    ]
+    oldest_course = courses[0]
+    run = service.create_run(
+        oldest_course["id"], run_type="outline", request_key="outside-dashboard-course-page"
+    )
+    # The dashboard API is intentionally capped at 100 courses; queue semantics
+    # must not inherit that presentation-layer limit.
+    assert all(
+        int(item["id"]) != int(oldest_course["id"])
+        for item in service.list_courses(100)
+    )
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation._dispatch_next_persisted_run()
+
+    assert result["status"] == "running"
+    assert result["run_id"] == run["id"]
+    assert launched[0].args[0] == run["id"]
