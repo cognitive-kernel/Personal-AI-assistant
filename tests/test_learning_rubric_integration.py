@@ -151,7 +151,7 @@ def test_rubric_migration_adds_idempotency_and_score_provenance_columns(tmp_path
     assert {"idempotency_key", "result_details_json"} <= attempt_columns
     assert "latest_score_kind" in topic_columns
     assert "latest_score_source" in topic_columns
-    assert migration["version"] == 39
+    assert migration["version"] == 40
 
 
 
