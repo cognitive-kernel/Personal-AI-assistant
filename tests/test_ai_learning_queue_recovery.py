@@ -390,3 +390,48 @@ def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, 
     assert len(launched) == 1
     assert launched[0].args[0] == run["id"]
     assert service.get_run(run["id"])["status"] == "running"
+
+
+
+def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی خطای ایجاد worker")
+    run = service.create_run(course["id"], run_type="outline", request_key="thread-start-fails")
+    attempts = []
+
+    class FailingThread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            attempts.append(self.kwargs)
+            raise RuntimeError("simulated thread start failure")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FailingThread)
+
+    with pytest.raises(browser_automation.BrowserAutomationError) as error:
+        browser_automation._dispatch_next_persisted_run()
+
+    assert error.value.code == "worker_thread_start_failed"
+    assert len(attempts) == 1
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
+    assert browser_automation._ACTIVE_COURSE_ID is None
+    assert run["id"] not in browser_automation._CANCEL_EVENTS
+
+    launched = []
+
+    class WorkingThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", WorkingThread)
+    recovered = browser_automation._dispatch_next_persisted_run()
+
+    assert recovered["status"] == "running"
+    assert recovered["run_id"] == run["id"]
+    assert len(launched) == 1
+    assert service.get_run(run["id"])["status"] == "running"
