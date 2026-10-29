@@ -562,3 +562,46 @@ def test_direct_chat_fails_closed_if_language_repair_raises(monkeypatch):
     assert calls == 2
     assert reply == chat_research._language_fallback("Please explain this idea in simple terms.")
     assert "private model runtime detail" not in reply
+
+
+def test_direct_chat_returns_safe_fallback_for_empty_model_output(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        ollama,
+        "chat",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or "  \n",
+    )
+
+    reply = chat_research.answer("Hello")
+
+    assert reply == chat_research._generation_fallback("Hello")
+    assert "did not produce a text response" in reply
+    assert len(calls) == 1
+
+
+def test_research_chat_audits_empty_generation_without_claim_review(monkeypatch):
+    _disable_memory(monkeypatch)
+    source = _source()
+    monkeypatch.setattr(
+        chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source]
+    )
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(
+        chat_research.claim_review,
+        "review_answer_claims",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("empty output must not be reviewed")),
+    )
+    audit = {}
+    monkeypatch.setattr(
+        chat_research.chat_audit,
+        "record_research_run",
+        lambda **kwargs: audit.update(kwargs) or 1,
+    )
+
+    reply = chat_research.answer("How do SQL Server query plans work?")
+
+    assert reply == chat_research._generation_fallback("How do SQL Server query plans work?")
+    assert audit["review_status"] == "generation_failed"
+    assert audit["review"]["error"] == "empty_generation"
+    assert audit["review"]["overall"] == "empty_generation"
+    assert source.url in str(audit["source_urls"])
