@@ -1341,6 +1341,31 @@ def list_run_ids_by_status(status: str) -> list[int]:
     return [int(row["id"]) for row in rows]
 
 
+def get_oldest_resumable_run(course_id: int | None = None) -> dict[str, Any] | None:
+    """Return the oldest globally resumable run without inheriting dashboard pagination limits.
+
+    Interrupted running work is preferred, then runs awaiting explicit user recovery,
+    then queued work. Archived courses are excluded. A course filter is optional.
+    """
+    query = """SELECT r.id, r.course_id, r.run_type, r.status, r.created_at
+               FROM runs r
+               JOIN courses c ON c.id=r.course_id
+               WHERE r.status IN ('running','needs_user_action','queued')
+                 AND c.status <> 'archived'"""
+    params: tuple[Any, ...] = ()
+    if course_id is not None:
+        query += " AND r.course_id=?"
+        params = (int(course_id),)
+    query += """ ORDER BY CASE r.status
+                    WHEN 'running' THEN 0
+                    WHEN 'needs_user_action' THEN 1
+                    ELSE 2
+                 END, r.created_at ASC, r.id ASC LIMIT 1"""
+    with connection() as conn:
+        row = conn.execute(query, params).fetchone()
+    return dict(row) if row is not None else None
+
+
 def get_oldest_queued_run() -> dict[str, Any] | None:
     """Return the globally oldest queued run across all non-archived courses."""
     with connection() as conn:
