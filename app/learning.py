@@ -1455,13 +1455,15 @@ def sync_curriculum_path(path_id: int) -> dict[str, Any]:
 def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: float | None = None) -> dict[str, Any]:
     if status not in {"pending", "in_progress", "completed"}:
         raise ValueError("Status must be pending, in_progress, or completed.")
-    if latest_score is not None and (
-        isinstance(latest_score, bool)
-        or not isinstance(latest_score, (int, float))
-        or not math.isfinite(float(latest_score))
-        or not 0 <= latest_score <= 100
-    ):
-        raise ValueError("Score must be between 0 and 100.")
+    if latest_score is not None:
+        if isinstance(latest_score, bool) or not isinstance(latest_score, (int, float)):
+            raise ValueError("Score must be between 0 and 100.")
+        try:
+            numeric_score = float(latest_score)
+        except (OverflowError, TypeError, ValueError) as exc:
+            raise ValueError("Score must be between 0 and 100.") from exc
+        if not math.isfinite(numeric_score) or not 0 <= numeric_score <= 100:
+            raise ValueError("Score must be between 0 and 100.")
     with learning_connection() as conn:
         exists = conn.execute(
             """SELECT id, status, latest_score, latest_score_kind FROM learning_path_topics
