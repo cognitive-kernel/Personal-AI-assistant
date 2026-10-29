@@ -457,6 +457,8 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert 'page.goto("https://chatgpt.com/"' in automation
     assert 'data-message-author-role="assistant"' in automation
     assert "launch_persistent_context" in automation
+    assert "restored_extra_tabs_closed" in automation
+    assert "extra_page.close(run_before_unload=False)" in automation
     assert "api.openai.com" not in automation
     assert "context.cookies(" not in automation
     assert "storage_state(" not in automation
