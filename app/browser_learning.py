@@ -273,7 +273,7 @@ def recover_interrupted_courses() -> int:
                 """UPDATE browser_learning_courses
                    SET status='interrupted', error='برنامه پیش از پایان دوره متوقف شد؛ ادامهٔ خودکار در حال آماده‌سازی است.',
                        updated_at=CURRENT_TIMESTAMP
-                   WHERE status IN ('queued','running')"""
+                   WHERE status='running'"""
             )
             conn.execute(
                 """UPDATE browser_learning_lessons SET status='queued',
