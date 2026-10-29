@@ -673,7 +673,23 @@ def _browser_capture(
             )
             _log_event("browser_launch_succeeded", open_pages=len(context.pages))
             try:
-                page = context.pages[0] if context.pages else context.new_page()
+                # A persistent Chrome profile can restore old tabs after a crash or
+                # interrupted run. Keep exactly one tab per attempt; otherwise every
+                # retry can leave another set of tabs visible to the user.
+                restored_pages = list(context.pages)
+                page = restored_pages[0] if restored_pages else context.new_page()
+                extra_pages = restored_pages[1:]
+                for extra_page in extra_pages:
+                    try:
+                        extra_page.close(run_before_unload=False)
+                    except Exception as close_error:
+                        _log_event(
+                            "restored_tab_close_failed",
+                            exception_type=type(close_error).__name__,
+                            message=str(close_error)[:200],
+                        )
+                if extra_pages:
+                    _log_event("restored_extra_tabs_closed", count=len(extra_pages))
                 _log_event("page_selected", url=page.url, page_count=len(context.pages))
                 page.on("close", lambda *_: _log_event("page_closed_event", url=page.url))
                 page.on("crash", lambda *_: _log_event("page_crashed_event", url=page.url))
