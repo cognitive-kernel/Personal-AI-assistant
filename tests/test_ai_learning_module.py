@@ -578,6 +578,42 @@ def test_run_request_key_is_idempotent(isolated_store):
     second = service.create_run(course["id"], run_type="outline", request_key="same-key")
     assert first["id"] == second["id"]
 
+
+def test_run_request_key_rejects_reuse_for_another_course(isolated_store):
+    first_course = service.create_course(title="SQL Server")
+    second_course = service.create_course(title="PostgreSQL")
+    first = service.create_run(
+        first_course["id"], run_type="outline", request_key="cross-course-key"
+    )
+
+    with pytest.raises(ValueError, match="different run request"):
+        service.create_run(
+            second_course["id"], run_type="outline", request_key="cross-course-key"
+        )
+
+    assert service.get_run(first["id"])["course_id"] == first_course["id"]
+
+
+def test_run_request_key_rejects_reuse_for_different_topics(isolated_store):
+    course = service.create_course(title="SQL Server")
+    first_topic = service.add_topic(course["id"], "Transactions")
+    second_topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([first_topic["id"], second_topic["id"]], "approved")
+    first = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[first_topic["id"]],
+        selection_mode="single", request_key="different-topic-key",
+    )
+
+    with pytest.raises(ValueError, match="different run request"):
+        service.create_run(
+            course["id"], run_type="lesson", topic_ids=[second_topic["id"]],
+            selection_mode="single", request_key="different-topic-key",
+        )
+
+    assert [topic["topic_id"] for topic in service.get_run(first["id"])["topics"]] == [
+        first_topic["id"]
+    ]
+
 def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narrow():
     import json
     from pathlib import Path
