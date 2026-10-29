@@ -143,6 +143,45 @@ def test_failed_review_gets_one_repair_then_an_uncertainty_note(monkeypatch):
     assert "review_feedback" in prompts[1]
 
 
+def test_claim_repair_language_mismatch_is_repaired_before_second_review(monkeypatch):
+    source = _source()
+    _disable_memory(monkeypatch)
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source])
+    answers = iter([
+        "پاسخ اولیه فارسی که ادعایی نیازمند بررسی دارد.",
+        "This repaired answer switched to English and must not be returned.",
+        "این پاسخ اصلاح‌شده به فارسی برگشته و هنوز باید بررسی ادعا شود.",
+    ])
+    prompts = []
+    reviewed = []
+
+    def fake_chat(message, history=None, system_prompt=None):
+        prompts.append(json.loads(message))
+        return next(answers)
+
+    reviews = iter([
+        {"passed": False, "error": "one_or_more_claims_not_supported_or_cited"},
+        {"passed": True, "overall": "supported", "claims": [], "error": None},
+    ])
+
+    def fake_review(question, answer, sources):
+        reviewed.append(answer)
+        return next(reviews)
+
+    monkeypatch.setattr(chat_research.ollama, "chat", fake_chat)
+    monkeypatch.setattr(chat_research.claim_review, "review_answer_claims", fake_review)
+    reply = chat_research.answer("خطا در SQL Server و نحوه اصلاح آن چیست؟")
+
+    assert reply == "این پاسخ اصلاح‌شده به فارسی برگشته و هنوز باید بررسی ادعا شود."
+    assert len(prompts) == 3
+    assert "sources" in prompts[2]
+    assert prompts[2]["instruction"].startswith("Rewrite the answer entirely in Persian")
+    assert reviewed == [
+        "پاسخ اولیه فارسی که ادعایی نیازمند بررسی دارد.",
+        "این پاسخ اصلاح‌شده به فارسی برگشته و هنوز باید بررسی ادعا شود.",
+    ]
+
+
 def test_unavailable_reviewer_does_not_trigger_an_extra_generation(monkeypatch):
     source = _source()
     _disable_memory(monkeypatch)

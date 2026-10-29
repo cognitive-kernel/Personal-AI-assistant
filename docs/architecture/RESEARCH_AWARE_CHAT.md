@@ -14,7 +14,7 @@ Ordinary small talk remains on the direct local Ollama chat path. Both paths che
 
 - Source count: at most 3.
 - Source excerpt size: at most 2,500 characters per source.
-- Answer generation: at most one repair pass for language mismatch; the research path may additionally use one bounded claim-support repair.
+- Answer generation: at most one repair pass for language mismatch; the research path may additionally use one bounded claim-support repair. The language guard runs again after claim repair, before the second claim review, because a repair generation can regress language consistency.
 - Chat prompt content remains bounded by the Ollama client request limit.
 - No generated code or shell command is executed.
 - Only the local loopback Ollama endpoint is used for generation and embedding.
