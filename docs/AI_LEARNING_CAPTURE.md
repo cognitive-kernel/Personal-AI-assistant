@@ -1,6 +1,6 @@
 # AI Learning capture subsystem
 
-Status: initial implementation present on the feature branch; target-machine acceptance is still required. Only features verified by code and tests should be considered available.
+Status: implementation is present on `main`; target-machine acceptance is still required. Only features verified by code and tests should be considered available.
 
 ## Goal
 
@@ -34,7 +34,7 @@ The isolated schema contains courses, topics, lessons, content versions, runs, b
 
 ## Implementation boundary today
 
-The current implementation includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking, lexical search, semantic duplicate checks when a local embedding model is available, and deterministic quality evaluation. The Playwright worker interacts with the visible ChatGPT UI, detects common login/human-verification/rate-limit gates, and persists run state for single-instance startup recovery. Explicit user approval is required before lessons are generated from topics, and lessons remain unpublished until reviewed. Search traces store a one-way query hash and selected chunk IDs; the search UI accepts helpful/not-helpful feedback. The worker is still DOM-sensitive and does not provide cross-process leases or exact remote-generation continuation. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
+The current implementation includes isolated storage, a dedicated management page, course/topic APIs, topic ordering, approval/rejection, lesson creation and title editing, content versioning, manual review/publishing, chunking, lexical search, semantic duplicate checks when a local embedding model is available, and deterministic quality evaluation. The Playwright worker interacts with the visible ChatGPT UI, detects common login/human-verification/rate-limit gates, and persists run state for single-instance startup recovery. Startup recovery queries all non-archived running runs directly from SQLite and returns them to the queue; FIFO dispatch also queries the global durable queue directly. These operations do not inherit the dashboard's 100-course and 50-runs-per-course pagination caps. Explicit user approval is required before lessons are generated from topics, and lessons remain unpublished until reviewed. Search traces store a one-way query hash and selected chunk IDs; the search UI accepts helpful/not-helpful feedback. The worker is still DOM-sensitive and does not provide cross-process leases or exact remote-generation continuation. The main chat path has an optional retrieval hook, disabled by default; with its feature flag off, the existing response path is unchanged. CI and target-machine checks are still required before operational acceptance.
 
 ## Acceptance criteria
 
