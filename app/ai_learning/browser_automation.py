@@ -1188,6 +1188,45 @@ def _worker(
                        message=str(exc)[:300])
 
 
+def _start_worker_thread(
+    thread: threading.Thread,
+    run_id: int,
+    cancel_event: threading.Event,
+) -> None:
+    """Start a claimed worker or restore its durable run to a recoverable state."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    try:
+        thread.start()
+    except Exception as exc:
+        cancel_event.set()
+        _ACTIVE = False
+        _ACTIVE_RUN_ID = None
+        _ACTIVE_COURSE_ID = None
+        _CANCEL_EVENTS.pop(run_id, None)
+        durable_status = "recovery_failed"
+        try:
+            recovered = service.requeue_run_for_resume(run_id, "worker_thread_start_failed")
+            durable_status = str(recovered.get("status") or "unknown")
+        except Exception as recovery_exc:
+            _log_event(
+                "worker_start_requeue_failed",
+                run_id=run_id,
+                exception_type=type(recovery_exc).__name__,
+                message=str(recovery_exc)[:300],
+            )
+        _log_event(
+            "worker_thread_start_failed",
+            run_id=run_id,
+            exception_type=type(exc).__name__,
+            message=str(exc)[:300],
+            durable_status=durable_status,
+        )
+        raise BrowserAutomationError(
+            "worker_thread_start_failed",
+            "راه‌اندازی worker یادگیری ناموفق بود؛ اجرا برای بازیابی در صف نگه داشته شد. کمی بعد وضعیت را بازخوانی یا ادامه دهید.",
+        ) from exc
+
+
 def _dispatch_next_persisted_run() -> dict[str, Any]:
     """Claim the oldest explicitly queued run; failed runs require deliberate manual recovery."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
@@ -1218,14 +1257,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
             name=f"ai-learning-durable-run-{run_id}",
             daemon=True,
         )
-        try:
-            thread.start()
-        except Exception:
-            _ACTIVE = False
-            _ACTIVE_RUN_ID = None
-            _ACTIVE_COURSE_ID = None
-            _CANCEL_EVENTS.pop(run_id, None)
-            raise
+        _start_worker_thread(thread, run_id, cancel_event)
         _log_event("persisted_queue_run_dispatched", run_id=run_id, course_id=course_id,
                    run_type=run.get("run_type"), recovered_status=selected.get("status"))
         return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
@@ -1356,7 +1388,7 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
             target=_worker, args=(int(run["id"]), course_id, str(run["prompt_text"]), cancel_event),
             name=f"ai-learning-browser-{run['id']}", daemon=True,
         )
-        thread.start()
+        _start_worker_thread(thread, int(run["id"]), cancel_event)
         return {"run_id": int(run["id"]), "status": "running", "provider": "ChatGPT visible UI"}
 
 
@@ -1453,7 +1485,7 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
             args=(run_id, course_id, str(run["prompt_text"]), cancel_event, bool(followup_ids), followup_ids, force_retry),
             name=f"ai-learning-selected-lessons-{run_id}", daemon=True,
         )
-        thread.start()
+        _start_worker_thread(thread, run_id, cancel_event)
         return {
             "run_id": run_id, "status": "running", "course_id": course_id,
             "topic_ids": selected_ids, "queued_topic_count": len(selected_ids),
@@ -1545,7 +1577,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event, True),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
-            thread.start()
+            _start_worker_thread(thread, run_id, cancel_event)
             _log_event("learning_run_recovered", run_id=run_id, course_id=target_course, run_type=run["run_type"])
             return {"status": "resumed", "active": True, "run_id": run_id, "course_id": target_course,
                     "message": "اجرای ناتمام دوباره آغاز شد؛ پاسخ‌های ثبت‌شده حفظ شده‌اند."}
@@ -1577,7 +1609,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event, True),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
-            thread.start()
+            _start_worker_thread(thread, run_id, cancel_event)
             _log_event("lesson_workflow_resumed", run_id=run_id, course_id=cid, topic_ids=topic_ids)
             return {"status": "resumed", "active": True, "run_id": run_id, "course_id": cid,
                     "message": "تولید درس‌ها از سرفصل‌های تأییدشده‌ای که هنوز درس ندارند ادامه یافت."}
