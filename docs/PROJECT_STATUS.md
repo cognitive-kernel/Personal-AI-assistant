@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-29  
-> شاخهٔ مبنای مستندات: `main`، commit `cca0bae1571eac2bed7f80717156b126046ec32b` (2026-10-29).  
+> شاخهٔ مبنای مستندات: `main`، commit `47a7a9cc77e59de516263118e3fcddcab37ddfed` (2026-10-29).  
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -19,6 +19,7 @@
 - PR [#519](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/519): migration نسخهٔ 39 برای ثبت و backfill منشأ نمره، و یکپارچه‌سازی assessment عملی sandbox با گیت عمومی تکمیل؛ CI روی head دقیق موفق شد.
 - PR [#521](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/521): ثبت assessment عملی با idempotency key مبتنی بر شناسهٔ وظیفه؛ retry همان task تلاش تکراری نمی‌سازد و payload متفاوت با همان کلید رد می‌شود؛ test، audit وابستگی، browser E2E و sandbox integration CI موفق شدند.
 - PR [#522](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/522): پس از تشخیص قطع‌شدن context مرورگر، یک relaunch کنترل‌شده مجاز است؛ پس از قطع‌شدن دوباره، سیستم برای جلوگیری از چرخهٔ بازشدن Chrome به بازیابی دستی نیاز دارد؛ test، audit وابستگی و browser E2E موفق شدند.
+- PR [#524](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/524): بازیابی startup و انتخاب کار بعدی صف یادگیری مستقیماً از SQLite و بدون سقف صفحه‌بندی داشبورد انجام می‌شود؛ آزمون‌های رگرسیون برای بیش از ۵۰ run در یک دوره و بیش از ۱۰۰ دوره اضافه شدند؛ test، dependency audit، browser E2E و Windows storage regressions موفق شدند.
 - این شواهد، آزمون خودکار مخزن هستند؛ جایگزین ارزیابی زنده، پذیرش میزبان هدف، تمرین restore/rollback یا بازبینی امنیتی مستقل نیستند.
 
 ## 2. قابلیت‌های پیاده‌سازی‌شده
