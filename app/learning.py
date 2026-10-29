@@ -1524,12 +1524,16 @@ def start_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
             return get_job(int(latest["id"]))
         if latest and latest["status"] in {"queued", "running"}:
             return get_job(int(latest["id"]))
+    lesson_review = _latest_completed_topic_review(topic_id)
+    # create_job enforces the active prerequisite graph. Do not mutate topic state
+    # until that guard has succeeded, otherwise a blocked start leaves a false
+    # in_progress status behind.
+    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
+    with learning_connection() as conn:
         conn.execute(
             "UPDATE learning_path_topics SET status='in_progress', updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?",
             (topic_id, path_id),
         )
-    lesson_review = _latest_completed_topic_review(topic_id)
-    job = create_job(topic["topic"], path_topic_id=topic_id, lesson_review=lesson_review)
     _enqueue_learning_job(int(job["id"]))
     return job
 
@@ -1546,6 +1550,13 @@ def regenerate_topic_learning(path_id: int, topic_id: int) -> dict[str, Any]:
         ).fetchone()
         if topic is None:
             raise KeyError(topic_id)
+        blocked = learning_prerequisites.blocked_prerequisites(conn, topic_id)
+        if blocked:
+            first_blocked = blocked[0]
+            raise ValueError(
+                "Prerequisite topic is not completed: "
+                + str(first_blocked["topic"]) + " (" + str(first_blocked["status"]) + ")."
+            )
         active = conn.execute(
             "SELECT id FROM learning_jobs WHERE path_topic_id=? AND status IN ('queued', 'running') "
             "ORDER BY id DESC LIMIT 1",
