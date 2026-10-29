@@ -46,6 +46,10 @@ def _base_url() -> str:
         raise OllamaError("Ollama URL contains an invalid port.")
 
     hostname = parsed.hostname
+    # Scope identifiers are unnecessary for a loopback-only endpoint and make
+    # address interpretation platform-dependent; reject them before ipaddress parsing.
+    if "%" in hostname:
+        raise OllamaError("Scoped IPv6 addresses are not supported for Ollama.")
     # Never rely on name resolution for "localhost": normalize it to a loopback
     # literal so a modified hosts file cannot redirect local prompts off-machine.
     if hostname.lower() == "localhost":

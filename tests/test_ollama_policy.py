@@ -446,3 +446,11 @@ def test_factual_review_uses_bounded_timeout_context_and_model_override(monkeypa
     assert captured["timeout"] == 45
     assert captured["payload"]["options"]["num_ctx"] == 4096
     assert captured["payload"]["options"]["num_predict"] == 500
+
+
+@pytest.mark.parametrize("url", ["http://[::1%25lo0]:11434", "http://[fe80::1%25eth0]:11434"])
+def test_ollama_policy_rejects_scoped_ipv6_hosts(tmp_path, monkeypatch, url):
+    configure_ollama_url(tmp_path, monkeypatch, url)
+
+    with pytest.raises(ollama.OllamaError, match="Scoped IPv6"):
+        ollama._base_url()
