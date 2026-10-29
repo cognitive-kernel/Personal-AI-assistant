@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from logging.handlers import RotatingFileHandler
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
 
@@ -29,6 +30,82 @@ _MAX_LESSON_CONTINUATIONS = 8
 _MIN_COMPLETE_LESSON_WORDS = 1200
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
+_BROWSER_SESSION = threading.local()
+
+
+@contextmanager
+def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
+    """Reuse one visible Chrome context for all captures performed by the same worker thread."""
+    if getattr(_BROWSER_SESSION, "reuse_enabled", False):
+        playwright = getattr(_BROWSER_SESSION, "playwright", None)
+        context = getattr(_BROWSER_SESSION, "context", None)
+        if context is not None:
+            try:
+                list(context.pages)
+            except Exception:
+                context = None
+        if context is None:
+            _close_browser_session()
+            _log_event("browser_launch_started", reason="new_or_recovered_worker_session")
+            playwright = sync_playwright_factory().start()
+            try:
+                context = playwright.chromium.launch_persistent_context(
+                    user_data_dir=str(profile),
+                    executable_path=chrome,
+                    headless=False,
+                    args=["--app=https://chatgpt.com/"],
+                    viewport={"width": 1365, "height": 900},
+                    accept_downloads=False,
+                )
+            except Exception:
+                try:
+                    playwright.stop()
+                except Exception:
+                    pass
+                raise
+            _BROWSER_SESSION.playwright = playwright
+            _BROWSER_SESSION.context = context
+            _BROWSER_SESSION.instrumented_page = None
+            _log_event("browser_launch_succeeded", open_pages=len(context.pages))
+        else:
+            _log_event("browser_session_reused", open_pages=len(context.pages))
+        yield playwright, context
+        return
+
+    with sync_playwright_factory() as playwright:
+        _log_event("browser_launch_started")
+        context = playwright.chromium.launch_persistent_context(
+            user_data_dir=str(profile),
+            executable_path=chrome,
+            headless=False,
+            args=["--app=https://chatgpt.com/"],
+            viewport={"width": 1365, "height": 900},
+            accept_downloads=False,
+        )
+        _log_event("browser_launch_succeeded", open_pages=len(context.pages))
+        yield playwright, context
+
+
+def _close_browser_session() -> None:
+    """Release the worker's Chrome context and Playwright driver without leaking tabs."""
+    context = getattr(_BROWSER_SESSION, "context", None)
+    playwright = getattr(_BROWSER_SESSION, "playwright", None)
+    _BROWSER_SESSION.context = None
+    _BROWSER_SESSION.playwright = None
+    _BROWSER_SESSION.instrumented_page = None
+    if context is not None:
+        try:
+            context.close()
+        except Exception as exc:
+            _log_event("browser_context_close_failed", exception_type=type(exc).__name__, message=str(exc)[:200])
+    if playwright is not None:
+        try:
+            playwright.stop()
+        except Exception as exc:
+            _log_event("playwright_stop_failed", exception_type=type(exc).__name__, message=str(exc)[:200])
+    if context is not None or playwright is not None:
+        _log_event("browser_session_closed")
+
 
 
 def _logger() -> logging.Logger:
@@ -716,19 +793,7 @@ def _browser_capture(
     profile = _profile_path()
     _log_event("browser_configured", chrome_path=chrome, profile_path=str(profile))
     try:
-        with sync_playwright() as playwright:
-            _log_event("browser_launch_started")
-            context = playwright.chromium.launch_persistent_context(
-                user_data_dir=str(profile),
-                executable_path=chrome,
-                headless=False,
-                # Launch ChatGPT as the initial app page instead of showing a
-                # fresh, visible about:blank tab on every lesson capture.
-                args=["--app=https://chatgpt.com/"],
-                viewport={"width": 1365, "height": 900},
-                accept_downloads=False,
-            )
-            _log_event("browser_launch_succeeded", open_pages=len(context.pages))
+        with _browser_session(sync_playwright, chrome, profile) as (playwright, context):
             try:
                 # A persistent Chrome profile can restore old tabs after a crash or
                 # interrupted run. Keep exactly one tab per attempt; otherwise every
@@ -754,11 +819,13 @@ def _browser_capture(
                 if extra_pages:
                     _log_event("restored_extra_tabs_closed", count=len(extra_pages))
                 _log_event("page_selected", url=page.url, page_count=len(context.pages))
-                page.on("close", lambda *_: _log_event("page_closed_event", url=page.url))
-                page.on("crash", lambda *_: _log_event("page_crashed_event", url=page.url))
-                page.on("pageerror", lambda error: _log_event("page_javascript_error", message=str(error)[:300]))
-                page.on("console", lambda message: _log_event("page_console_error", message=message.text[:300]) if message.type == "error" else None)
-                page.on("requestfailed", lambda request: _log_event("browser_request_failed", url=request.url.split("?")[0][:300], error=request.failure or "unknown") if any(host in request.url for host in ("chatgpt.com", "openai.com")) else None)
+                if getattr(_BROWSER_SESSION, "instrumented_page", None) is not page:
+                    page.on("close", lambda *_: _log_event("page_closed_event", url=page.url))
+                    page.on("crash", lambda *_: _log_event("page_crashed_event", url=page.url))
+                    page.on("pageerror", lambda error: _log_event("page_javascript_error", message=str(error)[:300]))
+                    page.on("console", lambda message: _log_event("page_console_error", message=message.text[:300]) if message.type == "error" else None)
+                    page.on("requestfailed", lambda request: _log_event("browser_request_failed", url=request.url.split("?")[0][:300], error=request.failure or "unknown") if any(host in request.url for host in ("chatgpt.com", "openai.com")) else None)
+                    _BROWSER_SESSION.instrumented_page = page
                 page.set_default_timeout(5000)
                 if cancel_event is not None and cancel_event.is_set():
                     raise BrowserAutomationError("run_cancelled", "اجرای دریافت پاسخ به درخواست کاربر متوقف شد.")
@@ -818,7 +885,8 @@ def _browser_capture(
                            answer_chars=len(answer))
                 return answer
             finally:
-                context.close()
+                if not getattr(_BROWSER_SESSION, "reuse_enabled", False):
+                    context.close()
     except BrowserAutomationError as exc:
         _log_event("capture_failed", elapsed_seconds=round(time.monotonic() - capture_started, 1),
                    error_code=exc.code, message=str(exc)[:500])
@@ -997,6 +1065,7 @@ def _worker(
     worker_started = time.monotonic()
     run_type = service.get_run(run_id).get("run_type")
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
+    _BROWSER_SESSION.reuse_enabled = True
     try:
         checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == "lesson" else None
         answer = _capture_with_automatic_retry(
@@ -1036,6 +1105,8 @@ def _worker(
         except Exception as mark_exc:
             print(f"Could not update AI-learning run {run_id}: {mark_exc}", flush=True)
     finally:
+        _close_browser_session()
+        _BROWSER_SESSION.reuse_enabled = False
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
             _ACTIVE = False
