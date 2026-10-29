@@ -19,8 +19,8 @@ from app.schema_registry import (
 def test_settings_schema_can_be_created_from_versioned_migrations():
     with sqlite3.connect(":memory:") as connection:
         runner = MigrationRunner(SETTINGS_MIGRATIONS)
-        assert runner.apply(connection) == 4
-        assert runner.apply(connection) == 4
+        assert runner.apply(connection) == 5
+        assert runner.apply(connection) == 5
         columns = {row[1] for row in connection.execute("PRAGMA table_info(settings)")}
         assert {"key", "value_json", "updated_at"} <= columns
         consent_columns = {
@@ -47,7 +47,7 @@ def test_settings_schema_can_be_created_from_versioned_migrations():
         assert {"id", "conversation_id", "role", "content", "task_id"} <= message_columns
         assert connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall() == [(1,), (2,), (3,), (4,)]
+        ).fetchall() == [(1,), (2,), (3,), (4,), (5,)]
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
@@ -60,7 +60,7 @@ def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
             ("ollama_model", '"custom-local-model"'),
         )
         connection.commit()
-        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 4
+        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 5
         assert connection.execute(
             "SELECT value_json FROM settings WHERE key='ollama_model'"
         ).fetchone() == ('"custom-local-model"',)
@@ -69,7 +69,38 @@ def test_settings_v3_upgrade_preserves_preferences_and_adds_chat_history():
                 "SELECT name FROM sqlite_master WHERE type='table'"
             )
         }
-        assert {"chat_conversations", "chat_messages"} <= tables
+        assert {"chat_conversations", "chat_messages", "chat_message_feedback"} <= tables
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_settings_v4_upgrade_preserves_messages_and_adds_feedback_storage():
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        assert MigrationRunner(SETTINGS_MIGRATIONS[:4]).apply(connection) == 4
+        conversation_id = connection.execute(
+            "INSERT INTO chat_conversations(title) VALUES (?)", ("preserve",)
+        ).lastrowid
+        message_id = connection.execute(
+            "INSERT INTO chat_messages(conversation_id, role, content) VALUES (?, 'assistant', ?)",
+            (conversation_id, "answer to preserve"),
+        ).lastrowid
+        connection.commit()
+
+        assert MigrationRunner(SETTINGS_MIGRATIONS).apply(connection) == 5
+        assert connection.execute(
+            "SELECT content FROM chat_messages WHERE id=?", (message_id,)
+        ).fetchone() == ("answer to preserve",)
+        connection.execute(
+            "INSERT INTO chat_message_feedback(message_id, rating) VALUES (?, 1)",
+            (message_id,),
+        )
+        assert connection.execute(
+            "SELECT rating FROM chat_message_feedback WHERE message_id=?", (message_id,)
+        ).fetchone() == (1,)
+        connection.execute("DELETE FROM chat_conversations WHERE id=?", (conversation_id,))
+        assert connection.execute(
+            "SELECT COUNT(*) FROM chat_message_feedback WHERE message_id=?", (message_id,)
+        ).fetchone() == (0,)
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
