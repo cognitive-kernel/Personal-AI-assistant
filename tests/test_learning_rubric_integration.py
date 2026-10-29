@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app import db, learning
+from app.schema_registry import LEARNING_MIGRATIONS, initialize_database_file
 
 
 def _ready_job(tmp_path, monkeypatch, *, with_path=False, rubric=None):
@@ -203,3 +204,28 @@ def test_non_finite_progress_scores_are_rejected(tmp_path, monkeypatch):
     for invalid_score in (float("nan"), float("inf"), float("-inf"), True, 10 ** 1000):
         with pytest.raises(ValueError, match="Score must be between 0 and 100"):
             learning.update_path_topic(path_id, topic_id, "in_progress", invalid_score)
+
+
+def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
+    database = tmp_path / "learning.db"
+    initialize_database_file(database, LEARNING_MIGRATIONS[:-1])
+
+    with db.sqlite3.connect(str(database)) as connection:
+        path_id = connection.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('migration-test', 'Migration test')"
+        ).lastrowid
+        topic_id = connection.execute(
+            """INSERT INTO learning_path_topics(path_id, topic, position, status, latest_score, latest_score_kind)
+               VALUES (?, 'Existing assessed topic', 1, 'completed', 75, 'legacy_exact_match')""",
+            (path_id,),
+        ).lastrowid
+        connection.commit()
+
+    assert initialize_database_file(database, LEARNING_MIGRATIONS) == 39
+
+    with db.sqlite3.connect(str(database)) as connection:
+        row = connection.execute(
+            "SELECT latest_score, latest_score_kind, latest_score_source FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert row == (75.0, "legacy_exact_match", "legacy_exact_match")
