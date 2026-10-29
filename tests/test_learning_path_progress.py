@@ -131,12 +131,12 @@ def test_practical_assessment_persists_provenance_and_uses_shared_completion_gat
 
     with db.learning_connection() as connection:
         topic = connection.execute(
-            "SELECT status, latest_score, latest_score_kind FROM learning_path_topics WHERE id=?",
+            "SELECT status, latest_score, latest_score_source FROM learning_path_topics WHERE id=?",
             (topic_id,),
         ).fetchone()
     assert topic["status"] == "completed"
     assert topic["latest_score"] == 75.0
-    assert topic["latest_score_kind"] == "sandbox_practical_v1"
+    assert topic["latest_score_source"] == "sandbox_practical_v1"
 
     learning.update_path_topic(path_id, topic_id, "completed")
     with pytest.raises(ValueError, match="assessment-derived score cannot be manually overridden"):
@@ -156,12 +156,12 @@ def test_practical_assessment_below_threshold_cannot_be_manually_completed(tmp_p
 
     with db.learning_connection() as connection:
         topic = connection.execute(
-            "SELECT status, latest_score, latest_score_kind FROM learning_path_topics WHERE id=?",
+            "SELECT status, latest_score, latest_score_source FROM learning_path_topics WHERE id=?",
             (topic_id,),
         ).fetchone()
     assert topic["status"] == "in_progress"
     assert topic["latest_score"] == 50.0
-    assert topic["latest_score_kind"] == "sandbox_practical_v1"
+    assert topic["latest_score_source"] == "sandbox_practical_v1"
 
     with pytest.raises(ValueError, match="at least 70/100"):
         learning.update_path_topic(path_id, topic_id, "completed")
