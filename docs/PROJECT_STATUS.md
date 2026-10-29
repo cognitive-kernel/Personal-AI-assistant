@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-29  
-> شاخهٔ مبنای مستندات: `main`، commit `47a7a9cc77e59de516263118e3fcddcab37ddfed` (2026-10-29).  
+> شاخهٔ مبنای مستندات: `main`، commit `d928404224771c343e4ed2495d378bc936632cd5` (2026-10-29).  
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -20,6 +20,7 @@
 - PR [#521](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/521): ثبت assessment عملی با idempotency key مبتنی بر شناسهٔ وظیفه؛ retry همان task تلاش تکراری نمی‌سازد و payload متفاوت با همان کلید رد می‌شود؛ test، audit وابستگی، browser E2E و sandbox integration CI موفق شدند.
 - PR [#522](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/522): پس از تشخیص قطع‌شدن context مرورگر، یک relaunch کنترل‌شده مجاز است؛ پس از قطع‌شدن دوباره، سیستم برای جلوگیری از چرخهٔ بازشدن Chrome به بازیابی دستی نیاز دارد؛ test، audit وابستگی و browser E2E موفق شدند.
 - PR [#524](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/524): بازیابی startup و انتخاب کار بعدی صف یادگیری مستقیماً از SQLite و بدون سقف صفحه‌بندی داشبورد انجام می‌شود؛ آزمون‌های رگرسیون برای بیش از ۵۰ run در یک دوره و بیش از ۱۰۰ دوره اضافه شدند؛ test، dependency audit، browser E2E و Windows storage regressions موفق شدند.
+- PR [#526](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/526): مسیر قدیمی‌تر `/api/learning/browser/courses` اکنون هنگام startup دوره‌های قطع‌شده را به‌طور خودکار بازیابی می‌کند؛ درس‌های کامل حفظ می‌شوند، دوره‌ها با dispatcher تک‌نمونه‌ای به ترتیب اجرا می‌شوند و پس از شکست یک دوره، صف برای جلوگیری از شکست زنجیره‌ای متوقف می‌شود. test، dependency audit، browser E2E و Windows storage regressions موفق شدند.
 - این شواهد، آزمون خودکار مخزن هستند؛ جایگزین ارزیابی زنده، پذیرش میزبان هدف، تمرین restore/rollback یا بازبینی امنیتی مستقل نیستند.
 
 ## 2. قابلیت‌های پیاده‌سازی‌شده
