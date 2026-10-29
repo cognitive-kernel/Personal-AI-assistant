@@ -564,12 +564,13 @@ def test_direct_chat_fails_closed_if_language_repair_raises(monkeypatch):
     assert "private model runtime detail" not in reply
 
 
-def test_direct_chat_returns_safe_fallback_for_empty_model_output(monkeypatch):
+@pytest.mark.parametrize("model_output", ["", "  \n", None, {"reply": "unexpected"}])
+def test_direct_chat_returns_safe_fallback_for_empty_or_non_text_output(monkeypatch, model_output):
     calls = []
     monkeypatch.setattr(
         ollama,
         "chat",
-        lambda *args, **kwargs: calls.append((args, kwargs)) or "  \n",
+        lambda *args, **kwargs: calls.append((args, kwargs)) or model_output,
     )
 
     reply = chat_research.answer("Hello")
@@ -579,13 +580,16 @@ def test_direct_chat_returns_safe_fallback_for_empty_model_output(monkeypatch):
     assert len(calls) == 1
 
 
-def test_research_chat_audits_empty_generation_without_claim_review(monkeypatch):
+@pytest.mark.parametrize("model_output", ["", "  \n", None, {"reply": "unexpected"}])
+def test_research_chat_audits_empty_or_non_text_output_without_claim_review(
+    monkeypatch, model_output
+):
     _disable_memory(monkeypatch)
     source = _source()
     monkeypatch.setattr(
         chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source]
     )
-    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: model_output)
     monkeypatch.setattr(
         chat_research.claim_review,
         "review_answer_claims",
