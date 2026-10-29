@@ -277,6 +277,11 @@ def test_startup_recovery_queues_interrupted_work_and_preserves_completed_lesson
     assert recovered["lessons"][0]["status"] == "completed"
     assert recovered["lessons"][0]["content"] == "durable completed content"
     assert recovered["lessons"][1]["status"] == "queued"
+    with db.learning_connection() as conn:
+        lease = conn.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None
 
 
 def test_dispatch_resumes_oldest_interrupted_course_and_drains_queue(monkeypatch, tmp_path):
