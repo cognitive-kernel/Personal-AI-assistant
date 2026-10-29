@@ -625,3 +625,48 @@ def test_due_retry_dispatches_persisted_course_without_creating_new_work(tmp_pat
     assert len(launched) == 1
     assert launched[0].args[0] == course["id"]
     assert browser_learning.get_course(course["id"])["status"] == "running"
+
+
+def test_retry_scheduler_does_not_skip_fifo_head_or_failed_course(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    first = browser_learning.create_course("First course failed", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_courses SET status='failed' WHERE id=?",
+            (first["id"],),
+        )
+    second = browser_learning.create_course("Second queued course", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE browser_learning_courses
+               SET status='interrupted', next_retry_at=datetime(CURRENT_TIMESTAMP, '-1 second')
+               WHERE id=?""",
+            (second["id"],),
+        )
+
+    assert browser_learning.dispatch_due_retry()["status"] == "idle"
+    assert browser_learning.dispatch_next_course() == {
+        "status": "blocked_by_failed_course",
+        "course_id": second["id"],
+        "blocked_by_course_id": first["id"],
+    }
+    assert browser_learning.get_course(second["id"])["status"] == "interrupted"
+
+
+def test_manual_retry_can_requeue_failed_fifo_head_ahead_of_existing_queue(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    failed = browser_learning.create_course("Failed course", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE browser_learning_courses
+               SET status='failed', retry_count=3, next_retry_at=NULL WHERE id=?""",
+            (failed["id"],),
+        )
+    queued = browser_learning.create_course("Later queued course", "http://127.0.0.1:9222", 1)
+
+    result = browser_learning.retry_course(failed["id"])
+
+    assert result["status"] == "queued"
+    assert result["retry_count"] == 0
+    assert result["next_retry_at"] is None
+    assert browser_learning.get_course(queued["id"])["status"] == "queued"
