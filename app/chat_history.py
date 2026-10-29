@@ -62,8 +62,11 @@ def list_messages(conversation_id: int) -> list[dict[str, Any]]:
         if exists is None:
             raise KeyError(conversation_id)
         rows = conn.execute(
-            """SELECT id, conversation_id, role, content, task_id, created_at
-               FROM chat_messages WHERE conversation_id = ? ORDER BY id""",
+            """SELECT m.id, m.conversation_id, m.role, m.content, m.task_id, m.created_at,
+                      f.rating AS feedback_rating
+               FROM chat_messages AS m
+               LEFT JOIN chat_message_feedback AS f ON f.message_id = m.id
+               WHERE m.conversation_id = ? ORDER BY m.id""",
             (conversation_id,),
         ).fetchall()
     return [dict(row) for row in rows]
