@@ -102,3 +102,21 @@ def test_refresh_requires_explicit_confirmation(tmp_path, monkeypatch):
     claim_id = _active_claim(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="Explicit confirmation"):
         factual_source_checks.refresh_claim_sources(claim_id, confirm=False)
+
+
+
+def test_revalidation_history_does_not_collide_with_legacy_source_checks(tmp_path, monkeypatch):
+    _active_claim(tmp_path, monkeypatch)
+    with db.learning_connection() as conn:
+        legacy_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(factual_source_checks)")
+        }
+        history_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(factual_source_revalidation_history)")
+        }
+    assert {"evidence_id", "claim_hash", "expected_source_hash"} <= legacy_columns
+    assert {
+        "knowledge_id", "source_ref", "outcome",
+        "previous_content_sha256", "current_content_sha256",
+        "evidence_excerpt_sha256", "error_kind",
+    } <= history_columns
