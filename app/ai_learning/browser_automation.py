@@ -1208,7 +1208,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
 
 
 def stop_browser_automation() -> dict[str, Any]:
-    """Prevent new browser attempts and signal active workers during application shutdown."""
+    """Signal active workers and give Playwright time to close before process shutdown."""
     global _SHUTTING_DOWN
     with _LOCK:
         _SHUTTING_DOWN = True
@@ -1216,12 +1216,32 @@ def stop_browser_automation() -> dict[str, Any]:
         events = list(_CANCEL_EVENTS.values())
         for event in events:
             event.set()
+
+    # Workers are daemon threads, so without a bounded wait the Python process can
+    # exit while the Playwright Node driver still writes to its pipe (EPIPE).
+    wait_started = time.monotonic()
+    deadline = wait_started + 12.0
+    while time.monotonic() < deadline:
+        with _LOCK:
+            still_active = _ACTIVE
+        if not still_active:
+            break
+        time.sleep(0.1)
+    with _LOCK:
+        worker_stopped = not _ACTIVE
     _log_event(
         "browser_automation_shutdown",
         active_run_id=active_run_id,
         signalled_workers=len(events),
+        worker_stopped=worker_stopped,
+        wait_seconds=round(time.monotonic() - wait_started, 2),
     )
-    return {"status": "shutting_down", "active_run_id": active_run_id, "signalled_workers": len(events)}
+    return {
+        "status": "shutting_down",
+        "active_run_id": active_run_id,
+        "signalled_workers": len(events),
+        "worker_stopped": worker_stopped,
+    }
 
 
 def recover_pending_runs() -> dict[str, Any]:
