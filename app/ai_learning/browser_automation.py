@@ -1592,9 +1592,13 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                         if topic.get("approval_status") == "approved"
                         and topic.get("processing_status") != "paused"
                         and int(topic.get("lesson_content_ready_count") or 0) == 0]
-            if eligible:
-                # One topic per run makes per-topic pause/cancel deterministic and recoverable.
-                topic_ids = eligible[:1]
+            if not eligible:
+                # Keep the SQL candidate query and course-level progress projection fail-safe
+                # if their eligibility predicates ever diverge.
+                return {"status": "idle", "active": False,
+                        "message": "کار ناتمامی برای ادامه پیدا نشد."}
+            # One topic per run makes per-topic pause/cancel deterministic and recoverable.
+            topic_ids = eligible[:1]
             request_key = f"playwright-lessons-{cid}-" + "-".join(map(str, topic_ids))
             request_key += "-resume-" + str(int(time.time()))
             run = service.create_run(cid, run_type="lesson", topic_ids=topic_ids,
