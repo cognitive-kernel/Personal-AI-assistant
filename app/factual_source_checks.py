@@ -127,7 +127,7 @@ def refresh_claim_sources(knowledge_id: int, *, confirm: bool) -> dict[str, Any]
         excerpt_hash = hashlib.sha256(source["excerpt"].encode("utf-8")).hexdigest() if source["excerpt"] else None
         with learning_connection() as connection:
             previous = connection.execute(
-                """SELECT current_content_sha256 FROM factual_source_checks
+                """SELECT current_content_sha256 FROM factual_source_revalidation_history
                    WHERE knowledge_id=? AND source_ref=? AND current_content_sha256 IS NOT NULL
                    ORDER BY checked_at DESC, id DESC LIMIT 1""",
                 (knowledge_id, source_ref),
@@ -164,7 +164,7 @@ def refresh_claim_sources(knowledge_id: int, *, confirm: bool) -> dict[str, Any]
         init_databases()
         with learning_connection() as connection:
             connection.execute(
-                """INSERT INTO factual_source_checks(
+                """INSERT INTO factual_source_revalidation_history(
                        knowledge_id, source_ref, outcome, previous_content_sha256,
                        current_content_sha256, evidence_excerpt_sha256, error_kind
                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
@@ -216,7 +216,7 @@ def list_source_checks(knowledge_id: int, limit: int = 50) -> list[dict[str, Any
         rows = connection.execute(
             """SELECT id, knowledge_id, source_ref, outcome, previous_content_sha256,
                       current_content_sha256, evidence_excerpt_sha256, error_kind, checked_at
-               FROM factual_source_checks
+               FROM factual_source_revalidation_history
                WHERE knowledge_id=? ORDER BY checked_at DESC, id DESC LIMIT ?""",
             (knowledge_id, limit),
         ).fetchall()
