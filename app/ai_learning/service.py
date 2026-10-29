@@ -227,8 +227,33 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             raise ValueError("selected selection requires at least one topic ID.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
-        existing = conn.execute("SELECT id FROM runs WHERE request_key=?", (request_key,)).fetchone()
+        existing = conn.execute(
+            "SELECT id,course_id,run_type,selection_mode FROM runs WHERE request_key=?",
+            (request_key,),
+        ).fetchone()
         if existing is not None:
+            # Idempotency keys identify one logical request, not just one row.
+            # Reusing a key for another course/type/selection must not return an
+            # unrelated run (or expose its metadata through the API).
+            existing_topic_ids = {
+                int(row["topic_id"])
+                for row in conn.execute(
+                    "SELECT topic_id FROM run_topics WHERE run_id=?",
+                    (int(existing["id"]),),
+                ).fetchall()
+            }
+            requested_topic_ids = set(topic_ids)
+            same_request = (
+                int(existing["course_id"]) == course_id
+                and str(existing["run_type"]) == run_type
+                and str(existing["selection_mode"]) == selection_mode
+                and (
+                    selection_mode == "all_approved"
+                    or existing_topic_ids == requested_topic_ids
+                )
+            )
+            if not same_request:
+                raise ValueError("request_key was already used for a different run request.")
             return get_run(int(existing["id"]))
         course = conn.execute("SELECT * FROM courses WHERE id=?", (course_id,)).fetchone()
         if course is None:
