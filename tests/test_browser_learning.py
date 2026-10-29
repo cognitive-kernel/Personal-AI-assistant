@@ -312,3 +312,34 @@ def test_dispatch_resumes_oldest_interrupted_course_and_drains_queue(monkeypatch
     launched[1].target(*launched[1].args)
     assert executed == [first["id"], second["id"]]
     assert browser_learning.dispatch_next_course() == {"status": "idle"}
+
+
+def test_recovery_does_not_mark_a_live_in_process_course_interrupted(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Live course", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE browser_learning_courses SET status='running' WHERE id=?", (course["id"],))
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", course["id"])
+
+    assert browser_learning.recover_interrupted_courses() == 0
+    assert browser_learning.get_course(course["id"])["status"] == "running"
+
+
+def test_dispatch_thread_start_failure_preserves_course_for_later_recovery(monkeypatch, tmp_path):
+    _init(tmp_path, monkeypatch)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
+    course = browser_learning.create_course("Thread startup failure", "http://127.0.0.1:9222", 1)
+
+    class FailingThread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated thread start failure")
+
+    monkeypatch.setattr(browser_learning.threading, "Thread", FailingThread)
+    result = browser_learning.dispatch_next_course()
+
+    assert result == {"status": "interrupted", "course_id": course["id"]}
+    assert browser_learning.get_course(course["id"])["status"] == "interrupted"
+    assert browser_learning._ACTIVE_COURSE_ID is None
