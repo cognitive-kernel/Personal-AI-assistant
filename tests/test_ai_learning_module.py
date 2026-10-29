@@ -24,7 +24,7 @@ def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store
     )
     service.start_run(run["id"])
     response = (
-        "# Lesson without references\\n\\n"
+        "# Lesson without references\n\n"
         + ("This is substantive lesson content, but it contains no source URL. " * 5)
     )
     result = service.complete_run(run["id"], response)
@@ -47,12 +47,12 @@ def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_st
     with pytest.raises(ValueError, match="منبع دارای پیوند"):
         service.add_content_version(
             lesson["id"],
-            "# Generated lesson\\n\\nSubstantive content for this lesson.",
+            "# Generated lesson\n\nSubstantive content for this lesson.",
             source_kind="chatgpt_ui",
         )
     version = service.add_content_version(
         lesson["id"],
-        "# Generated lesson\\n\\nSubstantive content for this lesson.",
+        "# Generated lesson\n\nSubstantive content for this lesson.",
     )
     with connection() as conn:
         conn.execute(
