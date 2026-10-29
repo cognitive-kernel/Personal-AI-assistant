@@ -170,6 +170,19 @@ _task_runtimes: list[TaskRuntime] = []
 _startup_storage_error: str | None = None
 
 
+def _maintain_learning_runtime() -> None:
+    """Run routine knowledge maintenance and recover orphaned browser-learning work."""
+    try:
+        learning.maintain_factual_knowledge()
+    except Exception:
+        logger.exception("Factual-learning maintenance failed.")
+    if ai_learning_config.is_enabled():
+        try:
+            ai_learning_browser_automation.recover_orphaned_runs()
+        except Exception:
+            logger.exception("Orphaned AI-learning run recovery failed; it will retry next interval.")
+
+
 def startup() -> None:
     global _task_runtimes, _startup_storage_error
     _startup_storage_error = None
@@ -258,7 +271,7 @@ def startup() -> None:
     # work cannot consume the chat lane's worker slots.
     runtime_specs: list[tuple[dict[str, Any], int, str, Any]] = [
         (chat_handlers, int(settings.get("chat_max_concurrent_jobs", 1)), "chat-worker", None),
-        (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", learning.maintain_factual_knowledge),
+        (learning_handlers, int(settings.get("learning_max_concurrent_jobs", 1)), "learning-worker", _maintain_learning_runtime),
         (system_handlers, 1, "system-worker", None),
     ]
     if programming_handlers:
