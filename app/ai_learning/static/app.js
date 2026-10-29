@@ -261,9 +261,10 @@ function returnToTopic(topicId){
 }
 function hasTrailingSourceSection(markdown){
  const text=String(markdown||"").replace(/\r/g,"");
- const match=text.match(/(?:^|\n)\s{0,3}(?:#{1,6}\s*)?(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|references|sources|bibliography)\s*[:：]?\s*\n([\s\S]*)$/i);
+ const match=text.match(/(?:^|\n)\s{0,3}(?:#{1,6}\s*)?(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|references|sources|bibliography)\s*[:：]?[ \t]*(.*)(?:\n([\s\S]*))?$/i);
  if(!match)return false;
- return match[1].split("\n").some(line=>{const value=line.trim();return value.length>0&&!/^[-*_]{3,}$/.test(value)});
+ const entries=[match[1]||"",match[2]||""].join("\n");
+ return entries.split("\n").some(line=>{const value=line.trim();return value.length>0&&!/^[-*_]{3,}$/.test(value)});
 }
 async function inspectLessonForBulk(lessonId){
  const versions=await api("/lessons/"+lessonId+"/versions");
