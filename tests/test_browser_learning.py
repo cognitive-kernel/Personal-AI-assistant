@@ -644,7 +644,11 @@ def test_retry_scheduler_does_not_skip_fifo_head_or_failed_course(tmp_path, monk
             (second["id"],),
         )
 
-    assert browser_learning.dispatch_due_retry()["status"] == "idle"
+    assert browser_learning.dispatch_due_retry() == {
+        "status": "blocked_by_failed_course",
+        "course_id": second["id"],
+        "blocked_by_course_id": first["id"],
+    }
     assert browser_learning.dispatch_next_course() == {
         "status": "blocked_by_failed_course",
         "course_id": second["id"],
