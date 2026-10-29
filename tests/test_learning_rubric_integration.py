@@ -209,7 +209,7 @@ def test_non_finite_progress_scores_are_rejected(tmp_path, monkeypatch):
 
 def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
     database = tmp_path / "learning.db"
-    initialize_database_file(database, LEARNING_MIGRATIONS[:-2])
+    initialize_database_file(database, LEARNING_MIGRATIONS[:-3])
 
     with sqlite3.connect(str(database)) as connection:
         path_id = connection.execute(
