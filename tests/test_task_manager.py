@@ -452,3 +452,57 @@ def test_worker_mutations_lock_before_validating_lease(task_store, monkeypatch, 
         "fail": lambda: task_manager.fail_task(task["id"], "worker-a", "expected failure"),
     }
     operations[mutation]()
+
+
+@pytest.mark.parametrize("mutation", ["cancel", "pause", "resume", "priority", "reschedule"])
+def test_task_control_mutations_lock_before_status_validation(task_store, monkeypatch, mutation):
+    from contextlib import contextmanager
+
+    task = task_manager.create_task("control-mutation-lock", {})
+    if mutation == "resume":
+        task_manager.request_pause(task["id"])
+
+    original_connection = db.learning_connection
+
+    class ConnectionProxy:
+        def __init__(self, connection):
+            self._connection = connection
+
+        @property
+        def in_transaction(self):
+            return self._connection.in_transaction
+
+        def execute(self, sql, *args):
+            if sql.lstrip().upper().startswith("SELECT * FROM TASK_QUEUE"):
+                assert self._connection.in_transaction, (
+                    "task status validation must occur inside a write transaction"
+                )
+            return self._connection.execute(sql, *args)
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+    @contextmanager
+    def checked_connection():
+        with original_connection() as connection:
+            yield ConnectionProxy(connection)
+
+    monkeypatch.setattr(db, "learning_connection", checked_connection)
+    operations = {
+        "cancel": lambda: task_manager.request_cancel(task["id"]),
+        "pause": lambda: task_manager.request_pause(task["id"]),
+        "resume": lambda: task_manager.resume_task(task["id"]),
+        "priority": lambda: task_manager.update_task_priority(task["id"], 5),
+        "reschedule": lambda: task_manager.reschedule_task(
+            task["id"], datetime.now(timezone.utc) + timedelta(minutes=5)
+        ),
+    }
+    result = operations[mutation]()
+    expected_status = {
+        "cancel": "cancelled",
+        "pause": "paused",
+        "resume": "queued",
+        "priority": "queued",
+        "reschedule": "queued",
+    }
+    assert result["status"] == expected_status[mutation]
