@@ -1398,6 +1398,43 @@ def get_oldest_resumable_run(course_id: int | None = None) -> dict[str, Any] | N
     return dict(row) if row is not None else None
 
 
+def get_oldest_course_with_pending_approved_topic(course_id: int | None = None) -> int | None:
+    """Find a course with unfinished approved topics without dashboard pagination limits."""
+    query = """SELECT c.id
+               FROM courses c
+               WHERE c.status <> 'archived'
+                 AND (? IS NULL OR c.id=?)
+                 AND EXISTS (
+                     SELECT 1 FROM topics t
+                     WHERE t.course_id=c.id
+                       AND t.deleted_at IS NULL
+                       AND t.approval_status='approved'
+                       AND t.processing_status <> 'paused'
+                       AND NOT EXISTS (
+                           SELECT 1 FROM lessons l
+                           WHERE l.topic_id=t.id AND l.deleted_at IS NULL
+                             AND EXISTS (
+                                 SELECT 1 FROM content_versions cv
+                                 WHERE cv.lesson_id=l.id
+                                   AND cv.id=(
+                                       SELECT MAX(cv2.id) FROM content_versions cv2
+                                       WHERE cv2.lesson_id=l.id
+                                   )
+                                   AND length(trim(COALESCE(cv.markdown,'')))>0
+                             )
+                       )
+                 )
+               ORDER BY c.updated_at DESC,c.id DESC
+               LIMIT 1"""
+    with connection() as conn:
+        row = conn.execute(
+            query,
+            (int(course_id) if course_id is not None else None,
+             int(course_id) if course_id is not None else None),
+        ).fetchone()
+    return int(row["id"]) if row is not None else None
+
+
 def get_oldest_queued_run() -> dict[str, Any] | None:
     """Return the globally oldest queued run across all non-archived courses."""
     with connection() as conn:

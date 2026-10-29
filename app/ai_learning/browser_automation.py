@@ -1582,16 +1582,21 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             return {"status": "resumed", "active": True, "run_id": run_id, "course_id": target_course,
                     "message": "اجرای ناتمام دوباره آغاز شد؛ پاسخ‌های ثبت‌شده حفظ شده‌اند."}
 
-        courses = ([service.get_course(course_id)] if course_id is not None
-                   else [service.get_course(int(item["id"])) for item in service.list_courses(100)])
-        for course in courses:
+        # Resolve eligible work in SQLite rather than scanning the dashboard's
+        # bounded course pages. This fallback is used only when no durable run exists.
+        pending_course_id = service.get_oldest_course_with_pending_approved_topic(course_id)
+        if pending_course_id is not None:
+            course = service.get_course(pending_course_id)
             cid = int(course["id"])
             eligible = [int(topic["id"]) for topic in course.get("topics", [])
                         if topic.get("approval_status") == "approved"
                         and topic.get("processing_status") != "paused"
                         and int(topic.get("lesson_content_ready_count") or 0) == 0]
             if not eligible:
-                continue
+                # Keep the SQL candidate query and course-level progress projection fail-safe
+                # if their eligibility predicates ever diverge.
+                return {"status": "idle", "active": False,
+                        "message": "کار ناتمامی برای ادامه پیدا نشد."}
             # One topic per run makes per-topic pause/cancel deterministic and recoverable.
             topic_ids = eligible[:1]
             request_key = f"playwright-lessons-{cid}-" + "-".join(map(str, topic_ids))
