@@ -198,6 +198,10 @@ def test_soft_deleted_lesson_can_be_restored(isolated_store):
     deleted = service.list_deleted_lessons(course["id"])
     assert any(item["id"] == lesson["id"] for item in deleted)
     assert service.list_lessons(topic["id"]) == []
+    updated_topic = service.get_course(course["id"])["topics"][0]
+    assert updated_topic["processing_status"] == "pending"
+    assert updated_topic["progress_percent"] == 0
+    assert updated_topic["progress_label"] == "در انتظار دریافت درس"
 
     assert service.restore_soft_deleted_lesson(lesson["id"])["restored"] is True
     assert any(item["id"] == lesson["id"] for item in service.list_lessons(topic["id"]))
