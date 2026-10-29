@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+
+import pytest
 from app import db, hardware, learning, ollama
 
 def test_databases_are_separate(tmp_path, monkeypatch):
@@ -266,12 +268,14 @@ def test_learning_path_enrollment_and_progress_are_persistent(tmp_path, monkeypa
     assert path["completed_count"] == 0
     assert path["progress_percent"] == 0
     first_topic = path["topics"][0]
-    updated = learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
-    assert updated["completed_count"] == 1
-    assert updated["progress_percent"] > 0
+    # Completion is assessment-gated: a manually supplied score is not
+    # evidence of mastery and must not change persisted progress.
+    with pytest.raises(ValueError, match="recorded passing assessment"):
+        learning.update_path_topic(path["id"], first_topic["id"], "completed", 100)
     again = learning.enroll_curriculum("Python")
     assert again["id"] == path["id"]
-    assert again["completed_count"] == 1
+    assert again["completed_count"] == 0
+    assert again["progress_percent"] == 0
     assert len(again["topics"]) == path["topic_count"]
 
 

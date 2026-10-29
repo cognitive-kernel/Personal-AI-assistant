@@ -149,3 +149,56 @@ def test_rubric_migration_adds_idempotency_and_score_provenance_columns(tmp_path
     assert {"idempotency_key", "result_details_json"} <= attempt_columns
     assert "latest_score_kind" in topic_columns
     assert migration["version"] == 38
+
+
+
+def test_legacy_exact_match_score_cannot_be_overridden_to_bypass_completion_gate(tmp_path, monkeypatch):
+    job_id, path_id, topic_id = _ready_job(
+        tmp_path, monkeypatch, with_path=True, rubric=None
+    )
+    result = learning.submit_assessment(
+        job_id,
+        ["wrong answer", "wrong answer", "wrong answer"],
+        "assessment-legacy-gate-0001",
+    )
+    assert result["score"] == 0
+
+    with pytest.raises(ValueError, match="at least 70"):
+        learning.update_path_topic(path_id, topic_id, "completed")
+    with pytest.raises(ValueError, match="assessment-derived score cannot be manually overridden"):
+        learning.update_path_topic(path_id, topic_id, "completed", 100)
+
+    with db.learning_connection() as conn:
+        row = conn.execute(
+            "SELECT status, latest_score, latest_score_kind FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert row["status"] == "in_progress"
+    assert row["latest_score"] == 0
+    assert row["latest_score_kind"] == "legacy_exact_match"
+
+
+def test_manual_score_cannot_create_assessment_completion_evidence(tmp_path, monkeypatch):
+    _job_id, path_id, topic_id = _ready_job(
+        tmp_path, monkeypatch, with_path=True, rubric=None
+    )
+    with pytest.raises(ValueError, match="recorded passing assessment"):
+        learning.update_path_topic(path_id, topic_id, "completed", 100)
+
+    with db.learning_connection() as conn:
+        row = conn.execute(
+            "SELECT status, latest_score, latest_score_kind FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert row["status"] == "pending"
+    assert row["latest_score"] is None
+    assert row["latest_score_kind"] == "legacy_unknown"
+
+
+def test_non_finite_progress_scores_are_rejected(tmp_path, monkeypatch):
+    _job_id, path_id, topic_id = _ready_job(
+        tmp_path, monkeypatch, with_path=True, rubric=None
+    )
+    for invalid_score in (float("nan"), float("inf"), float("-inf"), True, 10 ** 1000):
+        with pytest.raises(ValueError, match="Score must be between 0 and 100"):
+            learning.update_path_topic(path_id, topic_id, "in_progress", invalid_score)
