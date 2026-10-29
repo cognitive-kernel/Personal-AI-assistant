@@ -27,10 +27,6 @@ _WORKER_LEASE_LOST = threading.Event()
 _WORKER_LEASE_THREAD: threading.Thread | None = None
 
 
-class BrowserLearningLeaseLost(BrowserLearningError):
-    """Raised when another process owns the durable browser-learning worker lease."""
-
-
 def _acquire_course_worker_lease(
     owner_token: str | None = None, *, now: float | None = None
 ) -> bool:
@@ -125,6 +121,10 @@ def _assert_course_worker_lease() -> None:
 
 class BrowserLearningError(RuntimeError):
     pass
+
+
+class BrowserLearningLeaseLost(BrowserLearningError):
+    """Raised when another process owns the durable browser-learning worker lease."""
 
 
 def _is_chatgpt_url(value: str) -> bool:
