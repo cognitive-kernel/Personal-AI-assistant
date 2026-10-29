@@ -14,6 +14,16 @@ def isolated_store(tmp_path, monkeypatch):
     return path
 
 
+def test_complete_lesson_with_bibliography_needs_no_internal_status_marker():
+    lesson = (
+        "# Database indexing\n\n"
+        + ("Indexes improve query performance by reducing the rows scanned for common lookups. " * 75)
+        + "\n\n## منابع\n- Database System Concepts, Silberschatz, Korth, and Sudarshan"
+    )
+    assert browser_automation._lesson_has_terminal_bibliography(lesson)
+    assert browser_automation._lesson_completion_status(lesson) == "COMPLETE"
+
+
 def test_chatgpt_citation_hyperlinks_are_preserved_for_lesson_source_detection():
     from pathlib import Path
 
