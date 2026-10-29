@@ -244,7 +244,6 @@ $("learn-selected-topics").onclick=()=>act(async()=>{
  say("دریافت درس آغاز شد؛ اجرای #"+result.run_id+" در سوابق نمایش داده می‌شود. محتوای دریافت‌شده همچنان نیازمند بازبینی خواهد بود.");
 });
 $("approve-all-lessons").onclick=()=>act(async()=>{if(!courseId)throw Error("ابتدا یک دوره انتخاب کنید.");if(!confirm("درس‌های بدون منبع یا متن معتبر این دوره حذف و نسخه‌های معتبرِ نیازمند بازبینی تأیید شوند؟"))return;let reviewed=0,deleted=0;for(const t of topics){const d=await api("/topics/"+t.id+"/lessons");for(const l of d.items){const quality=await inspectLessonForBulk(l.id);if(!quality.valid){await deleteLessonForBulk(l.id);deleted++;continue}if(quality.version.review_status==="needs_review"){await api("/versions/"+quality.version.id+"/review",{method:"POST",body:JSON.stringify({decision:"reviewed"})});reviewed++}}}await loadCourse();say(reviewed+" نسخهٔ درس تأیید بازبینی شد؛ "+deleted+" درس بدون منبع یا متن معتبر حذف شد.")});
-$("reject-selected").onclick});
 $("reject-selected").onclick=()=>act(()=>decide(Array.from(document.querySelectorAll(".topic-check:checked")).map(x=>Number(x.closest(".topic").dataset.id)),"rejected"));
 $("save-order").onclick=()=>act(async()=>{if(!courseId||!topics.length)throw Error("سرفصلی برای مرتب‌سازی وجود ندارد.");await api("/courses/"+courseId+"/topic-order",{method:"PUT",body:JSON.stringify({topic_ids:topics.map(t=>t.id)})});await loadCourse();say("ترتیب ذخیره شد.")});
 function returnToTopic(topicId){
@@ -285,7 +284,6 @@ $("approve-selected-course-lessons").onclick=()=>act(async()=>{
  $("select-all-course-lessons").checked=false;
  say(reviewed+" نسخهٔ درس تأیید بازبینی شد؛ "+deleted+" درس بدون منبع یا متن معتبر حذف شد.");
 });
-$("search-form").onsubmit});
 $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
  const r=await api("/search?query="+encodeURIComponent($("search-query").value));
  const root=$("search-results");root.replaceChildren();
