@@ -9,7 +9,7 @@
 - Redirects are not followed and environment-configured proxies are disabled.
 - Response bodies are capped at 8 MiB before JSON parsing; malformed UTF-8 and JSON errors are surfaced as `OllamaError`.
 - Existing timeout behavior and regression tests for redirects, proxies, and response size remain in place.
-- Raw socket/OS errors during response reads are normalized to bounded, retryable `OllamaError` values, so a mid-response disconnect does not escape the health/error-handling boundary.
+- Raw socket/OS and HTTP protocol errors during response reads (including incomplete bodies) are normalized to bounded, retryable `OllamaError` values, so a mid-response failure does not escape the health/error-handling boundary.
 
 ## Validation coverage
 
