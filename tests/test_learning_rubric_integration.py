@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 import pytest
 
@@ -210,7 +211,7 @@ def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
     database = tmp_path / "learning.db"
     initialize_database_file(database, LEARNING_MIGRATIONS[:-1])
 
-    with db.sqlite3.connect(str(database)) as connection:
+    with sqlite3.connect(str(database)) as connection:
         path_id = connection.execute(
             "INSERT INTO learning_paths(curriculum_slug, title) VALUES ('migration-test', 'Migration test')"
         ).lastrowid
