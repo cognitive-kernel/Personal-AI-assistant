@@ -27,6 +27,7 @@ Payload, checkpoint, and result must be valid JSON; NaN and Infinity are rejecte
 - Claiming uses SQLite BEGIN IMMEDIATE and a single transaction to avoid two workers claiming the same ready task.
 - A worker lease expires if the worker disappears. Expired running tasks can be reclaimed within their retry limit; exhausted tasks become failed.
 - Workers must renew leases for long operations and may only mutate tasks while their lease is valid.
+- If a task is claimed but the OS refuses to start its heartbeat thread, the handler must not run without lease renewal; the worker records a retryable infrastructure failure and releases the lease. If storage is also unavailable, lease expiry remains the recovery fallback.
 - Pause and cancellation are cooperative. Running tasks transition to a request state; workers settle that request at a checkpoint/control poll. A crashed worker's expired pause/cancel request is settled by the next claimant.
 - Paused tasks retain their checkpoint and must be explicitly resumed.
 - Inactive tasks may be deleted through the loopback-only API; task-event rows cascade with the task. Running, pause-requested, and cancel-requested tasks cannot be deleted until their worker lifecycle settles. The dashboard requires explicit confirmation before deletion.
@@ -44,5 +45,6 @@ The task queue is initialized idempotently through initialize_task_store() in th
 
 - Unit tests cover lifecycle, priority/scheduling, retry limits, checkpoints, pause/resume, cancellation, lease expiry/reclaim, and invalid JSON.
 - Worker regression tests also inject a transient failure while persisting a successful handler result and verify bounded retry, no premature result publication, and eventual durable completion.
+- Worker regression tests also inject heartbeat-thread startup failure and verify that the handler is not executed and the claimed task is requeued with a bounded retry.
 - CI must pass on the exact pull-request head before merge.
 - Integration with FastAPI and allow-listed learning handlers is implemented and covered by repository CI. Target-host crash/restart, sustained-load, full task-type fault injection, and local Windows database acceptance remain separate release gates.
