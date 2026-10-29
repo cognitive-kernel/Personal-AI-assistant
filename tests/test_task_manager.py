@@ -431,3 +431,24 @@ def test_claim_next_task_can_exclude_registered_queue_types(task_store):
     assert claimed["id"] == unknown["id"]
     assert claimed["task_type"] == "unregistered.type"
     assert task_manager.get_task(known["id"])["status"] == "queued"
+
+@pytest.mark.parametrize("mutation", ["renew", "checkpoint", "complete", "fail"])
+def test_worker_mutations_lock_before_validating_lease(task_store, monkeypatch, mutation):
+    task = task_manager.create_task("lease-mutation-lock", {}, max_attempts=2)
+    claimed = task_manager.claim_next_task("worker-a", lease_seconds=30)
+    assert claimed["id"] == task["id"]
+
+    original = task_manager._owned_running_task
+
+    def assert_transaction_started(conn, task_id, worker_id):
+        assert conn.in_transaction, "lease validation must occur inside a write transaction"
+        return original(conn, task_id, worker_id)
+
+    monkeypatch.setattr(task_manager, "_owned_running_task", assert_transaction_started)
+    operations = {
+        "renew": lambda: task_manager.renew_lease(task["id"], "worker-a", lease_seconds=60),
+        "checkpoint": lambda: task_manager.save_checkpoint(task["id"], "worker-a", {"step": 1}),
+        "complete": lambda: task_manager.complete_task(task["id"], "worker-a", {"ok": True}),
+        "fail": lambda: task_manager.fail_task(task["id"], "worker-a", "expected failure"),
+    }
+    operations[mutation]()

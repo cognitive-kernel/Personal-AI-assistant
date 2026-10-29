@@ -377,6 +377,8 @@ def renew_lease(task_id: int, worker_id: str, *, lease_seconds: int = 300) -> di
     expires = _timestamp(_now() + timedelta(seconds=lease_seconds))
     now = _timestamp()
     with db.learning_connection() as conn:
+        # Serialize ownership validation with lease reclamation by other workers.
+        conn.execute("BEGIN IMMEDIATE")
         row = _owned_running_task(conn, task_id, worker_id)
         if row["status"] != "running":
             raise TaskManagerError(f"Cannot renew a task with status {row['status']}.")
@@ -392,6 +394,8 @@ def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) ->
     encoded = _json(checkpoint)
     now = _timestamp()
     with db.learning_connection() as conn:
+        # Hold the write reservation across the ownership check and checkpoint write.
+        conn.execute("BEGIN IMMEDIATE")
         row = _owned_running_task(conn, task_id, worker_id)
         if row["status"] == "cancel_requested":
             conn.execute(
@@ -416,6 +420,8 @@ def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[
     encoded = _json(result)
     now = _timestamp()
     with db.learning_connection() as conn:
+        # A reclaiming worker must not interleave between validation and completion.
+        conn.execute("BEGIN IMMEDIATE")
         row = _owned_running_task(conn, task_id, worker_id)
         if row["status"] != "running":
             raise TaskManagerError(f"Cannot complete a task with status {row['status']}.")
@@ -437,6 +443,8 @@ def fail_task(
     now_dt = _now()
     now = _timestamp(now_dt)
     with db.learning_connection() as conn:
+        # Serialize retry scheduling with any competing lease reclamation.
+        conn.execute("BEGIN IMMEDIATE")
         row = _owned_running_task(conn, task_id, worker_id)
         should_retry = retry and row["attempts"] < row["max_attempts"]
         if should_retry:
