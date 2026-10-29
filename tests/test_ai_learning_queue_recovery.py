@@ -329,3 +329,20 @@ def test_runtime_watchdog_never_clears_shutdown_or_restarts_chrome(isolated_stor
     assert result == {"status": "shutting_down", "active": False}
     assert browser_automation._SHUTTING_DOWN is True
     assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
+    from app import main
+
+    calls = []
+    monkeypatch.setattr(main.learning, "maintain_factual_knowledge", lambda: calls.append("knowledge"))
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        main.ai_learning_browser_automation,
+        "recover_orphaned_runs",
+        lambda: calls.append("recovery") or {"status": "idle", "active": False},
+    )
+
+    main._maintain_learning_runtime()
+
+    assert calls == ["knowledge", "recovery"]
