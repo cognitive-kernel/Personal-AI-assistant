@@ -10,7 +10,7 @@ The legacy browser-learning API persisted course and lesson state, but startup o
 
 ## Decision
 
-- At startup, mark only stale running courses as interrupted; preserve courses that were already queued, and reset only lesson rows that were still running to queued.
+- At startup, mark only stale running courses as interrupted; preserve courses that were already queued, and reset only unfinished `running`/`failed` lesson rows to queued.
 - Dispatch the oldest persisted queued/interrupted course through a single process-local worker slot.
 - Route new course and manual retry requests through the same dispatcher instead of invoking the worker directly.
 - After a course succeeds, dispatch the next persisted queued/interrupted course. Retryable runtime failures and process interruptions are persisted as `interrupted` with a durable `next_retry_at`; unfinished lesson rows are reset to `queued` while completed lesson content remains unchanged. The learning runtime checks due retries every 30 seconds. Automatic retries use bounded delays of 30, 120, and 300 seconds, then leave the course `failed` for manual recovery. Login/session gates and missing Playwright are non-retryable because retrying cannot resolve them.
@@ -19,4 +19,4 @@ The legacy browser-learning API persisted course and lesson state, but startup o
 
 ## Consequences and limitations
 
-This provides automatic recovery after process restart, bounded retry after transient runtime failures, and FIFO draining of already-persisted courses. Retry count and deadline are durable schema fields introduced by migration 41; existing course rows are preserved with zero retries. Cross-process ownership is specified separately in [ADR-004](ADR-004-browser-learning-worker-lease.md). Runtime provider failures still surface as failed courses for deliberate retry. Target-host behavior must be validated separately.
+This provides automatic recovery after process restart, bounded retry after transient runtime failures, and FIFO draining of already-persisted courses. Retry count and deadline are durable schema fields introduced by migration 41; existing course rows are preserved with zero retries. Cross-process ownership is specified separately in [ADR-004](ADR-004-browser-learning-worker-lease.md). Persistent failures and conditions requiring user action remain failed for deliberate recovery. Target-host behavior must be validated separately.
