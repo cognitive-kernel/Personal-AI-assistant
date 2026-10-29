@@ -265,3 +265,18 @@ def test_dispatch_finds_queued_run_outside_dashboard_course_limit(isolated_store
     assert result["status"] == "running"
     assert result["run_id"] == run["id"]
     assert launched[0].args[0] == run["id"]
+
+
+def test_startup_recovery_does_not_requeue_an_active_in_process_run(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی نباید کار فعال را بازصف‌بندی کند")
+    run = service.create_run(course["id"], run_type="outline", request_key="active-worker-not-requeued")
+    service.start_run(run["id"])
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", run["id"])
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", course["id"])
+
+    result = browser_automation.recover_pending_runs()
+
+    assert result["status"] == "already_active"
+    assert result["run_id"] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
