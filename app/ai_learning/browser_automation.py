@@ -722,6 +722,9 @@ def _browser_capture(
                 user_data_dir=str(profile),
                 executable_path=chrome,
                 headless=False,
+                # Launch ChatGPT as the initial app page instead of showing a
+                # fresh, visible about:blank tab on every lesson capture.
+                args=["--app=https://chatgpt.com/"],
                 viewport={"width": 1365, "height": 900},
                 accept_downloads=False,
             )
@@ -731,8 +734,14 @@ def _browser_capture(
                 # interrupted run. Keep exactly one tab per attempt; otherwise every
                 # retry can leave another set of tabs visible to the user.
                 restored_pages = list(context.pages)
-                page = restored_pages[0] if restored_pages else context.new_page()
-                extra_pages = restored_pages[1:]
+                # Prefer the real ChatGPT page if Chromium exposes both it and
+                # an initial blank page during app-window startup.
+                page = next(
+                    (candidate for candidate in restored_pages
+                     if candidate.url and candidate.url != "about:blank"),
+                    restored_pages[0] if restored_pages else context.new_page(),
+                )
+                extra_pages = [candidate for candidate in restored_pages if candidate != page]
                 for extra_page in extra_pages:
                     try:
                         extra_page.close(run_before_unload=False)
