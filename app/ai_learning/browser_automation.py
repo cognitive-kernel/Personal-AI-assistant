@@ -1301,8 +1301,6 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
     if not requested_ids:
         raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
     with _LOCK:
-        if _ACTIVE:
-            raise ValueError("یک کار مرورگر در حال اجراست؛ ابتدا آن را متوقف کنید یا منتظر پایانش بمانید.")
         course = service.get_course(course_id)
         course_topics = {int(topic["id"]): topic for topic in course.get("topics", [])}
         missing = [item for item in requested_ids if item not in course_topics]
@@ -1320,6 +1318,40 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         ]
         if not selected_ids:
             raise ValueError("تمام سرفصل‌های انتخاب‌شده از قبل درس دارند؛ برای ساخت نسخه جدید، تلاش مجدد را انتخاب کنید.")
+
+        # A retry requested while Chrome is busy is persisted, not rejected as HTTP 422.
+        # The current worker's finalizer dispatches queued runs in FIFO order.
+        if _ACTIVE:
+            queued_runs = []
+            for topic_id in selected_ids:
+                topic_request_key = f"{request_key[:75]}-topic-{topic_id}"
+                queued = service.create_run(
+                    course_id, run_type="lesson", topic_ids=[topic_id],
+                    selection_mode="selected", request_key=topic_request_key,
+                    force_retry=force_retry,
+                )
+                if queued["status"] != "queued":
+                    raise ValueError(
+                        "برای یکی از سرفصل‌ها درخواست تکراری وجود دارد؛ سوابق اجرا را بازخوانی کنید."
+                    )
+                queued_runs.append(int(queued["id"]))
+            _log_event(
+                "lesson_retry_queued_while_active",
+                active_run_id=_ACTIVE_RUN_ID,
+                course_id=course_id,
+                queued_run_ids=queued_runs,
+                topic_ids=selected_ids,
+            )
+            return {
+                "run_id": queued_runs[0],
+                "status": "queued",
+                "course_id": course_id,
+                "topic_ids": selected_ids,
+                "queued_topic_count": len(selected_ids),
+                "provider": "ChatGPT visible UI",
+                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل در صف ذخیره شد و پس از پایان اجرای فعلی آغاز می‌شود.",
+            }
+
         # Creating a single-topic run prevents oversized batches from ever being
         # serialized into one browser prompt. Remaining selected IDs are processed
         # sequentially by the same worker after each successful capture.
