@@ -2,7 +2,7 @@ import hashlib
 
 import pytest
 
-from app import sandbox_tasks
+from app import learning_practical, sandbox_tasks
 from app.sandbox import SandboxResult
 
 
@@ -283,3 +283,48 @@ def test_language_runner_requires_image_and_is_not_enabled_by_default(monkeypatc
             None,
             FakeContext(),
         )
+
+
+def test_practical_sandbox_handler_uses_stable_task_idempotency_key(monkeypatch, tmp_path):
+    _configure(monkeypatch, tmp_path)
+    monkeypatch.setattr(sandbox_tasks.sandbox_consent, "is_enabled", lambda: True)
+    monkeypatch.setattr(
+        learning_practical, "build_grader_source", lambda exercise_id, source: "print('grader')"
+    )
+    monkeypatch.setattr(learning_practical, "grade_case_output", lambda *args: True)
+    monkeypatch.setattr(
+        sandbox_tasks.sandbox,
+        "run_python",
+        lambda *args, **kwargs: SandboxResult("succeeded", 0, "ignored", "", 1),
+    )
+    captured = {}
+    expected = {"attempt_id": 9, "score": 100.0, "idempotent_replay": False}
+
+    def fake_record(job_id, exercise_id, report, source_code, *, idempotency_key=None):
+        captured.update(
+            job_id=job_id,
+            exercise_id=exercise_id,
+            report=report,
+            source_code=source_code,
+            idempotency_key=idempotency_key,
+        )
+        return expected
+
+    monkeypatch.setattr(learning_practical, "record_practical_attempt", fake_record)
+    handler = sandbox_tasks.handler_from_environment()
+    context = FakeContext()
+    result = handler(
+        {
+            "source_code": "print(1 + 2)",
+            "learning_practical": {
+                "exercise_id": learning_practical.EXERCISE_ID,
+                "job_id": 7,
+            },
+        },
+        None,
+        context,
+    )
+
+    assert captured["job_id"] == 7
+    assert captured["idempotency_key"] == f"sandbox-practical-task:{context.task_id}"
+    assert result["practical_assessment"] == expected

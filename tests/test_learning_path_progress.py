@@ -165,3 +165,57 @@ def test_practical_assessment_below_threshold_cannot_be_manually_completed(tmp_p
 
     with pytest.raises(ValueError, match="at least 70/100"):
         learning.update_path_topic(path_id, topic_id, "completed")
+
+
+def test_practical_attempt_is_idempotent_for_durable_task_retry(tmp_path, monkeypatch):
+    _path_id, topic_id, job_id, report = _create_practical_assessment(
+        tmp_path, monkeypatch, passing_cases=3
+    )
+    key = "sandbox-practical-task:123"
+
+    first = learning_practical.record_practical_attempt(
+        job_id, "python-json-sum-v1", report, "print(1 + 2)", idempotency_key=key
+    )
+    replay = learning_practical.record_practical_attempt(
+        job_id, "python-json-sum-v1", report, "print(1 + 2)", idempotency_key=key
+    )
+
+    assert first["idempotent_replay"] is False
+    assert replay["idempotent_replay"] is True
+    assert replay["attempt_id"] == first["attempt_id"]
+    assert replay["score"] == first["score"]
+    assert replay["mastery_achieved"] == first["mastery_achieved"]
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM assessment_attempts WHERE job_id=? AND idempotency_key=?",
+            (job_id, key),
+        ).fetchone()[0]
+        topic = connection.execute(
+            "SELECT latest_score, latest_score_source, status FROM learning_path_topics WHERE id=?",
+            (topic_id,),
+        ).fetchone()
+    assert count == 1
+    assert topic["latest_score"] == 75.0
+    assert topic["latest_score_source"] == "sandbox_practical_v1"
+    assert topic["status"] == "completed"
+
+
+def test_practical_attempt_idempotency_key_rejects_different_payload(tmp_path, monkeypatch):
+    _path_id, _topic_id, job_id, report = _create_practical_assessment(
+        tmp_path, monkeypatch, passing_cases=3
+    )
+    key = "sandbox-practical-task:123"
+    learning_practical.record_practical_attempt(
+        job_id, "python-json-sum-v1", report, "print(1 + 2)", idempotency_key=key
+    )
+
+    with pytest.raises(ValueError, match="different practical assessment data"):
+        learning_practical.record_practical_attempt(
+            job_id, "python-json-sum-v1", report, "print(1 + 3)", idempotency_key=key
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM assessment_attempts WHERE job_id=? AND idempotency_key=?",
+            (job_id, key),
+        ).fetchone()[0]
+    assert count == 1
