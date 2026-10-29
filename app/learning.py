@@ -1231,9 +1231,10 @@ def submit_assessment(
         if path_topic_id is not None:
             conn.execute(
                 """UPDATE learning_path_topics
-                   SET status=?, latest_score=?, latest_score_kind=?, updated_at=CURRENT_TIMESTAMP
+                   SET status=?, latest_score=?, latest_score_kind=?, latest_score_source=?,
+                       updated_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
-                (path_topic_status, score, score_kind, path_topic_id),
+                (path_topic_status, score, score_kind, score_kind, path_topic_id),
             )
             conn.execute(
                 """UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP
@@ -1466,14 +1467,15 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
             raise ValueError("Score must be between 0 and 100.")
     with learning_connection() as conn:
         exists = conn.execute(
-            """SELECT id, status, latest_score, latest_score_kind FROM learning_path_topics
-               WHERE id=? AND path_id=?""",
+            """SELECT id, status, latest_score, latest_score_kind, latest_score_source
+               FROM learning_path_topics WHERE id=? AND path_id=?""",
             (topic_id, path_id),
         ).fetchone()
         if exists is None:
             raise KeyError(topic_id)
 
-        score_kind = str(exists["latest_score_kind"] or "legacy_unknown")
+        legacy_score_kind = str(exists["latest_score_kind"] or "legacy_unknown")
+        score_kind = str(exists["latest_score_source"] or legacy_score_kind)
         stored_score = exists["latest_score"]
         assessment_score_kinds = {"learner_rubric", "legacy_exact_match", "sandbox_practical_v1"}
         if score_kind in assessment_score_kinds:
@@ -1493,6 +1495,7 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
             # Preserve manually supplied progress data for compatibility, but
             # explicitly mark it untrusted so it cannot satisfy mastery gates.
             score_kind = "manual_override"
+            legacy_score_kind = "manual_override"
 
         if status == "completed" and score_kind in {"legacy_unknown", "manual_override"}:
             score_was_changed = (
@@ -1508,8 +1511,9 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
         conn.execute(
             """UPDATE learning_path_topics
                SET status=?, latest_score=COALESCE(?, latest_score), latest_score_kind=?,
-                   updated_at=CURRENT_TIMESTAMP WHERE id=? AND path_id=?""",
-            (status, latest_score, score_kind, topic_id, path_id),
+                   latest_score_source=?, updated_at=CURRENT_TIMESTAMP
+               WHERE id=? AND path_id=?""",
+            (status, latest_score, legacy_score_kind, score_kind, topic_id, path_id),
         )
         conn.execute("UPDATE learning_paths SET updated_at=CURRENT_TIMESTAMP WHERE id=?", (path_id,))
     return get_learning_path(path_id)
