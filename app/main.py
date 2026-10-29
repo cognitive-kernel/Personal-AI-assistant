@@ -615,7 +615,7 @@ def create_browser_learning_course(request: BrowserLearningRequest, background_t
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except browser_learning.BrowserLearningError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    background_tasks.add_task(browser_learning.run_course, int(course["id"]))
+    background_tasks.add_task(browser_learning.dispatch_next_course)
     return course
 
 
@@ -640,7 +640,7 @@ def retry_browser_learning_course(course_id: int, background_tasks: BackgroundTa
         raise HTTPException(status_code=404, detail="Browser learning course not found.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    background_tasks.add_task(browser_learning.run_course, course_id)
+    background_tasks.add_task(browser_learning.dispatch_next_course)
     return course
 
 
