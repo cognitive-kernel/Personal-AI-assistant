@@ -1,3 +1,5 @@
+import http.client
+
 import pytest
 
 from app import db, ollama
@@ -455,8 +457,16 @@ def test_ollama_policy_rejects_scoped_ipv6_hosts(tmp_path, monkeypatch, url):
     with pytest.raises(ollama.OllamaError, match="Scoped IPv6"):
         ollama._base_url()
 
-def test_ollama_request_wraps_socket_error_during_response_read(
-    tmp_path, monkeypatch
+
+@pytest.mark.parametrize(
+    "read_error",
+    [
+        ConnectionResetError("simulated peer disconnect"),
+        http.client.IncompleteRead(b"partial", 10),
+    ],
+)
+def test_ollama_request_wraps_response_read_failures(
+    tmp_path, monkeypatch, read_error
 ):
     configure_ollama_url(tmp_path, monkeypatch, "http://127.0.0.1:11434")
 
@@ -468,7 +478,7 @@ def test_ollama_request_wraps_socket_error_during_response_read(
             return False
 
         def read(self, _limit):
-            raise ConnectionResetError("simulated peer disconnect")
+            raise read_error
 
     class BrokenOpener:
         def open(self, *_args, **_kwargs):
@@ -480,8 +490,8 @@ def test_ollama_request_wraps_socket_error_during_response_read(
         lambda *_args, **_kwargs: BrokenOpener(),
     )
 
-    with pytest.raises(ollama.OllamaError, match="ConnectionResetError") as raised:
+    with pytest.raises(ollama.OllamaError, match=type(read_error).__name__) as raised:
         ollama._request("/api/tags", timeout=2)
 
     assert raised.value.retryable is True
-    assert "simulated peer disconnect" not in str(raised.value)
+    assert str(read_error) not in str(raised.value)
