@@ -45,15 +45,23 @@ def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
             except Exception:
                 context = None
         if context is None:
+            # A worker may launch at most one Chrome window. If its context dies,
+            # fail for explicit recovery instead of opening another window on every retry.
+            if getattr(_BROWSER_SESSION, "launch_attempted", False):
+                raise BrowserAutomationError(
+                    "chatgpt_browser_closed",
+                    "پنجرهٔ Chrome مربوط به یادگیری بسته شده است؛ برای جلوگیری از بازشدن پنجره‌های تکراری، تلاش خودکار متوقف شد. پنجره را باز نگه دارید و اجرا را دوباره آغاز کنید.",
+                )
+            _BROWSER_SESSION.launch_attempted = True
             _close_browser_session()
-            _log_event("browser_launch_started", reason="new_or_recovered_worker_session")
+            _log_event("browser_launch_started", reason="new_worker_session")
             playwright = sync_playwright_factory().start()
             try:
                 context = playwright.chromium.launch_persistent_context(
                     user_data_dir=str(profile),
                     executable_path=chrome,
                     headless=False,
-                    args=["--app=https://chatgpt.com/"],
+                    args=["--no-first-run"],
                     viewport={"width": 1365, "height": 900},
                     accept_downloads=False,
                 )
@@ -78,7 +86,7 @@ def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
             user_data_dir=str(profile),
             executable_path=chrome,
             headless=False,
-            args=["--app=https://chatgpt.com/"],
+            args=["--no-first-run"],
             viewport={"width": 1365, "height": 900},
             accept_downloads=False,
         )
@@ -950,7 +958,7 @@ def _capture_with_automatic_retry(
         try:
             return _browser_capture(prompt, cancel_event, on_lesson_checkpoint)
         except BrowserAutomationError as exc:
-            if exc.code == "run_cancelled" or cancel_event.is_set() or service.get_learning_control()["paused"]:
+            if exc.code in {"run_cancelled", "chatgpt_browser_closed"} or cancel_event.is_set() or service.get_learning_control()["paused"]:
                 raise
             error_code = exc.code
             error_message = str(exc)
