@@ -2,7 +2,7 @@
 
 ## Routing
 
-Ordinary small talk remains on the direct local Ollama chat path. Technical, troubleshooting, and explicit research requests use the bounded research path:
+Ordinary small talk remains on the direct local Ollama chat path. Both paths check likely Persian/English response-language mismatches; the direct path permits one language-only repair and returns a fixed safe fallback if the mismatch persists. Technical, troubleshooting, and explicit research requests use the bounded research path:
 
 1. Retrieve up to three public HTTPS sources through `web_sources.discover_sources`, which applies destination validation, redirect restrictions, timeouts, and response-size limits.
 2. Retrieve a small number of verified experience records and separate failed/review-needed warnings. Experience similarity is guidance, not factual evidence.
@@ -14,7 +14,7 @@ Ordinary small talk remains on the direct local Ollama chat path. Technical, tro
 
 - Source count: at most 3.
 - Source excerpt size: at most 2,500 characters per source.
-- Answer generation: at most one repair pass.
+- Answer generation: at most one repair pass for language mismatch; the research path may additionally use one bounded claim-support repair.
 - Chat prompt content remains bounded by the Ollama client request limit.
 - No generated code or shell command is executed.
 - Only the local loopback Ollama endpoint is used for generation and embedding.
