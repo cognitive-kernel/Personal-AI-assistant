@@ -1289,8 +1289,11 @@ def recover_pending_runs() -> dict[str, Any]:
                 "run_id": _ACTIVE_RUN_ID,
                 "message": "An in-process learning worker is already active.",
             }
-    for run_id in service.list_run_ids_by_status("running"):
-        service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
+        # Hold the same lock used by start_outline/start_lesson_run while marking
+        # stale runs. This prevents a concurrent local start from being mistaken
+        # for a process-crash orphan and requeued underneath its live worker.
+        for run_id in service.list_run_ids_by_status("running"):
+            service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
     result = _dispatch_next_persisted_run()
     _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
     return result
