@@ -579,6 +579,27 @@ def test_run_request_key_is_idempotent(isolated_store):
     assert first["id"] == second["id"]
 
 
+def test_run_request_key_replays_after_completed_topics_are_filtered(isolated_store):
+    course = service.create_course(title="SQL Server")
+    completed_topic = service.add_topic(course["id"], "Transactions")
+    pending_topic = service.add_topic(course["id"], "Indexes")
+    service.decide_topics([completed_topic["id"], pending_topic["id"]], "approved")
+    lesson = service.create_lesson(completed_topic["id"], "Existing transaction lesson")
+    service.add_content_version(lesson["id"], "# Transactions\n\nSubstantive lesson content.")
+
+    kwargs = {
+        "run_type": "lesson",
+        "topic_ids": [completed_topic["id"], pending_topic["id"]],
+        "selection_mode": "selected",
+        "request_key": "partial-topic-filter-key",
+    }
+    first = service.create_run(course["id"], **kwargs)
+    second = service.create_run(course["id"], **kwargs)
+
+    assert first["id"] == second["id"]
+    assert [topic["topic_id"] for topic in first["topics"]] == [pending_topic["id"]]
+
+
 def test_run_request_key_rejects_reuse_for_another_course(isolated_store):
     first_course = service.create_course(title="SQL Server")
     second_course = service.create_course(title="PostgreSQL")
