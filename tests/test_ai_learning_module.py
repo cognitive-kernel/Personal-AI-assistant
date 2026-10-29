@@ -1016,8 +1016,8 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
         "scanning the entire table. The extra structure improves lookup efficiency."
     )
     response = (
-        f"[TOPIC_ID:{first_topic['id']}] Index basics\n\n{first_body}\n\n"
-        f"[TOPIC_ID:{second_topic['id']}] Faster lookups\n\n{second_body}"
+        f"[TOPIC_ID:{first_topic['id']}] Index basics\n\n{first_body}\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)\n\n"
+        f"[TOPIC_ID:{second_topic['id']}] Faster lookups\n\n{second_body}\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
     )
 
     def fake_embed(texts, model=None):
