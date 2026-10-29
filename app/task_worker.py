@@ -102,6 +102,17 @@ class TaskWorker:
         self.restrict_task_types = bool(restrict_task_types)
         self.exclude_task_types = exclude_task_types
 
+    def _create_heartbeat_thread(
+        self, context: TaskContext, stop_event: threading.Event
+    ) -> threading.Thread:
+        """Create a separately patchable heartbeat thread for deterministic failure tests."""
+        return threading.Thread(
+            target=self._maintain_lease,
+            args=(context, stop_event),
+            name=f"{self.worker_id}-lease-{context.task_id}",
+            daemon=True,
+        )
+
     def _maintain_lease(self, context: TaskContext, stop_event: threading.Event) -> None:
         """Renew a running task lease while its handler is doing long-running work."""
         interval = max(0.05, min(30.0, self.lease_seconds / 3))
@@ -149,13 +160,28 @@ class TaskWorker:
             lease_seconds=self.lease_seconds,
         )
         heartbeat_stop = threading.Event()
-        heartbeat_thread = threading.Thread(
-            target=self._maintain_lease,
-            args=(context, heartbeat_stop),
-            name=f"{self.worker_id}-lease-{task['id']}",
-            daemon=True,
-        )
-        heartbeat_thread.start()
+        heartbeat_thread = self._create_heartbeat_thread(context, heartbeat_stop)
+        try:
+            heartbeat_thread.start()
+        except Exception as exc:
+            # A task has already been claimed at this point. If the OS refuses
+            # to start the lease heartbeat, do not execute a potentially long
+            # handler without ownership renewal or strand the task until expiry.
+            try:
+                task_manager.fail_task(
+                    task["id"],
+                    self.worker_id,
+                    f"HeartbeatStartupError: {type(exc).__name__}: {exc}",
+                    retry=True,
+                )
+            except Exception:
+                # If storage is unavailable too, the durable lease expiry remains
+                # the final recovery mechanism; keep the worker loop alive.
+                logger.exception(
+                    "Could not settle task %s after heartbeat thread startup failed.",
+                    task["id"],
+                )
+            return True
         try:
             with usage_metrics.capture_task(task["id"]):
                 result = handler(task["payload"], task["checkpoint"], context)
