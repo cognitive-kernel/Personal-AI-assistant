@@ -1247,6 +1247,28 @@ def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_st
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
 
 
+
+def test_browser_lesson_retry_is_persisted_when_worker_is_active(isolated_store, monkeypatch):
+    course = service.create_course(title="Retry while browser is busy")
+    topic = service.add_topic(course["id"], "Memory management")
+    service.decide_topics([topic["id"]], "approved")
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", 456)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", course["id"])
+    monkeypatch.setattr(service, "get_learning_control", lambda: {"paused": False})
+
+    result = browser_automation.start_lesson_run(
+        course["id"], [topic["id"]], "retry-while-active", force_retry=True
+    )
+
+    assert result["status"] == "queued"
+    assert result["queued_topic_count"] == 1
+    assert "پس از پایان اجرای فعلی" in result["message"]
+    queued_run = service.get_run(result["run_id"])
+    assert queued_run["status"] == "queued"
+    assert [item["topic_id"] for item in queued_run["topics"]] == [topic["id"]]
+
 def test_long_lesson_content_is_not_rejected_by_arbitrary_size_limit(isolated_store, monkeypatch):
     course = service.create_course(title="Long lesson course")
     topic = service.add_topic(course["id"], "Long lesson topic")
