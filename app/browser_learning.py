@@ -283,7 +283,11 @@ def recover_interrupted_courses() -> int:
             recovered_count = int(cursor.rowcount)
         # Recovery only needs a short exclusive section. Do not leave an idle
         # process holding the singleton lease until its four-minute expiry.
-        _release_course_worker_lease()
+        try:
+            _release_course_worker_lease()
+        except Exception:
+            # Recovery is already committed; a failed release is bounded by lease expiry.
+            pass
         return recovered_count
 
 
