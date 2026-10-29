@@ -26,3 +26,4 @@ Ordinary small talk remains on the direct local Ollama chat path. Both paths che
 - A local audit row stores query/answer hashes, source URLs/titles/content hashes, review status and summary, memory record references, and duration. Raw query text, answer text, and source excerpts are not stored in this audit table.
 - Retrieval evaluation using a curated Persian/English dataset with Recall@5 and MRR is still required.
 - If external source discovery is unavailable, the chat answer is based on local model knowledge and is explicitly marked unverified.
+- Empty or non-text model responses fail closed with a localized fallback. The research path records a `generation_failed` audit outcome and skips claim review rather than treating an empty draft as a valid answer.
