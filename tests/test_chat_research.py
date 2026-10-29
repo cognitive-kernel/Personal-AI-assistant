@@ -609,3 +609,84 @@ def test_research_chat_audits_empty_or_non_text_output_without_claim_review(
     assert audit["review"]["error"] == "empty_generation"
     assert audit["review"]["overall"] == "empty_generation"
     assert audit["sources"][0]["url"] == source.url
+
+
+def test_direct_chat_fails_closed_when_language_repair_returns_non_text(monkeypatch):
+    french = (
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de "
+        "identifier les sources et noter leurs positions respectives. Examiner les preuves fournies "
+        "par chaque source pour comprendre leurs arguments et leurs méthodologies. Si aucune source "
+        "supplémentaire n'est disponible, mentionner la contradiction et suggérer une recherche."
+    )
+    outputs = iter([french, None])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(outputs))
+
+    reply = chat_research.answer("Please explain this idea in simple terms.")
+
+    assert reply == chat_research._language_fallback("Please explain this idea in simple terms.")
+
+
+@pytest.mark.parametrize("repair_output", ["", "  \n", None, {"answer": "unexpected"}])
+def test_research_language_repair_fails_closed_on_empty_or_non_text_output(
+    monkeypatch, repair_output
+):
+    _disable_memory(monkeypatch)
+    source = _source()
+    monkeypatch.setattr(
+        chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source]
+    )
+    french = (
+        "Quand deux sources fiables contredisent une affirmation technique, il est préférable de "
+        "identifier les sources et noter leurs positions respectives. Examiner les preuves fournies "
+        "par chaque source pour comprendre leurs arguments et leurs méthodologies. Si aucune source "
+        "supplémentaire n'est disponible, mentionner la contradiction et suggérer une recherche."
+    )
+    outputs = iter([french, repair_output])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(outputs))
+    audit = {}
+    monkeypatch.setattr(
+        chat_research.chat_audit, "record_research_run",
+        lambda **kwargs: audit.update(kwargs) or 1,
+    )
+
+    reply = chat_research.answer("How do SQL Server query plans work?")
+
+    assert reply == chat_research._language_fallback("How do SQL Server query plans work?")
+    assert audit["review_status"] == "generation_failed"
+    assert audit["review"]["overall"] == "language_repair_failed"
+    assert audit["review"]["error"] == "empty_or_non_text_language_repair"
+    assert audit["sources"][0]["url"] == source.url
+
+
+@pytest.mark.parametrize("repair_output", ["", "  \n", None, {"answer": "unexpected"}])
+def test_research_claim_repair_fails_closed_without_second_review(
+    monkeypatch, repair_output
+):
+    _disable_memory(monkeypatch)
+    source = _source()
+    monkeypatch.setattr(
+        chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [source]
+    )
+    outputs = iter(["A cautious technical answer based on the supplied source.", repair_output])
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: next(outputs))
+    review_calls = []
+    monkeypatch.setattr(
+        chat_research, "_review",
+        lambda *_args, **_kwargs: review_calls.append(True) or {
+            "passed": False, "overall": "insufficient_evidence", "claims": [{"claim": "unsupported"}],
+        },
+    )
+    audit = {}
+    monkeypatch.setattr(
+        chat_research.chat_audit, "record_research_run",
+        lambda **kwargs: audit.update(kwargs) or 1,
+    )
+
+    reply = chat_research.answer("How do SQL Server query plans work?")
+
+    assert reply == chat_research._generation_fallback("How do SQL Server query plans work?")
+    assert review_calls == [True]
+    assert audit["review_status"] == "generation_failed"
+    assert audit["review"]["overall"] == "repair_generation_failed"
+    assert audit["review"]["error"] == "empty_or_non_text_repair_generation"
+    assert audit["sources"][0]["url"] == source.url
