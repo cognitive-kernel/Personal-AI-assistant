@@ -647,9 +647,13 @@ def _capture_citation_links(page: Any) -> list[dict[str, str]]:
           return Array.from(root.querySelectorAll('a[href]')).map(anchor => ({
             title: (anchor.innerText || anchor.getAttribute('aria-label') || '').trim(),
             url: anchor.href || ''
-          })).filter(item => /^https?:\\/\\//i.test(item.url) &&
-            (() => { try { return new URL(item.url).hostname.toLowerCase() !== 'chatgpt.com'; }
-                     catch (_) { return false; } })());
+          })).filter(item => {
+            try {
+              const url = new URL(item.url);
+              return (url.protocol === 'http:' || url.protocol === 'https:') &&
+                url.hostname.toLowerCase() !== 'chatgpt.com';
+            } catch (_) { return false; }
+          });
         }""")
     except Exception as exc:
         _log_event("citation_link_capture_failed", exception_type=type(exc).__name__,
@@ -661,7 +665,7 @@ def _capture_citation_links(page: Any) -> list[dict[str, str]]:
         if not isinstance(item, dict):
             continue
         url = str(item.get("url") or "").strip()
-        title = re.sub(r"\\s+", " ", str(item.get("title") or "")).strip()
+        title = " ".join(str(item.get("title") or "").split())
         if not re.match(r"^https?://", url, re.IGNORECASE) or url in seen:
             continue
         seen.add(url)
@@ -674,21 +678,20 @@ def _capture_citation_links(page: Any) -> list[dict[str, str]]:
 
 def _append_captured_citation_links(answer: str, links: list[dict[str, str]]) -> str:
     """Preserve clickable source URLs that are not exposed in ChatGPT's visible text."""
-    existing = set(re.findall(r"https?://[^\\s<>\\])}]+", answer, re.IGNORECASE))
+    existing = set(re.findall(r"https?://[^\s<>\])}]+", answer, re.IGNORECASE))
     additions: list[str] = []
     for item in links:
         url = str(item.get("url") or "").strip()
         if not re.match(r"^https?://", url, re.IGNORECASE) or url in existing:
             continue
-        title = re.sub(r"[\\[\\]\\r\\n]+", " ", str(item.get("title") or "")).strip() or url
-        title = title.replace("(", "\\(").replace(")", "\\)")
+        title = str(item.get("title") or "").replace("[", "").replace("]", "")
+        title = " ".join(title.split()) or url
+        title = title.replace("(", r"\(").replace(")", r"\)")
         additions.append(f"- [{title}]({url})")
         existing.add(url)
     if not additions:
         return answer
-    return answer.rstrip() + "\\n\\nSources (links captured from ChatGPT):\\n" + "\\n".join(additions)
-
-
+    return answer.rstrip() + "\n\nSources (links captured from ChatGPT):\n" + "\n".join(additions)
 def _browser_capture(
     prompt: str,
     cancel_event: threading.Event | None = None,
