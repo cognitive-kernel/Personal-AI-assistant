@@ -1621,3 +1621,25 @@ def test_ai_learning_search_feedback_is_bound_to_trace_and_persisted():
             "comment": "",
         }
         browser.close()
+
+
+def test_dashboard_malformed_percent_encoded_route_falls_back_without_script_error():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        response = page.goto(
+            base_url.rstrip("/") + "/page/%E0%A4%A",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        assert page.locator("#chat-section").is_visible()
+        current_links = page.locator('.dashboard-nav a[aria-current="page"]')
+        assert current_links.count() == 1
+        assert current_links.get_attribute("data-page") == "chat-section"
+        assert browser_errors == []
+        browser.close()
