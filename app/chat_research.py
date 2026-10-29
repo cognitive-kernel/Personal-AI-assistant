@@ -256,6 +256,13 @@ def _language_mismatch(message: str, answer_text: str) -> bool:
     return False
 
 
+def _generation_fallback(message: str) -> str:
+    """Return a localized, non-misleading response when the model returns no text."""
+    if re.search(r"[\u0600-\u06FF]", message):
+        return "مدل پاسخ متنی تولید نکرد. لطفاً دوباره تلاش کنید یا وضعیت مدل محلی را بررسی کنید."
+    return "The model did not produce a text response. Please retry or check the local model status."
+
+
 def _language_fallback(message: str) -> str:
     if re.search(r"[\u0600-\u06FF]", message):
         return (
@@ -435,9 +442,11 @@ def answer(
     if not should_use_research(message):
         _checkpoint(checkpoint, "chat_generation_started")
         reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
-        reply = _ensure_requested_language(message, reply, history, checkpoint=checkpoint)
         _checkpoint(checkpoint, "chat_generation_completed")
-        return reply
+        if not isinstance(reply, str) or not reply.strip():
+            logger.warning("Direct chat returned an empty response")
+            return _generation_fallback(message)
+        return _ensure_requested_language(message, reply, history, checkpoint=checkpoint)
 
     started_at = time.perf_counter()
     _checkpoint(checkpoint, "memory_lookup_started")
@@ -486,6 +495,31 @@ def answer(
         _record_audit(message, "", sources, "generation_failed", None, memory, started_at)
         raise
     _checkpoint(checkpoint, "draft_generation_completed")
+    if not isinstance(draft, str) or not draft.strip():
+        fallback = _generation_fallback(message)
+        logger.warning("Research chat returned an empty response")
+        _record_audit(
+            message,
+            fallback,
+            sources,
+            "generation_failed",
+            {
+                "passed": False,
+                "overall": "empty_generation",
+                "claims": [],
+                "error": "empty_generation",
+                "reviewer": "local_ollama_model_assisted_not_independent",
+            },
+            memory,
+            started_at,
+        )
+        _checkpoint(
+            checkpoint,
+            "research_answer_completed",
+            source_count=len(sources),
+            generation_empty=True,
+        )
+        return fallback
     if _language_mismatch(message, draft):
         requested_language = "Persian (فارسی)" if re.search(r"[\u0600-\u06FF]", message) else "English"
         language_repair_payload = {
