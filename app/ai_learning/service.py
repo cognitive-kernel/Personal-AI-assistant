@@ -1798,7 +1798,7 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
     if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
         raise ValueError("Unsupported source_kind.")
     if source_kind != "manual" and not _extract_references(markdown + "\n\n" + (raw_response or "")) and not _has_textual_source_section(markdown + "\n\n" + (raw_response or "")):
-        raise ValueError("منبع قابل تشخیص (پیوند یا کتابنامهٔ متنی) برای این درس وجود ندارد؛ نسخه ذخیره نشد.")
+        raise ValueError("منبع دارای پیوند یا کتابنامهٔ متنی برای این درس وجود ندارد؛ نسخه ذخیره نشد.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
