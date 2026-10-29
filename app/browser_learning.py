@@ -683,11 +683,13 @@ def _schedule_course_retry(
 ) -> str:
     """Persist a bounded retry without discarding completed lesson content."""
     row = conn.execute(
-        "SELECT retry_count FROM browser_learning_courses WHERE id=?",
+        "SELECT status, retry_count FROM browser_learning_courses WHERE id=?",
         (course_id,),
     ).fetchone()
     if row is None:
         return "missing"
+    if row["status"] != "running":
+        return str(row["status"])
     retry_count = max(0, int(row["retry_count"] or 0))
     if retryable and retry_count < MAX_AUTOMATIC_COURSE_RETRIES:
         delay = _AUTO_RETRY_DELAYS_SECONDS[retry_count]
