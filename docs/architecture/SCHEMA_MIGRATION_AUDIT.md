@@ -5,7 +5,7 @@
 - دامنه: خواندن استاتیک `app/db.py`، `app/task_manager.py`، آداپتر یادگیری و تست‌های schema؛ اجرای محلی یا بررسی فایل‌های واقعی دادهٔ کاربر انجام نشده است.
 - هدف: ثبت schema واقعی پیش از افزودن migration runner؛ این سند ادعا نمی‌کند که مهاجرتی اجرا شده است.
 - وضعیت سند: این یک snapshot تاریخی از 2026-10-15 است؛ بدهی‌ها و ترتیب اجرایی بخش‌های 3 تا 5 بیان وضعیت همان تاریخ‌اند، نه وضعیت جاری.
-- وضعیت جاری شاخهٔ `main` در commit `5b357318475cb35bb2bcabaf0d076f94710dfde8`: migration runner در `app/schema_migrations.py` و رجیستری نسخه‌دار در `app/schema_registry.py` پیاده‌سازی شده‌اند؛ آخرین migration ادغام‌شده نسخهٔ 39 است. PR [#528](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/528) نسخهٔ 40 را برای جدول lease worker یادگیری مرورگر پیشنهاد می‌کند؛ این تغییر هنوز در `main` نیست و وجود migration در کد نیز اجرای موفق آن روی پایگاه دادهٔ زندهٔ کاربر را ثابت نمی‌کند.
+- وضعیت جاری در snapshot شاخهٔ `main` با commit پایهٔ `5b357318475cb35bb2bcabaf0d076f94710dfde8`: migration runner در `app/schema_migrations.py` و رجیستری نسخه‌دار در `app/schema_registry.py` پیاده‌سازی شده‌اند. پس از آن، PR [#528](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/528) با commit ادغام `d2658cd9d0deb06ad431d7fa38c61159e49e821a` migration نسخهٔ 40 و جدول lease worker یادگیری مرورگر را اضافه کرده است. وجود migration در کد، اجرای موفق آن روی پایگاه دادهٔ زندهٔ کاربر را ثابت نمی‌کند.
 
 ## 1. پایگاه‌ها و مالکیت فعلی
 
