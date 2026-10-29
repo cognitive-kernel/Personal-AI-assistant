@@ -604,4 +604,4 @@ def test_research_chat_audits_empty_generation_without_claim_review(monkeypatch)
     assert audit["review_status"] == "generation_failed"
     assert audit["review"]["error"] == "empty_generation"
     assert audit["review"]["overall"] == "empty_generation"
-    assert source.url in str(audit["source_urls"])
+    assert audit["sources"][0]["url"] == source.url
