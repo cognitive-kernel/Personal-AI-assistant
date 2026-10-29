@@ -343,8 +343,8 @@ def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
     )
     monkeypatch.setattr(
         main.browser_learning,
-        "dispatch_due_retry",
-        lambda: calls.append("browser_retry") or {"status": "idle"},
+        "dispatch_next_course",
+        lambda: calls.append("browser_dispatch") or {"status": "idle"},
     )
     monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: True)
     monkeypatch.setattr(
@@ -355,4 +355,4 @@ def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
 
     main._maintain_learning_runtime()
 
-    assert calls == ["knowledge", "browser_recovery", "browser_retry", "recovery"]
+    assert calls == ["knowledge", "browser_recovery", "browser_dispatch", "recovery"]
