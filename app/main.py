@@ -284,6 +284,12 @@ def startup() -> None:
     backup_scheduler.start_backup_scheduler()
 
 def shutdown() -> None:
+    # Signal the AI-learning browser worker before stopping other runtimes so
+    # a graceful server shutdown cannot keep reopening Chrome in the background.
+    try:
+        ai_learning_browser_automation.stop_browser_automation()
+    except Exception:
+        logger.exception("AI-learning browser automation did not stop cleanly.")
     backup_scheduler.stop_backup_scheduler(timeout=5.0)
     for runtime in _task_runtimes:
         if not runtime.stop(timeout=10.0):
