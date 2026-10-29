@@ -1000,8 +1000,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     end = matches[index + 1].start() if index + 1 < len(matches) else len(response_text)
                     body = response_text[match.end():end].strip()
                     title = match.group(2).strip() or allowed[topic_id]["title"]
-                    if _lesson_has_substantive_body(body):
-                        sections.append((topic_id, title[:300], body))
+                    sections.append((topic_id, title[:300], body))
                 if len(sections) != len(topics) or len({section[0] for section in sections}) != len(topics):
                     conn.execute(
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_incomplete',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -1011,6 +1010,26 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                                       AND processing_status <> 'paused'""", (run_id,))
                     conn.commit()
                     return get_run(run_id)
+            valid_sections: list[tuple[int, str, str]] = []
+            for topic_id, title, body in sections:
+                reason = None
+                if not _lesson_has_substantive_body(body):
+                    reason = "متن درس خالی یا ناقص بود؛ این درس ذخیره نشد."
+                elif not _extract_references(body):
+                    reason = "برای این درس هیچ منبع دارای پیوند ثبت نشده بود؛ درس رد شد و ذخیره نشد."
+                if reason:
+                    conn.execute(
+                        "UPDATE run_topics SET status='skipped',error_message=? WHERE run_id=? AND topic_id=?",
+                        (reason, run_id, topic_id),
+                    )
+                    conn.execute(
+                        """UPDATE topics SET processing_status='skipped',updated_at=CURRENT_TIMESTAMP
+                           WHERE id=? AND processing_status<>'paused'""",
+                        (topic_id,),
+                    )
+                else:
+                    valid_sections.append((topic_id, title, body))
+            sections = valid_sections
             duplicate_sections: dict[int, dict[str, Any]] = {}
             # Check every section before inserting any lesson version. If the embedding
             # service is unavailable, do not partially save a batch without deduplication.
@@ -1816,6 +1835,12 @@ def review_content(version_id: int, decision: str) -> dict[str, Any]:
         review_body = re.sub(r"(?m)^\s*#{1,6}\s+.*$", "", review_text).strip()
         if decision == "reviewed" and len(review_body) < 10:
             raise ValueError("متن درس خالی یا ناقص است؛ بازبینی را تأیید نکنید. ابتدا نسخهٔ اصلاحی با محتوای کامل ثبت کنید.")
+        if decision == "reviewed" and row["source_kind"] != "manual":
+            source_count = int(conn.execute(
+                "SELECT COUNT(*) FROM sources WHERE content_version_id=?", (version_id,)
+            ).fetchone()[0])
+            if source_count < 1:
+                raise ValueError("منبعی برای این درس ثبت نشده است؛ تأیید بازبینی مجاز نیست.")
         conn.execute("UPDATE content_versions SET review_status=? WHERE id=?", (decision, version_id))
         conn.execute("UPDATE lessons SET status=? WHERE id=?",
                      ("ready" if decision == "reviewed" else "needs_review", row["lesson_id"]))
