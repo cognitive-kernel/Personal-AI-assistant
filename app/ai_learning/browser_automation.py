@@ -748,6 +748,57 @@ def _browser_capture(
         ) from exc
 
 
+_AUTO_RETRY_INITIAL_DELAY_SECONDS = 5
+_AUTO_RETRY_MAX_DELAY_SECONDS = 120
+
+
+def _capture_with_automatic_retry(
+    prompt: str,
+    cancel_event: threading.Event,
+    on_lesson_checkpoint: Callable[[str], None] | None = None,
+    *,
+    run_id: int,
+    phase: str,
+) -> str:
+    """Restart the visible Chrome/ChatGPT attempt after any transient failure until manually stopped."""
+    attempt = 0
+    while True:
+        if cancel_event.is_set() or service.get_learning_control()["paused"]:
+            raise BrowserAutomationError("run_cancelled", "یادگیری به درخواست کاربر متوقف یا مکث شد.")
+        try:
+            return _browser_capture(prompt, cancel_event, on_lesson_checkpoint)
+        except BrowserAutomationError as exc:
+            if exc.code == "run_cancelled" or cancel_event.is_set() or service.get_learning_control()["paused"]:
+                raise
+            error_code = exc.code
+            error_message = str(exc)
+        except Exception as exc:
+            if cancel_event.is_set() or service.get_learning_control()["paused"]:
+                raise BrowserAutomationError("run_cancelled", "یادگیری به درخواست کاربر متوقف یا مکث شد.") from exc
+            error_code = "automatic_retry_unexpected_error"
+            error_message = f"{type(exc).__name__}: {exc}"
+
+        attempt += 1
+        delay = min(
+            _AUTO_RETRY_MAX_DELAY_SECONDS,
+            _AUTO_RETRY_INITIAL_DELAY_SECONDS * (2 ** min(attempt - 1, 5)),
+        )
+        _log_event(
+            "automatic_browser_retry_scheduled",
+            run_id=run_id,
+            phase=phase,
+            attempt=attempt,
+            delay_seconds=delay,
+            error_code=error_code,
+            message=error_message[:500],
+        )
+        # Event.wait makes a manual pause/cancel interrupt the backoff immediately.
+        if cancel_event.wait(delay):
+            raise BrowserAutomationError("run_cancelled", "یادگیری به درخواست کاربر متوقف یا مکث شد.")
+        if service.get_learning_control()["paused"]:
+            raise BrowserAutomationError("run_cancelled", "یادگیری به درخواست کاربر متوقف یا مکث شد.")
+
+
 def _continue_lessons(
     course_id: int,
     cancel_event: threading.Event,
@@ -805,15 +856,22 @@ def _continue_lessons(
             _ACTIVE_RUN_ID = run_id
             _CANCEL_EVENTS[run_id] = cancel_event
         try:
-            answer = _browser_capture(
+            answer = _capture_with_automatic_retry(
                 run["prompt_text"], cancel_event,
                 lambda text: service.save_run_partial_response(run_id, text),
+                run_id=run_id, phase="lesson_followup",
             )
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
+            if cancel_event.is_set() or service.get_learning_control()["paused"]:
+                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
+                return
             service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
             return
         except Exception as exc:
+            if cancel_event.is_set() or service.get_learning_control()["paused"]:
+                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
+                return
             service.mark_run_needs_user_action(
                 run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}"
             )
@@ -838,7 +896,9 @@ def _worker(
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
     try:
         checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == "lesson" else None
-        answer = _browser_capture(prompt, cancel_event, checkpoint)
+        answer = _capture_with_automatic_retry(
+            prompt, cancel_event, checkpoint, run_id=run_id, phase="primary_run"
+        )
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
@@ -853,19 +913,25 @@ def _worker(
         _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
+            if cancel_event.is_set() or service.get_learning_control()["paused"]:
+                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
+            else:
+                service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
         except Exception as mark_exc:
-            print(f"Could not mark AI-learning run {run_id}: {mark_exc}", flush=True)
+            print(f"Could not update AI-learning run {run_id}: {mark_exc}", flush=True)
     except Exception as exc:
         _log_event("worker_unexpected_error", run_id=run_id, exception_type=type(exc).__name__,
                    message=str(exc)[:500], elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
-            service.mark_run_needs_user_action(
-                run_id, "playwright_unexpected_error",
-                f"خطای غیرمنتظره در دریافت پاسخ: {str(exc)[:700]}",
-            )
+            if cancel_event.is_set() or service.get_learning_control()["paused"]:
+                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
+            else:
+                service.mark_run_needs_user_action(
+                    run_id, "playwright_unexpected_error",
+                    f"خطای غیرمنتظره در دریافت پاسخ: {str(exc)[:700]}",
+                )
         except Exception as mark_exc:
-            print(f"Could not mark AI-learning run {run_id}: {mark_exc}", flush=True)
+            print(f"Could not update AI-learning run {run_id}: {mark_exc}", flush=True)
     finally:
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
@@ -893,12 +959,15 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
         candidates: list[dict[str, Any]] = []
         for course in service.list_courses(100):
             candidates.extend(service.list_course_runs(int(course["id"]), 50))
-        pending = [item for item in candidates if item.get("status") in {"queued", "running"}]
+        pending = [item for item in candidates if item.get("status") in {"queued", "running", "needs_user_action"}]
         if not pending:
             return {"status": "idle", "active": False}
         # Stable FIFO order across restart: oldest creation timestamp, then DB ID.
         pending.sort(key=lambda item: (str(item.get("created_at") or ""), int(item["id"])))
         selected = pending[0]
+        if selected.get("status") == "needs_user_action":
+            service.requeue_run_for_resume(int(selected["id"]), "startup_auto_recovery")
+            selected = service.get_run(int(selected["id"]))
         run_id = int(selected["id"])
         course_id = int(selected["course_id"])
         run = service.start_run(run_id)
@@ -1066,8 +1135,19 @@ def reset_learning_data() -> dict[str, Any]:
 def pause_learning() -> dict[str, Any]:
     """Pause all ChatGPT outline and lesson capture, preserving completed database work."""
     state = service.set_learning_paused(True, "توقف سراسری توسط کاربر")
-    _log_event("learning_paused", active_run_id=_ACTIVE_RUN_ID, active_course_id=_ACTIVE_COURSE_ID)
-    return {**state, "active": _ACTIVE, "active_run_id": _ACTIVE_RUN_ID}
+    with _LOCK:
+        active_run_id = _ACTIVE_RUN_ID
+        active_event = _CANCEL_EVENTS.get(active_run_id) if active_run_id is not None else None
+        if active_event is not None:
+            active_event.set()
+    if active_run_id is not None:
+        try:
+            service.requeue_run_for_resume(active_run_id, "manual_global_pause")
+        except Exception as exc:
+            _log_event("pause_run_requeue_failed", run_id=active_run_id,
+                       exception_type=type(exc).__name__, message=str(exc)[:300])
+    _log_event("learning_paused", active_run_id=active_run_id, active_course_id=_ACTIVE_COURSE_ID)
+    return {**state, "active": _ACTIVE, "active_run_id": active_run_id}
 
 
 def resume_learning(course_id: int | None = None) -> dict[str, Any]:
@@ -1085,8 +1165,10 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
         else:
             for course in service.list_courses(100):
                 candidates.extend(service.list_course_runs(int(course["id"]), 50))
-        in_flight = next((item for item in candidates if item.get("status") in {"running", "queued"}), None)
+        in_flight = next((item for item in candidates if item.get("status") in {"running", "queued", "needs_user_action"}), None)
         if in_flight is not None:
+            if in_flight.get("status") == "needs_user_action":
+                service.requeue_run_for_resume(int(in_flight["id"]), "manual_resume_recovery")
             run = service.start_run(int(in_flight["id"]))
             run = service.get_run(int(in_flight["id"]))
             run_id = int(run["id"])
