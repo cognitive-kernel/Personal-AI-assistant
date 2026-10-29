@@ -1515,3 +1515,109 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
         )
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_ai_learning_search_feedback_is_bound_to_trace_and_persisted():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    api_base = base_url.rstrip("/") + "/api/ai-learning"
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def post_json(path, payload):
+            response = page.request.post(
+                api_base + path,
+                data=json.dumps(payload),
+                headers={"Content-Type": "application/json"},
+            )
+            assert response.ok, f"POST {path} failed: {response.status} {response.text()}"
+            return response.json()
+
+        course = post_json("/courses", {
+            "title": "Browser E2E retrieval feedback course",
+            "provider": "manual",
+            "language": "en",
+            "target_level": "automated acceptance",
+            "scope_notes": "",
+        })
+        topic = post_json(f"/courses/{course['id']}/topics", {
+            "title": "Trace feedback marker topic",
+            "description": "Isolated test content for browser feedback acceptance.",
+        })
+        decision = post_json("/topics/decision", {
+            "topic_ids": [topic["id"]],
+            "decision": "approved",
+        })
+        assert decision["updated"] == 1
+        lesson = post_json(f"/topics/{topic['id']}/lessons", {
+            "title": "Trace feedback marker lesson",
+        })
+        version = post_json(f"/lessons/{lesson['id']}/versions", {
+            "markdown": (
+                "# Trace feedback marker\n\n"
+                "The unique E2E retrieval feedback marker verifies that published local "
+                "knowledge can be searched and that helpfulness feedback is bound to the "
+                "exact search trace. This text is seeded only in the disposable CI database."
+            ),
+            "source_kind": "manual",
+            "provider": "manual",
+        })
+        post_json(f"/versions/{version['id']}/review", {"decision": "reviewed"})
+        post_json(f"/versions/{version['id']}/publish", {})
+
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+        summary_before = page.request.get(api_base + "/feedback/summary").json()
+        feedback_payloads = []
+
+        def capture_feedback(request):
+            if request.method == "POST" and request.url.endswith("/api/ai-learning/feedback"):
+                feedback_payloads.append(json.loads(request.post_data or "{}"))
+
+        page.on("request", capture_feedback)
+        page.locator("#search-query").fill("unique E2E retrieval feedback marker")
+        with page.expect_response(
+            lambda response: "/api/ai-learning/search?" in response.url
+        ) as search_response_info:
+            page.locator("#search-form button[type=submit]").click()
+        search_result = search_response_info.value.json()
+        assert search_result["count"] >= 1
+        assert search_result["trace_id"] > 0
+        assert "unique E2E retrieval feedback marker" in page.locator("#search-results").inner_text()
+        page.get_by_role("button", name="مفید بود").click()
+        page.wait_for_function(
+            "() => document.querySelector('#status')?.textContent.includes('بازخورد جست‌وجو ثبت شد')"
+        )
+
+        after_helpful = page.request.get(api_base + "/feedback/summary").json()
+        assert after_helpful["total"] == summary_before["total"] + 1
+        assert after_helpful["helpful"] == summary_before["helpful"] + 1
+        assert feedback_payloads[-1] == {
+            "query_trace_id": search_result["trace_id"],
+            "rating": 1,
+            "comment": "",
+        }
+
+        page.locator("#search-query").fill("unique E2E retrieval feedback marker")
+        with page.expect_response(
+            lambda response: "/api/ai-learning/search?" in response.url
+        ) as second_search_response_info:
+            page.locator("#search-form button[type=submit]").click()
+        second_search = second_search_response_info.value.json()
+        assert second_search["trace_id"] != search_result["trace_id"]
+        page.get_by_role("button", name="مفید نبود").click()
+        page.wait_for_function(
+            "() => document.querySelector('#status')?.textContent.includes('بازخورد جست‌وجو ثبت شد')"
+        )
+
+        after_not_helpful = page.request.get(api_base + "/feedback/summary").json()
+        assert after_not_helpful["total"] == summary_before["total"] + 2
+        assert after_not_helpful["not_helpful"] == summary_before["not_helpful"] + 1
+        assert feedback_payloads[-1] == {
+            "query_trace_id": second_search["trace_id"],
+            "rating": -1,
+            "comment": "",
+        }
+        browser.close()
