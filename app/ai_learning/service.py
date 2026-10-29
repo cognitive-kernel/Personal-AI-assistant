@@ -757,11 +757,11 @@ def _extract_references(text: str) -> list[dict[str, str | None]]:
 
 def _extract_textual_source_entries(text: str) -> list[str]:
     """Extract non-URL bibliography entries such as book titles from a trailing source section."""
-    normalized = str(text or "").replace("\\r", "")
+    normalized = str(text or "").replace("\r", "")
     heading = re.search(
-        r"(?im)^\\s{0,3}(?:#{1,6}\\s*)?"
+        r"(?im)^\s{0,3}(?:#{1,6}\s*)?"
         r"(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|"
-        r"references|sources|bibliography)\\s*[:：]?\\s*$",
+        r"references|sources|bibliography)\s*[:：]?\s*$",
         normalized,
     )
     if heading is None:
@@ -772,9 +772,9 @@ def _extract_textual_source_entries(text: str) -> list[str]:
         line = raw_line.strip()
         if not line or re.fullmatch(r"[-*_]{3,}", line):
             continue
-        if re.match(r"^#{1,6}\\s+", line):
+        if re.match(r"^#{1,6}\s+", line):
             break
-        line = re.sub(r"^(?:[-*+•]\\s+|\\d+[.)]\\s+)", "", line).strip()
+        line = re.sub(r"^(?:[-*+•]\s+|\d+[.)]\s+)", "", line).strip()
         if not line:
             continue
         if re.search(r"https?://", line, re.IGNORECASE):
@@ -1797,8 +1797,8 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
         raise ValueError("raw_response must be text.")
     if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
         raise ValueError("Unsupported source_kind.")
-    if source_kind != "manual" and not _extract_references(markdown + "\n\n" + (raw_response or "")):
-        raise ValueError("منبع دارای پیوند برای این درس وجود ندارد؛ نسخه ذخیره نشد.")
+    if source_kind != "manual" and not _extract_references(markdown + "\n\n" + (raw_response or "")) and not _has_textual_source_section(markdown + "\n\n" + (raw_response or "")):
+        raise ValueError("منبع قابل تشخیص (پیوند یا کتابنامهٔ متنی) برای این درس وجود ندارد؛ نسخه ذخیره نشد.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
