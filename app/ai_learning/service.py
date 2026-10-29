@@ -1326,6 +1326,32 @@ def delete_course_runs(course_id: int, run_ids: list[int]) -> dict[str, Any]:
         return {"deleted": len(run_ids), "run_ids": run_ids}
 
 
+def list_run_ids_by_status(status: str) -> list[int]:
+    """Return every durable run ID in a recoverable status, without dashboard pagination limits."""
+    if status not in {"queued", "running"}:
+        raise ValueError("status must be queued or running.")
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id FROM runs WHERE status=? ORDER BY id ASC",
+            (status,),
+        ).fetchall()
+    return [int(row["id"]) for row in rows]
+
+
+def get_oldest_queued_run() -> dict[str, Any] | None:
+    """Return the globally oldest queued run across all non-archived courses."""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT r.id, r.course_id, r.created_at
+               FROM runs r
+               JOIN courses c ON c.id=r.course_id
+               WHERE r.status='queued' AND c.status <> 'archived'
+               ORDER BY r.created_at ASC, r.id ASC
+               LIMIT 1"""
+        ).fetchone()
+    return dict(row) if row is not None else None
+
+
 def list_course_runs(course_id: int, limit: int = 10) -> list[dict[str, Any]]:
     """List recent generation runs for the local course dashboard without returning large response bodies."""
     with connection() as conn:
