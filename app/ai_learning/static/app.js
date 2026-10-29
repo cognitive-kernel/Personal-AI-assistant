@@ -279,7 +279,7 @@ $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
  feedback.append(helpful,notHelpful,status);root.append(feedback);
  say(r.count+" نتیجه بازیابی شد.")
 })};
-async function refreshCourseProgress(){if(!courseId)return;const d=await api("/courses/"+courseId);topics=d.topics||[];renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}
+async function refreshCourseProgress(){if(!courseId)return;const d=await api("/courses/"+courseId);topics=d.topics||[];const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
 async function refreshLearningControl(){
  const state=await api("/control");
  $("learning-control-status").textContent=state.paused
