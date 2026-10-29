@@ -14,6 +14,21 @@ def isolated_store(tmp_path, monkeypatch):
     return path
 
 
+def test_chatgpt_citation_hyperlinks_are_preserved_for_lesson_source_detection():
+    answer = "# SQL indexes\\n\\nIndexes improve database query performance. Microsoft Learn explains the implementation."
+    links = [
+        {"title": "Microsoft Learn", "url": "https://learn.microsoft.com/sql/relational-databases/indexes/indexes"},
+        {"title": "Microsoft Learn", "url": "https://learn.microsoft.com/sql/relational-databases/indexes/indexes"},
+    ]
+
+    enriched = browser_automation._append_captured_citation_links(answer, links)
+
+    assert "https://learn.microsoft.com/sql/relational-databases/indexes/indexes" in enriched
+    assert len(service._extract_references(enriched)) == 1
+    assert enriched.count("https://learn.microsoft.com/sql/relational-databases/indexes/indexes") == 1
+    assert 'citation_links = _capture_citation_links(page)' in Path(browser_automation.__file__).read_text(encoding="utf-8")
+
+
 def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store):
     course = service.create_course(title="Source-required lesson")
     topic = service.add_topic(course["id"], "Lesson without references")
