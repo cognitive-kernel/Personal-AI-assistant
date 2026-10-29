@@ -392,6 +392,26 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
         ).fetchone()[0] == LEARNING_MIGRATIONS[-1].version
 
 
+def test_browser_learning_retry_migration_preserves_existing_courses():
+    with sqlite3.connect(":memory:") as connection:
+        assert MigrationRunner(LEARNING_MIGRATIONS[:40]).apply(connection) == 40
+        connection.execute(
+            """INSERT INTO browser_learning_courses(topic, cdp_url, max_lessons, status)
+               VALUES (?, ?, ?, ?)""",
+            ("preserve during retry migration", "http://127.0.0.1:9222", 2, "interrupted"),
+        )
+
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 41
+
+        row = connection.execute(
+            """SELECT topic, status, retry_count, next_retry_at
+               FROM browser_learning_courses"""
+        ).fetchone()
+        assert row == ("preserve during retry migration", "interrupted", 0, None)
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):
     path = tmp_path / "learning.db"
     assert initialize_database_file(path, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
