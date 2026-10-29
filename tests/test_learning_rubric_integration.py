@@ -222,7 +222,7 @@ def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
         ).lastrowid
         connection.commit()
 
-    assert initialize_database_file(database, LEARNING_MIGRATIONS) == 39
+    assert initialize_database_file(database, LEARNING_MIGRATIONS) == 40
 
     with db.sqlite3.connect(str(database)) as connection:
         row = connection.execute(
