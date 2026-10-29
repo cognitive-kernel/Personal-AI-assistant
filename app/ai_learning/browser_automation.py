@@ -31,6 +31,7 @@ _MIN_COMPLETE_LESSON_WORDS = 1200
 _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
+_MAX_CONTEXT_RELAUNCHES = 1
 
 
 @contextmanager
@@ -39,21 +40,37 @@ def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
     if getattr(_BROWSER_SESSION, "reuse_enabled", False):
         playwright = getattr(_BROWSER_SESSION, "playwright", None)
         context = getattr(_BROWSER_SESSION, "context", None)
-        if context is not None:
+        context_lost = bool(getattr(_BROWSER_SESSION, "context_closed", False))
+        if context is not None and not context_lost:
             try:
                 list(context.pages)
             except Exception:
-                context = None
+                context_lost = True
+        if context_lost:
+            context = None
         if context is None:
-            # A worker may launch at most one Chrome window. If its context dies,
-            # fail for explicit recovery instead of opening another window on every retry.
-            if getattr(_BROWSER_SESSION, "launch_attempted", False):
+            if context_lost:
+                relaunches = int(getattr(_BROWSER_SESSION, "context_relaunches", 0))
+                if relaunches >= _MAX_CONTEXT_RELAUNCHES:
+                    raise BrowserAutomationError(
+                        "chatgpt_browser_closed",
+                        "پنجرهٔ Chrome دوباره بسته شد؛ یک بار تلاش کنترل‌شده برای بازگشایی انجام شد و برای جلوگیری از چرخهٔ بازشدن پنجره‌ها، بازیابی دستی لازم است.",
+                    )
+                _BROWSER_SESSION.context_relaunches = relaunches + 1
+                _log_event(
+                    "browser_context_lost_relaunching",
+                    relaunch_attempt=_BROWSER_SESSION.context_relaunches,
+                )
+                _close_browser_session()
+                _BROWSER_SESSION.launch_attempted = False
+            elif getattr(_BROWSER_SESSION, "launch_attempted", False):
                 raise BrowserAutomationError(
                     "chatgpt_browser_closed",
-                    "پنجرهٔ Chrome مربوط به یادگیری بسته شده است؛ برای جلوگیری از بازشدن پنجره‌های تکراری، تلاش خودکار متوقف شد. پنجره را باز نگه دارید و اجرا را دوباره آغاز کنید.",
+                    "راه‌اندازی Chrome در این worker موفق نشد؛ برای جلوگیری از بازشدن مکرر پنجره‌ها، بازیابی دستی لازم است.",
                 )
             _BROWSER_SESSION.launch_attempted = True
-            _close_browser_session()
+            if not context_lost:
+                _close_browser_session()
             _log_event("browser_launch_started", reason="new_worker_session")
             playwright = sync_playwright_factory().start()
             try:
@@ -74,6 +91,18 @@ def _browser_session(sync_playwright_factory: Any, chrome: str, profile: Path):
             _BROWSER_SESSION.playwright = playwright
             _BROWSER_SESSION.context = context
             _BROWSER_SESSION.instrumented_page = None
+            _BROWSER_SESSION.context_closed = False
+            try:
+                context.on(
+                    "close",
+                    lambda *_: setattr(_BROWSER_SESSION, "context_closed", True),
+                )
+            except Exception as exc:
+                _log_event(
+                    "browser_context_close_listener_failed",
+                    exception_type=type(exc).__name__,
+                    message=str(exc)[:200],
+                )
             _log_event("browser_launch_succeeded", open_pages=len(context.pages))
         else:
             _log_event("browser_session_reused", open_pages=len(context.pages))
