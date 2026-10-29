@@ -1182,8 +1182,15 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
     assert 'await loadLessons(parentTopicId,root,inline)' in publish_handler
     assert 'if(!inline)returnToTopic(parentTopicId)' in publish_handler
+    assert 'else{root.hidden=true;root.replaceChildren();root.dataset.loaded="false"}' in publish_handler
+    assert 'say(inline?"نسخه منتشر شد؛ پنل درس‌ها بسته شد.":"نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
     assert publish_handler.index('await loadLessons(parentTopicId,root,inline)') < publish_handler.index('if(!inline)returnToTopic(parentTopicId)')
-    assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
+    
+    topic_open_start = script.index('button("مشاهده درس‌ها و محتوا"')
+    topic_open_end = script.index('button("تلاش مجدد دریافت/اصلاح درس"', topic_open_start)
+    topic_open_handler = script[topic_open_start:topic_open_end]
+    assert 'head.after(inlineLessons)' in topic_open_handler
+    assert 'window.scrollTo(previousScrollX,previousScrollY)' in topic_open_handler
 
 
 def test_outline_parser_keeps_subject_chapter_hierarchy():
