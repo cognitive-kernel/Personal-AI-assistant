@@ -1565,3 +1565,51 @@ def test_explicit_browser_lesson_retry_recovers_global_pause(isolated_store, mon
     assert result["status"] == "running"
     assert captured["started"] is True
     assert service.get_run(result["run_id"])["status"] == "running"
+
+
+def test_explicit_lesson_retry_recovers_global_pause_after_validating_topics(isolated_store, monkeypatch):
+    course = service.create_course(title="Retry recovery from global pause")
+    topic = service.add_topic(course["id"], "Memory management")
+    service.decide_topics([topic["id"]], "approved")
+    service.set_learning_paused(True, "simulated interruption")
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.started = False
+        def start(self):
+            self.started = True
+
+    threads = []
+    def fake_thread(**kwargs):
+        thread = FakeThread(**kwargs)
+        threads.append(thread)
+        return thread
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", fake_thread)
+    result = browser_automation.start_lesson_run(
+        course["id"], [topic["id"]], "retry-after-global-pause", force_retry=True
+    )
+
+    assert result["status"] == "running"
+    assert service.get_learning_control()["paused"] is False
+    assert threads and threads[0].started is True
+    browser_automation._ACTIVE = False
+    browser_automation._ACTIVE_RUN_ID = None
+    browser_automation._ACTIVE_COURSE_ID = None
+
+
+def test_invalid_lesson_retry_does_not_clear_global_pause(isolated_store):
+    course = service.create_course(title="Invalid retry preserves pause")
+    service.set_learning_paused(True, "simulated interruption")
+
+    with pytest.raises(ValueError, match="سرفصل انتخاب‌شده"):
+        browser_automation.start_lesson_run(
+            course["id"], [999999], "invalid-retry-keeps-pause", force_retry=True
+        )
+
+    assert service.get_learning_control()["paused"] is True
+    service.set_learning_paused(False)
