@@ -22,6 +22,7 @@ def isolated_store(tmp_path, monkeypatch):
 def test_startup_recovers_oldest_persisted_run_without_creating_new_work(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی پایدار صف")
     first = service.create_run(course["id"], run_type="outline", request_key="persisted-first")
+    service.start_run(first["id"])  # Simulate a process that died while the run was active.
     second = service.create_run(course["id"], run_type="outline", request_key="persisted-second")
     launched = []
 
@@ -97,6 +98,53 @@ def test_browser_capture_retries_after_failure_until_success(isolated_store, mon
 
     assert result == "recovered response"
     assert len(attempts) == 2
+
+
+def test_browser_capture_retry_is_bounded_after_repeated_failure(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف تلاش‌های تکراری")
+    run = service.create_run(course["id"], run_type="outline", request_key="retry-exhausted")
+    attempts = []
+
+    def always_fail(prompt, cancel_event, checkpoint):
+        attempts.append(prompt)
+        raise browser_automation.BrowserAutomationError(
+            "playwright_browser_error", "Chrome failed to launch"
+        )
+
+    monkeypatch.setattr(browser_automation, "_browser_capture", always_fail)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_INITIAL_DELAY_SECONDS", 0)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_MAX_ATTEMPTS", 3)
+
+    with pytest.raises(browser_automation.BrowserAutomationError) as error:
+        browser_automation._capture_with_automatic_retry(
+            run["prompt_text"], threading.Event(), run_id=run["id"], phase="test"
+        )
+
+    assert len(attempts) == 3
+    assert error.value.code == "playwright_browser_error"
+    assert "پس از 3 تلاش خودکار" in str(error.value)
+
+
+def test_dispatch_does_not_restart_runs_needing_user_action(isolated_store, monkeypatch):
+    course = service.create_course(title="عدم اجرای مجدد خودکار")
+    run = service.create_run(course["id"], run_type="outline", request_key="needs-action-stays")
+    service.start_run(run["id"])
+    service.mark_run_needs_user_action(run["id"], "chrome_not_found", "Chrome startup failed")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            raise AssertionError("needs_user_action must not be automatically restarted")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation._dispatch_next_persisted_run()
+
+    assert result == {"status": "idle", "active": False}
+    assert launched == []
+    assert service.get_run(run["id"])["status"] == "needs_user_action"
 
 
 def test_browser_capture_retry_stops_when_manually_cancelled(isolated_store, monkeypatch):
