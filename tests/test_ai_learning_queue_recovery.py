@@ -356,3 +356,37 @@ def test_learning_runtime_maintenance_invokes_orphan_recovery(monkeypatch):
     main._maintain_learning_runtime()
 
     assert calls == ["knowledge", "browser_recovery", "browser_dispatch", "recovery"]
+
+
+
+def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, monkeypatch):
+    courses = [
+        service.create_course(title=f"بازیابی دستی سراسری {index:03d}")
+        for index in range(101)
+    ]
+    oldest_course = courses[0]
+    run = service.create_run(
+        oldest_course["id"], run_type="outline", request_key="manual-resume-outside-course-page"
+    )
+    assert all(
+        int(item["id"]) != int(oldest_course["id"])
+        for item in service.list_courses(100)
+    )
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.resume_learning()
+
+    assert result["status"] == "resumed"
+    assert result["run_id"] == run["id"]
+    assert result["course_id"] == oldest_course["id"]
+    assert len(launched) == 1
+    assert launched[0].args[0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
