@@ -160,8 +160,8 @@ class TaskWorker:
             lease_seconds=self.lease_seconds,
         )
         heartbeat_stop = threading.Event()
-        heartbeat_thread = self._create_heartbeat_thread(context, heartbeat_stop)
         try:
+            heartbeat_thread = self._create_heartbeat_thread(context, heartbeat_stop)
             heartbeat_thread.start()
         except Exception as exc:
             # A task has already been claimed at this point. If the OS refuses
