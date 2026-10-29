@@ -278,7 +278,7 @@ def test_lesson_run_creates_reviewable_version_not_published(isolated_store):
     service.decide_topics([topic["id"]], "approved")
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]], request_key="lesson-test-1")
     service.start_run(run["id"])
-    finished = service.complete_run(run["id"], "# Index fundamentals\n\nIndexes speed up data access.")
+    finished = service.complete_run(run["id"], "# Index fundamentals\n\nIndexes speed up data access.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     assert finished["status"] == "succeeded"
     lessons = service.list_lessons(topic["id"])
     assert len(lessons) == 1
@@ -287,7 +287,7 @@ def test_lesson_run_creates_reviewable_version_not_published(isolated_store):
     with connection() as conn:
         stored = conn.execute("SELECT run_id,raw_response FROM content_versions WHERE id=?", (versions[0]["id"],)).fetchone()
     assert stored["run_id"] == run["id"]
-    assert stored["raw_response"] == "# Index fundamentals\n\nIndexes speed up data access."
+    assert stored["raw_response"] == "# Index fundamentals\n\nIndexes speed up data access.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
 
 
 def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, monkeypatch):
@@ -301,7 +301,7 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, 
     ambiguous = service.complete_run(run["id"], "Here are two sections, but no topic markers.")
     assert ambiguous["status"] == "needs_user_action"
     assert service.list_lessons(a["id"]) == []
-    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content explains lookup performance, index maintenance, and query-plan effects. A production database should compare execution plans, selectivity, write overhead, and storage costs before changing an index strategy. Monitor the workload and validate changes in a test environment.\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content explains isolation, commit, rollback, and consistency guarantees. A production workflow should handle errors, keep transactions short, and validate locking and concurrency behavior under representative load before deployment."
+    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content explains lookup performance, index maintenance, and query-plan effects. A production database should compare execution plans, selectivity, write overhead, and storage costs before changing an index strategy. Monitor the workload and validate changes in a test environment.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content explains isolation, commit, rollback, and consistency guarantees. A production workflow should handle errors, keep transactions short, and validate locking and concurrency behavior under representative load before deployment.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
 
     def fake_embed(texts, model=None):
         return [
@@ -608,14 +608,14 @@ def test_resume_reuses_lesson_shell_with_empty_content(isolated_store):
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                              request_key="retry-empty-content")
     service.start_run(run["id"])
-    completed = service.complete_run(run["id"], "# Query optimization\n\nValid lesson content.")
+    completed = service.complete_run(run["id"], "# Query optimization\n\nValid lesson content.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     lessons = service.list_lessons(topic["id"])
     assert completed["status"] == "succeeded"
     assert len(lessons) == 1
     assert lessons[0]["progress_percent"] == 75
     versions = service.list_versions(lesson["id"])
     assert len(versions) == 2
-    assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content."
+    assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
 
 
 
@@ -639,7 +639,7 @@ def test_complete_run_uses_position_after_soft_deleted_lesson(isolated_store):
         "# Recovery handling\n\n"
         "This lesson explains how to recover a database workflow safely, preserve "
         "consistent state, validate the next step, and avoid writing over records "
-        "that still participate in database uniqueness constraints."
+        "that still participate in database uniqueness constraints.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
     )
     completed = service.complete_run(run["id"], response)
 
@@ -770,7 +770,7 @@ def test_lesson_capture_requires_body_and_preserves_course_context(isolated_stor
         "برای عیب‌یابی باید مصرف حافظه، فشار حافظه و اثر بار کاری را همراه با شاخص‌های سیستم بررسی کرد.\n\n"
         "## روش بررسی\n\n"
         "از نماهای مدیریتی و مستندات رسمی برای بررسی وضعیت استفاده کنید و پیش از تغییر تنظیمات، "
-        "اثر تغییر را در محیط آزمایشی بسنجید."
+        "اثر تغییر را در محیط آزمایشی بسنجید.\n\nمنبع: [مستندات Microsoft SQL](https://learn.microsoft.com/sql/)"
     )
     result = service.complete_run(run["id"], answer)
     assert result["status"] == "succeeded"
@@ -808,7 +808,7 @@ def test_lesson_progress_uses_latest_version_even_if_an_older_version_was_publis
         run["id"],
         "# Memory management in SQL Server 2025\n\n"
         "This is a substantive lesson explaining SQL Server memory management, "
-        "memory pressure, and practical troubleshooting steps.",
+        "memory pressure, and practical troubleshooting steps.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)",
     )
     assert recovered["status"] == "succeeded"
     lessons = service.list_lessons(topic["id"])
@@ -827,7 +827,7 @@ def test_force_retry_keeps_existing_lesson_and_creates_a_new_version(isolated_st
     service.complete_run(first["id"],
                          "# Memory management\n\nSQL Server memory management coordinates memory grants, "
                          "buffer pool usage, and workload pressure. Administrators should monitor memory "
-                         "clerks and wait statistics, compare workload behavior, and validate changes safely.")
+                         "clerks and wait statistics, compare workload behavior, and validate changes safely.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     retry = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                                request_key="retry-lesson-version", force_retry=True)
     assert "[FORCE_RETRY_EXISTING_LESSON]" in retry["prompt_text"]
@@ -835,7 +835,7 @@ def test_force_retry_keeps_existing_lesson_and_creates_a_new_version(isolated_st
     service.complete_run(retry["id"],
                          "# Updated memory management\n\nSQL Server memory management must be assessed "
                          "against the current workload and available memory. Review memory grants, buffer pool "
-                         "pressure, relevant performance counters, and query behavior before making a change.")
+                         "pressure, relevant performance counters, and query behavior before making a change.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     lessons = service.list_lessons(topic["id"])
     assert len(lessons) == 1
     versions = service.list_versions(lessons[0]["id"])
@@ -936,7 +936,7 @@ def test_chatgpt_lesson_is_saved_when_embedding_model_is_unavailable(isolated_st
         "# Transaction management in SQL Server 2025\n\n"
         "Transactions group database operations into a logical unit. SQL Server uses "
         "transaction boundaries to preserve consistency and supports COMMIT and ROLLBACK. "
-        "Administrators should understand isolation levels, locking, deadlocks, and recovery."
+        "Administrators should understand isolation levels, locking, deadlocks, and recovery.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
     )
     result = service.complete_run(run["id"], answer)
 
@@ -1025,7 +1025,7 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
             first_body: [1.0, 0.0, 0.0],
             second_body: [0.98, 0.18, 0.0],
         }
-        return [vectors[text] for text in texts]
+        return [vectors[next(key for key in vectors if key in text)] for text in texts]
 
     monkeypatch.setattr(service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], response)
