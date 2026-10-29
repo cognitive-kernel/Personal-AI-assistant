@@ -435,3 +435,17 @@ def test_run_course_does_not_change_status_after_lease_loss(tmp_path, monkeypatc
     browser_learning.run_course(course["id"])
 
     assert browser_learning.get_course(course["id"])["status"] == "queued"
+
+
+def test_worker_identity_is_regenerated_after_process_fork(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    old_pid = browser_learning._WORKER_OWNER_PID
+    old_token = browser_learning._WORKER_OWNER_TOKEN
+    monkeypatch.setattr(browser_learning.os, "getpid", lambda: old_pid + 1)
+    browser_learning._ACTIVE_COURSE_ID = 99
+
+    browser_learning._ensure_process_identity()
+
+    assert browser_learning._WORKER_OWNER_PID == old_pid + 1
+    assert browser_learning._WORKER_OWNER_TOKEN != old_token
+    assert browser_learning._ACTIVE_COURSE_ID is None
