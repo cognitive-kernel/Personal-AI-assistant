@@ -446,9 +446,19 @@ function renderLessonResult(output, job, path, topic) {
    semanticReviewButton.hidden = false;
    semanticReviewResult.textContent = "آزمون ثبت شد. بازبینی معنایی اختیاری است و نمره قطعی را تغییر نمی‌دهد.";
    result.textContent = "نمره: " + outcome.score + " از 100 (" +
-    outcome.correct_count + " پاسخ منطبق از " + outcome.question_count + "). " +
-    outcome.note + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
-   result.textContent += " این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود.";
+    outcome.correct_count + " پاسخ کاملاً منطبق از " + outcome.question_count + "). " +
+    (outcome.note || "") + " وضعیت تکمیل مسیر را جداگانه ذخیره کنید.";
+   if (outcome.scoring_method === "rubric_concept_coverage_v1" && Array.isArray(outcome.per_question)) {
+    const detail = document.createElement("ul");
+    outcome.per_question.forEach(item => {
+     const row = document.createElement("li");
+     row.textContent = "سؤال " + item.question_index + ": " + item.score + "٪ پوشش معیارها (" +
+      item.matched_criteria + " از " + item.criterion_count + " معیار).";
+     detail.append(row);
+    });
+    result.append(detail);
+   }
+   result.append(document.createTextNode(" این نمره مربوط به پاسخ‌های آزمون شماست؛ امتیاز کیفیت درس به‌صورت خودکار و جداگانه ثبت می‌شود."));
   } catch (error) {
    result.textContent = "خطا در ثبت آزمون: " + error.message;
    submit.disabled = false;
@@ -456,7 +466,7 @@ function renderLessonResult(output, job, path, topic) {
  });
  output.append(form);
  const caveat = document.createElement("p");
- caveat.textContent = "این آزمون بر اساس تطبیق متنی پاسخ‌ها نمره می‌دهد و تأیید علمی مستقل یا فهم معنایی را اثبات نمی‌کند.";
+ caveat.textContent = "نمره بر اساس پوشش معیارهای مفهومی یا (برای آزمون‌های قدیمی فاقد rubric معتبر) تطبیق متنی محاسبه می‌شود؛ به‌تنهایی تأیید علمی مستقل یا فهم واقعی را اثبات نمی‌کند.";
  output.append(caveat);
 }
 
