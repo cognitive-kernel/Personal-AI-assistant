@@ -1035,9 +1035,11 @@ def stop_browser_automation() -> dict[str, Any]:
 
 def recover_pending_runs() -> dict[str, Any]:
     """Recover explicit queued/running records after process restart; never invent work."""
+    global _SHUTTING_DOWN
     from .db import initialize_store
 
     initialize_store()
+    _SHUTTING_DOWN = False
     if service.get_learning_control()["paused"]:
         return {"status": "paused", "active": False, "message": "Global learning pause is active."}
     # Only startup recovery may treat a stale "running" row as an interrupted process.
