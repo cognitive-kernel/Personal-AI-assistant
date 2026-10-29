@@ -26,6 +26,7 @@ Payload, checkpoint, and result must be valid JSON; NaN and Infinity are rejecte
 
 - Claiming uses SQLite BEGIN IMMEDIATE and a single transaction to avoid two workers claiming the same ready task.
 - Worker-side lease mutations (renew, checkpoint, complete, fail/retry) also begin an immediate write transaction before validating ownership. This prevents another process from reclaiming an expired lease between the ownership read and the mutation; a regression test asserts the transaction is active at the validation boundary.
+- Task-control mutations (pause, cancel, resume, priority, reschedule) also serialize status validation and writes in an immediate transaction. This prevents a concurrent claim or worker state transition from invalidating a control operation's read-modify-write decision.
 - A worker lease expires if the worker disappears. Expired running tasks can be reclaimed within their retry limit; exhausted tasks become failed.
 - Workers must renew leases for long operations and may only mutate tasks while their lease is valid.
 - If a task is claimed but the OS refuses to start its heartbeat thread, the handler must not run without lease renewal; the worker records a retryable infrastructure failure and releases the lease. If storage is also unavailable, lease expiry remains the recovery fallback.
