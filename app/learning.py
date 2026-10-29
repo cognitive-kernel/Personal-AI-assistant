@@ -1475,7 +1475,7 @@ def update_path_topic(path_id: int, topic_id: int, status: str, latest_score: fl
 
         score_kind = str(exists["latest_score_kind"] or "legacy_unknown")
         stored_score = exists["latest_score"]
-        assessment_score_kinds = {"learner_rubric", "legacy_exact_match"}
+        assessment_score_kinds = {"learner_rubric", "legacy_exact_match", "sandbox_practical_v1"}
         if score_kind in assessment_score_kinds:
             if latest_score is not None and (
                 stored_score is None or float(latest_score) != float(stored_score)
