@@ -396,10 +396,8 @@ def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolat
     first_course = service.create_course(title="دورهٔ قدیمی با سرفصل ناتمام")
     topic = service.add_topic(first_course["id"], "سرفصل خارج از صفحه")
     service.decide_topics([topic["id"]], "approved")
-    other_courses = [
+    for index in range(100):
         service.create_course(title=f"دورهٔ جدید {index:03d}")
-        for index in range(100)
-    ]
     assert all(
         int(item["id"]) != int(first_course["id"])
         for item in service.list_courses(100)
