@@ -283,6 +283,8 @@ def test_startup_recovery_queues_interrupted_work_and_preserves_completed_lesson
     assert recovered["lessons"][0]["status"] == "completed"
     assert recovered["lessons"][0]["content"] == "durable completed content"
     assert recovered["lessons"][1]["status"] == "queued"
+    assert recovered["retry_count"] == 1
+    assert recovered["next_retry_at"] is not None
     assert browser_learning.get_course(queued_course["id"])["status"] == "queued"
     with db.learning_connection() as conn:
         lease = conn.execute(
@@ -488,3 +490,138 @@ def test_dispatch_releases_lease_when_heartbeat_thread_cannot_start(tmp_path, mo
             "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
         ).fetchone()
     assert lease is None
+
+
+def test_retryable_course_failure_schedules_backoff_and_preserves_completed_lessons(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Retry transient failure", "http://127.0.0.1:9222", 3)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_courses SET status='running' WHERE id=?",
+            (course["id"],),
+        )
+        conn.executemany(
+            """INSERT INTO browser_learning_lessons(course_id, position, topic, status, content)
+               VALUES (?, ?, ?, ?, ?)""",
+            [
+                (course["id"], 1, "Completed", "completed", "preserve this lesson"),
+                (course["id"], 2, "Failed", "failed", None),
+                (course["id"], 3, "Running", "running", None),
+            ],
+        )
+
+    browser_learning._fail_course(course["id"], "temporary browser timeout", retryable=True)
+    result = browser_learning.get_course(course["id"])
+
+    assert result["status"] == "interrupted"
+    assert result["retry_count"] == 1
+    assert result["next_retry_at"] is not None
+    assert "30 ثانیه" in result["error"]
+    assert [lesson["status"] for lesson in result["lessons"]] == [
+        "completed", "queued", "queued"
+    ]
+    assert result["lessons"][0]["content"] == "preserve this lesson"
+
+
+def test_course_failure_becomes_terminal_after_bounded_automatic_retries(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Retry limit", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE browser_learning_courses
+               SET status='running', retry_count=? WHERE id=?""",
+            (browser_learning.MAX_AUTOMATIC_COURSE_RETRIES, course["id"]),
+        )
+
+    browser_learning._fail_course(course["id"], "persistent browser failure", retryable=True)
+    result = browser_learning.get_course(course["id"])
+
+    assert result["status"] == "failed"
+    assert result["retry_count"] == browser_learning.MAX_AUTOMATIC_COURSE_RETRIES
+    assert result["next_retry_at"] is None
+    assert "بازیابی دستی" in result["error"]
+
+
+def test_course_failure_that_requires_user_action_is_not_retried_automatically(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Manual action required", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_courses SET status='running' WHERE id=?",
+            (course["id"],),
+        )
+
+    browser_learning._fail_course(course["id"], "ChatGPT login required", retryable=False)
+    result = browser_learning.get_course(course["id"])
+
+    assert result["status"] == "failed"
+    assert result["retry_count"] == 0
+    assert result["next_retry_at"] is None
+
+
+def test_dispatch_waits_for_retry_deadline_without_starting_worker(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Respect retry deadline", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE browser_learning_courses
+               SET status='interrupted', retry_count=1,
+                   next_retry_at=datetime(CURRENT_TIMESTAMP, '+1 hour')
+               WHERE id=?""",
+            (course["id"],),
+        )
+
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            raise AssertionError("worker must not start before retry deadline")
+
+    monkeypatch.setattr(browser_learning, "_start_course_worker_lease_heartbeat", lambda: None)
+    monkeypatch.setattr(browser_learning.threading, "Thread", FakeThread)
+    result = browser_learning.dispatch_next_course()
+
+    assert result["status"] == "retry_scheduled"
+    assert result["course_id"] == course["id"]
+    assert launched == []
+    assert browser_learning.get_course(course["id"])["status"] == "interrupted"
+    with db.learning_connection() as conn:
+        lease = conn.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None
+
+
+def test_due_retry_dispatches_persisted_course_without_creating_new_work(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Due retry", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE browser_learning_courses
+               SET status='interrupted', retry_count=1,
+                   next_retry_at=datetime(CURRENT_TIMESTAMP, '-1 second')
+               WHERE id=?""",
+            (course["id"],),
+        )
+
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+            launched.append(self)
+
+        def start(self):
+            return None
+
+    monkeypatch.setattr(browser_learning, "_start_course_worker_lease_heartbeat", lambda: None)
+    monkeypatch.setattr(browser_learning.threading, "Thread", FakeThread)
+    result = browser_learning.dispatch_due_retry()
+
+    assert result == {"status": "running", "course_id": course["id"]}
+    assert len(launched) == 1
+    assert launched[0].args[0] == course["id"]
+    assert browser_learning.get_course(course["id"])["status"] == "running"
