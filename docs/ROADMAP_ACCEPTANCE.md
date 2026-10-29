@@ -2,7 +2,7 @@
 
 This file is the release-gate ledger for tracking issue [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290). It distinguishes repository implementation and CI evidence from target-host operations, live-model evaluation, human adjudication, and independent review. A merged PR is not by itself proof that an acceptance gate passed.
 
-**Consolidation status at 2026-10-28:** all currently open PRs have been merged; Issues #52 and #290 are being administratively closed to establish a clean consolidation baseline. This is not a release acceptance or a claim that their remaining gates are complete. The unresolved work remains explicitly tracked in this ledger and must be resumed before release. Do not describe the project as 100% complete while any required gate below is blocked or unverified.
+**Work resumed on 2026-10-29:** Issues #52 and #290 have been reopened because the outstanding acceptance work is active again. This is not a release acceptance or a claim that the remaining gates are complete. Keep repository implementation work separate from target-host operations, live-model evaluation, human adjudication, and independent security review. Do not describe the project as 100% complete while any required gate below is blocked or unverified.
 
 ## Gate ledger
 
@@ -43,5 +43,5 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 ## Close criteria
 
 - Issue #296 was closed on 2026-10-28 after the project owner confirmed the migration is complete and the application is operating on the new database; the confirmation is not independently backed by an attached test log.
-- Issue #52 may be administratively closed for the consolidation baseline only; the Ollama independent security review remains **unresolved**. Reopen or create a follow-up issue when work resumes, and do not claim security sign-off without an independent assessment and retested remediations.
-- Issue #290 may be administratively closed for the consolidation baseline only; the acceptance gates listed above remain authoritative and several are **unresolved**. Reopen or create a follow-up issue when acceptance work resumes. Closing the tracker does not mark the project accepted or any gate passed.
+- Issue #52 is open while the independent Ollama loopback security review remains **unresolved**. Do not close it or claim security sign-off without an independent assessment and retested remediations.
+- Issue #290 is open as the parent tracker for the remaining acceptance gates. Close it only when every required gate is passed with evidence or explicitly classified as blocked by a named external prerequisite. Closing the tracker does not itself mark the project accepted or any gate passed.
