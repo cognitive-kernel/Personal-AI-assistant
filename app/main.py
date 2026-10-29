@@ -171,11 +171,19 @@ _startup_storage_error: str | None = None
 
 
 def _maintain_learning_runtime() -> None:
-    """Run routine knowledge maintenance and recover orphaned browser-learning work."""
+    """Run routine maintenance and recover/dispatch persisted browser-learning work safely."""
     try:
         learning.maintain_factual_knowledge()
     except Exception:
         logger.exception("Factual-learning maintenance failed.")
+    try:
+        browser_learning.recover_interrupted_courses()
+    except Exception:
+        logger.exception("Stale browser-learning recovery failed; it will retry next interval.")
+    try:
+        browser_learning.dispatch_next_course()
+    except Exception:
+        logger.exception("Browser-learning dispatch failed; it will retry next interval.")
     if ai_learning_config.is_enabled():
         try:
             ai_learning_browser_automation.recover_orphaned_runs()

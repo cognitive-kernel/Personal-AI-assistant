@@ -124,7 +124,7 @@ def test_learning_schema_migrates_from_v1_without_losing_rows():
 
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
         assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == LEARNING_MIGRATIONS[-1].version
-        assert LEARNING_MIGRATIONS[-1].version == 40
+        assert LEARNING_MIGRATIONS[-1].version == 41
         usage_columns = {row[1] for row in connection.execute("PRAGMA table_info(model_usage_events)")}
         graph_columns = {row[1] for row in connection.execute("PRAGMA table_info(learning_knowledge_graph_edges)")}
         browser_columns = {row[1] for row in connection.execute("PRAGMA table_info(browser_learning_courses)")}
@@ -390,6 +390,27 @@ def test_file_initializer_backs_up_legacy_database_before_upgrade(tmp_path):
         assert connection.execute(
             "SELECT MAX(version) FROM schema_migrations"
         ).fetchone()[0] == LEARNING_MIGRATIONS[-1].version
+
+
+def test_browser_learning_retry_migration_preserves_existing_courses():
+    with sqlite3.connect(":memory:") as connection:
+        assert MigrationRunner(LEARNING_MIGRATIONS[:40]).apply(connection) == 40
+        connection.execute(
+            """INSERT INTO browser_learning_courses(topic, cdp_url, max_lessons, status)
+               VALUES (?, ?, ?, ?)""",
+            ("preserve during retry migration", "http://127.0.0.1:9222", 2, "interrupted"),
+        )
+        connection.commit()
+
+        assert MigrationRunner(LEARNING_MIGRATIONS).apply(connection) == 41
+
+        row = connection.execute(
+            """SELECT topic, status, retry_count, next_retry_at
+               FROM browser_learning_courses"""
+        ).fetchone()
+        assert row == ("preserve during retry migration", "interrupted", 0, None)
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_file_initializer_does_not_make_backup_after_migration_is_current(tmp_path):

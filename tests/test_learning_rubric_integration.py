@@ -151,7 +151,7 @@ def test_rubric_migration_adds_idempotency_and_score_provenance_columns(tmp_path
     assert {"idempotency_key", "result_details_json"} <= attempt_columns
     assert "latest_score_kind" in topic_columns
     assert "latest_score_source" in topic_columns
-    assert migration["version"] == 40
+    assert migration["version"] == LEARNING_MIGRATIONS[-1].version
 
 
 
@@ -209,7 +209,7 @@ def test_non_finite_progress_scores_are_rejected(tmp_path, monkeypatch):
 
 def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
     database = tmp_path / "learning.db"
-    initialize_database_file(database, LEARNING_MIGRATIONS[:-2])
+    initialize_database_file(database, LEARNING_MIGRATIONS[:-3])
 
     with sqlite3.connect(str(database)) as connection:
         path_id = connection.execute(
@@ -222,7 +222,7 @@ def test_assessment_source_migration_backfills_existing_provenance(tmp_path):
         ).lastrowid
         connection.commit()
 
-    assert initialize_database_file(database, LEARNING_MIGRATIONS) == 40
+    assert initialize_database_file(database, LEARNING_MIGRATIONS) == LEARNING_MIGRATIONS[-1].version
 
     with db.sqlite3.connect(str(database)) as connection:
         row = connection.execute(
