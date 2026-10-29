@@ -240,3 +240,114 @@ def test_run_course_uses_browser_chatgpt_flow_and_persists_each_lesson(tmp_path,
     assert all(lesson["trust_status"] == "unverified" for lesson in result["lessons"])
     assert all(len(lesson["prompt_sha256"]) == 64 for lesson in result["lessons"])
     assert all(len(lesson["content_sha256"]) == 64 for lesson in result["lessons"])
+
+
+def test_startup_recovery_queues_interrupted_work_and_preserves_completed_lessons(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
+    course = browser_learning.create_course("Recover a course", "http://127.0.0.1:9222", 2)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """UPDATE browser_learning_courses SET status='running', title='Saved course',
+               outline_json=? WHERE id=?""",
+            (json.dumps({"topics": ["Completed lesson", "Pending lesson"]}), course["id"]),
+        )
+        conn.execute(
+            """INSERT INTO browser_learning_lessons(course_id, position, topic, status, content)
+               VALUES (?, 1, 'Completed lesson', 'completed', 'durable completed content')""",
+            (course["id"],),
+        )
+        conn.execute(
+            """INSERT INTO browser_learning_lessons(course_id, position, topic, status, error)
+               VALUES (?, 2, 'Pending lesson', 'running', 'process stopped')""",
+            (course["id"],),
+        )
+
+    recovered_count = browser_learning.recover_interrupted_courses()
+    recovered = browser_learning.get_course(course["id"])
+
+    assert recovered_count == 1
+    assert recovered["status"] == "interrupted"
+    assert recovered["lessons"][0]["status"] == "completed"
+    assert recovered["lessons"][0]["content"] == "durable completed content"
+    assert recovered["lessons"][1]["status"] == "queued"
+
+
+def test_dispatch_resumes_oldest_interrupted_course_and_drains_queue(monkeypatch, tmp_path):
+    _init(tmp_path, monkeypatch)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
+    first = browser_learning.create_course("First interrupted", "http://127.0.0.1:9222", 2)
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE browser_learning_courses SET status='interrupted' WHERE id=?", (first["id"],))
+    second = browser_learning.create_course("Second interrupted", "http://127.0.0.1:9222", 2)
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE browser_learning_courses SET status='interrupted' WHERE id=?", (second["id"],))
+
+    launched = []
+    executed = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.target, self.args, self.name, self.daemon = target, args, name, daemon
+
+        def start(self):
+            launched.append(self)
+
+    monkeypatch.setattr(browser_learning.threading, "Thread", FakeThread)
+    def complete_fake_course(course_id):
+        executed.append(course_id)
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE browser_learning_courses SET status='completed' WHERE id=?",
+                (course_id,),
+            )
+
+    monkeypatch.setattr(browser_learning, "run_course", complete_fake_course)
+
+    first_dispatch = browser_learning.dispatch_next_course()
+    assert first_dispatch == {"status": "running", "course_id": first["id"]}
+    assert browser_learning.get_course(first["id"])["status"] == "running"
+    assert browser_learning.get_course(second["id"])["status"] == "interrupted"
+    assert browser_learning.dispatch_next_course() == {
+        "status": "already_active", "course_id": first["id"]
+    }
+
+    launched[0].target(*launched[0].args)
+    assert executed == [first["id"]]
+    assert len(launched) == 2
+    assert browser_learning.get_course(second["id"])["status"] == "running"
+
+    launched[1].target(*launched[1].args)
+    assert executed == [first["id"], second["id"]]
+    assert browser_learning.dispatch_next_course() == {"status": "idle"}
+
+
+def test_recovery_does_not_mark_a_live_in_process_course_interrupted(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Live course", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE browser_learning_courses SET status='running' WHERE id=?", (course["id"],))
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", course["id"])
+
+    assert browser_learning.recover_interrupted_courses() == 0
+    assert browser_learning.get_course(course["id"])["status"] == "running"
+
+
+def test_dispatch_thread_start_failure_preserves_course_for_later_recovery(monkeypatch, tmp_path):
+    _init(tmp_path, monkeypatch)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
+    course = browser_learning.create_course("Thread startup failure", "http://127.0.0.1:9222", 1)
+
+    class FailingThread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated thread start failure")
+
+    monkeypatch.setattr(browser_learning.threading, "Thread", FailingThread)
+    result = browser_learning.dispatch_next_course()
+
+    assert result == {"status": "interrupted", "course_id": course["id"]}
+    assert browser_learning.get_course(course["id"])["status"] == "interrupted"
+    assert browser_learning._ACTIVE_COURSE_ID is None
