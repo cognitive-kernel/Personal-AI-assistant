@@ -268,6 +268,41 @@ def _language_fallback(message: str) -> str:
     )
 
 
+
+def _ensure_requested_language(
+    message: str,
+    answer_text: str,
+    history: list[dict[str, str]] | None = None,
+    *,
+    checkpoint: Callable[[dict[str, Any]], Any] | None = None,
+) -> str:
+    """Repair a likely language mismatch once, then fail closed if it persists."""
+    if not _language_mismatch(message, answer_text):
+        return answer_text
+    requested_language = "Persian (فارسی)" if re.search(r"[\u0600-\u06FF]", message) else "English"
+    payload = {
+        "question": message[:3000],
+        "draft_answer": answer_text[:10000],
+        "instruction": (
+            f"Rewrite the answer entirely in {requested_language}. The user's requested language is a hard requirement. "
+            "Do not answer in another language. Preserve the meaning and uncertainty, and do not invent sources or facts. "
+            "Return answer text only."
+        ),
+    }
+    _checkpoint(checkpoint, "language_repair_started", requested_language=requested_language)
+    try:
+        repaired = ollama.chat(
+            json.dumps(payload, ensure_ascii=False),
+            history,
+            system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT,
+        )
+    except Exception as exc:
+        logger.warning("Direct-chat language repair failed (%s)", type(exc).__name__)
+        repaired = ""
+    _checkpoint(checkpoint, "language_repair_completed")
+    return _language_fallback(message) if not repaired.strip() or _language_mismatch(message, repaired) else repaired
+
+
 def _source_conflict_reason(message: str, review: dict[str, Any]) -> str:
     conflicts = review.get("source_conflicts", [])
     urls: list[str] = []
@@ -400,6 +435,7 @@ def answer(
     if not should_use_research(message):
         _checkpoint(checkpoint, "chat_generation_started")
         reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
+        reply = _ensure_requested_language(message, reply, history, checkpoint=checkpoint)
         _checkpoint(checkpoint, "chat_generation_completed")
         return reply
 
