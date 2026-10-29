@@ -79,6 +79,32 @@ def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_st
         service.review_content(version["id"], "reviewed")
 
 
+
+def test_textual_book_reference_allows_generated_lesson_review_and_publish(isolated_store):
+    course = service.create_course(title="Textual bibliography")
+    topic = service.add_topic(course["id"], "Data structures")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Trees")
+    markdown = (
+        "# Trees\\n\\n"
+        "A tree is a hierarchical data structure used to represent relationships.\\n\\n"
+        "## منابع\\n"
+        "- کتاب ساختمان داده، تننباوم و آگوستین"
+    )
+    version = service.add_content_version(lesson["id"], markdown)
+    with connection() as conn:
+        conn.execute(
+            "UPDATE content_versions SET source_kind='chatgpt_ui' WHERE id=?",
+            (version["id"],),
+        )
+
+    reviewed = service.review_content(version["id"], "reviewed")
+    assert reviewed["review_status"] == "reviewed"
+    published = service.publish_content(version["id"])
+    assert published["review_status"] == "published"
+
+
+
 def test_bulk_lesson_actions_never_delete_lessons_and_accept_textual_sources():
     from pathlib import Path
 
