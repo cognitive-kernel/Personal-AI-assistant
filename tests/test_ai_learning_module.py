@@ -54,6 +54,37 @@ def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store
     assert status == "skipped"
 
 
+def test_generated_lesson_with_textual_bibliography_is_saved(isolated_store, monkeypatch):
+    course = service.create_course(title="Textual bibliography saves")
+    topic = service.add_topic(course["id"], "Data structures")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="single", request_key="generated-lesson-textual-source",
+    )
+    service.start_run(run["id"])
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    response = (
+        "# Trees\n\n"
+        + ("A tree is a hierarchical data structure used to represent relationships between objects. " * 5)
+        + "\n\n## منابع\n- کتاب ساختمان داده، تننباوم و آگوستین"
+    )
+    result = service.complete_run(run["id"], response)
+    assert result["status"] == "succeeded"
+    lessons = service.list_lessons(topic["id"])
+    assert len(lessons) == 1
+    with connection() as conn:
+        source = conn.execute(
+            "SELECT title,url,source_type FROM sources WHERE content_version_id = "
+            "(SELECT id FROM content_versions WHERE lesson_id = ? ORDER BY id DESC LIMIT 1)",
+            (lessons[0]["id"],),
+        ).fetchone()
+    assert source is not None
+    assert source["title"] == "کتاب ساختمان داده، تننباوم و آگوستین"
+    assert source["url"] is None
+    assert source["source_type"] == "textual_bibliography"
+
+
 def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_store, monkeypatch):
     course = service.create_course(title="No-source review guard")
     topic = service.add_topic(course["id"], "Generated lesson")
@@ -86,9 +117,9 @@ def test_textual_book_reference_allows_generated_lesson_review_and_publish(isola
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Trees")
     markdown = (
-        "# Trees\\n\\n"
-        "A tree is a hierarchical data structure used to represent relationships.\\n\\n"
-        "## منابع\\n"
+        "# Trees\n\n"
+        "A tree is a hierarchical data structure used to represent relationships.\n\n"
+        "## منابع\n"
         "- کتاب ساختمان داده، تننباوم و آگوستین"
     )
     version = service.add_content_version(lesson["id"], markdown)
