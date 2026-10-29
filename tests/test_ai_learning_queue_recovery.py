@@ -16,6 +16,7 @@ def isolated_store(tmp_path, monkeypatch):
     monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
     monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
     return tmp_path
 
 
@@ -163,6 +164,30 @@ def test_browser_capture_retry_stops_when_manually_cancelled(isolated_store, mon
         )
 
     assert error.value.code == "run_cancelled"
+
+
+def test_shutdown_signals_workers_and_blocks_queue_dispatch(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف مرورگر با خاموش‌شدن سرور")
+    run = service.create_run(course["id"], run_type="outline", request_key="shutdown-run")
+    cancel_event = threading.Event()
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {run["id"]: cancel_event})
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            raise AssertionError("shutdown must not launch another browser worker")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.stop_browser_automation()
+    dispatched = browser_automation._dispatch_next_persisted_run()
+
+    assert result["status"] == "shutting_down"
+    assert cancel_event.is_set()
+    assert dispatched == {"status": "shutting_down", "active": False}
+    assert launched == []
 
 
 def test_requeue_recovers_needs_user_action_but_never_resurrects_cancelled_run(isolated_store):
