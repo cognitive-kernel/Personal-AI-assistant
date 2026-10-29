@@ -134,7 +134,7 @@ def test_configured_peer_response_is_audited_but_not_treated_as_truth(review_sto
         captured["handlers"] = handlers
         return FakeOpener()
 
-    monkeypatch.setattr(review.urllib.request, "build_opener", fake_build_opener)
+    monkeypatch.setattr(review, "_build_peer_opener", fake_build_opener)
     monkeypatch.setattr(
         review, "get_settings",
         lambda: {"learning_model_pricing_json": json.dumps({
@@ -833,7 +833,7 @@ def test_peer_request_bypasses_ambient_proxy_configuration(review_store, monkeyp
         captured["handlers"] = handlers
         return FakeOpener()
 
-    monkeypatch.setattr(review.urllib.request, "build_opener", fake_build_opener)
+    monkeypatch.setattr(review, "_build_peer_opener", fake_build_opener)
 
     result = review.consult_configured_peer_ais(candidate_id)
 
