@@ -238,6 +238,12 @@ def reorder_topics(course_id: int, request: TopicOrder) -> dict[str, Any]:
 def decide_topics(request: TopicDecision) -> dict[str, Any]:
     return {"updated": _call(service.decide_topics, request.topic_ids, request.decision)}
 
+@router.get("/courses/{course_id}/deleted-lessons")
+def list_deleted_lessons(course_id: int) -> dict[str, Any]:
+    items = _call(service.list_deleted_lessons, course_id)
+    return {"items": items, "count": len(items)}
+
+
 @router.post("/topics/{topic_id}/lessons", status_code=201)
 def create_lesson(topic_id: int, request: LessonCreate) -> dict[str, Any]:
     return _call(service.create_lesson, topic_id, request.title)
@@ -258,6 +264,11 @@ def delete_topic(topic_id: int) -> dict[str, Any]:
 @router.delete("/lessons/{lesson_id}")
 def delete_lesson(lesson_id: int) -> dict[str, Any]:
     return _call(service.soft_delete_lesson, lesson_id)
+
+@router.post("/lessons/{lesson_id}/restore")
+def restore_lesson(lesson_id: int) -> dict[str, Any]:
+    return _call(service.restore_soft_deleted_lesson, lesson_id)
+
 
 @router.get("/lessons/{lesson_id}/versions")
 def list_versions(lesson_id: int) -> dict[str, Any]:
