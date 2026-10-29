@@ -18,6 +18,7 @@ Ordinary small talk remains on the direct local Ollama chat path. Both paths che
 - Chat prompt content remains bounded by the Ollama client request limit.
 - No generated code or shell command is executed.
 - Only the local loopback Ollama endpoint is used for generation and embedding.
+- Each persisted assistant message can receive one replaceable positive/negative user rating. Feedback is stored separately from knowledge, never changes verification status, and is removed when its conversation is deleted.
 
 ## Limitations
 
