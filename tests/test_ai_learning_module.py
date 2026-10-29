@@ -38,17 +38,27 @@ def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store
     assert status == "skipped"
 
 
-def test_generated_lesson_without_source_cannot_be_reviewed(isolated_store, monkeypatch):
+def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_store, monkeypatch):
     course = service.create_course(title="No-source review guard")
     topic = service.add_topic(course["id"], "Generated lesson")
     service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "Generated lesson")
     monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    with pytest.raises(ValueError, match="منبع دارای پیوند"):
+        service.add_content_version(
+            lesson["id"],
+            "# Generated lesson\\n\\nSubstantive content for this lesson.",
+            source_kind="chatgpt_ui",
+        )
     version = service.add_content_version(
         lesson["id"],
         "# Generated lesson\\n\\nSubstantive content for this lesson.",
-        source_kind="chatgpt_ui",
     )
+    with connection() as conn:
+        conn.execute(
+            "UPDATE content_versions SET source_kind='chatgpt_ui' WHERE id=?",
+            (version["id"],),
+        )
     with pytest.raises(ValueError, match="منبعی برای این درس"):
         service.review_content(version["id"], "reviewed")
 
