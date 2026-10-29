@@ -559,6 +559,9 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0; }
 .chat-message p { margin: 0 0 0.5rem; }
 .chat-message-user { border-inline-start: 4px solid var(--accent, #64748b); }
 .chat-message-assistant { border-inline-start: 4px solid var(--success, #15803d); }
+.chat-feedback { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.chat-feedback button { min-height: 2.25rem; }
+.chat-feedback button[aria-pressed="true"] { outline: 2px solid var(--accent, #64748b); outline-offset: 2px; font-weight: 700; }
 #settings-form fieldset { min-width: 0; margin: 1rem 0; padding: 1rem; border: 1px solid var(--border, #cbd5e1); border-radius: 0.75rem; }
 #settings-form legend { padding: 0 0.4rem; font-weight: 700; }
 #programming-assist-output { white-space: pre-wrap; overflow-wrap: anywhere; }
