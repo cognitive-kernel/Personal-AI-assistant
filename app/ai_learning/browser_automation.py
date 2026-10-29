@@ -750,6 +750,7 @@ def _browser_capture(
 
 _AUTO_RETRY_INITIAL_DELAY_SECONDS = 5
 _AUTO_RETRY_MAX_DELAY_SECONDS = 120
+_AUTO_RETRY_MAX_ATTEMPTS = 5
 
 
 def _capture_with_automatic_retry(
@@ -760,9 +761,9 @@ def _capture_with_automatic_retry(
     run_id: int,
     phase: str,
 ) -> str:
-    """Restart the visible Chrome/ChatGPT attempt after any transient failure until manually stopped."""
+    """Retry visible Chrome/ChatGPT capture a bounded number of times, then require manual recovery."""
     attempt = 0
-    while True:
+    while attempt < _AUTO_RETRY_MAX_ATTEMPTS:
         if cancel_event.is_set() or service.get_learning_control()["paused"]:
             raise BrowserAutomationError("run_cancelled", "یادگیری به درخواست کاربر متوقف یا مکث شد.")
         try:
@@ -772,13 +773,30 @@ def _capture_with_automatic_retry(
                 raise
             error_code = exc.code
             error_message = str(exc)
+            partial_response = exc.partial_response
         except Exception as exc:
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 raise BrowserAutomationError("run_cancelled", "یادگیری به درخواست کاربر متوقف یا مکث شد.") from exc
             error_code = "automatic_retry_unexpected_error"
             error_message = f"{type(exc).__name__}: {exc}"
+            partial_response = None
 
         attempt += 1
+        if attempt >= _AUTO_RETRY_MAX_ATTEMPTS:
+            _log_event(
+                "automatic_browser_retry_exhausted",
+                run_id=run_id,
+                phase=phase,
+                attempts=attempt,
+                error_code=error_code,
+                message=error_message[:500],
+            )
+            raise BrowserAutomationError(
+                error_code,
+                f"پس از {attempt} تلاش خودکار، دریافت پاسخ متوقف شد. برای جلوگیری از بازشدن مکرر Chrome، از داشبورد اجرای یادگیری را دستی ادامه دهید. آخرین خطا: {error_message[:500]}",
+                partial_response=partial_response,
+            )
+
         delay = min(
             _AUTO_RETRY_MAX_DELAY_SECONDS,
             _AUTO_RETRY_INITIAL_DELAY_SECONDS * (2 ** min(attempt - 1, 5)),
@@ -788,6 +806,7 @@ def _capture_with_automatic_retry(
             run_id=run_id,
             phase=phase,
             attempt=attempt,
+            max_attempts=_AUTO_RETRY_MAX_ATTEMPTS,
             delay_seconds=delay,
             error_code=error_code,
             message=error_message[:500],
@@ -949,7 +968,7 @@ def _worker(
 
 
 def _dispatch_next_persisted_run() -> dict[str, Any]:
-    """Claim the oldest persisted queued/interrupted run and start its browser worker."""
+    """Claim the oldest explicitly queued run; failed runs require deliberate manual recovery."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     if service.get_learning_control()["paused"]:
         return {"status": "paused", "active": False}
@@ -959,15 +978,14 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
         candidates: list[dict[str, Any]] = []
         for course in service.list_courses(100):
             candidates.extend(service.list_course_runs(int(course["id"]), 50))
-        pending = [item for item in candidates if item.get("status") in {"queued", "running", "needs_user_action"}]
+        # Do not silently resurrect needs_user_action or stale running records here:
+        # this dispatcher also runs after every worker finishes, so doing so can loop forever.
+        pending = [item for item in candidates if item.get("status") == "queued"]
         if not pending:
             return {"status": "idle", "active": False}
         # Stable FIFO order across restart: oldest creation timestamp, then DB ID.
         pending.sort(key=lambda item: (str(item.get("created_at") or ""), int(item["id"])))
         selected = pending[0]
-        if selected.get("status") == "needs_user_action":
-            service.requeue_run_for_resume(int(selected["id"]), "startup_auto_recovery")
-            selected = service.get_run(int(selected["id"]))
         run_id = int(selected["id"])
         course_id = int(selected["course_id"])
         run = service.start_run(run_id)
@@ -1002,6 +1020,12 @@ def recover_pending_runs() -> dict[str, Any]:
     initialize_store()
     if service.get_learning_control()["paused"]:
         return {"status": "paused", "active": False, "message": "Global learning pause is active."}
+    # Only startup recovery may treat a stale "running" row as an interrupted process.
+    # A needs_user_action row is intentionally left alone until the user resumes it.
+    for course in service.list_courses(100):
+        for item in service.list_course_runs(int(course["id"]), 50):
+            if item.get("status") == "running":
+                service.requeue_run_for_resume(int(item["id"]), "startup_interrupted_run")
     result = _dispatch_next_persisted_run()
     _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
     return result
