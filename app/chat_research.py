@@ -444,7 +444,7 @@ def answer(
         reply = ollama.chat(message, history, system_prompt=_DIRECT_CHAT_SYSTEM_PROMPT)
         _checkpoint(checkpoint, "chat_generation_completed")
         if not isinstance(reply, str) or not reply.strip():
-            logger.warning("Direct chat returned an empty response")
+            logger.warning("Direct chat returned an empty or non-text response")
             return _generation_fallback(message)
         return _ensure_requested_language(message, reply, history, checkpoint=checkpoint)
 
@@ -497,7 +497,7 @@ def answer(
     _checkpoint(checkpoint, "draft_generation_completed")
     if not isinstance(draft, str) or not draft.strip():
         fallback = _generation_fallback(message)
-        logger.warning("Research chat returned an empty response")
+        logger.warning("Research chat returned an empty or non-text response")
         _record_audit(
             message,
             fallback,
