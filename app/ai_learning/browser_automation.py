@@ -1296,7 +1296,17 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
     """Queue the selected topics and capture them sequentially, one bounded prompt at a time."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     if service.get_learning_control()["paused"]:
-        raise ValueError("مکث سراسری فعال است؛ ابتدا ادامه / بازیابی را بزنید.")
+        if not force_retry:
+            raise ValueError("مکث سراسری فعال است؛ ابتدا ادامه / بازیابی را بزنید.")
+        # An explicit retry is a user-directed recovery action. Clear a stale/global
+        # pause before scheduling it; otherwise the retry endpoint returns 422 and
+        # the learning workflow appears unable to recover from an interruption.
+        service.set_learning_paused(False, "شروع مجدد صریح دریافت درس توسط کاربر")
+        _log_event(
+            "global_pause_cleared_for_explicit_lesson_retry",
+            course_id=course_id,
+            topic_ids=list(topic_ids),
+        )
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
     if not requested_ids:
         raise ValueError("حداقل یک سرفصل برای دریافت درس انتخاب کنید.")
