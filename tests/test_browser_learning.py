@@ -9,6 +9,10 @@ def _init(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
+    browser_learning._WORKER_LEASE_LOST.clear()
+    browser_learning._WORKER_LEASE_STOP.set()
+    browser_learning._WORKER_LEASE_THREAD = None
 
 
 @pytest.mark.parametrize("url", [
@@ -293,6 +297,7 @@ def test_dispatch_resumes_oldest_interrupted_course_and_drains_queue(monkeypatch
         def start(self):
             launched.append(self)
 
+    monkeypatch.setattr(browser_learning, "_start_course_worker_lease_heartbeat", lambda: None)
     monkeypatch.setattr(browser_learning.threading, "Thread", FakeThread)
     def complete_fake_course(course_id):
         executed.append(course_id)
@@ -345,9 +350,63 @@ def test_dispatch_thread_start_failure_preserves_course_for_later_recovery(monke
         def start(self):
             raise RuntimeError("simulated thread start failure")
 
+    monkeypatch.setattr(browser_learning, "_start_course_worker_lease_heartbeat", lambda: None)
     monkeypatch.setattr(browser_learning.threading, "Thread", FailingThread)
     result = browser_learning.dispatch_next_course()
 
     assert result == {"status": "interrupted", "course_id": course["id"]}
     assert browser_learning.get_course(course["id"])["status"] == "interrupted"
     assert browser_learning._ACTIVE_COURSE_ID is None
+
+
+def test_browser_learning_worker_lease_blocks_another_owner_and_allows_expired_reclaim(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+
+    assert browser_learning._acquire_course_worker_lease("owner-a", now=1000.0) is True
+    assert browser_learning._acquire_course_worker_lease("owner-b", now=1001.0) is False
+
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_worker_lease SET lease_until=? WHERE lease_name='browser-learning'",
+            (1000.0,),
+        )
+
+    assert browser_learning._acquire_course_worker_lease("owner-b", now=1001.0) is True
+    with db.learning_connection() as conn:
+        row = conn.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert row["owner_token"] == "owner-b"
+
+
+def test_startup_recovery_does_not_rewrite_another_process_live_course(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Another process is running", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_courses SET status='running' WHERE id=?",
+            (course["id"],),
+        )
+        conn.execute(
+            """INSERT INTO browser_learning_worker_lease(lease_name, owner_token, lease_until)
+               VALUES ('browser-learning', 'other-process', ?)""",
+            (time.time() + 240.0,),
+        )
+
+    assert browser_learning.recover_interrupted_courses() == 0
+    assert browser_learning.get_course(course["id"])["status"] == "running"
+
+
+def test_dispatch_does_not_start_a_second_process_worker_when_lease_is_held(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Lease held", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute(
+            """INSERT INTO browser_learning_worker_lease(lease_name, owner_token, lease_until)
+               VALUES ('browser-learning', 'other-process', ?)""",
+            (time.time() + 240.0,),
+        )
+
+    result = browser_learning.dispatch_next_course()
+    assert result == {"status": "lease_held"}
+    assert browser_learning.get_course(course["id"])["status"] == "queued"
