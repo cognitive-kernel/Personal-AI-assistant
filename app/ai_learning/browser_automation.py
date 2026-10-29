@@ -578,11 +578,31 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
 
 
 def _lesson_completion_status(text: str) -> str | None:
-    """Read the explicit completion contract only when it is the final non-empty line."""
-    last_line = next((line.strip() for line in reversed((text or "").splitlines()) if line.strip()), "")
+    """Read explicit status, or recognize a substantive lesson ending in a bibliography."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    last_line = lines[-1] if lines else ""
     match = re.fullmatch(r"LESSON_STATUS:\s*(COMPLETE|CONTINUE_REQUIRED)\b[^\n]*", last_line, re.IGNORECASE)
-    return match.group(1).upper() if match else None
+    if match:
+        return match.group(1).upper()
 
+    # ChatGPT can finish the lesson and provide sources while omitting the internal
+    # marker requested by automation. Do not keep prompting or discard that answer.
+    source_heading = re.search(
+        r"(?im)^\s{0,3}(?:#{1,6}\s*)?"
+        r"(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|"
+        r"references|sources|bibliography)\s*[:：]?\s*$",
+        text or "",
+    )
+    if source_heading and len(lines) >= 4:
+        source_lines = [
+            line for line in (text or "").splitlines()[source_heading.end():]
+            if line.strip() and not re.fullmatch(r"\s*[-*_]{3,}\s*", line)
+        ]
+        body = (text or "")[:source_heading.start()]
+        word_count = len(re.findall(r"[\w]+(?:[-’'][\w]+)*", body, flags=re.UNICODE))
+        if source_lines and word_count >= 500:
+            return "COMPLETE"
+    return None
 
 def _strip_lesson_status_markers(text: str) -> str:
     """Remove internal continuation markers from saved lesson Markdown."""
