@@ -177,6 +177,10 @@ def _maintain_learning_runtime() -> None:
     except Exception:
         logger.exception("Factual-learning maintenance failed.")
     try:
+        browser_learning.recover_interrupted_courses()
+    except Exception:
+        logger.exception("Stale browser-learning recovery failed; it will retry next interval.")
+    try:
         browser_learning.dispatch_due_retry()
     except Exception:
         logger.exception("Scheduled browser-learning retry failed; it will retry next interval.")
