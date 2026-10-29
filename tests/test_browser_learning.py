@@ -412,3 +412,26 @@ def test_dispatch_does_not_start_a_second_process_worker_when_lease_is_held(tmp_
     result = browser_learning.dispatch_next_course()
     assert result == {"status": "lease_held"}
     assert browser_learning.get_course(course["id"])["status"] == "queued"
+
+
+def test_worker_stops_before_persisting_when_lease_owner_changes(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    assert browser_learning._acquire_course_worker_lease() is True
+    with db.learning_connection() as conn:
+        conn.execute(
+            "UPDATE browser_learning_worker_lease SET owner_token='replacement-owner' WHERE lease_name='browser-learning'"
+        )
+
+    with pytest.raises(browser_learning.BrowserLearningLeaseLost):
+        browser_learning._assert_course_worker_lease()
+    assert browser_learning._WORKER_LEASE_LOST.is_set()
+
+
+def test_run_course_does_not_change_status_after_lease_loss(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Lease lost before start", "http://127.0.0.1:9222", 1)
+    browser_learning._WORKER_LEASE_LOST.set()
+
+    browser_learning.run_course(course["id"])
+
+    assert browser_learning.get_course(course["id"])["status"] == "queued"
