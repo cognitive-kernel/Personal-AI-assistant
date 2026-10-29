@@ -70,10 +70,14 @@ The history stores the registered migration's checksum and the matched baseline 
 
 ## Registered application migrations
 
-- Settings database: version 1 creates the `settings` table.
+- Settings database: versions 1–5 create the settings table, explicit consent records, persistent chat conversations/messages, and `chat_message_feedback`. Version 5 adds a replaceable positive/negative rating per assistant message with cascading deletion; feedback is a usability signal only and is never promoted to trusted knowledge.
 - Learning database: version 1 creates learning, assessment, path, and task tables; versions 2–7 add quality/review context, path-topic/idempotency fields, learning experience memory and its rebuildable embedding cache, and chat research audit metadata. See `app/schema_registry.py` for the authoritative ordered registry.
 - `fingerprint_for_version()` builds a canonical schema fixture in memory from the registered migrations. These fingerprints are candidates for explicit baseline matching, not permission to accept any live schema.
 
+
+## Settings schema version 5
+
+Migration `chat-message-feedback` adds `chat_message_feedback`, keyed by assistant message ID with a constrained rating of -1 or 1. A rating update replaces the previous rating rather than creating duplicate events. The foreign key cascades with message deletion, and the API verifies that the message belongs to the supplied conversation and has the assistant role. Ratings do not contain raw prompt/answer text and do not change factual verification or learning status.
 
 ## Safe legacy adoption
 
