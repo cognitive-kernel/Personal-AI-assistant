@@ -72,8 +72,8 @@ def test_bulk_lesson_actions_use_source_and_body_rules_for_review_and_publish():
 
     assert "async function inspectLessonForBulk(lessonId)" in script
     assert "const hasSource=Array.isArray(sources.items)&&sources.items.length>0" in script
-    assert "const hasBody=body.length>=10" in script
-    assert 'el("button","حذف گروهی درس‌های بدون منبع/متن معتبر","secondary")' in script
+    assert "const hasBody=body.length>0" in script
+    assert 'el("button","حذف گروهی درس‌های بدون منبع","secondary")' in script
     assert 'el("button","انتشار گروهی درس‌های انتخاب‌شده","secondary")' in script
     assert 'id="publish-all-lessons"' in html
 
