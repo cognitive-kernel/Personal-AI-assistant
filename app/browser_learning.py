@@ -459,7 +459,8 @@ def run_course(course_id: int) -> None:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
-        _fail_course(course_id, "وابستگی Playwright نصب نیست؛ بستهٔ اختیاری browser را نصب کنید.")
+        if not _WORKER_LEASE_LOST.is_set():
+            _fail_course(course_id, "وابستگی Playwright نصب نیست؛ بستهٔ اختیاری browser را نصب کنید.")
         return
 
     try:
@@ -472,7 +473,9 @@ def run_course(course_id: int) -> None:
             context = contexts[0]
             # Isolate each course in a fresh tab so unrelated chat history cannot leak into lesson prompts.
             page = context.new_page()
+            _assert_course_worker_lease()
             page.goto(CHATGPT_URL, wait_until="domcontentloaded", timeout=30000)
+            _assert_course_worker_lease()
             if not _is_chatgpt_url(page.url):
                 raise BrowserLearningError(
                     "Chrome به صفحهٔ ChatGPT واردشده نرسید؛ نشست را بازبینی و دوباره تلاش کنید."
