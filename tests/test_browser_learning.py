@@ -294,7 +294,15 @@ def test_dispatch_resumes_oldest_interrupted_course_and_drains_queue(monkeypatch
             launched.append(self)
 
     monkeypatch.setattr(browser_learning.threading, "Thread", FakeThread)
-    monkeypatch.setattr(browser_learning, "run_course", lambda course_id: executed.append(course_id))
+    def complete_fake_course(course_id):
+        executed.append(course_id)
+        with db.learning_connection() as conn:
+            conn.execute(
+                "UPDATE browser_learning_courses SET status='completed' WHERE id=?",
+                (course_id,),
+            )
+
+    monkeypatch.setattr(browser_learning, "run_course", complete_fake_course)
 
     first_dispatch = browser_learning.dispatch_next_course()
     assert first_dispatch == {"status": "running", "course_id": first["id"]}
