@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
-from . import factual_knowledge, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
+from . import factual_knowledge, factual_source_checks, factual_verification_tasks, sandbox_consent, sandbox_tasks, task_manager
 from .db import get_settings, learning_connection
 from .task_routes import require_loopback_client
 
@@ -26,6 +26,12 @@ class FactualSourceReviewRequest(BaseModel):
     confirm: StrictBool
     source_supports_claim: StrictBool
     review_note: str = Field(min_length=20, max_length=1000)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class FactualSourceRefreshRequest(BaseModel):
+    confirm: StrictBool
 
     model_config = ConfigDict(extra="forbid")
 
@@ -218,6 +224,53 @@ def list_factual_source_review_queue(
         return {"items": items, "count": len(items), "limit": limit}
     except (OSError, sqlite3.Error) as exc:
         raise HTTPException(status_code=503, detail="Factual source review queue is unavailable.") from exc
+
+
+@router.get("/source-refresh-queue")
+def list_factual_source_refresh_queue(
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    """List active claims with saved official HTTPS evidence due for freshness review."""
+    try:
+        items = factual_source_checks.list_refresh_queue(limit)
+        return {"items": items, "count": len(items), "limit": limit}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual source refresh queue is unavailable.") from exc
+
+
+@router.post("/{knowledge_id}/refresh-sources")
+def refresh_factual_claim_sources(
+    knowledge_id: int,
+    request: FactualSourceRefreshRequest,
+) -> dict[str, Any]:
+    if request.confirm is not True:
+        raise HTTPException(status_code=422, detail="Explicit confirmation to fetch saved source URLs is required.")
+    try:
+        return factual_source_checks.refresh_claim_sources(knowledge_id, confirm=True)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Factual claim not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual source revalidation could not be completed.") from exc
+
+
+@router.get("/{knowledge_id}/source-checks")
+def list_factual_claim_source_checks(
+    knowledge_id: int,
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    try:
+        items = factual_source_checks.list_source_checks(knowledge_id, limit)
+        return {"knowledge_id": knowledge_id, "items": items, "count": len(items), "limit": limit}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Factual claim not found.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (OSError, sqlite3.Error) as exc:
+        raise HTTPException(status_code=503, detail="Factual source-check history is unavailable.") from exc
 
 
 @router.get("/test-queue")
