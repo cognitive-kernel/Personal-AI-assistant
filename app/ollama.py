@@ -133,7 +133,7 @@ def _request(path: str, payload: dict[str, Any] | None = None, timeout: float | 
             message,
             retryable=exc.code in retryable_statuses,
         ) from exc
-    except (urllib.error.URLError, TimeoutError, socket.timeout, json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except (urllib.error.URLError, TimeoutError, socket.timeout, OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise OllamaError(f"Ollama request failed: {type(exc).__name__}", retryable=True) from exc
 
 def health() -> dict[str, Any]:
