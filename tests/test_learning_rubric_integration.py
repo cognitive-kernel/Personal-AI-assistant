@@ -199,6 +199,6 @@ def test_non_finite_progress_scores_are_rejected(tmp_path, monkeypatch):
     _job_id, path_id, topic_id = _ready_job(
         tmp_path, monkeypatch, with_path=True, rubric=None
     )
-    for invalid_score in (float("nan"), float("inf"), float("-inf"), True):
+    for invalid_score in (float("nan"), float("inf"), float("-inf"), True, 10 ** 1000):
         with pytest.raises(ValueError, match="Score must be between 0 and 100"):
             learning.update_path_topic(path_id, topic_id, "in_progress", invalid_score)
