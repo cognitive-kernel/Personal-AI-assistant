@@ -454,3 +454,30 @@ def test_worker_identity_is_regenerated_after_process_fork(tmp_path, monkeypatch
     assert browser_learning._WORKER_OWNER_PID == old_pid + 1
     assert browser_learning._WORKER_OWNER_TOKEN != old_token
     assert browser_learning._ACTIVE_COURSE_ID is None
+
+
+def test_dispatch_releases_lease_when_heartbeat_thread_cannot_start(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    course = browser_learning.create_course("Heartbeat startup failure", "http://127.0.0.1:9222", 1)
+
+    class FailingHeartbeatThread:
+        def __init__(self, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("simulated heartbeat start failure")
+
+        def join(self, timeout=None):
+            raise RuntimeError("thread was never started")
+
+    monkeypatch.setattr(browser_learning.threading, "Thread", FailingHeartbeatThread)
+    result = browser_learning.dispatch_next_course()
+
+    assert result == {"status": "interrupted", "course_id": course["id"]}
+    assert browser_learning.get_course(course["id"])["status"] == "interrupted"
+    assert browser_learning._ACTIVE_COURSE_ID is None
+    with db.learning_connection() as conn:
+        lease = conn.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None
