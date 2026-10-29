@@ -300,7 +300,7 @@ def _ensure_requested_language(
         logger.warning("Direct-chat language repair failed (%s)", type(exc).__name__)
         repaired = ""
     _checkpoint(checkpoint, "language_repair_completed")
-    return _language_fallback(message) if _language_mismatch(message, repaired) else repaired
+    return _language_fallback(message) if not repaired.strip() or _language_mismatch(message, repaired) else repaired
 
 
 def _source_conflict_reason(message: str, review: dict[str, Any]) -> str:
