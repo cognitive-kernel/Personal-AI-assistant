@@ -1319,6 +1319,15 @@ LEARNING_MIGRATIONS = (
             "CREATE INDEX idx_browser_learning_worker_lease_until ON browser_learning_worker_lease(lease_until)",
         ),
     ),
+    Migration(
+        41,
+        "browser-learning-bounded-retry-schedule",
+        (
+            "ALTER TABLE browser_learning_courses ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0 CHECK(retry_count >= 0)",
+            "ALTER TABLE browser_learning_courses ADD COLUMN next_retry_at TEXT",
+            "CREATE INDEX idx_browser_learning_retry_schedule ON browser_learning_courses(status, next_retry_at, id)",
+        ),
+    ),
 )
 
 
