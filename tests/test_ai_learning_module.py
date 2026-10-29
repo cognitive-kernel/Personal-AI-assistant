@@ -1180,9 +1180,9 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
     publish_handler = script[publish_start:publish_end]
     assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
-    assert 'await loadLessons(parentTopicId)' in publish_handler
-    assert 'returnToTopic(parentTopicId)' in publish_handler
-    assert publish_handler.index('await loadLessons(parentTopicId)') < publish_handler.index('returnToTopic(parentTopicId)')
+    assert 'await loadLessons(parentTopicId,root,inline)' in publish_handler
+    assert 'if(!inline)returnToTopic(parentTopicId)' in publish_handler
+    assert publish_handler.index('await loadLessons(parentTopicId,root,inline)') < publish_handler.index('if(!inline)returnToTopic(parentTopicId)')
     assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
 
 
