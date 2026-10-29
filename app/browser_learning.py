@@ -5,6 +5,7 @@ import json
 import re
 import threading
 import time
+import uuid
 from urllib.parse import urlparse
 from typing import Any
 
@@ -18,6 +19,108 @@ CHATGPT_URL = "https://chatgpt.com/"
 # is the recovery source of truth; this lock prevents duplicate workers in-process.
 _COURSE_DISPATCH_LOCK = threading.Lock()
 _ACTIVE_COURSE_ID: int | None = None
+_WORKER_OWNER_TOKEN = uuid.uuid4().hex
+_WORKER_LEASE_SECONDS = 240.0
+_WORKER_LEASE_HEARTBEAT_SECONDS = 15.0
+_WORKER_LEASE_STOP = threading.Event()
+_WORKER_LEASE_LOST = threading.Event()
+_WORKER_LEASE_THREAD: threading.Thread | None = None
+
+
+class BrowserLearningLeaseLost(BrowserLearningError):
+    """Raised when another process owns the durable browser-learning worker lease."""
+
+
+def _acquire_course_worker_lease(
+    owner_token: str | None = None, *, now: float | None = None
+) -> bool:
+    """Atomically acquire/renew the singleton worker lease in the learning database."""
+    owner = owner_token or _WORKER_OWNER_TOKEN
+    current_time = time.time() if now is None else float(now)
+    with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT owner_token, lease_until FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+        if row is not None and float(row["lease_until"]) > current_time and row["owner_token"] != owner:
+            conn.rollback()
+            return False
+        conn.execute(
+            """INSERT INTO browser_learning_worker_lease(lease_name, owner_token, lease_until, heartbeat_at)
+               VALUES ('browser-learning', ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(lease_name) DO UPDATE SET
+                 owner_token=excluded.owner_token, lease_until=excluded.lease_until,
+                 heartbeat_at=CURRENT_TIMESTAMP""",
+            (owner, current_time + _WORKER_LEASE_SECONDS),
+        )
+    return True
+
+
+def _renew_course_worker_lease() -> bool:
+    with learning_connection() as conn:
+        cursor = conn.execute(
+            """UPDATE browser_learning_worker_lease
+               SET lease_until=?, heartbeat_at=CURRENT_TIMESTAMP
+               WHERE lease_name='browser-learning' AND owner_token=?""",
+            (time.time() + _WORKER_LEASE_SECONDS, _WORKER_OWNER_TOKEN),
+        )
+        return cursor.rowcount == 1
+
+
+def _release_course_worker_lease() -> None:
+    with learning_connection() as conn:
+        conn.execute(
+            "DELETE FROM browser_learning_worker_lease WHERE lease_name='browser-learning' AND owner_token=?",
+            (_WORKER_OWNER_TOKEN,),
+        )
+
+
+def _course_worker_lease_heartbeat() -> None:
+    while not _WORKER_LEASE_STOP.wait(_WORKER_LEASE_HEARTBEAT_SECONDS):
+        try:
+            if not _renew_course_worker_lease():
+                _WORKER_LEASE_LOST.set()
+                return
+        except Exception:
+            # Fail closed if durable ownership cannot be renewed. The row is not
+            # deleted here; another process may claim it only after expiry.
+            _WORKER_LEASE_LOST.set()
+            return
+
+
+def _start_course_worker_lease_heartbeat() -> None:
+    global _WORKER_LEASE_THREAD
+    if _WORKER_LEASE_THREAD is not None and _WORKER_LEASE_THREAD.is_alive():
+        return
+    _WORKER_LEASE_STOP.clear()
+    _WORKER_LEASE_LOST.clear()
+    _WORKER_LEASE_THREAD = threading.Thread(
+        target=_course_worker_lease_heartbeat,
+        name="browser-learning-lease-heartbeat",
+        daemon=True,
+    )
+    _WORKER_LEASE_THREAD.start()
+
+
+def _stop_course_worker_lease_heartbeat(*, release: bool) -> None:
+    global _WORKER_LEASE_THREAD
+    _WORKER_LEASE_STOP.set()
+    worker = _WORKER_LEASE_THREAD
+    _WORKER_LEASE_THREAD = None
+    if worker is not None and worker is not threading.current_thread():
+        worker.join(timeout=1.0)
+    if release:
+        try:
+            _release_course_worker_lease()
+        except Exception:
+            # A failed release is bounded by the lease expiry; never claim ownership
+            # has been released if SQLite could not confirm it.
+            pass
+
+
+def _assert_course_worker_lease() -> None:
+    if _WORKER_LEASE_LOST.is_set():
+        raise BrowserLearningLeaseLost("مالکیت اجرای یادگیری از دست رفته است؛ این worker دیگر پاسخ را ذخیره نمی‌کند.")
 
 
 class BrowserLearningError(RuntimeError):
