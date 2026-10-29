@@ -1129,10 +1129,14 @@ def _worker(
 ) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
-    run_type = service.get_run(run_id).get("run_type")
-    _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
+    run_type = "unknown"
     _BROWSER_SESSION.reuse_enabled = True
     try:
+        # Every operation after dispatch ownership is set must be inside this
+        # try/finally. A storage read or diagnostic failure here must not leave
+        # _ACTIVE stuck forever and disable the orphan-run watchdog.
+        run_type = service.get_run(run_id).get("run_type")
+        _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
         checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == "lesson" else None
         answer = _capture_with_automatic_retry(
             prompt, cancel_event, checkpoint, run_id=run_id, phase="primary_run"
