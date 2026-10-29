@@ -704,3 +704,26 @@ def test_idle_maintenance_does_not_create_or_delete_worker_lease(tmp_path, monke
             "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
         ).fetchone()
     assert lease is None
+
+
+def test_startup_recovery_releases_lease_when_recovery_transaction_fails(tmp_path, monkeypatch):
+    _init(tmp_path, monkeypatch)
+    monkeypatch.setattr(browser_learning, "_ACTIVE_COURSE_ID", None)
+    course = browser_learning.create_course("Recovery transaction failure", "http://127.0.0.1:9222", 1)
+    with db.learning_connection() as conn:
+        conn.execute("UPDATE browser_learning_courses SET status='running' WHERE id=?", (course["id"],))
+
+    def fail_schedule(*_args, **_kwargs):
+        raise RuntimeError("simulated recovery transaction failure")
+
+    monkeypatch.setattr(browser_learning, "_schedule_course_retry", fail_schedule)
+
+    with pytest.raises(RuntimeError, match="simulated recovery transaction failure"):
+        browser_learning.recover_interrupted_courses()
+
+    assert browser_learning.get_course(course["id"])["status"] == "running"
+    with db.learning_connection() as conn:
+        lease = conn.execute(
+            "SELECT owner_token FROM browser_learning_worker_lease WHERE lease_name='browser-learning'"
+        ).fetchone()
+    assert lease is None

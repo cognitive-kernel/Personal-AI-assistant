@@ -15,7 +15,7 @@ A process-local lock prevents duplicate browser-learning workers only inside one
 - Use a process-unique owner token (including a PID-specific identity regenerated after fork) and a 240-second lease, renewed every 15 seconds by a heartbeat thread.
 - Startup recovery must acquire the lease before changing any queued/running course state. If another process owns it, recovery does not mutate that process's live course.
 - If heartbeat renewal fails, mark the local worker's lease as lost and stop persisting new generated content. Do not delete a lease owned by another process; takeover is allowed after expiry.
-- Release the lease after startup recovery commits its state updates, a successful queue drain, a terminal failure, or a controlled worker-start failure. Startup recovery does not retain ownership while idle.
+- Release the lease after startup recovery commits its state updates, a successful queue drain, a terminal failure, or a controlled worker-start failure. Startup recovery does not retain ownership while idle. Startup recovery also attempts release in a `finally` block if its recovery transaction raises, so a rolled-back recovery does not strand the worker slot until lease expiry.
 
 ## Consequences and limitations
 

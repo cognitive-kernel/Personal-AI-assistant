@@ -278,26 +278,30 @@ def recover_interrupted_courses() -> int:
         if not _acquire_course_worker_lease():
             # Another process owns the browser; never rewrite its live run as stale.
             return 0
-        with learning_connection() as conn:
-            conn.execute("BEGIN IMMEDIATE")
-            running_rows = conn.execute(
-                "SELECT id FROM browser_learning_courses WHERE status='running' ORDER BY id"
-            ).fetchall()
-            for row in running_rows:
-                _schedule_course_retry(
-                    conn,
-                    int(row["id"]),
-                    "برنامه پیش از پایان دوره متوقف شد.",
-                    retryable=True,
-                )
-            recovered_count = len(running_rows)
-        # Recovery only needs a short exclusive section. Do not leave an idle
-        # process holding the singleton lease until its four-minute expiry.
         try:
-            _release_course_worker_lease()
-        except Exception:
-            # Recovery is already committed; a failed release is bounded by lease expiry.
-            pass
+            with learning_connection() as conn:
+                conn.execute("BEGIN IMMEDIATE")
+                running_rows = conn.execute(
+                    "SELECT id FROM browser_learning_courses WHERE status='running' ORDER BY id"
+                ).fetchall()
+                for row in running_rows:
+                    _schedule_course_retry(
+                        conn,
+                        int(row["id"]),
+                        "برنامه پیش از پایان دوره متوقف شد.",
+                        retryable=True,
+                    )
+                recovered_count = len(running_rows)
+        finally:
+            # Recovery only needs a short exclusive section. Release ownership
+            # on both success and failure; otherwise a failed transaction can
+            # block queue dispatch until the four-minute lease expires.
+            try:
+                _release_course_worker_lease()
+            except Exception:
+                # A failed release is bounded by lease expiry; never hide the
+                # original recovery exception.
+                pass
         return recovered_count
 
 
