@@ -267,3 +267,43 @@ def test_blocked_maintenance_does_not_block_task_workers(runtime_store):
     finally:
         release_maintenance.set()
         assert runtime.stop(timeout=3) is True
+
+
+def test_runtime_rolls_back_threads_when_startup_fails_partway(runtime_store, monkeypatch):
+    from app import task_runtime
+
+    created = []
+
+    class FakeThread:
+        def __init__(self, *, target, args=(), name, daemon):
+            self.target = target
+            self.args = args
+            self.name = name
+            self.daemon = daemon
+            self.alive = False
+            created.append(self)
+
+        def start(self):
+            if len(created) == 2:
+                raise RuntimeError("simulated thread creation failure")
+            self.alive = True
+
+        def is_alive(self):
+            return self.alive
+
+        def join(self, timeout=None):
+            self.alive = False
+
+    monkeypatch.setattr(task_runtime.threading, "Thread", FakeThread)
+    runtime = TaskRuntime(
+        {"runtime.start-failure": lambda *_: {"ok": True}},
+        worker_count=2,
+        poll_interval=0.05,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated thread creation failure"):
+        runtime.start()
+
+    assert len(created) == 2
+    assert all(not thread.is_alive() for thread in created)
+    assert runtime.is_running is False
