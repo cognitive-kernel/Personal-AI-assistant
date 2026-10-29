@@ -360,3 +360,25 @@ def test_worker_requeues_claimed_task_when_heartbeat_thread_cannot_start(worker_
     assert saved["result"] is None
     assert saved["error"] == "HeartbeatStartupError: RuntimeError: simulated OS thread limit"
     assert handler_calls == []
+
+
+
+def test_worker_requeues_claimed_task_when_heartbeat_thread_construction_fails(worker_store, monkeypatch):
+    task = task_manager.create_task("test.heartbeat-construction-failure", {}, max_attempts=2)
+    worker_calls = []
+    worker = TaskWorker("worker-heartbeat-construction-failure", {
+        "test.heartbeat-construction-failure": lambda *_: worker_calls.append(True) or {"ok": True},
+    })
+
+    def fail_construction(*_args):
+        raise RuntimeError("simulated thread allocation failure")
+
+    monkeypatch.setattr(worker, "_create_heartbeat_thread", fail_construction)
+    assert worker.run_once() is True
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "queued"
+    assert saved["attempts"] == 1
+    assert saved["result"] is None
+    assert saved["error"] == "HeartbeatStartupError: RuntimeError: simulated thread allocation failure"
+    assert worker_calls == []
