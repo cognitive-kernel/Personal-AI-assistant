@@ -307,7 +307,11 @@ def _ensure_requested_language(
         logger.warning("Direct-chat language repair failed (%s)", type(exc).__name__)
         repaired = ""
     _checkpoint(checkpoint, "language_repair_completed")
-    return _language_fallback(message) if not repaired.strip() or _language_mismatch(message, repaired) else repaired
+    return (
+        _language_fallback(message)
+        if not isinstance(repaired, str) or not repaired.strip() or _language_mismatch(message, repaired)
+        else repaired
+    )
 
 
 def _source_conflict_reason(message: str, review: dict[str, Any]) -> str:
@@ -543,19 +547,27 @@ def answer(
             logger.warning("Answer language repair failed (%s)", type(exc).__name__)
             repaired_language = ""
         _checkpoint(checkpoint, "language_repair_completed")
-        if _language_mismatch(message, repaired_language):
+        if (
+            not isinstance(repaired_language, str)
+            or not repaired_language.strip()
+            or _language_mismatch(message, repaired_language)
+        ):
             fallback = _language_fallback(message)
-            review_status = "needs_review" if sources else "no_sources"
+            repair_error = (
+                "empty_or_non_text_language_repair"
+                if not isinstance(repaired_language, str) or not repaired_language.strip()
+                else "language_mismatch_after_repair"
+            )
             _record_audit(
-                message, fallback, sources, review_status,
-                {"passed": False, "overall": "language_mismatch", "claims": [],
-                 "error": "language_mismatch_after_repair",
+                message, fallback, sources, "generation_failed",
+                {"passed": False, "overall": "language_repair_failed", "claims": [],
+                 "error": repair_error,
                  "reviewer": "local_ollama_model_assisted_not_independent"},
                 memory, started_at,
             )
             _checkpoint(
                 checkpoint, "research_answer_completed",
-                source_count=len(sources), language_mismatch=True,
+                source_count=len(sources), language_repair_failed=True,
             )
             return fallback
         draft = repaired_language
@@ -640,6 +652,25 @@ def answer(
         _record_audit(message, "", sources, "generation_failed", review, memory, started_at)
         raise
     _checkpoint(checkpoint, "repair_generation_completed")
+    if not isinstance(repaired, str) or not repaired.strip():
+        fallback = _generation_fallback(message)
+        logger.warning("Research answer repair returned an empty or non-text response")
+        failed_repair_review = {
+            "passed": False,
+            "overall": "repair_generation_failed",
+            "claims": [],
+            "error": "empty_or_non_text_repair_generation",
+            "reviewer": "local_ollama_model_assisted_not_independent",
+        }
+        _record_audit(
+            message, fallback, sources, "generation_failed",
+            failed_repair_review, memory, started_at,
+        )
+        _checkpoint(
+            checkpoint, "research_answer_completed",
+            source_count=len(sources), repair_generation_failed=True,
+        )
+        return fallback
     _checkpoint(checkpoint, "second_claim_review_started")
     second_review = _review(message, repaired, sources)
     _checkpoint(checkpoint, "second_claim_review_completed", review_passed=second_review.get("passed") is True)
