@@ -768,22 +768,3 @@ def retry_course(course_id: int) -> dict[str, Any]:
     return get_course(course_id)
 
 
-def dispatch_due_retry() -> dict[str, Any]:
-    """Dispatch the FIFO head only when its persisted retry deadline has arrived."""
-    with learning_connection() as conn:
-        row = conn.execute(
-            """SELECT id, status, next_retry_at FROM browser_learning_courses
-               WHERE status IN ('queued','interrupted')
-               ORDER BY id ASC LIMIT 1"""
-        ).fetchone()
-        if row is None or row["status"] != "interrupted":
-            return {"status": "idle"}
-        current_time = str(conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()[0])
-        if row["next_retry_at"] is not None and str(row["next_retry_at"]) > current_time:
-            return {
-                "status": "retry_scheduled",
-                "course_id": int(row["id"]),
-                "next_retry_at": str(row["next_retry_at"]),
-            }
-    return dispatch_next_course()
-
