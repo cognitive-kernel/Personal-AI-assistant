@@ -459,7 +459,10 @@ def _chatgpt_answer(page: Any, prompt: str, *, timeout_seconds: int = 180) -> st
 
 def run_course(course_id: int) -> None:
     """Fetch an outline and each lesson through Chrome; persist every completed step."""
-    _assert_course_worker_lease()
+    try:
+        _assert_course_worker_lease()
+    except BrowserLearningLeaseLost:
+        return
     with learning_connection() as conn:
         row = conn.execute("SELECT * FROM browser_learning_courses WHERE id=?", (course_id,)).fetchone()
         if row is None:
