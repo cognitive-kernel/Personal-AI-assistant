@@ -755,8 +755,39 @@ def _extract_references(text: str) -> list[dict[str, str | None]]:
     return found[:100]
 
 
+def _extract_textual_source_entries(text: str) -> list[str]:
+    """Extract non-URL bibliography entries such as book titles from a trailing source section."""
+    normalized = str(text or "").replace("\\r", "")
+    heading = re.search(
+        r"(?im)^\\s{0,3}(?:#{1,6}\\s*)?"
+        r"(?:منابع|منبع|مراجع|فهرست منابع|کتابنامه|کتاب‌شناسی|کتاب شناسی|"
+        r"references|sources|bibliography)\\s*[:：]?\\s*$",
+        normalized,
+    )
+    if heading is None:
+        return []
+    tail = normalized[heading.end():]
+    entries: list[str] = []
+    for raw_line in tail.splitlines():
+        line = raw_line.strip()
+        if not line or re.fullmatch(r"[-*_]{3,}", line):
+            continue
+        if re.match(r"^#{1,6}\\s+", line):
+            break
+        line = re.sub(r"^(?:[-*+•]\\s+|\\d+[.)]\\s+)", "", line).strip()
+        if not line:
+            continue
+        if re.search(r"https?://", line, re.IGNORECASE):
+            continue
+        if line not in entries:
+            entries.append(line[:500])
+        if len(entries) >= 100:
+            break
+    return entries
+
+
 def _store_content_sources(conn: sqlite3.Connection, version_id: int, text: str) -> int:
-    """Persist links quoted by ChatGPT; links remain unverified until a human checks them."""
+    """Persist source links or, when absent, explicit textual bibliography entries."""
     sources = _extract_references(text)
     for source in sources:
         url = str(source["url"])
@@ -767,6 +798,15 @@ def _store_content_sources(conn: sqlite3.Connection, version_id: int, text: str)
                VALUES(?,?,?,?, 'chatgpt_citation',CURRENT_TIMESTAMP,'','unverified')""",
             (version_id, str(source["title"] or url)[:300], url, publisher[:300]),
         )
+    if not sources:
+        entries = _extract_textual_source_entries(text)
+        for entry in entries:
+            conn.execute(
+                """INSERT INTO sources(content_version_id,title,url,publisher,source_type,accessed_at,excerpt,validation_status)
+                   VALUES(?,?,NULL,'','textual_bibliography',CURRENT_TIMESTAMP,'','unverified')""",
+                (version_id, entry[:300]),
+            )
+        return len(entries)
     return len(sources)
 
 
@@ -1015,8 +1055,8 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                 reason = None
                 if not _lesson_has_substantive_body(body):
                     reason = "متن درس خالی یا ناقص بود؛ این درس ذخیره نشد."
-                elif not _extract_references(body):
-                    reason = "برای این درس هیچ منبع دارای پیوند ثبت نشده بود؛ درس رد شد و ذخیره نشد."
+                elif not _extract_references(body) and not _has_textual_source_section(body):
+                    reason = "برای این درس منبع قابل تشخیص (پیوند یا کتابنامهٔ متنی) ثبت نشده بود؛ درس رد شد و ذخیره نشد."
                 if reason:
                     conn.execute(
                         "UPDATE run_topics SET status='skipped',error_message=? WHERE run_id=? AND topic_id=?",
