@@ -20,3 +20,10 @@
 .parent-editor-label{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;width:100%}
 .parent-editor-label select{flex:1 1 240px}
 .topic-children .topic{margin:0}
+
+/* Keep lesson review and publication controls directly inside their topic card. */
+.topic-inline-lessons{margin:12px 0 4px;padding:12px;border:1px solid color-mix(in srgb,CanvasText 24%,transparent);border-inline-start:4px solid #245caa;border-radius:8px;background:color-mix(in srgb,CanvasText 4%,Canvas)}
+.topic-inline-lessons[hidden]{display:none}
+.topic-inline-lessons>.lesson{margin:10px 0}
+.topic-inline-lessons .version{margin-top:10px}
+.topic-inline-lessons .content{max-height:520px}

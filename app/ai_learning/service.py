@@ -456,6 +456,39 @@ def mark_run_needs_user_action(
     return get_run(run_id)
 
 
+def requeue_run_for_resume(run_id: int, reason: str = "automatic_recovery") -> dict[str, Any]:
+    """Return an interrupted run to the durable queue without deleting partial work."""
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
+        if run is None:
+            raise NotFoundError("Run not found.")
+        status = str(run["status"])
+        # Explicit user cancellation and completed runs must never be resurrected.
+        if status in {"succeeded", "failed", "cancelled"}:
+            pass
+        elif status in {"running", "needs_user_action"}:
+            conn.execute(
+                """UPDATE runs SET status='queued',error_code=NULL,error_message=NULL,
+                   finished_at=NULL WHERE id=? AND status IN ('running','needs_user_action')""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE run_topics SET status='queued',error_message=NULL
+                   WHERE run_id=? AND status IN ('running','failed','needs_user_action')""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                     AND processing_status IN ('running','failed')""",
+                (run_id,),
+            )
+    result = get_run(run_id)
+    result["recovery_reason"] = str(reason or "automatic_recovery")[:100]
+    return result
+
+
 def start_run(run_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -967,8 +1000,7 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                     end = matches[index + 1].start() if index + 1 < len(matches) else len(response_text)
                     body = response_text[match.end():end].strip()
                     title = match.group(2).strip() or allowed[topic_id]["title"]
-                    if _lesson_has_substantive_body(body):
-                        sections.append((topic_id, title[:300], body))
+                    sections.append((topic_id, title[:300], body))
                 if len(sections) != len(topics) or len({section[0] for section in sections}) != len(topics):
                     conn.execute(
                         "UPDATE runs SET response_text=?,status='needs_user_action',error_code='batch_mapping_incomplete',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
@@ -978,6 +1010,26 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
                                       AND processing_status <> 'paused'""", (run_id,))
                     conn.commit()
                     return get_run(run_id)
+            valid_sections: list[tuple[int, str, str]] = []
+            for topic_id, title, body in sections:
+                reason = None
+                if not _lesson_has_substantive_body(body):
+                    reason = "متن درس خالی یا ناقص بود؛ این درس ذخیره نشد."
+                elif not _extract_references(body):
+                    reason = "برای این درس هیچ منبع دارای پیوند ثبت نشده بود؛ درس رد شد و ذخیره نشد."
+                if reason:
+                    conn.execute(
+                        "UPDATE run_topics SET status='skipped',error_message=? WHERE run_id=? AND topic_id=?",
+                        (reason, run_id, topic_id),
+                    )
+                    conn.execute(
+                        """UPDATE topics SET processing_status='skipped',updated_at=CURRENT_TIMESTAMP
+                           WHERE id=? AND processing_status<>'paused'""",
+                        (topic_id,),
+                    )
+                else:
+                    valid_sections.append((topic_id, title, body))
+            sections = valid_sections
             duplicate_sections: dict[int, dict[str, Any]] = {}
             # Check every section before inserting any lesson version. If the embedding
             # service is unavailable, do not partially save a batch without deduplication.
@@ -1705,6 +1757,8 @@ def add_content_version(lesson_id: int, markdown: str, *, raw_response: str | No
         raise ValueError("raw_response must be text.")
     if source_kind not in {"manual", "chatgpt_ui", "other_provider", "import"}:
         raise ValueError("Unsupported source_kind.")
+    if source_kind != "manual" and not _extract_references(markdown + "\n\n" + (raw_response or "")):
+        raise ValueError("منبع دارای پیوند برای این درس وجود ندارد؛ نسخه ذخیره نشد.")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         lesson = conn.execute("SELECT id FROM lessons WHERE id=? AND deleted_at IS NULL", (lesson_id,)).fetchone()
@@ -1783,6 +1837,12 @@ def review_content(version_id: int, decision: str) -> dict[str, Any]:
         review_body = re.sub(r"(?m)^\s*#{1,6}\s+.*$", "", review_text).strip()
         if decision == "reviewed" and len(review_body) < 10:
             raise ValueError("متن درس خالی یا ناقص است؛ بازبینی را تأیید نکنید. ابتدا نسخهٔ اصلاحی با محتوای کامل ثبت کنید.")
+        if decision == "reviewed" and row["source_kind"] != "manual":
+            source_count = int(conn.execute(
+                "SELECT COUNT(*) FROM sources WHERE content_version_id=?", (version_id,)
+            ).fetchone()[0])
+            if source_count < 1:
+                raise ValueError("منبعی برای این درس ثبت نشده است؛ تأیید بازبینی مجاز نیست.")
         conn.execute("UPDATE content_versions SET review_status=? WHERE id=?", (decision, version_id))
         conn.execute("UPDATE lessons SET status=? WHERE id=?",
                      ("ready" if decision == "reviewed" else "needs_review", row["lesson_id"]))
@@ -1905,6 +1965,52 @@ def soft_delete_topic(topic_id: int) -> dict[str, Any]:
         conn.execute("UPDATE chunks SET active=0 WHERE content_version_id IN (SELECT cv.id FROM content_versions cv JOIN lessons l ON l.id=cv.lesson_id WHERE l.topic_id=?)", (topic_id,))
         return {"id": topic_id, "deleted": True}
 
+def list_deleted_lessons(course_id: int) -> list[dict[str, Any]]:
+    with connection() as conn:
+        if conn.execute("SELECT 1 FROM courses WHERE id=?", (course_id,)).fetchone() is None:
+            raise NotFoundError("Course not found.")
+        rows = conn.execute(
+            """SELECT l.id,l.title,l.topic_id,l.deleted_at,t.title AS topic_title
+               FROM lessons l JOIN topics t ON t.id=l.topic_id
+               WHERE t.course_id=? AND l.deleted_at IS NOT NULL AND t.deleted_at IS NULL
+               ORDER BY l.deleted_at DESC,l.id DESC""",
+            (course_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def restore_soft_deleted_lesson(lesson_id: int) -> dict[str, Any]:
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        lesson = conn.execute(
+            """SELECT l.id,l.topic_id FROM lessons l
+               JOIN topics t ON t.id=l.topic_id
+               WHERE l.id=? AND l.deleted_at IS NOT NULL AND t.deleted_at IS NULL""",
+            (lesson_id,),
+        ).fetchone()
+        if lesson is None:
+            raise NotFoundError("Deleted lesson not found.")
+        active = conn.execute(
+            """SELECT r.id FROM runs r JOIN run_topics rt ON rt.run_id=r.id
+               WHERE rt.topic_id=? AND r.status IN ('queued','running') LIMIT 1""",
+            (lesson["topic_id"],),
+        ).fetchone()
+        if active is not None:
+            raise ValueError("سرفصل این درس در اجرای فعال شماره " + str(active["id"]) + " است؛ ابتدا مکث/توقف امن کنید.")
+        conn.execute(
+            "UPDATE lessons SET deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (lesson_id,),
+        )
+        conn.execute(
+            """UPDATE chunks SET active=1
+               WHERE content_version_id IN (
+                   SELECT id FROM content_versions WHERE lesson_id=? AND review_status='published'
+               )""",
+            (lesson_id,),
+        )
+        return {"id": lesson_id, "restored": True}
+
+
 def soft_delete_lesson(lesson_id: int) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1960,6 +2066,12 @@ def publish_content(version_id: int) -> dict[str, Any]:
             raise NotFoundError("Content version or parent lesson/topic not found.")
         if not str(version["markdown"] or "").strip():
             raise ValueError("متن درس خالی است؛ انتشار نسخهٔ بدون محتوا مجاز نیست. متن را دوباره دریافت یا اصلاح کنید.")
+        if version["source_kind"] != "manual":
+            source_count = int(conn.execute(
+                "SELECT COUNT(*) FROM sources WHERE content_version_id=?", (version_id,)
+            ).fetchone()[0])
+            if source_count < 1:
+                raise ValueError("منبعی برای این درس ثبت نشده است؛ انتشار مجاز نیست.")
         if version["review_status"] != "reviewed":
             raise ValueError("Only a reviewed content version can be published.")
         topic = conn.execute("SELECT approval_status FROM topics WHERE id=?", (version["topic_id"],)).fetchone()

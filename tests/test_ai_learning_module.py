@@ -13,6 +13,125 @@ def isolated_store(tmp_path, monkeypatch):
     initialize_store()
     return path
 
+
+def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store):
+    course = service.create_course(title="Source-required lesson")
+    topic = service.add_topic(course["id"], "Lesson without references")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="single", request_key="generated-lesson-no-source",
+    )
+    service.start_run(run["id"])
+    response = (
+        "# Lesson without references\n\n"
+        + ("This is substantive lesson content, but it contains no source URL. " * 5)
+    )
+    result = service.complete_run(run["id"], response)
+    assert result["status"] == "succeeded"
+    assert service.list_lessons(topic["id"]) == []
+    with connection() as conn:
+        status = conn.execute(
+            "SELECT status FROM run_topics WHERE run_id=? AND topic_id=?",
+            (run["id"], topic["id"]),
+        ).fetchone()["status"]
+    assert status == "skipped"
+
+
+def test_generated_lesson_without_source_cannot_be_saved_or_reviewed(isolated_store, monkeypatch):
+    course = service.create_course(title="No-source review guard")
+    topic = service.add_topic(course["id"], "Generated lesson")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Generated lesson")
+    monkeypatch.setattr(service, "_find_semantic_duplicate_content", lambda *args, **kwargs: None)
+    with pytest.raises(ValueError, match="منبع دارای پیوند"):
+        service.add_content_version(
+            lesson["id"],
+            "# Generated lesson\n\nSubstantive content for this lesson.",
+            source_kind="chatgpt_ui",
+        )
+    version = service.add_content_version(
+        lesson["id"],
+        "# Generated lesson\n\nSubstantive content for this lesson.",
+    )
+    with connection() as conn:
+        conn.execute(
+            "UPDATE content_versions SET source_kind='chatgpt_ui' WHERE id=?",
+            (version["id"],),
+        )
+    with pytest.raises(ValueError, match="منبعی برای این درس"):
+        service.review_content(version["id"], "reviewed")
+
+
+def test_bulk_lesson_actions_use_source_and_body_rules_for_review_and_publish():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "app" / "ai_learning" / "static" / "app.js").read_text(encoding="utf-8")
+    html = (root / "app" / "ai_learning" / "static" / "index.html").read_text(encoding="utf-8")
+
+    assert "async function inspectLessonForBulk(lessonId)" in script
+    assert "const hasSource=Array.isArray(sources.items)&&sources.items.length>0" in script
+    assert "const hasBody=body.length>0" in script
+    assert 'el("button","حذف گروهی درس‌های بدون منبع","secondary")' in script
+    assert 'el("button","انتشار گروهی درس‌های انتخاب‌شده","secondary")' in script
+    assert 'id="publish-all-lessons"' in html
+
+    approve_all_start = script.index('$("approve-all-lessons").onclick=')
+    approve_all_end = script.index('$("publish-all-lessons").onclick=', approve_all_start)
+    approve_all = script[approve_all_start:approve_all_end]
+    assert "if(!quality.hasSource){await deleteLessonForBulk(l.id);deleted++;continue}" in approve_all
+    assert "if(!quality.hasBody){skipped++;continue}" in approve_all
+
+    publish_all_start = approve_all_end
+    publish_all_end = script.index('$("reject-selected").onclick=', publish_all_start)
+    publish_all = script[publish_all_start:publish_all_end]
+    assert "if(!quality.hasSource){await deleteLessonForBulk(l.id);deleted++;continue}" in publish_all
+    assert "if(!quality.hasBody||quality.version.review_status!==\"reviewed\"){skipped++;continue}" in publish_all
+
+    lesson_list_start = script.index("async function loadLessons(")
+    lesson_list_end = script.index('$("show-all-lessons").onclick=', lesson_list_start)
+    lesson_list = script[lesson_list_start:lesson_list_end]
+    review_start = lesson_list.index('const approveBulk=el("button"')
+    publish_start = lesson_list.index('const publishBulk=el("button"', review_start)
+    delete_start = lesson_list.index('const deleteInvalidBulk=el("button"', publish_start)
+    review_handler = lesson_list[review_start:publish_start]
+    publish_handler = lesson_list[publish_start:delete_start]
+    assert "if(!quality.hasSource){await deleteLessonForBulk(id);deleted++;continue}" in review_handler
+    assert "if(!quality.hasBody){skipped++;continue}" in review_handler
+    assert "if(!quality.hasSource){await deleteLessonForBulk(id);deleted++;continue}" in publish_handler
+    assert "if(!quality.hasBody||quality.version.review_status!==\"reviewed\")" in publish_handler
+    delete_handler = lesson_list[delete_start:]
+    assert "if(!quality.hasSource){await deleteLessonForBulk(id);deleted++}" in delete_handler
+    assert "quality.valid" not in delete_handler
+
+def test_soft_deleted_lesson_can_be_restored(isolated_store):
+    course = service.create_course(title="Restore deleted lessons")
+    topic = service.add_topic(course["id"], "Recovery")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "Recoverable lesson")
+    version = service.add_content_version(
+        lesson["id"],
+        "# Recoverable lesson\n\nThis lesson content must remain recoverable after a soft delete.",
+    )
+    service.review_content(version["id"], "reviewed")
+    service.publish_content(version["id"])
+
+    service.soft_delete_lesson(lesson["id"])
+    deleted = service.list_deleted_lessons(course["id"])
+    assert any(item["id"] == lesson["id"] for item in deleted)
+    assert service.list_lessons(topic["id"]) == []
+
+    assert service.restore_soft_deleted_lesson(lesson["id"])["restored"] is True
+    assert any(item["id"] == lesson["id"] for item in service.list_lessons(topic["id"]))
+    with connection() as conn:
+        active_chunks = conn.execute(
+            "SELECT COUNT(*) FROM chunks WHERE content_version_id=? AND active=1",
+            (version["id"],),
+        ).fetchone()[0]
+    assert active_chunks > 0
+
+
 def test_topic_approval_lesson_version_review_and_publish(isolated_store):
     course = service.create_course(title="SQL Server 2005")
     topic = service.add_topic(course["id"], "Indexes")
@@ -211,7 +330,7 @@ def test_lesson_run_creates_reviewable_version_not_published(isolated_store):
     service.decide_topics([topic["id"]], "approved")
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]], request_key="lesson-test-1")
     service.start_run(run["id"])
-    finished = service.complete_run(run["id"], "# Index fundamentals\n\nIndexes speed up data access.")
+    finished = service.complete_run(run["id"], "# Index fundamentals\n\nIndexes speed up data access.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     assert finished["status"] == "succeeded"
     lessons = service.list_lessons(topic["id"])
     assert len(lessons) == 1
@@ -220,7 +339,7 @@ def test_lesson_run_creates_reviewable_version_not_published(isolated_store):
     with connection() as conn:
         stored = conn.execute("SELECT run_id,raw_response FROM content_versions WHERE id=?", (versions[0]["id"],)).fetchone()
     assert stored["run_id"] == run["id"]
-    assert stored["raw_response"] == "# Index fundamentals\n\nIndexes speed up data access."
+    assert stored["raw_response"] == "# Index fundamentals\n\nIndexes speed up data access.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
 
 
 def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, monkeypatch):
@@ -234,7 +353,7 @@ def test_batch_run_requires_topic_markers_and_can_retry_mapping(isolated_store, 
     ambiguous = service.complete_run(run["id"], "Here are two sections, but no topic markers.")
     assert ambiguous["status"] == "needs_user_action"
     assert service.list_lessons(a["id"]) == []
-    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content explains lookup performance, index maintenance, and query-plan effects. A production database should compare execution plans, selectivity, write overhead, and storage costs before changing an index strategy. Monitor the workload and validate changes in a test environment.\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content explains isolation, commit, rollback, and consistency guarantees. A production workflow should handle errors, keep transactions short, and validate locking and concurrency behavior under representative load before deployment."
+    corrected = "[TOPIC_ID:" + str(a["id"]) + "] Index lesson\n\nIndex content explains lookup performance, index maintenance, and query-plan effects. A production database should compare execution plans, selectivity, write overhead, and storage costs before changing an index strategy. Monitor the workload and validate changes in a test environment.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)\n\n[TOPIC_ID:" + str(b["id"]) + "] Transaction lesson\n\nTransaction content explains isolation, commit, rollback, and consistency guarantees. A production workflow should handle errors, keep transactions short, and validate locking and concurrency behavior under representative load before deployment.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
 
     def fake_embed(texts, model=None):
         return [
@@ -390,6 +509,8 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert 'page.goto("https://chatgpt.com/"' in automation
     assert 'data-message-author-role="assistant"' in automation
     assert "launch_persistent_context" in automation
+    assert "restored_extra_tabs_closed" in automation
+    assert "extra_page.close(run_before_unload=False)" in automation
     assert "api.openai.com" not in automation
     assert "context.cookies(" not in automation
     assert "storage_state(" not in automation
@@ -541,14 +662,14 @@ def test_resume_reuses_lesson_shell_with_empty_content(isolated_store):
     run = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                              request_key="retry-empty-content")
     service.start_run(run["id"])
-    completed = service.complete_run(run["id"], "# Query optimization\n\nValid lesson content.")
+    completed = service.complete_run(run["id"], "# Query optimization\n\nValid lesson content.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     lessons = service.list_lessons(topic["id"])
     assert completed["status"] == "succeeded"
     assert len(lessons) == 1
     assert lessons[0]["progress_percent"] == 75
     versions = service.list_versions(lesson["id"])
     assert len(versions) == 2
-    assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content."
+    assert service.get_content_version(versions[0]["id"])["markdown"] == "# Query optimization\n\nValid lesson content.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
 
 
 
@@ -572,7 +693,7 @@ def test_complete_run_uses_position_after_soft_deleted_lesson(isolated_store):
         "# Recovery handling\n\n"
         "This lesson explains how to recover a database workflow safely, preserve "
         "consistent state, validate the next step, and avoid writing over records "
-        "that still participate in database uniqueness constraints."
+        "that still participate in database uniqueness constraints.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
     )
     completed = service.complete_run(run["id"], response)
 
@@ -703,7 +824,7 @@ def test_lesson_capture_requires_body_and_preserves_course_context(isolated_stor
         "برای عیب‌یابی باید مصرف حافظه، فشار حافظه و اثر بار کاری را همراه با شاخص‌های سیستم بررسی کرد.\n\n"
         "## روش بررسی\n\n"
         "از نماهای مدیریتی و مستندات رسمی برای بررسی وضعیت استفاده کنید و پیش از تغییر تنظیمات، "
-        "اثر تغییر را در محیط آزمایشی بسنجید."
+        "اثر تغییر را در محیط آزمایشی بسنجید.\n\nمنبع: [مستندات Microsoft SQL](https://learn.microsoft.com/sql/)"
     )
     result = service.complete_run(run["id"], answer)
     assert result["status"] == "succeeded"
@@ -741,7 +862,7 @@ def test_lesson_progress_uses_latest_version_even_if_an_older_version_was_publis
         run["id"],
         "# Memory management in SQL Server 2025\n\n"
         "This is a substantive lesson explaining SQL Server memory management, "
-        "memory pressure, and practical troubleshooting steps.",
+        "memory pressure, and practical troubleshooting steps.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)",
     )
     assert recovered["status"] == "succeeded"
     lessons = service.list_lessons(topic["id"])
@@ -760,7 +881,7 @@ def test_force_retry_keeps_existing_lesson_and_creates_a_new_version(isolated_st
     service.complete_run(first["id"],
                          "# Memory management\n\nSQL Server memory management coordinates memory grants, "
                          "buffer pool usage, and workload pressure. Administrators should monitor memory "
-                         "clerks and wait statistics, compare workload behavior, and validate changes safely.")
+                         "clerks and wait statistics, compare workload behavior, and validate changes safely.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     retry = service.create_run(course["id"], run_type="lesson", topic_ids=[topic["id"]],
                                request_key="retry-lesson-version", force_retry=True)
     assert "[FORCE_RETRY_EXISTING_LESSON]" in retry["prompt_text"]
@@ -768,7 +889,7 @@ def test_force_retry_keeps_existing_lesson_and_creates_a_new_version(isolated_st
     service.complete_run(retry["id"],
                          "# Updated memory management\n\nSQL Server memory management must be assessed "
                          "against the current workload and available memory. Review memory grants, buffer pool "
-                         "pressure, relevant performance counters, and query behavior before making a change.")
+                         "pressure, relevant performance counters, and query behavior before making a change.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)")
     lessons = service.list_lessons(topic["id"])
     assert len(lessons) == 1
     versions = service.list_versions(lessons[0]["id"])
@@ -869,7 +990,7 @@ def test_chatgpt_lesson_is_saved_when_embedding_model_is_unavailable(isolated_st
         "# Transaction management in SQL Server 2025\n\n"
         "Transactions group database operations into a logical unit. SQL Server uses "
         "transaction boundaries to preserve consistency and supports COMMIT and ROLLBACK. "
-        "Administrators should understand isolation levels, locking, deadlocks, and recovery."
+        "Administrators should understand isolation levels, locking, deadlocks, and recovery.\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
     )
     result = service.complete_run(run["id"], answer)
 
@@ -949,8 +1070,8 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
         "scanning the entire table. The extra structure improves lookup efficiency."
     )
     response = (
-        f"[TOPIC_ID:{first_topic['id']}] Index basics\n\n{first_body}\n\n"
-        f"[TOPIC_ID:{second_topic['id']}] Faster lookups\n\n{second_body}"
+        f"[TOPIC_ID:{first_topic['id']}] Index basics\n\n{first_body}\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)\n\n"
+        f"[TOPIC_ID:{second_topic['id']}] Faster lookups\n\n{second_body}\n\nSources: [Microsoft Learn](https://learn.microsoft.com/sql/)"
     )
 
     def fake_embed(texts, model=None):
@@ -958,7 +1079,7 @@ def test_semantic_duplicates_inside_one_batch_are_saved_only_once(isolated_store
             first_body: [1.0, 0.0, 0.0],
             second_body: [0.98, 0.18, 0.0],
         }
-        return [vectors[text] for text in texts]
+        return [vectors[next(key for key in vectors if key in text)] for text in texts]
 
     monkeypatch.setattr(service, "ollama_embed", fake_embed)
     completed = service.complete_run(run["id"], response)
@@ -1180,10 +1301,17 @@ def test_active_learning_ui_publish_returns_to_parent_topic():
     publish_end = script.index('a.append(b)}', publish_start) + len('a.append(b)}')
     publish_handler = script[publish_start:publish_end]
     assert 'const parentTopicId=Number(l._topicId||topicId)' in publish_handler
-    assert 'await loadLessons(parentTopicId)' in publish_handler
-    assert 'returnToTopic(parentTopicId)' in publish_handler
-    assert publish_handler.index('await loadLessons(parentTopicId)') < publish_handler.index('returnToTopic(parentTopicId)')
-    assert 'say("نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
+    assert 'await loadLessons(parentTopicId,root,inline)' in publish_handler
+    assert 'if(!inline)returnToTopic(parentTopicId)' in publish_handler
+    assert 'else{root.hidden=true;root.replaceChildren();root.dataset.loaded="false"}' in publish_handler
+    assert 'say(inline?"نسخه منتشر شد؛ پنل درس‌ها بسته شد.":"نسخه منتشر شد؛ به سرفصل مربوط برگشتید.")' in publish_handler
+    assert publish_handler.index('await loadLessons(parentTopicId,root,inline)') < publish_handler.index('if(!inline)returnToTopic(parentTopicId)')
+    
+    topic_open_start = script.index('button("مشاهده درس‌ها و محتوا"')
+    topic_open_end = script.index('button("تلاش مجدد دریافت/اصلاح درس"', topic_open_start)
+    topic_open_handler = script[topic_open_start:topic_open_end]
+    assert 'head.after(inlineLessons)' in topic_open_handler
+    assert 'window.scrollTo(previousScrollX,previousScrollY)' in topic_open_handler
 
 
 def test_outline_parser_keeps_subject_chapter_hierarchy():

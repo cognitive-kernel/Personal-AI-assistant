@@ -97,4 +97,18 @@ def test_topic_and_lesson_catalog_is_one_collapsible_menu():
     assert html.count('id="lessons"') == 1
     assert 'const card=el("details",undefined,"topic")' in script
     assert 'if(catalog)catalog.open=true' in script
-    assert 'if(lessonDetails)lessonDetails.open=true' in script
+    # Lesson content is now rendered inline under its topic, not in the global lesson list.
+    assert 'await loadLessons(topic.id,inlineLessons,true)' in script
+
+
+def test_lesson_review_is_rendered_inline_under_its_topic():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    script = (root / "app.js").read_text(encoding="utf-8")
+    css = (root / "style.css").read_text(encoding="utf-8")
+    assert 'inlineLessons=el("div",undefined,"topic-inline-lessons")' in script
+    assert 'await loadLessons(topic.id,inlineLessons,true)' in script
+    assert 'async function loadLessons(topicId,targetRoot,inline=false)' in script
+    assert 'await loadLessons(parentTopicId,root,inline);if(!inline)returnToTopic(parentTopicId);' in script
+    assert '.topic-inline-lessons[hidden]{display:none}' in css
