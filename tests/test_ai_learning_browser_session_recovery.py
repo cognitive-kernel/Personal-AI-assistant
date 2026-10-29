@@ -70,7 +70,7 @@ def test_browser_session_relaunches_once_after_detected_context_loss(monkeypatch
     with browser_automation._browser_session(factory, "/fake/chrome", tmp_path / "profile") as (_, context):
         assert context is first
 
-    first.fail_pages = True
+    first.close()  # The Playwright close event should trigger one controlled relaunch.
     with browser_automation._browser_session(factory, "/fake/chrome", tmp_path / "profile") as (_, context):
         assert context is second
 
