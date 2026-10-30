@@ -112,7 +112,23 @@
 <pre id="capability-map-output" aria-live="polite"></pre>
 <pre id="due-reviews-output"></pre>
 <pre id="paths-output"></pre><div id="paths-container"></div></section>
-<section id="knowledge-section"><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre></section>
+<section id="knowledge-section"><h2>دانش ذخیره‌شده</h2><button id="refresh-knowledge" type="button">بارگذاری دانش</button><pre id="knowledge-output"></pre>
+<h3>منابع مستندات رسمی</h3>
+<p class="muted">نشانی منبع باید HTTPS و متعلق به دامنه‌های رسمی مجاز باشد. محتوای دریافت‌شده در شاخص محلی SQLite ذخیره می‌شود؛ این کار به‌معنی تأیید صحت علمی محتوا نیست.</p>
+<form id="knowledge-source-ingest-form">
+<label>نشانی مستندات رسمی<input id="knowledge-source-url" type="url" maxlength="2048" aria-label="نشانی مستندات رسمی" required placeholder="https://learn.microsoft.com/en-us/sql/"></label>
+<label>عنوان اختیاری<input id="knowledge-source-title" type="text" maxlength="300" aria-label="عنوان اختیاری منبع" placeholder="عنوان منبع"></label>
+<button id="knowledge-source-ingest" type="submit">دریافت و ثبت منبع</button>
+</form>
+<div class="cloud-actions"><button id="refresh-knowledge-sources" type="button">بارگذاری منابع ثبت‌شده</button></div>
+<pre id="knowledge-source-status" role="status" aria-live="polite">هنوز منبعی از این بخش ثبت یا بارگذاری نشده است.</pre>
+<form id="knowledge-source-search-form">
+<label>جست‌وجو در منابع محلی<input id="knowledge-source-query" type="text" maxlength="500" aria-label="عبارت جست‌وجو در منابع محلی" required placeholder="عبارت مورد جست‌وجو"></label>
+<label>حداکثر نتیجه<input id="knowledge-source-limit" type="number" min="1" max="20" value="5" required></label>
+<button id="knowledge-source-search" type="submit">جست‌وجو در منابع</button>
+</form>
+<pre id="knowledge-source-search-output" role="status" aria-live="polite"></pre>
+</section>
 <section id="experience-memory-section"><h2>حافظهٔ تجربه‌ها</h2>
 <p class="muted">تجربه‌ها تا زمانی که شواهد و آزمون واقعی نداشته باشند تأییدشده محسوب نمی‌شوند. این پنل امکان ثبت، بازبینی و جست‌وجوی حافظه را می‌دهد؛ نتیجهٔ آزمون را نمی‌توان از این رابط جعل یا تجربه را تأیید کرد.</p>
 <form id="experience-create-form">
@@ -889,6 +905,66 @@ el("refresh").addEventListener("click", refresh);
 el("refresh-knowledge").addEventListener("click", async () => {
  try { el("knowledge-output").textContent=JSON.stringify(await api("/api/knowledge"),null,2); }
  catch(error) { el("knowledge-output").textContent=error.message; }
+});
+async function refreshKnowledgeSources() {
+ const output=el("knowledge-source-status");
+ try {
+  const result=await api("/api/knowledge/sources");
+  output.textContent=JSON.stringify(result,null,2);
+  return result;
+ } catch(error) {
+  output.textContent="بارگذاری منابع ناموفق بود: "+error.message;
+  throw error;
+ }
+}
+el("refresh-knowledge-sources").addEventListener("click",async()=>{
+ const button=el("refresh-knowledge-sources");
+ button.disabled=true;
+ try { await refreshKnowledgeSources(); }
+ catch(_error) {}
+ finally { button.disabled=false; }
+});
+el("knowledge-source-ingest-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=el("knowledge-source-ingest");
+ const status=el("knowledge-source-status");
+ const payload={
+  url:el("knowledge-source-url").value.trim(),
+  title:el("knowledge-source-title").value.trim() || null
+ };
+ if(!payload.url) return;
+ button.disabled=true;
+ status.textContent="در حال دریافت و ثبت منبع…";
+ try {
+  const result=await api("/api/knowledge/sources",{method:"POST",body:JSON.stringify(payload)});
+  let listError=null;
+  try { await refreshKnowledgeSources(); }
+  catch(error) { listError=error; }
+  status.textContent="ثبت منبع انجام شد.\n"+JSON.stringify(result,null,2)
+   +(listError ? "\n\nبارگذاری فهرست منابع ناموفق بود: "+listError.message : "\n\nفهرست منابع به‌روز شد.");
+ } catch(error) {
+  status.textContent="ثبت منبع ناموفق بود: "+error.message;
+ } finally {
+  button.disabled=false;
+ }
+});
+el("knowledge-source-search-form").addEventListener("submit",async event=>{
+ event.preventDefault();
+ const button=el("knowledge-source-search");
+ const output=el("knowledge-source-search-output");
+ const query=el("knowledge-source-query").value.trim();
+ const limit=Number(el("knowledge-source-limit").value);
+ if(!query) return;
+ button.disabled=true;
+ output.textContent="در حال جست‌وجو…";
+ try {
+  const result=await api("/api/knowledge/sources/search",{method:"POST",body:JSON.stringify({query,limit})});
+  output.textContent=JSON.stringify(result,null,2);
+ } catch(error) {
+  output.textContent="جست‌وجو ناموفق بود: "+error.message;
+ } finally {
+  button.disabled=false;
+ }
 });
 el("chat-form").addEventListener("submit", async event => {
  event.preventDefault();
