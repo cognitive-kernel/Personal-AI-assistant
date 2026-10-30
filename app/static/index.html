@@ -937,8 +937,8 @@ el("knowledge-source-ingest-form").addEventListener("submit",async event=>{
  status.textContent="در حال دریافت و ثبت منبع…";
  try {
   const result=await api("/api/knowledge/sources",{method:"POST",body:JSON.stringify(payload)});
-  status.textContent="ثبت منبع انجام شد.\n"+JSON.stringify(result,null,2);
   await refreshKnowledgeSources();
+  status.textContent="ثبت منبع انجام شد.\n"+JSON.stringify(result,null,2)+"\n\n"+status.textContent;
  } catch(error) {
   status.textContent="ثبت منبع ناموفق بود: "+error.message;
  } finally {
