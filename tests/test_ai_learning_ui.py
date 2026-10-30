@@ -122,3 +122,14 @@ def test_scheduled_transient_retry_is_visible_in_run_history():
     ).read_text(encoding="utf-8")
     assert 'run.next_retry_at?"تلاش مجدد زمان‌بندی‌شده"' in script
     assert 'run.next_retry_at+" — تلاش خودکار "+Number(run.automatic_retry_count||0)+" از ۲"' in script
+
+def test_dashboard_explains_global_transient_retry_cooldown():
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "ai_learning" / "static" / "app.js"
+    ).read_text(encoding="utf-8")
+    assert 'state.retry_pending' in script
+    assert 'state.retry_after' in script
+    assert "کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند" in script
