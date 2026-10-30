@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import db, learning
+from app import db, learning, ollama
 
 
 @pytest.fixture
@@ -161,3 +161,147 @@ def test_accepted_initial_lesson_has_no_repair_prompt_provenance(learning_store,
     assert provenance["repair_prompt_sha256"] is None
     assert provenance["attempt_count"] == 1
 
+
+
+
+def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_budget(
+    learning_store, monkeypatch
+):
+    db.update_settings({
+        "learning_model_cost_profiles": {
+            "cheap:latest": {
+                "input_cost_microusd_per_1k_tokens": 100,
+                "output_cost_microusd_per_1k_tokens": 100,
+                "quality_score": 0.85,
+            },
+            "premium:latest": {
+                "input_cost_microusd_per_1k_tokens": 500,
+                "output_cost_microusd_per_1k_tokens": 500,
+                "quality_score": 0.99,
+            },
+        },
+        "learning_model_minimum_quality_score": 0.8,
+        "learning_task_budget_microusd": 100000,
+    })
+    monkeypatch.setattr(
+        ollama, "list_models",
+        lambda: [{"name": "cheap:latest"}, {"name": "premium:latest"}],
+    )
+    calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, request, **_kwargs: calls.append(request) or {
+            "message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}
+        },
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+
+    job = learning.create_job("Python decorators", source_text="Reference text for the lesson.")
+    learning.run_job(job["id"])
+
+    finished = learning.get_job(job["id"])
+    provenance = finished["quality"]["generation_provenance"]
+    assert finished["status"] == "completed"
+    assert len(calls) == 1
+    assert calls[0]["model"] == "cheap:latest"
+    assert provenance["model_id"] == "cheap:latest"
+    assert provenance["model_selection"]["status"] == "selected"
+    assert provenance["model_selection"]["estimated_cost_microusd"] <= 100000
+    assert provenance["model_selection"]["budget_scope"] == "whole_learning_job_maximum_two_generation_calls"
+
+
+def test_learning_generation_fails_closed_when_no_model_meets_explicit_budget(
+    learning_store, monkeypatch
+):
+    db.update_settings({
+        "learning_model_cost_profiles": {
+            "over-budget:latest": {
+                "input_cost_microusd_per_1k_tokens": 100000,
+                "output_cost_microusd_per_1k_tokens": 100000,
+                "quality_score": 0.99,
+            },
+        },
+        "learning_model_minimum_quality_score": 0.8,
+        "learning_task_budget_microusd": 1,
+    })
+    monkeypatch.setattr(
+        ollama, "list_models", lambda: [{"name": "over-budget:latest"}]
+    )
+    calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda *_args, **_kwargs: calls.append(True) or {},
+    )
+
+    job = learning.create_job("Python decorators", source_text="Reference text for the lesson.")
+    with pytest.raises(learning.LearningError, match="No installed learning model"):
+        learning.run_job(job["id"])
+
+    finished = learning.get_job(job["id"])
+    assert finished["status"] == "failed"
+    assert calls == []
+
+
+def test_learning_generation_does_not_bypass_quality_threshold_when_model_discovery_fails(
+    learning_store, monkeypatch
+):
+    db.update_settings({
+        "learning_model_cost_profiles": {
+            "profiled:latest": {
+                "input_cost_microusd_per_1k_tokens": 100,
+                "output_cost_microusd_per_1k_tokens": 100,
+                "quality_score": 0.95,
+            },
+        },
+        "learning_model_minimum_quality_score": 0.9,
+        "learning_task_budget_microusd": None,
+    })
+    monkeypatch.setattr(
+        ollama, "list_models",
+        lambda: (_ for _ in ()).throw(RuntimeError("Ollama unavailable")),
+    )
+    calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda *_args, **_kwargs: calls.append(True) or {},
+    )
+
+    job = learning.create_job("Python decorators", source_text="Reference text for the lesson.")
+    with pytest.raises(learning.LearningError, match="Cannot enforce learning model"):
+        learning.run_job(job["id"])
+
+    assert learning.get_job(job["id"])["status"] == "failed"
+    assert calls == []
+
+
+def test_learning_generation_preserves_configured_model_when_cost_profiles_are_absent(
+    learning_store, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(
+        ollama, "list_models",
+        lambda: (_ for _ in ()).throw(AssertionError("model discovery must be skipped")),
+    )
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, request, **_kwargs: calls.append(request) or {
+            "message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}
+        },
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+
+    job = learning.create_job("Python decorators", source_text="Reference text for the lesson.")
+    learning.run_job(job["id"])
+
+    finished = learning.get_job(job["id"])
+    provenance = finished["quality"]["generation_provenance"]
+    assert finished["status"] == "completed"
+    assert calls[0]["model"] == db.get_settings()["learning_ollama_model"]
+    assert provenance["model_selection"]["status"] == "configured_fallback"
+    assert provenance["model_selection"]["estimated_cost_microusd"] is None
