@@ -11,9 +11,11 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import venv
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 PREREQUISITES = ROOT / "prerequisites"
@@ -22,11 +24,151 @@ INSTALLERS = PREREQUISITES / "installers"
 CACHE_MANIFEST = PREREQUISITES / "manifest.json"
 MIN_PYTHON = (3, 11)
 DEFAULT_MODEL = "qwen2.5:7b"
+_OLLAMA_RELEASE_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
+_OLLAMA_RELEASE_TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+_OLLAMA_ASSET_REDIRECT_HOSTS = frozenset({
+    "github.com",
+    "release-assets.githubusercontent.com",
+    "objects.githubusercontent.com",
+})
 
 
-def _run(command: list[str], *, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects for the release metadata API."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class _GitHubAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Allow release downloads to use only GitHub's HTTPS asset hosts."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urljoin(req.full_url, newurl)
+        try:
+            parsed = urllib.parse.urlsplit(target)
+            port = parsed.port
+        except ValueError:
+            return None
+        if (
+            parsed.scheme != "https"
+            or (parsed.hostname or "").lower().rstrip(".") not in _OLLAMA_ASSET_REDIRECT_HOSTS
+            or port not in {None, 443}
+            or parsed.username
+            or parsed.password
+        ):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, target)
+
+
+def _latest_ollama_release_assets() -> dict[str, Any]:
+    """Read the official latest release and require GitHub's SHA-256 asset digests."""
+    request = urllib.request.Request(
+        _OLLAMA_RELEASE_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "Personal-AI-Assistant-installer",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+    )
     try:
-        return subprocess.run(command, cwd=cwd, text=True, check=False)
+        with opener.open(request, timeout=15) as response:
+            raw = response.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise RuntimeError("پاسخ اطلاعات نسخهٔ Ollama بیش از ۲ مگابایت است.")
+        release = json.loads(raw.decode("utf-8"))
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(
+            f"دریافت اطلاعات نسخهٔ رسمی Ollama ناموفق بود ({type(exc).__name__})."
+        ) from exc
+
+    tag = release.get("tag_name") if isinstance(release, dict) else None
+    assets = release.get("assets") if isinstance(release, dict) else None
+    if (
+        not isinstance(tag, str)
+        or not _OLLAMA_RELEASE_TAG.fullmatch(tag)
+        or release.get("draft") is True
+        or release.get("prerelease") is True
+        or not isinstance(assets, list)
+    ):
+        raise RuntimeError("ساختار آخرین انتشار رسمی Ollama معتبر نیست.")
+
+    selected: dict[str, dict[str, Any]] = {}
+    for asset_name in ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"):
+        matches = [
+            item for item in assets
+            if isinstance(item, dict) and item.get("name") == asset_name
+        ]
+        if not matches:
+            continue
+        if len(matches) != 1:
+            raise RuntimeError(f"دارایی {asset_name} در انتشار Ollama تکراری است.")
+        item = matches[0]
+        digest = item.get("digest")
+        download_url = item.get("browser_download_url")
+        if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest):
+            raise RuntimeError(f"انتشار Ollama برای {asset_name} هش SHA-256 معتبر ندارد.")
+        expected_path = f"/ollama/ollama/releases/download/{tag}/{asset_name}"
+        try:
+            parsed_url = urllib.parse.urlsplit(download_url)
+            port = parsed_url.port
+        except (TypeError, ValueError):
+            raise RuntimeError(f"نشانی دانلود {asset_name} معتبر نیست.") from None
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.hostname != "github.com"
+            or parsed_url.path != expected_path
+            or port not in {None, 443}
+            or parsed_url.username
+            or parsed_url.password
+            or parsed_url.query
+            or parsed_url.fragment
+        ):
+            raise RuntimeError(f"مبدأ دانلود {asset_name} با انتشار رسمی GitHub مطابقت ندارد.")
+        asset_size = item.get("size")
+        if (
+            isinstance(asset_size, bool)
+            or not isinstance(asset_size, int)
+            or not 1 <= asset_size <= 3_000_000_000
+        ):
+            raise RuntimeError(f"اندازهٔ دارایی {asset_name} در اطلاعات انتشار معتبر نیست.")
+        selected[asset_name] = {
+            "url": download_url,
+            "sha256": digest.split(":", 1)[1].lower(),
+            "size": asset_size,
+        }
+    return {"tag": tag, "assets": selected}
+
+
+def _ollama_asset_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _GitHubAssetRedirectHandler(),
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _run(
+    command: list[str],
+    *,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(command, cwd=cwd, text=True, check=False, env=env)
     except KeyboardInterrupt:
         # Ctrl+C is expected when stopping the local server; avoid noisy tracebacks.
         return subprocess.CompletedProcess(command, 130)
@@ -216,7 +358,23 @@ def _ensure_dependencies(dev: bool) -> None:
     if project.returncode != 0:
         raise RuntimeError("نصب خود پروژه ناموفق بود.")
 
-def _download_once(url: str, destination: Path) -> Path:
+def _download_once(
+    url: str,
+    destination: Path,
+    *,
+    expected_sha256: str | None = None,
+    expected_size: int | None = None,
+    opener: urllib.request.OpenerDirector | None = None,
+) -> Path:
+    if expected_sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        raise ValueError("expected_sha256 must be a 64-character hexadecimal digest.")
+    expected_sha256 = expected_sha256.lower() if expected_sha256 else None
+    if expected_size is not None and (
+        isinstance(expected_size, bool)
+        or not isinstance(expected_size, int)
+        or not 1 <= expected_size <= 3_000_000_000
+    ):
+        raise ValueError("expected_size must be an integer from 1 to 3 GB.")
     destination.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = destination.with_name(destination.name + ".download.json")
     part_path = destination.with_name(destination.name + ".part")
@@ -225,27 +383,77 @@ def _download_once(url: str, destination: Path) -> Path:
     if destination.is_file() and destination.stat().st_size > 0:
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if int(manifest["size"]) == destination.stat().st_size and manifest.get("url") == url:
-                print(f"استفاده از فایل ذخیره‌شده: {destination}", flush=True)
+            metadata_matches = (
+                int(manifest["size"]) == destination.stat().st_size
+                and manifest.get("url") == url
+                and (expected_size is None or destination.stat().st_size == expected_size)
+            )
+            digest_matches = (
+                expected_sha256 is None
+                or _sha256_file(destination) == expected_sha256
+            )
+            if metadata_matches and digest_matches:
+                manifest_changed = False
+                if expected_sha256 is not None and manifest.get("sha256") != expected_sha256:
+                    manifest["sha256"] = expected_sha256
+                    manifest_changed = True
+                if expected_size is not None and manifest.get("expected_size") != expected_size:
+                    manifest["expected_size"] = expected_size
+                    manifest_changed = True
+                if manifest_changed:
+                    manifest_path.write_text(
+                        json.dumps(manifest, ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                print(f"استفاده از فایل ذخیره‌شدهٔ تأییدشده: {destination}", flush=True)
                 return destination
         except (OSError, ValueError, TypeError, KeyError):
             pass
-        print("فایل ذخیره‌شده تأیید نشده است؛ دانلود با قابلیت ادامه از سرور بررسی می‌شود.", flush=True)
+        print("فایل ذخیره‌شده با نسخه/هش مورد انتظار تطبیق ندارد؛ دریافت مجدد آغاز می‌شود.", flush=True)
 
-    # Keep partial bytes in a deterministic file so the next run can send
-    # an HTTP Range request instead of downloading from byte zero again.
+    # Keep partial bytes only when both the URL and expected release digest match.
     try:
         part_metadata = json.loads(part_manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         part_metadata = {}
-    if part_path.exists() and part_metadata.get("url") != url:
+    if part_path.exists() and (
+        part_metadata.get("url") != url
+        or part_metadata.get("sha256") != expected_sha256
+        or part_metadata.get("expected_size") != expected_size
+    ):
         part_path.unlink(missing_ok=True)
+    part_manifest = {"url": url}
+    if expected_sha256 is not None:
+        part_manifest["sha256"] = expected_sha256
+    if expected_size is not None:
+        part_manifest["expected_size"] = expected_size
     part_manifest_path.write_text(
-        json.dumps({"url": url}, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(part_manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
     offset = part_path.stat().st_size if part_path.is_file() else 0
-    if offset:
+    if expected_size is not None and offset >= expected_size:
+        if (
+            offset == expected_size
+            and expected_sha256 is not None
+            and _sha256_file(part_path) == expected_sha256
+        ):
+            part_path.replace(destination)
+            part_manifest_path.unlink(missing_ok=True)
+            manifest = {
+                "size": expected_size,
+                "url": url,
+                "sha256": expected_sha256,
+                "expected_size": expected_size,
+            }
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            print(f"استفاده از فایل موقت کامل و تأییدشده: {destination}", flush=True)
+            return destination
+        part_path.unlink(missing_ok=True)
+        offset = 0
         print(
             f"ادامه دانلود از فایل موقت: {offset / (1024 * 1024):.1f} MB دریافت شده است.",
             flush=True,
@@ -258,7 +466,7 @@ def _download_once(url: str, destination: Path) -> Path:
     started = time.monotonic()
     session_downloaded = 0
     try:
-        response = urllib.request.urlopen(request, timeout=30)
+        response = opener.open(request, timeout=30) if opener is not None else urllib.request.urlopen(request, timeout=30)
         with response:
             status = getattr(response, "status", response.getcode())
             content_range = response.headers.get("Content-Range", "")
@@ -281,6 +489,8 @@ def _download_once(url: str, destination: Path) -> Path:
                 mode = "ab"
                 expected_range_length = int(range_match.group(2)) - int(range_match.group(1)) + 1
                 total = int(range_match.group(3)) if range_match.group(3) != "*" else 0
+                if expected_size is not None and total and total != expected_size:
+                    raise RuntimeError("اندازهٔ Content-Range با اندازهٔ رسمی دارایی مطابقت ندارد.")
             else:
                 # A server that ignores Range may return a complete 200 response;
                 # restart from byte zero. Other 2xx responses are not valid here.
@@ -291,12 +501,16 @@ def _download_once(url: str, destination: Path) -> Path:
                 offset = 0
                 total_header = response.headers.get("Content-Length")
                 total = int(total_header) if total_header and total_header.isdigit() else 0
+                if expected_size is not None and total and total != expected_size:
+                    raise RuntimeError("Content-Length با اندازهٔ رسمی دارایی مطابقت ندارد.")
 
             with part_path.open(mode) as temporary:
                 while True:
                     chunk = response.read(256 * 1024)
                     if not chunk:
                         break
+                    if expected_size is not None and offset + session_downloaded + len(chunk) > expected_size:
+                        raise RuntimeError("حجم دانلود از اندازهٔ رسمی دارایی بیشتر شد.")
                     temporary.write(chunk)
                     session_downloaded += len(chunk)
                     current_size = offset + session_downloaded
@@ -328,6 +542,8 @@ def _download_once(url: str, destination: Path) -> Path:
         final_size = part_path.stat().st_size if part_path.exists() else 0
         if final_size == 0:
             raise RuntimeError(f"سرور فایل خالی برگرداند: {url}")
+        if expected_size is not None and final_size != expected_size:
+            raise RuntimeError("اندازهٔ نهایی فایل با اندازهٔ رسمی دارایی مطابقت ندارد؛ فایل موقت حفظ شد.")
         if total and final_size != total:
             raise RuntimeError(
                 f"دانلود هنوز کامل نیست: {final_size / (1024 * 1024):.1f} از "
@@ -335,10 +551,25 @@ def _download_once(url: str, destination: Path) -> Path:
                 "دوباره run.py را اجرا کنید تا دانلود از ادامه ادامه یابد."
             )
 
+        if expected_sha256 is not None:
+            actual_sha256 = _sha256_file(part_path)
+            if actual_sha256 != expected_sha256:
+                part_path.unlink(missing_ok=True)
+                part_manifest_path.unlink(missing_ok=True)
+                raise RuntimeError(
+                    "هش SHA-256 فایل دانلودشده با digest رسمی GitHub مطابقت ندارد؛ "
+                    "فایل اجرا/استخراج نشد و نسخهٔ قبلی دست‌نخورده باقی ماند."
+                )
+
         part_path.replace(destination)
         part_manifest_path.unlink(missing_ok=True)
+        manifest = {"size": final_size, "url": url}
+        if expected_sha256 is not None:
+            manifest["sha256"] = expected_sha256
+        if expected_size is not None:
+            manifest["expected_size"] = expected_size
         manifest_path.write_text(
-            json.dumps({"size": final_size, "url": url}, ensure_ascii=False, indent=2),
+            json.dumps(manifest, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         elapsed = max(time.monotonic() - started, 0.001)
@@ -373,19 +604,46 @@ def _ensure_ollama() -> None:
     # is only needed when Ollama cannot be found on this machine.
     executable = _find_ollama()
     installer: Path | None = None
+    release: dict[str, Any] | None = None
     if not executable:
-        if system == "Windows":
-            installer = _download_once("https://ollama.com/download/OllamaSetup.exe", INSTALLERS / "OllamaSetup.exe")
-        elif system == "Linux":
-            installer = _download_once("https://ollama.com/install.sh", INSTALLERS / "ollama-install.sh")
-        elif system == "Darwin":
-            installer = _download_once("https://ollama.com/download/Ollama-darwin.zip", INSTALLERS / "Ollama-darwin.zip")
+        asset_name = {
+            "Windows": "OllamaSetup.exe",
+            "Linux": "install.sh",
+            "Darwin": "Ollama-darwin.zip",
+        }.get(system)
+        if asset_name is None:
+            raise RuntimeError(f"نصب خودکار Ollama برای سیستم‌عامل {system} پشتیبانی نمی‌شود.")
+        release = _latest_ollama_release_assets()
+        asset = release["assets"].get(asset_name)
+        if asset is None:
+            raise RuntimeError(
+                f"نسخهٔ {release['tag']} دارایی نصب {asset_name} را ندارد؛ نصب متوقف شد."
+            )
+        installer_name = {
+            "Windows": "OllamaSetup.exe",
+            "Linux": "ollama-install.sh",
+            "Darwin": "Ollama-darwin.zip",
+        }[system]
+        installer = _download_once(
+            asset["url"],
+            INSTALLERS / installer_name,
+            expected_sha256=asset["sha256"],
+            expected_size=asset["size"],
+            opener=_ollama_asset_opener(),
+        )
+        print(
+            f"دارایی رسمی Ollama {release['tag']} با SHA-256 تأیید شد.",
+            flush=True,
+        )
     if not executable and installer:
         print("Ollama نصب نیست؛ اجرای نصب‌کننده ذخیره‌شده در prerequisites/installers ...", flush=True)
         if system == "Windows":
             result = _run([str(installer)])
         elif system == "Linux":
-            result = _run(["sh", str(installer)])
+            install_env = os.environ.copy()
+            if release is not None:
+                install_env["OLLAMA_VERSION"] = release["tag"].lstrip("v")
+            result = _run(["sh", str(installer)], env=install_env)
         else:
             # macOS app installation is intentionally left interactive; opening the
             # cached archive lets the user complete the signed app installation.
