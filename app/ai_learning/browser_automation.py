@@ -1480,7 +1480,11 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
             selected = service.get_oldest_queued_run()
             if selected is None:
                 _release_worker_lease()
-                return {"status": "idle", "active": False}
+                return {
+                    "status": "idle",
+                    "active": False,
+                    "recovered_run_ids": [int(item) for item in orphaned_ids],
+                }
             run_id = int(selected["id"])
             course_id = int(selected["course_id"])
             run = service.start_run(run_id, **_worker_lease_kwargs(epoch))
@@ -1504,7 +1508,13 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
                 recovered_status=selected.get("status"),
                 lease_epoch=epoch,
             )
-            return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+            return {
+                "status": "running",
+                "active": True,
+                "run_id": run_id,
+                "course_id": course_id,
+                "recovered_run_ids": [int(item) for item in orphaned_ids],
+            }
         except Exception:
             _release_worker_lease()
             raise
