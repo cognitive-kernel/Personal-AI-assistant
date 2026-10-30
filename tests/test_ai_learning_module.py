@@ -1699,6 +1699,10 @@ def test_invalid_lesson_retry_does_not_clear_global_pause(isolated_store):
 def test_ai_learning_retry_migration_adds_bounded_schedule_columns(isolated_store):
     with connection() as conn:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        control_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(ai_learning_control)").fetchall()
+        }
         version = conn.execute("SELECT MAX(version) FROM ai_learning_migrations").fetchone()[0]
     assert {"automatic_retry_count", "next_retry_at"} <= columns
+    assert {"retry_after", "retry_reason"} <= control_columns
     assert version == 6
