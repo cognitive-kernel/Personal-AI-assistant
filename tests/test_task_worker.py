@@ -285,6 +285,81 @@ def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker
     assert 1.0 <= FakeClock.current < 1.01
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "database is locked",
+        "database table is locked: task_queue",
+        "database schema is locked",
+        "database is busy",
+    ],
+)
+def test_sqlite_heartbeat_classifies_known_lock_messages_as_transient(message):
+    from app.task_worker import _is_transient_sqlite_lock_error
+
+    assert _is_transient_sqlite_lock_error(sqlite3.OperationalError(message)) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "disk I/O error",
+        "no such table: task_queue",
+        "unable to open database file",
+        "readonly database",
+        "malformed database schema",
+    ],
+)
+def test_sqlite_heartbeat_does_not_retry_permanent_operational_errors(message):
+    from app.task_worker import _is_transient_sqlite_lock_error
+
+    assert _is_transient_sqlite_lock_error(sqlite3.OperationalError(message)) is False
+
+
+def test_heartbeat_stops_immediately_on_permanent_sqlite_operational_error(worker_store, monkeypatch):
+    from app import task_worker
+
+    class FakeClock:
+        current = 0.0
+
+        @classmethod
+        def monotonic(cls):
+            return cls.current
+
+    class FakeStopEvent:
+        waits = 0
+
+        def wait(self, timeout):
+            self.waits += 1
+            FakeClock.current += timeout
+            return False
+
+    monkeypatch.setattr(task_worker, "time", FakeClock)
+    worker = TaskWorker(
+        "worker-heartbeat-permanent-error",
+        {"test.heartbeat-permanent-error": lambda *_args: {"ok": True}},
+        lease_seconds=30,
+    )
+    context = TaskContext(
+        task_id=1,
+        worker_id="worker-heartbeat-permanent-error",
+        lease_seconds=30,
+    )
+    monkeypatch.setattr(context, "control_status", lambda: "running")
+    calls = []
+
+    def fail_renewal(*_args, **_kwargs):
+        calls.append(True)
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(task_manager, "renew_lease", fail_renewal)
+    stop_event = FakeStopEvent()
+    worker._maintain_lease(context, stop_event)
+
+    assert len(calls) == 1
+    assert stop_event.waits == 1
+
+
 def test_task_creation_is_idempotent_for_matching_dedupe_key(worker_store):
     first = task_manager.create_task(
         "test.deduplicated", {"job_id": 41}, max_attempts=3, dedupe_key="learning-job:41"
