@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-30  
-> آخرین commit کد بررسی‌شده: `54c8f55dd9e2f5e163c454dedf37cdd766429874` در `main` (پس از PR #597). Exact-head CI برای PR #596 و #597 شامل tests، Windows storage regressions، browser E2E و dependency audit موفق بوده است؛ شواهد post-merge برای این SHA هنوز در status checks قابل تأیید نیست و در این snapshot موفق فرض نشده است.
+> آخرین commit بررسی‌شده در `main`: `cd620a624e997fc52fd510c0fdfedc2280af02b9` (پس از PR #599). CI روی head دقیق PR #599 شامل tests، Windows storage regressions، browser E2E و dependency audit موفق بوده است؛ اجرای مستقل post-merge روی این SHA در شواهد قابل‌دسترسی این بازبینی تأیید نشده و موفق فرض نمی‌شود.
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** شاخهٔ `main` در commit `dbfb8849ca4b2e243abeded724635ab47eb7d364` است. CI پس از ادغام PR #595 روی همین SHA شامل 1543 تست موفق و 5 مورد Skip، Windows storage regressions، browser E2E و dependency audit موفق است. artifact generation، بررسی 73 فایل Markdown، import-cycle، retrieval benchmark و 10 مورد claim-to-test نیز موفق شدند. CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
+**مبنای وضعیت:** شاخهٔ `main` اکنون در commit `cd620a624e997fc52fd510c0fdfedc2280af02b9` است. این commit فقط آزمون مرورگر resume دورهٔ انتخاب‌شده را نسبت به baseline قبلی اضافه می‌کند؛ CI پس از ادغام PR #595 روی همین SHA شامل 1543 تست موفق و 5 مورد Skip، Windows storage regressions، browser E2E و dependency audit موفق است. artifact generation، بررسی 73 فایل Markdown، import-cycle، retrieval benchmark و 10 مورد claim-to-test نیز موفق شدند. CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
@@ -135,3 +135,11 @@
 - PR [#597](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/597) با merge commit `54c8f55dd9e2f5e163c454dedf37cdd766429874` آزمون Chromium برای مکث/ادامهٔ سراسری AI-learning و بازیابی پس از خطای موقت resume اضافه کرد. روی head دقیق `feab5df18c7852910da8397155dcd8b7182d717d`، workflowهای tests (شامل Windows storage regressions)، browser E2E و dependency audit همگی موفق شدند.
 - دامنهٔ PR #597 فقط کنترل سراسری را با payload صریح `course_id: null` می‌آزماید؛ انتخاب دوره و ارسال شناسهٔ یک دورهٔ مشخص در این آزمون پوشش داده نشده است و نباید به‌عنوان تست آن رفتار گزارش شود.
 - هیچ تغییر runtime در PR #597 انجام نشد. هیچ‌یک از این دو PR به‌تنهایی اثبات‌کنندهٔ اجرای زندهٔ ChatGPT/Ollama، بازیابی واقعی مرورگر پس از crash، پذیرش انسانی یا کیفیت factual نیستند.
+
+
+## 2026-10-30 — پوشش resume دورهٔ انتخاب‌شده و وضعیت main
+
+- PR [#599](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/599) آزمون Chromium مستقلی برای resume یک دورهٔ انتخاب‌شده اضافه کرد؛ fixture یک دوره با شناسهٔ 42 را بارگذاری می‌کند و بررسی می‌کند درخواست resume دقیقاً با `course_id: 42` ارسال شود. تست قبلی pause/resume سراسری بدون تغییر باقی ماند.
+- PR #599 در commit `cd620a624e997fc52fd510c0fdfedc2280af02b9` در `main` ادغام شد. روی head دقیق PR یعنی `23832ee9c2cac7ea78412d58f27f2cae5ac40b5d`، tests (شامل Windows storage regressions)، browser E2E و dependency audit همگی موفق شدند: tests run [#41076114713](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41076114713)، browser E2E [#41076115543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41076115543)، dependency audit [#41076114829](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41076114829).
+- این تغییر فقط تست است و هیچ رفتار runtime را تغییر نمی‌دهد. E2E از APIهای intercept‌شده استفاده می‌کند؛ تعامل با provider زنده یا اجرای target-host را اثبات نمی‌کند.
+- مبنای فعلی `main` پس از این ادغام `cd620a624e997fc52fd510c0fdfedc2280af02b9` است. CI دقیق head PR موفق است؛ اجرای مستقل post-merge روی همین SHA در شواهد قابل‌دسترسی این بازبینی تأیید نشده و موفق فرض نمی‌شود.
