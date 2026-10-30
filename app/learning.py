@@ -7,6 +7,7 @@ import re
 from typing import Any
 from urllib.parse import urlencode, urlparse
 from .db import learning_connection, get_settings
+from . import ollama
 from .ollama import _request
 from . import learning_prerequisites
 from . import curricula, factual_knowledge, learning_evidence_gate
@@ -615,6 +616,120 @@ def _failure_warnings_for_topic(topic: str, *, limit: int = 3) -> list[dict[str,
     return warnings
 
 
+def _select_learning_generation_model(
+    settings: dict[str, Any],
+    serialized_prompt: str,
+    fallback_model: str,
+) -> tuple[str, dict[str, Any]]:
+    """Apply configured cost/quality policy without silently bypassing hard constraints."""
+    from .learning_cost_manager import select_learning_model
+
+    profiles = settings.get("learning_model_cost_profiles", {})
+    minimum_quality = settings.get("learning_model_minimum_quality_score", 0.0)
+    budget_microusd = settings.get("learning_task_budget_microusd")
+    if not isinstance(profiles, dict):
+        raise LearningError("Learning model cost profiles must be a JSON object.")
+    if (
+        isinstance(minimum_quality, bool)
+        or not isinstance(minimum_quality, (int, float))
+        or not math.isfinite(float(minimum_quality))
+        or not 0 <= minimum_quality <= 1
+    ):
+        raise LearningError("Learning model minimum quality score must be between 0 and 1.")
+    if budget_microusd is not None and (
+        isinstance(budget_microusd, bool)
+        or not isinstance(budget_microusd, int)
+        or budget_microusd < 0
+    ):
+        raise LearningError("Learning task budget must be a non-negative integer or null.")
+
+    constrained = budget_microusd is not None or minimum_quality > 0
+    if not profiles:
+        if constrained:
+            raise LearningError(
+                "Learning model selection cannot enforce the configured budget or quality threshold without cost profiles."
+            )
+        return fallback_model, {
+            "status": "configured_fallback",
+            "reason": "No model cost profiles are configured; using the configured learning model.",
+            "selected_model": fallback_model,
+            "estimated_cost_microusd": None,
+            "estimated_prompt_tokens": None,
+            "estimated_completion_tokens": None,
+        }
+
+    try:
+        installed = ollama.list_models()
+    except Exception as exc:
+        if constrained:
+            raise LearningError(
+                "Cannot enforce learning model budget or quality threshold because installed models could not be enumerated."
+            ) from exc
+        return fallback_model, {
+            "status": "discovery_unavailable_fallback",
+            "reason": f"Installed-model discovery failed ({type(exc).__name__}); using configured model without a cost guarantee.",
+            "selected_model": fallback_model,
+            "estimated_cost_microusd": None,
+            "estimated_prompt_tokens": None,
+            "estimated_completion_tokens": None,
+        }
+
+    installed_names = sorted({
+        item["name"].strip()
+        for item in installed
+        if isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and item["name"].strip()
+    })
+    # Ollama tokenization is model-specific. Use a deliberately conservative
+    # character-based estimate for both the initial request and one possible
+    # repair, plus fixed repair-instruction overhead. This is a budget guard,
+    # not a substitute for provider-reported usage.
+    one_prompt_estimate = max(1, math.ceil(
+        (len(serialized_prompt) + len("You are a careful learning assistant.")) / 2
+    ))
+    estimated_prompt_tokens = one_prompt_estimate * 2 + 1500
+    estimated_completion_tokens = 2600
+    selection = select_learning_model(
+        settings,
+        installed_names,
+        estimated_prompt_tokens=estimated_prompt_tokens,
+        estimated_completion_tokens=estimated_completion_tokens,
+        minimum_quality_score=float(minimum_quality),
+        budget_microusd=budget_microusd,
+    )
+    selected_details = selection.get("selection")
+    if not isinstance(selected_details, dict):
+        selected_details = {}
+    selection_record = {
+        **selection,
+        "estimated_cost_microusd": selected_details.get("estimated_cost_microusd"),
+        "estimated_energy_wh": selected_details.get("estimated_energy_wh"),
+        "selected_quality_score": selected_details.get("quality_score"),
+        "selected_provider": selected_details.get("provider"),
+        "estimated_prompt_tokens": estimated_prompt_tokens,
+        "estimated_completion_tokens": estimated_completion_tokens,
+        "estimate_method": "conservative_character_heuristic_for_initial_plus_one_repair",
+        "budget_scope": "lesson_generation_and_single_repair_only",
+    }
+    selected_model = selection.get("selected_model")
+    if isinstance(selected_model, str) and selected_model:
+        return selected_model, selection_record
+    if constrained:
+        raise LearningError(
+            "No installed learning model has explicit cost and quality profiles that satisfy the configured constraints."
+        )
+    return fallback_model, {
+        **selection_record,
+        "status": "no_eligible_profile_fallback",
+        "reason": (
+            "No installed model has a usable configured cost profile; using the configured model "
+            "with unknown estimated cost."
+        ),
+        "selected_model": fallback_model,
+    }
+
+
 def run_job(job_id: int) -> None:
     with learning_connection() as conn:
         # Atomically claim a queued job. Multiple workers may call run_job for the
@@ -718,15 +833,7 @@ def run_job(job_id: int) -> None:
     from .learning_pipeline_budget import LearningPipelineBudget
     from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=2600)
-    generation_budget.reserve("initial_generation", predict_tokens=1200)
     try:
-        durable_initial_budget = reserve_job_budget(
-            job_id, "initial_generation", calls=1, predict_tokens=1200
-        )
-        if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
-            raise LearningError(
-                "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
-            )
         limits = runtime_limits({
             "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
             "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
@@ -734,8 +841,21 @@ def run_job(job_id: int) -> None:
             "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
             "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
         }, detect_hardware())
-        model = str(settings.get("learning_ollama_model", settings["ollama_model"]))
+        configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"])).strip()
+        model, model_selection = _select_learning_generation_model(
+            settings, serialized_prompt, configured_model
+        )
         request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
+        generation_budget.reserve("initial_generation", predict_tokens=1200)
+        # Resolve model policy before reserving durable inference budget. A failed
+        # discovery/eligibility check must not consume a model-call reservation.
+        durable_initial_budget = reserve_job_budget(
+            job_id, "initial_generation", calls=1, predict_tokens=1200
+        )
+        if not durable_initial_budget["reserved"] or durable_initial_budget.get("already_reserved"):
+            raise LearningError(
+                "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
+            )
         response = _request("/api/chat", {
             "model": model, "stream": False, "format": "json",
             "messages": [
@@ -882,6 +1002,7 @@ def run_job(job_id: int) -> None:
             "repair_prompt_sha256": repair_prompt_hash,
             "attempt_count": generation_attempts,
             "model_id": model[:200],
+            "model_selection": model_selection,
             "model_digest": None,
             "model_digest_status": "unavailable_from_current_ollama_path",
             "provider_usage": provider_usage,
