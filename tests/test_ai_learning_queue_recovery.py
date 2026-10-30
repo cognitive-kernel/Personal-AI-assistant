@@ -689,6 +689,8 @@ def test_scheduled_retry_waits_until_due_then_dispatches(isolated_store, monkeyp
     assert scheduled is not None
     assert service.get_oldest_queued_run() is None
     assert service.get_learning_control()["retry_pending"] is True
+    initialize_store()
+    assert service.get_learning_control()["retry_pending"] is True
 
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
