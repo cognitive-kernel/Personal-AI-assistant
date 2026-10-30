@@ -769,3 +769,20 @@ def test_provider_rate_limit_skips_short_retries_and_uses_delayed_schedule(isola
     assert scheduled is not None
     assert scheduled["automatic_retry_count"] == 1
     assert scheduled["next_retry_at"] is not None
+
+def test_cancelled_scheduled_retry_cannot_be_dispatched(isolated_store, monkeypatch):
+    course = service.create_course(title="لغو تلاش زمان‌بندی‌شده")
+    run = service.create_run(course["id"], run_type="outline", request_key="cancel-delayed-retry")
+    service.start_run(run["id"])
+    service.schedule_run_retry(
+        run["id"], "chatgpt_network_error", "temporary network failure",
+        delay_seconds=60,
+    )
+
+    cancelled = service.cancel_run(run["id"])
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["next_retry_at"] is None
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    assert browser_automation._dispatch_next_persisted_run()["status"] == "idle"
