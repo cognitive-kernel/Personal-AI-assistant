@@ -1221,7 +1221,7 @@ def _continue_lessons(
             if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
                 return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup", **_worker_lease_kwargs())
                 return
             service.mark_run_needs_user_action(
                 run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}",
@@ -1270,13 +1270,14 @@ def _worker(
 ) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
-    run_type = service.get_run(run_id).get("run_type")
+    run_type: str | None = None
     lease_epoch = _WORKER_LEASE_EPOCH
     lease_stop = threading.Event()
     lease_thread: threading.Thread | None = None
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
-    _BROWSER_SESSION.reuse_enabled = True
     try:
+        run_type = service.get_run(run_id).get("run_type")
+        _BROWSER_SESSION.reuse_enabled = True
         if lease_epoch is not None:
             _assert_worker_lease(lease_epoch)
             lease_thread = threading.Thread(
@@ -1353,7 +1354,7 @@ def _worker(
                 _log_event("worker_result_discarded_after_lease_loss", run_id=run_id, lease_epoch=lease_epoch)
                 return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run", **_worker_lease_kwargs(lease_epoch))
             else:
                 service.mark_run_needs_user_action(
                     run_id, "playwright_unexpected_error",
