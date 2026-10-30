@@ -1079,3 +1079,19 @@ def test_reset_remains_blocked_for_expired_unreleased_worker_owner(isolated_stor
 
     assert service.release_worker_lease("possibly-live-process", epoch)
     assert service.reset_learning_data()["reset"] is True
+
+
+def test_run_projection_includes_topic_pause_state_for_remote_worker(isolated_store):
+    course = service.create_course(title="وضعیت مکث سرفصل برای heartbeat")
+    topic = service.add_topic(course["id"], "سرفصل مکث‌شده")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="topic-pause-heartbeat-state",
+    )
+    service.set_topic_paused(topic["id"], True)
+
+    projected = service.get_run(run["id"])
+
+    assert projected["topics"][0]["topic_id"] == topic["id"]
+    assert projected["topics"][0]["processing_status"] == "paused"
