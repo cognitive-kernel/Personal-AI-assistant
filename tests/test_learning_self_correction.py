@@ -367,6 +367,11 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
             "claims": [],
             "source_conflicts": [],
             "model_id": model_override,
+            "prompt_version": "claim-review-test-v1",
+            "prompt_sha256": "a" * 64,
+            "model_digest": None,
+            "model_digest_status": "unavailable_from_current_ollama_path",
+            "provider_usage": {"prompt_eval_count": 800, "eval_count": 120},
             "reviewer": "local_ollama_model_assisted_not_independent",
         }
 
@@ -400,6 +405,12 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
     assert selection["claim_review_prompt_tokens"] > 0
     assert selection["estimated_completion_tokens"] == 3600
     assert selection["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
+    generation_provenance = finished["quality"]["generation_provenance"]
+    assert generation_provenance["provider_usage"]["claim_review"] == {
+        "prompt_eval_count": 800, "eval_count": 120
+    }
+    assert generation_provenance["claim_review"]["prompt_sha256"] == "a" * 64
+    assert generation_provenance["claim_review"]["model_id"] == "cheap:latest"
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
     assert durable["predict_tokens_reserved"] == 2200
