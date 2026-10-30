@@ -58,6 +58,7 @@ def test_external_reviewers_require_explicit_data_sharing_approval():
     {"provider_id": "ollama"},
     {"base_url": "https://api.example.com/v1?redirect=https://evil.test"},
     {"base_url": "https://api.example.com:invalid/v1"},
+    {"base_url": "https://[invalid/v1"},
 ])
 def test_external_reviewers_reject_unsafe_provider_configuration(overrides):
     assert learning_review_adapters._external_configs({
@@ -170,5 +171,22 @@ def test_external_reviewer_records_fingerprint_and_uses_validated_pinned_ip(monk
 def test_external_reviewer_redirect_handler_never_returns_redirect_request():
     handler = learning_review_adapters._NoRedirectHandler()
     assert handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/") is None
+
+
+def test_external_reviewer_response_is_bounded_before_json_parsing(monkeypatch):
+    provider = learning_review_adapters._external_configs({
+        "learning_external_review_providers": [_provider()]
+    })[0]
+    monkeypatch.setenv("LEARNING_REVIEW_API_KEY_PROVIDER_A", "test-key")
+    monkeypatch.setattr(
+        "app.learning_review_adapters.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))],
+    )
+    captured = {}
+    _mock_external_opener(monkeypatch, b"x" * 65537, captured)
+
+    with pytest.raises(learning_review_adapters.ReviewProviderUnavailable, match="64 KiB"):
+        learning_review_adapters.run_reviewer(provider, "{}", system_prompt="Review conservatively.")
+    assert captured["read_limit"] == 65537
 
 
