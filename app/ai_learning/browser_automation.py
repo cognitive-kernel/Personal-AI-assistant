@@ -1459,6 +1459,21 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
             }
         _WORKER_LEASE_EPOCH = epoch
         try:
+            # Once this process owns the global browser lease, any remaining
+            # running row is orphaned; no other live worker can own this profile.
+            orphaned_ids = service.list_run_ids_by_status("running")
+            for orphaned_id in orphaned_ids:
+                service.requeue_run_for_resume(
+                    int(orphaned_id),
+                    "dispatcher_recovered_orphaned_run",
+                    **_worker_lease_kwargs(epoch),
+                )
+            if orphaned_ids:
+                _log_event(
+                    "dispatcher_requeued_orphaned_runs",
+                    run_ids=[int(item) for item in orphaned_ids],
+                    lease_epoch=epoch,
+                )
             selected = service.get_oldest_queued_run()
             if selected is None:
                 _release_worker_lease()
