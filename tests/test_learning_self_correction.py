@@ -417,6 +417,100 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
 
 
 
+
+def test_web_claim_review_budget_covers_generation_repair_and_review(
+    learning_store, monkeypatch
+):
+    url = "https://docs.python.org/3/library/json.html"
+    source_text = (
+        "Source title: Python JSON docs\\n"
+        f"Source URL: {url}\\n"
+        "Content:\\n"
+        "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully. "
+        "The parser reports the location of the invalid input so callers can correct the source data."
+    )
+    db.update_settings({
+        "learning_model_cost_profiles": {
+            "selected:latest": {
+                "input_cost_microusd_per_1k_tokens": 100,
+                "output_cost_microusd_per_1k_tokens": 100,
+                "quality_score": 0.95,
+            },
+        },
+        "learning_model_minimum_quality_score": 0.9,
+        "learning_task_budget_microusd": 100000,
+    })
+    monkeypatch.setattr(
+        ollama, "list_models", lambda: [{"name": "selected:latest"}]
+    )
+    generation_calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, request, **_kwargs: generation_calls.append(request) or {
+            "message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}
+        },
+    )
+    quality_results = iter([
+        {"accepted": False, "score": 60, "reasons": ["missing depth"]},
+        {"accepted": True, "score": 95, "reasons": []},
+    ])
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: next(quality_results),
+    )
+    review_calls = []
+
+    def fake_review(question, answer, sources, *, model_override=None):
+        review_calls.append(model_override)
+        return {
+            "passed": True,
+            "overall": "supported",
+            "claims": [],
+            "source_conflicts": [],
+            "model_id": model_override,
+            "prompt_version": "claim-review-test-v1",
+            "prompt_sha256": "b" * 64,
+            "provider_usage": {"prompt_eval_count": 900, "eval_count": 150},
+        }
+
+    monkeypatch.setattr(claim_review, "review_answer_claims", fake_review)
+    monkeypatch.setattr(
+        learning_evidence_gate, "evaluate_lesson_evidence",
+        lambda *_args, **_kwargs: {
+            "version": learning_evidence_gate.GATE_VERSION,
+            "status": "accepted",
+            "accepted": True,
+            "independent_scientific_verification": False,
+            "failed_gates": [],
+        },
+    )
+
+    job = learning.create_job("Python JSON parsing", source_text=source_text)
+    with learning.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_jobs SET source_kind='web_retrieved' WHERE id=?",
+            (job["id"],),
+        )
+    learning.run_job(job["id"])
+
+    finished = learning.get_job(job["id"])
+    assert finished["status"] == "completed"
+    assert len(generation_calls) == 2
+    assert [call["model"] for call in generation_calls] == [
+        "selected:latest", "selected:latest"
+    ]
+    assert review_calls == ["selected:latest"]
+    provenance = finished["quality"]["generation_provenance"]
+    assert provenance["model_selection"]["estimated_completion_tokens"] == 3600
+    assert provenance["provider_usage"]["claim_review"] == {
+        "prompt_eval_count": 900, "eval_count": 150
+    }
+    durable = learning_durable_budget.get_job_budget(job["id"])
+    assert durable["calls_used"] == 3
+    assert durable["predict_tokens_reserved"] == 3600
+
+
+
 def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
     learning_store, monkeypatch
 ):
