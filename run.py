@@ -432,7 +432,28 @@ def _download_once(
     )
 
     offset = part_path.stat().st_size if part_path.is_file() else 0
-    if offset:
+    if expected_size is not None and offset >= expected_size:
+        if (
+            offset == expected_size
+            and expected_sha256 is not None
+            and _sha256_file(part_path) == expected_sha256
+        ):
+            part_path.replace(destination)
+            part_manifest_path.unlink(missing_ok=True)
+            manifest = {
+                "size": expected_size,
+                "url": url,
+                "sha256": expected_sha256,
+                "expected_size": expected_size,
+            }
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            print(f"استفاده از فایل موقت کامل و تأییدشده: {destination}", flush=True)
+            return destination
+        part_path.unlink(missing_ok=True)
+        offset = 0
         print(
             f"ادامه دانلود از فایل موقت: {offset / (1024 * 1024):.1f} MB دریافت شده است.",
             flush=True,
