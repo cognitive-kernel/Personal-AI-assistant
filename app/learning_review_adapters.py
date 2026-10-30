@@ -53,9 +53,9 @@ def _external_configs(settings: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         if not isinstance(base_url, str) or len(base_url) > 500:
             continue
-        parsed = urlparse(base_url)
-        host = (parsed.hostname or "").lower().rstrip(".")
         try:
+            parsed = urlparse(base_url)
+            host = (parsed.hostname or "").lower().rstrip(".")
             port = parsed.port
         except ValueError:
             continue
