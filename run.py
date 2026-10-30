@@ -393,8 +393,14 @@ def _download_once(
                 or _sha256_file(destination) == expected_sha256
             )
             if metadata_matches and digest_matches:
+                manifest_changed = False
                 if expected_sha256 is not None and manifest.get("sha256") != expected_sha256:
                     manifest["sha256"] = expected_sha256
+                    manifest_changed = True
+                if expected_size is not None and manifest.get("expected_size") != expected_size:
+                    manifest["expected_size"] = expected_size
+                    manifest_changed = True
+                if manifest_changed:
                     manifest_path.write_text(
                         json.dumps(manifest, ensure_ascii=False, indent=2),
                         encoding="utf-8",
