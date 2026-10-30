@@ -28,7 +28,9 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
             return None
         target = urllib.parse.urljoin(req.full_url, newurl)
         try:
-            _validate_url(target)
+            # Enforce scheme/host/port policy here. DNS is validated exactly once
+            # by the pinned transport immediately before the TCP connection.
+            _parse_url_policy(target)
         except ValueError:
             return None
         return super().redirect_request(req, fp, code, msg, headers, target)
@@ -55,6 +57,8 @@ class _TextExtractor(HTMLParser):
             if cleaned: self.parts.append(cleaned + " ")
 
 def _parse_url_policy(url: str) -> urllib.parse.SplitResult:
+    if not isinstance(url, str) or len(url) > 2048:
+        raise ValueError("URL نامعتبر یا بیش از حد طولانی است.")
     try:
         parsed = urllib.parse.urlsplit(url.strip())
         port = parsed.port
@@ -96,8 +100,14 @@ def _resolve_pinned_ip(url: str) -> str:
     return _public_addresses(parsed.hostname or "")[0]
 
 def _fetch(url: str) -> tuple[str, str]:
-    parsed = _validate_url(url)
-    opener = urllib.request.build_opener(_SafeRedirect, PinnedHTTPSHandler(_resolve_pinned_ip))
+    # Parse policy without resolving DNS; the transport validates every DNS
+    # answer and pins the selected address immediately before connecting.
+    parsed = _parse_url_policy(url)
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _SafeRedirect,
+        PinnedHTTPSHandler(_resolve_pinned_ip),
+    )
     request = urllib.request.Request(urllib.parse.urlunsplit(parsed),
         headers={"User-Agent": "Personal-AI-Assistant-KnowledgeIndexer/0.1", "Accept": "text/html"}, method="GET")
     try:
@@ -136,7 +146,9 @@ def _chunks(text: str) -> list[str]:
     return chunks
 
 def ingest_url(url: str, title: str | None = None) -> dict[str, Any]:
-    parsed = _validate_url(url)
+    # Network policy is enforced again at the pinned transport boundary; avoid
+    # an unnecessary DNS lookup before the actual request.
+    parsed = _parse_url_policy(url)
     canonical_url = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, ""))
     fetched_title, content = _fetch(canonical_url)
     title = (title or fetched_title).strip()[:300]

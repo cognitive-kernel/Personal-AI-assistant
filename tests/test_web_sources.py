@@ -1,4 +1,5 @@
 import base64
+import email.message
 import urllib.parse
 import urllib.request
 
@@ -494,13 +495,18 @@ def test_url_validation_rejects_hostname_with_mixed_public_and_private_dns(monke
         web_sources._resolve_public_ip("https://mixed-dns.example/docs")
 
 
-def test_redirect_handler_revalidates_private_redirect_targets():
+def test_redirect_handler_rejects_unsafe_url_policy_before_transport():
     handler = web_sources._SafeRedirectHandler()
     request = urllib.request.Request("https://public.example/docs")
     with pytest.raises(web_sources.SourceFetchError):
         handler.redirect_request(
-            request, None, 302, "Found", {}, "http://169.254.169.254/latest/meta-data/"
+            request, None, 302, "Found", {}, "https://user:secret@public.example/redirect"
         )
+
+
+def test_pinned_resolver_rejects_private_redirect_target():
+    with pytest.raises(web_sources.SourceFetchError):
+        web_sources._resolve_public_ip("http://169.254.169.254/latest/meta-data/")
 
 
 def test_public_source_resolver_returns_a_validated_literal_for_ip_pinning(monkeypatch):
@@ -513,3 +519,63 @@ def test_public_source_resolver_returns_a_validated_literal_for_ip_pinning(monke
         ],
     )
     assert web_sources._resolve_public_ip("https://public.example/docs") == "93.184.216.34"
+
+
+def test_source_fetch_resolves_dns_once_at_pinned_transport_and_disables_proxies(monkeypatch):
+    dns_calls = []
+
+    def resolve(*args, **kwargs):
+        dns_calls.append((args, kwargs))
+        return [(2, 1, 6, "", ("93.184.216.34", 443))]
+
+    monkeypatch.setattr(web_sources.socket, "getaddrinfo", resolve)
+    captured = {}
+    body = b"<html><title>Docs</title><p>Safe source content.</p></html>"
+
+    class Response:
+        def __init__(self):
+            self.headers = email.message.Message()
+            self.headers["Content-Type"] = "text/html; charset=utf-8"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, limit):
+            captured["read_limit"] = limit
+            return body[:limit]
+
+    class Opener:
+        def open(self, request, *, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return Response()
+
+    def build_opener(*handlers):
+        captured["handlers"] = handlers
+        return Opener()
+
+    monkeypatch.setattr(web_sources.urllib.request, "build_opener", build_opener)
+
+    content, content_type = web_sources._open("https://public.example/docs")
+
+    assert "Safe source content." in content
+    assert content_type == "text/html"
+    assert captured["timeout"] == web_sources.DEFAULT_TIMEOUT_SECONDS
+    assert captured["read_limit"] == web_sources.MAX_RESPONSE_BYTES + 1
+    assert dns_calls == [], "URL policy parsing must not perform a preliminary DNS lookup"
+
+    pinned = next(
+        handler for handler in captured["handlers"]
+        if isinstance(handler, web_sources.PinnedHTTPSHandler)
+    )
+    assert pinned._resolver(captured["request"].full_url) == "93.184.216.34"
+    assert len(dns_calls) == 1, "the actual pinned request must perform exactly one DNS lookup"
+
+    proxies = [
+        handler for handler in captured["handlers"]
+        if isinstance(handler, urllib.request.ProxyHandler)
+    ]
+    assert len(proxies) == 1 and proxies[0].proxies == {}
