@@ -571,7 +571,8 @@ def get_run(run_id: int) -> dict[str, Any]:
         if run is None:
             raise NotFoundError("Run not found.")
         topics = conn.execute(
-            """SELECT rt.topic_id,rt.status AS run_topic_status,t.title,t.approval_status
+            """SELECT rt.topic_id,rt.status AS run_topic_status,t.title,t.approval_status,
+                      t.processing_status
                FROM run_topics rt JOIN topics t ON t.id=rt.topic_id WHERE rt.run_id=? ORDER BY t.position""",
             (run_id,)).fetchall()
     result = dict(run)
