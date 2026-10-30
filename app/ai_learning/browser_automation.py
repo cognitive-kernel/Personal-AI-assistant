@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from logging.handlers import RotatingFileHandler
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,6 +20,10 @@ from typing import Any, Callable
 from . import service
 
 _LOCK = threading.Lock()
+_WORKER_OWNER = f"{os.getpid()}-{uuid.uuid4().hex}"
+_WORKER_LEASE_SECONDS = 90
+_WORKER_LEASE_HEARTBEAT_SECONDS = 15.0
+_WORKER_LEASE_EPOCH: int | None = None
 _ACTIVE = False
 _ACTIVE_RUN_ID: int | None = None
 _ACTIVE_COURSE_ID: int | None = None
@@ -35,6 +40,67 @@ _MAX_CONTEXT_RELAUNCHES = 1
 # Only failures that can reasonably clear without operator intervention are retried
 # across worker sessions. Authentication, human verification, missing dependencies,
 # browser closure loops, and content-quality failures remain manual-action states.
+def _release_worker_lease() -> bool:
+    """Release only this process's current lease generation."""
+    global _WORKER_LEASE_EPOCH
+    epoch = _WORKER_LEASE_EPOCH
+    if epoch is None:
+        return False
+    try:
+        released = service.release_worker_lease(_WORKER_OWNER, epoch)
+    finally:
+        _WORKER_LEASE_EPOCH = None
+    return released
+
+
+def _assert_worker_lease(epoch: int | None = None) -> None:
+    """Fence provider results and database writes after process ownership is lost."""
+    expected = _WORKER_LEASE_EPOCH if epoch is None else epoch
+    if expected is None:
+        return
+    if not service.owns_worker_lease(_WORKER_OWNER, expected):
+        raise BrowserAutomationError(
+            "worker_lease_lost",
+            "مالکیت اجرای مرورگر از دست رفته است؛ نتیجهٔ این worker ثبت نمی‌شود و صف باید از مالک فعلی بازیابی شود.",
+        )
+
+
+def _maintain_worker_lease(
+    cancel_event: threading.Event,
+    stop_event: threading.Event,
+    epoch: int,
+) -> None:
+    """Renew the process-wide browser lease and observe cross-process pause/cancel requests."""
+    while not stop_event.wait(_WORKER_LEASE_HEARTBEAT_SECONDS):
+        try:
+            if not service.renew_worker_lease(
+                _WORKER_OWNER, epoch, lease_seconds=_WORKER_LEASE_SECONDS
+            ):
+                cancel_event.set()
+                _log_event("worker_lease_lost", lease_epoch=epoch)
+                return
+            with _LOCK:
+                active_run_id = _ACTIVE_RUN_ID
+            if active_run_id is not None:
+                status = service.get_run(active_run_id).get("status")
+                if status in {"cancelled", "queued", "failed", "needs_user_action"}:
+                    cancel_event.set()
+                    _log_event(
+                        "worker_control_observed",
+                        run_id=active_run_id,
+                        status=status,
+                    )
+                    return
+        except Exception as exc:
+            # A transient DB lock must not immediately abandon a still-valid lease.
+            _log_event(
+                "worker_lease_heartbeat_error",
+                lease_epoch=epoch,
+                exception_type=type(exc).__name__,
+                message=str(exc)[:300],
+            )
+
+
 _AUTOMATIC_RETRY_DELAYS_SECONDS = {
     "chatgpt_network_error": (60, 300),
     "chatgpt_page_closed": (60, 300),
