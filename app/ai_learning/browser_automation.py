@@ -20,7 +20,8 @@ from typing import Any, Callable
 from . import service
 
 _LOCK = threading.Lock()
-_WORKER_OWNER = f"{os.getpid()}-{uuid.uuid4().hex}"
+_WORKER_OWNER_PID = os.getpid()
+_WORKER_OWNER = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
 _WORKER_LEASE_SECONDS = 90
 _WORKER_LEASE_HEARTBEAT_SECONDS = 15.0
 _WORKER_LEASE_EPOCH: int | None = None
@@ -37,12 +38,42 @@ _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
 _MAX_CONTEXT_RELAUNCHES = 1
+def _reset_process_identity() -> None:
+    """Reinitialize inherited locks and worker state in a forked child process."""
+    global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
+    global _WORKER_LEASE_EPOCH, _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    global _CANCEL_EVENTS, _SHUTTING_DOWN, _BROWSER_SESSION
+
+    _WORKER_OWNER_PID = os.getpid()
+    _WORKER_OWNER = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
+    _WORKER_LEASE_EPOCH = None
+    _ACTIVE = False
+    _ACTIVE_RUN_ID = None
+    _ACTIVE_COURSE_ID = None
+    _CANCEL_EVENTS = {}
+    _SHUTTING_DOWN = False
+    _LOCK = threading.Lock()
+    _LOG_LOCK = threading.Lock()
+    _BROWSER_SESSION = threading.local()
+
+
+def _ensure_process_identity() -> None:
+    """Refresh process-local identity when a pre-fork server creates a child."""
+    if os.getpid() != _WORKER_OWNER_PID:
+        _reset_process_identity()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_process_identity)
+
+
 # Only failures that can reasonably clear without operator intervention are retried
 # across worker sessions. Authentication, human verification, missing dependencies,
 # browser closure loops, and content-quality failures remain manual-action states.
 def _release_worker_lease() -> bool:
     """Release only this process's current lease generation."""
     global _WORKER_LEASE_EPOCH
+    _ensure_process_identity()
     epoch = _WORKER_LEASE_EPOCH
     if epoch is None:
         return False
@@ -55,6 +86,7 @@ def _release_worker_lease() -> bool:
 
 def _assert_worker_lease(epoch: int | None = None) -> None:
     """Fence provider results and database writes after process ownership is lost."""
+    _ensure_process_identity()
     expected = _WORKER_LEASE_EPOCH if epoch is None else epoch
     if expected is None:
         return
@@ -67,6 +99,7 @@ def _assert_worker_lease(epoch: int | None = None) -> None:
 
 def _worker_lease_kwargs(epoch: int | None = None) -> dict[str, Any]:
     """Build the optional transaction-level fencing arguments for worker writes."""
+    _ensure_process_identity()
     expected = _WORKER_LEASE_EPOCH if epoch is None else epoch
     if expected is None:
         return {}
@@ -82,6 +115,7 @@ def _maintain_worker_lease(
     epoch: int,
 ) -> None:
     """Renew the process-wide browser lease and observe cross-process pause/cancel requests."""
+    _ensure_process_identity()
     while not stop_event.wait(_WORKER_LEASE_HEARTBEAT_SECONDS):
         try:
             if not service.renew_worker_lease(
@@ -1147,6 +1181,7 @@ def _continue_lessons(
 ) -> None:
     """Capture lessons sequentially, keeping every browser prompt bounded to one topic."""
     global _ACTIVE_RUN_ID
+    _ensure_process_identity()
     # Never approve topics as a side effect of background learning. Approval is a
     # deliberate dashboard action so users can review the outline before lesson capture.
     pending_ids = list(dict.fromkeys(int(item) for item in selected_topic_ids or []))
@@ -1269,6 +1304,7 @@ def _worker(
     force_retry: bool = False,
 ) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     worker_started = time.monotonic()
     run_type: str | None = None
     lease_epoch = _WORKER_LEASE_EPOCH
@@ -1394,6 +1430,7 @@ def _start_worker_thread(
 ) -> None:
     """Start a claimed worker or restore its durable run to a recoverable state."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     try:
         thread.start()
     except Exception as exc:
@@ -1430,6 +1467,7 @@ def _start_worker_thread(
 def _dispatch_next_persisted_run() -> dict[str, Any]:
     """Claim the process-wide browser lease before dispatching one durable queued run."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
+    _ensure_process_identity()
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
@@ -1523,6 +1561,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
 def stop_browser_automation() -> dict[str, Any]:
     """Signal active workers and give Playwright time to close before process shutdown."""
     global _SHUTTING_DOWN
+    _ensure_process_identity()
     with _LOCK:
         _SHUTTING_DOWN = True
         active_run_id = _ACTIVE_RUN_ID
@@ -1562,6 +1601,7 @@ def recover_pending_runs() -> dict[str, Any]:
     global _SHUTTING_DOWN
     from .db import initialize_store
 
+    _ensure_process_identity()
     initialize_store()
     _SHUTTING_DOWN = False
     result = _dispatch_next_persisted_run()
@@ -1573,6 +1613,7 @@ def recover_orphaned_runs() -> dict[str, Any]:
     """Run the single leased dispatcher/recovery path from the maintenance watchdog."""
     from .db import initialize_store
 
+    _ensure_process_identity()
     if _SHUTTING_DOWN:
         return {"status": "shutting_down", "active": False}
     initialize_store()
@@ -1588,6 +1629,7 @@ def recover_orphaned_runs() -> dict[str, Any]:
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Persist an outline request, then dispatch it under the shared browser lease."""
+    _ensure_process_identity()
     control = service.get_learning_control()
     if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
@@ -1632,6 +1674,7 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
     """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     globally_paused = service.get_learning_control()["paused"]
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
     if not requested_ids:
@@ -1741,6 +1784,7 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
 
 def cancel_run(run_id: int) -> dict[str, Any]:
     """Signal the local browser worker and persist cancellation of its run."""
+    _ensure_process_identity()
     with _LOCK:
         event = _CANCEL_EVENTS.get(run_id)
         if event is not None:
@@ -1750,6 +1794,7 @@ def cancel_run(run_id: int) -> dict[str, Any]:
 
 def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
     """Pause a topic without terminally cancelling its active durable lesson run."""
+    _ensure_process_identity()
     result = service.set_topic_paused(topic_id, paused)
     if paused:
         with _LOCK:
@@ -1799,6 +1844,7 @@ def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
 
 def reset_learning_data() -> dict[str, Any]:
     """Refuse destructive reset while any browser worker can still write to the store."""
+    _ensure_process_identity()
     with _LOCK:
         if _ACTIVE:
             raise ValueError(
@@ -1810,6 +1856,7 @@ def reset_learning_data() -> dict[str, Any]:
 
 def pause_learning() -> dict[str, Any]:
     """Pause all ChatGPT outline and lesson capture, preserving completed database work."""
+    _ensure_process_identity()
     state = service.set_learning_paused(True, "توقف سراسری توسط کاربر")
     with _LOCK:
         active_run_id = _ACTIVE_RUN_ID
@@ -1837,6 +1884,7 @@ def pause_learning() -> dict[str, Any]:
 def resume_learning(course_id: int | None = None) -> dict[str, Any]:
     """Resume an active worker, recover a persisted in-flight run, or continue remaining lesson batches."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
+    _ensure_process_identity()
     service.set_learning_paused(False)
     with _LOCK:
         if _ACTIVE:
