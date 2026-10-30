@@ -217,8 +217,15 @@ def list_provider_consent_events(
     return [dict(row) for row in rows]
 
 
-def save_provider_quota_snapshot(snapshot: Any, provider_id: str = KAGGLE_PROVIDER_ID) -> list[dict[str, Any]]:
-    """Persist only parsed quota numbers, never raw CLI output or credentials."""
+def save_provider_quota_snapshot(
+    snapshot: Any,
+    provider_id: str = KAGGLE_PROVIDER_ID,
+    *,
+    expected_executable_path: str | None = None,
+) -> list[dict[str, Any]]:
+    """Persist parsed quota only if the CLI identity still matches the request."""
+    if expected_executable_path is not None and not isinstance(expected_executable_path, str):
+        raise CloudResourceError("Expected Kaggle CLI identity is invalid.")
     if provider_id != KAGGLE_PROVIDER_ID:
         raise CloudResourceError("Unknown provider quota scope.")
     if not hasattr(snapshot, "observed_at") or not hasattr(snapshot, "refresh_at"):
@@ -244,12 +251,18 @@ def save_provider_quota_snapshot(snapshot: Any, provider_id: str = KAGGLE_PROVID
     with closing(_connect()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         current = connection.execute(
-            "SELECT enabled, user_consent FROM provider_access_consents WHERE provider_id=?",
+            "SELECT enabled, user_consent, executable_path FROM provider_access_consents WHERE provider_id=?",
             (provider_id,),
         ).fetchone()
-        if current is None or not current["enabled"] or not current["user_consent"]:
+        if (
+            current is None or not current["enabled"] or not current["user_consent"]
+            or (
+                expected_executable_path is not None
+                and current["executable_path"] != expected_executable_path
+            )
+        ):
             connection.rollback()
-            raise CloudResourceError("Provider consent was revoked before quota persistence.")
+            raise CloudResourceError("Provider consent or CLI identity changed before quota persistence.")
         connection.execute("DELETE FROM provider_quota_snapshots WHERE provider_id=?", (provider_id,))
         for resource_name, used, remaining, total in rows:
             connection.execute(
@@ -1562,8 +1575,20 @@ def list_oci_limit_consent_events(*, limit: int = 20) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
-def save_oci_limit_snapshot(snapshot: Any) -> list[dict[str, Any]]:
-    """Persist only parsed OCI limit numbers and scopes, never raw CLI output."""
+def save_oci_limit_snapshot(
+    snapshot: Any,
+    *,
+    expected_consent: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Persist limits only if the complete consented OCI scope still matches."""
+    expected_keys = (
+        "executable_path", "config_file", "profile", "region", "compartment_id"
+    )
+    if expected_consent is not None and (
+        not isinstance(expected_consent, dict)
+        or any(not isinstance(expected_consent.get(key), str) for key in expected_keys)
+    ):
+        raise CloudResourceError("Expected OCI consent scope is invalid.")
     if not hasattr(snapshot, "observed_at") or not hasattr(snapshot, "region") or not hasattr(snapshot, "limits"):
         raise CloudResourceError("OCI limit snapshot has an invalid shape.")
     if not isinstance(snapshot.observed_at, datetime) or snapshot.observed_at.tzinfo is None:
@@ -1607,16 +1632,21 @@ def save_oci_limit_snapshot(snapshot: Any) -> list[dict[str, Any]]:
     with closing(_connect()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         current = connection.execute(
-            """SELECT enabled, user_consent, region FROM oci_limit_access_consents
-               WHERE provider_id=?""",
+            """SELECT enabled, user_consent, executable_path, config_file, profile,
+                      region, compartment_id
+               FROM oci_limit_access_consents WHERE provider_id=?""",
             (OCI_PROVIDER_ID,),
         ).fetchone()
         if (
             current is None or not current["enabled"] or not current["user_consent"]
             or current["region"] != snapshot.region
+            or (
+                expected_consent is not None
+                and any(current[key] != expected_consent[key] for key in expected_keys)
+            )
         ):
             connection.rollback()
-            raise CloudResourceError("OCI consent changed before limit snapshot persistence.")
+            raise CloudResourceError("OCI consent scope changed before limit snapshot persistence.")
         connection.execute("DELETE FROM oci_limit_snapshots WHERE provider_id=?", (OCI_PROVIDER_ID,))
         for name, value, used, available, scope_type, scope_value in rows:
             connection.execute(
