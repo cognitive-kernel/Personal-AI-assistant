@@ -259,6 +259,40 @@ def test_verified_cached_installer_is_reused_only_when_bytes_match(tmp_path, mon
     assert manifest["expected_size"] == len(body)
 
 
+def test_complete_verified_partial_is_promoted_without_network(tmp_path, monkeypatch):
+    destination = tmp_path / "verified-installer.bin"
+    part_path = destination.with_name(destination.name + ".part")
+    part_manifest_path = destination.with_name(destination.name + ".part.json")
+    url = "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh"
+    body = b"complete but not yet promoted"
+    expected_sha256 = hashlib.sha256(body).hexdigest()
+    part_path.write_bytes(body)
+    part_manifest_path.write_text(
+        json.dumps({
+            "url": url,
+            "sha256": expected_sha256,
+            "expected_size": len(body),
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        installer.urllib.request,
+        "urlopen",
+        lambda *_args, **_kwargs: pytest.fail("complete verified partial should not be downloaded"),
+    )
+
+    result = installer._download_once(
+        url,
+        destination,
+        expected_sha256=expected_sha256,
+        expected_size=len(body),
+    )
+
+    assert result.read_bytes() == body
+    assert not part_path.exists()
+    assert not part_manifest_path.exists()
+
+
 def test_download_rejects_content_larger_than_official_asset_size(tmp_path, monkeypatch):
     destination = tmp_path / "verified-installer.bin"
     url = "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh"
