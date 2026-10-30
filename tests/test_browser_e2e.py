@@ -2409,3 +2409,122 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
         assert submit.is_enabled(), "Programming submission must recover after a queue API failure."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_browser_knowledge_source_ingest_list_search_and_error_recovery():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {"ingest": 0, "list": 0, "search": 0}
+    browser_errors = []
+    source_url = "https://learn.microsoft.com/en-us/sql/"
+    source_record = {
+        "id": 101,
+        "url": source_url,
+        "title": "SQL Server documentation",
+        "status": "indexed",
+        "chunk_count": 2,
+    }
+
+    def sources_route(route):
+        request = route.request
+        if request.method == "GET":
+            state["list"] += 1
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"sources": [source_record]}),
+            )
+            return
+        if request.method == "POST":
+            state["ingest"] += 1
+            payload = request.post_data_json
+            assert payload == {"url": source_url, "title": "SQL Server documentation"}
+            if state["ingest"] == 1:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({
+                        "source_id": 101,
+                        "url": source_url,
+                        "title": "SQL Server documentation",
+                        "chunks": 2,
+                        "unchanged": False,
+                        "status": "indexed",
+                    }),
+                )
+            else:
+                route.fulfill(
+                    status=503,
+                    content_type="application/json",
+                    body=json.dumps({"detail": "source index unavailable"}),
+                )
+            return
+        route.fulfill(status=405, body="method not allowed")
+
+    def search_route(route):
+        assert route.request.method == "POST"
+        state["search"] += 1
+        payload = route.request.post_data_json
+        assert payload == {"query": "SQL indexes", "limit": 3}
+        if state["search"] == 1:
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "query": "SQL indexes",
+                    "results": [{
+                        "title": "SQL Server documentation",
+                        "url": source_url,
+                        "content": "Indexes improve query access paths.",
+                        "retrieval": "sqlite_fts5",
+                    }],
+                }),
+            )
+        else:
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"detail": "source search unavailable"}),
+            )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/knowledge/sources/search", search_route)
+        page.route("**/api/knowledge/sources", sources_route)
+        _goto_section(page, base_url, "knowledge-section")
+
+        ingest_button = page.locator("#knowledge-source-ingest")
+        page.locator("#knowledge-source-url").fill(source_url)
+        page.locator("#knowledge-source-title").fill("SQL Server documentation")
+        ingest_button.click()
+        page.get_by_text('"source_id": 101', exact=False).wait_for(timeout=10000)
+        assert state["ingest"] == 1
+        assert state["list"] == 1
+        assert source_url in page.locator("#knowledge-source-status").inner_text()
+        assert ingest_button.is_enabled()
+
+        page.locator("#refresh-knowledge-sources").click()
+        page.get_by_text('"chunk_count": 2', exact=False).wait_for()
+        assert state["list"] == 2
+
+        page.locator("#knowledge-source-query").fill("SQL indexes")
+        page.locator("#knowledge-source-limit").fill("3")
+        search_button = page.locator("#knowledge-source-search")
+        search_button.click()
+        page.get_by_text("sqlite_fts5", exact=False).wait_for(timeout=10000)
+        assert state["search"] == 1
+        assert "Indexes improve query access paths." in page.locator("#knowledge-source-search-output").inner_text()
+        assert search_button.is_enabled()
+
+        search_button.click()
+        page.get_by_text("source search unavailable", exact=False).wait_for()
+        assert search_button.is_enabled(), "Search action must recover after an API failure."
+
+        ingest_button.click()
+        page.get_by_text("source index unavailable", exact=False).wait_for()
+        assert ingest_button.is_enabled(), "Ingest action must recover after an API failure."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
