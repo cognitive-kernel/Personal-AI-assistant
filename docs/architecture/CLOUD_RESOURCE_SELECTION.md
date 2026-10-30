@@ -17,7 +17,7 @@ The existing provider-neutral policy preflight must return `ready_for_provider_a
 
 The planner reports the candidate recommendation, normalized capacity, evidence/policy blockers, and reasons for rejecting other candidates. Its output always contains `execution_authorized=false` and `remote_execution_enabled=false`.
 
-This is not a scheduler and does not enqueue tasks, contact provider APIs, access credentials, create accounts, provision machines, or send user data. A later API can expose the dry-run result; any provider execution requires a separate adapter, explicit authorization, contract tests, local checkpointing, quota enforcement, and failover/recovery tests.
+This is not a scheduler and does not enqueue tasks, contact provider APIs, access credentials, create accounts, provision machines, or send user data. The current loopback-only dry-run API exposes the result without provider access or task execution; any future provider execution requires a separate adapter, explicit authorization, contract tests, local checkpointing, quota enforcement, and failover/recovery tests.
 
 
 ## Local dry-run API
