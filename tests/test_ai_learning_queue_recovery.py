@@ -1050,3 +1050,17 @@ def test_worker_lease_is_renewed_until_paused_worker_releases_it(isolated_store)
     assert service.release_worker_lease("paused-process", epoch)
     replacement_epoch = service.claim_worker_lease("replacement-process", lease_seconds=90)
     assert replacement_epoch == epoch + 1
+
+
+def test_manual_resume_does_not_requeue_run_owned_by_another_process(isolated_store, monkeypatch):
+    course = service.create_course(title="ادامهٔ دستی با مالک دیگر")
+    run = service.create_run(course["id"], run_type="outline", request_key="resume-other-owner")
+    service.start_run(run["id"])
+    epoch = service.claim_worker_lease("other-process", lease_seconds=90)
+    assert epoch == 1
+
+    result = browser_automation.resume_learning()
+
+    assert result["status"] == "worker_busy"
+    assert service.get_run(run["id"])["status"] == "running"
+    assert service.owns_worker_lease("other-process", epoch)
