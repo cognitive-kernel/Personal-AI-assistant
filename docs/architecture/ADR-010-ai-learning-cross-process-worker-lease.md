@@ -11,7 +11,7 @@ The AI-learning queue stores run state in SQLite, but its previous concurrency g
 ## Decision
 
 - Add checksummed migration 7 with `worker_lease_owner`, `worker_lease_until`, and monotonically increasing `worker_lease_epoch` columns on the singleton `ai_learning_control` row.
-- Acquire/renew/release the lease in SQLite transactions. A lease is valid only while its expiry is in the future; a new owner increments the epoch. The lease defaults to 90 seconds and the browser worker renews it every 15 seconds.
+- Acquire/renew/release the lease in SQLite transactions. The owner token includes the process ID and a random nonce; the fork hook reinitializes inherited locks, worker flags, cancellation events, and owner identity in each child process. A lease is valid only while its expiry is in the future; a new owner increments the epoch. The lease defaults to 90 seconds and the browser worker renews it every 15 seconds.
 - Require queue dispatch, startup recovery, orphan recovery, manual resume, and outline starts to hold the process-wide lease before claiming or requeueing work.
 - Preserve one browser worker per AI-learning database/profile. Requests from another process remain in the durable queue rather than launching a second Chrome session.
 - On heartbeat loss, pause, cancellation, or topic pause, signal the worker cooperatively. Before persisting captured output, check the current lease generation; a stale worker must discard its result.
