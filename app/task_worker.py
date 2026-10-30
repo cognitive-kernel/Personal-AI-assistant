@@ -136,10 +136,13 @@ class TaskWorker:
                 # handler cannot reach a checkpoint, expiry lets the queue settle it.
                 if context.control_status() != "running":
                     return
+                renewal_started_at = time.monotonic()
                 task_manager.renew_lease(
                     context.task_id, context.worker_id, lease_seconds=self.lease_seconds
                 )
-                lease_deadline = time.monotonic() + self.lease_seconds
+                # Start the local deadline before the DB call so slow commits do
+                # not make the in-memory lease window more generous than SQLite's.
+                lease_deadline = renewal_started_at + self.lease_seconds
             except TaskManagerError:
                 # Ownership loss or a control-state transition ends heartbeat ownership.
                 return
