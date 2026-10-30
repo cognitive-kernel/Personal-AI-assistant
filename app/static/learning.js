@@ -119,32 +119,62 @@ function renderTopicJobHistory(output, topic, jobs, tasksByJobId) {
    eventsButton.type = "button";
    eventsButton.textContent = "بارگذاری تاریخچه رویدادها";
    const eventsOutput = document.createElement("div");
-   eventsOutput.setAttribute("aria-live", "polite");
-   eventsButton.addEventListener("click", async () => {
+   const eventsStatus = document.createElement("p");
+   eventsStatus.setAttribute("role", "status");
+   eventsStatus.setAttribute("aria-live", "polite");
+   const eventsList = document.createElement("ol");
+   eventsList.hidden = true;
+   const olderEventsButton = document.createElement("button");
+   olderEventsButton.type = "button";
+   olderEventsButton.textContent = "بارگذاری رویدادهای قدیمی‌تر";
+   olderEventsButton.hidden = true;
+   let nextEventsBeforeId = null;
+
+   function renderTaskAuditEvents(events, prepend) {
+    const items = events.slice().reverse().map(event => {
+     const item = document.createElement("li");
+     const change = formatTaskAuditEventChange(event);
+     item.textContent = (event.occurred_at || "") + " — " + event.event_type + " — " + change;
+     return item;
+    });
+    if (prepend) eventsList.prepend(...items);
+    else eventsList.append(...items);
+    if (items.length) eventsList.hidden = false;
+   }
+
+   async function loadTaskAuditEvents(beforeId = null) {
     eventsButton.disabled = true;
-    eventsOutput.textContent = "در حال بارگذاری رویدادهای ذخیره‌شده…";
+    olderEventsButton.disabled = true;
+    eventsStatus.textContent = "در حال بارگذاری رویدادهای ذخیره‌شده…";
     try {
-     const response = await learningApi("/api/tasks/" + task.id + "/events?limit=100");
+     const cursor = beforeId === null ? "" : "&before_id=" + encodeURIComponent(beforeId);
+     const response = await learningApi("/api/tasks/" + task.id + "/events?limit=100" + cursor);
      const events = response.events || [];
-     eventsOutput.replaceChildren();
-     if (!events.length) {
-      eventsOutput.textContent = "برای این وظیفه رویدادی ثبت نشده است.";
+     if (beforeId === null) {
+      eventsList.replaceChildren();
+      if (!events.length) eventsStatus.textContent = "برای این وظیفه رویدادی ثبت نشده است.";
+      else eventsStatus.textContent = "";
+     } else if (!events.length) {
+      eventsStatus.textContent = "رویداد قدیمی‌تری برای این وظیفه وجود ندارد.";
      } else {
-      const list = document.createElement("ol");
-      events.slice().reverse().forEach(event => {
-       const item = document.createElement("li");
-       const change = formatTaskAuditEventChange(event);
-       item.textContent = (event.occurred_at || "") + " — " + event.event_type + " — " + change;
-       list.append(item);
-      });
-      eventsOutput.append(list);
+      eventsStatus.textContent = "";
      }
+     renderTaskAuditEvents(events, beforeId !== null);
+     nextEventsBeforeId = response.has_more ? response.next_before_id : null;
+     olderEventsButton.hidden = !nextEventsBeforeId;
     } catch (error) {
-     eventsOutput.textContent = "بارگذاری تاریخچه ناموفق بود: " + error.message;
+     eventsStatus.textContent = "بارگذاری تاریخچه ناموفق بود: " + error.message;
     } finally {
      eventsButton.disabled = false;
+     olderEventsButton.disabled = false;
     }
+   }
+
+   eventsButton.addEventListener("click", () => loadTaskAuditEvents());
+   olderEventsButton.addEventListener("click", () => {
+    if (nextEventsBeforeId !== null) loadTaskAuditEvents(nextEventsBeforeId);
    });
+   eventsOutput.append(eventsStatus, eventsList, olderEventsButton);
    record.append(eventsButton, eventsOutput);
   } else {
    appendHistoryText(record, "تاریخچه صف", "رکورد صف برای این درس در ۱۰۰ وظیفه اخیر پیدا نشد.");

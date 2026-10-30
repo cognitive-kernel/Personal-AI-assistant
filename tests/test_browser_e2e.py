@@ -2722,3 +2722,137 @@ def test_ai_learning_resume_preserves_selected_course_id():
         assert state["paused"] is False
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_browser_learning_course_task_history_loads_older_cursor_pages():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    path_data = {
+        "paths": [{
+            "id": 7,
+            "title": "Course history pagination",
+            "topic_count": 1,
+            "completed_count": 0,
+            "reference_urls": [],
+            "topics": [{
+                "id": 70,
+                "topic": "Paginated topic",
+                "position": 1,
+                "status": "in_progress",
+                "latest_score": None,
+                "updated_at": "2026-10-21 13:28:44",
+            }],
+        }]
+    }
+    job_data = {
+        "jobs": [{
+            "id": 10,
+            "path_topic_id": 70,
+            "topic": "Paginated topic",
+            "status": "rejected",
+            "error": "Quality threshold not met.",
+            "created_at": "2026-10-21 13:22:29",
+            "updated_at": "2026-10-21 13:28:44",
+            "source_kind": "model_knowledge_no_external_source",
+            "quality": {"score": 42},
+            "lesson": None,
+            "assessment": None,
+            "evidence": [],
+        }]
+    }
+    task_data = {
+        "tasks": [{
+            "id": 28,
+            "task_type": "learning.run_job",
+            "status": "succeeded",
+            "attempts": 1,
+            "max_attempts": 3,
+            "error": None,
+            "result": {"job_id": 10, "learning_status": "rejected", "already_terminal": False},
+            "payload": {"job_id": 10},
+        }]
+    }
+    event_requests = []
+
+    def event_page(start, end):
+        return [{
+            "id": event_id,
+            "task_id": 28,
+            "event_type": "status_changed",
+            "old_status": "queued",
+            "new_status": "running" if event_id % 2 else "succeeded",
+            "old_priority": 0,
+            "new_priority": 0,
+            "old_scheduled_at": None,
+            "new_scheduled_at": None,
+            "occurred_at": f"event-{event_id}",
+        } for event_id in range(start, end, -1)]
+
+    def fulfill_json(route, payload):
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps(payload, ensure_ascii=False))
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def mock_api(route):
+            url = route.request.url
+            if "/api/learning/paths" in url:
+                fulfill_json(route, path_data)
+            elif "/api/learning/jobs" in url:
+                fulfill_json(route, job_data)
+            elif "/api/tasks/28/events" in url:
+                event_requests.append(url)
+                if "before_id=81" in url:
+                    fulfill_json(route, {
+                        "events": event_page(80, 60),
+                        "has_more": False,
+                        "next_before_id": None,
+                    })
+                else:
+                    fulfill_json(route, {
+                        "events": event_page(100, 80),
+                        "has_more": True,
+                        "next_before_id": 81,
+                    })
+            elif "/api/tasks" in url:
+                fulfill_json(route, task_data)
+            elif "/api/learning/curricula" in url:
+                fulfill_json(route, {"curricula": []})
+            elif "/api/learning/reviews/due" in url:
+                fulfill_json(route, {"items": []})
+            elif "/api/learning/recommendations" in url:
+                fulfill_json(route, {"recommendations": []})
+            else:
+                route.continue_()
+
+        page.route("**/api/**", mock_api)
+        _goto_section(page, base_url, "learning-paths-section")
+        page.locator(".path-card > details > summary").click()
+        page.locator(".path-topic-job-history-container > details > summary").click()
+        job_heading = page.get_by_text(
+            "درس #10 — ردشده در کنترل کیفیت؛ صف: اجرای وظیفه تمام شد",
+            exact=True,
+        )
+        job_heading.wait_for(timeout=10000)
+        job_heading.click()
+
+        record = page.locator(".path-topic-job-record")
+        record.get_by_role("button", name="بارگذاری تاریخچه رویدادها").click()
+        event_list = record.locator("ol")
+        event_list.get_by_text("event-81", exact=False).wait_for(timeout=5000)
+        older_button = record.get_by_role("button", name="بارگذاری رویدادهای قدیمی‌تر")
+        assert older_button.is_visible()
+        older_button.click()
+
+        event_list.get_by_text("event-61", exact=False).wait_for(timeout=5000)
+        items = event_list.locator("li")
+        assert items.count() == 40
+        assert "event-61" in items.nth(0).inner_text()
+        assert "event-100" in items.nth(39).inner_text()
+        assert len(event_requests) == 2
+        assert "before_id=81" in event_requests[1]
+        assert older_button.is_hidden()
+        browser.close()
