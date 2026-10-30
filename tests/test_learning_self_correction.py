@@ -403,3 +403,79 @@ def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estim
     durable = learning_durable_budget.get_job_budget(job["id"])
     assert durable["calls_used"] == 2
     assert durable["predict_tokens_reserved"] == 2200
+
+
+
+def test_web_claim_review_does_not_repeat_an_already_reserved_review_stage(
+    learning_store, monkeypatch
+):
+    url = "https://docs.python.org/3/library/json.html"
+    source_text = (
+        "Source title: Python JSON docs\n"
+        f"Source URL: {url}\n"
+        "Content:\n"
+        "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully. "
+        "The parser reports the location of the invalid input so callers can correct the source data."
+    )
+    db.update_settings({
+        "learning_model_cost_profiles": {
+            "cheap:latest": {
+                "input_cost_microusd_per_1k_tokens": 100,
+                "output_cost_microusd_per_1k_tokens": 100,
+                "quality_score": 0.9,
+            },
+        },
+        "learning_model_minimum_quality_score": 0.8,
+        "learning_task_budget_microusd": 100000,
+    })
+    monkeypatch.setattr(
+        ollama, "list_models", lambda: [{"name": "cheap:latest"}]
+    )
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda *_args, **_kwargs: {
+            "message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}
+        },
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+    review_calls = []
+    monkeypatch.setattr(
+        claim_review, "review_answer_claims",
+        lambda *_args, **_kwargs: review_calls.append(True),
+    )
+    monkeypatch.setattr(
+        learning_evidence_gate, "evaluate_lesson_evidence",
+        lambda *_args, **_kwargs: {
+            "version": learning_evidence_gate.GATE_VERSION,
+            "status": "not_accepted",
+            "accepted": False,
+            "independent_scientific_verification": False,
+            "failed_gates": ["claim_review_budget"],
+        },
+    )
+
+    job = learning.create_job("Python JSON parsing", source_text=source_text)
+    with learning.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_jobs SET source_kind='web_retrieved' WHERE id=?",
+            (job["id"],),
+        )
+    reserved = learning_durable_budget.reserve_job_budget(
+        job["id"], "claim_review", calls=1, predict_tokens=1000
+    )
+    assert reserved["reserved"] is True
+
+    learning.run_job(job["id"])
+
+    finished = learning.get_job(job["id"])
+    assert review_calls == []
+    assert finished["quality"]["claim_review_status"] == "needs_review"
+    assert finished["quality"]["claim_review"]["error"] == (
+        "claim_review_budget_exhausted_or_already_reserved"
+    )
+    durable = learning_durable_budget.get_job_budget(job["id"])
+    assert durable["calls_used"] == 2
+    assert durable["predict_tokens_reserved"] == 2200
