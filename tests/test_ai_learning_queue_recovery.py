@@ -250,7 +250,9 @@ def test_dispatch_does_not_restart_runs_needing_user_action(isolated_store, monk
     monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
     result = browser_automation._dispatch_next_persisted_run()
 
-    assert result == {"status": "idle", "active": False}
+    assert result["status"] == "idle"
+    assert result["active"] is False
+    assert result["recovered_run_ids"] == []
     assert launched == []
     assert service.get_run(run["id"])["status"] == "needs_user_action"
 
