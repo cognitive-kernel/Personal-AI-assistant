@@ -1278,6 +1278,7 @@ def _worker(
     _BROWSER_SESSION.reuse_enabled = True
     try:
         if lease_epoch is not None:
+            _assert_worker_lease(lease_epoch)
             lease_thread = threading.Thread(
                 target=_maintain_worker_lease,
                 args=(cancel_event, lease_stop, lease_epoch),
