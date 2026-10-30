@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-30
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `dbfb8849ca4b2e243abeded724635ab47eb7d364` (main پس از PR #595؛ tests: 1543 passed، 5 skipped، Windows storage regressions، browser E2E و dependency audit موفق؛ artifact، 73 لینک Markdown، import-cycle و دو benchmark نیز موفق).
+> commit مبنا: `54c8f55dd9e2f5e163c454dedf37cdd766429874` (main پس از PR #597؛ exact-head CI برای PR #596 و #597 موفق؛ post-merge status هنوز تأیید نشده).
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -163,3 +163,11 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - CI روی `main` در commit دقیق `dbfb8849ca4b2e243abeded724635ab47eb7d364`: tests [#41067227257](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227257) با 1543 passed و 5 skipped؛ Windows storage regressions، browser E2E [#41067227286](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227286) و dependency audit [#41067227304](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227304) موفق شدند.
 - در همان test job، تولید artifactها، بررسی لینک‌های Markdown برای 73 فایل، کنترل import-cycle، benchmark بازیابی واژگانی و benchmark ساختاری claim-to-test با 10 مورد موفق شدند. گزارش benchmark بازیابی تصریح می‌کند که fixture مصنوعی کیفیت عمومی retrieval را اثبات نمی‌کند؛ benchmark پوشش نیز کفایت معنایی آزمون‌ها یا صحت ادعاها را ثابت نمی‌کند.
 - این شواهد CI مخزن هستند. پذیرش روی میزبان مقصد، آزمون زندهٔ مدل/ارائه‌دهنده، تمرین staging restore/rollback و بازبینی مستقل امنیتی همچنان دروازه‌های جداگانه‌اند.
+
+## 14. تکمیل جریان منابع دانش و آزمون کنترل سراسری AI-learning — 2026-10-30
+
+- مبنای فعلی پس از ادغام PR #597: `main` در commit `54c8f55dd9e2f5e163c454dedf37cdd766429874`. status checkهای post-merge این SHA هنگام ثبت این گزارش در دسترس نبودند؛ موفقیت CI روی headهای PR را با CI پس از ادغام یکی نگیرید.
+- PR #596 (`e057abf17766368fc21f70020d9b87760dec298a`) رابط کاربری دریافت منبع HTTPS، بازخوانی فهرست منابع و جست‌وجوی محلی را اضافه کرد. وضعیت ingest از خطای refresh فهرست جدا نگه داشته می‌شود؛ خروجی با `textContent` نمایش داده می‌شود. exact-head tests، browser E2E و dependency audit موفق شدند. E2E درخواست‌های API را intercept می‌کند و دریافت زندهٔ اینترنتی را نمی‌سنجد.
+- PR #597 (`54c8f55dd9e2f5e163c454dedf37cdd766429874`) آزمون Chromium کنترل سراسری pause/resume را اضافه کرد؛ خطای 503 در اولین resume باید دکمه را قابل استفاده نگه دارد و درخواست بعدی باید مکث را بردارد. exact-head tests، Windows storage regressions، browser E2E و dependency audit موفق شدند.
+- محدودیت پوشش PR #597: فهرست دوره‌ها در fixture خالی است و payload هر دو درخواست resume برابر `{"course_id": null}` است؛ بنابراین مسیر resume دورهٔ انتخاب‌شده آزموده نشده است. این مورد به‌عنوان شکاف آزمون باقی می‌ماند، نه نقص اثبات‌شده در production.
+- تغییرات فوق معماری و رفتار backend صف را تغییر نمی‌دهند. پذیرش روی میزبان مقصد، تعامل واقعی با provider، آزمون crash/multi-process و بازبینی مستقل امنیتی همچنان جداگانه لازم‌اند.
