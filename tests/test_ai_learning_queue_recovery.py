@@ -597,6 +597,7 @@ def test_manual_resume_persists_all_pending_topics_outside_dashboard_course_limi
 
 
 def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
+    real_thread = threading.Thread
     course = service.create_course(title="بازیابی خطای ایجاد worker")
     run = service.create_run(course["id"], run_type="outline", request_key="thread-start-fails")
     attempts = []
@@ -611,10 +612,24 @@ def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, m
 
     monkeypatch.setattr(browser_automation.threading, "Thread", FailingThread)
 
-    with pytest.raises(browser_automation.BrowserAutomationError) as error:
-        browser_automation._dispatch_next_persisted_run()
+    outcome = {}
 
-    assert error.value.code == "worker_thread_start_failed"
+    def dispatch_with_start_failure():
+        try:
+            browser_automation._dispatch_next_persisted_run()
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    dispatcher_thread = real_thread(target=dispatch_with_start_failure, daemon=True)
+    dispatcher_thread.start()
+    dispatcher_thread.join(timeout=5)
+    if dispatcher_thread.is_alive():
+        # Keep a lock-deadlock regression from poisoning later tests in this process.
+        monkeypatch.setattr(browser_automation, "_LOCK", threading.Lock())
+        pytest.fail("dispatcher deadlocked while recovering from worker thread startup failure")
+    error = outcome.get("error")
+    assert isinstance(error, browser_automation.BrowserAutomationError)
+    assert error.code == "worker_thread_start_failed"
     assert len(attempts) == 1
     assert service.get_run(run["id"])["status"] == "queued"
     assert browser_automation._ACTIVE is False
