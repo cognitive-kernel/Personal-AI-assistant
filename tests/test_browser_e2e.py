@@ -2852,6 +2852,8 @@ def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
         page.get_by_text("سرفصل‌ها به‌روزرسانی شد.", exact=False).wait_for(timeout=10000)
         assert state["decision_calls"] == [{"topic_ids": [71], "decision": "approved"}]
         assert "تأییدشده" in topic_card.inner_text()
+        if not topic_card.evaluate("(element) => element.open"):
+            topic_card.locator(":scope > summary").click()
 
         topic_card.get_by_role("button", name="مشاهده درس‌ها و محتوا").click()
         lesson_card = page.locator(".topic-inline-lessons .lesson").filter(has_text="درس آزمون مرور")
