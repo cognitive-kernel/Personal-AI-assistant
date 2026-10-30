@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import urllib.request
 import venv
 from pathlib import Path
@@ -22,6 +23,133 @@ INSTALLERS = PREREQUISITES / "installers"
 CACHE_MANIFEST = PREREQUISITES / "manifest.json"
 MIN_PYTHON = (3, 11)
 DEFAULT_MODEL = "qwen2.5:7b"
+_OLLAMA_RELEASE_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
+_OLLAMA_RELEASE_TAG = re.compile(r"^v[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+_OLLAMA_ASSET_REDIRECT_HOSTS = frozenset({
+    "github.com",
+    "release-assets.githubusercontent.com",
+    "objects.githubusercontent.com",
+})
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects for the release metadata API."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+class _GitHubAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Allow release downloads to use only GitHub's HTTPS asset hosts."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urllib.parse.urljoin(req.full_url, newurl)
+        try:
+            parsed = urllib.parse.urlsplit(target)
+            port = parsed.port
+        except ValueError:
+            return None
+        if (
+            parsed.scheme != "https"
+            or (parsed.hostname or "").lower().rstrip(".") not in _OLLAMA_ASSET_REDIRECT_HOSTS
+            or port not in {None, 443}
+            or parsed.username
+            or parsed.password
+        ):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, target)
+
+
+def _latest_ollama_release_assets() -> dict[str, Any]:
+    """Read the official latest release and require GitHub's SHA-256 asset digests."""
+    request = urllib.request.Request(
+        _OLLAMA_RELEASE_API,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "Personal-AI-Assistant-installer",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    opener = urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _NoRedirectHandler(),
+    )
+    try:
+        with opener.open(request, timeout=15) as response:
+            raw = response.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise RuntimeError("پاسخ اطلاعات نسخهٔ Ollama بیش از ۲ مگابایت است.")
+        release = json.loads(raw.decode("utf-8"))
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError(
+            f"دریافت اطلاعات نسخهٔ رسمی Ollama ناموفق بود ({type(exc).__name__})."
+        ) from exc
+
+    tag = release.get("tag_name") if isinstance(release, dict) else None
+    assets = release.get("assets") if isinstance(release, dict) else None
+    if (
+        not isinstance(tag, str)
+        or not _OLLAMA_RELEASE_TAG.fullmatch(tag)
+        or release.get("draft") is True
+        or release.get("prerelease") is True
+        or not isinstance(assets, list)
+    ):
+        raise RuntimeError("ساختار آخرین انتشار رسمی Ollama معتبر نیست.")
+
+    selected: dict[str, dict[str, str]] = {}
+    for asset_name in ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"):
+        matches = [
+            item for item in assets
+            if isinstance(item, dict) and item.get("name") == asset_name
+        ]
+        if not matches:
+            continue
+        if len(matches) != 1:
+            raise RuntimeError(f"دارایی {asset_name} در انتشار Ollama تکراری است.")
+        item = matches[0]
+        digest = item.get("digest")
+        download_url = item.get("browser_download_url")
+        if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", digest):
+            raise RuntimeError(f"انتشار Ollama برای {asset_name} هش SHA-256 معتبر ندارد.")
+        expected_path = f"/ollama/ollama/releases/download/{tag}/{asset_name}"
+        try:
+            parsed_url = urllib.parse.urlsplit(download_url)
+            port = parsed_url.port
+        except (TypeError, ValueError):
+            raise RuntimeError(f"نشانی دانلود {asset_name} معتبر نیست.") from None
+        if (
+            parsed_url.scheme != "https"
+            or parsed_url.hostname != "github.com"
+            or parsed_url.path != expected_path
+            or port not in {None, 443}
+            or parsed_url.username
+            or parsed_url.password
+            or parsed_url.query
+            or parsed_url.fragment
+        ):
+            raise RuntimeError(f"مبدأ دانلود {asset_name} با انتشار رسمی GitHub مطابقت ندارد.")
+        selected[asset_name] = {
+            "url": download_url,
+            "sha256": digest.split(":", 1)[1].lower(),
+        }
+    return {"tag": tag, "assets": selected}
+
+
+def _ollama_asset_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(
+        urllib.request.ProxyHandler({}),
+        _GitHubAssetRedirectHandler(),
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _run(command: list[str], *, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
@@ -216,7 +344,7 @@ def _ensure_dependencies(dev: bool) -> None:
     if project.returncode != 0:
         raise RuntimeError("نصب خود پروژه ناموفق بود.")
 
-def _download_once(url: str, destination: Path) -> Path:
+def _download_once(\n    url: str,\n    destination: Path,\n    *,\n    expected_sha256: str | None = None,\n    opener: urllib.request.OpenerDirector | None = None,\n) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = destination.with_name(destination.name + ".download.json")
     part_path = destination.with_name(destination.name + ".part")
