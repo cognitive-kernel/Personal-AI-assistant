@@ -574,10 +574,10 @@ def get_settings() -> dict[str, Any]:
 def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     values = dict(request.values)
     if "ollama_base_url" in values:
-        url = str(values["ollama_base_url"]).rstrip("/")
-        if not (url.startswith("http://127.0.0.1:") or url.startswith("http://localhost:") or url.startswith("http://[::1]:") or url in {"http://127.0.0.1", "http://localhost", "http://[::1]"}):
-            raise HTTPException(status_code=422, detail="Only loopback Ollama URLs are supported.")
-        values["ollama_base_url"] = url
+        try:
+            values["ollama_base_url"] = ollama.normalize_base_url(values["ollama_base_url"])
+        except ollama.OllamaError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     if "gpu_enabled" in values and not isinstance(values["gpu_enabled"], bool):
         raise HTTPException(status_code=422, detail="gpu_enabled must be a boolean.")
     keep_alive_values = {"auto", "0", "1m", "5m", "10m", "30m"}
