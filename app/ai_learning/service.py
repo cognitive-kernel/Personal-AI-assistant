@@ -586,7 +586,7 @@ def requeue_run_for_resume(
     return result
 
 
-def start_run(run_id: int) -> dict[str, Any]:
+def start_run(run_id: int, *, reset_retry_budget: bool = False) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
@@ -601,7 +601,12 @@ def start_run(run_id: int) -> dict[str, Any]:
             if paused_topic is not None:
                 raise ValueError("A queued run contains a paused topic; resume the topic before starting it.")
         if run["status"] == "queued":
-            conn.execute("UPDATE runs SET status='running',started_at=CURRENT_TIMESTAMP,next_retry_at=NULL WHERE id=?", (run_id,))
+            conn.execute(
+                """UPDATE runs SET status='running',started_at=CURRENT_TIMESTAMP,next_retry_at=NULL,
+                   automatic_retry_count=CASE WHEN ? THEN 0 ELSE automatic_retry_count END
+                   WHERE id=?""",
+                (int(reset_retry_budget), run_id),
+            )
             conn.execute("""UPDATE topics SET processing_status='running',updated_at=CURRENT_TIMESTAMP
                             WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
                               AND processing_status <> 'paused'""", (run_id,))
