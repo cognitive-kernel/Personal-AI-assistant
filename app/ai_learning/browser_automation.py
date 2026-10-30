@@ -1467,7 +1467,7 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
                 "topic_ids": selected_ids,
                 "queued_topic_count": len(selected_ids),
                 "provider": "ChatGPT visible UI",
-                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل به‌صورت مستقل در صف پایدار ذخیره شد و به‌ترتیب اجرا می‌شود.",
+                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل به‌صورت مستقل در صف پایدار ذخیره شد و پس از پایان اجرای فعلی به‌ترتیب اجرا می‌شود.",
             }
 
     # Dispatch outside _LOCK: the dispatcher acquires the same lock and enforces
