@@ -1,4 +1,4 @@
-# ADR-004: Cross-process lease for browser-learning workers
+# ADR-007: Cross-process lease for browser-learning workers
 
 - Status: Accepted
 - Date: 2026-10-29

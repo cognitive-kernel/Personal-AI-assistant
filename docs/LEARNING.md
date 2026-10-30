@@ -231,7 +231,7 @@ python scripts/evaluate_learning_acceptance.py path/to/reference-dataset.json pa
 
 سه تنظیم `learning_model_cost_profiles`، `learning_model_minimum_quality_score` و `learning_task_budget_microusd` در پایگاه تنظیمات seed و در `PATCH /api/settings` اعتبارسنجی می‌شوند. پروفایل‌ها باید نرخ صریح ورودی/خروجی و امتیاز کیفیت پیکربندی‌شده داشته باشند؛ نرخ نامشخص صفر فرض نمی‌شود.
 
-اتصال این سیاست به مسیر واقعی تولید درس در PR [#582](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/582) ادغام شده است (commit `7ccba9de397f6de63c2535d2d2e955af245e7da1`). CI روی head دقیق و پس از ادغام، آزمون کامل (1494 passed، 5 skipped)، Windows storage regressions، browser E2E و dependency audit را با موفقیت گذراند. قرارداد اجرایی:
+انتخاب مدل و بودجهٔ تولید درس در PR [#582](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/582) و گسترش آن به claim review اختیاری در PR [#584](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/584) به `main` ادغام شده‌اند (commit #584: `20e30eeb77bf04e2169ced9db32ba1cff036c3d6`). CI head و پس از ادغام PR #584 موفق شد. قرارداد اجرایی:
 
 - فقط مدل‌هایی قابل انتخاب‌اند که در Ollama محلی نصب شده‌اند و پروفایل معتبر هزینه/کیفیت دارند.
 - مدل واجد حداقل کیفیت و سقف بودجهٔ پیکربندی‌شده انتخاب می‌شود؛ در میان نامزدها کم‌هزینه‌ترین انتخاب می‌شود و tie-break قطعی است.

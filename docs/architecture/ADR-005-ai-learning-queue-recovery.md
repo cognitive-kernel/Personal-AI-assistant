@@ -1,4 +1,4 @@
-# ADR-002: Global durable queue recovery for browser-based AI learning
+# ADR-005: Global durable queue recovery for browser-based AI learning
 
 - Status: Accepted
 - Date: 2026-10-29

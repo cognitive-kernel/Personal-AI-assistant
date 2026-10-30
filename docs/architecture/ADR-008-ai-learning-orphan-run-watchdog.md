@@ -1,4 +1,4 @@
-# ADR-005: Runtime recovery for orphaned AI-learning runs
+# ADR-008: Runtime recovery for orphaned AI-learning runs
 
 - Status: Accepted
 - Date: 2026-10-29

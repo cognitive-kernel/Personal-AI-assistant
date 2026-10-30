@@ -1,4 +1,4 @@
-# ADR-003: Automatic restart of interrupted browser-learning courses
+# ADR-006: Automatic restart of interrupted browser-learning courses
 
 - Status: Accepted
 - Date: 2026-10-29
@@ -19,4 +19,4 @@ The legacy browser-learning API persisted course and lesson state, but startup o
 
 ## Consequences and limitations
 
-This provides automatic recovery after process restart, bounded retry after transient runtime failures, and FIFO draining of already-persisted courses. Retry count and deadline are durable schema fields introduced by migration 41; existing course rows are preserved with zero retries. Cross-process ownership is specified separately in [ADR-004](ADR-004-browser-learning-worker-lease.md). Persistent failures and conditions requiring user action remain failed for deliberate recovery. Target-host behavior must be validated separately.
+This provides automatic recovery after process restart, bounded retry after transient runtime failures, and FIFO draining of already-persisted courses. Retry count and deadline are durable schema fields introduced by migration 41; existing course rows are preserved with zero retries. Cross-process ownership is specified separately in [ADR-007](ADR-007-browser-learning-worker-lease.md). Persistent failures and conditions requiring user action remain failed for deliberate recovery. Target-host behavior must be validated separately.

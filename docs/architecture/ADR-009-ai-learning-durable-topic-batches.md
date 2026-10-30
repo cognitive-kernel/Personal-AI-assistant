@@ -1,4 +1,4 @@
-# ADR-006: Durable per-topic runs for selected AI-learning batches
+# ADR-009: Durable per-topic runs for selected AI-learning batches
 
 - Status: Accepted
 - Date: 2026-10-30
