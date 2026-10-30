@@ -1855,7 +1855,7 @@ def pause_learning() -> dict[str, Any]:
         )
         raise
     _log_event("learning_paused", active_run_id=active_run_id, active_course_id=_ACTIVE_COURSE_ID)
-    return {**state, "active": _ACTIVE, "active_run_id": active_run_id}
+    return {**state, "active": bool(state.get("worker_active")), "active_run_id": active_run_id}
 
 
 def resume_learning(course_id: int | None = None) -> dict[str, Any]:
