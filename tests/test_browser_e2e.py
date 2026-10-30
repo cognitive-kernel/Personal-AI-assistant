@@ -1700,3 +1700,124 @@ def test_storage_backup_failure_is_reported_and_controls_recover():
         assert button.is_enabled(), "Backup action must recover after a failed request."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_sandbox_consent_fails_closed_and_runs_bounded_task():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {"consent": False, "lookup_failures": 1, "run_payloads": [], "polls": 0}
+    task_id = 990771
+    browser_errors = []
+
+    def sandbox_route(route):
+        request = route.request
+        if request.method == "GET":
+            if state["lookup_failures"]:
+                state["lookup_failures"] -= 1
+                route.fulfill(
+                    status=503,
+                    content_type="application/json",
+                    body=json.dumps({"detail": "temporary status failure"}),
+                )
+                return
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": state["consent"], "events": []},
+                    "runtime_configured": True,
+                    "execution_enabled": state["consent"],
+                }),
+            )
+            return
+        if request.method == "POST":
+            payload = request.post_data_json
+            assert payload == {"confirm": True}
+            state["consent"] = True
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"consent": {"enabled": True}, "execution_enabled": True}),
+            )
+            return
+        if request.method == "DELETE":
+            state["consent"] = False
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"consent": {"enabled": False}, "execution_enabled": False}),
+            )
+            return
+        route.fulfill(status=405, body="method not allowed")
+
+    def task_route(route):
+        request = route.request
+        if request.method == "POST" and request.url.endswith("/api/sandbox/run"):
+            payload = request.post_data_json
+            state["run_payloads"].append(payload)
+            route.fulfill(
+                status=202,
+                content_type="application/json",
+                body=json.dumps({"task": {"id": task_id, "status": "queued"}}),
+            )
+            return
+        if request.method == "GET" and request.url.endswith(f"/api/tasks/{task_id}"):
+            state["polls"] += 1
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "id": task_id,
+                    "status": "succeeded",
+                    "attempts": 1,
+                    "result": {"stdout": "sandbox-ok"},
+                    "error": None,
+                    "checkpoint": None,
+                }),
+            )
+            return
+        route.fulfill(status=404, content_type="application/json", body='{"detail":"unexpected task request"}')
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/sandbox/consent", sandbox_route)
+        page.route("**/api/sandbox/run", task_route)
+        page.route(f"**/api/tasks/{task_id}", task_route)
+        _goto_section(page, base_url, "sandbox-section")
+
+        run_button = page.locator("#sandbox-run")
+        assert run_button.is_disabled()
+        page.locator("#sandbox-refresh").click()
+        page.get_by_text("وضعیت sandbox قابل دریافت نیست؛ اجرا غیرفعال می‌ماند.", exact=False).wait_for()
+        assert run_button.is_disabled(), "A failed consent lookup must keep execution disabled."
+
+        page.locator("#sandbox-refresh").click()
+        page.get_by_text('"execution_enabled": false', exact=False).wait_for()
+        assert run_button.is_disabled(), "Sandbox must remain disabled until explicit consent."
+
+        page.locator("#sandbox-consent-confirm").check()
+        page.locator("#sandbox-consent-grant").click()
+        page.get_by_text('"execution_enabled": true', exact=False).wait_for()
+        assert run_button.is_enabled()
+
+        page.locator("#sandbox-source").fill("print('sandbox-ok')")
+        page.locator("#sandbox-timeout").fill("7")
+        page.locator("#sandbox-output-limit").fill("2048")
+        run_button.click()
+        page.get_by_text('"status": "succeeded"', exact=False).wait_for(timeout=10000)
+        assert state["run_payloads"] == [{
+            "source_code": "print('sandbox-ok')",
+            "timeout_seconds": 7,
+            "max_output_bytes": 2048,
+        }]
+        assert state["polls"] == 1
+
+        page.locator("#sandbox-consent-revoke").click()
+        page.get_by_text('"execution_enabled": false', exact=False).wait_for()
+        assert run_button.is_disabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
