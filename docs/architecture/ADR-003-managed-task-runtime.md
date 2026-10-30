@@ -15,7 +15,7 @@ Shutdown sets a shared stop event and joins workers against a single bounded dea
 
 ## Heartbeat failure policy
 
-The worker retries transient SQLite operational errors during lease renewal only until the last known lease deadline, measured with a monotonic clock. A successful renewal resets that deadline. Ownership loss, pause/cancel transitions, or unexpected exceptions stop heartbeat renewal; the worker must not treat a failed renewal as proof of continued ownership. The regression test `test_heartbeat_retries_transient_sqlite_operational_error` verifies recovery after one transient database-lock error.
+The worker retries only SQLite `BUSY`/`LOCKED` lease-renewal failures, and only until the last known lease deadline measured with a monotonic clock. When the driver exposes `sqlite_errorcode`, classification uses its primary result code (including extended result codes); otherwise, only known SQLite lock/busy message prefixes are accepted. Permanent operational failures such as disk I/O errors, missing tables, and unreadable database files stop heartbeat renewal immediately. A successful renewal resets the deadline. Ownership loss, pause/cancel transitions, and unexpected exceptions also stop renewal; a failed renewal is never treated as proof of continued ownership. Regression tests cover transient lock recovery, deadline expiry, message classification, and immediate stop on permanent storage errors.
 
 ## Acceptance gates
 
