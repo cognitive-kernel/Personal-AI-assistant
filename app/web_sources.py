@@ -80,7 +80,8 @@ class SourceDocumentList(list[SourceDocument]):
         self.search_provider_diagnostics = search_provider_diagnostics or []
 
 
-def _validate_public_url(url: str) -> urllib.parse.ParseResult:
+def _parse_public_url(url: str) -> urllib.parse.ParseResult:
+    """Validate URL syntax and destination policy without performing DNS I/O."""
     if not isinstance(url, str) or len(url) > 2048:
         raise SourceFetchError("URL is invalid or too long.")
     parsed = urllib.parse.urlparse(url)
@@ -104,31 +105,10 @@ def _validate_public_url(url: str) -> urllib.parse.ParseResult:
         )
     if hostname == "localhost":
         raise SourceFetchError("Local network destinations are not allowed.")
-    try:
-        addresses = [ipaddress.ip_address(hostname)]
-    except ValueError:
-        try:
-            records = socket.getaddrinfo(
-                hostname, port or (443 if parsed.scheme == "https" else 80),
-                type=socket.SOCK_STREAM,
-            )
-            addresses = [ipaddress.ip_address(record[4][0].split("%", 1)[0]) for record in records]
-        except (OSError, ValueError) as exc:
-            raise SourceFetchError("URL host could not be resolved safely.") from exc
-    if not addresses or any(not address.is_global for address in addresses):
-        raise SourceFetchError("Local, private, or non-public network destinations are blocked.")
     return parsed
 
 
-class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _validate_public_url(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def _resolve_public_ip(url: str) -> str:
-    """Resolve and validate the exact address that the socket transport will use."""
-    parsed = _validate_public_url(url)
+def _validated_public_addresses(parsed: urllib.parse.ParseResult) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
     hostname = (parsed.hostname or "").rstrip(".").lower()
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     try:
@@ -140,17 +120,38 @@ def _resolve_public_ip(url: str) -> str:
                 ipaddress.ip_address(record[4][0].split("%", 1)[0])
                 for record in records
             ]
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, IndexError, TypeError) as exc:
             raise SourceFetchError("URL host could not be resolved safely.") from exc
     else:
         addresses = [literal]
     if not addresses or any(not address.is_global for address in addresses):
         raise SourceFetchError("Local, private, or non-public network destinations are blocked.")
-    return addresses[0].compressed
+    return addresses
+
+
+def _validate_public_url(url: str) -> urllib.parse.ParseResult:
+    parsed = _parse_public_url(url)
+    _validated_public_addresses(parsed)
+    return parsed
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # DNS policy is enforced by the pinned transport at connection time.
+        # Parsing here prevents redirects from escaping the URL policy without
+        # performing a second, redundant DNS lookup.
+        _parse_public_url(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _resolve_public_ip(url: str) -> str:
+    """Resolve once, validate every DNS answer, and pin the selected socket IP."""
+    parsed = _parse_public_url(url)
+    return _validated_public_addresses(parsed)[0].compressed
 
 
 def _open(url: str, *, timeout: float = DEFAULT_TIMEOUT_SECONDS, max_bytes: int = MAX_RESPONSE_BYTES):
-    _validate_public_url(url)
+    _parse_public_url(url)
     # Ignore environment proxy settings so a proxy cannot silently change the
     # destination boundary enforced above.
     opener = urllib.request.build_opener(
