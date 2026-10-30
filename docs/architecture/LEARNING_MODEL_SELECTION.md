@@ -8,9 +8,9 @@ The learning cost manager is an advisory selector only when no hard constraint i
 
 1. Read the configured per-model cost/quality profiles and enumerate locally installed Ollama models.
 2. Consider only installed models with valid explicit cost rates and a configured quality score at or above the minimum threshold.
-3. Estimate the generation-phase cost across the initial generation and one permitted repair request. The prompt-token estimate is deliberately conservative and tokenizer-independent; the completion allowance is the existing 1,200 + 1,400 token request ceiling.
+3. Estimate the maximum applicable job cost across initial generation, one permitted repair, and one optional claim-review request when usable web evidence exists. The claim-review prompt estimate uses the same bounded evidence and payload builder as execution, with a maximum 10,000-character answer. Prompt estimates are deliberately conservative and tokenizer-independent; completion allowance is 1,200 + 1,400 tokens for generation/repair and 1,000 for claim review.
 4. Select the lowest estimated-cost eligible model. Ties prefer the higher configured quality score, then a stable model-name order.
-5. Use the same selected model for initial generation and its repair so the two-call budget remains coherent.
+5. Use the same selected model for initial generation, repair, and any optional claim review so the estimated job budget and actual model selection remain coherent. Reserve the claim-review request in the durable per-job/global token ledger before calling Ollama.
 
 ## Fail-closed behavior
 
@@ -24,4 +24,4 @@ The learning cost manager is an advisory selector only when no hard constraint i
 
 Every generated lesson records the selected model, selection status/reason, candidate count, estimated cost, estimated prompt/completion token counts, estimate method, and generation-phase budget scope in `quality.generation_provenance.model_selection`. Actual Ollama token counters remain in provider usage fields.
 
-Scope limitation: this budget currently covers lesson generation and its optional single repair only. A separate model-assisted claim-review request, when triggered for web-retrieved sources, is not included in this estimate and remains a follow-up integration item. Configured quality scores are operator-supplied estimates, not live benchmark results. Cost estimates require explicit rates and are not invoices. The character-based prompt estimate is conservative but cannot exactly reproduce model-specific tokenization. Live Persian/English quality evaluation, independent adjudication, and target-host verification remain separate acceptance gates.
+Scope: the monetary estimate includes generation, one repair, and optional claim review when usable web sources exist. The separate durable request/token ledger reserves claim review as its own idempotent stage. Provider-reported usage remains authoritative for observed token counts; the monetary estimate is not a provider invoice or hard billing cap. Configured quality scores are operator-supplied estimates, not live benchmark results. Cost estimates require explicit rates and are not invoices. The character-based prompt estimate is conservative but cannot exactly reproduce model-specific tokenization. Live Persian/English quality evaluation, independent adjudication, and target-host verification remain separate acceptance gates.
