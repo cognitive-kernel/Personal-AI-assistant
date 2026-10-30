@@ -65,6 +65,17 @@ def _assert_worker_lease(epoch: int | None = None) -> None:
         )
 
 
+def _worker_lease_kwargs(epoch: int | None = None) -> dict[str, Any]:
+    """Build the optional transaction-level fencing arguments for worker writes."""
+    expected = _WORKER_LEASE_EPOCH if epoch is None else epoch
+    if expected is None:
+        return {}
+    return {
+        "worker_lease_owner": _WORKER_OWNER,
+        "worker_lease_epoch": expected,
+    }
+
+
 def _maintain_worker_lease(
     cancel_event: threading.Event,
     stop_event: threading.Event,
@@ -1183,7 +1194,7 @@ def _continue_lessons(
         try:
             def save_followup_partial(text: str) -> dict[str, Any]:
                 _assert_worker_lease()
-                return service.save_run_partial_response(run_id, text)
+                return service.save_run_partial_response(run_id, text, **_worker_lease_kwargs())
 
             answer = _capture_with_automatic_retry(
                 run["prompt_text"], cancel_event,
@@ -1191,14 +1202,14 @@ def _continue_lessons(
                 run_id=run_id, phase="lesson_followup",
             )
             _assert_worker_lease()
-            result = service.complete_run(run_id, answer)
+            result = service.complete_run(run_id, answer, **_worker_lease_kwargs())
         except BrowserAutomationError as exc:
             if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
                 return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
                 return
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
+            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response, **_worker_lease_kwargs())
             return
         except Exception as exc:
             if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
@@ -1207,7 +1218,8 @@ def _continue_lessons(
                 service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
                 return
             service.mark_run_needs_user_action(
-                run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}"
+                run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}",
+                **_worker_lease_kwargs(),
             )
             return
         finally:
@@ -1241,6 +1253,7 @@ def _schedule_transient_retry(
         delay_seconds=delays[retry_count],
         response_text=partial,
         max_attempts=len(delays),
+        **_worker_lease_kwargs(),
     )
 
 
@@ -1269,7 +1282,7 @@ def _worker(
 
         def checkpoint_partial(text: str) -> dict[str, Any]:
             _assert_worker_lease(lease_epoch)
-            return service.save_run_partial_response(run_id, text)
+            return service.save_run_partial_response(run_id, text, **_worker_lease_kwargs(lease_epoch))
 
         checkpoint = checkpoint_partial if run_type == "lesson" else None
         answer = _capture_with_automatic_retry(
@@ -1281,7 +1294,7 @@ def _worker(
             )
         _assert_worker_lease(lease_epoch)
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
-        result = service.complete_run(run_id, answer)
+        result = service.complete_run(run_id, answer, **_worker_lease_kwargs(lease_epoch))
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         if result.get("status") == "succeeded" and run_type == "outline":
@@ -1315,6 +1328,7 @@ def _worker(
                         exc.code,
                         str(exc),
                         exc.partial_response if exc.partial_response and exc.partial_response.strip() else None,
+                        **_worker_lease_kwargs(lease_epoch),
                     )
         except Exception as mark_exc:
             _log_event(
@@ -1337,6 +1351,7 @@ def _worker(
                 service.mark_run_needs_user_action(
                     run_id, "playwright_unexpected_error",
                     f"خطای غیرمنتظره در دریافت پاسخ: {str(exc)[:700]}",
+                    **_worker_lease_kwargs(lease_epoch),
                 )
         except Exception as mark_exc:
             print(f"Could not update AI-learning run {run_id}: {mark_exc}", flush=True)
@@ -1378,7 +1393,7 @@ def _start_worker_thread(
         _CANCEL_EVENTS.pop(run_id, None)
         durable_status = "recovery_failed"
         try:
-            recovered = service.requeue_run_for_resume(run_id, "worker_thread_start_failed")
+            recovered = service.requeue_run_for_resume(run_id, "worker_thread_start_failed", **_worker_lease_kwargs())
             durable_status = str(recovered.get("status") or "unknown")
         except Exception as recovery_exc:
             _log_event(
@@ -1442,7 +1457,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
                 return {"status": "idle", "active": False}
             run_id = int(selected["id"])
             course_id = int(selected["course_id"])
-            run = service.start_run(run_id)
+            run = service.start_run(run_id, **_worker_lease_kwargs(epoch))
             cancel_event = threading.Event()
             _ACTIVE = True
             _ACTIVE_RUN_ID = run_id
@@ -1536,7 +1551,7 @@ def recover_pending_runs() -> dict[str, Any]:
             # A live worker in another process keeps this lease renewed. Reaching
             # this point therefore means every running row is stale/recoverable.
             for run_id in service.list_run_ids_by_status("running"):
-                service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
+                service.requeue_run_for_resume(int(run_id), "startup_interrupted_run", **_worker_lease_kwargs(epoch))
         except Exception:
             _release_worker_lease()
             raise
@@ -1575,7 +1590,7 @@ def recover_orphaned_runs() -> dict[str, Any]:
         try:
             orphaned_ids = service.list_run_ids_by_status("running")
             for run_id in orphaned_ids:
-                service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime")
+                service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime", **_worker_lease_kwargs(epoch))
         except Exception:
             _release_worker_lease()
             raise
@@ -1763,7 +1778,7 @@ def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
                     # Interrupt the browser wait, but keep the run recoverable in SQLite.
                     if active_cancel_event is not None:
                         active_cancel_event.set()
-                    queued = service.requeue_run_for_resume(active_run_id, "topic_paused")
+                    queued = service.requeue_run_for_resume(active_run_id, "topic_paused", **_worker_lease_kwargs())
                     _log_event(
                         "topic_run_paused",
                         topic_id=topic_id,
@@ -1867,9 +1882,12 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             if in_flight is not None:
                 if in_flight.get("status") in {"running", "needs_user_action"}:
                     service.requeue_run_for_resume(
-                        int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True
+                        int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True,
+                        **_worker_lease_kwargs(epoch),
                     )
-                run = service.start_run(int(in_flight["id"]), reset_retry_budget=True)
+                run = service.start_run(
+                    int(in_flight["id"]), reset_retry_budget=True, **_worker_lease_kwargs(epoch)
+                )
                 run = service.get_run(int(in_flight["id"]))
                 run_id = int(run["id"])
                 target_course = int(run["course_id"])
@@ -1961,7 +1979,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                     if queued["status"] != "queued":
                         raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
                     queued_run_ids.append(int(queued["id"]))
-                run = service.start_run(queued_run_ids[0])
+                run = service.start_run(queued_run_ids[0], **_worker_lease_kwargs(epoch))
                 run_id = int(run["id"])
                 _ACTIVE = True
                 _ACTIVE_RUN_ID = run_id
