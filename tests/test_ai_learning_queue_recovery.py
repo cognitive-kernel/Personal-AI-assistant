@@ -999,8 +999,7 @@ def test_expired_worker_lease_allows_watchdog_to_recover_stale_run(isolated_stor
 
 
 def test_reset_refuses_to_clear_store_while_remote_worker_lease_is_active(isolated_store):
-    course = service.create_course(title="عدم پاک‌سازی حین worker راه‌دور")
-    service.create_run(course["id"], run_type="outline", request_key="remote-reset-protection")
+    service.create_course(title="عدم پاک‌سازی حین worker راه‌دور")
     epoch = service.claim_worker_lease("remote-process", lease_seconds=90)
     assert epoch == 1
 
