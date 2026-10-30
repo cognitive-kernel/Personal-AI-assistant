@@ -1134,3 +1134,27 @@ def test_concurrent_lease_claims_have_exactly_one_winner(isolated_store):
     winners = [(owner, epoch) for owner, epoch in results.items() if epoch is not None]
     assert len(winners) == 1
     assert service.owns_worker_lease(*winners[0])
+
+
+def test_dispatch_requeues_orphaned_running_run_before_newer_queued_work(isolated_store, monkeypatch):
+    course = service.create_course(title="ترتیب FIFO پس از بازیابی")
+    orphaned = service.create_run(course["id"], run_type="outline", request_key="old-orphaned-run")
+    service.start_run(orphaned["id"])
+    newer = service.create_run(course["id"], run_type="outline", request_key="newer-queued-run")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            launched.append(self.kwargs)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation._dispatch_next_persisted_run()
+
+    assert result["status"] == "running"
+    assert result["run_id"] == orphaned["id"]
+    assert service.get_run(orphaned["id"])["status"] == "running"
+    assert service.get_run(newer["id"])["status"] == "queued"
+    assert len(launched) == 1
