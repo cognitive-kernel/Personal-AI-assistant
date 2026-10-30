@@ -620,6 +620,9 @@ def _select_learning_generation_model(
     settings: dict[str, Any],
     serialized_prompt: str,
     fallback_model: str,
+    *,
+    claim_review_sources: list[dict[str, Any]] | None = None,
+    topic: str = "",
 ) -> tuple[str, dict[str, Any]]:
     """Apply configured cost/quality policy without silently bypassing hard constraints."""
     from .learning_cost_manager import select_learning_model
@@ -643,6 +646,22 @@ def _select_learning_generation_model(
     ):
         raise LearningError("Learning task budget must be a non-negative integer or null.")
 
+    claim_review_prompt_tokens = 0
+    if claim_review_sources:
+        from .claim_review import estimate_review_prompt_tokens
+
+        claim_review_prompt_tokens = estimate_review_prompt_tokens(topic, claim_review_sources)
+    # The maximum claim-review answer is 10,000 characters and its output
+    # allowance is 1,000 tokens; include it only when usable web evidence exists.
+    one_prompt_estimate = max(1, math.ceil(
+        (len(serialized_prompt) + len("You are a careful learning assistant.")) / 2
+    ))
+    estimated_prompt_tokens = (
+        one_prompt_estimate * 2 + 1500 + claim_review_prompt_tokens
+    )
+    estimated_completion_tokens = 2600 + (1000 if claim_review_prompt_tokens else 0)
+    budget_scope = "lesson_generation_single_repair_and_optional_claim_review"
+
     constrained = budget_microusd is not None or minimum_quality > 0
     if not profiles:
         if constrained:
@@ -654,8 +673,12 @@ def _select_learning_generation_model(
             "reason": "No model cost profiles are configured; using the configured learning model.",
             "selected_model": fallback_model,
             "estimated_cost_microusd": None,
-            "estimated_prompt_tokens": None,
-            "estimated_completion_tokens": None,
+            "estimated_prompt_tokens": estimated_prompt_tokens,
+            "estimated_completion_tokens": estimated_completion_tokens,
+            "claim_review_included": claim_review_prompt_tokens > 0,
+            "claim_review_prompt_tokens": claim_review_prompt_tokens,
+            "estimate_method": "conservative_character_heuristic_for_generation_repair_and_optional_claim_review",
+            "budget_scope": budget_scope,
         }
 
     try:
@@ -670,8 +693,12 @@ def _select_learning_generation_model(
             "reason": f"Installed-model discovery failed ({type(exc).__name__}); using configured model without a cost guarantee.",
             "selected_model": fallback_model,
             "estimated_cost_microusd": None,
-            "estimated_prompt_tokens": None,
-            "estimated_completion_tokens": None,
+            "estimated_prompt_tokens": estimated_prompt_tokens,
+            "estimated_completion_tokens": estimated_completion_tokens,
+            "claim_review_included": claim_review_prompt_tokens > 0,
+            "claim_review_prompt_tokens": claim_review_prompt_tokens,
+            "estimate_method": "conservative_character_heuristic_for_generation_repair_and_optional_claim_review",
+            "budget_scope": budget_scope,
         }
 
     installed_names = sorted({
@@ -681,15 +708,8 @@ def _select_learning_generation_model(
         and isinstance(item.get("name"), str)
         and item["name"].strip()
     })
-    # Ollama tokenization is model-specific. Use a deliberately conservative
-    # character-based estimate for both the initial request and one possible
-    # repair, plus fixed repair-instruction overhead. This is a budget guard,
-    # not a substitute for provider-reported usage.
-    one_prompt_estimate = max(1, math.ceil(
-        (len(serialized_prompt) + len("You are a careful learning assistant.")) / 2
-    ))
-    estimated_prompt_tokens = one_prompt_estimate * 2 + 1500
-    estimated_completion_tokens = 2600
+    # Estimates are conservative and tokenizer-independent; actual provider
+    # counters are recorded separately by each model-assisted stage.
     selection = select_learning_model(
         settings,
         installed_names,
@@ -709,8 +729,10 @@ def _select_learning_generation_model(
         "selected_provider": selected_details.get("provider"),
         "estimated_prompt_tokens": estimated_prompt_tokens,
         "estimated_completion_tokens": estimated_completion_tokens,
-        "estimate_method": "conservative_character_heuristic_for_initial_plus_one_repair",
-        "budget_scope": "lesson_generation_and_single_repair_only",
+        "claim_review_included": claim_review_prompt_tokens > 0,
+        "claim_review_prompt_tokens": claim_review_prompt_tokens,
+        "estimate_method": "conservative_character_heuristic_for_generation_repair_and_optional_claim_review",
+        "budget_scope": budget_scope,
     }
     selected_model = selection.get("selected_model")
     if isinstance(selected_model, str) and selected_model:
@@ -828,8 +850,8 @@ def run_job(job_id: int) -> None:
     repair_prompt_hash: str | None = None
     generation_attempts = 1
     repair_response_valid: bool | None = None
-    # One per-job budget is shared by initial generation and its single repair.
-    # This is a deterministic request/token ceiling, not provider billing.
+    # The in-memory generation budget covers generation and its single repair.
+    # The durable job budget additionally reserves the optional claim-review call.
     from .learning_pipeline_budget import LearningPipelineBudget
     from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=2600)
@@ -842,8 +864,17 @@ def run_job(job_id: int) -> None:
             "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
         }, detect_hardware())
         configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"])).strip()
+        claim_review_sources = (
+            _claim_review_sources(source_text)
+            if source_kind == "web_retrieved" and source_text
+            else []
+        )
         model, model_selection = _select_learning_generation_model(
-            settings, serialized_prompt, configured_model
+            settings,
+            serialized_prompt,
+            configured_model,
+            claim_review_sources=claim_review_sources,
+            topic=topic,
         )
         request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
         generation_budget.reserve("initial_generation", predict_tokens=1200)
@@ -1025,12 +1056,27 @@ def run_job(job_id: int) -> None:
         quality["source_characters_sent_to_model"] = len(model_source_text)
         claim_review_result: dict[str, Any] | None = None
         if quality["accepted"] and source_kind == "web_retrieved" and source_text:
-            sources = _claim_review_sources(source_text)
+            sources = claim_review_sources
             if sources:
                 try:
                     from .claim_review import review_answer_claims
+                    from .learning_durable_budget import reserve_job_budget
 
-                    claim_review_result = review_answer_claims(topic, result["lesson"], sources)
+                    review_budget = reserve_job_budget(
+                        job_id, "claim_review", calls=1, predict_tokens=1000
+                    )
+                    if not review_budget["reserved"] or review_budget.get("already_reserved"):
+                        claim_review_result = {
+                            "passed": False,
+                            "overall": "insufficient_evidence",
+                            "claims": [],
+                            "error": "claim_review_budget_exhausted_or_already_reserved",
+                            "reviewer": "local_ollama_model_assisted_not_independent",
+                        }
+                    else:
+                        claim_review_result = review_answer_claims(
+                            topic, result["lesson"], sources, model_override=model
+                        )
                 except Exception as exc:
                     claim_review_result = {
                         "passed": False,
@@ -1043,6 +1089,23 @@ def run_job(job_id: int) -> None:
                     "passed_model_assisted" if claim_review_result.get("passed") is True else "needs_review"
                 )
                 quality["claim_review"] = claim_review_result
+                # Keep review provenance alongside generation provenance so one
+                # record describes every model-assisted stage in this lesson job.
+                generation_provenance = quality.get("generation_provenance")
+                if isinstance(generation_provenance, dict):
+                    review_usage = claim_review_result.get("provider_usage")
+                    if isinstance(review_usage, dict):
+                        provider_usage = generation_provenance.setdefault("provider_usage", {})
+                        if isinstance(provider_usage, dict):
+                            provider_usage["claim_review"] = review_usage
+                    generation_provenance["claim_review"] = {
+                        key: claim_review_result.get(key)
+                        for key in (
+                            "prompt_version", "prompt_sha256", "model_id",
+                            "model_digest", "model_digest_status", "provider_usage",
+                        )
+                        if key in claim_review_result
+                    }
             else:
                 quality["claim_review_status"] = "no_usable_sources"
             try:

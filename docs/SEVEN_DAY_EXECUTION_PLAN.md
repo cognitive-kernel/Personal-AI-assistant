@@ -168,11 +168,17 @@ Append dated entries with:
 - شمار آزمون‌های تابعی Browser E2E اکنون 31 است. آزمون‌های جدید فقط رفتارهای فاقد پوشش را اضافه می‌کنند؛ navigation و مسیرهای موجود دوباره‌کاری نشده‌اند.
 - انتخاب مدل یادگیری به مسیر واقعی تولید درس در PR #582 متصل و در main ادغام شد؛ regressionها انتخاب مدل واجد شرایط، رد fail-closed، خطای discovery، fallback بدون محدودیت و عدم مصرف بودجه هنگام رد مدل را پوشش می‌دهند.
 - race در cleanup کانتینرهای Sandbox در PR #581 بازتولید و اصلاح شد؛ تست هم‌زمانی و CI با Docker واقعی موفق شدند.
-- شکاف بعدی محدود و مشخص: بودجهٔ مدل فعلاً generation و یک repair را پوشش می‌دهد؛ فراخوانی جداگانهٔ claim review برای منابع وب باید به همان مدل انتخاب‌شده و برآورد هزینه متصل شود.
+- PR #584 برای بستن این شکاف پیاده‌سازی شده است: claim review اختیاری منابع وب در برآورد هزینه وارد می‌شود، همان مدل انتخاب‌شده را استفاده می‌کند و پیش از اجرا در بودجهٔ durable رزرو می‌شود. تا پایان CI روی head دقیق و ادغام، این قابلیت هنوز بخشی از `main` نیست.
 
 
 ### 2026-10-30 — Sandbox cleanup and runtime learning model selection
 - PR #581: concurrent orphan-container cleanup now verifies absence after a failed removal before reporting an idempotent skip; persistent failure and verification errors remain visible. Exact post-merge tests, browser E2E, dependency audit, and real-Docker Sandbox integration passed on `483343a2d9d67b6c8f7e5133497c8476440cfa5e`.
 - PR #582: connected model cost/quality selection to `learning.run_job`, enforced hard configured constraints before inference, preserved backward-compatible fallback only when no hard constraint exists, and recorded selection estimates in provenance. Exact PR-head CI passed on `55c22bba29ea7174b211202a03458d44ea9af287`; post-merge CI passed on `7ccba9de397f6de63c2535d2d2e955af245e7da1` (1494 passed, 5 skipped, browser E2E, dependency audit, Windows storage).
 - The initial PR #582 test run found one provenance-field contract mismatch; it was fixed and the full suite rerun successfully. No failing workflow was bypassed.
-- Remaining follow-up: include the optional web-source claim-review model call in cost selection and provenance. External gates remain Issue #52 independent security review, target-host/soak, live Ollama quality, human adjudication, and operator staging/rollback.
+- PR #584 implements the optional web-source claim-review model call in cost selection and generation provenance; exact-head CI is pending. External gates remain Issue #52 independent security review, target-host/soak, live Ollama quality, human adjudication, and operator staging/rollback.
+
+
+### 2026-10-30 — unified model selection and claim-review budget
+- Claim review now uses the model selected for the learning job; the selector estimates its bounded prompt and 1,000-token completion only when usable web excerpts exist.
+- The durable per-job/global budget reserves the claim-review stage once and refuses duplicate/exhausted calls. Provider usage counters are retained in claim-review provenance.
+- Exact-head CI and post-merge evidence are required before this item is marked complete.
