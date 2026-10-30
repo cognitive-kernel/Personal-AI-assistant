@@ -1122,8 +1122,8 @@ def test_concurrent_lease_claims_have_exactly_one_winner(isolated_store):
         results[owner] = service.claim_worker_lease(owner, lease_seconds=90)
 
     threads = [
-        threading.Thread(target=claim, args=("concurrent-a",)),
-        threading.Thread(target=claim, args=("concurrent-b",)),
+        threading.Thread(target=claim, args=("concurrent-a",), daemon=True),
+        threading.Thread(target=claim, args=("concurrent-b",), daemon=True),
     ]
     for thread in threads:
         thread.start()
@@ -1183,13 +1183,16 @@ def test_remote_topic_pause_signals_worker_heartbeat_without_releasing_lease(iso
     heartbeat = browser_automation.threading.Thread(
         target=browser_automation._maintain_worker_lease,
         args=(cancel_event, stop_event, epoch),
+        daemon=True,
     )
     heartbeat.start()
 
-    assert cancel_event.wait(timeout=2)
-    assert service.owns_worker_lease(owner, epoch)
-    stop_event.set()
-    heartbeat.join(timeout=2)
+    try:
+        assert cancel_event.wait(timeout=2)
+        assert service.owns_worker_lease(owner, epoch)
+    finally:
+        stop_event.set()
+        heartbeat.join(timeout=2)
     assert not heartbeat.is_alive()
     assert service.release_worker_lease(owner, epoch)
 
