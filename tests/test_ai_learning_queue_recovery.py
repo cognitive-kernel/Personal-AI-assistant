@@ -623,3 +623,265 @@ def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, m
     assert recovered["run_id"] == run["id"]
     assert len(launched) == 1
     assert service.get_run(run["id"])["status"] == "running"
+
+def test_transient_browser_failure_is_scheduled_with_partial_response_preserved(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی خودکار خطای موقت")
+    run = service.create_run(course["id"], run_type="outline", request_key="transient-worker-retry")
+    service.start_run(run["id"])
+
+    def fail_capture(*_args, **_kwargs):
+        raise browser_automation.BrowserAutomationError(
+            "chatgpt_network_error", "temporary network interruption",
+            partial_response="partial captured response",
+        )
+
+    monkeypatch.setattr(browser_automation, "_capture_with_automatic_retry", fail_capture)
+    monkeypatch.setattr(browser_automation, "_close_browser_session", lambda: None)
+    monkeypatch.setattr(browser_automation, "_dispatch_next_persisted_run", lambda: {"status": "idle"})
+    monkeypatch.setattr(browser_automation, "_log_event", lambda *_args, **_kwargs: None)
+
+    browser_automation._worker(
+        run["id"], course["id"], run["prompt_text"], threading.Event()
+    )
+
+    saved = service.get_run(run["id"])
+    assert saved["status"] == "queued"
+    assert saved["automatic_retry_count"] == 1
+    assert saved["next_retry_at"] is not None
+    assert saved["error_code"] == "chatgpt_network_error"
+    assert saved["response_text"] == "partial captured response"
+    assert service.get_oldest_queued_run() is None
+
+
+def test_manual_provider_gate_does_not_enter_automatic_retry_queue(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف برای تأیید انسانی")
+    run = service.create_run(course["id"], run_type="outline", request_key="human-gate-no-retry")
+    service.start_run(run["id"])
+
+    def fail_capture(*_args, **_kwargs):
+        raise browser_automation.BrowserAutomationError(
+            "human_verification_required", "operator must complete verification"
+        )
+
+    monkeypatch.setattr(browser_automation, "_capture_with_automatic_retry", fail_capture)
+    monkeypatch.setattr(browser_automation, "_close_browser_session", lambda: None)
+    monkeypatch.setattr(browser_automation, "_dispatch_next_persisted_run", lambda: {"status": "idle"})
+    monkeypatch.setattr(browser_automation, "_log_event", lambda *_args, **_kwargs: None)
+
+    browser_automation._worker(
+        run["id"], course["id"], run["prompt_text"], threading.Event()
+    )
+
+    saved = service.get_run(run["id"])
+    assert saved["status"] == "needs_user_action"
+    assert saved["automatic_retry_count"] == 0
+    assert saved["next_retry_at"] is None
+
+
+def test_scheduled_retry_waits_until_due_then_dispatches(isolated_store, monkeypatch):
+    course = service.create_course(title="اجرای مجدد پس از مهلت")
+    run = service.create_run(course["id"], run_type="outline", request_key="retry-wait")
+    service.start_run(run["id"])
+    scheduled = service.schedule_run_retry(
+        run["id"], "chatgpt_network_error", "network unavailable",
+        delay_seconds=300,
+    )
+    assert scheduled is not None
+    assert service.get_oldest_queued_run() is None
+    assert service.get_learning_control()["retry_pending"] is True
+    initialize_store()
+    assert service.get_learning_control()["retry_pending"] is True
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    assert browser_automation._dispatch_next_persisted_run()["status"] == "retry_scheduled"
+
+    from app.ai_learning.db import connection
+    with connection() as conn:
+        conn.execute(
+            "UPDATE runs SET next_retry_at=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=?",
+            (run["id"],),
+        )
+        conn.execute(
+            "UPDATE ai_learning_control SET retry_after=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+
+    assert service.get_learning_control()["retry_pending"] is False
+    assert service.get_oldest_queued_run()["id"] == run["id"]
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    dispatched = browser_automation._dispatch_next_persisted_run()
+
+    assert dispatched["status"] == "running"
+    assert dispatched["run_id"] == run["id"]
+    assert launched[0][0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
+    assert service.get_run(run["id"])["next_retry_at"] is None
+
+
+def test_scheduled_retry_budget_is_bounded_and_manual_resume_resets_it(isolated_store):
+    course = service.create_course(title="محدودیت تعداد تلاش خودکار")
+    run = service.create_run(course["id"], run_type="outline", request_key="retry-budget")
+    service.start_run(run["id"])
+
+    for _ in range(service.MAX_SCHEDULED_RUN_RETRIES):
+        scheduled = service.schedule_run_retry(
+            run["id"], "chatgpt_network_error", "temporary network failure",
+            delay_seconds=1,
+        )
+        assert scheduled is not None
+        service.start_run(run["id"])
+
+    assert service.schedule_run_retry(
+        run["id"], "chatgpt_network_error", "still unavailable",
+        delay_seconds=1,
+    ) is None
+    service.mark_run_needs_user_action(run["id"], "chatgpt_network_error", "retry budget exhausted")
+    recovered = service.requeue_run_for_resume(
+        run["id"], "manual_resume_recovery", reset_retry_budget=True
+    )
+    assert recovered["status"] == "queued"
+    assert recovered["automatic_retry_count"] == 0
+    assert recovered["next_retry_at"] is None
+
+def test_provider_rate_limit_skips_short_retries_and_uses_delayed_schedule(isolated_store, monkeypatch):
+    course = service.create_course(title="محدودیت درخواست ارائه‌دهنده")
+    run = service.create_run(course["id"], run_type="outline", request_key="rate-limit-delay")
+    attempts = []
+
+    def rate_limited(*_args, **_kwargs):
+        attempts.append(1)
+        raise browser_automation.BrowserAutomationError(
+            "provider_rate_limited", "try again later"
+        )
+
+    monkeypatch.setattr(browser_automation, "_browser_capture", rate_limited)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_INITIAL_DELAY_SECONDS", 0)
+
+    with pytest.raises(browser_automation.BrowserAutomationError) as error:
+        browser_automation._capture_with_automatic_retry(
+            run["prompt_text"], threading.Event(), run_id=run["id"], phase="test"
+        )
+
+    assert error.value.code == "provider_rate_limited"
+    assert len(attempts) == 1
+    service.start_run(run["id"])
+    scheduled = browser_automation._schedule_transient_retry(run["id"], error.value)
+    assert scheduled is not None
+    assert scheduled["automatic_retry_count"] == 1
+    assert scheduled["next_retry_at"] is not None
+
+def test_cancelled_scheduled_retry_cannot_be_dispatched(isolated_store, monkeypatch):
+    course = service.create_course(title="لغو تلاش زمان‌بندی‌شده")
+    run = service.create_run(course["id"], run_type="outline", request_key="cancel-delayed-retry")
+    service.start_run(run["id"])
+    service.schedule_run_retry(
+        run["id"], "chatgpt_network_error", "temporary network failure",
+        delay_seconds=60,
+    )
+
+    cancelled = service.cancel_run(run["id"])
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["next_retry_at"] is None
+    assert service.get_learning_control()["retry_after"] is None
+    assert service.get_learning_control()["retry_pending"] is False
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    assert browser_automation._dispatch_next_persisted_run()["status"] == "idle"
+
+def test_manual_resume_resets_exhausted_retry_budget(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی دستی پس از تلاش‌های خودکار")
+    run = service.create_run(course["id"], run_type="outline", request_key="manual-reset-retry-budget")
+    service.start_run(run["id"])
+    for _ in range(service.MAX_SCHEDULED_RUN_RETRIES):
+        service.schedule_run_retry(
+            run["id"], "chatgpt_network_error", "temporary network failure",
+            delay_seconds=1,
+        )
+        service.start_run(run["id"])
+    service.mark_run_needs_user_action(
+        run["id"], "chatgpt_network_error", "automatic retries exhausted"
+    )
+
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    resumed = browser_automation.resume_learning()
+
+    saved = service.get_run(run["id"])
+    assert resumed["status"] == "resumed"
+    assert saved["status"] == "running"
+    assert saved["automatic_retry_count"] == 0
+    assert saved["next_retry_at"] is None
+    assert len(launched) == 1
+
+def test_global_retry_gate_prevents_queue_cascade_after_provider_failure(isolated_store, monkeypatch):
+    course = service.create_course(title="صف با مکث سراسری خطای ارائه‌دهنده")
+    delayed = service.create_run(course["id"], run_type="outline", request_key="future-retry-first")
+    service.start_run(delayed["id"])
+    service.schedule_run_retry(
+        delayed["id"], "chatgpt_network_error", "temporary network failure",
+        delay_seconds=300,
+    )
+    ready = service.create_run(course["id"], run_type="outline", request_key="ready-second")
+
+    selected = service.get_oldest_queued_run()
+    assert selected is not None
+    assert selected["id"] == ready["id"]
+    assert service.get_learning_control()["retry_pending"] is True
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    result = browser_automation._dispatch_next_persisted_run()
+    assert result["status"] == "retry_scheduled"
+    assert service.get_run(ready["id"])["status"] == "queued"
+
+def test_new_outline_is_rejected_during_global_provider_cooldown(isolated_store):
+    course = service.create_course(title="جلوگیری از ارسال هنگام محدودیت")
+    active = service.create_run(course["id"], run_type="outline", request_key="cooldown-active")
+    service.start_run(active["id"])
+    service.schedule_run_retry(
+        active["id"], "provider_rate_limited", "try again later",
+        delay_seconds=300,
+    )
+
+    with pytest.raises(ValueError, match="مکث خودکار"):
+        browser_automation.start_outline(course["id"], "cooldown-new-outline")
+
+    assert len(service.list_course_runs(course["id"], 20)) == 1
+
+
+def test_manual_resume_does_not_bypass_global_provider_cooldown(isolated_store):
+    course = service.create_course(title="بازیابی با مکث ارائه‌دهنده")
+    run = service.create_run(course["id"], run_type="outline", request_key="cooldown-manual-resume")
+    service.start_run(run["id"])
+    service.schedule_run_retry(
+        run["id"], "provider_rate_limited", "try again later",
+        delay_seconds=300,
+    )
+    service.set_learning_paused(True, "operator pause")
+
+    result = browser_automation.resume_learning()
+
+    assert result["status"] == "retry_scheduled"
+    assert result["active"] is False
+    assert result["next_retry_at"] is not None
+    assert service.get_learning_control()["paused"] is False
+    assert service.get_run(run["id"])["status"] == "queued"

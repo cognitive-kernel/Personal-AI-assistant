@@ -143,6 +143,13 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
     (5, "ai-learning-run-request-fingerprint", (
         "ALTER TABLE runs ADD COLUMN request_fingerprint TEXT",
     )),
+    (6, "ai-learning-bounded-automatic-retries", (
+        "ALTER TABLE runs ADD COLUMN automatic_retry_count INTEGER NOT NULL DEFAULT 0 CHECK(automatic_retry_count >= 0)",
+        "ALTER TABLE runs ADD COLUMN next_retry_at TEXT",
+        "ALTER TABLE ai_learning_control ADD COLUMN retry_after TEXT",
+        "ALTER TABLE ai_learning_control ADD COLUMN retry_reason TEXT NOT NULL DEFAULT ''",
+        "CREATE INDEX idx_ai_runs_retry_due ON runs(status,next_retry_at,created_at,id)",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):

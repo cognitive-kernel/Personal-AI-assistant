@@ -32,6 +32,16 @@ _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
 _MAX_CONTEXT_RELAUNCHES = 1
+# Only failures that can reasonably clear without operator intervention are retried
+# across worker sessions. Authentication, human verification, missing dependencies,
+# browser closure loops, and content-quality failures remain manual-action states.
+_AUTOMATIC_RETRY_DELAYS_SECONDS = {
+    "chatgpt_network_error": (60, 300),
+    "chatgpt_page_closed": (60, 300),
+    "chatgpt_response_timeout": (120, 600),
+    "provider_rate_limited": (300, 900),
+    "playwright_browser_error": (60, 300),
+}
 
 
 @contextmanager
@@ -218,7 +228,7 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
     if any(phrase in text for phrase in network_error_phrases):
         return BrowserAutomationError(
             "chatgpt_network_error",
-            "ارتباط مرورگر با ChatGPT قطع یا ناپایدار شده است. وضعیت اینترنت، DNS و اتصال WebSocket را بررسی کنید؛ اگر بدون VPN کار نمی‌کند، از VPN پایدار استفاده کنید و سپس اجرای متوقف‌شده را از داشبورد ادامه دهید. خطا در data/logs/ai_learning_browser.log ثبت شده است.",
+            "ارتباط مرورگر با ChatGPT قطع یا ناپایدار شده است. اتصال اینترنت و VPN را بررسی کنید؛ سامانه پس از مکث‌های ۶۰ و ۳۰۰ ثانیه‌ای حداکثر دو بار تلاش مجدد می‌کند و اگر مشکل باقی بماند، وضعیت نیازمند بررسی دستی می‌شود. خطا در data/logs/ai_learning_browser.log ثبت شده است.",
         )
     rate_limit_phrases = (
         "you've reached the limit of messages",
@@ -236,7 +246,7 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
     if any(phrase in text for phrase in rate_limit_phrases) or explicit_too_many_requests or explicit_retry_later:
         return BrowserAutomationError(
             "provider_rate_limited",
-            "ChatGPT محدودیت موقت درخواست اعمال کرده است؛ پس از رفع محدودیت، اجرا را دوباره ادامه دهید.",
+            "ChatGPT محدودیت موقت درخواست اعمال کرده است؛ سامانه پس از ۵ و ۱۵ دقیقه حداکثر دو بار تلاش مجدد می‌کند و در صورت تداوم محدودیت، بررسی دستی لازم است.",
         )
     return None
 
@@ -602,14 +612,14 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                        exception_type=type(exc).__name__, message=str(exc)[:300])
             raise BrowserAutomationError(
                 "chatgpt_page_closed",
-                "صفحه یا مرورگر ChatGPT هنگام دریافت پاسخ بسته شد. اگر پاسخ هنوز در صفحه قابل مشاهده است، مرورگر را باز نگه دارید و دوباره تلاش کنید.",
+                "صفحه یا مرورگر ChatGPT هنگام دریافت پاسخ بسته شد؛ سامانه پس از ۶۰ و ۳۰۰ ثانیه حداکثر دو بار تلاش مجدد می‌کند و در صورت تداوم مشکل، بررسی دستی لازم است.",
             ) from exc
     _log_event("response_timeout", elapsed_seconds=round(time.monotonic() - started, 1),
                last_chars=len(last_text), last_message_count=_assistant_message_count(page),
                last_stop_visible=last_stop_visible, stable_since_set=stable_since is not None)
     raise BrowserAutomationError(
         "chatgpt_response_timeout",
-        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. بخش دریافت‌شده در سابقهٔ اجرا حفظ شد؛ پس از بررسی شبکه، از داشبورد ادامه دهید.",
+        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. بخش دریافت‌شده حفظ شد؛ سامانه پس از ۲ و ۱۰ دقیقه حداکثر دو بار تلاش مجدد می‌کند و در صورت تداوم مشکل، بررسی دستی لازم است.",
         partial_response=last_text or None,
     )
 
@@ -979,7 +989,7 @@ def _capture_with_automatic_retry(
     run_id: int,
     phase: str,
 ) -> str:
-    """Retry visible Chrome/ChatGPT capture a bounded number of times, then require manual recovery."""
+    """Retry visible Chrome/ChatGPT capture briefly, then let the worker schedule or request manual recovery."""
     attempt = 0
     while attempt < _AUTO_RETRY_MAX_ATTEMPTS:
         if cancel_event.is_set() or service.get_learning_control()["paused"]:
@@ -989,6 +999,10 @@ def _capture_with_automatic_retry(
         except BrowserAutomationError as exc:
             if exc.code in {"run_cancelled", "chatgpt_browser_closed"} or cancel_event.is_set() or service.get_learning_control()["paused"]:
                 raise
+            # Provider rate limits and long response timeouts explicitly ask for
+            # a later retry; do not hammer the same session with short backoffs.
+            if exc.code in {"provider_rate_limited", "chatgpt_response_timeout", "chatgpt_page_closed"}:
+                attempt = _AUTO_RETRY_MAX_ATTEMPTS - 1
             error_code = exc.code
             error_message = str(exc)
             partial_response = exc.partial_response
@@ -1011,7 +1025,7 @@ def _capture_with_automatic_retry(
             )
             raise BrowserAutomationError(
                 error_code,
-                f"پس از {attempt} تلاش خودکار، دریافت پاسخ متوقف شد. برای جلوگیری از بازشدن مکرر Chrome، از داشبورد اجرای یادگیری را دستی ادامه دهید. آخرین خطا: {error_message[:500]}",
+                f"پس از {attempt} تلاش خودکار (تلاش سریع داخلی)، دریافت پاسخ متوقف شد. آخرین خطا: {error_message[:500]}",
                 partial_response=partial_response,
             )
 
@@ -1122,6 +1136,30 @@ def _continue_lessons(
             return
 
 
+def _schedule_transient_retry(
+    run_id: int, error: BrowserAutomationError
+) -> dict[str, Any] | None:
+    """Schedule a bounded delayed retry only for explicitly transient provider/browser failures."""
+    delays = _AUTOMATIC_RETRY_DELAYS_SECONDS.get(error.code)
+    if not delays:
+        return None
+    run = service.get_run(run_id)
+    retry_count = max(0, int(run.get("automatic_retry_count") or 0))
+    if retry_count >= len(delays):
+        return None
+    partial = error.partial_response
+    if partial is not None and not partial.strip():
+        partial = None
+    return service.schedule_run_retry(
+        run_id,
+        error.code,
+        str(error)[:1000],
+        delay_seconds=delays[retry_count],
+        response_text=partial,
+        max_attempts=len(delays),
+    )
+
+
 def _worker(
     run_id: int, course_id: int, prompt: str, cancel_event: threading.Event,
     continue_after: bool = False, followup_topic_ids: list[int] | None = None,
@@ -1154,8 +1192,29 @@ def _worker(
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
             else:
-                service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
+                scheduled = _schedule_transient_retry(run_id, exc)
+                if scheduled is not None:
+                    _log_event(
+                        "worker_transient_retry_scheduled",
+                        run_id=run_id,
+                        error_code=exc.code,
+                        retry_count=scheduled.get("automatic_retry_count"),
+                        next_retry_at=scheduled.get("next_retry_at"),
+                    )
+                else:
+                    service.mark_run_needs_user_action(
+                        run_id,
+                        exc.code,
+                        str(exc),
+                        exc.partial_response if exc.partial_response and exc.partial_response.strip() else None,
+                    )
         except Exception as mark_exc:
+            _log_event(
+                "worker_failure_state_update_failed",
+                run_id=run_id,
+                exception_type=type(mark_exc).__name__,
+                message=str(mark_exc)[:300],
+            )
             print(f"Could not update AI-learning run {run_id}: {mark_exc}", flush=True)
     except Exception as exc:
         _log_event("worker_unexpected_error", run_id=run_id, exception_type=type(exc).__name__,
@@ -1228,12 +1287,20 @@ def _start_worker_thread(
 
 
 def _dispatch_next_persisted_run() -> dict[str, Any]:
-    """Claim the oldest explicitly queued run; failed runs require deliberate manual recovery."""
+    """Claim the oldest due queued run unless pause or the shared transient-provider cooldown blocks dispatch."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     if _SHUTTING_DOWN:
         return {"status": "shutting_down", "active": False}
-    if service.get_learning_control()["paused"]:
+    control = service.get_learning_control()
+    if control["paused"]:
         return {"status": "paused", "active": False}
+    if control.get("retry_pending", False):
+        return {
+            "status": "retry_scheduled",
+            "active": False,
+            "next_retry_at": control["retry_after"],
+            "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است.",
+        }
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
@@ -1367,8 +1434,14 @@ def recover_orphaned_runs() -> dict[str, Any]:
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Create and queue an outline run, then process it in a single background browser worker."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
-    if service.get_learning_control()["paused"]:
+    control = service.get_learning_control()
+    if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
+    if control.get("retry_pending", False):
+        raise ValueError(
+            "به‌دلیل خطای موقت ChatGPT، صف تا " + str(control["retry_after"])
+            + " در مکث خودکار است؛ تلاش بعدی بدون نیاز به بازکردن دستی Chrome انجام می‌شود."
+        )
     with _LOCK:
         if _ACTIVE:
             raise ValueError("یک کار مرورگر در حال اجراست؛ تا پایان آن صبر کنید.")
@@ -1475,18 +1548,30 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
     first_run_id = queued_runs[0]
     dispatch = _dispatch_next_persisted_run()
     started = dispatch.get("status") == "running" and int(dispatch.get("run_id") or 0) == first_run_id
+    retry_after = dispatch.get("next_retry_at")
+    if dispatch.get("status") == "retry_scheduled":
+        message = (
+            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ به‌دلیل خطای موقت ChatGPT "
+            f"تا {retry_after} هیچ درخواست دیگری ارسال نمی‌شود و سپس بازیابی خودکار آغاز خواهد شد."
+        )
+    elif started:
+        message = (
+            f"دریافت درس برای {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ هر سرفصل اجرای مستقل دارد "
+            "و پس از هر اجرا، مورد بعدی از صف بازیابی می‌شود."
+        )
+    else:
+        message = (
+            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد و پس از اجرای کارهای قدیمی‌تر آغاز می‌شود."
+        )
     return {
         "run_id": first_run_id,
         "status": "running" if started else "queued",
         "course_id": course_id,
         "topic_ids": selected_ids,
         "queued_topic_count": len(selected_ids),
+        "next_retry_at": retry_after,
         "provider": "ChatGPT visible UI",
-        "message": (
-            f"دریافت درس برای {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ هر سرفصل اجرای مستقل دارد و پس از هر اجرا، مورد بعدی از صف بازیابی می‌شود."
-            if started else
-            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد و پس از اجرای کارهای قدیمی‌تر آغاز می‌شود."
-        ),
+        "message": message,
     }
 
 
@@ -1585,14 +1670,24 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
         if _ACTIVE:
             return {"status": "resumed", "active": True, "run_id": _ACTIVE_RUN_ID,
                     "course_id": _ACTIVE_COURSE_ID, "message": "فرایند فعال ادامه پیدا می‌کند."}
+        control = service.get_learning_control()
+        if control.get("retry_pending", False):
+            return {
+                "status": "retry_scheduled",
+                "active": False,
+                "next_retry_at": control["retry_after"],
+                "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند.",
+            }
 
         # Resume from the durable global queue, not bounded dashboard pages.
         # Otherwise older runs can be stranded after the user exceeds page limits.
         in_flight = service.get_oldest_resumable_run(course_id)
         if in_flight is not None:
-            if in_flight.get("status") == "needs_user_action":
-                service.requeue_run_for_resume(int(in_flight["id"]), "manual_resume_recovery")
-            run = service.start_run(int(in_flight["id"]))
+            if in_flight.get("status") in {"running", "needs_user_action"}:
+                service.requeue_run_for_resume(
+                    int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True
+                )
+            run = service.start_run(int(in_flight["id"]), reset_retry_budget=True)
             run = service.get_run(int(in_flight["id"]))
             run_id = int(run["id"])
             target_course = int(run["course_id"])
