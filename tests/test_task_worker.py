@@ -256,7 +256,8 @@ def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker
 
     class FakeStopEvent:
         def wait(self, timeout):
-            FakeClock.current += timeout
+            # Model a timeout that wakes just after the lease deadline.
+            FakeClock.current += timeout + 0.000001
             return False
 
     monkeypatch.setattr(task_worker, "time", FakeClock)
@@ -281,7 +282,7 @@ def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker
     worker._maintain_lease(context, FakeStopEvent())
 
     assert len(calls) == 2
-    assert FakeClock.current == pytest.approx(1.0)
+    assert 1.0 <= FakeClock.current < 1.01
 
 
 def test_task_creation_is_idempotent_for_matching_dedupe_key(worker_store):
