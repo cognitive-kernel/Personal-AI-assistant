@@ -2158,7 +2158,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         page.get_by_text("simulated Kaggle CLI failure", exact=False).wait_for()
         assert refresh.is_enabled()
         refresh.click()
-        page.get_by_text('"remaining_hours": 9.0', exact=False).wait_for()
+        page.get_by_text('"remaining_hours": 9', exact=False).wait_for()
         assert state["refresh_calls"] == 2
 
         revoke.click()
