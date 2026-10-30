@@ -156,6 +156,12 @@ def record_provider_consent(
                     "VALUES (?, 'consent_granted', ?)",
                     (provider_id, KAGGLE_QUOTA_CONSENT_VERSION),
                 )
+                # A changed CLI path may refer to a different account; old quota
+                # values must not be displayed under the newly consented identity.
+                connection.execute(
+                    "DELETE FROM provider_quota_snapshots WHERE provider_id=?",
+                    (provider_id,),
+                )
             connection.execute(
                 """INSERT INTO provider_access_consents(
                        provider_id, enabled, user_consent, executable_path, consent_version,
@@ -1490,6 +1496,12 @@ def record_oci_limit_consent(
                     """INSERT INTO oci_limit_consent_events(provider_id, event_type, consent_version)
                        VALUES (?, 'consent_granted', ?)""",
                     (OCI_PROVIDER_ID, OCI_LIMIT_CONSENT_VERSION),
+                )
+                # A changed profile, compartment, region, or config path can
+                # identify a different account/scope; discard old snapshots.
+                connection.execute(
+                    "DELETE FROM oci_limit_snapshots WHERE provider_id=?",
+                    (OCI_PROVIDER_ID,),
                 )
             connection.execute(
                 """INSERT INTO oci_limit_access_consents(
