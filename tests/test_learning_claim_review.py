@@ -120,7 +120,7 @@ def test_learning_job_records_claim_review_without_promoting_knowledge_to_verifi
         "error": None if passed else "review needs review",
         "reviewer": "local_ollama_model_assisted_not_independent",
     }
-    monkeypatch.setattr(claim_review, "review_answer_claims", lambda question, answer, sources: (
+    monkeypatch.setattr(claim_review, "review_answer_claims", lambda question, answer, sources, *, model_override=None: (
         review if sources[0]["url"] == url and answer == LESSON else {"passed": False}
     ))
 
