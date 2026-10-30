@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-10-29  
-> آخرین commit کد بررسی‌شده: `d7c7fc8df0240b4cdea5cdbd0e06b868d6f9bc6d` در `main` (2026-10-29)؛ آزمون کامل [#40916945662](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40916945662)، browser E2E [#40916945606](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40916945606) و dependency audit [#40916945556](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40916945556) روی همین commit موفق شده‌اند.  
+> تاریخ بازبینی: 2026-10-30  
+> آخرین commit بررسی‌شده: `a5928a4bfba1145c022437186215072fdba37788` در `main`؛ browser E2E [#40989084715](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40989084715) و dependency audit [#40989084737](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40989084737) روی همین commit موفق شده‌اند. job مربوط به Windows storage regressions در workflow آزمون [#40989084703](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40989084703) موفق است؛ job اصلی `test` هنگام بازبینی هنوز در حال اجرا بود و تا ثبت نتیجه نباید موفق تلقی شود.  
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `d7c7fc8df0240b4cdea5cdbd0e06b868d6f9bc6d` اشاره دارد. پس از تغییرات اخیر در بازیابی lease و آزمون مرورگر بازخورد جست‌وجوی AI-learning، آزمون کامل [#40916945662](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40916945662)، browser E2E [#40916945606](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40916945606) و dependency audit [#40916945556](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40916945556) روی همین commit موفق شدند. این CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. این CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
+**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `a5928a4bfba1145c022437186215072fdba37788` اشاره دارد. browser E2E و dependency audit روی همین commit موفق شده‌اند؛ Windows storage regressions نیز در workflow آزمون موفق است، اما job اصلی `test` هنگام ثبت این snapshot هنوز در حال اجرا بود. نتیجهٔ نهایی آن باید پس از پایان workflow به‌روزرسانی شود. CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
