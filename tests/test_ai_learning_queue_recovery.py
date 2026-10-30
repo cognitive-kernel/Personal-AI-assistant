@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import multiprocessing
 import threading
 
 import pytest
 
 from app.ai_learning import browser_automation, service
 from app.ai_learning.db import connection, initialize_store
+
+
+def _claim_worker_lease_in_child(barrier, results):
+    from app.ai_learning import browser_automation as child_browser_automation
+    from app.ai_learning import service as child_service
+
+    owner = child_browser_automation._WORKER_OWNER
+    barrier.wait(timeout=10)
+    epoch = child_service.claim_worker_lease(owner, lease_seconds=90)
+    results.put((owner, epoch))
+
 
 
 @pytest.fixture
@@ -1134,6 +1146,47 @@ def test_concurrent_lease_claims_have_exactly_one_winner(isolated_store):
     winners = [(owner, epoch) for owner, epoch in results.items() if epoch is not None]
     assert len(winners) == 1
     assert service.owns_worker_lease(*winners[0])
+
+
+
+
+def test_worker_lease_excludes_a_real_second_process(isolated_store):
+    methods = multiprocessing.get_all_start_methods()
+    context = multiprocessing.get_context("fork" if "fork" in methods else "spawn")
+    barrier = context.Barrier(2)
+    results = context.Queue()
+    parent_owner = browser_automation._WORKER_OWNER
+    process = context.Process(
+        target=_claim_worker_lease_in_child,
+        args=(barrier, results),
+        daemon=True,
+    )
+    parent_epoch = None
+    child_owner = None
+    child_epoch = None
+    try:
+        process.start()
+        barrier.wait(timeout=10)
+        parent_epoch = service.claim_worker_lease(parent_owner, lease_seconds=90)
+        child_owner, child_epoch = results.get(timeout=10)
+        process.join(timeout=10)
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        results.close()
+        results.join_thread()
+
+    assert process.exitcode == 0
+    assert child_owner != parent_owner
+    winners = [
+        (owner, epoch)
+        for owner, epoch in ((parent_owner, parent_epoch), (child_owner, child_epoch))
+        if epoch is not None
+    ]
+    assert len(winners) == 1
+    assert service.owns_worker_lease(*winners[0])
+    assert service.release_worker_lease(*winners[0])
 
 
 def test_dispatch_requeues_orphaned_running_run_before_newer_queued_work(isolated_store, monkeypatch):
