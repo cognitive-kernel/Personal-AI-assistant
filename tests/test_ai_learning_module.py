@@ -493,8 +493,12 @@ def test_outline_and_lesson_prompts_enforce_configured_course_language(isolated_
             request_key="language-lesson-" + language,
         )
         assert "LANGUAGE OUTPUT CONTRACT (HARD REQUIREMENT)" in lesson["prompt_text"]
-        assert "including headings, explanations, examples, recap, exercises, and answer keys" in lesson["prompt_text"]
+        assert (
+            "including headings, explanations, examples, recap, exercises, and answer keys"
+            in lesson["prompt_text"]
+        )
         assert "Course language: " + language in lesson["prompt_text"]
+
 
 def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
