@@ -11,10 +11,11 @@ import sqlite3
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from .db import connection
 from ..db import get_settings
 from ..ollama import embed as ollama_embed
+from ..pinned_http import PinnedHTTPHandler, PinnedHTTPSHandler
 
 CHUNK_TARGET_CHARS = 1_800
 CHUNK_OVERLAP_CHARS = 180
@@ -853,24 +854,43 @@ def _store_content_sources(conn: sqlite3.Connection, version_id: int, text: str)
 
 
 def check_content_source(source_id: int) -> dict[str, Any]:
-    """Check a saved public HTTP(S) source without following redirects or probing private hosts."""
+    """Check a saved public HTTP(S) source without redirects or unpinned DNS lookups."""
     with connection() as conn:
         source = conn.execute("SELECT * FROM sources WHERE id=?", (source_id,)).fetchone()
         if source is None:
             raise NotFoundError("Source not found.")
         url = str(source["url"] or "").strip()
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError("پیوند منبع معتبر HTTP/HTTPS نیست.")
-    host = parsed.hostname.lower()
-    if host in {"localhost"} or host.endswith((".localhost", ".local", ".internal")):
-        raise ValueError("برای ایمنی، پیوندهای محلی یا داخلی بررسی نمی‌شوند.")
+
     try:
-        addresses = {ipaddress.ip_address(item[4][0].split("%")[0])
-                     for item in socket.getaddrinfo(host, parsed.port or (443 if parsed.scheme == "https" else 80),
-                                                    type=socket.SOCK_STREAM)}
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("پیوند منبع معتبر HTTP/HTTPS نیست.") from exc
+    expected_port = 80 if parsed.scheme == "http" else 443
+    if (
+        len(url) > 2048
+        or parsed.scheme not in {"http", "https"}
+        or not host
+        or parsed.username
+        or parsed.password
+        or port not in {None, expected_port}
+    ):
+        raise ValueError("پیوند منبع معتبر HTTP/HTTPS نیست.")
+    if host == "localhost" or host.endswith((".localhost", ".local", ".internal")):
+        raise ValueError("برای ایمنی، پیوندهای محلی یا داخلی بررسی نمی‌شوند.")
+
+    try:
+        records = socket.getaddrinfo(
+            host, port or expected_port, type=socket.SOCK_STREAM
+        )
+        addresses = {
+            ipaddress.ip_address(item[4][0].split("%", 1)[0])
+            for item in records
+        }
         if not addresses or any(not address.is_global for address in addresses):
             raise ValueError("پیوند به نشانی خصوصی یا غیرعمومی اشاره می‌کند و بررسی نشد.")
+        pinned_ip = sorted(address.compressed for address in addresses)[0]
     except ValueError:
         raise
     except OSError as exc:
@@ -879,10 +899,35 @@ def check_content_source(source_id: int) -> dict[str, Any]:
         class _NoRedirect(HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
                 return None
-        opener = build_opener(_NoRedirect)
+
+        def resolve_pinned_request(request_url: str) -> str:
+            try:
+                request_parsed = urlparse(request_url)
+                request_port = request_parsed.port
+            except ValueError as exc:
+                raise ValueError("درخواست منبع از مبدأ تأییدشده خارج شد.") from exc
+            request_host = (request_parsed.hostname or "").lower().rstrip(".")
+            if (
+                request_parsed.scheme != parsed.scheme
+                or request_host != host
+                or request_port not in {None, expected_port}
+            ):
+                raise ValueError("درخواست منبع از مبدأ تأییدشده خارج شد.")
+            return pinned_ip
+
+        opener = build_opener(
+            ProxyHandler({}),
+            _NoRedirect(),
+            PinnedHTTPHandler(resolve_pinned_request),
+            PinnedHTTPSHandler(resolve_pinned_request),
+        )
         status, detail = "rejected", ""
         try:
-            request = Request(url, method="HEAD", headers={"User-Agent": "Personal-AI-Assistant-LinkChecker/1.0"})
+            request = Request(
+                url,
+                method="HEAD",
+                headers={"User-Agent": "Personal-AI-Assistant-LinkChecker/1.0"},
+            )
             with opener.open(request, timeout=8) as response:
                 code = int(response.status)
                 status = "reviewed" if 200 <= code < 300 else "rejected"
@@ -890,8 +935,14 @@ def check_content_source(source_id: int) -> dict[str, Any]:
         except HTTPError as exc:
             if exc.code in {405, 501}:
                 try:
-                    request = Request(url, method="GET",
-                                      headers={"User-Agent": "Personal-AI-Assistant-LinkChecker/1.0", "Range": "bytes=0-0"})
+                    request = Request(
+                        url,
+                        method="GET",
+                        headers={
+                            "User-Agent": "Personal-AI-Assistant-LinkChecker/1.0",
+                            "Range": "bytes=0-0",
+                        },
+                    )
                     with opener.open(request, timeout=8) as response:
                         code = int(response.status)
                         status = "reviewed" if 200 <= code < 300 else "rejected"
@@ -899,14 +950,22 @@ def check_content_source(source_id: int) -> dict[str, Any]:
                 except Exception as retry_exc:
                     detail = "بررسی GET ناموفق: " + str(retry_exc)[:180]
             else:
-                detail = "HTTP " + str(exc.code) + ("؛ پیوند تغییر مسیر می‌دهد و نیازمند جایگزینی است." if 300 <= exc.code < 400 else "")
+                detail = "HTTP " + str(exc.code) + (
+                    "؛ پیوند تغییر مسیر می‌دهد و نیازمند جایگزینی است."
+                    if 300 <= exc.code < 400 else ""
+                )
         except (URLError, TimeoutError, OSError) as exc:
             detail = "پیوند قابل دسترسی نیست: " + str(exc)[:180]
+
     with connection() as conn:
-        conn.execute("UPDATE sources SET validation_status=?,excerpt=? WHERE id=?",
-                     (status, detail[:500], source_id))
-        row = conn.execute("SELECT id,title,url,publisher,validation_status,excerpt FROM sources WHERE id=?",
-                           (source_id,)).fetchone()
+        conn.execute(
+            "UPDATE sources SET validation_status=?,excerpt=? WHERE id=?",
+            (status, detail[:500], source_id),
+        )
+        row = conn.execute(
+            "SELECT id,title,url,publisher,validation_status,excerpt FROM sources WHERE id=?",
+            (source_id,),
+        ).fetchone()
     return dict(row)
 
 

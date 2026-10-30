@@ -7,12 +7,12 @@ import json
 import os
 import re
 import socket
+import urllib.request
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
-
 from . import ollama
+from .pinned_http import PinnedHTTPSHandler
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_-]{1,39}$")
 _ENV_KEY = re.compile(r"^LEARNING_REVIEW_API_KEY_[A-Z0-9_]{2,80}$")
@@ -53,11 +53,15 @@ def _external_configs(settings: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         if not isinstance(base_url, str) or len(base_url) > 500:
             continue
-        parsed = urlparse(base_url)
-        host = (parsed.hostname or "").lower().rstrip(".")
+        try:
+            parsed = urlparse(base_url)
+            host = (parsed.hostname or "").lower().rstrip(".")
+            port = parsed.port
+        except ValueError:
+            continue
         if (
             parsed.scheme != "https" or not host or parsed.username or parsed.password
-            or parsed.port not in {None, 443} or parsed.query or parsed.fragment
+            or port not in {None, 443} or parsed.query or parsed.fragment
             or not parsed.path.rstrip("/").endswith("/v1")
         ):
             continue
@@ -81,7 +85,8 @@ def _external_configs(settings: dict[str, Any]) -> list[dict[str, Any]]:
     return providers
 
 
-def _assert_public_provider_host(provider: dict[str, Any]) -> None:
+def _assert_public_provider_host(provider: dict[str, Any]) -> str:
+    """Validate every DNS answer and return the exact IP the HTTPS socket must use."""
     host = provider["host"]
     try:
         addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
@@ -89,13 +94,25 @@ def _assert_public_provider_host(provider: dict[str, Any]) -> None:
         raise ReviewProviderUnavailable("External reviewer host could not be resolved.") from exc
     if not addresses:
         raise ReviewProviderUnavailable("External reviewer host has no address.")
+    validated: list[ipaddress.IPv4Address | ipaddress.IPv6Address] = []
     for address in addresses:
         try:
-            ip = ipaddress.ip_address(address[4][0])
-        except ValueError as exc:
+            ip = ipaddress.ip_address(address[4][0].split("%", 1)[0])
+        except (IndexError, TypeError, ValueError) as exc:
             raise ReviewProviderUnavailable("External reviewer returned an invalid IP address.") from exc
         if not ip.is_global:
             raise ReviewProviderUnavailable("External reviewer host resolved to a non-public IP; request blocked.")
+        validated.append(ip)
+    # Pin the socket to an address from this validated DNS result. Resolving again
+    # inside the HTTP client would reintroduce a DNS-rebinding time-of-check race.
+    return validated[0].compressed
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward reviewer prompts or credentials to a redirect destination."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
 
 def list_reviewers(settings: dict[str, Any], installed_models: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -174,7 +191,7 @@ def run_reviewer(reviewer: dict[str, Any], prompt: str, *, system_prompt: str) -
         }
     if reviewer.get("kind") != "openai_compatible":
         raise ReviewProviderUnavailable("Unsupported reviewer adapter.")
-    _assert_public_provider_host(reviewer)
+    pinned_ip = _assert_public_provider_host(reviewer)
     api_key = os.getenv(str(reviewer["api_key_env"]), "").strip()
     if not api_key or len(api_key) > 4096:
         raise ReviewProviderUnavailable("External reviewer API key is missing or invalid.")
@@ -187,23 +204,46 @@ def run_reviewer(reviewer: dict[str, Any], prompt: str, *, system_prompt: str) -
             {"role": "user", "content": prompt},
         ],
     }
+    request_url = reviewer["base_url"] + "/chat/completions"
+
+    def resolve_pinned_request(url: str) -> str:
+        parsed_request = urlparse(url)
+        request_host = (parsed_request.hostname or "").lower().rstrip(".")
+        try:
+            request_port = parsed_request.port
+        except ValueError as exc:
+            raise ReviewProviderUnavailable("External reviewer request URL has an invalid port.") from exc
+        if (
+            parsed_request.scheme != "https"
+            or request_host != reviewer["host"]
+            or request_port not in {None, 443}
+        ):
+            raise ReviewProviderUnavailable("External reviewer request escaped its approved HTTPS origin.")
+        return pinned_ip
+
+    request = urllib.request.Request(
+        request_url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": "Bearer " + api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
     try:
-        with httpx.Client(timeout=httpx.Timeout(45.0, connect=8.0), follow_redirects=False, trust_env=False) as client:
-            with client.stream(
-                "POST",
-                reviewer["base_url"] + "/chat/completions",
-                headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
-                json=payload,
-            ) as response:
-                if response.is_redirect:
-                    raise ReviewProviderUnavailable("External reviewer redirects are blocked.")
-                response.raise_for_status()
-                chunks = bytearray()
-                for chunk in response.iter_bytes():
-                    chunks.extend(chunk)
-                    if len(chunks) > 65536:
-                        raise ReviewProviderUnavailable("External reviewer response exceeded 64 KiB.")
-                body = json.loads(chunks.decode("utf-8"))
+        # Disable ambient proxies and redirects. The custom handler pins TCP to
+        # the already-validated IP while retaining the hostname for TLS/SNI.
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            _NoRedirectHandler(),
+            PinnedHTTPSHandler(resolve_pinned_request),
+        )
+        with opener.open(request, timeout=45.0) as response:
+            raw_body = response.read(65537)
+        if len(raw_body) > 65536:
+            raise ReviewProviderUnavailable("External reviewer response exceeded 64 KiB.")
+        body = json.loads(raw_body.decode("utf-8"))
     except ReviewProviderUnavailable:
         raise
     except Exception as exc:
