@@ -1111,3 +1111,26 @@ def test_learning_control_exposes_remote_worker_and_expired_recovery_state(isola
     control = service.get_learning_control()
     assert control["worker_active"] is False
     assert control["worker_recovery_pending"] is True
+
+
+def test_concurrent_lease_claims_have_exactly_one_winner(isolated_store):
+    barrier = threading.Barrier(2)
+    results = {}
+
+    def claim(owner: str) -> None:
+        barrier.wait(timeout=5)
+        results[owner] = service.claim_worker_lease(owner, lease_seconds=90)
+
+    threads = [
+        threading.Thread(target=claim, args=("concurrent-a",)),
+        threading.Thread(target=claim, args=("concurrent-b",)),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    winners = [(owner, epoch) for owner, epoch in results.items() if epoch is not None]
+    assert len(winners) == 1
+    assert service.owns_worker_lease(*winners[0])
