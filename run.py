@@ -99,7 +99,7 @@ def _latest_ollama_release_assets() -> dict[str, Any]:
     ):
         raise RuntimeError("ساختار آخرین انتشار رسمی Ollama معتبر نیست.")
 
-    selected: dict[str, dict[str, str]] = {}
+    selected: dict[str, dict[str, Any]] = {}
     for asset_name in ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"):
         matches = [
             item for item in assets
@@ -161,9 +161,14 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _run(command: list[str], *, cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path = ROOT,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(command, cwd=cwd, text=True, check=False)
+        return subprocess.run(command, cwd=cwd, text=True, check=False, env=env)
     except KeyboardInterrupt:
         # Ctrl+C is expected when stopping the local server; avoid noisy tracebacks.
         return subprocess.CompletedProcess(command, 130)
@@ -534,6 +539,8 @@ def _download_once(
         manifest = {"size": final_size, "url": url}
         if expected_sha256 is not None:
             manifest["sha256"] = expected_sha256
+        if expected_size is not None:
+            manifest["expected_size"] = expected_size
         manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -570,6 +577,7 @@ def _ensure_ollama() -> None:
     # is only needed when Ollama cannot be found on this machine.
     executable = _find_ollama()
     installer: Path | None = None
+    release: dict[str, Any] | None = None
     if not executable:
         asset_name = {
             "Windows": "OllamaSetup.exe",
@@ -605,7 +613,10 @@ def _ensure_ollama() -> None:
         if system == "Windows":
             result = _run([str(installer)])
         elif system == "Linux":
-            result = _run(["sh", str(installer)])
+            install_env = os.environ.copy()
+            if release is not None:
+                install_env["OLLAMA_VERSION"] = release["tag"].lstrip("v")
+            result = _run(["sh", str(installer)], env=install_env)
         else:
             # macOS app installation is intentionally left interactive; opening the
             # cached archive lets the user complete the signed app installation.
