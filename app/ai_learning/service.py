@@ -24,6 +24,10 @@ MAX_SCHEDULED_RUN_RETRIES = 2
 class NotFoundError(KeyError):
     """Requested learning resource does not exist."""
 
+
+class WorkerLeaseLostError(RuntimeError):
+    """Raised when a worker attempts a write after losing its durable lease."""
+
 def _clean_text(value: str, field: str, maximum: int) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field} must be text.")
@@ -510,6 +514,27 @@ def release_worker_lease(owner: str, epoch: int) -> bool:
         return cursor.rowcount == 1
 
 
+def _assert_worker_lease_in_transaction(
+    conn: sqlite3.Connection,
+    owner: str | None,
+    epoch: int | None,
+) -> None:
+    """Fence a worker mutation inside the same write transaction as the lease check."""
+    if owner is None and epoch is None:
+        return
+    if owner is None or isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        raise ValueError("worker_lease_owner and a positive worker_lease_epoch must be supplied together.")
+    owner = _clean_text(owner, "worker owner", 160)
+    owned = conn.execute(
+        """SELECT 1 FROM ai_learning_control
+           WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
+             AND worker_lease_until>CURRENT_TIMESTAMP AND paused=0""",
+        (owner, epoch),
+    ).fetchone()
+    if owned is None:
+        raise WorkerLeaseLostError("AI-learning browser worker lease was lost before the write committed.")
+
+
 def get_learning_control() -> dict[str, Any]:
     """Return durable pause state and provider cooldown for ChatGPT learning workflows."""
     with connection() as conn:
@@ -554,11 +579,16 @@ def get_run(run_id: int) -> dict[str, Any]:
     return result
 
 
-def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]:
+def save_run_partial_response(
+    run_id: int, response_text: str, *,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
+) -> dict[str, Any]:
+
     """Durably checkpoint an in-progress lesson after each captured response part."""
     response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -570,13 +600,16 @@ def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]
     return get_run(run_id)
 
 def mark_run_needs_user_action(
-    run_id: int, error_code: str, error_message: str, response_text: str | None = None
+    run_id: int, error_code: str, error_message: str, response_text: str | None = None,
+    *, worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
 ) -> dict[str, Any]:
+
     """Persist recoverable browser/provider failures and any partial response for later recovery."""
     error_code = _clean_text(error_code, "error_code", 80)
     error_message = _clean_text(error_message, "error_message", 1000)
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -608,6 +641,8 @@ def schedule_run_retry(
     delay_seconds: int,
     response_text: str | None = None,
     max_attempts: int = MAX_SCHEDULED_RUN_RETRIES,
+    worker_lease_owner: str | None = None,
+    worker_lease_epoch: int | None = None,
 ) -> dict[str, Any] | None:
     """Persist one bounded transient retry while preserving any partial lesson response."""
     error_code = _clean_text(error_code, "error_code", 80)
@@ -620,6 +655,7 @@ def schedule_run_retry(
         response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute(
             "SELECT status,automatic_retry_count FROM runs WHERE id=?", (run_id,)
         ).fetchone()
@@ -659,11 +695,13 @@ def schedule_run_retry(
 
 
 def requeue_run_for_resume(
-    run_id: int, reason: str = "automatic_recovery", *, reset_retry_budget: bool = False
+    run_id: int, reason: str = "automatic_recovery", *, reset_retry_budget: bool = False,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
 ) -> dict[str, Any]:
     """Return an interrupted run to the durable queue without deleting partial work."""
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -695,9 +733,13 @@ def requeue_run_for_resume(
     return result
 
 
-def start_run(run_id: int, *, reset_retry_budget: bool = False) -> dict[str, Any]:
+def start_run(
+    run_id: int, *, reset_retry_budget: bool = False,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
+) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -1225,11 +1267,15 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
     return None
 
 
-def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
+def complete_run(
+    run_id: int, response_text: str, *,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
+) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
     response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
