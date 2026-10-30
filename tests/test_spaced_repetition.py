@@ -113,6 +113,11 @@ def test_learning_task_audit_history_formats_each_event_kind():
     assert '"اولویت: " + (event.old_priority ?? "—")' in page
     assert '"زمان‌بندی: " + (event.old_scheduled_at || "—")' in page
     assert "const change = formatTaskAuditEventChange(event);" in page
+    assert 'olderEventsButton.textContent = "بارگذاری رویدادهای قدیمی‌تر"' in page
+    assert '"/events?limit=100" + cursor' in page
+    assert '"&before_id=" + encodeURIComponent(beforeId)' in page
+    assert "response.has_more ? response.next_before_id : null" in page
+    assert "eventsList.prepend(...items)" in page
 
 
 
