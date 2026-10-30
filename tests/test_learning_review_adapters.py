@@ -88,6 +88,21 @@ def test_external_reviewer_blocks_private_dns_results(monkeypatch):
         learning_review_adapters._assert_public_provider_host(provider)
 
 
+def test_external_reviewer_rejects_mixed_public_and_private_dns_answers(monkeypatch):
+    provider = learning_review_adapters._external_configs({
+        "learning_external_review_providers": [_provider()]
+    })[0]
+    monkeypatch.setattr(
+        "app.learning_review_adapters.socket.getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.7", 443)),
+        ],
+    )
+    with pytest.raises(learning_review_adapters.ReviewProviderUnavailable, match="non-public IP"):
+        learning_review_adapters._assert_public_provider_host(provider)
+
+
 def test_external_reviewer_requires_system_fingerprint(monkeypatch):
     provider = learning_review_adapters._external_configs({
         "learning_external_review_providers": [_provider()]
