@@ -309,6 +309,7 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             prompt = (
                 "Build an exhaustive, structured learning curriculum for: " + course["title"] + ".\n"
                 "Language: " + course["language"] + ". Level: " + course["target_level"] + ".\n"
+                "LANGUAGE OUTPUT CONTRACT (HARD REQUIREMENT): Use the configured course language above for all natural-language output. Treat it as an output constraint, not metadata. Do not switch to English or another language unless the configured course language explicitly requests it. Keep code, commands, identifiers, proper product names, and exact quoted source titles unchanged where necessary; explain them in the course language.\n"
                 "Scope and user requirements: " + course["scope_notes"] + "\n"
                 "PRIMARY GOAL: cover every materially distinct concept, skill, workflow, subsystem, and practical task within the requested scope. Completeness and breadth matter more than keeping the outline short. Do not stop at a conventional overview, a convenient round number, or a fixed target. The number of topics must emerge from the full subject coverage; for a broad subject such as SQL Server 2025, 110 or more distinct topics may be appropriate, but do not add filler solely to reach a number.\n"
                 "First construct an internal coverage matrix of all relevant domains, subdomains, and levels (foundational, intermediate, advanced, production/operations, troubleshooting, and hands-on projects). Expand every domain into its distinct teachable topics. Keep related-but-different subjects separate: concepts vs implementation, configuration vs monitoring, administration vs troubleshooting, fundamentals vs advanced techniques, and each materially different feature or workflow. Merge only genuine duplicates, not topics that merely share vocabulary or belong to the same domain.\n"
@@ -328,6 +329,7 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 "before teaching the individual topic.\n"
                 "Course / main subject: " + course["title"] + "\n"
                 "Course language: " + course["language"] + "\n"
+                "LANGUAGE OUTPUT CONTRACT (HARD REQUIREMENT): Use the configured course language above for all natural-language output, including headings, explanations, examples, recap, exercises, and answer keys. Treat it as an output constraint, not metadata. Do not switch to English or another language unless the configured course language explicitly requests it. Keep code, commands, identifiers, proper product names, and exact quoted source titles unchanged where necessary; explain them in the course language.\n"
                 "Target learning level: " + course["target_level"] + "\n"
                 "Course scope and user-provided context: " + str(course["scope_notes"] or "(none provided)") + "\n"
                 "Requested lesson topic(s), including any saved descriptions:\n" + topic_lines + "\n\n"

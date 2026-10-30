@@ -475,6 +475,31 @@ def test_save_run_partial_response_checkpoints_running_lesson(isolated_store):
     assert saved["response_text"] == partial
 
 
+def test_outline_and_lesson_prompts_enforce_configured_course_language(isolated_store):
+    for language in ("fa", "en"):
+        course = service.create_course(title="Language contract " + language, language=language)
+        outline = service.create_run(
+            course["id"], run_type="outline",
+            request_key="language-outline-" + language,
+        )
+        assert "LANGUAGE OUTPUT CONTRACT (HARD REQUIREMENT)" in outline["prompt_text"]
+        assert "Use the configured course language above for all natural-language output" in outline["prompt_text"]
+        assert "Language: " + language + "." in outline["prompt_text"]
+
+        topic = service.add_topic(course["id"], "Language-specific lesson")
+        service.decide_topics([topic["id"]], "approved")
+        lesson = service.create_run(
+            course["id"], run_type="lesson", topic_ids=[topic["id"]],
+            request_key="language-lesson-" + language,
+        )
+        assert "LANGUAGE OUTPUT CONTRACT (HARD REQUIREMENT)" in lesson["prompt_text"]
+        assert (
+            "including headings, explanations, examples, recap, exercises, and answer keys"
+            in lesson["prompt_text"]
+        )
+        assert "Course language: " + language in lesson["prompt_text"]
+
+
 def test_lesson_prompt_requires_bounded_parts_and_explicit_completion_marker(isolated_store):
     course = service.create_course(title="SQL Server 2025", language="fa")
     topic = service.add_topic(course["id"], "7. آشنایی با SQL و تفاوت‌های T-SQL")
