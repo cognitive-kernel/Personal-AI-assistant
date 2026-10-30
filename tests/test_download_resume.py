@@ -366,8 +366,11 @@ def test_latest_ollama_release_rejects_untrusted_asset_url(monkeypatch):
 
 def test_github_asset_redirect_handler_rejects_non_github_hosts():
     handler = installer._GitHubAssetRedirectHandler()
+    request = urllib.request.Request(
+        "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh"
+    )
     assert handler.redirect_request(
-        None, None, 302, "Found", {}, "https://evil.example/installer.exe"
+        request, None, 302, "Found", {}, "https://evil.example/installer.exe"
     ) is None
 
 
