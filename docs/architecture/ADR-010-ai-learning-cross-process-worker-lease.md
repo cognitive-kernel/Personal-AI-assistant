@@ -15,7 +15,7 @@ The AI-learning queue stores run state in SQLite, but its previous concurrency g
 - Require queue dispatch, startup recovery, orphan recovery, manual resume, and outline starts to hold the process-wide lease before claiming or requeueing work.
 - Preserve one browser worker per AI-learning database/profile. Requests from another process remain in the durable queue rather than launching a second Chrome session.
 - On heartbeat loss, pause, cancellation, or topic pause, signal the worker cooperatively. Before persisting captured output, check the current lease generation; a stale worker must discard its result.
-- Refuse destructive learning-data reset while any unexpired worker lease exists. Global pause requeues active work in durable storage so another process cannot mistake the transition for a successful completion.
+- Refuse destructive learning-data reset while any worker owner remains recorded, including an expired lease not yet reclaimed/released; expiry alone does not prove the old browser thread has stopped. Global pause requeues active work in durable storage so another process cannot mistake the transition for a successful completion.
 - Keep the lease scoped to a single host using one local SQLite database and one dedicated browser profile. This is not a multi-host distributed queue.
 
 ## Consequences and limitations
