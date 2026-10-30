@@ -698,8 +698,15 @@ def _select_learning_generation_model(
         minimum_quality_score=float(minimum_quality),
         budget_microusd=budget_microusd,
     )
+    selected_details = selection.get("selection")
+    if not isinstance(selected_details, dict):
+        selected_details = {}
     selection_record = {
         **selection,
+        "estimated_cost_microusd": selected_details.get("estimated_cost_microusd"),
+        "estimated_energy_wh": selected_details.get("estimated_energy_wh"),
+        "selected_quality_score": selected_details.get("quality_score"),
+        "selected_provider": selected_details.get("provider"),
         "estimated_prompt_tokens": estimated_prompt_tokens,
         "estimated_completion_tokens": estimated_completion_tokens,
         "estimate_method": "conservative_character_heuristic_for_initial_plus_one_repair",
