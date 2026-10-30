@@ -1219,3 +1219,21 @@ def test_worker_identity_and_locks_reset_after_prefork_child_creation(isolated_s
     assert browser_automation._WORKER_LEASE_EPOCH is None
     assert browser_automation._SHUTTING_DOWN is False
     assert browser_automation._LOCK is not original_lock
+
+
+def test_dispatch_restores_queued_state_when_thread_constructor_fails(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی خطای ساخت thread")
+    run = service.create_run(course["id"], run_type="outline", request_key="thread-constructor-failure")
+
+    class BrokenThread:
+        def __init__(self, **kwargs):
+            raise RuntimeError("thread construction failed")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", BrokenThread)
+    with pytest.raises(RuntimeError, match="thread construction failed"):
+        browser_automation._dispatch_next_persisted_run()
+
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert service.get_learning_control()["worker_active"] is False
