@@ -5,7 +5,7 @@ import threading
 import pytest
 
 from app.ai_learning import browser_automation, service
-from app.ai_learning.db import initialize_store
+from app.ai_learning.db import connection, initialize_store
 
 
 @pytest.fixture
@@ -17,6 +17,7 @@ def isolated_store(tmp_path, monkeypatch):
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
     monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
     monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", None)
     return tmp_path
 
 
@@ -885,3 +886,82 @@ def test_manual_resume_does_not_bypass_global_provider_cooldown(isolated_store):
     assert result["next_retry_at"] is not None
     assert service.get_learning_control()["paused"] is False
     assert service.get_run(run["id"])["status"] == "queued"
+
+
+def test_worker_lease_excludes_other_processes_and_fences_expired_owner(isolated_store):
+    first_epoch = service.claim_worker_lease("process-a", lease_seconds=90)
+    assert first_epoch == 1
+    assert service.owns_worker_lease("process-a", first_epoch)
+    assert service.claim_worker_lease("process-b", lease_seconds=90) is None
+
+    assert service.renew_worker_lease("process-a", first_epoch, lease_seconds=90)
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+
+    second_epoch = service.claim_worker_lease("process-b", lease_seconds=90)
+    assert second_epoch == first_epoch + 1
+    assert service.owns_worker_lease("process-b", second_epoch)
+    assert not service.renew_worker_lease("process-a", first_epoch, lease_seconds=90)
+    assert not service.release_worker_lease("process-a", first_epoch)
+    assert service.owns_worker_lease("process-b", second_epoch)
+    assert service.release_worker_lease("process-b", second_epoch)
+
+
+def test_startup_recovery_does_not_requeue_run_owned_by_another_process(isolated_store, monkeypatch):
+    course = service.create_course(title="مالکیت بین‌پردازه‌ای")
+    run = service.create_run(course["id"], run_type="outline", request_key="other-process-owner")
+    service.start_run(run["id"])
+    other_epoch = service.claim_worker_lease("other-process", lease_seconds=90)
+    assert other_epoch == 1
+
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "this-process")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            raise AssertionError("a process without the lease must not start Chrome")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.recover_pending_runs()
+
+    assert result["status"] == "worker_busy"
+    assert launched == []
+    assert service.get_run(run["id"])["status"] == "running"
+    assert service.owns_worker_lease("other-process", other_epoch)
+
+
+def test_dispatch_cannot_claim_a_run_while_another_process_holds_browser_lease(isolated_store, monkeypatch):
+    course = service.create_course(title="جلوگیری از اجرای هم‌زمان مرورگر")
+    run = service.create_run(course["id"], run_type="outline", request_key="lease-dispatch-race")
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "process-a")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            launched.append("started")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    first = browser_automation._dispatch_next_persisted_run()
+    assert first["status"] == "running"
+    assert first["run_id"] == run["id"]
+    assert len(launched) == 2
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "process-b")
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", None)
+    second = browser_automation._dispatch_next_persisted_run()
+
+    assert second["status"] == "worker_busy"
+    assert service.get_run(run["id"])["status"] == "running"
+    assert len(launched) == 2
