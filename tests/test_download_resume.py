@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -385,3 +386,52 @@ def test_github_asset_redirect_handler_allows_github_release_asset_host():
     )
     assert redirected is not None
     assert redirected.full_url.startswith("https://release-assets.githubusercontent.com/")
+
+
+def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeypatch):
+    installer_path = tmp_path / "ollama-install.sh"
+    release = {
+        "tag": "v0.40.13",
+        "assets": {
+            "install.sh": {
+                "url": "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh",
+                "sha256": "a" * 64,
+                "size": 15902,
+            }
+        },
+    }
+    calls = []
+    find_results = iter([None, "/usr/bin/ollama"])
+
+    monkeypatch.setattr(installer.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(installer, "_find_ollama", lambda: next(find_results))
+    monkeypatch.setattr(installer, "_latest_ollama_release_assets", lambda: release)
+    monkeypatch.setattr(
+        installer,
+        "_download_once",
+        lambda url, destination, **kwargs: (
+            calls.append((url, destination, kwargs)) or installer_path
+        ),
+    )
+
+    def fake_run(command, *, cwd=installer.ROOT, env=None):
+        calls.append((command, env))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(installer, "_run", fake_run)
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(
+            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 1GB\n", ""
+        ),
+    )
+
+    installer._ensure_ollama()
+
+    install_call = next(item for item in calls if isinstance(item[0], list))
+    assert install_call[0] == ["sh", str(installer_path)]
+    assert install_call[1]["OLLAMA_VERSION"] == "0.40.13"
+    download_call = next(item for item in calls if isinstance(item[0], str))
+    assert download_call[2]["expected_sha256"] == "a" * 64
+    assert download_call[2]["expected_size"] == 15902
