@@ -786,3 +786,35 @@ def test_cancelled_scheduled_retry_cannot_be_dispatched(isolated_store, monkeypa
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
     assert browser_automation._dispatch_next_persisted_run()["status"] == "idle"
+
+def test_manual_resume_resets_exhausted_retry_budget(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی دستی پس از تلاش‌های خودکار")
+    run = service.create_run(course["id"], run_type="outline", request_key="manual-reset-retry-budget")
+    service.start_run(run["id"])
+    for _ in range(service.MAX_SCHEDULED_RUN_RETRIES):
+        service.schedule_run_retry(
+            run["id"], "chatgpt_network_error", "temporary network failure",
+            delay_seconds=1,
+        )
+        service.start_run(run["id"])
+    service.mark_run_needs_user_action(
+        run["id"], "chatgpt_network_error", "automatic retries exhausted"
+    )
+
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    resumed = browser_automation.resume_learning()
+
+    saved = service.get_run(run["id"])
+    assert resumed["status"] == "resumed"
+    assert saved["status"] == "running"
+    assert saved["automatic_retry_count"] == 0
+    assert saved["next_retry_at"] is None
+    assert len(launched) == 1
