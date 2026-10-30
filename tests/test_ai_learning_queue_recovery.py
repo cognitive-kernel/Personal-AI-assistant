@@ -68,6 +68,41 @@ def test_startup_recovery_respects_durable_global_pause(isolated_store, monkeypa
     assert service.get_run(run["id"])["status"] == "queued"
 
 
+def test_paused_topic_run_is_skipped_until_topic_is_resumed(isolated_store, monkeypatch):
+    course = service.create_course(title="صف سرفصل مکث‌شده")
+    topic = service.add_topic(course["id"], "Paused topic")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="paused-topic-queued-run",
+    )
+    service.set_topic_paused(topic["id"], True)
+
+    assert service.get_oldest_queued_run() is None
+    assert service.get_oldest_resumable_run() is None
+    with pytest.raises(ValueError, match="paused topic"):
+        service.start_run(run["id"])
+    assert service.get_run(run["id"])["status"] == "queued"
+
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    skipped = browser_automation._dispatch_next_persisted_run()
+    assert skipped["status"] == "idle"
+    assert launched == []
+
+    browser_automation.set_topic_paused(topic["id"], False)
+    assert len(launched) == 1
+    assert launched[0][0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
+
+
 def test_queue_dispatch_does_not_start_second_worker_when_one_is_active(isolated_store, monkeypatch):
     course = service.create_course(title="جلوگیری از اجرای هم‌زمان")
     run = service.create_run(course["id"], run_type="outline", request_key="already-active")

@@ -1405,6 +1405,12 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         missing = [item for item in requested_ids if item not in course_topics]
         if missing:
             raise ValueError("یک یا چند سرفصل انتخاب‌شده در این دوره وجود ندارد؛ فهرست را بازخوانی کنید.")
+        paused_ids = [
+            item for item in requested_ids
+            if course_topics[item].get("processing_status") == "paused"
+        ]
+        if paused_ids:
+            raise ValueError("ابتدا مکث سرفصل‌های انتخاب‌شده را بردارید.")
         unapproved = [
             item for item in requested_ids
             if course_topics[item].get("approval_status") != "approved"
@@ -1507,6 +1513,28 @@ def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
                     _log_event("topic_run_paused", topic_id=topic_id, run_id=active_run_id)
             except Exception as exc:
                 _log_event("topic_pause_cancel_failed", topic_id=topic_id, error=str(exc)[:300])
+    else:
+        with _LOCK:
+            worker_active = _ACTIVE
+        if not worker_active:
+            # A paused queued run remains durable but is skipped by the dispatcher.
+            # Unpausing makes it eligible again, so wake the FIFO dispatcher now.
+            try:
+                dispatch = _dispatch_next_persisted_run()
+                _log_event(
+                    "topic_unpaused_queue_dispatch",
+                    topic_id=topic_id,
+                    dispatch_status=dispatch.get("status"),
+                    run_id=dispatch.get("run_id"),
+                )
+            except Exception as exc:
+                _log_event(
+                    "topic_unpaused_dispatch_failed",
+                    topic_id=topic_id,
+                    exception_type=type(exc).__name__,
+                    message=str(exc)[:300],
+                )
+                raise
     return result
 
 
