@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import db, learning, ollama
+from app import db, learning, ollama, learning_durable_budget
 
 
 @pytest.fixture
@@ -243,6 +243,7 @@ def test_learning_generation_fails_closed_when_no_model_meets_explicit_budget(
     finished = learning.get_job(job["id"])
     assert finished["status"] == "failed"
     assert calls == []
+    assert learning_durable_budget.get_job_budget(job["id"])["calls_used"] == 0
 
 
 def test_learning_generation_does_not_bypass_quality_threshold_when_model_discovery_fails(
@@ -275,6 +276,7 @@ def test_learning_generation_does_not_bypass_quality_threshold_when_model_discov
 
     assert learning.get_job(job["id"])["status"] == "failed"
     assert calls == []
+    assert learning_durable_budget.get_job_budget(job["id"])["calls_used"] == 0
 
 
 def test_learning_generation_preserves_configured_model_when_cost_profiles_are_absent(
