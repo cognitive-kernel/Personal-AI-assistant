@@ -1095,3 +1095,19 @@ def test_run_projection_includes_topic_pause_state_for_remote_worker(isolated_st
 
     assert projected["topics"][0]["topic_id"] == topic["id"]
     assert projected["topics"][0]["processing_status"] == "paused"
+
+
+def test_learning_control_exposes_remote_worker_and_expired_recovery_state(isolated_store):
+    epoch = service.claim_worker_lease("visible-process", lease_seconds=90)
+    assert epoch == 1
+    control = service.get_learning_control()
+    assert control["worker_active"] is True
+    assert control["worker_recovery_pending"] is False
+
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+    control = service.get_learning_control()
+    assert control["worker_active"] is False
+    assert control["worker_recovery_pending"] is True
