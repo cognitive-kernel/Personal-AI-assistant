@@ -1591,7 +1591,9 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
         in_flight = service.get_oldest_resumable_run(course_id)
         if in_flight is not None:
             if in_flight.get("status") == "needs_user_action":
-                service.requeue_run_for_resume(int(in_flight["id"]), "manual_resume_recovery")
+                service.requeue_run_for_resume(
+                    int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True
+                )
             run = service.start_run(int(in_flight["id"]))
             run = service.get_run(int(in_flight["id"]))
             run_id = int(run["id"])
