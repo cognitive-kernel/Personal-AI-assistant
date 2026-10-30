@@ -184,6 +184,22 @@ def test_kaggle_quota_consent_is_opt_in_revocable_and_audited(tmp_path, monkeypa
         assert calls[0]["enabled"] is True and calls[0]["user_consent"] is True
         assert calls[0]["executable_path"] == str(cli.resolve())
 
+        # Changing the consented CLI can switch the account identity. Never
+        # present a previous account's quota under the replacement path.
+        replacement_cli = tmp_path / "kaggle-other"
+        replacement_cli.write_text("second executable placeholder", encoding="utf-8")
+        changed = client.patch(
+            "/api/cloud-resources/kaggle-quota/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(replacement_cli.resolve()),
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json()["consent"]["executable_path"] == str(replacement_cli.resolve())
+        assert changed.json()["snapshots"] == []
+
         revoked = client.patch(
             "/api/cloud-resources/kaggle-quota/consent",
             json={"enabled": False, "user_consent": False, "executable_path": ""},
@@ -306,6 +322,24 @@ def test_oci_limit_consent_refresh_and_revocation_are_audited(tmp_path, monkeypa
         assert calls[0]["enabled"] is True and calls[0]["user_consent"] is True
         assert calls[0]["config_file"] == str(config.resolve())
         assert "private_key" not in str(body).casefold()
+
+        # A different region/profile/config scope must invalidate the previous
+        # snapshot, even though consent remains enabled.
+        changed = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(cli.resolve()),
+                "config_file": str(config.resolve()),
+                "profile": "DEFAULT",
+                "region": "eu-frankfurt-1",
+                "compartment_id": "ocid1.compartment.oc1..aaaaaaaaexample",
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json()["consent"]["region"] == "eu-frankfurt-1"
+        assert changed.json()["snapshots"] == []
 
         revoked = client.patch(
             "/api/cloud-resources/oci-limits/consent",
