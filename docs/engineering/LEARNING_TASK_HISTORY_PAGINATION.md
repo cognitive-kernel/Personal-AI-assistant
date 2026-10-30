@@ -13,4 +13,4 @@ The learning-course history panel requested at most 100 task audit events and ig
 
 ## Verification and limits
 
-A regression guard checks cursor construction, continuation state, and chronological prepend behavior. Existing task API and browser task-history pagination coverage remains applicable to the server contract. Exact-head CI is required before merge. No local or human tests were run; no database schema, event persistence, or task state behavior changed.
+A regression guard checks cursor construction, continuation state, and chronological prepend behavior. A dedicated Playwright browser E2E now exercises the course-specific history panel across two mocked cursor pages, checking request cursor, retained chronological order, accumulated event count, and removal of the older-events action after the final page. Existing task API and browser task-history pagination coverage remains applicable to the server contract. Exact-head CI is required before merge. No local or human tests were run; no database schema, event persistence, or task state behavior changed.
