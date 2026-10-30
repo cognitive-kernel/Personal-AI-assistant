@@ -133,3 +133,15 @@ def test_dashboard_explains_global_transient_retry_cooldown():
     assert 'state.retry_pending' in script
     assert 'state.retry_after' in script
     assert "کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند" in script
+
+
+def test_dashboard_exposes_cross_process_worker_and_recovery_state():
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "ai_learning" / "static" / "app.js"
+    ).read_text(encoding="utf-8")
+    assert "state.worker_active" in script
+    assert "state.worker_recovery_pending" in script
+    assert "ممکن است در پردازه دیگری اجرا شود" in script
