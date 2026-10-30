@@ -24,6 +24,10 @@ MAX_SCHEDULED_RUN_RETRIES = 2
 class NotFoundError(KeyError):
     """Requested learning resource does not exist."""
 
+
+class WorkerLeaseLostError(RuntimeError):
+    """Raised when a worker attempts a write after losing its durable lease."""
+
 def _clean_text(value: str, field: str, maximum: int) -> str:
     if not isinstance(value, str):
         raise ValueError(f"{field} must be text.")
@@ -431,16 +435,121 @@ def _refresh_retry_gate(conn: sqlite3.Connection) -> None:
             row["next_retry_at"] if row is not None else None,
             str(row["error_message"] or "")[:300] if row is not None else "",
         ),
+
     )
+
+
+def claim_worker_lease(owner: str, *, lease_seconds: int = 90) -> int | None:
+    """Atomically acquire or renew the single browser-worker lease across processes."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 10 <= lease_seconds <= 3600:
+        raise ValueError("lease_seconds must be an integer between 10 and 3600.")
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT paused,worker_lease_owner,worker_lease_until,worker_lease_epoch
+               FROM ai_learning_control WHERE id=1"""
+        ).fetchone()
+        if row is None or bool(row["paused"]):
+            return None
+        active = bool(row["worker_lease_until"] and row["worker_lease_until"] > conn.execute(
+            "SELECT CURRENT_TIMESTAMP"
+        ).fetchone()[0])
+        current_owner = row["worker_lease_owner"]
+        if active and current_owner != owner:
+            return None
+        epoch = int(row["worker_lease_epoch"] or 0)
+        if not active:
+            epoch += 1
+        conn.execute(
+            """UPDATE ai_learning_control
+               SET worker_lease_owner=?,worker_lease_until=datetime(CURRENT_TIMESTAMP, ?),
+                   worker_lease_epoch=? WHERE id=1""",
+            (owner, f"+{lease_seconds} seconds", epoch),
+        )
+    return epoch
+
+
+def renew_worker_lease(owner: str, epoch: int, *, lease_seconds: int = 90) -> bool:
+    """Renew only an unexpired lease still owned by the same process generation."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        raise ValueError("epoch must be a positive integer.")
+    if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 10 <= lease_seconds <= 3600:
+        raise ValueError("lease_seconds must be an integer between 10 and 3600.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """UPDATE ai_learning_control
+               SET worker_lease_until=datetime(CURRENT_TIMESTAMP, ?)
+               WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
+                 AND worker_lease_until>CURRENT_TIMESTAMP""",
+            (f"+{lease_seconds} seconds", owner, epoch),
+        )
+        return cursor.rowcount == 1
+
+
+def owns_worker_lease(owner: str, epoch: int) -> bool:
+    """Check current unexpired ownership; callers must still fence their writes."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        return False
+    with connection() as conn:
+        return conn.execute(
+            """SELECT 1 FROM ai_learning_control
+               WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
+                 AND worker_lease_until>CURRENT_TIMESTAMP AND paused=0""",
+            (owner, epoch),
+        ).fetchone() is not None
+
+
+def release_worker_lease(owner: str, epoch: int) -> bool:
+    """Release only the lease generation held by this process."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        return False
+    with connection() as conn:
+        cursor = conn.execute(
+            """UPDATE ai_learning_control SET worker_lease_owner=NULL,worker_lease_until=NULL
+               WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?""",
+            (owner, epoch),
+        )
+        return cursor.rowcount == 1
+
+
+def _assert_worker_lease_in_transaction(
+    conn: sqlite3.Connection,
+    owner: str | None,
+    epoch: int | None,
+) -> None:
+    """Fence a worker mutation inside the same write transaction as the lease check."""
+    if owner is None and epoch is None:
+        return
+    if owner is None or isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        raise ValueError("worker_lease_owner and a positive worker_lease_epoch must be supplied together.")
+    owner = _clean_text(owner, "worker owner", 160)
+    owned = conn.execute(
+        """SELECT 1 FROM ai_learning_control
+           WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
+             AND worker_lease_until>CURRENT_TIMESTAMP AND paused=0""",
+        (owner, epoch),
+    ).fetchone()
+    if owned is None:
+        raise WorkerLeaseLostError("AI-learning browser worker lease was lost before the write committed.")
 
 
 def get_learning_control() -> dict[str, Any]:
     """Return durable pause state and provider cooldown for ChatGPT learning workflows."""
     with connection() as conn:
         row = conn.execute(
-            """SELECT paused,updated_at,reason,retry_after,retry_reason,
+            """SELECT paused,updated_at,reason,retry_after,retry_reason,worker_lease_until,
                       CASE WHEN retry_after IS NOT NULL AND retry_after>CURRENT_TIMESTAMP
-                           THEN 1 ELSE 0 END AS retry_pending
+                           THEN 1 ELSE 0 END AS retry_pending,
+                      CASE WHEN worker_lease_owner IS NOT NULL
+                                  AND worker_lease_until>CURRENT_TIMESTAMP
+                           THEN 1 ELSE 0 END AS worker_active,
+                      CASE WHEN worker_lease_owner IS NOT NULL
+                                  AND (worker_lease_until IS NULL OR worker_lease_until<=CURRENT_TIMESTAMP)
+                           THEN 1 ELSE 0 END AS worker_recovery_pending
                FROM ai_learning_control WHERE id=1"""
         ).fetchone()
     return {
@@ -450,6 +559,9 @@ def get_learning_control() -> dict[str, Any]:
         "retry_after": row["retry_after"],
         "retry_reason": row["retry_reason"],
         "retry_pending": bool(row["retry_pending"]),
+        "worker_active": bool(row["worker_active"]),
+        "worker_lease_until": row["worker_lease_until"],
+        "worker_recovery_pending": bool(row["worker_recovery_pending"]),
     }
 
 
@@ -470,7 +582,8 @@ def get_run(run_id: int) -> dict[str, Any]:
         if run is None:
             raise NotFoundError("Run not found.")
         topics = conn.execute(
-            """SELECT rt.topic_id,rt.status AS run_topic_status,t.title,t.approval_status
+            """SELECT rt.topic_id,rt.status AS run_topic_status,t.title,t.approval_status,
+                      t.processing_status
                FROM run_topics rt JOIN topics t ON t.id=rt.topic_id WHERE rt.run_id=? ORDER BY t.position""",
             (run_id,)).fetchall()
     result = dict(run)
@@ -478,11 +591,16 @@ def get_run(run_id: int) -> dict[str, Any]:
     return result
 
 
-def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]:
+def save_run_partial_response(
+    run_id: int, response_text: str, *,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
+) -> dict[str, Any]:
+
     """Durably checkpoint an in-progress lesson after each captured response part."""
     response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -494,13 +612,16 @@ def save_run_partial_response(run_id: int, response_text: str) -> dict[str, Any]
     return get_run(run_id)
 
 def mark_run_needs_user_action(
-    run_id: int, error_code: str, error_message: str, response_text: str | None = None
+    run_id: int, error_code: str, error_message: str, response_text: str | None = None,
+    *, worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
 ) -> dict[str, Any]:
+
     """Persist recoverable browser/provider failures and any partial response for later recovery."""
     error_code = _clean_text(error_code, "error_code", 80)
     error_message = _clean_text(error_message, "error_message", 1000)
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -532,6 +653,8 @@ def schedule_run_retry(
     delay_seconds: int,
     response_text: str | None = None,
     max_attempts: int = MAX_SCHEDULED_RUN_RETRIES,
+    worker_lease_owner: str | None = None,
+    worker_lease_epoch: int | None = None,
 ) -> dict[str, Any] | None:
     """Persist one bounded transient retry while preserving any partial lesson response."""
     error_code = _clean_text(error_code, "error_code", 80)
@@ -544,6 +667,7 @@ def schedule_run_retry(
         response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute(
             "SELECT status,automatic_retry_count FROM runs WHERE id=?", (run_id,)
         ).fetchone()
@@ -583,11 +707,13 @@ def schedule_run_retry(
 
 
 def requeue_run_for_resume(
-    run_id: int, reason: str = "automatic_recovery", *, reset_retry_budget: bool = False
+    run_id: int, reason: str = "automatic_recovery", *, reset_retry_budget: bool = False,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
 ) -> dict[str, Any]:
     """Return an interrupted run to the durable queue without deleting partial work."""
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT status FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -619,9 +745,13 @@ def requeue_run_for_resume(
     return result
 
 
-def start_run(run_id: int, *, reset_retry_budget: bool = False) -> dict[str, Any]:
+def start_run(
+    run_id: int, *, reset_retry_budget: bool = False,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
+) -> dict[str, Any]:
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -1149,11 +1279,15 @@ def _outline_completion_error(response_text: str, parsed_titles: list[str]) -> s
     return None
 
 
-def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
+def complete_run(
+    run_id: int, response_text: str, *,
+    worker_lease_owner: str | None = None, worker_lease_epoch: int | None = None,
+) -> dict[str, Any]:
     """Save a user-captured provider response; ambiguous batch mapping never auto-publishes."""
     response_text = _clean_required_text(response_text, "response_text")
     with connection() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        _assert_worker_lease_in_transaction(conn, worker_lease_owner, worker_lease_epoch)
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
@@ -1711,6 +1845,12 @@ def reset_learning_data() -> dict[str, Any]:
                 "ابتدا همهٔ اجراهای فعال را با «توقف همه اجراهای فعال» متوقف کنید؛ "
                 "اجرای فعال باقی مانده: " + ids
             )
+        lease = conn.execute(
+            """SELECT worker_lease_owner FROM ai_learning_control
+               WHERE id=1 AND worker_lease_owner IS NOT NULL"""
+        ).fetchone()
+        if lease is not None:
+            raise ValueError("پاک‌سازی تا تأیید توقف و آزادشدن مالکیت worker مرورگر مجاز نیست.")
         counts = {
             "runs": int(conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]),
             "topics": int(conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0]),
@@ -1721,7 +1861,10 @@ def reset_learning_data() -> dict[str, Any]:
         conn.execute("DELETE FROM topics")
         conn.execute("DELETE FROM query_traces")
         conn.execute(
-            "UPDATE ai_learning_control SET paused=0,reason='',retry_after=NULL,retry_reason='',updated_at=CURRENT_TIMESTAMP WHERE id=1"
+            """UPDATE ai_learning_control
+               SET paused=0,reason='',retry_after=NULL,retry_reason='',
+                   worker_lease_owner=NULL,worker_lease_until=NULL,updated_at=CURRENT_TIMESTAMP
+               WHERE id=1"""
         )
         return {
             "reset": True,

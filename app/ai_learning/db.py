@@ -150,6 +150,11 @@ MIGRATIONS: tuple[tuple[int, str, tuple[str, ...]], ...] = (
         "ALTER TABLE ai_learning_control ADD COLUMN retry_reason TEXT NOT NULL DEFAULT ''",
         "CREATE INDEX idx_ai_runs_retry_due ON runs(status,next_retry_at,created_at,id)",
     )),
+    (7, "ai-learning-cross-process-worker-lease", (
+        "ALTER TABLE ai_learning_control ADD COLUMN worker_lease_owner TEXT",
+        "ALTER TABLE ai_learning_control ADD COLUMN worker_lease_until TEXT",
+        "ALTER TABLE ai_learning_control ADD COLUMN worker_lease_epoch INTEGER NOT NULL DEFAULT 0 CHECK(worker_lease_epoch >= 0)",
+    )),
 )
 
 class StoreSchemaError(RuntimeError):

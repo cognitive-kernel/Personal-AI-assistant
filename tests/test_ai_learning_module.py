@@ -698,7 +698,8 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "_capture_lesson_until_complete" in automation
     assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
     assert "lesson_continuation_limit" in automation
-    assert "service.save_run_partial_response(run_id, text)" in automation
+    assert "service.save_run_partial_response(" in automation
+    assert "_worker_lease_kwargs" in automation
     assert "lesson_checkpoint_failed" in automation
     assert '"chatgpt_page_closed"' in automation
     assert "Keep the wait inside the guarded block" in automation
@@ -1419,7 +1420,8 @@ def test_response_capture_waits_longer_and_supports_continue_generation():
     assert 'button:has-text("Continue generating")' in source
     assert "_STABLE_SECONDS = 20.0" in source
     assert "partial_response=last_text or None" in source
-    assert "service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)" in source
+    assert "service.mark_run_needs_user_action(" in source
+    assert "**_worker_lease_kwargs" in source
 
 
 def test_needs_user_action_preserves_partial_provider_response(isolated_store):
@@ -1730,4 +1732,5 @@ def test_ai_learning_retry_migration_adds_bounded_schedule_columns(isolated_stor
         version = conn.execute("SELECT MAX(version) FROM ai_learning_migrations").fetchone()[0]
     assert {"automatic_retry_count", "next_retry_at"} <= columns
     assert {"retry_after", "retry_reason"} <= control_columns
-    assert version == 6
+    assert {"worker_lease_owner", "worker_lease_until", "worker_lease_epoch"} <= control_columns
+    assert version == 7

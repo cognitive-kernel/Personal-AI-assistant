@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import multiprocessing
 import threading
 
 import pytest
 
 from app.ai_learning import browser_automation, service
-from app.ai_learning.db import initialize_store
+from app.ai_learning.db import connection, initialize_store
+
+
+def _claim_worker_lease_in_child(barrier, results):
+    from app.ai_learning import browser_automation as child_browser_automation
+    from app.ai_learning import service as child_service
+
+    owner = child_browser_automation._WORKER_OWNER
+    barrier.wait(timeout=10)
+    epoch = child_service.claim_worker_lease(owner, lease_seconds=90)
+    results.put((owner, epoch))
+
 
 
 @pytest.fixture
@@ -17,6 +29,7 @@ def isolated_store(tmp_path, monkeypatch):
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
     monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
     monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", None)
     return tmp_path
 
 
@@ -237,7 +250,9 @@ def test_dispatch_does_not_restart_runs_needing_user_action(isolated_store, monk
     monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
     result = browser_automation._dispatch_next_persisted_run()
 
-    assert result == {"status": "idle", "active": False}
+    assert result["status"] == "idle"
+    assert result["active"] is False
+    assert result["recovered_run_ids"] == []
     assert launched == []
     assert service.get_run(run["id"])["status"] == "needs_user_action"
 
@@ -582,6 +597,7 @@ def test_manual_resume_persists_all_pending_topics_outside_dashboard_course_limi
 
 
 def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
+    real_thread = threading.Thread
     course = service.create_course(title="بازیابی خطای ایجاد worker")
     run = service.create_run(course["id"], run_type="outline", request_key="thread-start-fails")
     attempts = []
@@ -596,10 +612,24 @@ def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, m
 
     monkeypatch.setattr(browser_automation.threading, "Thread", FailingThread)
 
-    with pytest.raises(browser_automation.BrowserAutomationError) as error:
-        browser_automation._dispatch_next_persisted_run()
+    outcome = {}
 
-    assert error.value.code == "worker_thread_start_failed"
+    def dispatch_with_start_failure():
+        try:
+            browser_automation._dispatch_next_persisted_run()
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    dispatcher_thread = real_thread(target=dispatch_with_start_failure, daemon=True)
+    dispatcher_thread.start()
+    dispatcher_thread.join(timeout=5)
+    if dispatcher_thread.is_alive():
+        # Keep a lock-deadlock regression from poisoning later tests in this process.
+        browser_automation._LOCK = threading.Lock()
+        pytest.fail("dispatcher deadlocked while recovering from worker thread startup failure")
+    error = outcome.get("error")
+    assert isinstance(error, browser_automation.BrowserAutomationError)
+    assert error.code == "worker_thread_start_failed"
     assert len(attempts) == 1
     assert service.get_run(run["id"])["status"] == "queued"
     assert browser_automation._ACTIVE is False
@@ -623,6 +653,45 @@ def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, m
     assert recovered["run_id"] == run["id"]
     assert len(launched) == 1
     assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_resume_requeues_run_when_worker_thread_cannot_start_without_deadlocking(isolated_store, monkeypatch):
+    real_thread = threading.Thread
+    course = service.create_course(title="بازیابی خطای راه‌اندازی در ادامه")
+    run = service.create_run(course["id"], run_type="outline", request_key="resume-thread-start-fails")
+    service.start_run(run["id"])
+    service.mark_run_needs_user_action(run["id"], "manual_gate", "operator action required")
+
+    class FailingThread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            raise RuntimeError("simulated resume thread start failure")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FailingThread)
+    outcome = {}
+
+    def resume_with_start_failure():
+        try:
+            browser_automation.resume_learning()
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    resume_thread = real_thread(target=resume_with_start_failure, daemon=True)
+    resume_thread.start()
+    resume_thread.join(timeout=5)
+    if resume_thread.is_alive():
+        browser_automation._LOCK = threading.Lock()
+        pytest.fail("resume_learning deadlocked while recovering from worker thread startup failure")
+
+    error = outcome.get("error")
+    assert isinstance(error, browser_automation.BrowserAutomationError)
+    assert error.code == "worker_thread_start_failed"
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert service.get_learning_control()["worker_active"] is False
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
 
 def test_transient_browser_failure_is_scheduled_with_partial_response_preserved(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی خودکار خطای موقت")
@@ -885,3 +954,398 @@ def test_manual_resume_does_not_bypass_global_provider_cooldown(isolated_store):
     assert result["next_retry_at"] is not None
     assert service.get_learning_control()["paused"] is False
     assert service.get_run(run["id"])["status"] == "queued"
+
+
+def test_worker_lease_excludes_other_processes_and_fences_expired_owner(isolated_store):
+    first_epoch = service.claim_worker_lease("process-a", lease_seconds=90)
+    assert first_epoch == 1
+    assert service.owns_worker_lease("process-a", first_epoch)
+    assert service.claim_worker_lease("process-b", lease_seconds=90) is None
+
+    assert service.renew_worker_lease("process-a", first_epoch, lease_seconds=90)
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+
+    second_epoch = service.claim_worker_lease("process-b", lease_seconds=90)
+    assert second_epoch == first_epoch + 1
+    assert service.owns_worker_lease("process-b", second_epoch)
+    assert not service.renew_worker_lease("process-a", first_epoch, lease_seconds=90)
+    assert not service.release_worker_lease("process-a", first_epoch)
+    assert service.owns_worker_lease("process-b", second_epoch)
+    assert service.release_worker_lease("process-b", second_epoch)
+
+
+def test_startup_recovery_does_not_requeue_run_owned_by_another_process(isolated_store, monkeypatch):
+    course = service.create_course(title="مالکیت بین‌پردازه‌ای")
+    run = service.create_run(course["id"], run_type="outline", request_key="other-process-owner")
+    service.start_run(run["id"])
+    other_epoch = service.claim_worker_lease("other-process", lease_seconds=90)
+    assert other_epoch == 1
+
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "this-process")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            raise AssertionError("a process without the lease must not start Chrome")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation.recover_pending_runs()
+
+    assert result["status"] == "worker_busy"
+    assert launched == []
+    assert service.get_run(run["id"])["status"] == "running"
+    assert service.owns_worker_lease("other-process", other_epoch)
+
+
+def test_dispatch_cannot_claim_a_run_while_another_process_holds_browser_lease(isolated_store, monkeypatch):
+    course = service.create_course(title="جلوگیری از اجرای هم‌زمان مرورگر")
+    run = service.create_run(course["id"], run_type="outline", request_key="lease-dispatch-race")
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "process-a")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            launched.append(kwargs)
+
+        def start(self):
+            launched.append("started")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    first = browser_automation._dispatch_next_persisted_run()
+    assert first["status"] == "running"
+    assert first["run_id"] == run["id"]
+    assert len(launched) == 2
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "process-b")
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", None)
+    second = browser_automation._dispatch_next_persisted_run()
+
+    assert second["status"] == "worker_busy"
+    assert service.get_run(run["id"])["status"] == "running"
+    assert len(launched) == 2
+
+
+def test_expired_worker_lease_allows_watchdog_to_recover_stale_run(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی پس از انقضای lease")
+    run = service.create_run(course["id"], run_type="outline", request_key="expired-worker-lease")
+    service.start_run(run["id"])
+    old_epoch = service.claim_worker_lease("dead-process", lease_seconds=90)
+    assert old_epoch == 1
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", "replacement-process")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            launched.append(self.kwargs)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    recovered = browser_automation.recover_orphaned_runs()
+
+    assert recovered["status"] == "running"
+    assert recovered["run_id"] == run["id"]
+    assert len(launched) == 1
+    assert service.get_run(run["id"])["status"] == "running"
+    assert service.owns_worker_lease("replacement-process", old_epoch + 1)
+
+
+def test_reset_refuses_to_clear_store_while_remote_worker_lease_is_active(isolated_store):
+    service.create_course(title="عدم پاک‌سازی حین worker راه‌دور")
+    epoch = service.claim_worker_lease("remote-process", lease_seconds=90)
+    assert epoch == 1
+
+    with pytest.raises(ValueError, match="مالکیت worker"):
+        service.reset_learning_data()
+
+    assert service.owns_worker_lease("remote-process", epoch)
+
+
+def test_stale_worker_cannot_commit_provider_result_after_lease_reclaim(isolated_store):
+    course = service.create_course(title="جلوگیری از ثبت پاسخ worker منقضی")
+    run = service.create_run(course["id"], run_type="outline", request_key="stale-worker-write")
+    service.start_run(run["id"])
+    old_epoch = service.claim_worker_lease("old-process", lease_seconds=90)
+    assert old_epoch == 1
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+    new_epoch = service.claim_worker_lease("new-process", lease_seconds=90)
+    assert new_epoch == old_epoch + 1
+
+    with pytest.raises(service.WorkerLeaseLostError):
+        service.complete_run(
+            run["id"], "1. مبحث: پاسخ قدیمی",
+            worker_lease_owner="old-process", worker_lease_epoch=old_epoch,
+        )
+
+    saved = service.get_run(run["id"])
+    assert saved["status"] == "running"
+    assert saved["response_text"] is None
+    service.requeue_run_for_resume(
+        run["id"], "reclaimed_by_new_owner",
+        worker_lease_owner="new-process", worker_lease_epoch=new_epoch,
+    )
+    assert service.get_run(run["id"])["status"] == "queued"
+
+
+def test_worker_lease_is_renewed_until_paused_worker_releases_it(isolated_store):
+    epoch = service.claim_worker_lease("paused-process", lease_seconds=90)
+    assert epoch == 1
+    service.set_learning_paused(True, "test global pause")
+
+    assert service.renew_worker_lease("paused-process", epoch, lease_seconds=90)
+    service.set_learning_paused(False)
+    assert service.claim_worker_lease("replacement-process", lease_seconds=90) is None
+
+    assert service.release_worker_lease("paused-process", epoch)
+    replacement_epoch = service.claim_worker_lease("replacement-process", lease_seconds=90)
+    assert replacement_epoch == epoch + 1
+
+
+def test_manual_resume_does_not_requeue_run_owned_by_another_process(isolated_store, monkeypatch):
+    course = service.create_course(title="ادامهٔ دستی با مالک دیگر")
+    run = service.create_run(course["id"], run_type="outline", request_key="resume-other-owner")
+    service.start_run(run["id"])
+    epoch = service.claim_worker_lease("other-process", lease_seconds=90)
+    assert epoch == 1
+
+    result = browser_automation.resume_learning()
+
+    assert result["status"] == "worker_busy"
+    assert service.get_run(run["id"])["status"] == "running"
+    assert service.owns_worker_lease("other-process", epoch)
+
+
+def test_reset_remains_blocked_for_expired_unreleased_worker_owner(isolated_store):
+    epoch = service.claim_worker_lease("possibly-live-process", lease_seconds=90)
+    assert epoch == 1
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+
+    with pytest.raises(ValueError, match="مالکیت worker"):
+        service.reset_learning_data()
+
+    assert service.release_worker_lease("possibly-live-process", epoch)
+    assert service.reset_learning_data()["reset"] is True
+
+
+def test_run_projection_includes_topic_pause_state_for_remote_worker(isolated_store):
+    course = service.create_course(title="وضعیت مکث سرفصل برای heartbeat")
+    topic = service.add_topic(course["id"], "سرفصل مکث‌شده")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="topic-pause-heartbeat-state",
+    )
+    service.set_topic_paused(topic["id"], True)
+
+    projected = service.get_run(run["id"])
+
+    assert projected["topics"][0]["topic_id"] == topic["id"]
+    assert projected["topics"][0]["processing_status"] == "paused"
+
+
+def test_learning_control_exposes_remote_worker_and_expired_recovery_state(isolated_store):
+    epoch = service.claim_worker_lease("visible-process", lease_seconds=90)
+    assert epoch == 1
+    control = service.get_learning_control()
+    assert control["worker_active"] is True
+    assert control["worker_recovery_pending"] is False
+
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+    control = service.get_learning_control()
+    assert control["worker_active"] is False
+    assert control["worker_recovery_pending"] is True
+
+
+def test_concurrent_lease_claims_have_exactly_one_winner(isolated_store):
+    barrier = threading.Barrier(2)
+    results = {}
+
+    def claim(owner: str) -> None:
+        barrier.wait(timeout=5)
+        results[owner] = service.claim_worker_lease(owner, lease_seconds=90)
+
+    threads = [
+        threading.Thread(target=claim, args=("concurrent-a",), daemon=True),
+        threading.Thread(target=claim, args=("concurrent-b",), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+
+    assert all(not thread.is_alive() for thread in threads)
+    winners = [(owner, epoch) for owner, epoch in results.items() if epoch is not None]
+    assert len(winners) == 1
+    assert service.owns_worker_lease(*winners[0])
+
+
+
+
+def test_worker_lease_excludes_a_real_second_process(isolated_store):
+    # Spawn avoids inheriting pytest or application thread locks into the child.
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(2)
+    results = context.Queue()
+    parent_owner = browser_automation._WORKER_OWNER
+    process = context.Process(
+        target=_claim_worker_lease_in_child,
+        args=(barrier, results),
+        daemon=True,
+    )
+    parent_epoch = None
+    child_owner = None
+    child_epoch = None
+    try:
+        process.start()
+        barrier.wait(timeout=10)
+        parent_epoch = service.claim_worker_lease(parent_owner, lease_seconds=90)
+        child_owner, child_epoch = results.get(timeout=10)
+        process.join(timeout=10)
+    finally:
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=5)
+        results.close()
+        results.join_thread()
+
+    assert process.exitcode == 0
+    assert child_owner != parent_owner
+    winners = [
+        (owner, epoch)
+        for owner, epoch in ((parent_owner, parent_epoch), (child_owner, child_epoch))
+        if epoch is not None
+    ]
+    assert len(winners) == 1
+    assert service.owns_worker_lease(*winners[0])
+    assert service.release_worker_lease(*winners[0])
+
+
+def test_dispatch_requeues_orphaned_running_run_before_newer_queued_work(isolated_store, monkeypatch):
+    course = service.create_course(title="ترتیب FIFO پس از بازیابی")
+    orphaned = service.create_run(course["id"], run_type="outline", request_key="old-orphaned-run")
+    service.start_run(orphaned["id"])
+    newer = service.create_run(course["id"], run_type="outline", request_key="newer-queued-run")
+    launched = []
+
+    class FakeThread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            launched.append(self.kwargs)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    result = browser_automation._dispatch_next_persisted_run()
+
+    assert result["status"] == "running"
+    assert result["run_id"] == orphaned["id"]
+    assert service.get_run(orphaned["id"])["status"] == "running"
+    assert service.get_run(newer["id"])["status"] == "queued"
+    assert len(launched) == 1
+
+
+def test_remote_topic_pause_signals_worker_heartbeat_without_releasing_lease(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف سرفصل از پردازه دیگر")
+    topic = service.add_topic(course["id"], "سرفصل فعال")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="remote-topic-pause-heartbeat",
+    )
+    service.start_run(run["id"])
+    owner = "heartbeat-process"
+    epoch = service.claim_worker_lease(owner, lease_seconds=90)
+    assert epoch == 1
+    service.set_topic_paused(topic["id"], True)
+
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", owner)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", epoch)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", run["id"])
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_HEARTBEAT_SECONDS", 0.01)
+    stop_event = browser_automation.threading.Event()
+    cancel_event = browser_automation.threading.Event()
+    heartbeat = browser_automation.threading.Thread(
+        target=browser_automation._maintain_worker_lease,
+        args=(cancel_event, stop_event, epoch),
+        daemon=True,
+    )
+    heartbeat.start()
+
+    try:
+        assert cancel_event.wait(timeout=2)
+        assert service.owns_worker_lease(owner, epoch)
+    finally:
+        stop_event.set()
+        heartbeat.join(timeout=2)
+    assert not heartbeat.is_alive()
+    assert service.release_worker_lease(owner, epoch)
+
+
+def test_worker_identity_and_locks_reset_after_prefork_child_creation(isolated_store, monkeypatch):
+    original_pid = browser_automation._WORKER_OWNER_PID
+    original_owner = browser_automation._WORKER_OWNER
+    original_lock = browser_automation._LOCK
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER_PID", original_pid)
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", original_owner)
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", 123)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", 456)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {123: browser_automation.threading.Event()})
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", 7)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", True)
+    monkeypatch.setattr(browser_automation.os, "getpid", lambda: original_pid + 1)
+
+    browser_automation._ensure_process_identity()
+
+    assert browser_automation._WORKER_OWNER_PID == original_pid + 1
+    assert browser_automation._WORKER_OWNER != original_owner
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
+    assert browser_automation._ACTIVE_COURSE_ID is None
+    assert browser_automation._CANCEL_EVENTS == {}
+    assert browser_automation._WORKER_LEASE_EPOCH is None
+    assert browser_automation._SHUTTING_DOWN is False
+    assert browser_automation._LOCK is not original_lock
+
+
+def test_dispatch_restores_queued_state_when_thread_constructor_fails(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی خطای ساخت thread")
+    run = service.create_run(course["id"], run_type="outline", request_key="thread-constructor-failure")
+
+    class BrokenThread:
+        def __init__(self, **kwargs):
+            raise RuntimeError("thread construction failed")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", BrokenThread)
+    with pytest.raises(RuntimeError, match="thread construction failed"):
+        browser_automation._dispatch_next_persisted_run()
+
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert service.get_learning_control()["worker_active"] is False
