@@ -153,3 +153,9 @@ Append dated entries with:
 - PR #574 merged as `968b10bc7d731f7a241fbc9174d2837d994ed514`. Independent post-merge CI completed successfully: tests, browser E2E, dependency audit, and Windows storage regressions passed.
 - This is a mocked browser/API test, not proof of Docker execution, target-host sandbox isolation, or manual acceptance. The test suite now contains 28 browser test functions.
 - Next: audit cloud planning dry-run and its stale-evidence/error presentation; preserve the no-execution authorization boundary.
+
+
+### 2026-10-30 — Architecture documentation parity follow-up
+- Reviewed the stale Day 1 documentation-only PR #572 against the current `main` implementation and later documentation changes. Its navigation acceptance correction is already present; its old branch is divergent and is not merged to avoid reintroducing stale copies of shared files.
+- Reconciled the remaining cloud and sandbox architecture statements: the loopback cloud dry-run endpoint and consent-aware sandbox submission routes already exist. Documentation now distinguishes those local APIs from provider execution, Docker runtime acceptance, and independent security review.
+- No runtime code or test behavior changed in this documentation-only follow-up.
