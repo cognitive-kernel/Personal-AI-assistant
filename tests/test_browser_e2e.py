@@ -2856,3 +2856,112 @@ def test_browser_learning_course_task_history_loads_older_cursor_pages():
         assert "before_id=81" in event_requests[1]
         assert older_button.is_hidden()
         browser.close()
+
+def test_browser_sandbox_cancel_recovers_from_api_failure_and_settles_task():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {"cancel_attempts": 0, "cancelled": False, "polls": 0, "payloads": []}
+    task_id = 990772
+    browser_errors = []
+
+    def consent_route(route):
+        if route.request.method != "GET":
+            route.fulfill(status=405, body="method not allowed")
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "consent": {"enabled": True, "events": [], "policy_version": "sandbox-execution-v1"},
+                "runtime_configured": True,
+                "execution_enabled": True,
+            }),
+        )
+
+    def run_route(route):
+        if route.request.method != "POST":
+            route.fulfill(status=405, body="method not allowed")
+            return
+        state["payloads"].append(route.request.post_data_json)
+        route.fulfill(
+            status=202,
+            content_type="application/json",
+            body=json.dumps({"task": {"id": task_id, "status": "queued"}}),
+        )
+
+    def task_route(route):
+        if route.request.method != "GET":
+            route.fulfill(status=405, body="method not allowed")
+            return
+        state["polls"] += 1
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({
+                "id": task_id,
+                "status": "cancelled" if state["cancelled"] else "running",
+                "attempts": 1,
+                "result": None,
+                "error": "cancelled by user" if state["cancelled"] else None,
+                "checkpoint": None,
+            }),
+        )
+
+    def cancel_route(route):
+        if route.request.method != "POST":
+            route.fulfill(status=405, body="method not allowed")
+            return
+        state["cancel_attempts"] += 1
+        if state["cancel_attempts"] == 1:
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"detail": "temporary cancellation failure"}),
+            )
+            return
+        state["cancelled"] = True
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"id": task_id, "status": "cancelled"}),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/sandbox/consent", consent_route)
+        page.route("**/api/sandbox/run", run_route)
+        page.route(f"**/api/tasks/{task_id}", task_route)
+        page.route(f"**/api/tasks/{task_id}/cancel", cancel_route)
+        _goto_section(page, base_url, "sandbox-section")
+
+        page.locator("#sandbox-refresh").click()
+        run_button = page.locator("#sandbox-run")
+        page.wait_for_function("document.querySelector('#sandbox-run').disabled === false")
+        page.locator("#sandbox-source").fill("print('cancel-test')")
+        run_button.click()
+        page.wait_for_function("document.querySelector('#sandbox-cancel').disabled === false")
+
+        cancel_button = page.locator("#sandbox-cancel")
+        cancel_button.click()
+        page.get_by_text("لغو وظیفه ثبت نشد:", exact=False).wait_for(timeout=5000)
+        assert cancel_button.is_enabled(), "A failed cancellation request must leave retry available."
+
+        cancel_button.click()
+        page.get_by_text("درخواست لغو ارسال شد", exact=False).wait_for(timeout=5000)
+        page.get_by_text('"status": "cancelled"', exact=False).wait_for(timeout=5000)
+        page.wait_for_function("document.querySelector('#sandbox-cancel').disabled === true")
+
+        assert state["payloads"] == [{
+            "source_code": "print('cancel-test')",
+            "timeout_seconds": 10,
+            "max_output_bytes": 32768,
+        }]
+        assert state["cancel_attempts"] == 2
+        assert state["cancelled"] is True
+        assert state["polls"] >= 1
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
