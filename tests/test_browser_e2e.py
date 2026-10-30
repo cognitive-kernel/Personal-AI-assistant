@@ -2528,3 +2528,114 @@ def test_browser_knowledge_source_ingest_list_search_and_error_recovery():
         assert ingest_button.is_enabled(), "Ingest action must recover after an API failure."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_ai_learning_global_pause_resume_ui_recovers_after_api_failure():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {"paused": False, "resume_failures": 1, "pause_calls": 0, "resume_payloads": []}
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": [], "count": 0}),
+            )
+            return
+        if request.method == "GET" and path == "/api/ai-learning/control":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "paused": state["paused"],
+                    "reason": "browser test pause" if state["paused"] else "",
+                }),
+            )
+            return
+        if request.method == "POST" and path == "/api/ai-learning/pause":
+            state["pause_calls"] += 1
+            state["paused"] = True
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"paused": True, "reason": "browser test pause"}),
+            )
+            return
+        if request.method == "POST" and path == "/api/ai-learning/resume":
+            payload = request.post_data_json
+            state["resume_payloads"].append(payload)
+            assert payload == {"course_id": None}
+            if state["resume_failures"]:
+                state["resume_failures"] -= 1
+                route.fulfill(
+                    status=503,
+                    content_type="application/json",
+                    body=json.dumps({"detail": "temporary resume failure"}),
+                )
+                return
+            state["paused"] = False
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "status": "idle",
+                    "active": False,
+                    "message": "وضعیت مکث برداشته شد؛ صف پایدار برای ادامه آماده است.",
+                }),
+            )
+            return
+        route.fulfill(
+            status=404,
+            content_type="application/json",
+            body=json.dumps({"detail": "unexpected AI-learning request"}),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+
+        pause_button = page.locator("#pause-learning")
+        resume_button = page.locator("#resume-learning")
+        control_status = page.locator("#learning-control-status")
+        control_status.wait_for()
+        page.wait_for_function(
+            "() => document.querySelector('#learning-control-status')?.textContent.includes('مکث سراسری فعال نیست')",
+            timeout=10000,
+        )
+        assert pause_button.is_enabled()
+        assert resume_button.is_enabled()
+
+        pause_button.click()
+        page.wait_for_function(
+            "() => document.querySelector('#learning-control-status')?.textContent.includes('مکث سراسری فعال است')",
+            timeout=10000,
+        )
+        assert state["pause_calls"] == 1
+        assert pause_button.is_disabled()
+        assert resume_button.is_enabled()
+
+        resume_button.click()
+        page.get_by_text("temporary resume failure", exact=False).wait_for()
+        assert state["paused"] is True
+        assert resume_button.is_enabled(), "Resume must remain available after a transient API failure."
+
+        resume_button.click()
+        page.get_by_text("وضعیت مکث برداشته شد؛ صف پایدار برای ادامه آماده است.", exact=False).wait_for()
+        page.wait_for_function(
+            "() => document.querySelector('#learning-control-status')?.textContent.includes('مکث سراسری فعال نیست')",
+            timeout=10000,
+        )
+        assert state["paused"] is False
+        assert state["resume_payloads"] == [{"course_id": None}, {"course_id": None}]
+        assert pause_button.is_enabled()
+        assert resume_button.is_enabled()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
