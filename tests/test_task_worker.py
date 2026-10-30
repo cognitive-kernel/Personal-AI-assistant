@@ -301,6 +301,31 @@ def test_sqlite_heartbeat_classifies_known_lock_messages_as_transient(message):
 
 
 @pytest.mark.parametrize(
+    "error_code",
+    [
+        sqlite3.SQLITE_BUSY | (2 << 8),
+        sqlite3.SQLITE_LOCKED | (1 << 8),
+    ],
+)
+def test_sqlite_heartbeat_classifies_extended_lock_result_codes_as_transient(error_code):
+    from app.task_worker import _is_transient_sqlite_lock_error
+
+    error = sqlite3.OperationalError("generic SQLite operational error")
+    error.sqlite_errorcode = error_code
+
+    assert _is_transient_sqlite_lock_error(error) is True
+
+
+def test_sqlite_heartbeat_does_not_retry_non_lock_result_codes():
+    from app.task_worker import _is_transient_sqlite_lock_error
+
+    error = sqlite3.OperationalError("database is locked")
+    error.sqlite_errorcode = sqlite3.SQLITE_IOERR
+
+    assert _is_transient_sqlite_lock_error(error) is False
+
+
+@pytest.mark.parametrize(
     "message",
     [
         "disk I/O error",
