@@ -30,8 +30,11 @@ _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _INFERENCE_LOCK = threading.Lock()
 _INFERENCE_PATHS = frozenset({"/api/chat", "/api/embed", "/api/generate"})
 
-def _base_url() -> str:
-    base = str(get_settings()["ollama_base_url"]).rstrip("/")
+def normalize_base_url(value: str) -> str:
+    """Validate and canonicalize an Ollama HTTP(S) base URL without making a request."""
+    if not isinstance(value, str):
+        raise OllamaError("Ollama URL must be a string.")
+    base = value.rstrip("/")
     parsed = urllib.parse.urlparse(base)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise OllamaError("Ollama URL must be a valid HTTP(S) URL.")
@@ -68,6 +71,10 @@ def _base_url() -> str:
     if not loopback:
         raise OllamaError("Only a loopback IP literal or exact localhost endpoint is allowed.")
     return base
+
+
+def _base_url() -> str:
+    return normalize_base_url(str(get_settings()["ollama_base_url"]))
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Prevent a loopback Ollama endpoint from redirecting requests elsewhere."""
