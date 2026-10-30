@@ -1731,4 +1731,5 @@ def test_ai_learning_retry_migration_adds_bounded_schedule_columns(isolated_stor
         version = conn.execute("SELECT MAX(version) FROM ai_learning_migrations").fetchone()[0]
     assert {"automatic_retry_count", "next_retry_at"} <= columns
     assert {"retry_after", "retry_reason"} <= control_columns
-    assert version == 6
+    assert {"worker_lease_owner", "worker_lease_until", "worker_lease_epoch"} <= control_columns
+    assert version == 7
