@@ -2001,6 +2001,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             timeout=10000,
         )
         assert page.locator("#ollama-model-options option").count() == 1
+        assert page.locator("#programming-context").evaluate("node => node.maxLength") == 12000
         invalid_fields = page.locator("#settings-form :invalid").evaluate_all(
             "nodes => nodes.map(node => ({id: node.id, value: node.value, type: node.type, min: node.min, max: node.max}))"
         )
@@ -2010,6 +2011,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         # local Ollama model list. The real API persists into CI's disposable DB.
         page.locator("#chat-model").fill("browser-e2e-manual-model")
         page.locator("#learning-task-budget").fill("123")
+        page.locator("#programming-source-limit").fill("20000")
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
             """() => document.querySelector('#settings-output')?.textContent
@@ -2021,6 +2023,8 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         saved_settings = saved.json()
         assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
         assert saved_settings["learning_task_budget_microusd"] == 123
+        assert saved_settings["programming_source_max_chars"] == 20000
+        assert page.locator("#programming-context").evaluate("node => node.maxLength") == 20000
 
         def fail_settings_patch(route):
             if route.request.method == "PATCH":
@@ -2321,5 +2325,87 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         }
         assert "limit_value" not in status.inner_text()
         assert "private_key" not in status.inner_text().casefold()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failure():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {"submissions": [], "polls": 0}
+    browser_errors = []
+    generated_reply = "def add(a, b):\n    return a + b"
+
+    def queue_route(route):
+        request = route.request
+        assert request.method == "POST"
+        state["submissions"].append(request.post_data_json)
+        if len(state["submissions"]) == 1:
+            route.fulfill(
+                status=202,
+                content_type="application/json",
+                body=json.dumps({
+                    "task": {"id": 7001, "status": "queued"},
+                    "message": "Programming assistance queued. Generated code is not executed automatically.",
+                }),
+            )
+        else:
+            route.fulfill(
+                status=503,
+                content_type="application/json",
+                body='{"detail":"simulated programming queue failure"}',
+            )
+
+    def task_route(route):
+        assert route.request.method == "GET"
+        state["polls"] += 1
+        if state["polls"] == 1:
+            body = {"id": 7001, "status": "running", "result": None, "error": None}
+        else:
+            body = {
+                "id": 7001,
+                "status": "succeeded",
+                "result": {
+                    "reply": generated_reply,
+                    "execution_performed": False,
+                    "tests_executed": False,
+                },
+                "error": None,
+            }
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/programming/tasks", queue_route)
+        page.route("**/api/tasks/7001", task_route)
+        _goto_section(page, base_url, "self-improvement-section")
+
+        instruction = page.locator("#programming-instruction")
+        context = page.locator("#programming-context")
+        submit = page.locator("#programming-assist-submit")
+        status = page.locator("#programming-assist-status")
+        output = page.locator("#programming-assist-output")
+
+        instruction.fill("Implement a small add function.")
+        context.fill("Use Python and keep the implementation minimal.")
+        submit.click()
+        page.get_by_text("پاسخ دریافت شد", exact=False).wait_for(timeout=10000)
+
+        assert state["submissions"] == [{
+            "instruction": "Implement a small add function.",
+            "context": "Use Python and keep the implementation minimal.",
+        }]
+        assert state["polls"] >= 2
+        assert output.inner_text() == generated_reply
+        assert "کد اجرا نشده و هیچ آزمونی اجرا نشده است" in status.inner_text()
+        assert submit.is_enabled()
+
+        submit.click()
+        page.get_by_text("simulated programming queue failure", exact=False).wait_for()
+        assert len(state["submissions"]) == 2
+        assert submit.is_enabled(), "Programming submission must recover after a queue API failure."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
