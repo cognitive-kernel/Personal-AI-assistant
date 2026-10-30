@@ -1548,18 +1548,30 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
     first_run_id = queued_runs[0]
     dispatch = _dispatch_next_persisted_run()
     started = dispatch.get("status") == "running" and int(dispatch.get("run_id") or 0) == first_run_id
+    retry_after = dispatch.get("next_retry_at")
+    if dispatch.get("status") == "retry_scheduled":
+        message = (
+            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ به‌دلیل خطای موقت ChatGPT "
+            f"تا {retry_after} هیچ درخواست دیگری ارسال نمی‌شود و سپس بازیابی خودکار آغاز خواهد شد."
+        )
+    elif started:
+        message = (
+            f"دریافت درس برای {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ هر سرفصل اجرای مستقل دارد "
+            "و پس از هر اجرا، مورد بعدی از صف بازیابی می‌شود."
+        )
+    else:
+        message = (
+            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد و پس از اجرای کارهای قدیمی‌تر آغاز می‌شود."
+        )
     return {
         "run_id": first_run_id,
         "status": "running" if started else "queued",
         "course_id": course_id,
         "topic_ids": selected_ids,
         "queued_topic_count": len(selected_ids),
+        "next_retry_at": retry_after,
         "provider": "ChatGPT visible UI",
-        "message": (
-            f"دریافت درس برای {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ هر سرفصل اجرای مستقل دارد و پس از هر اجرا، مورد بعدی از صف بازیابی می‌شود."
-            if started else
-            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد و پس از اجرای کارهای قدیمی‌تر آغاز می‌شود."
-        ),
+        "message": message,
     }
 
 
