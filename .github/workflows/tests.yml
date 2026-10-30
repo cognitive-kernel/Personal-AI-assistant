@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e ".[dev]"
       - name: Run test suite
-        run: pytest -vv --durations=25
+        run: pytest -vv -x --durations=25
       - name: Verify generated learning artifacts
         run: python scripts/generate_learning_artifacts.py --check
       - name: Validate repository-local Markdown links
