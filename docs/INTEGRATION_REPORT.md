@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-30
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `7ccba9de397f6de63c2535d2d2e955af245e7da1` (latest verified main; PR #582).  
+> commit مبنا: `b7507c0f13f9195265d4d110e84f7bc4a2a4cd94` (main پس از ادغام PR #585؛ tests و browser E2E پس از ادغام در حال اجرا، dependency audit موفق).  
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -125,4 +125,8 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR #580: دفتر پذیرش و شواهد اجرای پروژه همگام شد؛ commit `0521424dd4882bbe61d69dc95321ed53238f5e2e`.
 - PR #581: race حذف هم‌زمان کانتینرهای orphan با تأیید نبودن کانتینر پس از خطای حذف ایمن شد؛ commit `483343a2d9d67b6c8f7e5133497c8476440cfa5e`. CI پس از ادغام شامل real-Docker Sandbox integration و تست‌ها، browser E2E و dependency audit موفق بود.
 - PR #582: انتخاب مدل هزینه/کیفیت به مسیر تولید درس متصل شد؛ commit `7ccba9de397f6de63c2535d2d2e955af245e7da1`. Post-merge tests 1494 passed و 5 skipped، Windows storage regressions، browser E2E و dependency audit موفق شدند.
-- محدودیت باقی‌ماندهٔ قابل‌اتوماسیون: هزینهٔ فراخوانی اختیاری claim review در بودجهٔ انتخاب مدل لحاظ نمی‌شود. محدودیت‌های انسانی/عملیاتی و بازبینی امنیتی مستقل همچنان خارج از شواهد CI هستند.
+- محدودیت‌های انسانی/عملیاتی و بازبینی امنیتی مستقل همچنان خارج از شواهد CI هستند. claim-review cost/budget integration در PR #584 تکمیل و ادغام شده است؛ heartbeat retry با deadline محدود نیز در PR #585 ادغام شد. وضعیت فعلی post-merge CI باید از runهای commit `b7507c0f13f9195265d4d110e84f7bc4a2a4cd94` خوانده شود.
+
+- PR #584: claim review اختیاری از نظر انتخاب مدل، برآورد prompt/token و رزرو durable بودجه با مسیر تولید هم‌راستا شد؛ ادغام `20e30eeb77bf04e2169ced9db32ba1cff036c3d6` و post-merge CI موفق.
+- PR #585: retry خطای موقت SQLite در heartbeat با deadline مبتنی بر monotonic clock و دو regression test اضافه شد؛ ادغام `b7507c0f13f9195265d4d110e84f7bc4a2a4cd94`. CI روی head PR موفق؛ پس از ادغام dependency audit موفق و tests/browser E2E هنگام snapshot در حال اجرا.
+- موارد کشف‌شده در ممیزی مستندات: شماره‌های ADR در چند فایل تکرار شده‌اند (`ADR-002`, `ADR-003`, `ADR-004`). پیش از تغییر نام باید تمام لینک‌ها و ارجاعات متنی یک‌جا ممیزی و سپس با redirect/ارجاع سازگار اصلاح شوند؛ این مورد هنوز حل نشده است.
