@@ -654,6 +654,45 @@ def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, m
     assert len(launched) == 1
     assert service.get_run(run["id"])["status"] == "running"
 
+
+def test_resume_requeues_run_when_worker_thread_cannot_start_without_deadlocking(isolated_store, monkeypatch):
+    real_thread = threading.Thread
+    course = service.create_course(title="بازیابی خطای راه‌اندازی در ادامه")
+    run = service.create_run(course["id"], run_type="outline", request_key="resume-thread-start-fails")
+    service.start_run(run["id"])
+    service.mark_run_needs_user_action(run["id"], "manual_gate", "operator action required")
+
+    class FailingThread:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start(self):
+            raise RuntimeError("simulated resume thread start failure")
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FailingThread)
+    outcome = {}
+
+    def resume_with_start_failure():
+        try:
+            browser_automation.resume_learning()
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    resume_thread = real_thread(target=resume_with_start_failure, daemon=True)
+    resume_thread.start()
+    resume_thread.join(timeout=5)
+    if resume_thread.is_alive():
+        browser_automation._LOCK = threading.Lock()
+        pytest.fail("resume_learning deadlocked while recovering from worker thread startup failure")
+
+    error = outcome.get("error")
+    assert isinstance(error, browser_automation.BrowserAutomationError)
+    assert error.code == "worker_thread_start_failed"
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert service.get_learning_control()["worker_active"] is False
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
+
 def test_transient_browser_failure_is_scheduled_with_partial_response_preserved(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی خودکار خطای موقت")
     run = service.create_run(course["id"], run_type="outline", request_key="transient-worker-retry")
