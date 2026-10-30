@@ -1834,11 +1834,11 @@ def reset_learning_data() -> dict[str, Any]:
                 "اجرای فعال باقی مانده: " + ids
             )
         lease = conn.execute(
-            """SELECT worker_lease_until FROM ai_learning_control
-               WHERE id=1 AND worker_lease_until>CURRENT_TIMESTAMP"""
+            """SELECT worker_lease_owner FROM ai_learning_control
+               WHERE id=1 AND worker_lease_owner IS NOT NULL"""
         ).fetchone()
         if lease is not None:
-            raise ValueError("پاک‌سازی تا آزادشدن مالکیت worker مرورگر در پردازهٔ دیگر مجاز نیست.")
+            raise ValueError("پاک‌سازی تا تأیید توقف و آزادشدن مالکیت worker مرورگر مجاز نیست.")
         counts = {
             "runs": int(conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]),
             "topics": int(conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0]),
