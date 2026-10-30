@@ -1,5 +1,6 @@
 from __future__ import annotations
 import ipaddress
+import math
 import sqlite3
 from contextlib import asynccontextmanager
 import logging
@@ -622,6 +623,34 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
             not isinstance(values[key], str) or not values[key].strip() or len(values[key]) > 200
         ):
             raise HTTPException(status_code=422, detail=f"{key} must be a non-empty string of at most 200 characters.")
+    if "learning_model_cost_profiles" in values and not isinstance(
+        values["learning_model_cost_profiles"], dict
+    ):
+        raise HTTPException(status_code=422, detail="learning_model_cost_profiles must be a JSON object.")
+    if "learning_model_minimum_quality_score" in values:
+        quality = values["learning_model_minimum_quality_score"]
+        if (
+            isinstance(quality, bool)
+            or not isinstance(quality, (int, float))
+            or not math.isfinite(quality)
+            or not 0 <= quality <= 1
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="learning_model_minimum_quality_score must be a finite number between 0 and 1.",
+            )
+        values["learning_model_minimum_quality_score"] = float(quality)
+    if "learning_task_budget_microusd" in values:
+        budget = values["learning_task_budget_microusd"]
+        if budget is not None and (
+            isinstance(budget, bool)
+            or not isinstance(budget, int)
+            or not 0 <= budget <= 9007199254740991
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="learning_task_budget_microusd must be null or a non-negative safe integer.",
+            )
     try:
         return db.update_settings(values)
     except ValueError as exc:
