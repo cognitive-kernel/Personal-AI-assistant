@@ -198,8 +198,24 @@ def test_worker_renews_lease_during_long_running_handler(worker_store):
 
 
 def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monkeypatch):
-    import threading
+    from app import task_worker
 
+    class FakeClock:
+        current = 0.0
+
+        @classmethod
+        def monotonic(cls):
+            return cls.current
+
+    class FakeStopEvent:
+        waits = 0
+
+        def wait(self, timeout):
+            FakeClock.current += timeout
+            self.waits += 1
+            return self.waits >= 3
+
+    monkeypatch.setattr(task_worker, "time", FakeClock)
     worker = TaskWorker(
         "worker-heartbeat-retry",
         {"test.heartbeat-retry": lambda *_args: {"ok": True}},
@@ -211,7 +227,6 @@ def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monk
         lease_seconds=1,
     )
     monkeypatch.setattr(context, "control_status", lambda: "running")
-    stop_event = threading.Event()
     calls = []
 
     def renew(task_id, worker_id, *, lease_seconds):
@@ -221,11 +236,10 @@ def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monk
         calls.append(True)
         if len(calls) == 1:
             raise sqlite3.OperationalError("database is locked")
-        stop_event.set()
         return {"id": task_id}
 
     monkeypatch.setattr(task_manager, "renew_lease", renew)
-    worker._maintain_lease(context, stop_event)
+    worker._maintain_lease(context, FakeStopEvent())
 
     assert len(calls) == 2
 
