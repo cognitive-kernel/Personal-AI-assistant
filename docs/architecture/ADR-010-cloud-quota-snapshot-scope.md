@@ -15,7 +15,7 @@ Kaggle quota snapshots are account-specific, while OCI limit snapshots are speci
 - Preserve consent audit events; changing configuration records a new `consent_granted` event.
 - Repeating an unchanged consent configuration remains idempotent and does not invalidate valid snapshots.
 - Revocation continues to disable access, clear stored configuration, delete snapshots, and preserve the audit history.
-- Snapshot persistence continues to re-check current consent inside its write transaction so a concurrent revocation or scope change cannot persist a stale result.
+- Snapshot persistence receives the consent identity captured before the CLI call and re-checks the full scope plus the consent-generation timestamp inside its write transaction. A result from an in-flight request is rejected if the user revokes/re-grants or changes scope while the CLI is running.
 
 ## Validation
 
