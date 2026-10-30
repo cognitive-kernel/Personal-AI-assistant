@@ -1971,6 +1971,97 @@ def test_browser_cloud_planner_recovers_after_api_failure():
         browser.close()
 
 
+
+def test_browser_cloud_stale_evidence_disables_review_and_claim_actions():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    patch_calls = []
+    candidate = {
+        "id": 555,
+        "title": "منبع آزمایشی با شواهد کهنه",
+        "source_url": "https://compute.example.org/pricing",
+        "provider_domain": "compute.example.org",
+        "review_status": "approved",
+        "availability_status": "available",
+        "freshness_status": "stale",
+        "source_authority": "recognized_official_domain",
+        "source_classification": "recognized_provider_domain",
+        "eligibility_assessment": {
+            "status": "needs_review",
+            "execution_authorized": False,
+            "blockers": ["شواهد منبع قدیمی است."],
+            "review_needed": ["منبع باید دوباره کشف و بررسی شود."],
+        },
+        "observed_claims": [{
+            "id": 777,
+            "claim_type": "gpu_model",
+            "value": "NVIDIA A10",
+            "unit": "",
+            "evidence_quote": "NVIDIA A10 available",
+            "review_status": "pending",
+            "source_content_sha256": "b" * 64,
+        }],
+        "resource_signals": ["GPU"],
+        "last_seen_at": "2026-10-01T00:00:00Z",
+        "evidence_excerpt": "NVIDIA A10 available; evidence is no longer fresh.",
+        "content_sha256": "c" * 64,
+        "terms_url": "https://compute.example.org/terms",
+        "quota": {"gpu_hours": 10},
+    }
+    browser_errors = []
+
+    def cloud_resources_route(route):
+        request = route.request
+        if request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"latest_run": None, "candidates": [candidate]}),
+            )
+            return
+        patch_calls.append({
+            "method": request.method,
+            "url": request.url,
+            "body": request.post_data_json,
+        })
+        route.fulfill(
+            status=409,
+            content_type="application/json",
+            body=json.dumps({"detail": "stale evidence must be rediscovered"}),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/cloud-resources**", cloud_resources_route)
+        _goto_section(page, base_url, "cloud-resources-section")
+
+        card = page.locator(".cloud-candidate").filter(has_text="منبع آزمایشی با شواهد کهنه")
+        card.wait_for(state="visible", timeout=10000)
+        assert "تازگی: stale" in card.inner_text()
+        assert "اجرای راه دور مجاز: خیر" in card.inner_text()
+
+        evidence_details = card.locator("details")
+        evidence_details.locator(":scope > summary").click()
+        page.get_by_text("شواهد قدیمی است؛ پیش از بازبینی باید منبع دوباره کشف شود.", exact=True).wait_for(
+            state="visible",
+            timeout=5000,
+        )
+
+        accept_claim = card.get_by_role("button", name="تأیید ادعا", exact=True)
+        reject_claim = card.get_by_role("button", name="رد ادعا", exact=True)
+        save_review = card.get_by_role("button", name="ذخیره بازبینی", exact=True)
+        assert accept_claim.is_disabled(), "Stale evidence must block claim acceptance even if the candidate was previously approved."
+        assert reject_claim.is_disabled(), "Stale evidence must block claim decisions until rediscovery."
+        assert save_review.is_disabled(), "Stale evidence must block candidate review submission."
+        assert patch_calls == [], "No review endpoint may be called for a stale candidate."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_browser_settings_form_persists_values_and_surfaces_api_failure():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
