@@ -1151,8 +1151,8 @@ def test_concurrent_lease_claims_have_exactly_one_winner(isolated_store):
 
 
 def test_worker_lease_excludes_a_real_second_process(isolated_store):
-    methods = multiprocessing.get_all_start_methods()
-    context = multiprocessing.get_context("fork" if "fork" in methods else "spawn")
+    # Spawn avoids inheriting pytest or application thread locks into the child.
+    context = multiprocessing.get_context("spawn")
     barrier = context.Barrier(2)
     results = context.Queue()
     parent_owner = browser_automation._WORKER_OWNER
