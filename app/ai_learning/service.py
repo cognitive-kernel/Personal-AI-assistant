@@ -619,7 +619,7 @@ def cancel_run(run_id: int) -> dict[str, Any]:
             raise NotFoundError("Run not found.")
         if run["status"] in {"queued", "running"}:
             conn.execute(
-                """UPDATE runs SET status='cancelled',error_code='user_cancelled',
+                """UPDATE runs SET status='cancelled',error_code='user_cancelled',next_retry_at=NULL,
                    error_message='اجرا به درخواست کاربر متوقف شد.',finished_at=CURRENT_TIMESTAMP
                    WHERE id=? AND status IN ('queued','running')""",
                 (run_id,),
