@@ -121,7 +121,7 @@ def test_pausing_active_topic_requeues_run_and_resume_dispatches_it(isolated_sto
 
     assert cancel_event.is_set()
     assert service.get_run(run["id"])["status"] == "queued"
-    assert service.get_topic(topic["id"])["processing_status"] == "paused"
+    assert next(item for item in service.get_course(course["id"])["topics"] if item["id"] == topic["id"])["processing_status"] == "paused"
     assert service.get_oldest_queued_run() is None
 
     # The active worker's finalizer clears its marker before dispatching the queue.
@@ -158,7 +158,7 @@ def test_lesson_completion_racing_with_topic_pause_is_requeued_without_saving(is
     result = service.complete_run(run["id"], "متن کامل درس با توضیحات کافی و منبع https://example.com/reference")
 
     assert result["status"] == "queued"
-    assert service.get_topic(topic["id"])["processing_status"] == "paused"
+    assert next(item for item in service.get_course(course["id"])["topics"] if item["id"] == topic["id"])["processing_status"] == "paused"
     assert service.list_lessons(topic["id"]) == []
 
 
