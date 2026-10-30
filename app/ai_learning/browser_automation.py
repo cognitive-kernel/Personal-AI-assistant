@@ -1666,6 +1666,8 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
         "message": (
             "اجرای طرح درس آغاز شد."
             if started
+            else "این درخواست از قبل در حال اجراست."
+            if run["status"] == "running"
             else "درخواست در صف پایدار ثبت شد و پس از آزادشدن worker مرورگر اجرا می‌شود."
         ),
     }
