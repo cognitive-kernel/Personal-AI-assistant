@@ -1528,16 +1528,16 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
             course_id = int(selected["course_id"])
             run = service.start_run(run_id, **_worker_lease_kwargs(epoch))
             cancel_event = threading.Event()
-            _ACTIVE = True
-            _ACTIVE_RUN_ID = run_id
-            _ACTIVE_COURSE_ID = course_id
-            _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
                 target=_worker,
                 args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
                 name=f"ai-learning-durable-run-{run_id}",
                 daemon=True,
             )
+            _ACTIVE = True
+            _ACTIVE_RUN_ID = run_id
+            _ACTIVE_COURSE_ID = course_id
+            _CANCEL_EVENTS[run_id] = cancel_event
             _start_worker_thread(thread, run_id, cancel_event)
             _log_event(
                 "persisted_queue_run_dispatched",
