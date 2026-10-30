@@ -1821,3 +1821,98 @@ def test_browser_sandbox_consent_fails_closed_and_runs_bounded_task():
         assert run_button.is_disabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_cloud_planner_validates_and_displays_dry_run_without_execution():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    requests = []
+    responses = [
+        {
+            "plan_id": 990881,
+            "status": "candidate_found",
+            "selected_candidate_id": 41,
+            "candidates": [{"candidate_id": 41, "policy_blockers": []}],
+            "requirements": {
+                "min_cpu_count": 2,
+                "min_memory_gib": 8,
+                "require_gpu": True,
+                "gpu_models": ["NVIDIA A10", "H100"],
+                "allowed_provider_domains": ["compute.example.org"],
+            },
+            "limitations": ["Dry-run only; no provider connection is made."],
+            "execution_authorized": False,
+            "remote_execution_enabled": False,
+        },
+        {
+            "plan_id": 990882,
+            "status": "no_eligible_candidate",
+            "selected_candidate_id": None,
+            "candidates": [{
+                "candidate_id": 41,
+                "policy_blockers": ["source evidence is stale"],
+            }],
+            "requirements": {"min_cpu_count": 2, "min_memory_gib": 8},
+            "limitations": ["No eligible candidate; refresh and review evidence."],
+            "execution_authorized": False,
+            "remote_execution_enabled": False,
+        },
+    ]
+
+    def plan_route(route):
+        request = route.request
+        assert request.method == "POST"
+        requests.append(request.post_data_json)
+        response = responses[min(len(requests) - 1, len(responses) - 1)]
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(response),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("**/api/cloud-resources/plan", plan_route)
+        _goto_section(page, base_url, "cloud-plan-section")
+
+        cpu = page.locator("#plan-min-cpu")
+        memory = page.locator("#plan-min-memory")
+        run_button = page.locator("#cloud-plan-run")
+        output = page.locator("#cloud-plan-output")
+
+        cpu.fill("2.5")
+        memory.fill("8")
+        run_button.click()
+        page.get_by_text("حداقل CPU باید عدد صحیحی", exact=False).wait_for()
+        assert requests == [], "Invalid requirements must be rejected before an API request."
+
+        cpu.fill("2")
+        memory.fill("8")
+        page.locator("#plan-require-gpu").check()
+        page.locator("#plan-gpu-models").fill("NVIDIA A10, H100")
+        page.locator("#plan-provider-domains").fill("compute.example.org")
+        run_button.click()
+        page.get_by_text('"status": "candidate_found"', exact=False).wait_for()
+        assert '"execution_authorized": false' in output.inner_text()
+        assert '"remote_execution_enabled": false' in output.inner_text()
+        assert requests[0] == {
+            "min_cpu_count": 2,
+            "min_memory_gib": 8,
+            "require_gpu": True,
+            "gpu_models": ["NVIDIA A10", "H100"],
+            "allowed_provider_domains": ["compute.example.org"],
+        }
+        assert run_button.is_enabled()
+
+        run_button.click()
+        page.get_by_text("source evidence is stale", exact=False).wait_for()
+        assert '"status": "no_eligible_candidate"' in output.inner_text()
+        assert '"selected_candidate_id": null' in output.inner_text()
+        assert '"execution_authorized": false' in output.inner_text()
+        assert '"remote_execution_enabled": false' in output.inner_text()
+        assert len(requests) == 2
+        assert run_button.is_enabled()
+        browser.close()
