@@ -1186,7 +1186,7 @@ def _continue_lessons(
             selection_mode="selected", request_key=request_key, force_retry=force_retry,
         )
         run_id = int(run["id"])
-        service.start_run(run_id)
+        service.start_run(run_id, **_worker_lease_kwargs())
         with _LOCK:
             previous_active_run_id = _ACTIVE_RUN_ID
             _ACTIVE_RUN_ID = run_id
@@ -1207,7 +1207,7 @@ def _continue_lessons(
             if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
                 return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup", **_worker_lease_kwargs())
                 return
             service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response, **_worker_lease_kwargs())
             return
@@ -1311,7 +1311,7 @@ def _worker(
                 _log_event("worker_result_discarded_after_lease_loss", run_id=run_id, lease_epoch=lease_epoch)
                 return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run", **_worker_lease_kwargs(lease_epoch))
             else:
                 scheduled = _schedule_transient_retry(run_id, exc)
                 if scheduled is not None:
