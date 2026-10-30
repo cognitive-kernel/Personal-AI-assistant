@@ -1548,84 +1548,30 @@ def stop_browser_automation() -> dict[str, Any]:
 
 
 def recover_pending_runs() -> dict[str, Any]:
-    """Recover interrupted runs only after atomically acquiring the shared browser lease."""
-    global _SHUTTING_DOWN, _WORKER_LEASE_EPOCH
+    """Initialize storage and delegate all stale-run recovery to the leased dispatcher."""
+    global _SHUTTING_DOWN
     from .db import initialize_store
 
     initialize_store()
     _SHUTTING_DOWN = False
-    if service.get_learning_control()["paused"]:
-        return {"status": "paused", "active": False, "message": "Global learning pause is active."}
-    with _LOCK:
-        if _ACTIVE:
-            return {
-                "status": "already_active",
-                "active": True,
-                "run_id": _ACTIVE_RUN_ID,
-                "message": "An in-process learning worker is already active.",
-            }
-        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
-        if epoch is None:
-            control = service.get_learning_control()
-            return {
-                "status": "paused" if control["paused"] else "worker_busy",
-                "active": False,
-                "message": "Another process owns the browser worker lease.",
-            }
-        _WORKER_LEASE_EPOCH = epoch
-        try:
-            # A live worker in another process keeps this lease renewed. Reaching
-            # this point therefore means every running row is stale/recoverable.
-            for run_id in service.list_run_ids_by_status("running"):
-                service.requeue_run_for_resume(int(run_id), "startup_interrupted_run", **_worker_lease_kwargs(epoch))
-        except Exception:
-            _release_worker_lease()
-            raise
     result = _dispatch_next_persisted_run()
     _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
     return result
 
 
 def recover_orphaned_runs() -> dict[str, Any]:
-    """Recover orphaned runs only after the cross-process lease is available."""
-    global _WORKER_LEASE_EPOCH
+    """Run the single leased dispatcher/recovery path from the maintenance watchdog."""
     from .db import initialize_store
 
     if _SHUTTING_DOWN:
         return {"status": "shutting_down", "active": False}
     initialize_store()
-    if service.get_learning_control()["paused"]:
-        return {"status": "paused", "active": False}
-    with _LOCK:
-        if _SHUTTING_DOWN:
-            return {"status": "shutting_down", "active": False}
-        if _ACTIVE:
-            return {
-                "status": "already_active",
-                "active": True,
-                "run_id": _ACTIVE_RUN_ID,
-            }
-        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
-        if epoch is None:
-            control = service.get_learning_control()
-            return {
-                "status": "paused" if control["paused"] else "worker_busy",
-                "active": False,
-            }
-        _WORKER_LEASE_EPOCH = epoch
-        try:
-            orphaned_ids = service.list_run_ids_by_status("running")
-            for run_id in orphaned_ids:
-                service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime", **_worker_lease_kwargs(epoch))
-        except Exception:
-            _release_worker_lease()
-            raise
     result = _dispatch_next_persisted_run()
     _log_event(
         "orphaned_run_watchdog_recovery",
         status=result.get("status"),
         run_id=result.get("run_id"),
-        requeued_count=len(orphaned_ids),
+        recovered_run_ids=result.get("recovered_run_ids", []),
     )
     return result
 
