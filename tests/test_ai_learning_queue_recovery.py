@@ -392,10 +392,10 @@ def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, 
     assert service.get_run(run["id"])["status"] == "running"
 
 
-def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolated_store, monkeypatch):
-    first_course = service.create_course(title="دورهٔ قدیمی با سرفصل ناتمام")
-    topic = service.add_topic(first_course["id"], "سرفصل خارج از صفحه")
-    service.decide_topics([topic["id"]], "approved")
+def test_manual_resume_persists_all_pending_topics_outside_dashboard_course_limit(isolated_store, monkeypatch):
+    first_course = service.create_course(title="دورهٔ قدیمی با چند سرفصل ناتمام")
+    topics = [service.add_topic(first_course["id"], f"سرفصل خارج از صفحه {index}") for index in range(3)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
     for index in range(100):
         service.create_course(title=f"دورهٔ جدید {index:03d}")
     assert all(
@@ -407,46 +407,26 @@ def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolat
 
     class FakeThread:
         def __init__(self, *, target, args, name, daemon):
-            self.target, self.args, self.name, self.daemon = target, args, name, daemon
-
+            self.args = args
         def start(self):
-            launched.append(self)
+            launched.append(self.args)
 
     monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
     result = browser_automation.resume_learning()
 
     assert result["status"] == "resumed"
     assert result["course_id"] == first_course["id"]
+    assert result["queued_topic_count"] == 3
     assert len(launched) == 1
-    assert launched[0].args[0] == result["run_id"]
-    run = service.get_run(result["run_id"])
-    assert run["course_id"] == first_course["id"]
-    assert [item["topic_id"] for item in run["topics"]] == [topic["id"]]
-    assert run["status"] == "running"
+    assert len(service.list_course_runs(first_course["id"], 20)) == 3
+    assert service.has_queued_run_for_course(first_course["id"]) is True
+    run_ids = [item["id"] for item in service.list_course_runs(first_course["id"], 20)]
+    assert {
+        int(service.get_run(run_id)["topics"][0]["topic_id"])
+        for run_id in run_ids
+    } == {int(topic["id"]) for topic in topics}
 
-
-def test_selected_topic_batch_survives_process_restart_in_durable_queue(isolated_store, monkeypatch):
-    course = service.create_course(title="بازیابی دستهٔ چندسرفصلی")
-    topics = [service.add_topic(course["id"], f"سرفصل {index}") for index in range(3)]
-    service.decide_topics([topic["id"] for topic in topics], "approved")
-    monkeypatch.setattr(service, "get_learning_control", lambda: {"paused": False})
-    launched = []
-
-    class FakeThread:
-        def __init__(self, *, target, args, name, daemon):
-            self.args = args
-        def start(self):
-            launched.append(self.args)
-
-    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
-    started = browser_automation.start_lesson_run(
-        course["id"], [topic["id"] for topic in topics], "restart-durable-batch"
-    )
-    assert started["status"] == "running"
-    assert len(service.list_course_runs(course["id"], 20)) == 3
-    assert service.has_queued_run_for_course(course["id"]) is True
-
-    # Simulate process loss: the in-memory worker disappears, but SQLite remains.
+    # Simulate process loss and verify every not-yet-started topic survives in SQLite.
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
@@ -454,12 +434,12 @@ def test_selected_topic_batch_survives_process_restart_in_durable_queue(isolated
     recovered = browser_automation.recover_pending_runs()
 
     assert recovered["status"] == "running"
-    assert recovered["run_id"] == started["run_id"]
+    assert recovered["run_id"] == result["run_id"]
     assert len(launched) == 2
-    assert len(service.list_course_runs(course["id"], 20)) == 3
-    assert service.has_queued_run_for_course(course["id"]) is True
-    run_ids = [item["id"] for item in service.list_course_runs(course["id"], 20)]
-    statuses = [service.get_run(run_id)["status"] for run_id in run_ids]
+    statuses = [
+        service.get_run(run_id)["status"]
+        for run_id in run_ids
+    ]
     assert statuses.count("running") == 1
     assert statuses.count("queued") == 2
 

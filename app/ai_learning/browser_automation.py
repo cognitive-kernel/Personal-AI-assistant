@@ -1594,13 +1594,20 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 # if their eligibility predicates ever diverge.
                 return {"status": "idle", "active": False,
                         "message": "کار ناتمامی برای ادامه پیدا نشد."}
-            # One topic per run makes per-topic pause/cancel deterministic and recoverable.
-            topic_ids = eligible[:1]
-            request_key = f"playwright-lessons-{cid}-" + "-".join(map(str, topic_ids))
-            request_key += "-resume-" + str(int(time.time()))
-            run = service.create_run(cid, run_type="lesson", topic_ids=topic_ids,
-                                     selection_mode="selected", request_key=request_key)
-            run = service.start_run(int(run["id"]))
+                # Persist the complete eligible set before starting the first topic. This
+            # keeps the remainder recoverable if the process exits during any capture.
+            batch_key = str(int(time.time()))
+            queued_run_ids: list[int] = []
+            for topic_id in eligible:
+                request_key = f"playwright-lessons-{cid}-{topic_id}-resume-{batch_key}"
+                queued = service.create_run(
+                    cid, run_type="lesson", topic_ids=[topic_id],
+                    selection_mode="selected", request_key=request_key,
+                )
+                if queued["status"] != "queued":
+                    raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                queued_run_ids.append(int(queued["id"]))
+            run = service.start_run(queued_run_ids[0])
             run_id = int(run["id"])
             _ACTIVE = True
             _ACTIVE_RUN_ID = run_id
@@ -1608,11 +1615,23 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             cancel_event = threading.Event()
             _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
-                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event, True),
+                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
             _start_worker_thread(thread, run_id, cancel_event)
-            _log_event("lesson_workflow_resumed", run_id=run_id, course_id=cid, topic_ids=topic_ids)
-            return {"status": "resumed", "active": True, "run_id": run_id, "course_id": cid,
-                    "message": "تولید درس‌ها از سرفصل‌های تأییدشده‌ای که هنوز درس ندارند ادامه یافت."}
+            _log_event(
+                "lesson_workflow_resumed",
+                run_id=run_id,
+                course_id=cid,
+                topic_ids=eligible,
+                queued_run_ids=queued_run_ids,
+            )
+            return {
+                "status": "resumed",
+                "active": True,
+                "run_id": run_id,
+                "course_id": cid,
+                "queued_topic_count": len(eligible),
+                "message": f"ادامهٔ {len(eligible)} سرفصل تأییدشده در صف پایدار ثبت شد و به‌ترتیب اجرا می‌شود.",
+            }
         return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
