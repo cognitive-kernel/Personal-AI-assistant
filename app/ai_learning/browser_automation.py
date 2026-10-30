@@ -1930,6 +1930,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 if not eligible:
                     # Keep the SQL candidate query and course-level progress projection fail-safe
                     # if their eligibility predicates ever diverge.
+                    _release_worker_lease()
                     return {"status": "idle", "active": False,
                             "message": "کار ناتمامی برای ادامه پیدا نشد."}
                 # Persist the complete eligible set before starting the first topic.
