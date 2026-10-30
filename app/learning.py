@@ -688,7 +688,7 @@ def _select_learning_generation_model(
     one_prompt_estimate = max(1, math.ceil(
         (len(serialized_prompt) + len("You are a careful learning assistant.")) / 2
     ))
-    estimated_prompt_tokens = one_prompt_estimate * 2 + 700
+    estimated_prompt_tokens = one_prompt_estimate * 2 + 1500
     estimated_completion_tokens = 2600
     selection = select_learning_model(
         settings,
@@ -823,11 +823,25 @@ def run_job(job_id: int) -> None:
     repair_response_valid: bool | None = None
     # One per-job budget is shared by initial generation and its single repair.
     # This is a deterministic request/token ceiling, not provider billing.
+    limits = runtime_limits({
+        "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
+        "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
+        "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
+        "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
+        "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
+    }, detect_hardware())
+    configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"])).strip()
+    model, model_selection = _select_learning_generation_model(
+        settings, serialized_prompt, configured_model
+    )
+    request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
     from .learning_pipeline_budget import LearningPipelineBudget
     from .learning_durable_budget import reserve_job_budget
     generation_budget = LearningPipelineBudget(max_calls=2, max_predict_tokens=2600)
     generation_budget.reserve("initial_generation", predict_tokens=1200)
     try:
+        # Resolve model policy before reserving durable inference budget. A failed
+        # discovery/eligibility check must not consume a model-call reservation.
         durable_initial_budget = reserve_job_budget(
             job_id, "initial_generation", calls=1, predict_tokens=1200
         )
@@ -835,18 +849,6 @@ def run_job(job_id: int) -> None:
             raise LearningError(
                 "Initial generation budget was exhausted or already consumed; refusing an untracked duplicate model request."
             )
-        limits = runtime_limits({
-            "ollama_num_ctx": settings.get("learning_ollama_num_ctx", settings["ollama_num_ctx"]),
-            "ollama_num_thread": settings.get("learning_ollama_num_thread", settings["ollama_num_thread"]),
-            "cpu_resource_limit_percent": settings.get("cpu_resource_limit_percent", 90),
-            "ram_budget_max_gb": settings.get("ram_budget_max_gb", 25),
-            "ram_safety_reserve_gb": settings.get("ram_safety_reserve_gb", 4),
-        }, detect_hardware())
-        configured_model = str(settings.get("learning_ollama_model", settings["ollama_model"])).strip()
-        model, model_selection = _select_learning_generation_model(
-            settings, serialized_prompt, configured_model
-        )
-        request_timeout = int(settings.get("learning_ollama_timeout_seconds", settings["ollama_timeout_seconds"]))
         response = _request("/api/chat", {
             "model": model, "stream": False, "format": "json",
             "messages": [
