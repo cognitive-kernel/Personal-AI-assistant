@@ -228,7 +228,7 @@ def _provider_gate_error(url: str, visible_text: str) -> BrowserAutomationError 
     if any(phrase in text for phrase in network_error_phrases):
         return BrowserAutomationError(
             "chatgpt_network_error",
-            "ارتباط مرورگر با ChatGPT قطع یا ناپایدار شده است. سامانه پس از مکث‌های ۶۰ و ۳۰۰ ثانیه‌ای حداکثر دو بار تلاش مجدد می‌کند؛ اگر مشکل باقی بماند، وضعیت نیازمند بررسی دستی می‌شود. خطا در data/logs/ai_learning_browser.log ثبت شده است.",
+            "ارتباط مرورگر با ChatGPT قطع یا ناپایدار شده است. اتصال اینترنت و VPN را بررسی کنید؛ سامانه پس از مکث‌های ۶۰ و ۳۰۰ ثانیه‌ای حداکثر دو بار تلاش مجدد می‌کند و اگر مشکل باقی بماند، وضعیت نیازمند بررسی دستی می‌شود. خطا در data/logs/ai_learning_browser.log ثبت شده است.",
         )
     rate_limit_phrases = (
         "you've reached the limit of messages",
@@ -1025,7 +1025,7 @@ def _capture_with_automatic_retry(
             )
             raise BrowserAutomationError(
                 error_code,
-                f"پس از {attempt} تلاش سریع، دریافت پاسخ متوقف شد. آخرین خطا: {error_message[:500]}",
+                f"پس از {attempt} تلاش خودکار (تلاش سریع داخلی)، دریافت پاسخ متوقف شد. آخرین خطا: {error_message[:500]}",
                 partial_response=partial_response,
             )
 
