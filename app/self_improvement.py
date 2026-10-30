@@ -133,8 +133,18 @@ def _github_api(method: str, path: str, payload: dict[str, Any] | None = None) -
             **({"Content-Type": "application/json"} if request_body is not None else {}),
         },
     )
+    class _NoRedirectGitHubHandler(urllib.request.HTTPRedirectHandler):
+        """Never forward the GitHub bearer token to a redirect destination."""
+
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}),
+            _NoRedirectGitHubHandler(),
+        )
+        with opener.open(request, timeout=15) as response:
             raw = response.read(1024 * 1024)
             if response.status == 204 or not raw:
                 return {}
