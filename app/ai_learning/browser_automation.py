@@ -1499,6 +1499,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
                 "message": "یک پردازهٔ دیگر مالک worker مرورگر است؛ کار در صف پایدار باقی ماند.",
             }
         _WORKER_LEASE_EPOCH = epoch
+        run_id: int | None = None
         try:
             # Once this process owns the global browser lease, any remaining
             # running row is orphaned; no other live worker can own this profile.
@@ -1554,6 +1555,27 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
                 "recovered_run_ids": [int(item) for item in orphaned_ids],
             }
         except Exception:
+            if run_id is not None:
+                try:
+                    failed_run = service.get_run(run_id)
+                    if failed_run["status"] == "running" and service.owns_worker_lease(_WORKER_OWNER, epoch):
+                        service.requeue_run_for_resume(
+                            run_id, "worker_thread_construction_failed",
+                            **_worker_lease_kwargs(epoch),
+                        )
+                except Exception as recovery_exc:
+                    _log_event(
+                        "worker_dispatch_cleanup_failed",
+                        run_id=run_id,
+                        exception_type=type(recovery_exc).__name__,
+                        message=str(recovery_exc)[:300],
+                    )
+                with _LOCK:
+                    if _ACTIVE_RUN_ID == run_id:
+                        _ACTIVE = False
+                        _ACTIVE_RUN_ID = None
+                        _ACTIVE_COURSE_ID = None
+                        _CANCEL_EVENTS.pop(run_id, None)
             _release_worker_lease()
             raise
 
