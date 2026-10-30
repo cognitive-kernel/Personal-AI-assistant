@@ -250,6 +250,7 @@ def refresh_kaggle_quota() -> dict[str, Any]:
         snapshots = cloud_resources.save_provider_quota_snapshot(
             snapshot,
             expected_executable_path=consent["executable_path"],
+            expected_consented_at=consent["consented_at"],
         )
         return {
             "consent": cloud_resources.get_provider_consent(),
