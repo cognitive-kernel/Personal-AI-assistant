@@ -184,6 +184,34 @@ def test_kaggle_quota_consent_is_opt_in_revocable_and_audited(tmp_path, monkeypa
         assert calls[0]["enabled"] is True and calls[0]["user_consent"] is True
         assert calls[0]["executable_path"] == str(cli.resolve())
 
+        unchanged = client.patch(
+            "/api/cloud-resources/kaggle-quota/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(cli.resolve()),
+            },
+        )
+        assert unchanged.status_code == 200
+        assert unchanged.json()["snapshots"][0]["remaining_hours"] == 9.0
+        assert len(unchanged.json()["consent_events"]) == 1
+
+        # Changing the consented CLI can switch the account identity. Never
+        # present a previous account's quota under the replacement path.
+        replacement_cli = tmp_path / "kaggle-other"
+        replacement_cli.write_text("second executable placeholder", encoding="utf-8")
+        changed = client.patch(
+            "/api/cloud-resources/kaggle-quota/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(replacement_cli.resolve()),
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json()["consent"]["executable_path"] == str(replacement_cli.resolve())
+        assert changed.json()["snapshots"] == []
+
         revoked = client.patch(
             "/api/cloud-resources/kaggle-quota/consent",
             json={"enabled": False, "user_consent": False, "executable_path": ""},
@@ -306,6 +334,40 @@ def test_oci_limit_consent_refresh_and_revocation_are_audited(tmp_path, monkeypa
         assert calls[0]["enabled"] is True and calls[0]["user_consent"] is True
         assert calls[0]["config_file"] == str(config.resolve())
         assert "private_key" not in str(body).casefold()
+
+        unchanged = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(cli.resolve()),
+                "config_file": str(config.resolve()),
+                "profile": "DEFAULT",
+                "region": "us-ashburn-1",
+                "compartment_id": "ocid1.compartment.oc1..aaaaaaaaexample",
+            },
+        )
+        assert unchanged.status_code == 200
+        assert unchanged.json()["snapshots"][0]["limit_value"] == 2
+        assert len(unchanged.json()["consent_events"]) == 1
+
+        # A different region/profile/config scope must invalidate the previous
+        # snapshot, even though consent remains enabled.
+        changed = client.patch(
+            "/api/cloud-resources/oci-limits/consent",
+            json={
+                "enabled": True,
+                "user_consent": True,
+                "executable_path": str(cli.resolve()),
+                "config_file": str(config.resolve()),
+                "profile": "DEFAULT",
+                "region": "eu-frankfurt-1",
+                "compartment_id": "ocid1.compartment.oc1..aaaaaaaaexample",
+            },
+        )
+        assert changed.status_code == 200
+        assert changed.json()["consent"]["region"] == "eu-frankfurt-1"
+        assert changed.json()["snapshots"] == []
 
         revoked = client.patch(
             "/api/cloud-resources/oci-limits/consent",
@@ -580,3 +642,95 @@ def test_cloud_resource_delete_preserves_saved_plan_audit_history(tmp_path, monk
     assert response.status_code == 409
     assert cloud_resources.list_candidates()
 
+def test_kaggle_quota_refresh_discards_result_if_cli_identity_changes_mid_request(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    cloud_resources.initialize_store()
+    original_cli = tmp_path / "kaggle-original"
+    replacement_cli = tmp_path / "kaggle-replacement"
+    original_cli.write_text("original executable", encoding="utf-8")
+    replacement_cli.write_text("replacement executable", encoding="utf-8")
+    cloud_resources.record_provider_consent(
+        enabled=True, user_consent=True, executable_path=str(original_cli.resolve())
+    )
+    now = datetime.now(timezone.utc)
+    snapshot = KaggleQuotaSnapshot(
+        observed_at=now,
+        refresh_at=now + timedelta(days=1),
+        gpu=ResourceQuota(used_hours=1.0, remaining_hours=9.0, total_hours=10.0),
+        tpu=None,
+    )
+
+    def change_identity_during_fetch(**kwargs):
+        assert kwargs["executable_path"] == str(original_cli.resolve())
+        cloud_resources.record_provider_consent(
+            enabled=True,
+            user_consent=True,
+            executable_path=str(replacement_cli.resolve()),
+        )
+        return snapshot
+
+    monkeypatch.setattr(
+        cloud_resource_routes, "fetch_quota_snapshot", change_identity_during_fetch
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.post("/api/cloud-resources/kaggle-quota/refresh")
+
+    assert response.status_code == 409
+    assert cloud_resources.get_provider_consent()["executable_path"] == str(replacement_cli.resolve())
+    assert cloud_resources.list_provider_quota_snapshots() == []
+
+
+def test_oci_limit_refresh_discards_result_if_profile_changes_mid_request(tmp_path, monkeypatch):
+    _configure(tmp_path, monkeypatch)
+    cloud_resources.initialize_store()
+    cli = tmp_path / "oci"
+    config = tmp_path / "oci-config"
+    cli.write_text("oci executable", encoding="utf-8")
+    config.write_text("[DEFAULT]\n[SECONDARY]\n", encoding="utf-8")
+    cloud_resources.record_oci_limit_consent(
+        enabled=True,
+        user_consent=True,
+        executable_path=str(cli.resolve()),
+        config_file=str(config.resolve()),
+        profile="DEFAULT",
+        region="us-ashburn-1",
+        compartment_id="ocid1.compartment.oc1..aaaaaaaaexample",
+    )
+    now = datetime.now(timezone.utc)
+    snapshot = OciQuotaSnapshot(
+        observed_at=now,
+        region="us-ashburn-1",
+        limits=(
+            OciServiceLimit(
+                name="standard-a1-core-count",
+                value=2,
+                used=1,
+                available=1,
+                scope_type="REGION",
+                scope_value="us-ashburn-1",
+            ),
+        ),
+    )
+
+    def change_profile_during_fetch(**kwargs):
+        assert kwargs["profile"] == "DEFAULT"
+        cloud_resources.record_oci_limit_consent(
+            enabled=True,
+            user_consent=True,
+            executable_path=str(cli.resolve()),
+            config_file=str(config.resolve()),
+            profile="SECONDARY",
+            region="us-ashburn-1",
+            compartment_id="ocid1.compartment.oc1..aaaaaaaaexample",
+        )
+        return snapshot
+
+    monkeypatch.setattr(
+        cloud_resource_routes, "fetch_service_limits", change_profile_during_fetch
+    )
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        response = client.post("/api/cloud-resources/oci-limits/refresh")
+
+    assert response.status_code == 409
+    assert cloud_resources.get_oci_limit_consent()["profile"] == "SECONDARY"
+    assert cloud_resources.list_oci_limit_snapshots() == []
