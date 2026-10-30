@@ -107,6 +107,7 @@ def test_settings_api_seeds_and_persists_learning_cost_preferences(settings_clie
         {"learning_model_cost_profiles": []},
         {"learning_model_minimum_quality_score": True},
         {"learning_model_minimum_quality_score": 1.01},
+        {"learning_model_minimum_quality_score": 10**1000},
         {"learning_model_minimum_quality_score": float("nan")},
         {"learning_task_budget_microusd": -1},
         {"learning_task_budget_microusd": 1.5},
