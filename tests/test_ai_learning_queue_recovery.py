@@ -1158,3 +1158,37 @@ def test_dispatch_requeues_orphaned_running_run_before_newer_queued_work(isolate
     assert service.get_run(orphaned["id"])["status"] == "running"
     assert service.get_run(newer["id"])["status"] == "queued"
     assert len(launched) == 1
+
+
+def test_remote_topic_pause_signals_worker_heartbeat_without_releasing_lease(isolated_store, monkeypatch):
+    course = service.create_course(title="توقف سرفصل از پردازه دیگر")
+    topic = service.add_topic(course["id"], "سرفصل فعال")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="remote-topic-pause-heartbeat",
+    )
+    service.start_run(run["id"])
+    owner = "heartbeat-process"
+    epoch = service.claim_worker_lease(owner, lease_seconds=90)
+    assert epoch == 1
+    service.set_topic_paused(topic["id"], True)
+
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", owner)
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", epoch)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", run["id"])
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_HEARTBEAT_SECONDS", 0.01)
+    stop_event = browser_automation.threading.Event()
+    cancel_event = browser_automation.threading.Event()
+    heartbeat = browser_automation.threading.Thread(
+        target=browser_automation._maintain_worker_lease,
+        args=(cancel_event, stop_event, epoch),
+    )
+    heartbeat.start()
+
+    assert cancel_event.wait(timeout=2)
+    assert service.owns_worker_lease(owner, epoch)
+    stop_event.set()
+    heartbeat.join(timeout=2)
+    assert not heartbeat.is_alive()
+    assert service.release_worker_lease(owner, epoch)
