@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-30
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `b7507c0f13f9195265d4d110e84f7bc4a2a4cd94` (main پس از ادغام PR #585؛ tests: 1501 passed، 5 skipped، Windows storage regressions، browser E2E و dependency audit همگی موفق).  
+> commit مبنا: `dbfb8849ca4b2e243abeded724635ab47eb7d364` (main پس از PR #595؛ tests: 1543 passed، 5 skipped، Windows storage regressions، browser E2E و dependency audit موفق؛ artifact، 73 لینک Markdown، import-cycle و دو benchmark نیز موفق).
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -157,3 +157,9 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - تست regression `test_knowledge_fetch_disables_proxies_and_resolves_only_at_pinned_connect`، تست مشابه برای web-source transport، URLهای غیرمتنی/بیش‌ازحد بلند و تست‌های redirect/private-IP اضافه شدند. یک assertion اولیه در تست redirect به‌علت ثبت class به‌جای instance در `urllib.build_opener` شکست خورد؛ assertion با رفتار واقعی urllib اصلاح و CI مجدد روی head نهایی اجرا شد.
 - CI روی head دقیق PR #595 `616b5693863e1559bc51efbfa4200a5690ed55cf`: tests [#41066764707](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41066764707) با 1543 passed و 5 skipped، Windows storage regressions، browser E2E [#41066764789](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41066764789) و dependency audit [#41066764847](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41066764847) موفق شدند. Post-merge CI روی `main` هنوز در حال اجراست.
 - آزمون‌ها شبکهٔ بیرونی را فراخوانی نمی‌کنند؛ resolver و transport با fixture کنترل‌شده آزموده شده‌اند. بازبینی مستقل امنیت، تست واقعی DNS/Proxy در میزبان مقصد و ارزیابی egress در محیط عملیاتی همچنان باز هستند.
+
+## 13. شواهد پس از ادغام PR #595 — 2026-10-30
+
+- CI روی `main` در commit دقیق `dbfb8849ca4b2e243abeded724635ab47eb7d364`: tests [#41067227257](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227257) با 1543 passed و 5 skipped؛ Windows storage regressions، browser E2E [#41067227286](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227286) و dependency audit [#41067227304](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227304) موفق شدند.
+- در همان test job، تولید artifactها، بررسی لینک‌های Markdown برای 73 فایل، کنترل import-cycle، benchmark بازیابی واژگانی و benchmark ساختاری claim-to-test با 10 مورد موفق شدند. گزارش benchmark بازیابی تصریح می‌کند که fixture مصنوعی کیفیت عمومی retrieval را اثبات نمی‌کند؛ benchmark پوشش نیز کفایت معنایی آزمون‌ها یا صحت ادعاها را ثابت نمی‌کند.
+- این شواهد CI مخزن هستند. پذیرش روی میزبان مقصد، آزمون زندهٔ مدل/ارائه‌دهنده، تمرین staging restore/rollback و بازبینی مستقل امنیتی همچنان دروازه‌های جداگانه‌اند.
