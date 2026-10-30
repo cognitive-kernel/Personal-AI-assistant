@@ -13,6 +13,10 @@ The runtime does not invent handlers or enable itself at import time. `app/main.
 
 Shutdown sets a shared stop event and joins workers against a single bounded deadline. Idle workers stop promptly. A handler already executing is cooperative and may outlive the requested timeout; the runtime reports this rather than claiming it stopped successfully.
 
+## Heartbeat failure policy
+
+The worker retries transient SQLite operational errors during lease renewal only until the last known lease deadline, measured with a monotonic clock. A successful renewal resets that deadline. Ownership loss, pause/cancel transitions, or unexpected exceptions stop heartbeat renewal; the worker must not treat a failed renewal as proof of continued ownership. The regression test `test_heartbeat_retries_transient_sqlite_operational_error` verifies recovery after one transient database-lock error.
+
 ## Acceptance gates
 
 - Tests cover task processing, idempotent start, idle shutdown, and invalid configuration.

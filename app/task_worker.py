@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import logging
 import sqlite3
 import threading
+import time
 from typing import Any, Callable
 
 from . import task_manager, usage_metrics
@@ -116,18 +117,48 @@ class TaskWorker:
     def _maintain_lease(self, context: TaskContext, stop_event: threading.Event) -> None:
         """Renew a running task lease while its handler is doing long-running work."""
         interval = max(0.05, min(30.0, self.lease_seconds / 3))
-        while not stop_event.wait(interval):
+        # A transient SQLite lock must not silently disable lease renewal. Retry
+        # operational storage failures only while the last known lease can remain
+        # valid; ownership loss and unexpected programming errors still stop it.
+        lease_deadline = time.monotonic() + self.lease_seconds
+        while True:
+            remaining = lease_deadline - time.monotonic()
+            if remaining <= 0:
+                logger.error(
+                    "Task lease heartbeat stopped after its renewal deadline for task %s.",
+                    context.task_id,
+                )
+                return
+            if stop_event.wait(min(interval, remaining)):
+                return
+            if time.monotonic() >= lease_deadline:
+                logger.error(
+                    "Task lease heartbeat stopped after its renewal deadline for task %s.",
+                    context.task_id,
+                )
+                return
             try:
                 # Do not extend a lease after pause/cancel has been requested. If the
                 # handler cannot reach a checkpoint, expiry lets the queue settle it.
                 if context.control_status() != "running":
                     return
+                renewal_started_at = time.monotonic()
                 task_manager.renew_lease(
                     context.task_id, context.worker_id, lease_seconds=self.lease_seconds
                 )
+                # Start the local deadline before the DB call so slow commits do
+                # not make the in-memory lease window more generous than SQLite's.
+                lease_deadline = renewal_started_at + self.lease_seconds
             except TaskManagerError:
                 # Ownership loss or a control-state transition ends heartbeat ownership.
                 return
+            except sqlite3.OperationalError:
+                # SQLite busy/locked errors can be transient; retry without allowing
+                # the worker to claim that its lease is still renewable indefinitely.
+                logger.exception(
+                    "Task lease heartbeat storage operation failed; retrying before expiry for task %s.",
+                    context.task_id,
+                )
             except Exception:
                 logger.exception("Task lease heartbeat failed for task %s", context.task_id)
                 return

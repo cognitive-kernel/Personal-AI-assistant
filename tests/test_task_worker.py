@@ -5,7 +5,7 @@ import pytest
 
 from app import db, task_manager
 from app.schema_registry import LEARNING_MIGRATIONS
-from app.task_worker import PermanentTaskError, RetryableTaskError, TaskWorker
+from app.task_worker import PermanentTaskError, RetryableTaskError, TaskContext, TaskWorker
 
 
 @pytest.fixture
@@ -195,6 +195,94 @@ def test_worker_renews_lease_during_long_running_handler(worker_store):
     assert saved["status"] == "succeeded"
     assert saved["result"] == {"finished": True}
     assert saved["attempts"] == 1
+
+
+def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monkeypatch):
+    from app import task_worker
+
+    class FakeClock:
+        current = 0.0
+
+        @classmethod
+        def monotonic(cls):
+            return cls.current
+
+    class FakeStopEvent:
+        waits = 0
+
+        def wait(self, timeout):
+            FakeClock.current += timeout
+            self.waits += 1
+            return self.waits >= 4
+
+    monkeypatch.setattr(task_worker, "time", FakeClock)
+    worker = TaskWorker(
+        "worker-heartbeat-retry",
+        {"test.heartbeat-retry": lambda *_args: {"ok": True}},
+        lease_seconds=1,
+    )
+    context = TaskContext(
+        task_id=1,
+        worker_id="worker-heartbeat-retry",
+        lease_seconds=1,
+    )
+    monkeypatch.setattr(context, "control_status", lambda: "running")
+    calls = []
+
+    def renew(task_id, worker_id, *, lease_seconds):
+        assert task_id == 1
+        assert worker_id == "worker-heartbeat-retry"
+        assert lease_seconds == 1
+        calls.append(True)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return {"id": task_id}
+
+    monkeypatch.setattr(task_manager, "renew_lease", renew)
+    worker._maintain_lease(context, FakeStopEvent())
+
+    assert len(calls) == 3
+
+
+def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker_store, monkeypatch):
+    from app import task_worker
+
+    class FakeClock:
+        current = 0.0
+
+        @classmethod
+        def monotonic(cls):
+            return cls.current
+
+    class FakeStopEvent:
+        def wait(self, timeout):
+            # Model a timeout that wakes just after the lease deadline.
+            FakeClock.current += timeout + 0.000001
+            return False
+
+    monkeypatch.setattr(task_worker, "time", FakeClock)
+    worker = TaskWorker(
+        "worker-heartbeat-deadline",
+        {"test.heartbeat-deadline": lambda *_args: {"ok": True}},
+        lease_seconds=1,
+    )
+    context = TaskContext(
+        task_id=1,
+        worker_id="worker-heartbeat-deadline",
+        lease_seconds=1,
+    )
+    monkeypatch.setattr(context, "control_status", lambda: "running")
+    calls = []
+
+    def fail_renewal(*_args, **_kwargs):
+        calls.append(True)
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(task_manager, "renew_lease", fail_renewal)
+    worker._maintain_lease(context, FakeStopEvent())
+
+    assert len(calls) == 2
+    assert 1.0 <= FakeClock.current < 1.01
 
 
 def test_task_creation_is_idempotent_for_matching_dedupe_key(worker_store):
