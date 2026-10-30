@@ -1368,7 +1368,8 @@ def _worker(
         _BROWSER_SESSION.reuse_enabled = False
         lease_stop.set()
         if lease_thread is not None:
-            lease_thread.join(timeout=max(1.0, _WORKER_LEASE_HEARTBEAT_SECONDS + 1.0))
+            # Heartbeat DB operations each use a bounded 10-second SQLite busy timeout.
+            lease_thread.join(timeout=35.0)
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
             _ACTIVE = False
