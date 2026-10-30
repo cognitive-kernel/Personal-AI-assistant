@@ -1086,7 +1086,7 @@ def _capture_with_automatic_retry(
         try:
             return _browser_capture(prompt, cancel_event, on_lesson_checkpoint)
         except BrowserAutomationError as exc:
-            if exc.code in {"run_cancelled", "chatgpt_browser_closed"} or cancel_event.is_set() or service.get_learning_control()["paused"]:
+            if exc.code in {"run_cancelled", "chatgpt_browser_closed", "worker_lease_lost"} or cancel_event.is_set() or service.get_learning_control()["paused"]:
                 raise
             # Provider rate limits and long response timeouts explicitly ask for
             # a later retry; do not hammer the same session with short backoffs.
