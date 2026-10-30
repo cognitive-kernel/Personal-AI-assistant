@@ -989,7 +989,7 @@ def _capture_with_automatic_retry(
     run_id: int,
     phase: str,
 ) -> str:
-    """Retry visible Chrome/ChatGPT capture a bounded number of times, then require manual recovery."""
+    """Retry visible Chrome/ChatGPT capture briefly, then let the worker schedule or request manual recovery."""
     attempt = 0
     while attempt < _AUTO_RETRY_MAX_ATTEMPTS:
         if cancel_event.is_set() or service.get_learning_control()["paused"]:
@@ -1025,7 +1025,7 @@ def _capture_with_automatic_retry(
             )
             raise BrowserAutomationError(
                 error_code,
-                f"پس از {attempt} تلاش خودکار، دریافت پاسخ متوقف شد. برای جلوگیری از بازشدن مکرر Chrome، از داشبورد اجرای یادگیری را دستی ادامه دهید. آخرین خطا: {error_message[:500]}",
+                f"پس از {attempt} تلاش سریع، دریافت پاسخ متوقف شد. آخرین خطا: {error_message[:500]}",
                 partial_response=partial_response,
             )
 
@@ -1287,7 +1287,7 @@ def _start_worker_thread(
 
 
 def _dispatch_next_persisted_run() -> dict[str, Any]:
-    """Claim the oldest explicitly queued run; failed runs require deliberate manual recovery."""
+    """Claim the oldest due queued run unless pause or the shared transient-provider cooldown blocks dispatch."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     if _SHUTTING_DOWN:
         return {"status": "shutting_down", "active": False}
