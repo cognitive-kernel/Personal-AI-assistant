@@ -2381,7 +2381,7 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
         page.on("pageerror", lambda error: browser_errors.append(str(error)))
         page.route("**/api/programming/tasks", queue_route)
         page.route("**/api/tasks/7001", task_route)
-        _goto_section(page, base_url, "programming-assist-section")
+        _goto_section(page, base_url, "self-improvement-section")
 
         instruction = page.locator("#programming-instruction")
         context = page.locator("#programming-context")
