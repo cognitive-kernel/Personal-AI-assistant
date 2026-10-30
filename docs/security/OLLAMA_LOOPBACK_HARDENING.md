@@ -18,3 +18,8 @@ The policy tests cover IPv4/IPv6 loopback literals, exact-localhost normalizatio
 ## Review status
 
 This document records implementation hardening and test coverage only. It is **not an independent security assessment**. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) must remain open until an independent reviewer evaluates the network boundary, records findings, and any required follow-up changes are completed.
+
+
+## Settings API validation parity
+
+The `PATCH /api/settings` route uses the same pure `ollama.normalize_base_url` policy as the request client. This keeps configuration-time validation aligned with runtime enforcement: only HTTP(S) loopback endpoints without credentials, paths, query strings, fragments, invalid ports, or scoped IPv6 identifiers are accepted. Exact `localhost` is canonicalized to `127.0.0.1`; HTTPS loopback is supported consistently with the Ollama client policy. Validation is performed before persistence and makes no network request.

@@ -57,6 +57,7 @@ def test_ollama_policy_rejects_non_loopback_hosts(tmp_path, monkeypatch, url):
     [
         "http://user:password@localhost:11434",
         "https://user@127.0.0.1:11434",
+        "http://@127.0.0.1:11434",
     ],
 )
 def test_ollama_policy_rejects_url_credentials(tmp_path, monkeypatch, url):
@@ -72,6 +73,7 @@ def test_ollama_policy_rejects_url_credentials(tmp_path, monkeypatch, url):
         "ftp://localhost:11434",
         "localhost:11434",
         "http:///missing-host",
+        "http://[::1",
     ],
 )
 def test_ollama_policy_rejects_malformed_or_unsupported_urls(tmp_path, monkeypatch, url):
@@ -251,6 +253,8 @@ def test_ollama_request_rejects_oversized_response(tmp_path, monkeypatch):
         "http://localhost:abc",
         "http://localhost:0",
         "http://localhost:65536",
+        "http://localhost:",
+        "http://[::1]:",
     ],
 )
 def test_ollama_policy_rejects_invalid_ports(tmp_path, monkeypatch, url):
