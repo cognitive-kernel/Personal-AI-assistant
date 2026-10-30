@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-30  
-> آخرین commit کد بررسی‌شده: `dbfb8849ca4b2e243abeded724635ab47eb7d364` در `main` (پس از PR #595). CI پس از ادغام روی همین SHA کامل موفق شد: tests [#41067227257](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227257) با 1543 passed و 5 skipped، Windows storage regressions، browser E2E [#41067227286](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227286) و dependency audit [#41067227304](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41067227304) موفق شدند. artifact generation، لینک‌های Markdown (73 فایل)، import-cycle، retrieval benchmark و claim-to-test benchmark (10 مورد) نیز موفق شدند. Sandbox integration CI روی head دقیق PR #589 [#41059555627](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41059555627) نیز موفق بود.
+> آخرین commit کد بررسی‌شده: `54c8f55dd9e2f5e163c454dedf37cdd766429874` در `main` (پس از PR #597). Exact-head CI برای PR #596 و #597 شامل tests، Windows storage regressions، browser E2E و dependency audit موفق بوده است؛ شواهد post-merge برای این SHA هنوز در status checks قابل تأیید نیست و در این snapshot موفق فرض نشده است.
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -126,3 +126,12 @@
 
 - PR [#584](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/584): هزینه و توکن claim review اختیاری در برآورد مدل لحاظ شد؛ همان مدل انتخاب‌شده به مرحلهٔ review منتقل و فراخوانی به‌عنوان مرحلهٔ idempotent در بودجهٔ durable رزرو می‌شود. ادغام در `main`: `20e30eeb77bf04e2169ced9db32ba1cff036c3d6`؛ post-merge tests، Windows storage regressions، browser E2E و dependency audit موفق شدند.
 - PR [#585](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/585): heartbeat صف وظایف پس از خطای موقت SQLite تا پایان آخرین lease معتبر retry می‌کند؛ deadline با ساعت monotonic کنترل می‌شود و ownership loss، pause/cancel یا خطای غیرمنتظره همچنان fail-closed است. دو تست رگرسیون برای recovery و توقف در deadline اضافه شد و ADR-003-managed-task-runtime به‌روزرسانی شد. ادغام: `b7507c0f13f9195265d4d110e84f7bc4a2a4cd94`. CI روی head دقیق و پس از ادغام (tests، Windows storage، browser E2E و dependency audit) موفق است.
+
+
+## 2026-10-30 — شواهد رابط منابع دانش و کنترل سراسری AI-learning
+
+- مبنای جاری این گزارش پس از ادغام PR #597، شاخهٔ `main` در commit `54c8f55dd9e2f5e163c454dedf37cdd766429874` است. این SHA از GitHub تأیید شد؛ در زمان ثبت این یادداشت، status check پس از ادغام هنوز در دسترس این ممیزی نبود و نباید موفق فرض شود.
+- PR [#596](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/596) با merge commit `e057abf17766368fc21f70020d9b87760dec298a` رابط ثبت منبع HTTPS، فهرست منابع و جست‌وجوی محلی دانش را تکمیل کرد. تست Chromium مسیر ingest/list/search و بازیابی کنترل پس از خطاهای 503 را پوشش می‌دهد. سه workflow روی head دقیق PR موفق شدند: tests، browser E2E و dependency audit. درخواست‌های مرورگر در تست intercept می‌شوند؛ دریافت واقعی سایت خارجی با این E2E اثبات نشده است.
+- PR [#597](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/597) با merge commit `54c8f55dd9e2f5e163c454dedf37cdd766429874` آزمون Chromium برای مکث/ادامهٔ سراسری AI-learning و بازیابی پس از خطای موقت resume اضافه کرد. روی head دقیق `feab5df18c7852910da8397155dcd8b7182d717d`، workflowهای tests (شامل Windows storage regressions)، browser E2E و dependency audit همگی موفق شدند.
+- دامنهٔ PR #597 فقط کنترل سراسری را با payload صریح `course_id: null` می‌آزماید؛ انتخاب دوره و ارسال شناسهٔ یک دورهٔ مشخص در این آزمون پوشش داده نشده است و نباید به‌عنوان تست آن رفتار گزارش شود.
+- هیچ تغییر runtime در PR #597 انجام نشد. هیچ‌یک از این دو PR به‌تنهایی اثبات‌کنندهٔ اجرای زندهٔ ChatGPT/Ollama، بازیابی واقعی مرورگر پس از crash، پذیرش انسانی یا کیفیت factual نیستند.
