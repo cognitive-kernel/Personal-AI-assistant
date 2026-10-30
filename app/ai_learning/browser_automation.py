@@ -1291,8 +1291,16 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     if _SHUTTING_DOWN:
         return {"status": "shutting_down", "active": False}
-    if service.get_learning_control()["paused"]:
+    control = service.get_learning_control()
+    if control["paused"]:
         return {"status": "paused", "active": False}
+    if control["retry_pending"]:
+        return {
+            "status": "retry_scheduled",
+            "active": False,
+            "next_retry_at": control["retry_after"],
+            "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است.",
+        }
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
@@ -1426,8 +1434,14 @@ def recover_orphaned_runs() -> dict[str, Any]:
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     """Create and queue an outline run, then process it in a single background browser worker."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
-    if service.get_learning_control()["paused"]:
+    control = service.get_learning_control()
+    if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
+    if control["retry_pending"]:
+        raise ValueError(
+            "به‌دلیل خطای موقت ChatGPT، صف تا " + str(control["retry_after"])
+            + " در مکث خودکار است؛ تلاش بعدی بدون نیاز به بازکردن دستی Chrome انجام می‌شود."
+        )
     with _LOCK:
         if _ACTIVE:
             raise ValueError("یک کار مرورگر در حال اجراست؛ تا پایان آن صبر کنید.")
@@ -1644,6 +1658,14 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
         if _ACTIVE:
             return {"status": "resumed", "active": True, "run_id": _ACTIVE_RUN_ID,
                     "course_id": _ACTIVE_COURSE_ID, "message": "فرایند فعال ادامه پیدا می‌کند."}
+        control = service.get_learning_control()
+        if control["retry_pending"]:
+            return {
+                "status": "retry_scheduled",
+                "active": False,
+                "next_retry_at": control["retry_after"],
+                "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند.",
+            }
 
         # Resume from the durable global queue, not bounded dashboard pages.
         # Otherwise older runs can be stranded after the user exceeds page limits.
