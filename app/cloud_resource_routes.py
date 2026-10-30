@@ -247,7 +247,10 @@ def refresh_kaggle_quota() -> dict[str, Any]:
             enabled=consent["enabled"],
             user_consent=consent["user_consent"],
         )
-        snapshots = cloud_resources.save_provider_quota_snapshot(snapshot)
+        snapshots = cloud_resources.save_provider_quota_snapshot(
+            snapshot,
+            expected_executable_path=consent["executable_path"],
+        )
         return {
             "consent": cloud_resources.get_provider_consent(),
             "snapshots": snapshots,
@@ -329,7 +332,10 @@ def refresh_oci_limits() -> dict[str, Any]:
             enabled=consent["enabled"],
             user_consent=consent["user_consent"],
         )
-        snapshots = cloud_resources.save_oci_limit_snapshot(snapshot)
+        snapshots = cloud_resources.save_oci_limit_snapshot(
+            snapshot,
+            expected_consent=consent,
+        )
         return {
             "consent": cloud_resources.get_oci_limit_consent(),
             "snapshots": snapshots,
