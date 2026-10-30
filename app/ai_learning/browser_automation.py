@@ -90,6 +90,10 @@ def _maintain_worker_lease(
                 cancel_event.set()
                 _log_event("worker_lease_lost", lease_epoch=epoch)
                 return
+            control = service.get_learning_control()
+            if control["paused"]:
+                cancel_event.set()
+                _log_event("worker_global_pause_observed", lease_epoch=epoch)
             with _LOCK:
                 active_run_id = _ACTIVE_RUN_ID
             if active_run_id is not None:
@@ -107,7 +111,9 @@ def _maintain_worker_lease(
                         status=status,
                         paused_topic_ids=paused_topics,
                     )
-                    return
+                # Keep renewing until the worker exits. A pause/cancel request must
+                # not let another process launch Chrome while this browser call is
+                # still unwinding. Lease loss, unlike cooperative stop, ends renewal.
         except Exception as exc:
             # A transient DB lock must not immediately abandon a still-valid lease.
             _log_event(
