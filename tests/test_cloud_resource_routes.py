@@ -644,6 +644,7 @@ def test_cloud_resource_delete_preserves_saved_plan_audit_history(tmp_path, monk
 
 def test_kaggle_quota_refresh_discards_result_if_cli_identity_changes_mid_request(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
+    cloud_resources.initialize_store()
     original_cli = tmp_path / "kaggle-original"
     replacement_cli = tmp_path / "kaggle-replacement"
     original_cli.write_text("original executable", encoding="utf-8")
@@ -681,6 +682,7 @@ def test_kaggle_quota_refresh_discards_result_if_cli_identity_changes_mid_reques
 
 def test_oci_limit_refresh_discards_result_if_profile_changes_mid_request(tmp_path, monkeypatch):
     _configure(tmp_path, monkeypatch)
+    cloud_resources.initialize_store()
     cli = tmp_path / "oci"
     config = tmp_path / "oci-config"
     cli.write_text("oci executable", encoding="utf-8")
