@@ -1001,6 +1001,27 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
         topics = conn.execute(
             """SELECT t.* FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
                WHERE rt.run_id=? AND t.deleted_at IS NULL ORDER BY t.position""", (run_id,)).fetchall()
+        # Serialize pause against lesson completion. If pause committed first, do not
+        # save a lesson from a response that completed concurrently with the pause.
+        if run["run_type"] == "lesson" and any(topic["processing_status"] == "paused" for topic in topics):
+            conn.execute(
+                """UPDATE runs SET status='queued',error_code=NULL,error_message=NULL,
+                   finished_at=NULL WHERE id=?""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE run_topics SET status='queued',error_message=NULL
+                   WHERE run_id=?""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                     AND processing_status='running'""",
+                (run_id,),
+            )
+            conn.commit()
+            return get_run(run_id)
         if run["run_type"] == "outline":
             outline_items = _parse_outline_items(response_text)
             titles = [str(item["title"]) for item in outline_items]

@@ -13,7 +13,7 @@ The selected-topic browser workflow created a durable run for the first topic bu
 - Persist one run per selected topic in SQLite before dispatching the first browser request.
 - Give each topic run a request key derived from the caller's request key and topic ID, preserving idempotency at the topic boundary.
 - Use the existing global FIFO dispatcher for the first run and let each worker finalizer dispatch the next persisted run.
-- Keep prompts bounded to one topic and preserve per-topic pause, cancellation, retry and content-completion semantics.
+- Keep prompts bounded to one topic and preserve per-topic pause, cancellation, retry and content-completion semantics. Pausing an active topic signals its worker and requeues the run instead of marking it terminally cancelled. Lesson completion checks the paused state inside the same SQLite write transaction so a response racing with pause cannot create a lesson.
 - Manual continuation and recovery of legacy lesson runs materialize remaining approved topics as durable SQLite runs before starting the worker, but only when no runnable same-course queue already exists. Lesson workers do not create new in-memory follow-up batches; this prevents lost in-memory work and duplicate generation.
 - Keep the existing single-process browser-worker boundary; this decision does not add cross-process leases or claim multi-instance safety.
 
@@ -21,7 +21,7 @@ The selected-topic browser workflow created a durable run for the first topic bu
 
 - Regression test verifies that a selected multi-topic batch creates one durable run per topic.
 - Restart regressions simulate loss of in-memory worker state for new selected batches, manual continuation, and legacy in-flight runs; remaining topic runs must stay queued.
-- Pause regression verifies a queued paused topic is not dispatched, direct start is rejected, and unpausing resumes FIFO dispatch.
+- Pause regressions verify queued and active paused topics are not dispatched, active work is requeued rather than terminally cancelled, a concurrent lesson completion cannot save while paused, direct start is rejected, and unpausing resumes FIFO dispatch.
 - Existing queue, cancellation, retry, pause and browser tests remain required in CI.
 
 ## Consequences

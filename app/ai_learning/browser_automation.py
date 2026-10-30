@@ -1500,19 +1500,29 @@ def cancel_run(run_id: int) -> dict[str, Any]:
 
 
 def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
-    """Pause one topic and cancel its active single-topic run if necessary."""
+    """Pause a topic without terminally cancelling its active durable lesson run."""
     result = service.set_topic_paused(topic_id, paused)
     if paused:
         with _LOCK:
             active_run_id = _ACTIVE_RUN_ID
+            active_cancel_event = _CANCEL_EVENTS.get(active_run_id) if active_run_id is not None else None
         if active_run_id is not None:
             try:
                 run = service.get_run(active_run_id)
                 if any(int(item["topic_id"]) == topic_id for item in run.get("topics", [])):
-                    cancel_run(active_run_id)
-                    _log_event("topic_run_paused", topic_id=topic_id, run_id=active_run_id)
+                    # Interrupt the browser wait, but keep the run recoverable in SQLite.
+                    if active_cancel_event is not None:
+                        active_cancel_event.set()
+                    queued = service.requeue_run_for_resume(active_run_id, "topic_paused")
+                    _log_event(
+                        "topic_run_paused",
+                        topic_id=topic_id,
+                        run_id=active_run_id,
+                        run_status=queued.get("status"),
+                    )
             except Exception as exc:
-                _log_event("topic_pause_cancel_failed", topic_id=topic_id, error=str(exc)[:300])
+                _log_event("topic_pause_requeue_failed", topic_id=topic_id, error=str(exc)[:300])
+                raise
     else:
         with _LOCK:
             worker_active = _ACTIVE

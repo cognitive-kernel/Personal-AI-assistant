@@ -103,6 +103,65 @@ def test_paused_topic_run_is_skipped_until_topic_is_resumed(isolated_store, monk
     assert service.get_run(run["id"])["status"] == "running"
 
 
+def test_pausing_active_topic_requeues_run_and_resume_dispatches_it(isolated_store, monkeypatch):
+    course = service.create_course(title="مکث اجرای فعال")
+    topic = service.add_topic(course["id"], "Active topic")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="active-topic-pause",
+    )
+    service.start_run(run["id"])
+    cancel_event = threading.Event()
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", run["id"])
+    monkeypatch.setitem(browser_automation._CANCEL_EVENTS, run["id"], cancel_event)
+
+    browser_automation.set_topic_paused(topic["id"], True)
+
+    assert cancel_event.is_set()
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert service.get_topic(topic["id"])["processing_status"] == "paused"
+    assert service.get_oldest_queued_run() is None
+
+    # The active worker's finalizer clears its marker before dispatching the queue.
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    browser_automation._CANCEL_EVENTS.pop(run["id"], None)
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    browser_automation.set_topic_paused(topic["id"], False)
+
+    assert len(launched) == 1
+    assert launched[0][0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_lesson_completion_racing_with_topic_pause_is_requeued_without_saving(isolated_store):
+    course = service.create_course(title="رقابت مکث و تکمیل")
+    topic = service.add_topic(course["id"], "Paused before completion")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="pause-completion-race",
+    )
+    service.start_run(run["id"])
+    service.set_topic_paused(topic["id"], True)
+
+    result = service.complete_run(run["id"], "متن کامل درس با توضیحات کافی و منبع https://example.com/reference")
+
+    assert result["status"] == "queued"
+    assert service.get_topic(topic["id"])["processing_status"] == "paused"
+    assert service.list_lessons(topic["id"]) == []
+
+
 def test_queue_dispatch_does_not_start_second_worker_when_one_is_active(isolated_store, monkeypatch):
     course = service.create_course(title="جلوگیری از اجرای هم‌زمان")
     run = service.create_run(course["id"], run_type="outline", request_key="already-active")
