@@ -183,7 +183,8 @@ def test_knowledge_fetch_disables_proxies_and_resolves_only_at_pinned_connect(mo
     assert len(proxies) == 1
     assert proxies[0].proxies == {}
     assert any(
-        isinstance(handler, knowledge_base._SafeRedirect)
+        handler is knowledge_base._SafeRedirect
+        or isinstance(handler, knowledge_base._SafeRedirect)
         for handler in captured["handlers"]
     )
 
