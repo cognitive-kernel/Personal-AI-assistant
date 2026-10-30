@@ -1822,7 +1822,7 @@ def pause_learning() -> dict[str, Any]:
 
 def resume_learning(course_id: int | None = None) -> dict[str, Any]:
     """Resume an active worker, recover a persisted in-flight run, or continue remaining lesson batches."""
-    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
     service.set_learning_paused(False)
     with _LOCK:
         if _ACTIVE:
@@ -1837,130 +1837,144 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند.",
             }
 
-        # Resume from the durable global queue, not bounded dashboard pages.
-        # Otherwise older runs can be stranded after the user exceeds page limits.
-        in_flight = service.get_oldest_resumable_run(course_id)
-        if in_flight is not None:
-            if in_flight.get("status") in {"running", "needs_user_action"}:
-                service.requeue_run_for_resume(
-                    int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True
+        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
+        if epoch is None:
+            return {
+                "status": "worker_busy",
+                "active": False,
+                "message": "یک پردازهٔ دیگر مالک worker مرورگر است؛ درخواست در صف پایدار باقی می‌ماند.",
+            }
+        _WORKER_LEASE_EPOCH = epoch
+        try:
+            # Resume from the durable global queue, not bounded dashboard pages.
+            # Otherwise older runs can be stranded after the user exceeds page limits.
+            in_flight = service.get_oldest_resumable_run(course_id)
+            if in_flight is not None:
+                if in_flight.get("status") in {"running", "needs_user_action"}:
+                    service.requeue_run_for_resume(
+                        int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True
+                    )
+                run = service.start_run(int(in_flight["id"]), reset_retry_budget=True)
+                run = service.get_run(int(in_flight["id"]))
+                run_id = int(run["id"])
+                target_course = int(run["course_id"])
+    
+                # Legacy versions kept selected follow-up topic IDs only in memory.
+                # If no durable same-course run remains, materialize the approved pending
+                # topics now, before the resumed worker starts. New batches already have
+                # queued records and are deliberately not expanded beyond their selection.
+                queued_topic_count = 0
+                if run.get("run_type") == "lesson" and not service.has_queued_run_for_course(target_course):
+                    current_topic_ids = {
+                        int(item["topic_id"]) for item in run.get("topics", [])
+                    }
+                    course = service.get_course(target_course)
+                    remaining = [
+                        int(topic["id"]) for topic in course.get("topics", [])
+                        if int(topic["id"]) not in current_topic_ids
+                        and topic.get("approval_status") == "approved"
+                        and topic.get("processing_status") != "paused"
+                        and int(topic.get("lesson_content_ready_count") or 0) == 0
+                    ]
+                    batch_key = str(int(time.time()))
+                    for topic_id in remaining:
+                        request_key = f"playwright-lessons-{target_course}-{topic_id}-resume-{batch_key}"
+                        queued = service.create_run(
+                            target_course, run_type="lesson", topic_ids=[topic_id],
+                            selection_mode="selected", request_key=request_key,
+                        )
+                        if queued["status"] != "queued":
+                            raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                        queued_topic_count += 1
+    
+                _ACTIVE = True
+                _ACTIVE_RUN_ID = run_id
+                _ACTIVE_COURSE_ID = target_course
+                cancel_event = threading.Event()
+                _CANCEL_EVENTS[run_id] = cancel_event
+                thread = threading.Thread(
+                    target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
+                    name=f"ai-learning-resume-{run_id}", daemon=True,
                 )
-            run = service.start_run(int(in_flight["id"]), reset_retry_budget=True)
-            run = service.get_run(int(in_flight["id"]))
-            run_id = int(run["id"])
-            target_course = int(run["course_id"])
-
-            # Legacy versions kept selected follow-up topic IDs only in memory.
-            # If no durable same-course run remains, materialize the approved pending
-            # topics now, before the resumed worker starts. New batches already have
-            # queued records and are deliberately not expanded beyond their selection.
-            queued_topic_count = 0
-            if run.get("run_type") == "lesson" and not service.has_queued_run_for_course(target_course):
-                current_topic_ids = {
-                    int(item["topic_id"]) for item in run.get("topics", [])
+                _start_worker_thread(thread, run_id, cancel_event)
+                _log_event(
+                    "learning_run_recovered",
+                    run_id=run_id,
+                    course_id=target_course,
+                    run_type=run["run_type"],
+                    queued_followup_topic_count=queued_topic_count,
+                )
+                return {
+                    "status": "resumed",
+                    "active": True,
+                    "run_id": run_id,
+                    "course_id": target_course,
+                    "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
+                    "message": (
+                        "اجرای ناتمام درس دوباره آغاز شد و سرفصل‌های تأییدشدهٔ باقی‌مانده در صف پایدار قرار گرفتند."
+                        if run.get("run_type") == "lesson"
+                        else "اجرای ناتمام طرح درس دوباره آغاز شد؛ پس از بررسی و تأیید سرفصل‌ها می‌توانید دریافت درس را آغاز کنید."
+                    ),
                 }
-                course = service.get_course(target_course)
-                remaining = [
-                    int(topic["id"]) for topic in course.get("topics", [])
-                    if int(topic["id"]) not in current_topic_ids
-                    and topic.get("approval_status") == "approved"
-                    and topic.get("processing_status") != "paused"
-                    and int(topic.get("lesson_content_ready_count") or 0) == 0
-                ]
+    
+            # Resolve eligible work in SQLite rather than scanning the dashboard's
+            # bounded course pages. This fallback is used only when no durable run exists.
+            pending_course_id = service.get_oldest_course_with_pending_approved_topic(course_id)
+            if pending_course_id is not None:
+                course = service.get_course(pending_course_id)
+                cid = int(course["id"])
+                eligible = [int(topic["id"]) for topic in course.get("topics", [])
+                            if topic.get("approval_status") == "approved"
+                            and topic.get("processing_status") != "paused"
+                            and int(topic.get("lesson_content_ready_count") or 0) == 0]
+                if not eligible:
+                    # Keep the SQL candidate query and course-level progress projection fail-safe
+                    # if their eligibility predicates ever diverge.
+                    return {"status": "idle", "active": False,
+                            "message": "کار ناتمامی برای ادامه پیدا نشد."}
+                # Persist the complete eligible set before starting the first topic.
+                # The remainder stays recoverable if the process exits during any capture.
                 batch_key = str(int(time.time()))
-                for topic_id in remaining:
-                    request_key = f"playwright-lessons-{target_course}-{topic_id}-resume-{batch_key}"
+                queued_run_ids: list[int] = []
+                for topic_id in eligible:
+                    request_key = f"playwright-lessons-{cid}-{topic_id}-resume-{batch_key}"
                     queued = service.create_run(
-                        target_course, run_type="lesson", topic_ids=[topic_id],
+                        cid, run_type="lesson", topic_ids=[topic_id],
                         selection_mode="selected", request_key=request_key,
                     )
                     if queued["status"] != "queued":
-                        raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
-                    queued_topic_count += 1
-
-            _ACTIVE = True
-            _ACTIVE_RUN_ID = run_id
-            _ACTIVE_COURSE_ID = target_course
-            cancel_event = threading.Event()
-            _CANCEL_EVENTS[run_id] = cancel_event
-            thread = threading.Thread(
-                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
-                name=f"ai-learning-resume-{run_id}", daemon=True,
-            )
-            _start_worker_thread(thread, run_id, cancel_event)
-            _log_event(
-                "learning_run_recovered",
-                run_id=run_id,
-                course_id=target_course,
-                run_type=run["run_type"],
-                queued_followup_topic_count=queued_topic_count,
-            )
-            return {
-                "status": "resumed",
-                "active": True,
-                "run_id": run_id,
-                "course_id": target_course,
-                "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
-                "message": (
-                    "اجرای ناتمام درس دوباره آغاز شد و سرفصل‌های تأییدشدهٔ باقی‌مانده در صف پایدار قرار گرفتند."
-                    if run.get("run_type") == "lesson"
-                    else "اجرای ناتمام طرح درس دوباره آغاز شد؛ پس از بررسی و تأیید سرفصل‌ها می‌توانید دریافت درس را آغاز کنید."
-                ),
-            }
-
-        # Resolve eligible work in SQLite rather than scanning the dashboard's
-        # bounded course pages. This fallback is used only when no durable run exists.
-        pending_course_id = service.get_oldest_course_with_pending_approved_topic(course_id)
-        if pending_course_id is not None:
-            course = service.get_course(pending_course_id)
-            cid = int(course["id"])
-            eligible = [int(topic["id"]) for topic in course.get("topics", [])
-                        if topic.get("approval_status") == "approved"
-                        and topic.get("processing_status") != "paused"
-                        and int(topic.get("lesson_content_ready_count") or 0) == 0]
-            if not eligible:
-                # Keep the SQL candidate query and course-level progress projection fail-safe
-                # if their eligibility predicates ever diverge.
-                return {"status": "idle", "active": False,
-                        "message": "کار ناتمامی برای ادامه پیدا نشد."}
-            # Persist the complete eligible set before starting the first topic.
-            # The remainder stays recoverable if the process exits during any capture.
-            batch_key = str(int(time.time()))
-            queued_run_ids: list[int] = []
-            for topic_id in eligible:
-                request_key = f"playwright-lessons-{cid}-{topic_id}-resume-{batch_key}"
-                queued = service.create_run(
-                    cid, run_type="lesson", topic_ids=[topic_id],
-                    selection_mode="selected", request_key=request_key,
+                        raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                    queued_run_ids.append(int(queued["id"]))
+                run = service.start_run(queued_run_ids[0])
+                run_id = int(run["id"])
+                _ACTIVE = True
+                _ACTIVE_RUN_ID = run_id
+                _ACTIVE_COURSE_ID = cid
+                cancel_event = threading.Event()
+                _CANCEL_EVENTS[run_id] = cancel_event
+                thread = threading.Thread(
+                    target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
+                    name=f"ai-learning-resume-{run_id}", daemon=True,
                 )
-                if queued["status"] != "queued":
-                    raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
-                queued_run_ids.append(int(queued["id"]))
-            run = service.start_run(queued_run_ids[0])
-            run_id = int(run["id"])
-            _ACTIVE = True
-            _ACTIVE_RUN_ID = run_id
-            _ACTIVE_COURSE_ID = cid
-            cancel_event = threading.Event()
-            _CANCEL_EVENTS[run_id] = cancel_event
-            thread = threading.Thread(
-                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
-                name=f"ai-learning-resume-{run_id}", daemon=True,
-            )
-            _start_worker_thread(thread, run_id, cancel_event)
-            _log_event(
-                "lesson_workflow_resumed",
-                run_id=run_id,
-                course_id=cid,
-                topic_ids=eligible,
-                queued_run_ids=queued_run_ids,
-            )
-            return {
-                "status": "resumed",
-                "active": True,
-                "run_id": run_id,
-                "course_id": cid,
-                "queued_topic_count": len(eligible),
-                "message": f"ادامهٔ {len(eligible)} سرفصل تأییدشده در صف پایدار ثبت شد و به‌ترتیب اجرا می‌شود.",
-            }
-        return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
+                _start_worker_thread(thread, run_id, cancel_event)
+                _log_event(
+                    "lesson_workflow_resumed",
+                    run_id=run_id,
+                    course_id=cid,
+                    topic_ids=eligible,
+                    queued_run_ids=queued_run_ids,
+                )
+                return {
+                    "status": "resumed",
+                    "active": True,
+                    "run_id": run_id,
+                    "course_id": cid,
+                    "queued_topic_count": len(eligible),
+                    "message": f"ادامهٔ {len(eligible)} سرفصل تأییدشده در صف پایدار ثبت شد و به‌ترتیب اجرا می‌شود.",
+                }
+            _release_worker_lease()
+            return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
+    
+        except Exception:
+            _release_worker_lease()
+            raise
