@@ -105,10 +105,10 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 
 ## 2026-10-30 — current implementation evidence and remaining automated gaps
 
-- Current application-code baseline: `cc1ad50536e39b44027c61c903873d8638da1df5`. Post-merge tests (1488 passed, 5 skipped), browser E2E, dependency audit, and Windows storage regressions all passed; see the exact run links in the gate ledger above.
-- Merged changes since the earlier evidence snapshot: PR #576 Cloud Planner API-failure recovery; PR #575 Sandbox browser-coverage documentation; PR #578 Cloud/Sandbox architecture-documentation parity; PR #577 shared Ollama loopback URL validation in the API/runtime; PR #579 settings defaults, strict validation, and Chromium save/failure coverage.
-- Current real-browser suite: 31 test functions. The settings form is now covered for valid defaults, manual model entry, successful persistence, API 503 feedback, and no persisted mutation after failure.
-- Automated implementation gaps still being worked: connect the tested learning cost/model-selection policy to the actual lesson-generation path; add concurrent Sandbox container-cleanup fault injection and make cleanup idempotent under a real race. Do not mark these as complete until code and regression tests are merged.
+- Current application-code baseline before the learning-selector change: `483343a2d9d67b6c8f7e5133497c8476440cfa5e`. Post-merge tests, browser E2E, dependency audit, Windows storage regressions, and real-Docker Sandbox integration all passed on this exact SHA; run links are recorded in the 2026-10-30 continuation below.
+- Merged changes since the earlier evidence snapshot: PR #576 Cloud Planner API-failure recovery; PR #575 Sandbox browser-coverage documentation; PR #578 Cloud/Sandbox architecture-documentation parity; PR #577 shared Ollama loopback URL validation; PR #579 settings defaults, strict validation, and Chromium save/failure coverage; PR #580 acceptance-evidence reconciliation; PR #581 concurrent Sandbox cleanup idempotency.
+- Current real-browser suite: 31 test functions. The settings form is covered for valid defaults, manual model entry, successful persistence, API 503 feedback, and no persisted mutation after failure.
+- Sandbox concurrent cleanup race: **resolved in PR #581**, with deterministic race/persistent-failure regressions and successful real-Docker integration CI. Learning cost/model selection is under implementation in PR #582; do not mark it complete until exact-head CI and post-merge checks pass.
 - External acceptance remains open: independent review of Issue #52, target-host startup/recovery/soak, live Ollama evaluation, human adjudication, and operator-run staging backup/restore/rollback. CI evidence does not satisfy these gates.
 
 
