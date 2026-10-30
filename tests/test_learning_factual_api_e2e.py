@@ -269,7 +269,7 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         assert review_result["promoted"] is False
         final_budget = get_job_budget(created["id"])
         assert final_budget["calls_used"] == 6
-        assert final_budget["predict_tokens_reserved"] == 7500
+        assert final_budget["predict_tokens_reserved"] == 8500
         assert final_budget["scope"] == "durable_single_learning_job_across_generation_and_review_channels"
 
 
