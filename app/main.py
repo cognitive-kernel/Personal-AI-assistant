@@ -632,8 +632,8 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
         if (
             isinstance(quality, bool)
             or not isinstance(quality, (int, float))
-            or not math.isfinite(quality)
             or not 0 <= quality <= 1
+            or not math.isfinite(quality)
         ):
             raise HTTPException(
                 status_code=422,
