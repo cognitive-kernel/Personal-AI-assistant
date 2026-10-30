@@ -612,14 +612,14 @@ def _wait_for_complete_answer(page: Any, previous_answer: str, cancel_event: thr
                        exception_type=type(exc).__name__, message=str(exc)[:300])
             raise BrowserAutomationError(
                 "chatgpt_page_closed",
-                "صفحه یا مرورگر ChatGPT هنگام دریافت پاسخ بسته شد. اگر پاسخ هنوز در صفحه قابل مشاهده است، مرورگر را باز نگه دارید و دوباره تلاش کنید.",
+                "صفحه یا مرورگر ChatGPT هنگام دریافت پاسخ بسته شد؛ سامانه پس از ۶۰ و ۳۰۰ ثانیه حداکثر دو بار تلاش مجدد می‌کند و در صورت تداوم مشکل، بررسی دستی لازم است.",
             ) from exc
     _log_event("response_timeout", elapsed_seconds=round(time.monotonic() - started, 1),
                last_chars=len(last_text), last_message_count=_assistant_message_count(page),
                last_stop_visible=last_stop_visible, stable_since_set=stable_since is not None)
     raise BrowserAutomationError(
         "chatgpt_response_timeout",
-        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. بخش دریافت‌شده در سابقهٔ اجرا حفظ شد؛ پس از بررسی شبکه، از داشبورد ادامه دهید.",
+        "در مهلت ۳۰ دقیقه‌ای پاسخ کامل و پایدار از ChatGPT دریافت نشد. بخش دریافت‌شده حفظ شد؛ سامانه پس از ۲ و ۱۰ دقیقه حداکثر دو بار تلاش مجدد می‌کند و در صورت تداوم مشکل، بررسی دستی لازم است.",
         partial_response=last_text or None,
     )
 
