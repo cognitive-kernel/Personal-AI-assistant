@@ -26,7 +26,7 @@ def test_extractor_ignores_script_and_navigation():
     assert "Useful content here." in text and "menu" not in text and "secret" not in text
     assert "".join(parser.title_parts) == "Docs"
 
-def test_safe_redirect_allows_validated_official_host(monkeypatch):
+def test_safe_redirect_allows_policy_approved_official_host(monkeypatch):
     monkeypatch.setattr(
         knowledge_base.socket,
         "getaddrinfo",
