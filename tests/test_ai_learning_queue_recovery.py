@@ -1003,7 +1003,7 @@ def test_reset_refuses_to_clear_store_while_remote_worker_lease_is_active(isolat
     epoch = service.claim_worker_lease("remote-process", lease_seconds=90)
     assert epoch == 1
 
-    with pytest.raises(ValueError, match="پردازهٔ دیگر"):
+    with pytest.raises(ValueError, match="مالکیت worker"):
         service.reset_learning_data()
 
     assert service.owns_worker_lease("remote-process", epoch)
@@ -1064,3 +1064,18 @@ def test_manual_resume_does_not_requeue_run_owned_by_another_process(isolated_st
     assert result["status"] == "worker_busy"
     assert service.get_run(run["id"])["status"] == "running"
     assert service.owns_worker_lease("other-process", epoch)
+
+
+def test_reset_remains_blocked_for_expired_unreleased_worker_owner(isolated_store):
+    epoch = service.claim_worker_lease("possibly-live-process", lease_seconds=90)
+    assert epoch == 1
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+
+    with pytest.raises(ValueError, match="مالکیت worker"):
+        service.reset_learning_data()
+
+    assert service.release_worker_lease("possibly-live-process", epoch)
+    assert service.reset_learning_data()["reset"] is True
