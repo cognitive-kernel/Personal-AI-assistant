@@ -2001,6 +2001,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             timeout=10000,
         )
         assert page.locator("#ollama-model-options option").count() == 1
+        assert page.locator("#programming-context").evaluate("node => node.maxLength") == 12000
         invalid_fields = page.locator("#settings-form :invalid").evaluate_all(
             "nodes => nodes.map(node => ({id: node.id, value: node.value, type: node.type, min: node.min, max: node.max}))"
         )
@@ -2010,6 +2011,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         # local Ollama model list. The real API persists into CI's disposable DB.
         page.locator("#chat-model").fill("browser-e2e-manual-model")
         page.locator("#learning-task-budget").fill("123")
+        page.locator("#programming-source-limit").fill("20000")
         page.locator("#settings-form button[type='submit']").click()
         page.wait_for_function(
             """() => document.querySelector('#settings-output')?.textContent
@@ -2021,6 +2023,8 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         saved_settings = saved.json()
         assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
         assert saved_settings["learning_task_budget_microusd"] == 123
+        assert saved_settings["programming_source_max_chars"] == 20000
+        assert page.locator("#programming-context").evaluate("node => node.maxLength") == 20000
 
         def fail_settings_patch(route):
             if route.request.method == "PATCH":
