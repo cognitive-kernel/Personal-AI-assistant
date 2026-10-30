@@ -2845,6 +2845,7 @@ def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
             "() => document.querySelector('#course-select')?.value === '42'",
             timeout=10000,
         )
+        page.locator("#catalog-menu > summary").click()
         topic_card = page.locator("#topics details.topic").filter(has_text="سرفصل آزمون مرور")
         topic_card.locator(":scope > summary").click()
         topic_card.get_by_role("button", name="تأیید", exact=True).click()
@@ -2872,6 +2873,7 @@ def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
             "() => document.querySelector('#course-select')?.value === '42'",
             timeout=10000,
         )
+        page.locator("#catalog-menu > summary").click()
         topic_card = page.locator("#topics details.topic").filter(has_text="سرفصل آزمون مرور")
         topic_card.wait_for(state="visible", timeout=10000)
         page.get_by_text("تأییدشده", exact=False).wait_for(timeout=10000)
