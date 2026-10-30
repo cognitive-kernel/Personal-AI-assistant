@@ -106,9 +106,9 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 
 ## 2026-10-30 — current implementation evidence and remaining automated gaps
 
-- Current `main` baseline: `cd620a624e997fc52fd510c0fdfedc2280af02b9` (latest change is test-only PR #599; see the 2026-10-30 evidence section below). Post-merge tests (1501 passed, 5 skipped), Windows storage regressions, browser E2E and dependency audit all passed on this exact SHA; exact run links are recorded above.
+- Current `main` baseline: `cd620a624e997fc52fd510c0fdfedc2280af02b9` (latest change is test-only PR #599; see the 2026-10-30 evidence section below). Exact-head tests/Windows, browser E2E and dependency audit passed on PR #599; independent post-merge CI on this merge SHA was not confirmed in this review and is not assumed successful.
 - Merged changes since the earlier evidence snapshot include PRs #576, #575, #578, #577, #579, #580, #581, #582, #584 (claim-review model/budget integration), and #585 (bounded task heartbeat retry).
-- Current real-browser suite: 31 test functions. The settings form is covered for valid defaults, manual model entry, successful persistence, API 503 feedback, and no persisted mutation after failure.
+- Current real-browser suite: 35 test functions. The settings form is covered for valid defaults, manual model entry, successful persistence, API 503 feedback, and no persisted mutation after failure.
 - Sandbox concurrent cleanup race: **resolved in PR #581**. Learning model selection is **integrated in PR #582**; optional claim-review model/budget integration is **merged in PR #584**. Bounded SQLite heartbeat retry with lease-deadline enforcement is **merged in PR #585**. PR #585 exact-head tests/Windows, browser E2E and dependency audit passed; post-merge checks are recorded above.
 - External acceptance remains open: independent review of Issue #52, target-host startup/recovery/soak, live Ollama evaluation, human adjudication, and operator-run staging backup/restore/rollback. CI evidence does not satisfy these gates.
 
