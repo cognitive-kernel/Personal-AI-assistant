@@ -307,3 +307,67 @@ def test_claim_review_rejects_quotes_not_found_in_the_supplied_source(tmp_path, 
     )
     assert result["passed"] is False
     assert result["error"] == "claim_quote_not_in_source"
+
+
+
+def test_claim_review_uses_selected_model_override_and_records_provider_usage(
+    tmp_path, monkeypatch
+):
+    setup_settings_db(tmp_path, monkeypatch)
+    url = "https://docs.python.org/3/library/json.html"
+
+    def fake_request(_path, payload, **_kwargs):
+        assert payload["model"] == "cheap:latest"
+        return {
+            "message": {"content": json.dumps({
+                "overall": "supported",
+                "source_conflicts": [],
+                "claims": [{
+                    "claim": "Invalid JSON may raise a decoding error.",
+                    "verdict": "supported",
+                    "evidence_urls": [url],
+                    "evidence_quotes": [{
+                        "url": url,
+                        "quote": "Invalid JSON input may raise a decoding error.",
+                    }],
+                    "reason": "Directly stated in the excerpt.",
+                }],
+            })},
+            "prompt_eval_count": 1234,
+            "eval_count": 456,
+            "total_duration": 9000,
+        }
+
+    monkeypatch.setattr(claim_review, "_request", fake_request)
+    result = claim_review.review_answer_claims(
+        "Why can JSON parsing fail?",
+        f"Invalid JSON may raise a decoding error. Source: {url}",
+        [{
+            "title": "Python JSON docs",
+            "url": url,
+            "content": "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully.",
+        }],
+        model_override="cheap:latest",
+    )
+
+    assert result["passed"] is True
+    assert result["model_id"] == "cheap:latest"
+    assert result["provider_usage"] == {
+        "prompt_eval_count": 1234,
+        "eval_count": 456,
+        "total_duration": 9000,
+    }
+
+
+def test_claim_review_prompt_estimator_uses_the_execution_payload_contract():
+    url = "https://docs.python.org/3/library/json.html"
+    source = [{
+        "title": "Python JSON docs",
+        "url": url,
+        "content": "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully.",
+    }]
+
+    estimate = claim_review.estimate_review_prompt_tokens("Why can JSON parsing fail?", source)
+    assert estimate > 0
+    assert estimate == claim_review.estimate_review_prompt_tokens("Why can JSON parsing fail?", source)
+    assert claim_review.estimate_review_prompt_tokens("Question", []) == 0
