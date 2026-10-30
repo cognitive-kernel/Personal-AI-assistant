@@ -1142,11 +1142,11 @@ def _worker(
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         if result.get("status") == "succeeded" and run_type == "outline":
-                try:
-                    _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
-                except Exception as exc:
-                    # The outline remains safely saved even if lesson follow-up fails.
-                    print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
+            try:
+                _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
+            except Exception as exc:
+                # The outline remains safely saved even if lesson follow-up fails.
+                print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
     except BrowserAutomationError as exc:
         _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
