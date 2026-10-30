@@ -1036,3 +1036,17 @@ def test_stale_worker_cannot_commit_provider_result_after_lease_reclaim(isolated
         worker_lease_owner="new-process", worker_lease_epoch=new_epoch,
     )
     assert service.get_run(run["id"])["status"] == "queued"
+
+
+def test_worker_lease_is_renewed_until_paused_worker_releases_it(isolated_store):
+    epoch = service.claim_worker_lease("paused-process", lease_seconds=90)
+    assert epoch == 1
+    service.set_learning_paused(True, "test global pause")
+
+    assert service.renew_worker_lease("paused-process", epoch, lease_seconds=90)
+    service.set_learning_paused(False)
+    assert service.claim_worker_lease("replacement-process", lease_seconds=90) is None
+
+    assert service.release_worker_lease("paused-process", epoch)
+    replacement_epoch = service.claim_worker_lease("replacement-process", lease_seconds=90)
+    assert replacement_epoch == epoch + 1
