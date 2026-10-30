@@ -1089,6 +1089,23 @@ def run_job(job_id: int) -> None:
                     "passed_model_assisted" if claim_review_result.get("passed") is True else "needs_review"
                 )
                 quality["claim_review"] = claim_review_result
+                # Keep review provenance alongside generation provenance so one
+                # record describes every model-assisted stage in this lesson job.
+                generation_provenance = quality.get("generation_provenance")
+                if isinstance(generation_provenance, dict):
+                    review_usage = claim_review_result.get("provider_usage")
+                    if isinstance(review_usage, dict):
+                        provider_usage = generation_provenance.setdefault("provider_usage", {})
+                        if isinstance(provider_usage, dict):
+                            provider_usage["claim_review"] = review_usage
+                    generation_provenance["claim_review"] = {
+                        key: claim_review_result.get(key)
+                        for key in (
+                            "prompt_version", "prompt_sha256", "model_id",
+                            "model_digest", "model_digest_status", "provider_usage",
+                        )
+                        if key in claim_review_result
+                    }
             else:
                 quality["claim_review_status"] = "no_usable_sources"
             try:
