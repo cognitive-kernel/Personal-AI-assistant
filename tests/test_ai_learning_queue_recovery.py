@@ -625,7 +625,7 @@ def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, m
     dispatcher_thread.join(timeout=5)
     if dispatcher_thread.is_alive():
         # Keep a lock-deadlock regression from poisoning later tests in this process.
-        monkeypatch.setattr(browser_automation, "_LOCK", threading.Lock())
+        browser_automation._LOCK = threading.Lock()
         pytest.fail("dispatcher deadlocked while recovering from worker thread startup failure")
     error = outcome.get("error")
     assert isinstance(error, browser_automation.BrowserAutomationError)
