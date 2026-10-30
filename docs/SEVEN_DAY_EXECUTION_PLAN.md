@@ -137,3 +137,12 @@ Append dated entries with:
 - PR #570 documentation reconciliation merged after all three exact-head workflows (tests, browser E2E, dependency audit) completed successfully.
 - Merge commit: `aa4990ddd64b1060e5890d69509553a35d31bc7b`.
 - Seven-day execution plan created from this verified baseline. No claim is made that the remaining workstreams are already complete.
+
+### 2026-10-30 — Day 1 UI audit
+- Verified baseline `main` SHA: `f403ae13a03a9ac5e526879d40380221c879cff8`; PR #571 post-merge workflows all passed: tests [#41010845397](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41010845397), browser E2E [#41010845510](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41010845510), dependency audit [#41010845531](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41010845531).
+- Audited `index.html`, `page-navigation.js`, `test_browser_e2e.py`, `test_ui_semantics.py`, `test_ui_contrast.py`, and `UI_ACCEPTANCE.md`.
+- Confirmed 14 primary navigation destinations are checked for link/section presence and HTTP 200 in the existing navigation browser test; 27 browser test functions and 56 static button controls exist.
+- Corrected stale acceptance wording: implementation uses `aria-current="page"`; it does not implement scroll-position `aria-current="location"` behavior.
+- Added `docs/UI_AUDIT_2026-10-30.md` with verified coverage, limits, and candidates for Day 2. The untested cloud planning/quota, OCI, sandbox, programming-assistance, knowledge, and non-theme settings interactions are audit candidates, not confirmed defects.
+- No application behavior changed and no new tests were added because the first pass found no reproduced UI defect; duplicate navigation coverage would add no value.
+- Next: map candidate workflows to UI handlers, API contracts, backend tests, and missing state transitions before selecting a regression test.
