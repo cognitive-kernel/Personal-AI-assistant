@@ -77,7 +77,7 @@ AI-learning now uses a durable SQLite worker lease shared by application process
 - The durable lease coordinates multiple application processes on one host when they share the same AI-learning SQLite database and dedicated browser profile. It does not provide multi-host coordination or exact remote-session continuation. After abrupt power loss, the startup/runtime watchdog waits for lease expiry, requeues the interrupted run, and dispatches due scheduled retries. Use the dashboard recovery action only for runs that remain in `needs_user_action` after automatic recovery is exhausted or a user-interaction gate is encountered.
 
 
-- The dashboard's **پاک‌سازی داده‌های یادگیری و شروع از صفر** action deletes captured topics, lessons, content versions, attached source references, run history, relations/chunks through topic cascades, and retrieval traces while preserving course definitions. It requires explicit confirmation and refuses to reset while persisted runs remain queued/running or any unexpired process-wide browser-worker lease exists.
+- The dashboard's **پاک‌سازی داده‌های یادگیری و شروع از صفر** action deletes captured topics, lessons, content versions, attached source references, run history, relations/chunks through topic cascades, and retrieval traces while preserving course definitions. It requires explicit confirmation and refuses to reset while persisted runs remain queued/running or a process-wide browser-worker owner remains recorded, even if its lease has expired but recovery/release has not yet been confirmed.
 
 
 ## Source-link checks and lesson retries
