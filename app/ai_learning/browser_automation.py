@@ -1128,6 +1128,7 @@ def _continue_lessons(
     # deliberate dashboard action so users can review the outline before lesson capture.
     pending_ids = list(dict.fromkeys(int(item) for item in selected_topic_ids or []))
     while True:
+        _assert_worker_lease()
         if service.get_learning_control()["paused"] or cancel_event.is_set():
             _log_event("lesson_followup_paused", course_id=course_id)
             return
@@ -1162,6 +1163,7 @@ def _continue_lessons(
             f"playwright-lessons-{course_id}-{topic_id}-"
             f"{'retry' if force_retry else 'selected'}-{int(time.time())}"
         )
+        _assert_worker_lease()
         run = service.create_run(
             course_id, run_type="lesson", topic_ids=topic_ids,
             selection_mode="selected", request_key=request_key, force_retry=force_retry,
@@ -1173,19 +1175,28 @@ def _continue_lessons(
             _ACTIVE_RUN_ID = run_id
             _CANCEL_EVENTS[run_id] = cancel_event
         try:
+            def save_followup_partial(text: str) -> dict[str, Any]:
+                _assert_worker_lease()
+                return service.save_run_partial_response(run_id, text)
+
             answer = _capture_with_automatic_retry(
                 run["prompt_text"], cancel_event,
-                lambda text: service.save_run_partial_response(run_id, text),
+                save_followup_partial,
                 run_id=run_id, phase="lesson_followup",
             )
+            _assert_worker_lease()
             result = service.complete_run(run_id, answer)
         except BrowserAutomationError as exc:
+            if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
                 return
             service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
             return
         except Exception as exc:
+            if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
                 return
@@ -1572,8 +1583,7 @@ def recover_orphaned_runs() -> dict[str, Any]:
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
-    """Create and queue an outline run, then process it in a single background browser worker."""
-    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    """Persist an outline request, then dispatch it under the shared browser lease."""
     control = service.get_learning_control()
     if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
@@ -1591,18 +1601,26 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
         )
         if run["status"] not in {"queued", "running"}:
             raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره بازخوانی را دوباره بزنید.")
-        service.start_run(int(run["id"]))
-        _ACTIVE = True
-        _ACTIVE_RUN_ID = int(run["id"])
-        _ACTIVE_COURSE_ID = course_id
-        cancel_event = threading.Event()
-        _CANCEL_EVENTS[int(run["id"])] = cancel_event
-        thread = threading.Thread(
-            target=_worker, args=(int(run["id"]), course_id, str(run["prompt_text"]), cancel_event),
-            name=f"ai-learning-browser-{run['id']}", daemon=True,
-        )
-        _start_worker_thread(thread, int(run["id"]), cancel_event)
-        return {"run_id": int(run["id"]), "status": "running", "provider": "ChatGPT visible UI"}
+
+    # An idempotent request may already be running in another process. The
+    # watchdog only reclaims it if its durable lease has expired.
+    dispatch = (
+        recover_orphaned_runs()
+        if run["status"] == "running"
+        else _dispatch_next_persisted_run()
+    )
+    started = dispatch.get("status") == "running" and int(dispatch.get("run_id") or 0) == int(run["id"])
+    status = "running" if started or run["status"] == "running" else "queued"
+    return {
+        "run_id": int(run["id"]),
+        "status": status,
+        "provider": "ChatGPT visible UI",
+        "message": (
+            "اجرای طرح درس آغاز شد."
+            if started
+            else "درخواست در صف پایدار ثبت شد و پس از آزادشدن worker مرورگر اجرا می‌شود."
+        ),
+    }
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
