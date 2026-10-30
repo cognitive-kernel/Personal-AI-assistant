@@ -1687,7 +1687,6 @@ def test_storage_backup_failure_is_reported_and_controls_recover():
         button = page.locator("#create-storage-backup")
         button.click()
         output = page.locator("#storage-backup-output")
-        output.get_by_text if False else None
         page.wait_for_function(
             """() => {
                 const node = document.querySelector('#storage-backup-output');
