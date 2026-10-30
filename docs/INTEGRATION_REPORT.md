@@ -171,3 +171,11 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR #597 (`54c8f55dd9e2f5e163c454dedf37cdd766429874`) آزمون Chromium کنترل سراسری pause/resume را اضافه کرد؛ خطای 503 در اولین resume باید دکمه را قابل استفاده نگه دارد و درخواست بعدی باید مکث را بردارد. exact-head tests، Windows storage regressions، browser E2E و dependency audit موفق شدند.
 - محدودیت پوشش PR #597: فهرست دوره‌ها در fixture خالی است و payload هر دو درخواست resume برابر `{"course_id": null}` است؛ بنابراین مسیر resume دورهٔ انتخاب‌شده آزموده نشده است. این مورد به‌عنوان شکاف آزمون باقی می‌ماند، نه نقص اثبات‌شده در production.
 - تغییرات فوق معماری و رفتار backend صف را تغییر نمی‌دهند. پذیرش روی میزبان مقصد، تعامل واقعی با provider، آزمون crash/multi-process و بازبینی مستقل امنیتی همچنان جداگانه لازم‌اند.
+
+
+## 15. پوشش resume دورهٔ انتخاب‌شده در AI-learning — 2026-10-30
+
+- PR [#599](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/599) تست مرورگر واقعی Chromium را برای resume یک دورهٔ مشخص اضافه کرد. fixture پاسخ فهرست دوره‌ها را با دورهٔ شناسهٔ 42 برمی‌گرداند، صفحهٔ جزئیات و runها را فراهم می‌کند و payload درخواست `POST /api/ai-learning/resume` را ثبت می‌کند؛ assertion نهایی الزام می‌کند payload برابر `{"course_id": 42}` باشد. تست قبلی کنترل سراسری با `course_id: null` حفظ شد.
+- PR روی head دقیق `23832ee9c2cac7ea78412d58f27f2cae5ac40b5d` بررسی شد و سه workflow موفق شدند: tests [#41076114713](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41076114713) (شامل Windows storage regressions)، browser E2E [#41076115543](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41076115543)، dependency audit [#41076114829](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41076114829).
+- ادغام PR #599 در `main`: `cd620a624e997fc52fd510c0fdfedc2280af02b9`. هیچ کد runtime تغییر نکرد. تست APIها را intercept می‌کند و فقط قرارداد UI-to-API را اثبات می‌کند، نه اجرای زندهٔ provider یا بازیابی عملیاتی.
+- اجرای مستقل post-merge CI روی SHA ادغام‌شده در این بازبینی قابل تأیید نبود؛ آن را موفق فرض نکنید. پذیرش target-host، crash/multi-process، live-model و بازبینی مستقل امنیت همچنان دروازه‌های جداگانه‌اند.
