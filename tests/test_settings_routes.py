@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -115,9 +117,11 @@ def test_settings_api_rejects_invalid_learning_cost_preferences_atomically(
     settings_client, values
 ):
     before = db.get_settings()
+    payload = {"values": {**values, "chat_ollama_model": "must-not-save"}}
     response = settings_client.patch(
         "/api/settings",
-        json={"values": {**values, "chat_ollama_model": "must-not-save"}},
+        content=json.dumps(payload, allow_nan=True),
+        headers={"content-type": "application/json"},
     )
     assert response.status_code == 422
     after = db.get_settings()
