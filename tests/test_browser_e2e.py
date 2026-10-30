@@ -1654,3 +1654,50 @@ def test_dashboard_malformed_percent_encoded_route_falls_back_without_script_err
         assert current_links.get_attribute("data-page") == "chat-section"
         assert browser_errors == []
         browser.close()
+
+
+
+def test_storage_backup_failure_is_reported_and_controls_recover():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    browser_errors = []
+    backup_requests = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+
+        def fail_backup_request(route):
+            if route.request.method == "POST":
+                backup_requests.append(route.request.method)
+                route.fulfill(
+                    status=503,
+                    content_type="application/json",
+                    body=json.dumps({"detail": "backup service unavailable"}),
+                )
+            else:
+                route.continue_()
+
+        page.route("**/api/storage/backups", fail_backup_request)
+        page.on("dialog", lambda dialog: dialog.accept())
+        _goto_section(page, base_url, "storage-health-section")
+
+        button = page.locator("#create-storage-backup")
+        button.click()
+        output = page.locator("#storage-backup-output")
+        output.get_by_text if False else None
+        page.wait_for_function(
+            """() => {
+                const node = document.querySelector('#storage-backup-output');
+                return node && node.textContent.includes('ساخت پشتیبان ناموفق بود');
+            }""",
+            timeout=10000,
+        )
+
+        assert "backup service unavailable" in output.inner_text()
+        assert backup_requests == ["POST"]
+        assert button.is_enabled(), "Backup action must recover after a failed request."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
