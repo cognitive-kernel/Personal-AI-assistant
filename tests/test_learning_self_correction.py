@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import db, learning, ollama, learning_durable_budget
+from app import db, learning, ollama, learning_durable_budget, claim_review, learning_evidence_gate
 
 
 @pytest.fixture
@@ -307,3 +307,99 @@ def test_learning_generation_preserves_configured_model_when_cost_profiles_are_a
     assert calls[0]["model"] == db.get_settings()["learning_ollama_model"]
     assert provenance["model_selection"]["status"] == "configured_fallback"
     assert provenance["model_selection"]["estimated_cost_microusd"] is None
+
+
+
+def test_web_claim_review_uses_selected_model_and_is_included_in_task_cost_estimate(
+    learning_store, monkeypatch
+):
+    url = "https://docs.python.org/3/library/json.html"
+    source_text = (
+        "Source title: Python JSON docs\n"
+        f"Source URL: {url}\n"
+        "Content:\n"
+        "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully. "
+        "The parser reports the location of the invalid input so callers can correct the source data."
+    )
+    db.update_settings({
+        "learning_model_cost_profiles": {
+            "cheap:latest": {
+                "input_cost_microusd_per_1k_tokens": 100,
+                "output_cost_microusd_per_1k_tokens": 100,
+                "quality_score": 0.9,
+            },
+            "premium:latest": {
+                "input_cost_microusd_per_1k_tokens": 500,
+                "output_cost_microusd_per_1k_tokens": 500,
+                "quality_score": 0.99,
+            },
+        },
+        "learning_model_minimum_quality_score": 0.8,
+        "learning_task_budget_microusd": 100000,
+    })
+    monkeypatch.setattr(
+        ollama, "list_models",
+        lambda: [{"name": "cheap:latest"}, {"name": "premium:latest"}],
+    )
+    generation_calls = []
+    monkeypatch.setattr(
+        learning, "_request",
+        lambda _path, request, **_kwargs: generation_calls.append(request) or {
+            "message": {"content": json.dumps(_valid_payload(), ensure_ascii=False)}
+        },
+    )
+    monkeypatch.setattr(
+        learning, "evaluate_learning_value",
+        lambda *_args, **_kwargs: {"accepted": True, "score": 95, "reasons": []},
+    )
+    review_calls = []
+
+    def fake_review(question, answer, sources, *, model_override=None):
+        review_calls.append({
+            "question": question,
+            "answer": answer,
+            "sources": sources,
+            "model_override": model_override,
+        })
+        return {
+            "passed": True,
+            "overall": "supported",
+            "claims": [],
+            "source_conflicts": [],
+            "model_id": model_override,
+            "reviewer": "local_ollama_model_assisted_not_independent",
+        }
+
+    monkeypatch.setattr(claim_review, "review_answer_claims", fake_review)
+    monkeypatch.setattr(
+        learning_evidence_gate, "evaluate_lesson_evidence",
+        lambda *_args, **_kwargs: {
+            "version": learning_evidence_gate.GATE_VERSION,
+            "status": "accepted",
+            "accepted": True,
+            "independent_scientific_verification": False,
+            "failed_gates": [],
+        },
+    )
+
+    job = learning.create_job("Python JSON parsing", source_text=source_text)
+    with learning.learning_connection() as conn:
+        conn.execute(
+            "UPDATE learning_jobs SET source_kind='web_retrieved' WHERE id=?",
+            (job["id"],),
+        )
+    learning.run_job(job["id"])
+
+    finished = learning.get_job(job["id"])
+    selection = finished["quality"]["generation_provenance"]["model_selection"]
+    assert finished["status"] == "completed"
+    assert generation_calls[0]["model"] == "cheap:latest"
+    assert len(review_calls) == 1
+    assert review_calls[0]["model_override"] == "cheap:latest"
+    assert selection["claim_review_included"] is True
+    assert selection["claim_review_prompt_tokens"] > 0
+    assert selection["estimated_completion_tokens"] == 3600
+    assert selection["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
+    durable = learning_durable_budget.get_job_budget(job["id"])
+    assert durable["calls_used"] == 2
+    assert durable["predict_tokens_reserved"] == 2200
