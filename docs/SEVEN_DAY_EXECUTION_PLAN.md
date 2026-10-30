@@ -150,6 +150,6 @@ Append dated entries with:
 ### 2026-10-30 — Day 2 browser coverage: sandbox
 - PR #574 added `test_browser_sandbox_consent_fails_closed_and_runs_bounded_task`; Chromium verified failed status lookup remains fail-closed, explicit consent gating, bounded request payload, task completion rendering, and disablement after revocation.
 - Exact PR-head CI passed: tests [#41018483105](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41018483105), browser E2E [#41018483069](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41018483069), dependency audit [#41018483133](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41018483133). Windows storage regressions and repository artifact/link/import/retrieval/claim-to-test checks also passed within the test workflow.
-- PR #574 merged as `968b10bc7d731f7a241fbc9174d2837d994ed514`. Independent post-merge CI is still running at the time of this entry.
+- PR #574 merged as `968b10bc7d731f7a241fbc9174d2837d994ed514`. Independent post-merge CI completed successfully: tests, browser E2E, dependency audit, and Windows storage regressions passed.
 - This is a mocked browser/API test, not proof of Docker execution, target-host sandbox isolation, or manual acceptance. The test suite now contains 28 browser test functions.
 - Next: audit cloud planning dry-run and its stale-evidence/error presentation; preserve the no-execution authorization boundary.
