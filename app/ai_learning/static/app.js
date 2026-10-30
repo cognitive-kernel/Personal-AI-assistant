@@ -320,10 +320,11 @@ $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
 async function refreshCourseProgress(){if(!courseId)return;const d=await api("/courses/"+courseId);topics=d.topics||[];const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
 async function refreshLearningControl(){
  const state=await api("/control");
- $("learning-control-status").textContent=state.retry_pending
-  ?"وضعیت: به‌دلیل خطای موقت ChatGPT، صف تا "+state.retry_after+" در مکث خودکار است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند."
-  :state.paused
-   ?"وضعیت: مکث سراسری فعال است؛ این تنظیم پس از خاموشی نیز حفظ می‌شود."
+ $("learning-control-status").textContent=state.paused
+  ?"وضعیت: مکث سراسری فعال است؛ این تنظیم پس از خاموشی نیز حفظ می‌شود."
+    +(state.retry_pending?" بازیابی خودکار پس از "+state.retry_after+" انجام می‌شود.":"")
+  :state.retry_pending
+   ?"وضعیت: به‌دلیل خطای موقت ChatGPT، صف تا "+state.retry_after+" در مکث خودکار است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند."
    :"وضعیت: مکث سراسری فعال نیست. پس از راه‌اندازی مجدد نیز می‌توانید بازیابی را بزنید.";
  $("pause-learning").disabled=!!state.paused;
  $("resume-learning").disabled=false;
