@@ -112,3 +112,13 @@ def test_lesson_review_is_rendered_inline_under_its_topic():
     assert 'async function loadLessons(topicId,targetRoot,inline=false)' in script
     assert 'await loadLessons(parentTopicId,root,inline);if(!inline)returnToTopic(parentTopicId);' in script
     assert '.topic-inline-lessons[hidden]{display:none}' in css
+
+def test_scheduled_transient_retry_is_visible_in_run_history():
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "app" / "ai_learning" / "static" / "app.js"
+    ).read_text(encoding="utf-8")
+    assert 'run.next_retry_at?"تلاش مجدد زمان‌بندی‌شده"' in script
+    assert 'run.next_retry_at+" — تلاش خودکار "+Number(run.automatic_retry_count||0)+" از ۲"' in script
