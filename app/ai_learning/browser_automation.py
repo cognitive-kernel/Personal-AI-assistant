@@ -1274,6 +1274,7 @@ def _worker(
     lease_epoch = _WORKER_LEASE_EPOCH
     lease_stop = threading.Event()
     lease_thread: threading.Thread | None = None
+    lease_thread_started = False
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
     try:
         run_type = service.get_run(run_id).get("run_type")
@@ -1287,6 +1288,7 @@ def _worker(
                 daemon=True,
             )
             lease_thread.start()
+            lease_thread_started = True
 
         def checkpoint_partial(text: str) -> dict[str, Any]:
             _assert_worker_lease(lease_epoch)
@@ -1367,7 +1369,7 @@ def _worker(
         _close_browser_session()
         _BROWSER_SESSION.reuse_enabled = False
         lease_stop.set()
-        if lease_thread is not None:
+        if lease_thread is not None and lease_thread_started:
             # Heartbeat DB operations each use a bounded 10-second SQLite busy timeout.
             lease_thread.join(timeout=35.0)
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
