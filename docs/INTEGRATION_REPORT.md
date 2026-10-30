@@ -1,8 +1,8 @@
 # گزارش یکپارچه‌سازی و ممیزی معماری مخزن
 
-> تاریخ بررسی: 2026-10-29  
+> تاریخ بررسی: 2026-10-30
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `d928404224771c343e4ed2495d378bc936632cd5`  
+> commit مبنا: `0640c7f02f8f234b8f9b5075deda47c9fc2d3f2a`  
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -14,6 +14,8 @@
 ## 1.1 تغییرات تأییدشده پس از بازبینی قبلی
 
 در snapshot مبنا، تغییرات زیر به‌صورت مرحله‌ای به `main` رسیده‌اند:
+
+- PR [#567](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/567) روی `main` ادغام شد: صف پایدار FIFO برای اجرای batchهای AI-learning، بازیابی restart، pause/resume بدون terminal-cancel، و جلوگیری تراکنشی از ثبت lesson در race بین pause و completion. دو regression test مشخص این raceها را پوشش می‌دهند. Merge commit: `0640c7f02f8f234b8f9b5075deda47c9fc2d3f2a`. پس از ادغام، test suite برابر 1458 passed و 5 skipped، Windows storage regressions، browser E2E و dependency audit همگی روی همین SHA موفق شدند.
 
 - PR [#483](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/483): migration 24 و دفتر idempotent ثبت اجرای کانال‌های بازبینی نامزد؛ نتیجهٔ ثبت‌شده به‌تنهایی موجب ارتقای اعتماد نمی‌شود.
 - PR [#484](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/484): بررسی لینک‌های Markdown محلی در CI.

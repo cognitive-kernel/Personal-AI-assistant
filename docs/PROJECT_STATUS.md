@@ -1,17 +1,18 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-30  
-> آخرین commit بررسی‌شده: `3980cc76ac5501930a28f4deb30073f19f2206aa` در `main`؛ tests شامل Windows storage regressions [#40996250046](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40996250046)، browser E2E [#40996250110](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40996250110) و dependency audit [#40996250019](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40996250019) همگی روی همین commit موفق شده‌اند.  
+> آخرین commit بررسی‌شده: `0640c7f02f8f234b8f9b5075deda47c9fc2d3f2a` در `main`؛ آزمون‌ها [#40999834842](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40999834842) با 1458 passed و 5 skipped (شامل Windows storage regressions)، browser E2E [#40999834856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40999834856) و dependency audit [#40999834843](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40999834843) همگی موفق شده‌اند.  
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `3980cc76ac5501930a28f4deb30073f19f2206aa` اشاره دارد. مجموعهٔ اصلی، Windows storage regressions، browser E2E و dependency audit روی همین commit موفق شده‌اند. CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
+**مبنای وضعیت:** این بازبینی به شاخهٔ `main` در commit `0640c7f02f8f234b8f9b5075deda47c9fc2d3f2a` اشاره دارد. مجموعهٔ اصلی (1458 passed، 5 skipped)، Windows storage regressions، browser E2E و dependency audit روی همین commit موفق شده‌اند. CI شواهد خودکار مخزن است و جایگزین پذیرش میزبان مقصد، ارزیابی زنده یا بازبینی مستقل امنیتی نیست. برای مرز ماژول‌ها، سیاست ادغام و محدودیت این بازبینی به [گزارش یکپارچه‌سازی](INTEGRATION_REPORT.md) مراجعه کنید.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
+- PR [#567](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/567): صف durable اجرای یادگیری AI با FIFO پایدار، بازیابی پس از restart و pause/resume امن تکمیل شد؛ pause حین اجرا run را terminal-cancel نمی‌کند و completion هم‌زمان با pause در تراکنش ذخیره‌سازی مهار می‌شود تا lesson ناخواسته ثبت نشود. دو regression test برای این raceها افزوده شد. PR با merge commit `0640c7f02f8f234b8f9b5075deda47c9fc2d3f2a` ادغام شد؛ CI پس از ادغام روی همین SHA شامل 1458 passed و 5 skipped، Windows storage regressions، browser E2E و dependency audit همگی موفق بود.
 - PR [#515](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/515): آزمون fault-injection برای شکست موقت ذخیرهٔ نتیجهٔ وظیفه و جلوگیری از رقابت در monkeypatch سراسری؛ CI روی head دقیق موفق شد.
 - PR [#516](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/516): اعمال پیش‌نیازها پیش از تغییر وضعیت سرفصل و جلوگیری از حذف درس موجود هنگام تولید مجددِ مسدودشده؛ CI روی head دقیق موفق شد.
 - PR [#517](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/517): بازیابی retryable هنگام شکست ساخت/شروع thread تمدید lease؛ handler بدون heartbeat اجرا نمی‌شود؛ CI روی head دقیق موفق شد.
