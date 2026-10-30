@@ -2,6 +2,7 @@ import hashlib
 import os
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -342,3 +343,51 @@ def test_rollback_pr_ui_is_explicit_and_advisory():
     assert "ایجاد PR پیش‌نویس بازگشت" in page
     assert '"/api/self-improvement/proposals/"+item.id+"/rollback-pr"' in page
     assert "هیچ ادغام یا استقراری انجام نمی‌شود" in page
+
+
+def test_github_api_disables_environment_proxies_and_redirects(monkeypatch):
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_TOKEN", "test-token")
+    monkeypatch.setenv("SELF_IMPROVEMENT_GITHUB_REPOSITORY", "owner/repository")
+    captured = {}
+
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+        def read(self, limit):
+            captured["read_limit"] = limit
+            return b'{"object":{"sha":"0123456789abcdef"}}'
+
+    class Opener:
+        def open(self, request, timeout):
+            captured["request"] = request
+            captured["timeout"] = timeout
+            return Response()
+
+    def build_opener(*handlers):
+        captured["handlers"] = handlers
+        return Opener()
+
+    monkeypatch.setattr(
+        self_improvement.urllib.request, "build_opener", build_opener
+    )
+    result = self_improvement._github_api("GET", "/git/ref/heads/main")
+
+    assert result == {"object": {"sha": "0123456789abcdef"}}
+    assert captured["timeout"] == 15
+    assert captured["read_limit"] == 1024 * 1024
+    request = captured["request"]
+    assert request.full_url == "https://api.github.com/repos/owner/repository/git/ref/heads/main"
+    assert request.get_header("Authorization") == "Bearer test-token"
+    assert any(
+        isinstance(handler, urllib.request.ProxyHandler) and handler.proxies == {}
+        for handler in captured["handlers"]
+    )
+    redirect_handlers = [
+        handler for handler in captured["handlers"]
+        if isinstance(handler, urllib.request.HTTPRedirectHandler)
+    ]
+    assert len(redirect_handlers) == 1
+    assert redirect_handlers[0].redirect_request(
+        None, None, 302, "Found", {}, "https://evil.example/"
+    ) is None
