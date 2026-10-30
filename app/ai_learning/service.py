@@ -429,7 +429,85 @@ def _refresh_retry_gate(conn: sqlite3.Connection) -> None:
             row["next_retry_at"] if row is not None else None,
             str(row["error_message"] or "")[:300] if row is not None else "",
         ),
+
     )
+
+
+def claim_worker_lease(owner: str, *, lease_seconds: int = 90) -> int | None:
+    """Atomically acquire or renew the single browser-worker lease across processes."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 10 <= lease_seconds <= 3600:
+        raise ValueError("lease_seconds must be an integer between 10 and 3600.")
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """SELECT paused,worker_lease_owner,worker_lease_until,worker_lease_epoch
+               FROM ai_learning_control WHERE id=1"""
+        ).fetchone()
+        if row is None or bool(row["paused"]):
+            return None
+        active = bool(row["worker_lease_until"] and row["worker_lease_until"] > conn.execute(
+            "SELECT CURRENT_TIMESTAMP"
+        ).fetchone()[0])
+        current_owner = row["worker_lease_owner"]
+        if active and current_owner != owner:
+            return None
+        epoch = int(row["worker_lease_epoch"] or 0)
+        if not active:
+            epoch += 1
+        conn.execute(
+            """UPDATE ai_learning_control
+               SET worker_lease_owner=?,worker_lease_until=datetime(CURRENT_TIMESTAMP, ?),
+                   worker_lease_epoch=? WHERE id=1""",
+            (owner, f"+{lease_seconds} seconds", epoch),
+        )
+    return epoch
+
+
+def renew_worker_lease(owner: str, epoch: int, *, lease_seconds: int = 90) -> bool:
+    """Renew only an unexpired lease still owned by the same process generation."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        raise ValueError("epoch must be a positive integer.")
+    if isinstance(lease_seconds, bool) or not isinstance(lease_seconds, int) or not 10 <= lease_seconds <= 3600:
+        raise ValueError("lease_seconds must be an integer between 10 and 3600.")
+    with connection() as conn:
+        cursor = conn.execute(
+            """UPDATE ai_learning_control
+               SET worker_lease_until=datetime(CURRENT_TIMESTAMP, ?)
+               WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
+                 AND worker_lease_until>CURRENT_TIMESTAMP AND paused=0""",
+            (f"+{lease_seconds} seconds", owner, epoch),
+        )
+        return cursor.rowcount == 1
+
+
+def owns_worker_lease(owner: str, epoch: int) -> bool:
+    """Check current unexpired ownership; callers must still fence their writes."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        return False
+    with connection() as conn:
+        return conn.execute(
+            """SELECT 1 FROM ai_learning_control
+               WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
+                 AND worker_lease_until>CURRENT_TIMESTAMP AND paused=0""",
+            (owner, epoch),
+        ).fetchone() is not None
+
+
+def release_worker_lease(owner: str, epoch: int) -> bool:
+    """Release only the lease generation held by this process."""
+    owner = _clean_text(owner, "worker owner", 160)
+    if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 1:
+        return False
+    with connection() as conn:
+        cursor = conn.execute(
+            """UPDATE ai_learning_control SET worker_lease_owner=NULL,worker_lease_until=NULL
+               WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?""",
+            (owner, epoch),
+        )
+        return cursor.rowcount == 1
 
 
 def get_learning_control() -> dict[str, Any]:
