@@ -2083,11 +2083,11 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                         exception_type=type(recovery_exc).__name__,
                         message=str(recovery_exc)[:300],
                     )
-                with _LOCK:
-                    if _ACTIVE_RUN_ID == resume_run_id:
-                        _ACTIVE = False
-                        _ACTIVE_RUN_ID = None
-                        _ACTIVE_COURSE_ID = None
-                        _CANCEL_EVENTS.pop(resume_run_id, None)
+                # resume_learning already holds _LOCK; it is non-reentrant.
+                if _ACTIVE_RUN_ID == resume_run_id:
+                    _ACTIVE = False
+                    _ACTIVE_RUN_ID = None
+                    _ACTIVE_COURSE_ID = None
+                    _CANCEL_EVENTS.pop(resume_run_id, None)
             _release_worker_lease()
             raise
