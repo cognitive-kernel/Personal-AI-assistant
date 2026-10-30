@@ -850,3 +850,36 @@ def test_global_retry_gate_prevents_queue_cascade_after_provider_failure(isolate
     result = browser_automation._dispatch_next_persisted_run()
     assert result["status"] == "retry_scheduled"
     assert service.get_run(ready["id"])["status"] == "queued"
+
+def test_new_outline_is_rejected_during_global_provider_cooldown(isolated_store):
+    course = service.create_course(title="جلوگیری از ارسال هنگام محدودیت")
+    active = service.create_run(course["id"], run_type="outline", request_key="cooldown-active")
+    service.start_run(active["id"])
+    service.schedule_run_retry(
+        active["id"], "provider_rate_limited", "try again later",
+        delay_seconds=300,
+    )
+
+    with pytest.raises(ValueError, match="مکث خودکار"):
+        browser_automation.start_outline(course["id"], "cooldown-new-outline")
+
+    assert len(service.list_course_runs(course["id"], 20)) == 1
+
+
+def test_manual_resume_does_not_bypass_global_provider_cooldown(isolated_store):
+    course = service.create_course(title="بازیابی با مکث ارائه‌دهنده")
+    run = service.create_run(course["id"], run_type="outline", request_key="cooldown-manual-resume")
+    service.start_run(run["id"])
+    service.schedule_run_retry(
+        run["id"], "provider_rate_limited", "try again later",
+        delay_seconds=300,
+    )
+    service.set_learning_paused(True, "operator pause")
+
+    result = browser_automation.resume_learning()
+
+    assert result["status"] == "retry_scheduled"
+    assert result["active"] is False
+    assert result["next_retry_at"] is not None
+    assert service.get_learning_control()["paused"] is False
+    assert service.get_run(run["id"])["status"] == "queued"
