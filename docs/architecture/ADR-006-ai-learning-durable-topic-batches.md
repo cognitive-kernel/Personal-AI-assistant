@@ -14,7 +14,7 @@ The selected-topic browser workflow created a durable run for the first topic bu
 - Give each topic run a request key derived from the caller's request key and topic ID, preserving idempotency at the topic boundary.
 - Use the existing global FIFO dispatcher for the first run and let each worker finalizer dispatch the next persisted run.
 - Keep prompts bounded to one topic and preserve per-topic pause, cancellation, retry and content-completion semantics.
-- When manually resuming a legacy lesson run, continue the old in-memory follow-up behavior only if no queued run remains for that course. This avoids generating a duplicate lesson for a topic that is already represented by a durable queued run.
+- Manual continuation and recovery of legacy lesson runs materialize remaining approved topics as durable SQLite runs before starting the worker, but only when no runnable same-course queue already exists. Lesson workers do not create new in-memory follow-up batches; this prevents lost in-memory work and duplicate generation.
 - Keep the existing single-process browser-worker boundary; this decision does not add cross-process leases or claim multi-instance safety.
 
 ## Validation
