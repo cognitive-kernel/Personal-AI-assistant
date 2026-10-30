@@ -13,6 +13,21 @@ async function learningApi(path, options = {}) {
 
 const learningDelay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+function formatTaskAuditEventChange(event) {
+ switch (event.event_type) {
+  case "status_changed":
+   return (event.old_status || "—") + " ← " + (event.new_status || "—");
+  case "priority_changed":
+   return "اولویت: " + (event.old_priority ?? "—") + " ← " + (event.new_priority ?? "—");
+  case "scheduled":
+   return "زمان‌بندی: " + (event.old_scheduled_at || "—") + " ← " + (event.new_scheduled_at || "—");
+  case "created":
+   return "ایجاد وظیفه: " + (event.new_status || "—") + "، اولویت: " + (event.new_priority ?? "—");
+  default:
+   return event.new_status || event.event_type || "رویداد";
+ }
+}
+
 async function refreshDueLearningReviews() {
  const output = learningEl("due-reviews-output");
  if (!output) return;
@@ -118,9 +133,7 @@ function renderTopicJobHistory(output, topic, jobs, tasksByJobId) {
       const list = document.createElement("ol");
       events.slice().reverse().forEach(event => {
        const item = document.createElement("li");
-       const change = event.event_type === "status_changed"
-        ? ((event.old_status || "—") + " ← " + (event.new_status || "—"))
-        : (event.new_status || event.event_type || "رویداد");
+       const change = formatTaskAuditEventChange(event);
        item.textContent = (event.occurred_at || "") + " — " + event.event_type + " — " + change;
        list.append(item);
       });
