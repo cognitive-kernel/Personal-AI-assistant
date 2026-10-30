@@ -34,7 +34,7 @@ The image must match the official Python image name and include a SHA-256 digest
 
 1. Verify and provision an official image digest for each supported platform; the application deliberately does not guess a digest or pull images.
 2. Preserve the dedicated loopback-only submission API and keep consent, revocation, bounded-input, and task-control regression tests mandatory before connecting sandbox execution to additional workflows.
-3. Add fault-injection tests for timeout, container-client termination, oversized output, and concurrent cleanup.
+3. Keep fault-injection coverage for timeout, container-client termination, oversized output, and concurrent cleanup in CI. The cleanup race is idempotent only when a follow-up Docker listing confirms absence; a still-present container remains an error.
 4. Keep remote execution disabled until provider authorization, quota, checkpoint transfer, and failure recovery contracts are complete.
 
 
@@ -67,9 +67,13 @@ application containers older than a grace period (60 seconds by default).
 Active or unknown task IDs, recent containers, malformed inspect output, invalid
 container IDs, and Docker command failures are skipped or reported without deletion.
 It uses argument arrays, a restricted Docker CLI environment, bounded command
-timeouts, and no shell. The explicit caller must not infer terminal state from lease
-expiry alone; first reconcile the durable task state. Automatic startup integration
-is deferred until multi-process reconciliation and recovery ordering are tested.
+timeouts, and no shell. If two runtime processes race to remove the same terminal
+container, a failed second `docker rm` is treated as an idempotent skip only after a
+filtered Docker listing confirms that the container is absent; a still-present
+container or failed verification remains an error. The explicit caller must not infer
+terminal state from lease expiry alone; first reconcile the durable task state.
+Automatic startup integration is deferred until multi-process reconciliation and
+recovery ordering are tested.
 
 
 ### Recovery-order guarantees

@@ -379,7 +379,50 @@ def cleanup_orphaned_containers(
         if result.returncode == 0:
             removed.append(container_id)
         else:
-            errors.append(f"Removal failed for {container_id[:12]}.")
+            # Multiple runtime processes can discover the same terminal task.
+            # Treat a concurrent successful removal as idempotent only after
+            # Docker confirms that the exact container is now absent.
+            try:
+                remaining = subprocess.run(
+                    [
+                        str(executable), "ps", "-aq", "--no-trunc",
+                        "--filter", f"id={container_id}",
+                    ],
+                    stdin=subprocess.DEVNULL, capture_output=True, text=True, shell=False,
+                    close_fds=True, env=env, timeout=5, check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                errors.append(
+                    f"Removal failed for {container_id[:12]}; absence verification failed: {type(exc).__name__}."
+                )
+                continue
+            if remaining.returncode != 0:
+                errors.append(
+                    f"Removal failed for {container_id[:12]}; Docker could not verify container absence."
+                )
+                continue
+            remaining_ids = [
+                line.strip() for line in remaining.stdout.splitlines() if line.strip()
+            ]
+            if not remaining_ids:
+                skipped += 1
+                continue
+            if any(not _CONTAINER_ID.fullmatch(value) for value in remaining_ids):
+                errors.append(
+                    f"Removal failed for {container_id[:12]}; Docker returned an invalid ID during verification."
+                )
+                continue
+            if any(
+                value.startswith(container_id) or container_id.startswith(value)
+                for value in remaining_ids
+            ):
+                errors.append(
+                    f"Removal failed for {container_id[:12]}; container is still present."
+                )
+            else:
+                errors.append(
+                    f"Removal failed for {container_id[:12]}; Docker returned an unexpected container ID."
+                )
     return SandboxCleanupResult(tuple(removed), skipped, tuple(errors))
 
 
