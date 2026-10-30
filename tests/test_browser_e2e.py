@@ -2639,3 +2639,86 @@ def test_ai_learning_global_pause_resume_ui_recovers_after_api_failure():
         assert resume_button.is_enabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_ai_learning_resume_preserves_selected_course_id():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {"resume_payloads": [], "paused": True}
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "items": [{"id": 42, "title": "Selected course", "topic_count": 0}],
+                    "count": 1,
+                }),
+            )
+            return
+        if request.method == "GET" and path == "/api/ai-learning/courses/42":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"topics": []}),
+            )
+            return
+        if request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"items": [], "count": 0}),
+            )
+            return
+        if request.method == "GET" and path == "/api/ai-learning/control":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"paused": state["paused"], "reason": "browser test"}),
+            )
+            return
+        if request.method == "POST" and path == "/api/ai-learning/resume":
+            state["resume_payloads"].append(request.post_data_json)
+            state["paused"] = False
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "status": "idle",
+                    "active": False,
+                    "message": "Selected course resume accepted.",
+                }),
+            )
+            return
+        route.fulfill(
+            status=404,
+            content_type="application/json",
+            body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+
+        page.locator("#course-select").wait_for()
+        page.wait_for_function(
+            "() => document.querySelector('#course-select')?.value === '42'",
+            timeout=10000,
+        )
+        assert page.locator("#resume-learning").is_enabled()
+        page.locator("#resume-learning").click()
+        page.get_by_text("Selected course resume accepted.", exact=False).wait_for(timeout=10000)
+        assert state["resume_payloads"] == [{"course_id": 42}], (
+            "Resume must preserve the selected course ID rather than resume globally."
+        )
+        assert state["paused"] is False
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
