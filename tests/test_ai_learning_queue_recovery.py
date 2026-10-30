@@ -425,6 +425,45 @@ def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolat
     assert run["status"] == "running"
 
 
+def test_selected_topic_batch_survives_process_restart_in_durable_queue(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی دستهٔ چندسرفصلی")
+    topics = [service.add_topic(course["id"], f"سرفصل {index}") for index in range(3)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+    monkeypatch.setattr(service, "get_learning_control", lambda: {"paused": False})
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    started = browser_automation.start_lesson_run(
+        course["id"], [topic["id"] for topic in topics], "restart-durable-batch"
+    )
+    assert started["status"] == "running"
+    assert len(service.list_course_runs(course["id"], 20)) == 3
+    assert service.has_queued_run_for_course(course["id"]) is True
+
+    # Simulate process loss: the in-memory worker disappears, but SQLite remains.
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    recovered = browser_automation.recover_pending_runs()
+
+    assert recovered["status"] == "running"
+    assert recovered["run_id"] == started["run_id"]
+    assert len(launched) == 2
+    assert len(service.list_course_runs(course["id"], 20)) == 3
+    assert service.has_queued_run_for_course(course["id"]) is True
+    run_ids = [item["id"] for item in service.list_course_runs(course["id"], 20)]
+    statuses = [service.get_run(run_id)["status"] for run_id in run_ids]
+    assert statuses.count("running") == 1
+    assert statuses.count("queued") == 2
+
+
 def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
     course = service.create_course(title="بازیابی خطای ایجاد worker")
     run = service.create_run(course["id"], run_type="outline", request_key="thread-start-fails")

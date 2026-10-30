@@ -1141,12 +1141,19 @@ def _worker(
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
-        if result.get("status") == "succeeded" and (run_type == "outline" or continue_after):
-            try:
-                _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
-            except Exception as exc:
-                # The outline remains safely saved even if lesson follow-up fails.
-                print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
+        if result.get("status") == "succeeded":
+            should_continue = run_type == "outline"
+            if continue_after and run_type == "lesson":
+                # Older releases kept the remaining selected topic IDs only in memory.
+                # Continue that legacy path only when no durable same-course work exists;
+                # otherwise the FIFO dispatcher owns the remaining topics.
+                should_continue = not service.has_queued_run_for_course(course_id)
+            if should_continue:
+                try:
+                    _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
+                except Exception as exc:
+                    # The outline remains safely saved even if lesson follow-up fails.
+                    print(f"AI-learning lesson follow-up failed for course {course_id}: {exc}", flush=True)
     except BrowserAutomationError as exc:
         _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
@@ -1393,7 +1400,7 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
-    """Queue the selected topics and capture them sequentially, one bounded prompt at a time."""
+    """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     globally_paused = service.get_learning_control()["paused"]
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
@@ -1429,24 +1436,26 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         if not selected_ids:
             raise ValueError("تمام سرفصل‌های انتخاب‌شده از قبل درس دارند؛ برای ساخت نسخه جدید، تلاش مجدد را انتخاب کنید.")
 
-        # A retry requested while Chrome is busy is persisted, not rejected as HTTP 422.
-        # The current worker's finalizer dispatches queued runs in FIFO order.
-        if _ACTIVE:
-            queued_runs = []
-            for topic_id in selected_ids:
-                topic_request_key = f"{request_key[:75]}-topic-{topic_id}"
-                queued = service.create_run(
-                    course_id, run_type="lesson", topic_ids=[topic_id],
-                    selection_mode="selected", request_key=topic_request_key,
-                    force_retry=force_retry,
+        # A durable run is created for every selected topic before the first browser
+        # request starts. A process restart can therefore recover the whole selection;
+        # no remaining topic exists only in a worker's in-memory follow-up list.
+        queued_runs: list[int] = []
+        for topic_id in selected_ids:
+            topic_request_key = f"{request_key[:75]}-topic-{topic_id}"
+            queued = service.create_run(
+                course_id, run_type="lesson", topic_ids=[topic_id],
+                selection_mode="selected", request_key=topic_request_key,
+                force_retry=force_retry,
+            )
+            if queued["status"] != "queued":
+                raise ValueError(
+                    "برای یکی از سرفصل‌ها درخواست تکراری یا در حال اجرا وجود دارد؛ سوابق اجرا را بازخوانی کنید."
                 )
-                if queued["status"] != "queued":
-                    raise ValueError(
-                        "برای یکی از سرفصل‌ها درخواست تکراری وجود دارد؛ سوابق اجرا را بازخوانی کنید."
-                    )
-                queued_runs.append(int(queued["id"]))
+            queued_runs.append(int(queued["id"]))
+
+        if _ACTIVE:
             _log_event(
-                "lesson_retry_queued_while_active",
+                "lesson_batch_queued_while_active",
                 active_run_id=_ACTIVE_RUN_ID,
                 course_id=course_id,
                 queued_run_ids=queued_runs,
@@ -1459,39 +1468,27 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
                 "topic_ids": selected_ids,
                 "queued_topic_count": len(selected_ids),
                 "provider": "ChatGPT visible UI",
-                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل در صف ذخیره شد و پس از پایان اجرای فعلی آغاز می‌شود.",
+                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل به‌صورت مستقل در صف پایدار ذخیره شد و به‌ترتیب اجرا می‌شود.",
             }
 
-        # Creating a single-topic run prevents oversized batches from ever being
-        # serialized into one browser prompt. Remaining selected IDs are processed
-        # sequentially by the same worker after each successful capture.
-        first_topic_id = selected_ids[0]
-        run = service.create_run(
-            course_id, run_type="lesson", topic_ids=[first_topic_id],
-            selection_mode="selected", request_key=request_key, force_retry=force_retry,
-        )
-        if run["status"] not in {"queued", "running"}:
-            raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره درخواست جدید بسازید.")
-        service.start_run(int(run["id"]))
-        run_id = int(run["id"])
-        _ACTIVE = True
-        _ACTIVE_RUN_ID = run_id
-        _ACTIVE_COURSE_ID = course_id
-        cancel_event = threading.Event()
-        _CANCEL_EVENTS[run_id] = cancel_event
-        followup_ids = selected_ids[1:]
-        thread = threading.Thread(
-            target=_worker,
-            args=(run_id, course_id, str(run["prompt_text"]), cancel_event, bool(followup_ids), followup_ids, force_retry),
-            name=f"ai-learning-selected-lessons-{run_id}", daemon=True,
-        )
-        _start_worker_thread(thread, run_id, cancel_event)
-        return {
-            "run_id": run_id, "status": "running", "course_id": course_id,
-            "topic_ids": selected_ids, "queued_topic_count": len(selected_ids),
-            "provider": "ChatGPT visible UI",
-            "message": f"دریافت درس برای {len(selected_ids)} سرفصل به‌صورت ترتیبی آغاز شد؛ هر درخواست فقط یک سرفصل دارد.",
-        }
+    # Dispatch outside _LOCK: the dispatcher acquires the same lock and enforces
+    # global FIFO ordering, including work submitted by earlier requests.
+    first_run_id = queued_runs[0]
+    dispatch = _dispatch_next_persisted_run()
+    started = dispatch.get("status") == "running" and int(dispatch.get("run_id") or 0) == first_run_id
+    return {
+        "run_id": first_run_id,
+        "status": "running" if started else "queued",
+        "course_id": course_id,
+        "topic_ids": selected_ids,
+        "queued_topic_count": len(selected_ids),
+        "provider": "ChatGPT visible UI",
+        "message": (
+            f"دریافت درس برای {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ هر سرفصل اجرای مستقل دارد و پس از هر اجرا، مورد بعدی از صف بازیابی می‌شود."
+            if started else
+            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد و پس از اجرای کارهای قدیمی‌تر آغاز می‌شود."
+        ),
+    }
 
 
 def cancel_run(run_id: int) -> dict[str, Any]:

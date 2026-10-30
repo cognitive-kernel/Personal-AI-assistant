@@ -1449,6 +1449,19 @@ def get_oldest_queued_run() -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
 
+def has_queued_run_for_course(course_id: int) -> bool:
+    """Return whether a non-archived course still owns durable queued work."""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM runs r
+               JOIN courses c ON c.id=r.course_id
+               WHERE r.course_id=? AND r.status='queued' AND c.status <> 'archived'
+               LIMIT 1""",
+            (int(course_id),),
+        ).fetchone()
+    return row is not None
+
+
 def list_course_runs(course_id: int, limit: int = 10) -> list[dict[str, Any]]:
     """List recent generation runs for the local course dashboard without returning large response bodies."""
     with connection() as conn:

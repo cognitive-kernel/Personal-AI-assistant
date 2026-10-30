@@ -1286,7 +1286,7 @@ def test_semantic_dedup_does_not_reject_a_different_lesson(isolated_store, monke
     assert version["version_no"] == 1
 
 
-def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_store, monkeypatch):
+def test_selected_browser_lessons_are_persisted_as_single_topic_fifo_runs(isolated_store, monkeypatch):
     course = service.create_course(title="SQL Server 2025")
     topics = [service.add_topic(course["id"], f"Topic {index}") for index in range(3)]
     service.decide_topics([topic["id"] for topic in topics], "approved")
@@ -1310,16 +1310,24 @@ def test_selected_browser_lessons_are_queued_as_single_topic_batches(isolated_st
         course["id"], [topic["id"] for topic in topics], "selected-three-topics"
     )
 
-    run = service.get_run(result["run_id"])
-    assert [item["topic_id"] for item in run["topics"]] == [topics[0]["id"]]
+    runs = service.list_course_runs(course["id"], 20)
+    persisted = [service.get_run(item["id"]) for item in runs]
+    persisted_topic_ids = {
+        int(run["topics"][0]["topic_id"])
+        for run in persisted
+        if len(run["topics"]) == 1
+    }
+    assert result["status"] == "running"
     assert result["queued_topic_count"] == 3
-    assert captured["args"][4] is True
-    assert captured["args"][5] == [topics[1]["id"], topics[2]["id"]]
+    assert persisted_topic_ids == {int(topic["id"]) for topic in topics}
+    assert sum(run["status"] == "running" for run in persisted) == 1
+    assert sum(run["status"] == "queued" for run in persisted) == 2
+    assert len(captured["args"]) == 4  # no in-memory follow-up topic list
     assert captured["started"] is True
+    assert service.has_queued_run_for_course(course["id"]) is True
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
     monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
-
 
 
 def test_browser_lesson_retry_is_persisted_when_worker_is_active(isolated_store, monkeypatch):
