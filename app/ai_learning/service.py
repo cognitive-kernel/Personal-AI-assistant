@@ -416,11 +416,39 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
             conn.execute("INSERT INTO run_topics(run_id,topic_id,status) VALUES(?,?,'queued')", (run_id, topic["id"]))
     return get_run(run_id)
 
+def _refresh_retry_gate(conn: sqlite3.Connection) -> None:
+    """Keep the global cooldown aligned with the earliest queued transient retry."""
+    row = conn.execute(
+        """SELECT next_retry_at,error_message FROM runs
+           WHERE status='queued' AND next_retry_at IS NOT NULL
+           ORDER BY next_retry_at,id LIMIT 1"""
+    ).fetchone()
+    conn.execute(
+        "UPDATE ai_learning_control SET retry_after=?,retry_reason=? WHERE id=1",
+        (
+            row["next_retry_at"] if row is not None else None,
+            str(row["error_message"] or "")[:300] if row is not None else "",
+        ),
+    )
+
+
 def get_learning_control() -> dict[str, Any]:
-    """Return durable global pause state for every ChatGPT learning workflow."""
+    """Return durable pause state and provider cooldown for ChatGPT learning workflows."""
     with connection() as conn:
-        row = conn.execute("SELECT paused,updated_at,reason FROM ai_learning_control WHERE id=1").fetchone()
-    return {"paused": bool(row["paused"]), "updated_at": row["updated_at"], "reason": row["reason"]}
+        row = conn.execute(
+            """SELECT paused,updated_at,reason,retry_after,retry_reason,
+                      CASE WHEN retry_after IS NOT NULL AND retry_after>CURRENT_TIMESTAMP
+                           THEN 1 ELSE 0 END AS retry_pending
+               FROM ai_learning_control WHERE id=1"""
+        ).fetchone()
+    return {
+        "paused": bool(row["paused"]),
+        "updated_at": row["updated_at"],
+        "reason": row["reason"],
+        "retry_after": row["retry_after"],
+        "retry_reason": row["retry_reason"],
+        "retry_pending": bool(row["retry_pending"]),
+    }
 
 
 def set_learning_paused(paused: bool, reason: str = "") -> dict[str, Any]:
@@ -544,6 +572,7 @@ def schedule_run_retry(
                  AND processing_status IN ('running','failed')""",
             (run_id,),
         )
+        _refresh_retry_gate(conn)
     result = get_run(run_id)
     result["retry_scheduled"] = True
     result["retry_delay_seconds"] = delay_seconds
@@ -581,6 +610,7 @@ def requeue_run_for_resume(
                      AND processing_status IN ('running','failed')""",
                 (run_id,),
             )
+            _refresh_retry_gate(conn)
     result = get_run(run_id)
     result["recovery_reason"] = str(reason or "automatic_recovery")[:100]
     return result
@@ -610,6 +640,7 @@ def start_run(run_id: int, *, reset_retry_budget: bool = False) -> dict[str, Any
             conn.execute("""UPDATE topics SET processing_status='running',updated_at=CURRENT_TIMESTAMP
                             WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
                               AND processing_status <> 'paused'""", (run_id,))
+            _refresh_retry_gate(conn)
         elif run["status"] != "running":
             raise ValueError("Only queued or running runs can be started.")
     return get_run(run_id)
@@ -635,6 +666,7 @@ def cancel_run(run_id: int) -> dict[str, Any]:
                      AND processing_status='running'""",
                 (run_id,),
             )
+            _refresh_retry_gate(conn)
             cancelled = True
     result = get_run(run_id)
     result["cancelled_by_request"] = cancelled
@@ -1686,7 +1718,7 @@ def reset_learning_data() -> dict[str, Any]:
         conn.execute("DELETE FROM topics")
         conn.execute("DELETE FROM query_traces")
         conn.execute(
-            "UPDATE ai_learning_control SET paused=0,reason='',updated_at=CURRENT_TIMESTAMP WHERE id=1"
+            "UPDATE ai_learning_control SET paused=0,reason='',retry_after=NULL,retry_reason='',updated_at=CURRENT_TIMESTAMP WHERE id=1"
         )
         return {
             "reset": True,
