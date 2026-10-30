@@ -213,7 +213,7 @@ def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monk
         def wait(self, timeout):
             FakeClock.current += timeout
             self.waits += 1
-            return self.waits >= 3
+            return self.waits >= 4
 
     monkeypatch.setattr(task_worker, "time", FakeClock)
     worker = TaskWorker(
@@ -241,7 +241,7 @@ def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monk
     monkeypatch.setattr(task_manager, "renew_lease", renew)
     worker._maintain_lease(context, FakeStopEvent())
 
-    assert len(calls) == 2
+    assert len(calls) == 3
 
 
 def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker_store, monkeypatch):
