@@ -1570,12 +1570,13 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
                         exception_type=type(recovery_exc).__name__,
                         message=str(recovery_exc)[:300],
                     )
-                with _LOCK:
-                    if _ACTIVE_RUN_ID == run_id:
-                        _ACTIVE = False
-                        _ACTIVE_RUN_ID = None
-                        _ACTIVE_COURSE_ID = None
-                        _CANCEL_EVENTS.pop(run_id, None)
+                # The dispatcher already holds _LOCK across the claim/start transaction.
+                # Reacquiring this non-reentrant lock here deadlocks the recovery path.
+                if _ACTIVE_RUN_ID == run_id:
+                    _ACTIVE = False
+                    _ACTIVE_RUN_ID = None
+                    _ACTIVE_COURSE_ID = None
+                    _CANCEL_EVENTS.pop(run_id, None)
             _release_worker_lease()
             raise
 
