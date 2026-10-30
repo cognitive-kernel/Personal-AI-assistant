@@ -703,7 +703,7 @@ def _select_learning_generation_model(
         "estimated_prompt_tokens": estimated_prompt_tokens,
         "estimated_completion_tokens": estimated_completion_tokens,
         "estimate_method": "conservative_character_heuristic_for_initial_plus_one_repair",
-        "budget_scope": "whole_learning_job_maximum_two_generation_calls",
+        "budget_scope": "lesson_generation_and_single_repair_only",
     }
     selected_model = selection.get("selected_model")
     if isinstance(selected_model, str) and selected_model:
