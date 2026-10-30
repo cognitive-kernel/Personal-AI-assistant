@@ -688,6 +688,11 @@ def test_scheduled_retry_waits_until_due_then_dispatches(isolated_store, monkeyp
     )
     assert scheduled is not None
     assert service.get_oldest_queued_run() is None
+    assert service.get_learning_control()["retry_pending"] is True
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    assert browser_automation._dispatch_next_persisted_run()["status"] == "retry_scheduled"
 
     from app.ai_learning.db import connection
     with connection() as conn:
@@ -695,7 +700,11 @@ def test_scheduled_retry_waits_until_due_then_dispatches(isolated_store, monkeyp
             "UPDATE runs SET next_retry_at=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=?",
             (run["id"],),
         )
+        conn.execute(
+            "UPDATE ai_learning_control SET retry_after=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
 
+    assert service.get_learning_control()["retry_pending"] is False
     assert service.get_oldest_queued_run()["id"] == run["id"]
     launched = []
 
@@ -782,6 +791,8 @@ def test_cancelled_scheduled_retry_cannot_be_dispatched(isolated_store, monkeypa
     cancelled = service.cancel_run(run["id"])
     assert cancelled["status"] == "cancelled"
     assert cancelled["next_retry_at"] is None
+    assert service.get_learning_control()["retry_after"] is None
+    assert service.get_learning_control()["retry_pending"] is False
 
     monkeypatch.setattr(browser_automation, "_ACTIVE", False)
     monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
@@ -819,8 +830,8 @@ def test_manual_resume_resets_exhausted_retry_budget(isolated_store, monkeypatch
     assert saved["next_retry_at"] is None
     assert len(launched) == 1
 
-def test_future_retry_does_not_block_later_ready_queue_work(isolated_store):
-    course = service.create_course(title="صف بدون انسداد توسط تلاش آینده")
+def test_global_retry_gate_prevents_queue_cascade_after_provider_failure(isolated_store, monkeypatch):
+    course = service.create_course(title="صف با مکث سراسری خطای ارائه‌دهنده")
     delayed = service.create_run(course["id"], run_type="outline", request_key="future-retry-first")
     service.start_run(delayed["id"])
     service.schedule_run_retry(
@@ -832,3 +843,10 @@ def test_future_retry_does_not_block_later_ready_queue_work(isolated_store):
     selected = service.get_oldest_queued_run()
     assert selected is not None
     assert selected["id"] == ready["id"]
+    assert service.get_learning_control()["retry_pending"] is True
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", False)
+    result = browser_automation._dispatch_next_persisted_run()
+    assert result["status"] == "retry_scheduled"
+    assert service.get_run(ready["id"])["status"] == "queued"
