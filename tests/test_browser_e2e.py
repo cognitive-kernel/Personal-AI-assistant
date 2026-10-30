@@ -2001,6 +2001,10 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
             timeout=10000,
         )
         assert page.locator("#ollama-model-options option").count() == 1
+        invalid_fields = page.locator("#settings-form :invalid").evaluate_all(
+            "nodes => nodes.map(node => ({id: node.id, value: node.value, type: node.type, min: node.min, max: node.max}))"
+        )
+        assert invalid_fields == [], f"Settings form should load valid defaults: {invalid_fields}"
 
         # Manual model names must remain valid even when they are not in the
         # local Ollama model list. The real API persists into CI's disposable DB.
