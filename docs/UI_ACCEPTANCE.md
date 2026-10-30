@@ -5,7 +5,7 @@
 - [x] Local stylesheet and local-only dependencies (no CDN, remote fonts, or telemetry).
 - [x] Navigation anchors resolve to each primary dashboard workflow.
 - [x] Malformed percent-encoded dashboard routes fall back to the chat page without a JavaScript exception; covered by `tests/test_browser_e2e.py::test_dashboard_malformed_percent_encoded_route_falls_back_without_script_error`. Exact-head CI passed on [PR #550](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/550); merge-commit CI passed on `ec9f0e0e0c8d2b91f7c8ad176cdc93d72e5a86c6`.
-- [x] Persistent navigation marks the current section with `aria-current=location`, updates on scroll/resize/hash navigation, and uses a responsive active indicator.
+- [x] Persistent navigation marks the current section with `aria-current=page` and updates on route initialization; browser coverage verifies the current-page marker. Scroll/resize/hash-driven active-section tracking is not part of the current implementation.
 - [x] Skip-to-content link and visible focus styling.
 - [x] RTL page direction, text-direction handling for Persian/English, and LTR code/patch fields.
 - [x] Reduced-motion support and accessible names for controls, including dynamically generated learning review fields.
