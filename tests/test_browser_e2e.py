@@ -2138,7 +2138,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         revoke = page.locator("#kaggle-quota-revoke")
         status = page.locator("#kaggle-quota-status")
 
-        page.get_by_text("رضایت غیرفعال است", exact=False).wait_for()
+        page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
         enable.click()
         page.get_by_text("ابتدا چک‌باکس رضایت صریح", exact=False).wait_for()
@@ -2162,7 +2162,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
         assert state["refresh_calls"] == 2
 
         revoke.click()
-        page.get_by_text("رضایت غیرفعال است", exact=False).wait_for()
+        page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
         assert page.locator("#kaggle-cli-path").input_value() == ""
         assert state["patches"][-1] == {
@@ -2273,7 +2273,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         revoke = page.locator("#oci-limits-revoke")
         status = page.locator("#oci-limits-status")
 
-        page.get_by_text("رضایت غیرفعال است", exact=False).wait_for()
+        page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
         enable.click()
         page.get_by_text("ابتدا رضایت صریح", exact=False).wait_for()
@@ -2306,7 +2306,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
         assert state["refresh_calls"] == 2
 
         revoke.click()
-        page.get_by_text("رضایت غیرفعال است", exact=False).wait_for()
+        page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
         assert not consent.is_checked()
         for field in ("oci-cli-path", "oci-config-path", "oci-profile", "oci-region", "oci-compartment-id"):
             assert page.locator("#" + field).input_value() == ""
