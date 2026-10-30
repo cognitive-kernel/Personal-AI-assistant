@@ -698,7 +698,8 @@ def test_playwright_capture_uses_visible_ui_and_keeps_extension_permissions_narr
     assert "_capture_lesson_until_complete" in automation
     assert "_MAX_LESSON_CONTINUATIONS = 8" in automation
     assert "lesson_continuation_limit" in automation
-    assert "service.save_run_partial_response(run_id, text)" in automation
+    assert "service.save_run_partial_response(" in automation
+    assert "_worker_lease_kwargs" in automation
     assert "lesson_checkpoint_failed" in automation
     assert '"chatgpt_page_closed"' in automation
     assert "Keep the wait inside the guarded block" in automation
