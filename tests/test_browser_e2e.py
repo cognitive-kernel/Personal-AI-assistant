@@ -1969,3 +1969,80 @@ def test_browser_cloud_planner_recovers_after_api_failure():
         assert run_button.is_enabled(), "Planner action must recover after an API failure."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_browser_settings_form_persists_values_and_surfaces_api_failure():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/models",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({"models": [{"name": "ci-model"}]}),
+            ),
+        )
+
+        response = _goto_section(page, base_url, "settings-section")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            """() => {
+                const model = document.querySelector('#chat-model');
+                const timeout = document.querySelector('#chat-timeout');
+                return model && model.value.trim() && timeout && timeout.value;
+            }""",
+            timeout=10000,
+        )
+        assert page.locator("#ollama-model-options option").count() == 1
+        invalid_fields = page.locator("#settings-form :invalid").evaluate_all(
+            "nodes => nodes.map(node => ({id: node.id, value: node.value, type: node.type, min: node.min, max: node.max}))"
+        )
+        assert invalid_fields == [], f"Settings form should load valid defaults: {invalid_fields}"
+
+        # Manual model names must remain valid even when they are not in the
+        # local Ollama model list. The real API persists into CI's disposable DB.
+        page.locator("#chat-model").fill("browser-e2e-manual-model")
+        page.locator("#learning-task-budget").fill("123")
+        page.locator("#settings-form button[type='submit']").click()
+        page.wait_for_function(
+            """() => document.querySelector('#settings-output')?.textContent
+                .includes('تنظیمات مدل‌ها و منابع ذخیره شد.')""",
+            timeout=10000,
+        )
+        saved = page.request.get(base_url.rstrip("/") + "/api/settings")
+        assert saved.status == 200
+        saved_settings = saved.json()
+        assert saved_settings["chat_ollama_model"] == "browser-e2e-manual-model"
+        assert saved_settings["learning_task_budget_microusd"] == 123
+
+        def fail_settings_patch(route):
+            if route.request.method == "PATCH":
+                route.fulfill(
+                    status=503,
+                    content_type="application/json",
+                    body=json.dumps({"detail": "simulated settings API failure"}),
+                )
+            else:
+                route.continue_()
+
+        page.route("**/api/settings", fail_settings_patch)
+        page.locator("#chat-model").fill("must-not-persist")
+        page.locator("#settings-form button[type='submit']").click()
+        page.wait_for_function(
+            """() => document.querySelector('#settings-output')?.textContent
+                .includes('ذخیره تنظیمات ناموفق بود:')""",
+            timeout=10000,
+        )
+
+        unchanged = page.request.get(base_url.rstrip("/") + "/api/settings")
+        assert unchanged.status == 200
+        assert unchanged.json()["chat_ollama_model"] == "browser-e2e-manual-model"
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
