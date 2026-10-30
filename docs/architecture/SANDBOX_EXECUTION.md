@@ -23,8 +23,8 @@ The image must match the official Python image name and include a SHA-256 digest
 
 ## Deliberate limitations
 
-- The low-level primitive is now wrapped by `app/sandbox_tasks.py` as the allow-listed task type `sandbox.run_python`. The handler is registered only when `SANDBOX_ENABLED=true` (or `1`/`yes`/`on`) and the administrator provides a valid absolute `SANDBOX_DOCKER_EXECUTABLE` and a digest-pinned official `SANDBOX_PYTHON_IMAGE`. It is not exposed through a dedicated submission API yet.
-- No arbitrary source code is executed by the application as part of this change.
+- The low-level primitive is wrapped by `app/sandbox_tasks.py` as the allow-listed task type `sandbox.run_python`. The handler is registered only when `SANDBOX_ENABLED=true` (or `1`/`yes`/`on`) and the administrator provides a valid absolute `SANDBOX_DOCKER_EXECUTABLE` and a digest-pinned official `SANDBOX_PYTHON_IMAGE`. Submission is exposed only through the loopback-only, consent-aware `/api/sandbox` routes; the generic `/api/tasks` route rejects this task type.
+- Arbitrary source code is never executed during startup or without the configured Docker sandbox, explicit persisted consent, and a user-submitted bounded run request.
 - There is no network access from the container, no secrets or host directories are mounted, and no persistent output directory is created.
 - Docker daemon access is a privileged host capability; deployment must protect the Docker socket and restrict who can configure the executable/image.
 - The first version is Python-only. It does not install dependencies, execute shell commands, or attempt to alter the host environment.
@@ -33,7 +33,7 @@ The image must match the official Python image name and include a SHA-256 digest
 ## Next steps before connecting to learning tasks
 
 1. Verify and provision an official image digest for each supported platform; the application deliberately does not guess a digest or pull images.
-2. Add a dedicated loopback-only API with an explicit user action/consent before a sandbox task can be queued.
+2. Preserve the dedicated loopback-only submission API and keep consent, revocation, bounded-input, and task-control regression tests mandatory before connecting sandbox execution to additional workflows.
 3. Add fault-injection tests for timeout, container-client termination, oversized output, and concurrent cleanup.
 4. Keep remote execution disabled until provider authorization, quota, checkpoint transfer, and failure recovery contracts are complete.
 
