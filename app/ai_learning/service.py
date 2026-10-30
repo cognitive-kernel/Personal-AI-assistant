@@ -1787,6 +1787,12 @@ def reset_learning_data() -> dict[str, Any]:
                 "ابتدا همهٔ اجراهای فعال را با «توقف همه اجراهای فعال» متوقف کنید؛ "
                 "اجرای فعال باقی مانده: " + ids
             )
+        lease = conn.execute(
+            """SELECT worker_lease_until FROM ai_learning_control
+               WHERE id=1 AND worker_lease_until>CURRENT_TIMESTAMP"""
+        ).fetchone()
+        if lease is not None:
+            raise ValueError("پاک‌سازی تا آزادشدن مالکیت worker مرورگر در پردازهٔ دیگر مجاز نیست.")
         counts = {
             "runs": int(conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]),
             "topics": int(conn.execute("SELECT COUNT(*) FROM topics").fetchone()[0]),
@@ -1797,7 +1803,10 @@ def reset_learning_data() -> dict[str, Any]:
         conn.execute("DELETE FROM topics")
         conn.execute("DELETE FROM query_traces")
         conn.execute(
-            "UPDATE ai_learning_control SET paused=0,reason='',retry_after=NULL,retry_reason='',updated_at=CURRENT_TIMESTAMP WHERE id=1"
+            """UPDATE ai_learning_control
+               SET paused=0,reason='',retry_after=NULL,retry_reason='',
+                   worker_lease_owner=NULL,worker_lease_until=NULL,updated_at=CURRENT_TIMESTAMP
+               WHERE id=1"""
         )
         return {
             "reset": True,
