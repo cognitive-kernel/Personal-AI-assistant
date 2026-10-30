@@ -8,6 +8,7 @@
 
 - [x] پایگاه SQLite مستقل، مهاجرت‌های شماره‌دار با checksum و تراکنش‌ها؛ دیتابیس یادگیری از دیتابیس اصلی برنامه جدا است.
 - [x] ذخیرهٔ پایدار درخواست‌های صریح یادگیری با شناسهٔ درخواست و ترتیب FIFO.
+- [x] هماهنگی چندپردازه‌ای صف `app/ai_learning/` با lease پایدار SQLite، شناسهٔ مالک مختص پردازه، fencing epoch افزایشی، انقضای ۹۰ ثانیه و heartbeat هر ۱۵ ثانیه؛ dispatch، بازیابی startup، resume و نوشتن نتایج در تراکنش با مالک/epoch معتبر کنترل می‌شوند. این پشتیبانی فقط برای پردازه‌های یک میزبان با دیتابیس SQLite و Chrome profile مشترک است.
 - [x] بازیابی دستی اجرای ناتمام از صف سراسری استفاده می‌کند؛ در نبود اجرای ذخیره‌شده، مسیر ادامهٔ سرفصل‌های تأییدشده نیز سرفصل واجد شرایط را مستقیماً از SQLite پیدا می‌کند و به صفحه‌بندی ۱۰۰ دوره/۵۰ اجرا وابسته نیست. آزمون رگرسیون، دورهٔ دارای سرفصل ناتمام خارج از صفحه را پوشش می‌دهد.
 - [x] بازیابی اجرای صف‌شده/ناتمام هنگام راه‌اندازی، مگر آنکه مکث سراسری فعال باشد؛ پس از پایان کار، worker درخواست ذخیره‌شدهٔ بعدی را بررسی می‌کند. مسیر دستی «ادامه/بازیابی» نیز اکنون قدیمی‌ترین اجرای قابل‌بازیابی را از صف پایدار سراسری انتخاب می‌کند و به محدودیت صفحه‌بندی ۱۰۰ دوره/۵۰ اجرا وابسته نیست؛ آزمون رگرسیون، اجرای خارج از صفحهٔ داشبورد را پوشش می‌دهد.
 - [x] پاسخ سرفصل فقط وقتی موفق محسوب می‌شود که خط `AUDIT` صریحاً `COMPLETE` باشد، تعداد سرفصل‌های اعلام‌شده با متن قابل‌استخراج تطبیق کند و شماره‌گذاری از ۱ پیوسته باشد؛ پاسخ ناقص/بدون ممیزی همراه متن خام و سرفصل‌های قابل استخراج ذخیره می‌شود، اما اجرا در وضعیت نیازمند اقدام می‌ماند و تولید درس خودکار شروع نمی‌شود.
@@ -22,6 +23,7 @@
 - [x] API بازخورد جست‌وجو: هر پاسخ جست‌وجو یک trace_id دارد؛ امتیاز مفید/غیرمفید با POST /api/ai-learning/feedback ذخیره و آمار تجمیعی از GET /api/ai-learning/feedback/summary دریافت می‌شود.
 - [x] حریم خصوصی بازخورد: متن خام جست‌وجو در trace ذخیره نمی‌شود؛ فقط SHA-256، شناسه‌های chunk، امتیاز و توضیح اختیاری محدودشده ذخیره می‌شود. ثبت مجدد بازخورد برای همان trace رکورد تکراری ایجاد نمی‌کند.
 - [x] انتشار همچنان صریح است: متن دریافت‌شده خودکار منتشر نمی‌شود؛ سرفصل باید تأیید، نسخه بازبینی و سپس منتشر شود.
+- [x] آزمون Chromium چرخهٔ تأیید سرفصل، بازبینی نسخهٔ درس، انتشار و بازیابی وضعیت پس از reload را پوشش می‌دهد؛ تست API را با state پایدار شبیه‌سازی می‌کند و رفتار واقعی ChatGPT را اثبات نمی‌کند.
 - [x] بررسی وابستگی‌های کد قدیمی انجام شده است؛ افزونهٔ Chrome حذف نشده چون هنوز fallback مستند و تحت آزمون بسته‌بندی/مجوزهاست. موردی که بلااستفاده بودن آن اثبات نشده باشد، حذف نشده است.
 - [x] مستندات راه‌اندازی، feature flagها، محدودیت‌های صف، بازیابی، بازبینی/انتشار و API بازخورد به‌روزرسانی شده‌اند.
 
@@ -31,7 +33,7 @@
 
 ## محدودیت‌های فنی شناخته‌شده
 
-- صف `app/ai_learning/` همچنان worker درون‌پردازه‌ای برای یک نمونهٔ محلی است و lease/heartbeat بین‌پردازه‌ای ندارد؛ چند نمونه را به یک دیتابیس یادگیری یا پروفایل Chrome مشترک وصل نکنید. این محدودیت را با زیرسامانهٔ قدیمی‌تر `app/browser_learning.py` اشتباه نگیرید: آن زیرسامانه lease پایدار SQLite با token مختص فرایند، انقضای ۲۴۰ ثانیه و heartbeat هر ۱۵ ثانیه دارد تا دوره هم‌زمان claim نشود؛ این lease، صف `app/ai_learning/` را چندپردازه‌ای نمی‌کند.
+- صف `app/ai_learning/` اکنون بین پردازه‌های یک میزبان که همان دیتابیس SQLite محلی و Chrome profile را به اشتراک می‌گذارند هماهنگ می‌شود. این طراحی multi-host، شبکه‌فایل‌سیستم یا صف توزیع‌شده نیست. lease و fencing مانع نوشتن مالک قدیمی در دیتابیس می‌شوند، اما فرایند/مرورگر گیرکرده را از راه دور به‌زور متوقف نمی‌کنند؛ crash/soak روی میزبان هدف همچنان نیازمند پذیرش عملی است.
 - اگر برنامه پس از ارسال prompt و پیش از ذخیرهٔ پاسخ متوقف شود، پاسخ ChatGPT ممکن است دوباره درخواست شود. ادامهٔ دقیق همان generation از سمت ChatGPT قابل تضمین نیست.
 - اگر ممیزی outline ناقص باشد، متن خام و سرفصل‌های قابل استخراج حفظ می‌شوند؛ برای تکمیل، اجرای دریافت سرفصل را دوباره آغاز کنید تا موارد قبلی deduplicate شوند. ادامهٔ خودکار همان پیام/نسل در رابط ChatGPT تضمین نشده است.
 - اتوماسیون بر رابط بصری ChatGPT و DOM آن متکی است. تغییرات رابط، ورود، CAPTCHA/تأیید انسانی، محدودیت استفاده، یا قطع شبکه می‌تواند کار را به وضعیت نیازمند اقدام کاربر ببرد.
@@ -42,20 +44,22 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین اجرای کامل روی commit `17129a5a9e0a06e2167f5750b12b227571cddd81` در تاریخ 2026-10-30 موفق بوده است:
+آخرین اجرای دقیق PR #610 روی commit `9b1b0a20d7513d2aee9e784647739e1a3b01eaee` موفق بوده است:
 
-- مجموعهٔ کامل pytest: **1456 passed, 5 skipped** در 200.76 ثانیه.
-- آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
-- آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
-- ممیزی وابستگی‌ها: موفق.
-- اعتبارسنجی artifactهای یادگیری، 66 فایل Markdown، چرخه‌های import و benchmarkهای بازیابی/پوشش ادعا: موفق.
-- benchmark پوشش ادعا: 10 از 10 مورد ساختاری قبول؛ نرخ false-accept و false-reject در این مجموعهٔ مصنوعی صفر بود. این نتیجه صحت معنایی تست‌ها یا درستی واقعی ادعاها را اثبات نمی‌کند.
+- مجموعهٔ کامل pytest: **1577 passed, 5 skipped** در 169.78 ثانیه.
+- Windows storage regressions: موفق.
+- آزمون واقعی Chromium: **41 تست موفق**؛ شامل چرخهٔ تأیید سرفصل، بازبینی/انتشار نسخه و بازیابی پس از reload، و مسدودشدن عملیات بازبینی منبع با شواهد stale.
+- Dependency audit: موفق.
+- اعتبارسنجی artifactهای یادگیری، لینک‌های Markdown، چرخه‌های import و benchmarkهای بازیابی/پوشش ادعا: موفق.
+- Benchmark پوشش ادعا: 10 از 10 مورد ساختاری قبول؛ این مجموعهٔ مصنوعی صحت معنایی یا علمی پاسخ‌ها را اثبات نمی‌کند.
+- پس از ادغام PR #609، CI روی main commit `c2cfbb19aac108938f38c70dd2d374ad4dab4311` نیز با tests، Windows storage، browser E2E و dependency audit موفق شد.
+- اجرای post-merge روی main commit جاری `577c9996e1dde875e34a782a03f699c92469ac5c` هنوز در حال اجراست و تا پایان آن موفق فرض نمی‌شود.
 
 ## گام‌های باقی‌مانده برای پذیرش
 
 1. اجرای محلی/انسانی روی ماشین هدف: Chrome واقعی، حساب واردشده و حالت مهمان ChatGPT، مکث/ادامه، قطع شبکه، timeout و restart در میانهٔ capture.
 2. ارزیابی انسانی کیفیت محتوای تولیدشده و کفایت منابع؛ benchmarkهای deterministic و smoke مرورگر جایگزین داوری انسانی یا آزمون زندهٔ ChatGPT نیستند.
-3. اگر اجرای چندپردازه‌ای لازم است، طراحی lease/heartbeat و آزمون رقابت مستقل باید پیش از پشتیبانی آن انجام شود؛ در وضعیت فعلی فقط یک worker درون‌پردازه‌ای پشتیبانی می‌شود.
+3. اجرای چندپردازه‌ای روی یک میزبان پیاده‌سازی و با آزمون رقابت واقعی پردازه‌ها بررسی شده است؛ آزمون عملی crash/restart، timeout مرورگر و soak روی میزبان هدف هنوز باز است. multi-host و network filesystem پشتیبانی نمی‌شوند.
 - اجرای موفق main پس از تغییرات صف/ارزیابی: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292998)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292937)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343293027).
 - پیوندهای بالا شواهد تاریخی هستند و نباید به‌عنوان اجرای موفق commit جاری تعبیر شوند. برای هر تغییر جدید، وضعیت CI باید بر اساس SHA همان commit بررسی شود.
 - تست ورود واقعی به ChatGPT، تست با حساب کاربر، قطع برق/شبکه روی دستگاه مقصد، و سنجش کارایی با مدل embedding نصب‌شده، عمداً خارج از CI خودکارند و هنوز باید عملی انجام شوند.
@@ -77,7 +81,7 @@
 
 1. اجرای CI کامل برای همین تغییرات؛ رفع هر خطای قابل‌بازتولید و تکرار CI تا موفقیت.
 2. آزمون browser E2E برای کنترل‌های مفید/غیرمفید پنل جست‌وجوی یادگیری اضافه شده است: محتوای محلیِ منتشرشده در دیتابیس موقت seed می‌شود، شناسهٔ trace هر درخواست با payload بازخورد تطبیق داده می‌شود و شمارنده‌های پایدار بررسی می‌شوند. پذیرش این مورد منوط به موفقیت CI روی SHA دقیق PR است؛ این آزمون جایگزین ارزیابی انسانی کیفیت مدل نیست.
-3. اگر صف `app/ai_learning/` باید چندپردازه‌ای شود، طراحی و پیاده‌سازی lease/heartbeat مستقل، بازیابی lease منقضی‌شده و آزمون رقابت هم‌زمان لازم است؛ lease موجود در `app/browser_learning.py` برای این صف قابل استفادهٔ ضمنی نیست.
+3. lease/heartbeat و fencing صف `app/ai_learning/` برای چندپردازه روی یک میزبان پیاده‌سازی شده است؛ اجرای crash/restart و soak روی دستگاه هدف برای تأیید عملی باقی است. lease قدیمی `app/browser_learning.py` قرارداد مستقلی دارد و جایگزین lease جدید نیست.
 4. اجرای تست عملی محلی/دستگاهی برای Chrome، ورود/مهمان، مکث/ادامه، قطع اتصال و بازیابی؛ این بخش نیازمند مرورگر و دسترسی واقعی به ماشین هدف است و از طریق بررسی مخزن یا تست CI قابل اثبات نیست.
 
 
@@ -88,4 +92,4 @@
 
 ## Worker startup failure recovery
 
-All learning entry points use one worker-start boundary. If `thread.start()` raises, the in-memory active markers and cancellation event are cleared, and the durable run is returned to the queued state for a later dispatch. The failure is logged with its exception type and bounded message; the caller receives a typed `worker_thread_start_failed` error. This avoids leaving a phantom `running` record with no worker. Regression coverage verifies the queue can dispatch the same run after a subsequent successful start. This repository test does not replace target-host Chrome/process-restart acceptance.
+All learning entry points use one worker-start boundary. If `thread.start()` raises, the in-memory active markers and cancellation event are cleared, and the durable run is returned to the queued state for a later dispatch. Dispatcher and resume exception cleanup do not reacquire the non-reentrant worker lock; bounded regressions cover both failure paths so a startup error cannot deadlock the process or test suite. The caller receives a typed `worker_thread_start_failed` error. These repository tests do not replace target-host Chrome/process-restart/soak acceptance.
