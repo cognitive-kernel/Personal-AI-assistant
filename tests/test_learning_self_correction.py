@@ -423,9 +423,9 @@ def test_web_claim_review_budget_covers_generation_repair_and_review(
 ):
     url = "https://docs.python.org/3/library/json.html"
     source_text = (
-        "Source title: Python JSON docs\\n"
-        f"Source URL: {url}\\n"
-        "Content:\\n"
+        "Source title: Python JSON docs\n"
+        f"Source URL: {url}\n"
+        "Content:\n"
         "Invalid JSON input may raise a decoding error. Applications should handle malformed input carefully. "
         "The parser reports the location of the invalid input so callers can correct the source data."
     )
