@@ -512,6 +512,7 @@ def mark_run_needs_user_action(
                finished_at=CURRENT_TIMESTAMP WHERE id=?""",
             (error_code, error_message, response_text, run_id),
         )
+        _refresh_retry_gate(conn)
         conn.execute(
             """UPDATE topics SET processing_status='failed',updated_at=CURRENT_TIMESTAMP
                WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
