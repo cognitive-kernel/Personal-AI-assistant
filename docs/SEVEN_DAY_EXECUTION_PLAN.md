@@ -137,3 +137,13 @@ Append dated entries with:
 - PR #570 documentation reconciliation merged after all three exact-head workflows (tests, browser E2E, dependency audit) completed successfully.
 - Merge commit: `aa4990ddd64b1060e5890d69509553a35d31bc7b`.
 - Seven-day execution plan created from this verified baseline. No claim is made that the remaining workstreams are already complete.
+
+
+### 2026-10-30 — Day 1 UI audit
+- Verified the post-PR #571 `main` baseline: `f403ae13a03a9ac5e526879d40380221c879cff8`. Post-merge workflows were triggered; at audit time, `tests` and `browser-e2e` were in progress and `dependency-audit` had succeeded.
+- Inventory: 16 primary dashboard sections (excluding the storage-degraded banner), 56 static buttons, and 27 independent browser E2E tests.
+- Explicit browser route coverage currently targets 7 sections: storage health, learning paths, experience memory, cloud resources, task manager, self-improvement, and learning.
+- Sections without a dedicated explicit browser-route smoke test in `tests/test_browser_e2e.py`: knowledge, cloud plan, Kaggle quota, OCI limits, sandbox, programming assistance, and settings. This is a test-coverage gap, not evidence that those features are broken; each section needs a workflow-to-test mapping before deciding whether new tests are warranted.
+- Corrected a documentation mismatch in `docs/UI_ACCEPTANCE.md`: the navigation implementation and browser assertion use `aria-current=page`, not `aria-current=location`. Also clarified that current-section selection is route-based; the document had claimed scroll/resize/hash tracking not present in `app/static/page-navigation.js`.
+- Existing semantic-button, theme contrast, RTL/LTR, responsive viewport, task-state, confirmation, and storage-failure checks were reviewed; no duplicate tests were added.
+- Remaining Day 1 work: map the seven uncovered sections to their actual forms/actions/API contracts, inspect their loading/error/empty/success states and confirmation requirements, then decide which omissions represent meaningful regression risk. Do not mark broader functional parity complete based on route coverage alone.
