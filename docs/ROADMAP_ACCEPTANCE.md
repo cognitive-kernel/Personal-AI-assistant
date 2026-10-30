@@ -108,7 +108,7 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 - Current application-code baseline: `7ccba9de397f6de63c2535d2d2e955af245e7da1`. Post-merge tests (1494 passed, 5 skipped), Windows storage regressions, browser E2E and dependency audit all passed on this exact SHA; exact run links are recorded in the 2026-10-30 continuation below.
 - Merged changes since the earlier evidence snapshot: PR #576 Cloud Planner API-failure recovery; PR #575 Sandbox browser-coverage documentation; PR #578 Cloud/Sandbox architecture-documentation parity; PR #577 shared Ollama loopback URL validation; PR #579 settings defaults, strict validation, and Chromium save/failure coverage; PR #580 acceptance-evidence reconciliation; PR #581 concurrent Sandbox cleanup idempotency; PR #582 runtime learning model selection.
 - Current real-browser suite: 31 test functions. The settings form is covered for valid defaults, manual model entry, successful persistence, API 503 feedback, and no persisted mutation after failure.
-- Sandbox concurrent cleanup race: **resolved in PR #581**, with deterministic race/persistent-failure regressions and successful real-Docker integration CI. Learning model selection is **integrated in PR #582** and verified by exact-head and post-merge CI. The estimated budget currently covers generation plus one repair only; the optional web-source claim-review request remains a separate automated gap.
+- Sandbox concurrent cleanup race: **resolved in PR #581**, with deterministic race/persistent-failure regressions and successful real-Docker integration CI. Learning model selection is **integrated in PR #582** and verified by exact-head and post-merge CI. The estimated budget now covers generation, one repair, and optional web-source claim review using the same selected model; the review request is reserved idempotently in the durable per-job/global budget.
 - External acceptance remains open: independent review of Issue #52, target-host startup/recovery/soak, live Ollama evaluation, human adjudication, and operator-run staging backup/restore/rollback. CI evidence does not satisfy these gates.
 
 
@@ -127,3 +127,11 @@ Append evidence only after it has actually been produced. Keep local reports, mo
 - Exact post-merge `main` CI: tests [#41037416758](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41037416758) (1494 passed, 5 skipped), browser E2E [#41037416930](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41037416930), dependency audit [#41037416750](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41037416750) — all successful.
 - The first candidate run exposed a provenance contract mismatch (estimated cost existed only under nested selection data). The field was promoted into the stable top-level model-selection record, a regression assertion retained, and the final exact-head suite passed. No failed check was bypassed.
 - Remaining deterministic follow-up: include optional model-assisted claim review in the task-cost budget and use the selected model consistently for that review. The current budget scope is explicitly generation plus one repair only.
+
+
+## 2026-10-30 — claim-review budget and model consistency
+
+- The optional web-source claim-review request is now included in the model-selection cost estimate only when bounded, usable source excerpts exist.
+- Claim review receives the same selected model as generation/repair, uses a shared prompt-payload builder for execution and token estimation, and records provider-reported usage counters.
+- The claim-review request is reserved as its own idempotent stage in the durable per-job and daily-global request/token budgets before Ollama is called; exhausted/already-reserved stages fail closed.
+- Regression coverage verifies the selected model reaches claim review, the estimate includes the review payload, and durable reservations account for the extra call.
