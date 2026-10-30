@@ -1916,3 +1916,56 @@ def test_browser_cloud_planner_validates_and_displays_dry_run_without_execution(
         assert len(requests) == 2
         assert run_button.is_enabled()
         browser.close()
+
+
+
+def test_browser_cloud_planner_recovers_after_api_failure():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    requests = []
+    browser_errors = []
+
+    def fail_plan_request(route):
+        request = route.request
+        assert request.method == "POST"
+        requests.append(request.post_data_json)
+        route.fulfill(
+            status=503,
+            content_type="application/json",
+            body=json.dumps({"detail": "planner temporarily unavailable"}),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/cloud-resources/plan", fail_plan_request)
+        _goto_section(page, base_url, "cloud-plan-section")
+
+        run_button = page.locator("#cloud-plan-run")
+        output = page.locator("#cloud-plan-output")
+        run_button.click()
+
+        page.wait_for_function(
+            """() => {
+                const output = document.querySelector('#cloud-plan-output');
+                const button = document.querySelector('#cloud-plan-run');
+                return output && output.textContent.includes('برنامه ساخته نشد:')
+                    && button && !button.disabled;
+            }""",
+            timeout=10000,
+        )
+
+        assert requests == [{
+            "min_cpu_count": 1,
+            "min_memory_gib": 0,
+            "require_gpu": False,
+            "gpu_models": [],
+            "allowed_provider_domains": [],
+        }]
+        assert "planner temporarily unavailable" in output.inner_text()
+        assert run_button.is_enabled(), "Planner action must recover after an API failure."
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
