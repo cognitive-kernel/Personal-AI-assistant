@@ -11,6 +11,7 @@ import os
 import re
 import threading
 import time
+import uuid
 from logging.handlers import RotatingFileHandler
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,6 +20,11 @@ from typing import Any, Callable
 from . import service
 
 _LOCK = threading.Lock()
+_WORKER_OWNER_PID = os.getpid()
+_WORKER_OWNER = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
+_WORKER_LEASE_SECONDS = 90
+_WORKER_LEASE_HEARTBEAT_SECONDS = 15.0
+_WORKER_LEASE_EPOCH: int | None = None
 _ACTIVE = False
 _ACTIVE_RUN_ID: int | None = None
 _ACTIVE_COURSE_ID: int | None = None
@@ -32,9 +38,126 @@ _LOG_LOCK = threading.Lock()
 _LOGGER: logging.Logger | None = None
 _BROWSER_SESSION = threading.local()
 _MAX_CONTEXT_RELAUNCHES = 1
+def _reset_process_identity() -> None:
+    """Reinitialize inherited locks and worker state in a forked child process."""
+    global _LOCK, _LOG_LOCK, _WORKER_OWNER_PID, _WORKER_OWNER
+    global _WORKER_LEASE_EPOCH, _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    global _CANCEL_EVENTS, _SHUTTING_DOWN, _BROWSER_SESSION
+
+    _WORKER_OWNER_PID = os.getpid()
+    _WORKER_OWNER = f"{_WORKER_OWNER_PID}-{uuid.uuid4().hex}"
+    _WORKER_LEASE_EPOCH = None
+    _ACTIVE = False
+    _ACTIVE_RUN_ID = None
+    _ACTIVE_COURSE_ID = None
+    _CANCEL_EVENTS = {}
+    _SHUTTING_DOWN = False
+    _LOCK = threading.Lock()
+    _LOG_LOCK = threading.Lock()
+    _BROWSER_SESSION = threading.local()
+
+
+def _ensure_process_identity() -> None:
+    """Refresh process-local identity when a pre-fork server creates a child."""
+    if os.getpid() != _WORKER_OWNER_PID:
+        _reset_process_identity()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_process_identity)
+
+
 # Only failures that can reasonably clear without operator intervention are retried
 # across worker sessions. Authentication, human verification, missing dependencies,
 # browser closure loops, and content-quality failures remain manual-action states.
+def _release_worker_lease() -> bool:
+    """Release only this process's current lease generation."""
+    global _WORKER_LEASE_EPOCH
+    _ensure_process_identity()
+    epoch = _WORKER_LEASE_EPOCH
+    if epoch is None:
+        return False
+    try:
+        released = service.release_worker_lease(_WORKER_OWNER, epoch)
+    finally:
+        _WORKER_LEASE_EPOCH = None
+    return released
+
+
+def _assert_worker_lease(epoch: int | None = None) -> None:
+    """Fence provider results and database writes after process ownership is lost."""
+    _ensure_process_identity()
+    expected = _WORKER_LEASE_EPOCH if epoch is None else epoch
+    if expected is None:
+        return
+    if not service.owns_worker_lease(_WORKER_OWNER, expected):
+        raise BrowserAutomationError(
+            "worker_lease_lost",
+            "مالکیت اجرای مرورگر از دست رفته است؛ نتیجهٔ این worker ثبت نمی‌شود و صف باید از مالک فعلی بازیابی شود.",
+        )
+
+
+def _worker_lease_kwargs(epoch: int | None = None) -> dict[str, Any]:
+    """Build the optional transaction-level fencing arguments for worker writes."""
+    _ensure_process_identity()
+    expected = _WORKER_LEASE_EPOCH if epoch is None else epoch
+    if expected is None:
+        return {}
+    return {
+        "worker_lease_owner": _WORKER_OWNER,
+        "worker_lease_epoch": expected,
+    }
+
+
+def _maintain_worker_lease(
+    cancel_event: threading.Event,
+    stop_event: threading.Event,
+    epoch: int,
+) -> None:
+    """Renew the process-wide browser lease and observe cross-process pause/cancel requests."""
+    _ensure_process_identity()
+    while not stop_event.wait(_WORKER_LEASE_HEARTBEAT_SECONDS):
+        try:
+            if not service.renew_worker_lease(
+                _WORKER_OWNER, epoch, lease_seconds=_WORKER_LEASE_SECONDS
+            ):
+                cancel_event.set()
+                _log_event("worker_lease_lost", lease_epoch=epoch)
+                return
+            control = service.get_learning_control()
+            if control["paused"]:
+                cancel_event.set()
+                _log_event("worker_global_pause_observed", lease_epoch=epoch)
+            with _LOCK:
+                active_run_id = _ACTIVE_RUN_ID
+            if active_run_id is not None:
+                active_run = service.get_run(active_run_id)
+                status = active_run.get("status")
+                paused_topics = [
+                    int(topic["topic_id"]) for topic in active_run.get("topics", [])
+                    if topic.get("processing_status") == "paused"
+                ]
+                if status in {"cancelled", "queued", "failed", "needs_user_action"} or paused_topics:
+                    cancel_event.set()
+                    _log_event(
+                        "worker_control_observed",
+                        run_id=active_run_id,
+                        status=status,
+                        paused_topic_ids=paused_topics,
+                    )
+                # Keep renewing until the worker exits. A pause/cancel request must
+                # not let another process launch Chrome while this browser call is
+                # still unwinding. Lease loss, unlike cooperative stop, ends renewal.
+        except Exception as exc:
+            # A transient DB lock must not immediately abandon a still-valid lease.
+            _log_event(
+                "worker_lease_heartbeat_error",
+                lease_epoch=epoch,
+                exception_type=type(exc).__name__,
+                message=str(exc)[:300],
+            )
+
+
 _AUTOMATIC_RETRY_DELAYS_SECONDS = {
     "chatgpt_network_error": (60, 300),
     "chatgpt_page_closed": (60, 300),
@@ -997,7 +1120,7 @@ def _capture_with_automatic_retry(
         try:
             return _browser_capture(prompt, cancel_event, on_lesson_checkpoint)
         except BrowserAutomationError as exc:
-            if exc.code in {"run_cancelled", "chatgpt_browser_closed"} or cancel_event.is_set() or service.get_learning_control()["paused"]:
+            if exc.code in {"run_cancelled", "chatgpt_browser_closed", "worker_lease_lost"} or cancel_event.is_set() or service.get_learning_control()["paused"]:
                 raise
             # Provider rate limits and long response timeouts explicitly ask for
             # a later retry; do not hammer the same session with short backoffs.
@@ -1058,10 +1181,12 @@ def _continue_lessons(
 ) -> None:
     """Capture lessons sequentially, keeping every browser prompt bounded to one topic."""
     global _ACTIVE_RUN_ID
+    _ensure_process_identity()
     # Never approve topics as a side effect of background learning. Approval is a
     # deliberate dashboard action so users can review the outline before lesson capture.
     pending_ids = list(dict.fromkeys(int(item) for item in selected_topic_ids or []))
     while True:
+        _assert_worker_lease()
         if service.get_learning_control()["paused"] or cancel_event.is_set():
             _log_event("lesson_followup_paused", course_id=course_id)
             return
@@ -1096,35 +1221,46 @@ def _continue_lessons(
             f"playwright-lessons-{course_id}-{topic_id}-"
             f"{'retry' if force_retry else 'selected'}-{int(time.time())}"
         )
+        _assert_worker_lease()
         run = service.create_run(
             course_id, run_type="lesson", topic_ids=topic_ids,
             selection_mode="selected", request_key=request_key, force_retry=force_retry,
         )
         run_id = int(run["id"])
-        service.start_run(run_id)
+        service.start_run(run_id, **_worker_lease_kwargs())
         with _LOCK:
             previous_active_run_id = _ACTIVE_RUN_ID
             _ACTIVE_RUN_ID = run_id
             _CANCEL_EVENTS[run_id] = cancel_event
         try:
+            def save_followup_partial(text: str) -> dict[str, Any]:
+                _assert_worker_lease()
+                return service.save_run_partial_response(run_id, text, **_worker_lease_kwargs())
+
             answer = _capture_with_automatic_retry(
                 run["prompt_text"], cancel_event,
-                lambda text: service.save_run_partial_response(run_id, text),
+                save_followup_partial,
                 run_id=run_id, phase="lesson_followup",
             )
-            result = service.complete_run(run_id, answer)
+            _assert_worker_lease()
+            result = service.complete_run(run_id, answer, **_worker_lease_kwargs())
         except BrowserAutomationError as exc:
-            if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
+            if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
                 return
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response)
+            if cancel_event.is_set() or service.get_learning_control()["paused"]:
+                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup", **_worker_lease_kwargs())
+                return
+            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response, **_worker_lease_kwargs())
             return
         except Exception as exc:
+            if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup", **_worker_lease_kwargs())
                 return
             service.mark_run_needs_user_action(
-                run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}"
+                run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}",
+                **_worker_lease_kwargs(),
             )
             return
         finally:
@@ -1140,6 +1276,7 @@ def _schedule_transient_retry(
     run_id: int, error: BrowserAutomationError
 ) -> dict[str, Any] | None:
     """Schedule a bounded delayed retry only for explicitly transient provider/browser failures."""
+    _assert_worker_lease()
     delays = _AUTOMATIC_RETRY_DELAYS_SECONDS.get(error.code)
     if not delays:
         return None
@@ -1157,6 +1294,7 @@ def _schedule_transient_retry(
         delay_seconds=delays[retry_count],
         response_text=partial,
         max_attempts=len(delays),
+        **_worker_lease_kwargs(),
     )
 
 
@@ -1166,17 +1304,43 @@ def _worker(
     force_retry: bool = False,
 ) -> None:
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     worker_started = time.monotonic()
-    run_type = service.get_run(run_id).get("run_type")
+    run_type: str | None = None
+    lease_epoch = _WORKER_LEASE_EPOCH
+    lease_stop = threading.Event()
+    lease_thread: threading.Thread | None = None
+    lease_thread_started = False
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
-    _BROWSER_SESSION.reuse_enabled = True
     try:
-        checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == "lesson" else None
+        run_type = service.get_run(run_id).get("run_type")
+        _BROWSER_SESSION.reuse_enabled = True
+        if lease_epoch is not None:
+            _assert_worker_lease(lease_epoch)
+            lease_thread = threading.Thread(
+                target=_maintain_worker_lease,
+                args=(cancel_event, lease_stop, lease_epoch),
+                name=f"ai-learning-lease-{run_id}",
+                daemon=True,
+            )
+            lease_thread.start()
+            lease_thread_started = True
+
+        def checkpoint_partial(text: str) -> dict[str, Any]:
+            _assert_worker_lease(lease_epoch)
+            return service.save_run_partial_response(run_id, text, **_worker_lease_kwargs(lease_epoch))
+
+        checkpoint = checkpoint_partial if run_type == "lesson" else None
         answer = _capture_with_automatic_retry(
             prompt, cancel_event, checkpoint, run_id=run_id, phase="primary_run"
         )
+        if cancel_event.is_set():
+            raise BrowserAutomationError(
+                "run_cancelled", "اجرای یادگیری به درخواست توقف متوقف شد."
+            )
+        _assert_worker_lease(lease_epoch)
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
-        result = service.complete_run(run_id, answer)
+        result = service.complete_run(run_id, answer, **_worker_lease_kwargs(lease_epoch))
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         if result.get("status") == "succeeded" and run_type == "outline":
@@ -1189,8 +1353,11 @@ def _worker(
         _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
+            if lease_epoch is not None and not service.owns_worker_lease(_WORKER_OWNER, lease_epoch):
+                _log_event("worker_result_discarded_after_lease_loss", run_id=run_id, lease_epoch=lease_epoch)
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run", **_worker_lease_kwargs(lease_epoch))
             else:
                 scheduled = _schedule_transient_retry(run_id, exc)
                 if scheduled is not None:
@@ -1207,6 +1374,7 @@ def _worker(
                         exc.code,
                         str(exc),
                         exc.partial_response if exc.partial_response and exc.partial_response.strip() else None,
+                        **_worker_lease_kwargs(lease_epoch),
                     )
         except Exception as mark_exc:
             _log_event(
@@ -1220,18 +1388,26 @@ def _worker(
         _log_event("worker_unexpected_error", run_id=run_id, exception_type=type(exc).__name__,
                    message=str(exc)[:500], elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
+            if lease_epoch is not None and not service.owns_worker_lease(_WORKER_OWNER, lease_epoch):
+                _log_event("worker_result_discarded_after_lease_loss", run_id=run_id, lease_epoch=lease_epoch)
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
+                service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run", **_worker_lease_kwargs(lease_epoch))
             else:
                 service.mark_run_needs_user_action(
                     run_id, "playwright_unexpected_error",
                     f"خطای غیرمنتظره در دریافت پاسخ: {str(exc)[:700]}",
+                    **_worker_lease_kwargs(lease_epoch),
                 )
         except Exception as mark_exc:
             print(f"Could not update AI-learning run {run_id}: {mark_exc}", flush=True)
     finally:
         _close_browser_session()
         _BROWSER_SESSION.reuse_enabled = False
+        lease_stop.set()
+        if lease_thread is not None and lease_thread_started:
+            # Heartbeat DB operations each use a bounded 10-second SQLite busy timeout.
+            lease_thread.join(timeout=35.0)
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
             _ACTIVE = False
@@ -1254,6 +1430,7 @@ def _start_worker_thread(
 ) -> None:
     """Start a claimed worker or restore its durable run to a recoverable state."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     try:
         thread.start()
     except Exception as exc:
@@ -1264,7 +1441,7 @@ def _start_worker_thread(
         _CANCEL_EVENTS.pop(run_id, None)
         durable_status = "recovery_failed"
         try:
-            recovered = service.requeue_run_for_resume(run_id, "worker_thread_start_failed")
+            recovered = service.requeue_run_for_resume(run_id, "worker_thread_start_failed", **_worker_lease_kwargs())
             durable_status = str(recovered.get("status") or "unknown")
         except Exception as recovery_exc:
             _log_event(
@@ -1280,6 +1457,7 @@ def _start_worker_thread(
             message=str(exc)[:300],
             durable_status=durable_status,
         )
+        _release_worker_lease()
         raise BrowserAutomationError(
             "worker_thread_start_failed",
             "راه‌اندازی worker یادگیری ناموفق بود؛ اجرا برای بازیابی در صف نگه داشته شد. کمی بعد وضعیت را بازخوانی یا ادامه دهید.",
@@ -1287,52 +1465,125 @@ def _start_worker_thread(
 
 
 def _dispatch_next_persisted_run() -> dict[str, Any]:
-    """Claim the oldest due queued run unless pause or the shared transient-provider cooldown blocks dispatch."""
-    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
-    if _SHUTTING_DOWN:
-        return {"status": "shutting_down", "active": False}
-    control = service.get_learning_control()
-    if control["paused"]:
-        return {"status": "paused", "active": False}
-    if control.get("retry_pending", False):
-        return {
-            "status": "retry_scheduled",
-            "active": False,
-            "next_retry_at": control["retry_after"],
-            "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است.",
-        }
+    """Claim the process-wide browser lease before dispatching one durable queued run."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
+    _ensure_process_identity()
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
-        # Query the durable store globally rather than scanning the dashboard's
-        # bounded course/run pages. Otherwise old work can starve forever once the
-        # user has more than 100 courses or 50 recent runs per course.
-        selected = service.get_oldest_queued_run()
-        if selected is None:
-            return {"status": "idle", "active": False}
-        run_id = int(selected["id"])
-        course_id = int(selected["course_id"])
-        run = service.start_run(run_id)
-        cancel_event = threading.Event()
-        _ACTIVE = True
-        _ACTIVE_RUN_ID = run_id
-        _ACTIVE_COURSE_ID = course_id
-        _CANCEL_EVENTS[run_id] = cancel_event
-        thread = threading.Thread(
-            target=_worker,
-            args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
-            name=f"ai-learning-durable-run-{run_id}",
-            daemon=True,
+        if _SHUTTING_DOWN:
+            _release_worker_lease()
+            return {"status": "shutting_down", "active": False}
+        control = service.get_learning_control()
+        if control["paused"]:
+            _release_worker_lease()
+            return {"status": "paused", "active": False}
+        if control.get("retry_pending", False):
+            _release_worker_lease()
+            return {
+                "status": "retry_scheduled",
+                "active": False,
+                "next_retry_at": control["retry_after"],
+                "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است.",
+            }
+
+        # SQLite serializes this claim across independent application processes.
+        # The lease covers the shared Chrome profile as well as the durable run.
+        epoch = service.claim_worker_lease(
+            _WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS
         )
-        _start_worker_thread(thread, run_id, cancel_event)
-        _log_event("persisted_queue_run_dispatched", run_id=run_id, course_id=course_id,
-                   run_type=run.get("run_type"), recovered_status=selected.get("status"))
-        return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+        if epoch is None:
+            return {
+                "status": "worker_busy",
+                "active": False,
+                "message": "یک پردازهٔ دیگر مالک worker مرورگر است؛ کار در صف پایدار باقی ماند.",
+            }
+        _WORKER_LEASE_EPOCH = epoch
+        run_id: int | None = None
+        try:
+            # Once this process owns the global browser lease, any remaining
+            # running row is orphaned; no other live worker can own this profile.
+            orphaned_ids = service.list_run_ids_by_status("running")
+            for orphaned_id in orphaned_ids:
+                service.requeue_run_for_resume(
+                    int(orphaned_id),
+                    "dispatcher_recovered_orphaned_run",
+                    **_worker_lease_kwargs(epoch),
+                )
+            if orphaned_ids:
+                _log_event(
+                    "dispatcher_requeued_orphaned_runs",
+                    run_ids=[int(item) for item in orphaned_ids],
+                    lease_epoch=epoch,
+                )
+            selected = service.get_oldest_queued_run()
+            if selected is None:
+                _release_worker_lease()
+                return {
+                    "status": "idle",
+                    "active": False,
+                    "recovered_run_ids": [int(item) for item in orphaned_ids],
+                }
+            run_id = int(selected["id"])
+            course_id = int(selected["course_id"])
+            run = service.start_run(run_id, **_worker_lease_kwargs(epoch))
+            cancel_event = threading.Event()
+            thread = threading.Thread(
+                target=_worker,
+                args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
+                name=f"ai-learning-durable-run-{run_id}",
+                daemon=True,
+            )
+            _ACTIVE = True
+            _ACTIVE_RUN_ID = run_id
+            _ACTIVE_COURSE_ID = course_id
+            _CANCEL_EVENTS[run_id] = cancel_event
+            _start_worker_thread(thread, run_id, cancel_event)
+            _log_event(
+                "persisted_queue_run_dispatched",
+                run_id=run_id,
+                course_id=course_id,
+                run_type=run.get("run_type"),
+                recovered_status=selected.get("status"),
+                lease_epoch=epoch,
+            )
+            return {
+                "status": "running",
+                "active": True,
+                "run_id": run_id,
+                "course_id": course_id,
+                "recovered_run_ids": [int(item) for item in orphaned_ids],
+            }
+        except Exception:
+            if run_id is not None:
+                try:
+                    failed_run = service.get_run(run_id)
+                    if failed_run["status"] == "running" and service.owns_worker_lease(_WORKER_OWNER, epoch):
+                        service.requeue_run_for_resume(
+                            run_id, "worker_thread_construction_failed",
+                            **_worker_lease_kwargs(epoch),
+                        )
+                except Exception as recovery_exc:
+                    _log_event(
+                        "worker_dispatch_cleanup_failed",
+                        run_id=run_id,
+                        exception_type=type(recovery_exc).__name__,
+                        message=str(recovery_exc)[:300],
+                    )
+                with _LOCK:
+                    if _ACTIVE_RUN_ID == run_id:
+                        _ACTIVE = False
+                        _ACTIVE_RUN_ID = None
+                        _ACTIVE_COURSE_ID = None
+                        _CANCEL_EVENTS.pop(run_id, None)
+            _release_worker_lease()
+            raise
 
 
 def stop_browser_automation() -> dict[str, Any]:
     """Signal active workers and give Playwright time to close before process shutdown."""
     global _SHUTTING_DOWN
+    _ensure_process_identity()
     with _LOCK:
         _SHUTTING_DOWN = True
         active_run_id = _ACTIVE_RUN_ID
@@ -1368,72 +1619,39 @@ def stop_browser_automation() -> dict[str, Any]:
 
 
 def recover_pending_runs() -> dict[str, Any]:
-    """Recover explicit queued/running records after process restart; never invent work."""
+    """Initialize storage and delegate all stale-run recovery to the leased dispatcher."""
     global _SHUTTING_DOWN
     from .db import initialize_store
 
+    _ensure_process_identity()
     initialize_store()
     _SHUTTING_DOWN = False
-    if service.get_learning_control()["paused"]:
-        return {"status": "paused", "active": False, "message": "Global learning pause is active."}
-    # Only startup recovery may treat a stale "running" row as an interrupted process.
-    # A needs_user_action row is intentionally left alone until the user resumes it.
-    # Read all running IDs directly from storage; dashboard pagination must never
-    # determine which persisted jobs are eligible for crash recovery.
-    with _LOCK:
-        if _ACTIVE:
-            return {
-                "status": "already_active",
-                "active": True,
-                "run_id": _ACTIVE_RUN_ID,
-                "message": "An in-process learning worker is already active.",
-            }
-        # Hold the same lock used by start_outline/start_lesson_run while marking
-        # stale runs. This prevents a concurrent local start from being mistaken
-        # for a process-crash orphan and requeued underneath its live worker.
-        for run_id in service.list_run_ids_by_status("running"):
-            service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
     result = _dispatch_next_persisted_run()
     _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
     return result
 
 
 def recover_orphaned_runs() -> dict[str, Any]:
-    """Reconcile a run whose worker vanished in this process without restarting after shutdown."""
+    """Run the single leased dispatcher/recovery path from the maintenance watchdog."""
     from .db import initialize_store
 
+    _ensure_process_identity()
     if _SHUTTING_DOWN:
         return {"status": "shutting_down", "active": False}
     initialize_store()
-    if service.get_learning_control()["paused"]:
-        return {"status": "paused", "active": False}
-    with _LOCK:
-        # Recheck under the same lock used by dispatch/start and after storage setup:
-        # shutdown or a new worker may have started while recovery was preparing.
-        if _SHUTTING_DOWN:
-            return {"status": "shutting_down", "active": False}
-        if _ACTIVE:
-            return {
-                "status": "already_active",
-                "active": True,
-                "run_id": _ACTIVE_RUN_ID,
-            }
-        orphaned_ids = service.list_run_ids_by_status("running")
-        for run_id in orphaned_ids:
-            service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime")
     result = _dispatch_next_persisted_run()
     _log_event(
         "orphaned_run_watchdog_recovery",
         status=result.get("status"),
         run_id=result.get("run_id"),
-        requeued_count=len(orphaned_ids),
+        recovered_run_ids=result.get("recovered_run_ids", []),
     )
     return result
 
 
 def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
-    """Create and queue an outline run, then process it in a single background browser worker."""
-    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    """Persist an outline request, then dispatch it under the shared browser lease."""
+    _ensure_process_identity()
     control = service.get_learning_control()
     if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
@@ -1451,23 +1669,34 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
         )
         if run["status"] not in {"queued", "running"}:
             raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره بازخوانی را دوباره بزنید.")
-        service.start_run(int(run["id"]))
-        _ACTIVE = True
-        _ACTIVE_RUN_ID = int(run["id"])
-        _ACTIVE_COURSE_ID = course_id
-        cancel_event = threading.Event()
-        _CANCEL_EVENTS[int(run["id"])] = cancel_event
-        thread = threading.Thread(
-            target=_worker, args=(int(run["id"]), course_id, str(run["prompt_text"]), cancel_event),
-            name=f"ai-learning-browser-{run['id']}", daemon=True,
-        )
-        _start_worker_thread(thread, int(run["id"]), cancel_event)
-        return {"run_id": int(run["id"]), "status": "running", "provider": "ChatGPT visible UI"}
+
+    # An idempotent request may already be running in another process. The
+    # watchdog only reclaims it if its durable lease has expired.
+    dispatch = (
+        recover_orphaned_runs()
+        if run["status"] == "running"
+        else _dispatch_next_persisted_run()
+    )
+    started = dispatch.get("status") == "running" and int(dispatch.get("run_id") or 0) == int(run["id"])
+    status = "running" if started or run["status"] == "running" else "queued"
+    return {
+        "run_id": int(run["id"]),
+        "status": status,
+        "provider": "ChatGPT visible UI",
+        "message": (
+            "اجرای طرح درس آغاز شد."
+            if started
+            else "این درخواست از قبل در حال اجراست."
+            if run["status"] == "running"
+            else "درخواست در صف پایدار ثبت شد و پس از آزادشدن worker مرورگر اجرا می‌شود."
+        ),
+    }
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
     """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    _ensure_process_identity()
     globally_paused = service.get_learning_control()["paused"]
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
     if not requested_ids:
@@ -1577,6 +1806,7 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
 
 def cancel_run(run_id: int) -> dict[str, Any]:
     """Signal the local browser worker and persist cancellation of its run."""
+    _ensure_process_identity()
     with _LOCK:
         event = _CANCEL_EVENTS.get(run_id)
         if event is not None:
@@ -1586,6 +1816,7 @@ def cancel_run(run_id: int) -> dict[str, Any]:
 
 def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
     """Pause a topic without terminally cancelling its active durable lesson run."""
+    _ensure_process_identity()
     result = service.set_topic_paused(topic_id, paused)
     if paused:
         with _LOCK:
@@ -1598,7 +1829,7 @@ def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
                     # Interrupt the browser wait, but keep the run recoverable in SQLite.
                     if active_cancel_event is not None:
                         active_cancel_event.set()
-                    queued = service.requeue_run_for_resume(active_run_id, "topic_paused")
+                    queued = service.requeue_run_for_resume(active_run_id, "topic_paused", **_worker_lease_kwargs())
                     _log_event(
                         "topic_run_paused",
                         topic_id=topic_id,
@@ -1635,6 +1866,7 @@ def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
 
 def reset_learning_data() -> dict[str, Any]:
     """Refuse destructive reset while any browser worker can still write to the store."""
+    _ensure_process_identity()
     with _LOCK:
         if _ACTIVE:
             raise ValueError(
@@ -1646,25 +1878,35 @@ def reset_learning_data() -> dict[str, Any]:
 
 def pause_learning() -> dict[str, Any]:
     """Pause all ChatGPT outline and lesson capture, preserving completed database work."""
+    _ensure_process_identity()
     state = service.set_learning_paused(True, "توقف سراسری توسط کاربر")
     with _LOCK:
         active_run_id = _ACTIVE_RUN_ID
         active_event = _CANCEL_EVENTS.get(active_run_id) if active_run_id is not None else None
         if active_event is not None:
             active_event.set()
-    if active_run_id is not None:
-        try:
-            service.requeue_run_for_resume(active_run_id, "manual_global_pause")
-        except Exception as exc:
-            _log_event("pause_run_requeue_failed", run_id=active_run_id,
-                       exception_type=type(exc).__name__, message=str(exc)[:300])
+    # The active browser may belong to another application process. Persist the
+    # pause transition for every running record; the remote heartbeat observes it
+    # and cooperatively stops the provider interaction.
+    try:
+        for run_id in service.list_run_ids_by_status("running"):
+            service.requeue_run_for_resume(int(run_id), "manual_global_pause")
+    except Exception as exc:
+        _log_event(
+            "pause_run_requeue_failed",
+            run_id=active_run_id,
+            exception_type=type(exc).__name__,
+            message=str(exc)[:300],
+        )
+        raise
     _log_event("learning_paused", active_run_id=active_run_id, active_course_id=_ACTIVE_COURSE_ID)
-    return {**state, "active": _ACTIVE, "active_run_id": active_run_id}
+    return {**state, "active": bool(state.get("worker_active")), "active_run_id": active_run_id}
 
 
 def resume_learning(course_id: int | None = None) -> dict[str, Any]:
     """Resume an active worker, recover a persisted in-flight run, or continue remaining lesson batches."""
-    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
+    _ensure_process_identity()
     service.set_learning_paused(False)
     with _LOCK:
         if _ACTIVE:
@@ -1679,130 +1921,172 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند.",
             }
 
-        # Resume from the durable global queue, not bounded dashboard pages.
-        # Otherwise older runs can be stranded after the user exceeds page limits.
-        in_flight = service.get_oldest_resumable_run(course_id)
-        if in_flight is not None:
-            if in_flight.get("status") in {"running", "needs_user_action"}:
-                service.requeue_run_for_resume(
-                    int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True
+        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
+        if epoch is None:
+            return {
+                "status": "worker_busy",
+                "active": False,
+                "message": "یک پردازهٔ دیگر مالک worker مرورگر است؛ درخواست در صف پایدار باقی می‌ماند.",
+            }
+        _WORKER_LEASE_EPOCH = epoch
+        resume_run_id: int | None = None
+        try:
+            # Resume from the durable global queue, not bounded dashboard pages.
+            # Otherwise older runs can be stranded after the user exceeds page limits.
+            in_flight = service.get_oldest_resumable_run(course_id)
+            if in_flight is not None:
+                resume_run_id = int(in_flight["id"])
+                if in_flight.get("status") in {"running", "needs_user_action"}:
+                    service.requeue_run_for_resume(
+                        resume_run_id, "manual_resume_recovery", reset_retry_budget=True,
+                        **_worker_lease_kwargs(epoch),
+                    )
+                run = service.start_run(
+                    resume_run_id, reset_retry_budget=True, **_worker_lease_kwargs(epoch)
                 )
-            run = service.start_run(int(in_flight["id"]), reset_retry_budget=True)
-            run = service.get_run(int(in_flight["id"]))
-            run_id = int(run["id"])
-            target_course = int(run["course_id"])
-
-            # Legacy versions kept selected follow-up topic IDs only in memory.
-            # If no durable same-course run remains, materialize the approved pending
-            # topics now, before the resumed worker starts. New batches already have
-            # queued records and are deliberately not expanded beyond their selection.
-            queued_topic_count = 0
-            if run.get("run_type") == "lesson" and not service.has_queued_run_for_course(target_course):
-                current_topic_ids = {
-                    int(item["topic_id"]) for item in run.get("topics", [])
+                run = service.get_run(resume_run_id)
+                run_id = resume_run_id
+                target_course = int(run["course_id"])
+    
+                # Legacy versions kept selected follow-up topic IDs only in memory.
+                # If no durable same-course run remains, materialize the approved pending
+                # topics now, before the resumed worker starts. New batches already have
+                # queued records and are deliberately not expanded beyond their selection.
+                queued_topic_count = 0
+                if run.get("run_type") == "lesson" and not service.has_queued_run_for_course(target_course):
+                    current_topic_ids = {
+                        int(item["topic_id"]) for item in run.get("topics", [])
+                    }
+                    course = service.get_course(target_course)
+                    remaining = [
+                        int(topic["id"]) for topic in course.get("topics", [])
+                        if int(topic["id"]) not in current_topic_ids
+                        and topic.get("approval_status") == "approved"
+                        and topic.get("processing_status") != "paused"
+                        and int(topic.get("lesson_content_ready_count") or 0) == 0
+                    ]
+                    batch_key = str(int(time.time()))
+                    for topic_id in remaining:
+                        request_key = f"playwright-lessons-{target_course}-{topic_id}-resume-{batch_key}"
+                        queued = service.create_run(
+                            target_course, run_type="lesson", topic_ids=[topic_id],
+                            selection_mode="selected", request_key=request_key,
+                        )
+                        if queued["status"] != "queued":
+                            raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                        queued_topic_count += 1
+    
+                cancel_event = threading.Event()
+                thread = threading.Thread(
+                    target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
+                    name=f"ai-learning-resume-{run_id}", daemon=True,
+                )
+                _ACTIVE = True
+                _ACTIVE_RUN_ID = run_id
+                _ACTIVE_COURSE_ID = target_course
+                _CANCEL_EVENTS[run_id] = cancel_event
+                _start_worker_thread(thread, run_id, cancel_event)
+                _log_event(
+                    "learning_run_recovered",
+                    run_id=run_id,
+                    course_id=target_course,
+                    run_type=run["run_type"],
+                    queued_followup_topic_count=queued_topic_count,
+                )
+                return {
+                    "status": "resumed",
+                    "active": True,
+                    "run_id": run_id,
+                    "course_id": target_course,
+                    "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
+                    "message": (
+                        "اجرای ناتمام درس دوباره آغاز شد و سرفصل‌های تأییدشدهٔ باقی‌مانده در صف پایدار قرار گرفتند."
+                        if run.get("run_type") == "lesson"
+                        else "اجرای ناتمام طرح درس دوباره آغاز شد؛ پس از بررسی و تأیید سرفصل‌ها می‌توانید دریافت درس را آغاز کنید."
+                    ),
                 }
-                course = service.get_course(target_course)
-                remaining = [
-                    int(topic["id"]) for topic in course.get("topics", [])
-                    if int(topic["id"]) not in current_topic_ids
-                    and topic.get("approval_status") == "approved"
-                    and topic.get("processing_status") != "paused"
-                    and int(topic.get("lesson_content_ready_count") or 0) == 0
-                ]
+    
+            # Resolve eligible work in SQLite rather than scanning the dashboard's
+            # bounded course pages. This fallback is used only when no durable run exists.
+            pending_course_id = service.get_oldest_course_with_pending_approved_topic(course_id)
+            if pending_course_id is not None:
+                course = service.get_course(pending_course_id)
+                cid = int(course["id"])
+                eligible = [int(topic["id"]) for topic in course.get("topics", [])
+                            if topic.get("approval_status") == "approved"
+                            and topic.get("processing_status") != "paused"
+                            and int(topic.get("lesson_content_ready_count") or 0) == 0]
+                if not eligible:
+                    # Keep the SQL candidate query and course-level progress projection fail-safe
+                    # if their eligibility predicates ever diverge.
+                    _release_worker_lease()
+                    return {"status": "idle", "active": False,
+                            "message": "کار ناتمامی برای ادامه پیدا نشد."}
+                # Persist the complete eligible set before starting the first topic.
+                # The remainder stays recoverable if the process exits during any capture.
                 batch_key = str(int(time.time()))
-                for topic_id in remaining:
-                    request_key = f"playwright-lessons-{target_course}-{topic_id}-resume-{batch_key}"
+                queued_run_ids: list[int] = []
+                for topic_id in eligible:
+                    request_key = f"playwright-lessons-{cid}-{topic_id}-resume-{batch_key}"
                     queued = service.create_run(
-                        target_course, run_type="lesson", topic_ids=[topic_id],
+                        cid, run_type="lesson", topic_ids=[topic_id],
                         selection_mode="selected", request_key=request_key,
                     )
                     if queued["status"] != "queued":
-                        raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
-                    queued_topic_count += 1
-
-            _ACTIVE = True
-            _ACTIVE_RUN_ID = run_id
-            _ACTIVE_COURSE_ID = target_course
-            cancel_event = threading.Event()
-            _CANCEL_EVENTS[run_id] = cancel_event
-            thread = threading.Thread(
-                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
-                name=f"ai-learning-resume-{run_id}", daemon=True,
-            )
-            _start_worker_thread(thread, run_id, cancel_event)
-            _log_event(
-                "learning_run_recovered",
-                run_id=run_id,
-                course_id=target_course,
-                run_type=run["run_type"],
-                queued_followup_topic_count=queued_topic_count,
-            )
-            return {
-                "status": "resumed",
-                "active": True,
-                "run_id": run_id,
-                "course_id": target_course,
-                "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
-                "message": (
-                    "اجرای ناتمام درس دوباره آغاز شد و سرفصل‌های تأییدشدهٔ باقی‌مانده در صف پایدار قرار گرفتند."
-                    if run.get("run_type") == "lesson"
-                    else "اجرای ناتمام طرح درس دوباره آغاز شد؛ پس از بررسی و تأیید سرفصل‌ها می‌توانید دریافت درس را آغاز کنید."
-                ),
-            }
-
-        # Resolve eligible work in SQLite rather than scanning the dashboard's
-        # bounded course pages. This fallback is used only when no durable run exists.
-        pending_course_id = service.get_oldest_course_with_pending_approved_topic(course_id)
-        if pending_course_id is not None:
-            course = service.get_course(pending_course_id)
-            cid = int(course["id"])
-            eligible = [int(topic["id"]) for topic in course.get("topics", [])
-                        if topic.get("approval_status") == "approved"
-                        and topic.get("processing_status") != "paused"
-                        and int(topic.get("lesson_content_ready_count") or 0) == 0]
-            if not eligible:
-                # Keep the SQL candidate query and course-level progress projection fail-safe
-                # if their eligibility predicates ever diverge.
-                return {"status": "idle", "active": False,
-                        "message": "کار ناتمامی برای ادامه پیدا نشد."}
-            # Persist the complete eligible set before starting the first topic.
-            # The remainder stays recoverable if the process exits during any capture.
-            batch_key = str(int(time.time()))
-            queued_run_ids: list[int] = []
-            for topic_id in eligible:
-                request_key = f"playwright-lessons-{cid}-{topic_id}-resume-{batch_key}"
-                queued = service.create_run(
-                    cid, run_type="lesson", topic_ids=[topic_id],
-                    selection_mode="selected", request_key=request_key,
+                        raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                    queued_run_ids.append(int(queued["id"]))
+                run = service.start_run(queued_run_ids[0], **_worker_lease_kwargs(epoch))
+                run_id = int(run["id"])
+                resume_run_id = run_id
+                cancel_event = threading.Event()
+                thread = threading.Thread(
+                    target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
+                    name=f"ai-learning-resume-{run_id}", daemon=True,
                 )
-                if queued["status"] != "queued":
-                    raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
-                queued_run_ids.append(int(queued["id"]))
-            run = service.start_run(queued_run_ids[0])
-            run_id = int(run["id"])
-            _ACTIVE = True
-            _ACTIVE_RUN_ID = run_id
-            _ACTIVE_COURSE_ID = cid
-            cancel_event = threading.Event()
-            _CANCEL_EVENTS[run_id] = cancel_event
-            thread = threading.Thread(
-                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
-                name=f"ai-learning-resume-{run_id}", daemon=True,
-            )
-            _start_worker_thread(thread, run_id, cancel_event)
-            _log_event(
-                "lesson_workflow_resumed",
-                run_id=run_id,
-                course_id=cid,
-                topic_ids=eligible,
-                queued_run_ids=queued_run_ids,
-            )
-            return {
-                "status": "resumed",
-                "active": True,
-                "run_id": run_id,
-                "course_id": cid,
-                "queued_topic_count": len(eligible),
-                "message": f"ادامهٔ {len(eligible)} سرفصل تأییدشده در صف پایدار ثبت شد و به‌ترتیب اجرا می‌شود.",
-            }
-        return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
+                _ACTIVE = True
+                _ACTIVE_RUN_ID = run_id
+                _ACTIVE_COURSE_ID = cid
+                _CANCEL_EVENTS[run_id] = cancel_event
+                _start_worker_thread(thread, run_id, cancel_event)
+                _log_event(
+                    "lesson_workflow_resumed",
+                    run_id=run_id,
+                    course_id=cid,
+                    topic_ids=eligible,
+                    queued_run_ids=queued_run_ids,
+                )
+                return {
+                    "status": "resumed",
+                    "active": True,
+                    "run_id": run_id,
+                    "course_id": cid,
+                    "queued_topic_count": len(eligible),
+                    "message": f"ادامهٔ {len(eligible)} سرفصل تأییدشده در صف پایدار ثبت شد و به‌ترتیب اجرا می‌شود.",
+                }
+            _release_worker_lease()
+            return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
+    
+        except Exception:
+            if resume_run_id is not None:
+                try:
+                    failed_run = service.get_run(resume_run_id)
+                    if failed_run["status"] == "running" and service.owns_worker_lease(_WORKER_OWNER, epoch):
+                        service.requeue_run_for_resume(
+                            resume_run_id, "resume_worker_construction_failed",
+                            **_worker_lease_kwargs(epoch),
+                        )
+                except Exception as recovery_exc:
+                    _log_event(
+                        "resume_worker_cleanup_failed",
+                        run_id=resume_run_id,
+                        exception_type=type(recovery_exc).__name__,
+                        message=str(recovery_exc)[:300],
+                    )
+                with _LOCK:
+                    if _ACTIVE_RUN_ID == resume_run_id:
+                        _ACTIVE = False
+                        _ACTIVE_RUN_ID = None
+                        _ACTIVE_COURSE_ID = None
+                        _CANCEL_EVENTS.pop(resume_run_id, None)
+            _release_worker_lease()
+            raise

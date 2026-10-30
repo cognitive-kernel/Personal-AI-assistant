@@ -326,6 +326,8 @@ async function refreshLearningControl(){
   :state.retry_pending
    ?"وضعیت: به‌دلیل خطای موقت ChatGPT، صف تا "+state.retry_after+" در مکث خودکار است؛ کارهای باقی‌مانده پس از آن ادامه پیدا می‌کنند."
    :"وضعیت: مکث سراسری فعال نیست. پس از راه‌اندازی مجدد نیز می‌توانید بازیابی را بزنید.";
+ if(state.worker_active) $("learning-control-status").textContent+=" worker مرورگر فعال است؛ ممکن است در پردازه دیگری اجرا شود.";
+ else if(state.worker_recovery_pending) $("learning-control-status").textContent+=" مالک قبلی worker منقضی شده و بازیابی هنوز انجام نشده است.";
  $("pause-learning").disabled=!!state.paused;
  $("resume-learning").disabled=false;
 }
