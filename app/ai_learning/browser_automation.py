@@ -1353,47 +1353,71 @@ def _start_worker_thread(
 
 
 def _dispatch_next_persisted_run() -> dict[str, Any]:
-    """Claim the oldest due queued run unless pause or the shared transient-provider cooldown blocks dispatch."""
-    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
-    if _SHUTTING_DOWN:
-        return {"status": "shutting_down", "active": False}
-    control = service.get_learning_control()
-    if control["paused"]:
-        return {"status": "paused", "active": False}
-    if control.get("retry_pending", False):
-        return {
-            "status": "retry_scheduled",
-            "active": False,
-            "next_retry_at": control["retry_after"],
-            "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است.",
-        }
+    """Claim the process-wide browser lease before dispatching one durable queued run."""
+    global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID, _WORKER_LEASE_EPOCH
     with _LOCK:
         if _ACTIVE:
             return {"status": "already_active", "active": True, "run_id": _ACTIVE_RUN_ID}
-        # Query the durable store globally rather than scanning the dashboard's
-        # bounded course/run pages. Otherwise old work can starve forever once the
-        # user has more than 100 courses or 50 recent runs per course.
-        selected = service.get_oldest_queued_run()
-        if selected is None:
-            return {"status": "idle", "active": False}
-        run_id = int(selected["id"])
-        course_id = int(selected["course_id"])
-        run = service.start_run(run_id)
-        cancel_event = threading.Event()
-        _ACTIVE = True
-        _ACTIVE_RUN_ID = run_id
-        _ACTIVE_COURSE_ID = course_id
-        _CANCEL_EVENTS[run_id] = cancel_event
-        thread = threading.Thread(
-            target=_worker,
-            args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
-            name=f"ai-learning-durable-run-{run_id}",
-            daemon=True,
+        if _SHUTTING_DOWN:
+            _release_worker_lease()
+            return {"status": "shutting_down", "active": False}
+        control = service.get_learning_control()
+        if control["paused"]:
+            _release_worker_lease()
+            return {"status": "paused", "active": False}
+        if control.get("retry_pending", False):
+            _release_worker_lease()
+            return {
+                "status": "retry_scheduled",
+                "active": False,
+                "next_retry_at": control["retry_after"],
+                "message": "صف یادگیری تا زمان تلاش مجدد خودکار در مکث موقت است.",
+            }
+
+        # SQLite serializes this claim across independent application processes.
+        # The lease covers the shared Chrome profile as well as the durable run.
+        epoch = service.claim_worker_lease(
+            _WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS
         )
-        _start_worker_thread(thread, run_id, cancel_event)
-        _log_event("persisted_queue_run_dispatched", run_id=run_id, course_id=course_id,
-                   run_type=run.get("run_type"), recovered_status=selected.get("status"))
-        return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+        if epoch is None:
+            return {
+                "status": "worker_busy",
+                "active": False,
+                "message": "یک پردازهٔ دیگر مالک worker مرورگر است؛ کار در صف پایدار باقی ماند.",
+            }
+        _WORKER_LEASE_EPOCH = epoch
+        try:
+            selected = service.get_oldest_queued_run()
+            if selected is None:
+                _release_worker_lease()
+                return {"status": "idle", "active": False}
+            run_id = int(selected["id"])
+            course_id = int(selected["course_id"])
+            run = service.start_run(run_id)
+            cancel_event = threading.Event()
+            _ACTIVE = True
+            _ACTIVE_RUN_ID = run_id
+            _ACTIVE_COURSE_ID = course_id
+            _CANCEL_EVENTS[run_id] = cancel_event
+            thread = threading.Thread(
+                target=_worker,
+                args=(run_id, course_id, str(run["prompt_text"]), cancel_event),
+                name=f"ai-learning-durable-run-{run_id}",
+                daemon=True,
+            )
+            _start_worker_thread(thread, run_id, cancel_event)
+            _log_event(
+                "persisted_queue_run_dispatched",
+                run_id=run_id,
+                course_id=course_id,
+                run_type=run.get("run_type"),
+                recovered_status=selected.get("status"),
+                lease_epoch=epoch,
+            )
+            return {"status": "running", "active": True, "run_id": run_id, "course_id": course_id}
+        except Exception:
+            _release_worker_lease()
+            raise
 
 
 def stop_browser_automation() -> dict[str, Any]:
@@ -1434,18 +1458,14 @@ def stop_browser_automation() -> dict[str, Any]:
 
 
 def recover_pending_runs() -> dict[str, Any]:
-    """Recover explicit queued/running records after process restart; never invent work."""
-    global _SHUTTING_DOWN
+    """Recover interrupted runs only after atomically acquiring the shared browser lease."""
+    global _SHUTTING_DOWN, _WORKER_LEASE_EPOCH
     from .db import initialize_store
 
     initialize_store()
     _SHUTTING_DOWN = False
     if service.get_learning_control()["paused"]:
         return {"status": "paused", "active": False, "message": "Global learning pause is active."}
-    # Only startup recovery may treat a stale "running" row as an interrupted process.
-    # A needs_user_action row is intentionally left alone until the user resumes it.
-    # Read all running IDs directly from storage; dashboard pagination must never
-    # determine which persisted jobs are eligible for crash recovery.
     with _LOCK:
         if _ACTIVE:
             return {
@@ -1454,18 +1474,31 @@ def recover_pending_runs() -> dict[str, Any]:
                 "run_id": _ACTIVE_RUN_ID,
                 "message": "An in-process learning worker is already active.",
             }
-        # Hold the same lock used by start_outline/start_lesson_run while marking
-        # stale runs. This prevents a concurrent local start from being mistaken
-        # for a process-crash orphan and requeued underneath its live worker.
-        for run_id in service.list_run_ids_by_status("running"):
-            service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
+        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
+        if epoch is None:
+            control = service.get_learning_control()
+            return {
+                "status": "paused" if control["paused"] else "worker_busy",
+                "active": False,
+                "message": "Another process owns the browser worker lease.",
+            }
+        _WORKER_LEASE_EPOCH = epoch
+        try:
+            # A live worker in another process keeps this lease renewed. Reaching
+            # this point therefore means every running row is stale/recoverable.
+            for run_id in service.list_run_ids_by_status("running"):
+                service.requeue_run_for_resume(int(run_id), "startup_interrupted_run")
+        except Exception:
+            _release_worker_lease()
+            raise
     result = _dispatch_next_persisted_run()
     _log_event("startup_queue_recovery", status=result.get("status"), run_id=result.get("run_id"))
     return result
 
 
 def recover_orphaned_runs() -> dict[str, Any]:
-    """Reconcile a run whose worker vanished in this process without restarting after shutdown."""
+    """Recover orphaned runs only after the cross-process lease is available."""
+    global _WORKER_LEASE_EPOCH
     from .db import initialize_store
 
     if _SHUTTING_DOWN:
@@ -1474,8 +1507,6 @@ def recover_orphaned_runs() -> dict[str, Any]:
     if service.get_learning_control()["paused"]:
         return {"status": "paused", "active": False}
     with _LOCK:
-        # Recheck under the same lock used by dispatch/start and after storage setup:
-        # shutdown or a new worker may have started while recovery was preparing.
         if _SHUTTING_DOWN:
             return {"status": "shutting_down", "active": False}
         if _ACTIVE:
@@ -1484,9 +1515,21 @@ def recover_orphaned_runs() -> dict[str, Any]:
                 "active": True,
                 "run_id": _ACTIVE_RUN_ID,
             }
-        orphaned_ids = service.list_run_ids_by_status("running")
-        for run_id in orphaned_ids:
-            service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime")
+        epoch = service.claim_worker_lease(_WORKER_OWNER, lease_seconds=_WORKER_LEASE_SECONDS)
+        if epoch is None:
+            control = service.get_learning_control()
+            return {
+                "status": "paused" if control["paused"] else "worker_busy",
+                "active": False,
+            }
+        _WORKER_LEASE_EPOCH = epoch
+        try:
+            orphaned_ids = service.list_run_ids_by_status("running")
+            for run_id in orphaned_ids:
+                service.requeue_run_for_resume(int(run_id), "worker_lost_during_process_lifetime")
+        except Exception:
+            _release_worker_lease()
+            raise
     result = _dispatch_next_persisted_run()
     _log_event(
         "orphaned_run_watchdog_recovery",
