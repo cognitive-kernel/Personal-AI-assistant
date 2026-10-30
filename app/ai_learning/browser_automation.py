@@ -82,13 +82,19 @@ def _maintain_worker_lease(
             with _LOCK:
                 active_run_id = _ACTIVE_RUN_ID
             if active_run_id is not None:
-                status = service.get_run(active_run_id).get("status")
-                if status in {"cancelled", "queued", "failed", "needs_user_action"}:
+                active_run = service.get_run(active_run_id)
+                status = active_run.get("status")
+                paused_topics = [
+                    int(topic["topic_id"]) for topic in active_run.get("topics", [])
+                    if topic.get("processing_status") == "paused"
+                ]
+                if status in {"cancelled", "queued", "failed", "needs_user_action"} or paused_topics:
                     cancel_event.set()
                     _log_event(
                         "worker_control_observed",
                         run_id=active_run_id,
                         status=status,
+                        paused_topic_ids=paused_topics,
                     )
                     return
         except Exception as exc:
@@ -1217,6 +1223,7 @@ def _schedule_transient_retry(
     run_id: int, error: BrowserAutomationError
 ) -> dict[str, Any] | None:
     """Schedule a bounded delayed retry only for explicitly transient provider/browser failures."""
+    _assert_worker_lease()
     delays = _AUTOMATIC_RETRY_DELAYS_SECONDS.get(error.code)
     if not delays:
         return None
@@ -1810,12 +1817,20 @@ def pause_learning() -> dict[str, Any]:
         active_event = _CANCEL_EVENTS.get(active_run_id) if active_run_id is not None else None
         if active_event is not None:
             active_event.set()
-    if active_run_id is not None:
-        try:
-            service.requeue_run_for_resume(active_run_id, "manual_global_pause")
-        except Exception as exc:
-            _log_event("pause_run_requeue_failed", run_id=active_run_id,
-                       exception_type=type(exc).__name__, message=str(exc)[:300])
+    # The active browser may belong to another application process. Persist the
+    # pause transition for every running record; the remote heartbeat observes it
+    # and cooperatively stops the provider interaction.
+    try:
+        for run_id in service.list_run_ids_by_status("running"):
+            service.requeue_run_for_resume(int(run_id), "manual_global_pause")
+    except Exception as exc:
+        _log_event(
+            "pause_run_requeue_failed",
+            run_id=active_run_id,
+            exception_type=type(exc).__name__,
+            message=str(exc)[:300],
+        )
+        raise
     _log_event("learning_paused", active_run_id=active_run_id, active_course_id=_ACTIVE_COURSE_ID)
     return {**state, "active": _ACTIVE, "active_run_id": active_run_id}
 
