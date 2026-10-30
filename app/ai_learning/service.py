@@ -539,9 +539,15 @@ def get_learning_control() -> dict[str, Any]:
     """Return durable pause state and provider cooldown for ChatGPT learning workflows."""
     with connection() as conn:
         row = conn.execute(
-            """SELECT paused,updated_at,reason,retry_after,retry_reason,
+            """SELECT paused,updated_at,reason,retry_after,retry_reason,worker_lease_until,
                       CASE WHEN retry_after IS NOT NULL AND retry_after>CURRENT_TIMESTAMP
-                           THEN 1 ELSE 0 END AS retry_pending
+                           THEN 1 ELSE 0 END AS retry_pending,
+                      CASE WHEN worker_lease_owner IS NOT NULL
+                                  AND worker_lease_until>CURRENT_TIMESTAMP
+                           THEN 1 ELSE 0 END AS worker_active,
+                      CASE WHEN worker_lease_owner IS NOT NULL
+                                  AND (worker_lease_until IS NULL OR worker_lease_until<=CURRENT_TIMESTAMP)
+                           THEN 1 ELSE 0 END AS worker_recovery_pending
                FROM ai_learning_control WHERE id=1"""
         ).fetchone()
     return {
@@ -551,6 +557,9 @@ def get_learning_control() -> dict[str, Any]:
         "retry_after": row["retry_after"],
         "retry_reason": row["retry_reason"],
         "retry_pending": bool(row["retry_pending"]),
+        "worker_active": bool(row["worker_active"]),
+        "worker_lease_until": row["worker_lease_until"],
+        "worker_recovery_pending": bool(row["worker_recovery_pending"]),
     }
 
 
