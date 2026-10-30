@@ -2723,6 +2723,168 @@ def test_ai_learning_resume_preserves_selected_course_id():
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
+
+def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {
+        "topic": {
+            "id": 71,
+            "position": 1,
+            "title": "سرفصل آزمون مرور",
+            "description": "سرفصل آزمایشی برای بررسی چرخهٔ انتشار",
+            "approval_status": "pending",
+            "processing_status": "idle",
+            "lesson_count": 1,
+            "completed_lesson_count": 0,
+            "progress_percent": 75,
+            "progress_label": "نیازمند بازبینی",
+        },
+        "lesson": {
+            "id": 810,
+            "position": 1,
+            "title": "درس آزمون مرور",
+            "status": "needs_review",
+            "progress_percent": 75,
+            "progress_label": "نیازمند بازبینی",
+        },
+        "version": {
+            "id": 900,
+            "version_no": 1,
+            "review_status": "needs_review",
+            "content_sha256": "a" * 64,
+        },
+        "decision_calls": [],
+        "review_calls": [],
+        "publish_calls": [],
+    }
+    markdown = (
+        "# درس آزمون مرور\\n\\n"
+        "محتوای آموزشی ذخیره‌شده برای آزمون مرور و انتشار.\\n\\n"
+        "## منابع\\n- [مستندات رسمی](https://example.com/docs)"
+    )
+    source = {
+        "id": 700,
+        "title": "مستندات رسمی",
+        "url": "https://example.com/docs",
+        "publisher": "example.com",
+        "validation_status": "unverified",
+        "excerpt": "",
+    }
+    browser_errors = []
+
+    def learning_api_route(route):
+        request = route.request
+        path = request.url.split("?", 1)[0].removeprefix(base_url.rstrip("/"))
+        if request.method == "GET" and path == "/api/ai-learning/courses":
+            payload = {"items": [{"id": 42, "title": "دورهٔ آزمون مرور", "topic_count": 1}], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42":
+            payload = {"topics": [state["topic"]]}
+        elif request.method == "GET" and path == "/api/ai-learning/courses/42/runs":
+            payload = {"items": [], "count": 0}
+        elif request.method == "GET" and path == "/api/ai-learning/control":
+            payload = {
+                "paused": False,
+                "reason": "",
+                "retry_pending": False,
+                "worker_active": False,
+                "worker_recovery_pending": False,
+            }
+        elif request.method == "GET" and path == "/api/ai-learning/topics/71/lessons":
+            payload = {"items": [state["lesson"]], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/lessons/810/versions":
+            payload = {"items": [state["version"]], "count": 1}
+        elif request.method == "GET" and path == "/api/ai-learning/versions/900":
+            payload = {
+                "id": 900,
+                "markdown": markdown,
+                "raw_response": "",
+                "review_status": state["version"]["review_status"],
+            }
+        elif request.method == "GET" and path == "/api/ai-learning/versions/900/sources":
+            payload = {"items": [source], "count": 1}
+        elif request.method == "POST" and path == "/api/ai-learning/topics/decision":
+            body = request.post_data_json
+            state["decision_calls"].append(body)
+            assert body == {"topic_ids": [71], "decision": "approved"}
+            state["topic"]["approval_status"] = "approved"
+            payload = {"updated": 1}
+        elif request.method == "POST" and path == "/api/ai-learning/versions/900/review":
+            body = request.post_data_json
+            state["review_calls"].append(body)
+            assert body == {"decision": "reviewed"}
+            state["version"]["review_status"] = "reviewed"
+            payload = {"id": 900, "review_status": "reviewed"}
+        elif request.method == "POST" and path == "/api/ai-learning/versions/900/publish":
+            state["publish_calls"].append(request.post_data_json)
+            state["version"]["review_status"] = "published"
+            payload = {"id": 900, "review_status": "published"}
+        else:
+            route.fulfill(
+                status=404,
+                content_type="application/json",
+                body=json.dumps({"detail": "unexpected AI-learning request: " + path}),
+            )
+            return
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps(payload, ensure_ascii=False),
+        )
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/ai-learning/**", learning_api_route)
+        page.goto(base_url.rstrip("/") + "/ai-learning", wait_until="domcontentloaded")
+
+        page.wait_for_function(
+            "() => document.querySelector('#course-select')?.value === '42'",
+            timeout=10000,
+        )
+        topic_card = page.locator("#topics details.topic").filter(has_text="سرفصل آزمون مرور")
+        topic_card.locator(":scope > summary").click()
+        topic_card.get_by_role("button", name="تأیید", exact=True).click()
+        page.get_by_text("سرفصل‌ها به‌روزرسانی شد.", exact=False).wait_for(timeout=10000)
+        assert state["decision_calls"] == [{"topic_ids": [71], "decision": "approved"}]
+        assert "تأییدشده" in topic_card.inner_text()
+
+        topic_card.get_by_role("button", name="مشاهده درس‌ها و محتوا").click()
+        lesson_card = page.locator(".topic-inline-lessons .lesson").filter(has_text="درس آزمون مرور")
+        lesson_card.wait_for(state="visible", timeout=10000)
+        assert "needs_review" in lesson_card.inner_text()
+        lesson_card.get_by_role("button", name="تأیید بازبینی").click()
+        page.get_by_text("وضعیت بازبینی ثبت شد.", exact=False).wait_for(timeout=10000)
+        assert state["review_calls"] == [{"decision": "reviewed"}]
+        lesson_card = page.locator(".topic-inline-lessons .lesson").filter(has_text="درس آزمون مرور")
+        lesson_card.get_by_role("button", name="انتشار برای بازیابی").click()
+        page.get_by_text("نسخه منتشر شد؛ پنل درس‌ها بسته شد.", exact=False).wait_for(timeout=10000)
+        assert state["publish_calls"] == [{}]
+        assert state["version"]["review_status"] == "published"
+
+        # Reload must rebuild the course, topic approval, lesson, and published
+        # version from API state rather than transient DOM or JavaScript state.
+        page.reload(wait_until="domcontentloaded")
+        page.wait_for_function(
+            "() => document.querySelector('#course-select')?.value === '42'",
+            timeout=10000,
+        )
+        topic_card = page.locator("#topics details.topic").filter(has_text="سرفصل آزمون مرور")
+        assert "تأییدشده" in topic_card.inner_text()
+        topic_card.locator(":scope > summary").click()
+        topic_card.get_by_role("button", name="مشاهده درس‌ها و محتوا").click()
+        lesson_card = page.locator(".topic-inline-lessons .lesson").filter(has_text="درس آزمون مرور")
+        lesson_card.wait_for(state="visible", timeout=10000)
+        version_card = lesson_card.locator(".version")
+        assert "نسخه 1 — published" in version_card.inner_text()
+        assert "محتوای آموزشی ذخیره‌شده برای آزمون مرور و انتشار." in version_card.inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
 def test_browser_learning_course_task_history_loads_older_cursor_pages():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
