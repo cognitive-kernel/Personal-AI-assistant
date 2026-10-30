@@ -222,10 +222,13 @@ def save_provider_quota_snapshot(
     provider_id: str = KAGGLE_PROVIDER_ID,
     *,
     expected_executable_path: str | None = None,
+    expected_consented_at: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Persist parsed quota only if the CLI identity still matches the request."""
+    """Persist parsed quota only if the CLI identity and consent generation still match."""
     if expected_executable_path is not None and not isinstance(expected_executable_path, str):
         raise CloudResourceError("Expected Kaggle CLI identity is invalid.")
+    if expected_consented_at is not None and not isinstance(expected_consented_at, str):
+        raise CloudResourceError("Expected Kaggle consent generation is invalid.")
     if provider_id != KAGGLE_PROVIDER_ID:
         raise CloudResourceError("Unknown provider quota scope.")
     if not hasattr(snapshot, "observed_at") or not hasattr(snapshot, "refresh_at"):
@@ -251,7 +254,7 @@ def save_provider_quota_snapshot(
     with closing(_connect()) as connection:
         connection.execute("BEGIN IMMEDIATE")
         current = connection.execute(
-            "SELECT enabled, user_consent, executable_path FROM provider_access_consents WHERE provider_id=?",
+            "SELECT enabled, user_consent, executable_path, consented_at FROM provider_access_consents WHERE provider_id=?",
             (provider_id,),
         ).fetchone()
         if (
@@ -259,6 +262,10 @@ def save_provider_quota_snapshot(
             or (
                 expected_executable_path is not None
                 and current["executable_path"] != expected_executable_path
+            )
+            or (
+                expected_consented_at is not None
+                and current["consented_at"] != expected_consented_at
             )
         ):
             connection.rollback()
@@ -1582,7 +1589,8 @@ def save_oci_limit_snapshot(
 ) -> list[dict[str, Any]]:
     """Persist limits only if the complete consented OCI scope still matches."""
     expected_keys = (
-        "executable_path", "config_file", "profile", "region", "compartment_id"
+        "executable_path", "config_file", "profile", "region", "compartment_id",
+        "consented_at",
     )
     if expected_consent is not None and (
         not isinstance(expected_consent, dict)
@@ -1633,7 +1641,7 @@ def save_oci_limit_snapshot(
         connection.execute("BEGIN IMMEDIATE")
         current = connection.execute(
             """SELECT enabled, user_consent, executable_path, config_file, profile,
-                      region, compartment_id
+                      region, compartment_id, consented_at
                FROM oci_limit_access_consents WHERE provider_id=?""",
             (OCI_PROVIDER_ID,),
         ).fetchone()
