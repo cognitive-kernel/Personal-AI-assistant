@@ -88,6 +88,12 @@ A separate worker service for `app/ai_learning` with cross-process leases/heartb
 - Retry is available on a topic even when an earlier run failed before a lesson was created. It reuses the existing lesson record when possible and creates a new content version, avoiding duplicate lesson shells. All retry content remains in needs_review and must be reviewed before publication.
 
 
+## Bounded automatic recovery for transient failures
+
+The AI-learning browser worker distinguishes transient provider/transport failures from conditions that require an operator. Network interruptions, provider rate limits, response timeouts, unexpected page closure, and recoverable Playwright errors receive at most two delayed retries per run. Delays are bounded by failure type: 60/300 seconds for network/page/browser errors, 120/600 seconds for response timeouts, and 300/900 seconds for provider rate limits. The existing 30-second runtime-maintenance cycle dispatches a retry only after its persisted `next_retry_at` is due; it does not spin or reopen Chrome continuously. Partial lesson responses remain stored while the run waits.
+
+Login requirements, human verification, missing Chrome/Playwright dependencies, repeated browser-context closure, changed/unavailable ChatGPT controls, empty or incomplete lesson content, and database checkpoint failures remain `needs_user_action`; the worker must not bypass these gates or retry them indefinitely. A user-initiated resume clears the delay and resets the automatic retry budget. Explicit cancellation and global pause are never converted into automatic retries. Retried content still requires the normal review-before-publish workflow.
+
 ## Persisted queue recovery and quality regression checks
 
 The AI-learning run records in SQLite are the source of truth for explicitly submitted outline/lesson work. When `AI_LEARNING_ENABLED=1`, application startup initializes the isolated store and attempts to dispatch the oldest persisted `queued` or interrupted `running` run, unless global pause is active. The dispatcher drains remaining persisted runs after each worker finishes. Recovery reuses the saved prompt and run ID; it does not restore the exact ChatGPT tab state, and ChatGPT may need to generate the answer again. The browser still runs as an in-process thread in the single local application instance; this is not a multi-process leased worker service. Do not run multiple application instances against the same AI-learning DB.
