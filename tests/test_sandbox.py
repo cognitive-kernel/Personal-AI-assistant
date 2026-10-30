@@ -1,6 +1,8 @@
+from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 import subprocess
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -321,6 +323,91 @@ def test_cleanup_removes_only_old_containers_for_confirmed_terminal_tasks(tmp_pa
     assert result.skipped == 3
     assert result.errors == ()
     assert removed == [container_ids[0]]
+
+
+def test_cleanup_is_idempotent_when_two_workers_race_to_remove_same_container(
+    tmp_path, monkeypatch
+):
+    executable = _configured_docker(tmp_path)
+    container_id = "a" * 64
+    created = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
+    labels = {sandbox._SANDBOX_LABEL: "true", sandbox._TASK_ID_LABEL: "7"}
+    state = {"present": True}
+    state_lock = threading.Lock()
+    inspect_barrier = threading.Barrier(2)
+    removed = []
+
+    def fake_run(args, **kwargs):
+        if args[1:3] == ["ps", "-aq"]:
+            if any(str(value).startswith("id=") for value in args):
+                with state_lock:
+                    output = container_id if state["present"] else ""
+                return subprocess.CompletedProcess(args, 0, output, "")
+            return subprocess.CompletedProcess(args, 0, container_id, "")
+        if args[1] == "inspect":
+            inspect_barrier.wait(timeout=5)
+            return subprocess.CompletedProcess(
+                args, 0, f"{json.dumps(labels)}|running|{created}", ""
+            )
+        if args[1] == "rm":
+            with state_lock:
+                if state["present"]:
+                    state["present"] = False
+                    removed.append(args[-1])
+                    return subprocess.CompletedProcess(args, 0, args[-1], "")
+            return subprocess.CompletedProcess(args, 1, "", "No such container")
+        raise AssertionError(f"Unexpected Docker command: {args[1:]}")
+
+    monkeypatch.setattr(sandbox.subprocess, "run", fake_run)
+
+    def cleanup_once(_):
+        return sandbox.cleanup_orphaned_containers(
+            docker_executable=executable,
+            terminal_task_ids={7},
+            min_age_seconds=0,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(cleanup_once, range(2)))
+
+    assert sorted(len(result.removed) for result in results) == [0, 1]
+    assert sum(result.skipped for result in results) == 1
+    assert all(result.errors == () for result in results)
+    assert removed == [container_id]
+    assert state["present"] is False
+
+
+def test_cleanup_reports_failed_removal_when_container_still_exists(
+    tmp_path, monkeypatch
+):
+    executable = _configured_docker(tmp_path)
+    container_id = "b" * 64
+    created = (datetime.now(timezone.utc) - timedelta(seconds=300)).isoformat()
+    labels = {sandbox._SANDBOX_LABEL: "true", sandbox._TASK_ID_LABEL: "7"}
+
+    def fake_run(args, **kwargs):
+        if args[1:3] == ["ps", "-aq"]:
+            return subprocess.CompletedProcess(args, 0, container_id, "")
+        if args[1] == "inspect":
+            return subprocess.CompletedProcess(
+                args, 0, f"{json.dumps(labels)}|running|{created}", ""
+            )
+        if args[1] == "rm":
+            return subprocess.CompletedProcess(args, 1, "", "permission denied")
+        raise AssertionError(f"Unexpected Docker command: {args[1:]}")
+
+    monkeypatch.setattr(sandbox.subprocess, "run", fake_run)
+    result = sandbox.cleanup_orphaned_containers(
+        docker_executable=executable,
+        terminal_task_ids={7},
+        min_age_seconds=0,
+    )
+
+    assert result.removed == ()
+    assert result.skipped == 0
+    assert result.errors == (
+        f"Removal failed for {container_id[:12]}; container is still present.",
+    )
 
 
 def test_cleanup_fails_closed_when_docker_listing_fails(tmp_path, monkeypatch):
