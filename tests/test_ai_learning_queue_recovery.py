@@ -1192,3 +1192,30 @@ def test_remote_topic_pause_signals_worker_heartbeat_without_releasing_lease(iso
     heartbeat.join(timeout=2)
     assert not heartbeat.is_alive()
     assert service.release_worker_lease(owner, epoch)
+
+
+def test_worker_identity_and_locks_reset_after_prefork_child_creation(isolated_store, monkeypatch):
+    original_pid = browser_automation._WORKER_OWNER_PID
+    original_owner = browser_automation._WORKER_OWNER
+    original_lock = browser_automation._LOCK
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER_PID", original_pid)
+    monkeypatch.setattr(browser_automation, "_WORKER_OWNER", original_owner)
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", 123)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", 456)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {123: browser_automation.threading.Event()})
+    monkeypatch.setattr(browser_automation, "_WORKER_LEASE_EPOCH", 7)
+    monkeypatch.setattr(browser_automation, "_SHUTTING_DOWN", True)
+    monkeypatch.setattr(browser_automation.os, "getpid", lambda: original_pid + 1)
+
+    browser_automation._ensure_process_identity()
+
+    assert browser_automation._WORKER_OWNER_PID == original_pid + 1
+    assert browser_automation._WORKER_OWNER != original_owner
+    assert browser_automation._ACTIVE is False
+    assert browser_automation._ACTIVE_RUN_ID is None
+    assert browser_automation._ACTIVE_COURSE_ID is None
+    assert browser_automation._CANCEL_EVENTS == {}
+    assert browser_automation._WORKER_LEASE_EPOCH is None
+    assert browser_automation._SHUTTING_DOWN is False
+    assert browser_automation._LOCK is not original_lock
