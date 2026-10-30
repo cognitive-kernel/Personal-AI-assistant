@@ -2046,3 +2046,280 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
         assert unchanged.json()["chat_ollama_model"] == "browser-e2e-manual-model"
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {
+        "enabled": False,
+        "refresh_failures": 1,
+        "refresh_calls": 0,
+        "patches": [],
+        "refreshed": False,
+    }
+    browser_errors = []
+
+    def quota_route(route):
+        request = route.request
+        if request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {
+                        "enabled": state["enabled"],
+                        "user_consent": state["enabled"],
+                        "executable_path": "/opt/kaggle" if state["enabled"] else "",
+                    },
+                    "snapshots": (
+                        [{"resource": "GPU", "remaining_hours": 9.0, "total_hours": 10.0}]
+                        if state["refreshed"] else []
+                    ),
+                    "consent_events": (
+                        [{"event_type": "consent_granted" if state["enabled"] else "consent_revoked"}]
+                    ),
+                }),
+            )
+            return
+        if request.method == "PATCH":
+            payload = request.post_data_json
+            state["patches"].append(payload)
+            state["enabled"] = payload["enabled"] is True and payload["user_consent"] is True
+            if not state["enabled"]:
+                state["refreshed"] = False
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {
+                        "enabled": state["enabled"],
+                        "user_consent": state["enabled"],
+                        "executable_path": payload["executable_path"],
+                    },
+                    "snapshots": [],
+                    "consent_events": [{"event_type": "consent_granted" if state["enabled"] else "consent_revoked"}],
+                }),
+            )
+            return
+        if request.method == "POST":
+            state["refresh_calls"] += 1
+            if not state["enabled"]:
+                route.fulfill(status=409, content_type="application/json", body='{"detail":"consent required"}')
+                return
+            if state["refresh_failures"]:
+                state["refresh_failures"] -= 1
+                route.fulfill(status=503, content_type="application/json", body='{"detail":"simulated Kaggle CLI failure"}')
+                return
+            state["refreshed"] = True
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": True, "user_consent": True, "executable_path": "/opt/kaggle"},
+                    "snapshots": [{"resource": "GPU", "remaining_hours": 9.0, "total_hours": 10.0}],
+                    "consent_events": [{"event_type": "consent_granted"}],
+                }),
+            )
+            return
+        route.fulfill(status=405, body="method not allowed")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/cloud-resources/kaggle-quota**", quota_route)
+        _goto_section(page, base_url, "kaggle-quota-section")
+
+        consent = page.locator("#kaggle-quota-consent")
+        enable = page.locator("#kaggle-quota-enable")
+        refresh = page.locator("#kaggle-quota-refresh")
+        revoke = page.locator("#kaggle-quota-revoke")
+        status = page.locator("#kaggle-quota-status")
+
+        page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
+        assert not consent.is_checked()
+        enable.click()
+        page.get_by_text("ابتدا چک‌باکس رضایت صریح", exact=False).wait_for()
+        assert state["patches"] == []
+
+        consent.check()
+        page.locator("#kaggle-cli-path").fill("/opt/kaggle")
+        enable.click()
+        page.get_by_text("رضایت فعال است", exact=False).wait_for()
+        assert state["patches"] == [{
+            "enabled": True,
+            "user_consent": True,
+            "executable_path": "/opt/kaggle",
+        }]
+
+        refresh.click()
+        page.get_by_text("simulated Kaggle CLI failure", exact=False).wait_for()
+        assert refresh.is_enabled()
+        refresh.click()
+        page.get_by_text('"remaining_hours": 9', exact=False).wait_for()
+        assert state["refresh_calls"] == 2
+
+        revoke.click()
+        page.wait_for_function("() => document.querySelector('#kaggle-quota-status')?.textContent.includes('رضایت غیرفعال است')")
+        assert not consent.is_checked()
+        assert page.locator("#kaggle-cli-path").input_value() == ""
+        assert state["patches"][-1] == {
+            "enabled": False,
+            "user_consent": False,
+            "executable_path": "",
+        }
+        assert "remaining_hours" not in status.inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+
+    state = {
+        "enabled": False,
+        "refresh_failures": 1,
+        "refresh_calls": 0,
+        "patches": [],
+        "refreshed": False,
+    }
+    browser_errors = []
+
+    def limits_route(route):
+        request = route.request
+        if request.method == "GET":
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {
+                        "enabled": state["enabled"],
+                        "user_consent": state["enabled"],
+                        "executable_path": "/usr/bin/oci" if state["enabled"] else "",
+                        "config_file": "/home/test/.oci/config" if state["enabled"] else "",
+                        "profile": "DEFAULT" if state["enabled"] else "",
+                        "region": "eu-frankfurt-1" if state["enabled"] else "",
+                        "compartment_id": "ocid1.compartment.oc1..test" if state["enabled"] else "",
+                    },
+                    "snapshots": (
+                        [{"resource_name": "standard-a1-core-count", "limit_value": 2, "available_value": 1}]
+                        if state["refreshed"] else []
+                    ),
+                    "consent_events": [{"event_type": "consent_granted" if state["enabled"] else "consent_revoked"}],
+                    "execution_authorized": False,
+                }),
+            )
+            return
+        if request.method == "PATCH":
+            payload = request.post_data_json
+            state["patches"].append(payload)
+            state["enabled"] = payload["enabled"] is True and payload["user_consent"] is True
+            if not state["enabled"]:
+                state["refreshed"] = False
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {
+                        "enabled": state["enabled"],
+                        "user_consent": state["enabled"],
+                        **{key: payload[key] for key in (
+                            "executable_path", "config_file", "profile", "region", "compartment_id"
+                        )},
+                    },
+                    "snapshots": [],
+                    "consent_events": [{"event_type": "consent_granted" if state["enabled"] else "consent_revoked"}],
+                    "execution_authorized": False,
+                }),
+            )
+            return
+        if request.method == "POST":
+            state["refresh_calls"] += 1
+            if not state["enabled"]:
+                route.fulfill(status=409, content_type="application/json", body='{"detail":"consent required"}')
+                return
+            if state["refresh_failures"]:
+                state["refresh_failures"] -= 1
+                route.fulfill(status=503, content_type="application/json", body='{"detail":"simulated OCI CLI failure"}')
+                return
+            state["refreshed"] = True
+            route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps({
+                    "consent": {"enabled": True, "user_consent": True},
+                    "snapshots": [{"resource_name": "standard-a1-core-count", "limit_value": 2, "available_value": 1}],
+                    "consent_events": [{"event_type": "consent_granted"}],
+                    "execution_authorized": False,
+                }),
+            )
+            return
+        route.fulfill(status=405, body="method not allowed")
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/cloud-resources/oci-limits**", limits_route)
+        _goto_section(page, base_url, "oci-limits-section")
+
+        consent = page.locator("#oci-limits-consent")
+        enable = page.locator("#oci-limits-enable")
+        refresh = page.locator("#oci-limits-refresh")
+        revoke = page.locator("#oci-limits-revoke")
+        status = page.locator("#oci-limits-status")
+
+        page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
+        assert not consent.is_checked()
+        enable.click()
+        page.get_by_text("ابتدا رضایت صریح", exact=False).wait_for()
+        assert state["patches"] == []
+
+        consent.check()
+        page.locator("#oci-cli-path").fill("/usr/bin/oci")
+        page.locator("#oci-config-path").fill("/home/test/.oci/config")
+        page.locator("#oci-profile").fill("DEFAULT")
+        page.locator("#oci-region").fill("eu-frankfurt-1")
+        page.locator("#oci-compartment-id").fill("ocid1.compartment.oc1..test")
+        enable.click()
+        page.get_by_text("رضایت فعال است", exact=False).wait_for()
+        assert state["patches"] == [{
+            "enabled": True,
+            "user_consent": True,
+            "executable_path": "/usr/bin/oci",
+            "config_file": "/home/test/.oci/config",
+            "profile": "DEFAULT",
+            "region": "eu-frankfurt-1",
+            "compartment_id": "ocid1.compartment.oc1..test",
+        }]
+
+        refresh.click()
+        page.get_by_text("simulated OCI CLI failure", exact=False).wait_for()
+        assert refresh.is_enabled()
+        refresh.click()
+        page.get_by_text('"limit_value": 2', exact=False).wait_for()
+        assert "مجوز اجرای remote: false" in status.inner_text()
+        assert state["refresh_calls"] == 2
+
+        revoke.click()
+        page.wait_for_function("() => document.querySelector('#oci-limits-status')?.textContent.includes('رضایت غیرفعال است')")
+        assert not consent.is_checked()
+        for field in ("oci-cli-path", "oci-config-path", "oci-profile", "oci-region", "oci-compartment-id"):
+            assert page.locator("#" + field).input_value() == ""
+        assert state["patches"][-1] == {
+            "enabled": False,
+            "user_consent": False,
+            "executable_path": "",
+            "config_file": "",
+            "profile": "",
+            "region": "",
+            "compartment_id": "",
+        }
+        assert "limit_value" not in status.inner_text()
+        assert "private_key" not in status.inner_text().casefold()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
