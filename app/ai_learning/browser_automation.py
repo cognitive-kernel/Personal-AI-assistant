@@ -1203,7 +1203,10 @@ def _worker(
                     )
                 else:
                     service.mark_run_needs_user_action(
-                        run_id, exc.code, str(exc), exc.partial_response
+                        run_id,
+                        exc.code,
+                        str(exc),
+                        exc.partial_response if exc.partial_response and exc.partial_response.strip() else None,
                     )
         except Exception as mark_exc:
             _log_event(
