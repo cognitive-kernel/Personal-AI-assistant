@@ -131,6 +131,12 @@ class TaskWorker:
                 return
             if stop_event.wait(min(interval, remaining)):
                 return
+            if time.monotonic() >= lease_deadline:
+                logger.error(
+                    "Task lease heartbeat stopped after its renewal deadline for task %s.",
+                    context.task_id,
+                )
+                return
             try:
                 # Do not extend a lease after pause/cancel has been requested. If the
                 # handler cannot reach a checkpoint, expiry lets the queue settle it.
