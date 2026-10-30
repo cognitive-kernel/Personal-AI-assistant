@@ -1007,3 +1007,32 @@ def test_reset_refuses_to_clear_store_while_remote_worker_lease_is_active(isolat
         service.reset_learning_data()
 
     assert service.owns_worker_lease("remote-process", epoch)
+
+
+def test_stale_worker_cannot_commit_provider_result_after_lease_reclaim(isolated_store):
+    course = service.create_course(title="جلوگیری از ثبت پاسخ worker منقضی")
+    run = service.create_run(course["id"], run_type="outline", request_key="stale-worker-write")
+    service.start_run(run["id"])
+    old_epoch = service.claim_worker_lease("old-process", lease_seconds=90)
+    assert old_epoch == 1
+    with connection() as conn:
+        conn.execute(
+            "UPDATE ai_learning_control SET worker_lease_until=datetime(CURRENT_TIMESTAMP,'-1 second') WHERE id=1"
+        )
+    new_epoch = service.claim_worker_lease("new-process", lease_seconds=90)
+    assert new_epoch == old_epoch + 1
+
+    with pytest.raises(service.WorkerLeaseLostError):
+        service.complete_run(
+            run["id"], "1. مبحث: پاسخ قدیمی",
+            worker_lease_owner="old-process", worker_lease_epoch=old_epoch,
+        )
+
+    saved = service.get_run(run["id"])
+    assert saved["status"] == "running"
+    assert saved["response_text"] is None
+    service.requeue_run_for_resume(
+        run["id"], "reclaimed_by_new_owner",
+        worker_lease_owner="new-process", worker_lease_epoch=new_epoch,
+    )
+    assert service.get_run(run["id"])["status"] == "queued"
