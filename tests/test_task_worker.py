@@ -244,6 +244,46 @@ def test_heartbeat_retries_transient_sqlite_operational_error(worker_store, monk
     assert len(calls) == 2
 
 
+def test_heartbeat_stops_at_lease_deadline_after_persistent_sqlite_errors(worker_store, monkeypatch):
+    from app import task_worker
+
+    class FakeClock:
+        current = 0.0
+
+        @classmethod
+        def monotonic(cls):
+            return cls.current
+
+    class FakeStopEvent:
+        def wait(self, timeout):
+            FakeClock.current += timeout
+            return False
+
+    monkeypatch.setattr(task_worker, "time", FakeClock)
+    worker = TaskWorker(
+        "worker-heartbeat-deadline",
+        {"test.heartbeat-deadline": lambda *_args: {"ok": True}},
+        lease_seconds=1,
+    )
+    context = TaskContext(
+        task_id=1,
+        worker_id="worker-heartbeat-deadline",
+        lease_seconds=1,
+    )
+    monkeypatch.setattr(context, "control_status", lambda: "running")
+    calls = []
+
+    def fail_renewal(*_args, **_kwargs):
+        calls.append(True)
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(task_manager, "renew_lease", fail_renewal)
+    worker._maintain_lease(context, FakeStopEvent())
+
+    assert len(calls) == 2
+    assert FakeClock.current == pytest.approx(1.0)
+
+
 def test_task_creation_is_idempotent_for_matching_dedupe_key(worker_store):
     first = task_manager.create_task(
         "test.deduplicated", {"job_id": 41}, max_attempts=3, dedupe_key="learning-job:41"
