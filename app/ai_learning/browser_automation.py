@@ -1234,13 +1234,34 @@ def _worker(
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     worker_started = time.monotonic()
     run_type = service.get_run(run_id).get("run_type")
+    lease_epoch = _WORKER_LEASE_EPOCH
+    lease_stop = threading.Event()
+    lease_thread: threading.Thread | None = None
     _log_event("worker_started", run_id=run_id, course_id=course_id, run_type=run_type, prompt_chars=len(prompt))
     _BROWSER_SESSION.reuse_enabled = True
     try:
-        checkpoint = (lambda text: service.save_run_partial_response(run_id, text)) if run_type == "lesson" else None
+        if lease_epoch is not None:
+            lease_thread = threading.Thread(
+                target=_maintain_worker_lease,
+                args=(cancel_event, lease_stop, lease_epoch),
+                name=f"ai-learning-lease-{run_id}",
+                daemon=True,
+            )
+            lease_thread.start()
+
+        def checkpoint_partial(text: str) -> dict[str, Any]:
+            _assert_worker_lease(lease_epoch)
+            return service.save_run_partial_response(run_id, text)
+
+        checkpoint = checkpoint_partial if run_type == "lesson" else None
         answer = _capture_with_automatic_retry(
             prompt, cancel_event, checkpoint, run_id=run_id, phase="primary_run"
         )
+        if cancel_event.is_set():
+            raise BrowserAutomationError(
+                "run_cancelled", "اجرای یادگیری به درخواست توقف متوقف شد."
+            )
+        _assert_worker_lease(lease_epoch)
         _log_event("database_completion_started", run_id=run_id, answer_chars=len(answer))
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
@@ -1255,6 +1276,9 @@ def _worker(
         _log_event("worker_browser_error", run_id=run_id, error_code=exc.code, message=str(exc)[:500],
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
+            if lease_epoch is not None and not service.owns_worker_lease(_WORKER_OWNER, lease_epoch):
+                _log_event("worker_result_discarded_after_lease_loss", run_id=run_id, lease_epoch=lease_epoch)
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
             else:
@@ -1286,6 +1310,9 @@ def _worker(
         _log_event("worker_unexpected_error", run_id=run_id, exception_type=type(exc).__name__,
                    message=str(exc)[:500], elapsed_seconds=round(time.monotonic() - worker_started, 1))
         try:
+            if lease_epoch is not None and not service.owns_worker_lease(_WORKER_OWNER, lease_epoch):
+                _log_event("worker_result_discarded_after_lease_loss", run_id=run_id, lease_epoch=lease_epoch)
+                return
             if cancel_event.is_set() or service.get_learning_control()["paused"]:
                 service.requeue_run_for_resume(run_id, "manual_stop_during_primary_run")
             else:
@@ -1298,6 +1325,9 @@ def _worker(
     finally:
         _close_browser_session()
         _BROWSER_SESSION.reuse_enabled = False
+        lease_stop.set()
+        if lease_thread is not None:
+            lease_thread.join(timeout=max(1.0, _WORKER_LEASE_HEARTBEAT_SECONDS + 1.0))
         _log_event("worker_finished", run_id=run_id, elapsed_seconds=round(time.monotonic() - worker_started, 1))
         with _LOCK:
             _ACTIVE = False
@@ -1346,6 +1376,7 @@ def _start_worker_thread(
             message=str(exc)[:300],
             durable_status=durable_status,
         )
+        _release_worker_lease()
         raise BrowserAutomationError(
             "worker_thread_start_failed",
             "راه‌اندازی worker یادگیری ناموفق بود؛ اجرا برای بازیابی در صف نگه داشته شد. کمی بعد وضعیت را بازخوانی یا ادامه دهید.",
