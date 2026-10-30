@@ -38,6 +38,7 @@ def is_retryable_task_error(error: Exception) -> bool:
         (ValueError, TypeError, KeyError, AssertionError, NotImplementedError, sqlite3.IntegrityError),
     )
 
+
 def _is_transient_sqlite_lock_error(error: sqlite3.OperationalError) -> bool:
     """Return True only for SQLite BUSY/LOCKED errors safe to retry."""
     error_code = getattr(error, "sqlite_errorcode", None)
