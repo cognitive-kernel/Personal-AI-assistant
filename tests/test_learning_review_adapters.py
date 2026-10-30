@@ -1,5 +1,6 @@
 import json
 import socket
+import urllib.request
 
 import pytest
 
