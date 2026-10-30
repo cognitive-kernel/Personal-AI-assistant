@@ -20,7 +20,8 @@ The selected-topic browser workflow created a durable run for the first topic bu
 ## Validation
 
 - Regression test verifies that a selected multi-topic batch creates one durable run per topic.
-- Restart regression simulates loss of in-memory worker state and verifies that the active run is recovered while all remaining topic runs stay queued.
+- Restart regressions simulate loss of in-memory worker state for new selected batches, manual continuation, and legacy in-flight runs; remaining topic runs must stay queued.
+- Pause regression verifies a queued paused topic is not dispatched, direct start is rejected, and unpausing resumes FIFO dispatch.
 - Existing queue, cancellation, retry, pause and browser tests remain required in CI.
 
 ## Consequences

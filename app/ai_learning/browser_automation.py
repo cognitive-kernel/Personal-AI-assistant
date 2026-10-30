@@ -1638,7 +1638,11 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 "run_id": run_id,
                 "course_id": target_course,
                 "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
-                "message": "اجرای ناتمام دوباره آغاز شد؛ سرفصل‌های تأییدشدهٔ باقی‌مانده نیز در صف پایدار ثبت شدند.",
+                "message": (
+                    "اجرای ناتمام درس دوباره آغاز شد و سرفصل‌های تأییدشدهٔ باقی‌مانده در صف پایدار قرار گرفتند."
+                    if run.get("run_type") == "lesson"
+                    else "اجرای ناتمام طرح درس دوباره آغاز شد؛ پس از بررسی و تأیید سرفصل‌ها می‌توانید دریافت درس را آغاز کنید."
+                ),
             }
 
         # Resolve eligible work in SQLite rather than scanning the dashboard's
@@ -1656,8 +1660,8 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 # if their eligibility predicates ever diverge.
                 return {"status": "idle", "active": False,
                         "message": "کار ناتمامی برای ادامه پیدا نشد."}
-                # Persist the complete eligible set before starting the first topic. This
-            # keeps the remainder recoverable if the process exits during any capture.
+            # Persist the complete eligible set before starting the first topic.
+            # The remainder stays recoverable if the process exits during any capture.
             batch_key = str(int(time.time()))
             queued_run_ids: list[int] = []
             for topic_id in eligible:
