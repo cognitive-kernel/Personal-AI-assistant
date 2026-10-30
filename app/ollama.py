@@ -30,19 +30,26 @@ _MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 _INFERENCE_LOCK = threading.Lock()
 _INFERENCE_PATHS = frozenset({"/api/chat", "/api/embed", "/api/generate"})
 
-def _base_url() -> str:
-    base = str(get_settings()["ollama_base_url"]).rstrip("/")
-    parsed = urllib.parse.urlparse(base)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise OllamaError("Ollama URL must be a valid HTTP(S) URL.")
-    if parsed.username or parsed.password:
-        raise OllamaError("Credentials in the Ollama URL are not supported.")
-    if parsed.path or parsed.query or parsed.fragment:
-        raise OllamaError("Ollama URL must be a base URL without a path, query, or fragment.")
+def normalize_base_url(value: str) -> str:
+    """Validate and canonicalize an Ollama HTTP(S) base URL without making a request."""
+    if not isinstance(value, str):
+        raise OllamaError("Ollama URL must be a string.")
+    base = value.rstrip("/")
     try:
+        parsed = urllib.parse.urlparse(base)
+        hostname = parsed.hostname
         port = parsed.port
     except ValueError as exc:
-        raise OllamaError("Ollama URL contains an invalid port.") from exc
+        # urllib.parse can raise for malformed bracketed IPv6 and invalid ports.
+        raise OllamaError("Ollama URL must be a valid HTTP(S) URL.") from exc
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        raise OllamaError("Ollama URL must be a valid HTTP(S) URL.")
+    if parsed.username is not None or parsed.password is not None:
+        raise OllamaError("Credentials in the Ollama URL are not supported.")
+    if parsed.netloc.endswith(":"):
+        raise OllamaError("Ollama URL contains an invalid empty port.")
+    if parsed.path or parsed.query or parsed.fragment:
+        raise OllamaError("Ollama URL must be a base URL without a path, query, or fragment.")
     if port is not None and not 1 <= port <= 65535:
         raise OllamaError("Ollama URL contains an invalid port.")
 
@@ -68,6 +75,10 @@ def _base_url() -> str:
     if not loopback:
         raise OllamaError("Only a loopback IP literal or exact localhost endpoint is allowed.")
     return base
+
+
+def _base_url() -> str:
+    return normalize_base_url(str(get_settings()["ollama_base_url"]))
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Prevent a loopback Ollama endpoint from redirecting requests elsewhere."""
