@@ -1294,7 +1294,7 @@ def _dispatch_next_persisted_run() -> dict[str, Any]:
     control = service.get_learning_control()
     if control["paused"]:
         return {"status": "paused", "active": False}
-    if control["retry_pending"]:
+    if control.get("retry_pending", False):
         return {
             "status": "retry_scheduled",
             "active": False,
@@ -1437,7 +1437,7 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
     control = service.get_learning_control()
     if control["paused"]:
         raise ValueError("مکث سراسری فعال است؛ برای شروع یا ادامه ابتدا «ادامه / بازیابی» را بزنید.")
-    if control["retry_pending"]:
+    if control.get("retry_pending", False):
         raise ValueError(
             "به‌دلیل خطای موقت ChatGPT، صف تا " + str(control["retry_after"])
             + " در مکث خودکار است؛ تلاش بعدی بدون نیاز به بازکردن دستی Chrome انجام می‌شود."
@@ -1671,7 +1671,7 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             return {"status": "resumed", "active": True, "run_id": _ACTIVE_RUN_ID,
                     "course_id": _ACTIVE_COURSE_ID, "message": "فرایند فعال ادامه پیدا می‌کند."}
         control = service.get_learning_control()
-        if control["retry_pending"]:
+        if control.get("retry_pending", False):
             return {
                 "status": "retry_scheduled",
                 "active": False,
