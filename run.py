@@ -131,9 +131,17 @@ def _latest_ollama_release_assets() -> dict[str, Any]:
             or parsed_url.fragment
         ):
             raise RuntimeError(f"مبدأ دانلود {asset_name} با انتشار رسمی GitHub مطابقت ندارد.")
+        asset_size = item.get("size")
+        if (
+            isinstance(asset_size, bool)
+            or not isinstance(asset_size, int)
+            or not 1 <= asset_size <= 3_000_000_000
+        ):
+            raise RuntimeError(f"اندازهٔ دارایی {asset_name} در اطلاعات انتشار معتبر نیست.")
         selected[asset_name] = {
             "url": download_url,
             "sha256": digest.split(":", 1)[1].lower(),
+            "size": asset_size,
         }
     return {"tag": tag, "assets": selected}
 
@@ -350,11 +358,18 @@ def _download_once(
     destination: Path,
     *,
     expected_sha256: str | None = None,
+    expected_size: int | None = None,
     opener: urllib.request.OpenerDirector | None = None,
 ) -> Path:
     if expected_sha256 is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
         raise ValueError("expected_sha256 must be a 64-character hexadecimal digest.")
     expected_sha256 = expected_sha256.lower() if expected_sha256 else None
+    if expected_size is not None and (
+        isinstance(expected_size, bool)
+        or not isinstance(expected_size, int)
+        or not 1 <= expected_size <= 3_000_000_000
+    ):
+        raise ValueError("expected_size must be an integer from 1 to 3 GB.")
     destination.parent.mkdir(parents=True, exist_ok=True)
     manifest_path = destination.with_name(destination.name + ".download.json")
     part_path = destination.with_name(destination.name + ".part")
@@ -366,6 +381,7 @@ def _download_once(
             metadata_matches = (
                 int(manifest["size"]) == destination.stat().st_size
                 and manifest.get("url") == url
+                and (expected_size is None or destination.stat().st_size == expected_size)
             )
             digest_matches = (
                 expected_sha256 is None
@@ -392,11 +408,14 @@ def _download_once(
     if part_path.exists() and (
         part_metadata.get("url") != url
         or part_metadata.get("sha256") != expected_sha256
+        or part_metadata.get("expected_size") != expected_size
     ):
         part_path.unlink(missing_ok=True)
     part_manifest = {"url": url}
     if expected_sha256 is not None:
         part_manifest["sha256"] = expected_sha256
+    if expected_size is not None:
+        part_manifest["expected_size"] = expected_size
     part_manifest_path.write_text(
         json.dumps(part_manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
@@ -438,6 +457,8 @@ def _download_once(
                 mode = "ab"
                 expected_range_length = int(range_match.group(2)) - int(range_match.group(1)) + 1
                 total = int(range_match.group(3)) if range_match.group(3) != "*" else 0
+                if expected_size is not None and total and total != expected_size:
+                    raise RuntimeError("اندازهٔ Content-Range با اندازهٔ رسمی دارایی مطابقت ندارد.")
             else:
                 # A server that ignores Range may return a complete 200 response;
                 # restart from byte zero. Other 2xx responses are not valid here.
@@ -448,12 +469,16 @@ def _download_once(
                 offset = 0
                 total_header = response.headers.get("Content-Length")
                 total = int(total_header) if total_header and total_header.isdigit() else 0
+                if expected_size is not None and total and total != expected_size:
+                    raise RuntimeError("Content-Length با اندازهٔ رسمی دارایی مطابقت ندارد.")
 
             with part_path.open(mode) as temporary:
                 while True:
                     chunk = response.read(256 * 1024)
                     if not chunk:
                         break
+                    if expected_size is not None and offset + session_downloaded + len(chunk) > expected_size:
+                        raise RuntimeError("حجم دانلود از اندازهٔ رسمی دارایی بیشتر شد.")
                     temporary.write(chunk)
                     session_downloaded += len(chunk)
                     current_size = offset + session_downloaded
@@ -485,6 +510,8 @@ def _download_once(
         final_size = part_path.stat().st_size if part_path.exists() else 0
         if final_size == 0:
             raise RuntimeError(f"سرور فایل خالی برگرداند: {url}")
+        if expected_size is not None and final_size != expected_size:
+            raise RuntimeError("اندازهٔ نهایی فایل با اندازهٔ رسمی دارایی مطابقت ندارد؛ فایل موقت حفظ شد.")
         if total and final_size != total:
             raise RuntimeError(
                 f"دانلود هنوز کامل نیست: {final_size / (1024 * 1024):.1f} از "
@@ -566,6 +593,7 @@ def _ensure_ollama() -> None:
             asset["url"],
             INSTALLERS / installer_name,
             expected_sha256=asset["sha256"],
+            expected_size=asset["size"],
             opener=_ollama_asset_opener(),
         )
         print(
