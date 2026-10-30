@@ -1141,14 +1141,7 @@ def _worker(
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
-        if result.get("status") == "succeeded":
-            should_continue = run_type == "outline"
-            if continue_after and run_type == "lesson":
-                # Older releases kept the remaining selected topic IDs only in memory.
-                # Continue that legacy path only when no durable same-course work exists;
-                # otherwise the FIFO dispatcher owns the remaining topics.
-                should_continue = not service.has_queued_run_for_course(course_id)
-            if should_continue:
+        if result.get("status") == "succeeded" and run_type == "outline":
                 try:
                     _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
                 except Exception as exc:
@@ -1565,19 +1558,60 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             run = service.get_run(int(in_flight["id"]))
             run_id = int(run["id"])
             target_course = int(run["course_id"])
+
+            # Legacy versions kept selected follow-up topic IDs only in memory.
+            # If no durable same-course run remains, materialize the approved pending
+            # topics now, before the resumed worker starts. New batches already have
+            # queued records and are deliberately not expanded beyond their selection.
+            queued_topic_count = 0
+            if run.get("run_type") == "lesson" and not service.has_queued_run_for_course(target_course):
+                current_topic_ids = {
+                    int(item["topic_id"]) for item in run.get("topics", [])
+                }
+                course = service.get_course(target_course)
+                remaining = [
+                    int(topic["id"]) for topic in course.get("topics", [])
+                    if int(topic["id"]) not in current_topic_ids
+                    and topic.get("approval_status") == "approved"
+                    and topic.get("processing_status") != "paused"
+                    and int(topic.get("lesson_content_ready_count") or 0) == 0
+                ]
+                batch_key = str(int(time.time()))
+                for topic_id in remaining:
+                    request_key = f"playwright-lessons-{target_course}-{topic_id}-resume-{batch_key}"
+                    queued = service.create_run(
+                        target_course, run_type="lesson", topic_ids=[topic_id],
+                        selection_mode="selected", request_key=request_key,
+                    )
+                    if queued["status"] != "queued":
+                        raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                    queued_topic_count += 1
+
             _ACTIVE = True
             _ACTIVE_RUN_ID = run_id
             _ACTIVE_COURSE_ID = target_course
             cancel_event = threading.Event()
             _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
-                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event, True),
+                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
             _start_worker_thread(thread, run_id, cancel_event)
-            _log_event("learning_run_recovered", run_id=run_id, course_id=target_course, run_type=run["run_type"])
-            return {"status": "resumed", "active": True, "run_id": run_id, "course_id": target_course,
-                    "message": "اجرای ناتمام دوباره آغاز شد؛ پاسخ‌های ثبت‌شده حفظ شده‌اند."}
+            _log_event(
+                "learning_run_recovered",
+                run_id=run_id,
+                course_id=target_course,
+                run_type=run["run_type"],
+                queued_followup_topic_count=queued_topic_count,
+            )
+            return {
+                "status": "resumed",
+                "active": True,
+                "run_id": run_id,
+                "course_id": target_course,
+                "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
+                "message": "اجرای ناتمام دوباره آغاز شد؛ سرفصل‌های تأییدشدهٔ باقی‌مانده نیز در صف پایدار ثبت شدند.",
+            }
 
         # Resolve eligible work in SQLite rather than scanning the dashboard's
         # bounded course pages. This fallback is used only when no durable run exists.

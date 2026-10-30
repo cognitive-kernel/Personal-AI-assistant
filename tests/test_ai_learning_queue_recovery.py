@@ -392,6 +392,49 @@ def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, 
     assert service.get_run(run["id"])["status"] == "running"
 
 
+def test_manual_resume_materializes_legacy_lesson_followups_before_worker_start(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی دستهٔ قدیمی")
+    topics = [service.add_topic(course["id"], f"موضوع {index}") for index in range(3)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+    legacy = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topics[0]["id"]],
+        selection_mode="selected", request_key="legacy-in-memory-followups",
+    )
+    service.start_run(legacy["id"])
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    resumed = browser_automation.resume_learning()
+
+    assert resumed["status"] == "resumed"
+    assert resumed["run_id"] == legacy["id"]
+    assert resumed["queued_topic_count"] == 3
+    assert len(service.list_course_runs(course["id"], 20)) == 3
+    assert service.has_queued_run_for_course(course["id"]) is True
+    assert len(launched) == 1
+    assert len(launched[0]) == 4  # follow-ups are durable, not worker arguments
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    recovered = browser_automation.recover_pending_runs()
+
+    assert recovered["status"] == "running"
+    assert recovered["run_id"] == legacy["id"]
+    assert len(launched) == 2
+    run_ids = [item["id"] for item in service.list_course_runs(course["id"], 20)]
+    statuses = [service.get_run(run_id)["status"] for run_id in run_ids]
+    assert statuses.count("running") == 1
+    assert statuses.count("queued") == 2
+
+
 def test_manual_resume_persists_all_pending_topics_outside_dashboard_course_limit(isolated_store, monkeypatch):
     first_course = service.create_course(title="دورهٔ قدیمی با چند سرفصل ناتمام")
     topics = [service.add_topic(first_course["id"], f"سرفصل خارج از صفحه {index}") for index in range(3)]
