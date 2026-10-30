@@ -1929,21 +1929,23 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 "message": "یک پردازهٔ دیگر مالک worker مرورگر است؛ درخواست در صف پایدار باقی می‌ماند.",
             }
         _WORKER_LEASE_EPOCH = epoch
+        resume_run_id: int | None = None
         try:
             # Resume from the durable global queue, not bounded dashboard pages.
             # Otherwise older runs can be stranded after the user exceeds page limits.
             in_flight = service.get_oldest_resumable_run(course_id)
             if in_flight is not None:
+                resume_run_id = int(in_flight["id"])
                 if in_flight.get("status") in {"running", "needs_user_action"}:
                     service.requeue_run_for_resume(
-                        int(in_flight["id"]), "manual_resume_recovery", reset_retry_budget=True,
+                        resume_run_id, "manual_resume_recovery", reset_retry_budget=True,
                         **_worker_lease_kwargs(epoch),
                     )
                 run = service.start_run(
-                    int(in_flight["id"]), reset_retry_budget=True, **_worker_lease_kwargs(epoch)
+                    resume_run_id, reset_retry_budget=True, **_worker_lease_kwargs(epoch)
                 )
-                run = service.get_run(int(in_flight["id"]))
-                run_id = int(run["id"])
+                run = service.get_run(resume_run_id)
+                run_id = resume_run_id
                 target_course = int(run["course_id"])
     
                 # Legacy versions kept selected follow-up topic IDs only in memory.
@@ -1974,15 +1976,15 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                             raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
                         queued_topic_count += 1
     
-                _ACTIVE = True
-                _ACTIVE_RUN_ID = run_id
-                _ACTIVE_COURSE_ID = target_course
                 cancel_event = threading.Event()
-                _CANCEL_EVENTS[run_id] = cancel_event
                 thread = threading.Thread(
                     target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
                     name=f"ai-learning-resume-{run_id}", daemon=True,
                 )
+                _ACTIVE = True
+                _ACTIVE_RUN_ID = run_id
+                _ACTIVE_COURSE_ID = target_course
+                _CANCEL_EVENTS[run_id] = cancel_event
                 _start_worker_thread(thread, run_id, cancel_event)
                 _log_event(
                     "learning_run_recovered",
@@ -2035,15 +2037,16 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                     queued_run_ids.append(int(queued["id"]))
                 run = service.start_run(queued_run_ids[0], **_worker_lease_kwargs(epoch))
                 run_id = int(run["id"])
-                _ACTIVE = True
-                _ACTIVE_RUN_ID = run_id
-                _ACTIVE_COURSE_ID = cid
+                resume_run_id = run_id
                 cancel_event = threading.Event()
-                _CANCEL_EVENTS[run_id] = cancel_event
                 thread = threading.Thread(
                     target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
                     name=f"ai-learning-resume-{run_id}", daemon=True,
                 )
+                _ACTIVE = True
+                _ACTIVE_RUN_ID = run_id
+                _ACTIVE_COURSE_ID = cid
+                _CANCEL_EVENTS[run_id] = cancel_event
                 _start_worker_thread(thread, run_id, cancel_event)
                 _log_event(
                     "lesson_workflow_resumed",
@@ -2064,5 +2067,26 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}
     
         except Exception:
+            if resume_run_id is not None:
+                try:
+                    failed_run = service.get_run(resume_run_id)
+                    if failed_run["status"] == "running" and service.owns_worker_lease(_WORKER_OWNER, epoch):
+                        service.requeue_run_for_resume(
+                            resume_run_id, "resume_worker_construction_failed",
+                            **_worker_lease_kwargs(epoch),
+                        )
+                except Exception as recovery_exc:
+                    _log_event(
+                        "resume_worker_cleanup_failed",
+                        run_id=resume_run_id,
+                        exception_type=type(recovery_exc).__name__,
+                        message=str(recovery_exc)[:300],
+                    )
+                with _LOCK:
+                    if _ACTIVE_RUN_ID == resume_run_id:
+                        _ACTIVE = False
+                        _ACTIVE_RUN_ID = None
+                        _ACTIVE_COURSE_ID = None
+                        _CANCEL_EVENTS.pop(resume_run_id, None)
             _release_worker_lease()
             raise
