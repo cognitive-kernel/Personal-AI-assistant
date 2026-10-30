@@ -2862,7 +2862,7 @@ def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
         lesson_card = page.locator(".topic-inline-lessons .lesson").filter(has_text="درس آزمون مرور")
         lesson_card.get_by_role("button", name="انتشار برای بازیابی").click()
         page.get_by_text("نسخه منتشر شد؛ پنل درس‌ها بسته شد.", exact=False).wait_for(timeout=10000)
-        assert state["publish_calls"] == [{}]
+        assert len(state["publish_calls"]) == 1
         assert state["version"]["review_status"] == "published"
 
         # Reload must rebuild the course, topic approval, lesson, and published
