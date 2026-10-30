@@ -39,6 +39,24 @@ def is_retryable_task_error(error: Exception) -> bool:
     )
 
 
+def _is_transient_sqlite_lock_error(error: sqlite3.OperationalError) -> bool:
+    """Return True only for SQLite BUSY/LOCKED errors safe to retry."""
+    error_code = getattr(error, "sqlite_errorcode", None)
+    if isinstance(error_code, int) and not isinstance(error_code, bool):
+        return (error_code & 0xFF) in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED)
+
+    # Some adapters and test doubles do not expose sqlite_errorcode. In that
+    # case, accept only SQLite's known lock/busy message prefixes; do not retry
+    # unrelated operational failures such as disk I/O or missing schema.
+    message = str(error).strip().casefold()
+    return message.startswith((
+        "database is locked",
+        "database table is locked",
+        "database schema is locked",
+        "database is busy",
+    ))
+
+
 class TaskInterrupted(RuntimeError):
     """Raised when a cooperative pause or cancellation has been settled."""
 
@@ -152,12 +170,19 @@ class TaskWorker:
             except TaskManagerError:
                 # Ownership loss or a control-state transition ends heartbeat ownership.
                 return
-            except sqlite3.OperationalError:
-                # SQLite busy/locked errors can be transient; retry without allowing
-                # the worker to claim that its lease is still renewable indefinitely.
-                logger.exception(
-                    "Task lease heartbeat storage operation failed; retrying before expiry for task %s.",
+            except sqlite3.OperationalError as exc:
+                if not _is_transient_sqlite_lock_error(exc):
+                    logger.exception(
+                        "Task lease heartbeat stopped after a non-retryable SQLite operational error for task %s.",
+                        context.task_id,
+                    )
+                    return
+                # Retry genuine BUSY/LOCKED failures only until the last known
+                # lease deadline; permanent storage failures must fail closed now.
+                logger.warning(
+                    "Task lease heartbeat encountered a transient SQLite lock; retrying before expiry for task %s.",
                     context.task_id,
+                    exc_info=True,
                 )
             except Exception:
                 logger.exception("Task lease heartbeat failed for task %s", context.task_id)
