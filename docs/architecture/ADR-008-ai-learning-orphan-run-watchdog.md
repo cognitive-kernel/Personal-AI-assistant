@@ -11,11 +11,13 @@ The AI-learning browser worker persists runs in SQLite and recovers interrupted 
 ## Decision
 
 - Invoke `recover_orphaned_runs()` from the existing learning-runtime maintenance callback, which runs on the configured 30-second maintenance interval.
-- Reconcile persisted `running` runs only when no worker is active in this process; requeue them using the existing service transaction and dispatch the oldest durable queued run.
+- Reconcile persisted `running` runs only after acquiring the durable process-wide SQLite browser-worker lease. A process-local `_ACTIVE` flag is insufficient because another application process may own the browser.
+- The lease uses a process-unique owner, monotonically increasing epoch, 90-second expiry and 15-second heartbeat. Startup recovery and the watchdog must not requeue a run while another owner holds an unexpired lease.
+- Global pause, per-topic pause, cancellation and destructive reset must coordinate with the remote worker through persisted state; a worker that loses ownership must discard its late provider result.
 - Do not create new runs or lessons as part of recovery. Preserve stored partial results and let the existing bounded browser-capture retry policy handle transient failures.
 - Respect global learning pause, explicit cancellation, shutdown, and `needs_user_action`. The watchdog must not reset shutdown state or revive terminal `failed`/`cancelled` runs.
 - Log the recovery outcome and requeued count; retry on the next maintenance interval if recovery raises.
 
 ## Consequences and limitations
 
-Recovery after an orphaned thread is detected on the next maintenance interval, normally within 30 seconds. A browser call that is still alive but hung remains subject to the existing response timeout and retry policy; this watchdog does not forcibly terminate it. The AI-learning browser automation route still assumes a single application process and does not have a cross-process worker lease. Multi-worker deployment remains unsupported until a durable lease is implemented and validated. Target-host restart, long-running call, and concurrency behavior remain operational acceptance items.
+Recovery after an orphaned thread is detected on the next maintenance interval, normally within 30 seconds. A browser call that is still alive but hung remains subject to the existing response timeout and retry policy; this watchdog does not forcibly terminate it. The lease coordinates application processes on one host that share the same local AI-learning SQLite database and persistent Chrome profile. It is not a multi-host distributed queue, does not support a network filesystem, and cannot restore the exact ChatGPT tab/session after a process crash. The heartbeat and fencing behavior must remain covered by automated concurrency and expiry tests; target-host restart/soak and browser-profile behavior remain operational acceptance items. Target-host restart, long-running call, and concurrency behavior remain operational acceptance items.
