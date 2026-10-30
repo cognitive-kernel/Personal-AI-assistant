@@ -268,7 +268,7 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
         if run_type == "lesson" and selection_mode == "all_approved":
             topics = conn.execute(
                 """SELECT t.* FROM topics t WHERE t.course_id=? AND t.deleted_at IS NULL
-                   AND t.approval_status='approved'
+                   AND t.approval_status='approved' AND t.processing_status <> 'paused'
                    AND NOT EXISTS (SELECT 1 FROM lessons l
                                     WHERE l.topic_id=t.id AND l.deleted_at IS NULL
                                       AND EXISTS (SELECT 1 FROM content_versions cv
@@ -289,6 +289,8 @@ def create_run(course_id: int, *, run_type: str, topic_ids: list[int] | None = N
                 raise ValueError("All selected topics must belong to the selected course.")
             if any(row["approval_status"] != "approved" for row in topics):
                 raise ValueError("Only approved topics may be sent for lesson generation.")
+            if any(row["processing_status"] == "paused" for row in topics):
+                raise ValueError("Paused topics must be resumed before lesson generation.")
             if not force_retry:
                 topics = [row for row in topics if conn.execute(
                     """SELECT 1 FROM lessons l
@@ -527,6 +529,14 @@ def start_run(run_id: int) -> dict[str, Any]:
         run = conn.execute("SELECT * FROM runs WHERE id=?", (run_id,)).fetchone()
         if run is None:
             raise NotFoundError("Run not found.")
+        if run["status"] in {"queued", "running"}:
+            paused_topic = conn.execute(
+                """SELECT 1 FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
+                   WHERE rt.run_id=? AND t.processing_status='paused' LIMIT 1""",
+                (run_id,),
+            ).fetchone()
+            if paused_topic is not None:
+                raise ValueError("A queued run contains a paused topic; resume the topic before starting it.")
         if run["status"] == "queued":
             conn.execute("UPDATE runs SET status='running',started_at=CURRENT_TIMESTAMP WHERE id=?", (run_id,))
             conn.execute("""UPDATE topics SET processing_status='running',updated_at=CURRENT_TIMESTAMP
@@ -991,6 +1001,27 @@ def complete_run(run_id: int, response_text: str) -> dict[str, Any]:
         topics = conn.execute(
             """SELECT t.* FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
                WHERE rt.run_id=? AND t.deleted_at IS NULL ORDER BY t.position""", (run_id,)).fetchall()
+        # Serialize pause against lesson completion. If pause committed first, do not
+        # save a lesson from a response that completed concurrently with the pause.
+        if run["run_type"] == "lesson" and any(topic["processing_status"] == "paused" for topic in topics):
+            conn.execute(
+                """UPDATE runs SET status='queued',error_code=NULL,error_message=NULL,
+                   finished_at=NULL WHERE id=?""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE run_topics SET status='queued',error_message=NULL
+                   WHERE run_id=?""",
+                (run_id,),
+            )
+            conn.execute(
+                """UPDATE topics SET processing_status='pending',updated_at=CURRENT_TIMESTAMP
+                   WHERE id IN (SELECT topic_id FROM run_topics WHERE run_id=?)
+                     AND processing_status='running'""",
+                (run_id,),
+            )
+            conn.commit()
+            return get_run(run_id)
         if run["run_type"] == "outline":
             outline_items = _parse_outline_items(response_text)
             titles = [str(item["title"]) for item in outline_items]
@@ -1388,7 +1419,11 @@ def get_oldest_resumable_run(course_id: int | None = None) -> dict[str, Any] | N
     if course_id is not None:
         query += " AND r.course_id=?"
         params = (int(course_id),)
-    query += """ ORDER BY CASE r.status
+    query += """ AND NOT EXISTS (
+                    SELECT 1 FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
+                    WHERE rt.run_id=r.id AND t.processing_status='paused'
+                 )
+                 ORDER BY CASE r.status
                     WHEN 'running' THEN 0
                     WHEN 'needs_user_action' THEN 1
                     ELSE 2
@@ -1436,17 +1471,38 @@ def get_oldest_course_with_pending_approved_topic(course_id: int | None = None) 
 
 
 def get_oldest_queued_run() -> dict[str, Any] | None:
-    """Return the globally oldest queued run across all non-archived courses."""
+    """Return the oldest runnable queued run, excluding topics explicitly paused by the user."""
     with connection() as conn:
         row = conn.execute(
             """SELECT r.id, r.course_id, r.created_at
                FROM runs r
                JOIN courses c ON c.id=r.course_id
                WHERE r.status='queued' AND c.status <> 'archived'
+                 AND NOT EXISTS (
+                    SELECT 1 FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
+                    WHERE rt.run_id=r.id AND t.processing_status='paused'
+                 )
                ORDER BY r.created_at ASC, r.id ASC
                LIMIT 1"""
         ).fetchone()
     return dict(row) if row is not None else None
+
+
+def has_queued_run_for_course(course_id: int) -> bool:
+    """Return whether a non-archived course still owns runnable durable queued work."""
+    with connection() as conn:
+        row = conn.execute(
+            """SELECT 1 FROM runs r
+               JOIN courses c ON c.id=r.course_id
+               WHERE r.course_id=? AND r.status='queued' AND c.status <> 'archived'
+                 AND NOT EXISTS (
+                    SELECT 1 FROM run_topics rt JOIN topics t ON t.id=rt.topic_id
+                    WHERE rt.run_id=r.id AND t.processing_status='paused'
+                 )
+               LIMIT 1""",
+            (int(course_id),),
+        ).fetchone()
+    return row is not None
 
 
 def list_course_runs(course_id: int, limit: int = 10) -> list[dict[str, Any]]:

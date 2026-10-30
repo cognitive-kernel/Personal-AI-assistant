@@ -1141,7 +1141,7 @@ def _worker(
         result = service.complete_run(run_id, answer)
         _log_event("database_completion_finished", run_id=run_id, status=result.get("status"),
                    elapsed_seconds=round(time.monotonic() - worker_started, 1))
-        if result.get("status") == "succeeded" and (run_type == "outline" or continue_after):
+        if result.get("status") == "succeeded" and run_type == "outline":
             try:
                 _continue_lessons(course_id, cancel_event, followup_topic_ids, force_retry)
             except Exception as exc:
@@ -1393,7 +1393,7 @@ def start_outline(course_id: int, request_key: str) -> dict[str, Any]:
 
 
 def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, force_retry: bool = False) -> dict[str, Any]:
-    """Queue the selected topics and capture them sequentially, one bounded prompt at a time."""
+    """Persist every selected topic as its own FIFO run before dispatching browser work."""
     global _ACTIVE, _ACTIVE_RUN_ID, _ACTIVE_COURSE_ID
     globally_paused = service.get_learning_control()["paused"]
     requested_ids = list(dict.fromkeys(int(item) for item in topic_ids))
@@ -1405,6 +1405,12 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         missing = [item for item in requested_ids if item not in course_topics]
         if missing:
             raise ValueError("یک یا چند سرفصل انتخاب‌شده در این دوره وجود ندارد؛ فهرست را بازخوانی کنید.")
+        paused_ids = [
+            item for item in requested_ids
+            if course_topics[item].get("processing_status") == "paused"
+        ]
+        if paused_ids:
+            raise ValueError("ابتدا مکث سرفصل‌های انتخاب‌شده را بردارید.")
         unapproved = [
             item for item in requested_ids
             if course_topics[item].get("approval_status") != "approved"
@@ -1429,24 +1435,26 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
         if not selected_ids:
             raise ValueError("تمام سرفصل‌های انتخاب‌شده از قبل درس دارند؛ برای ساخت نسخه جدید، تلاش مجدد را انتخاب کنید.")
 
-        # A retry requested while Chrome is busy is persisted, not rejected as HTTP 422.
-        # The current worker's finalizer dispatches queued runs in FIFO order.
-        if _ACTIVE:
-            queued_runs = []
-            for topic_id in selected_ids:
-                topic_request_key = f"{request_key[:75]}-topic-{topic_id}"
-                queued = service.create_run(
-                    course_id, run_type="lesson", topic_ids=[topic_id],
-                    selection_mode="selected", request_key=topic_request_key,
-                    force_retry=force_retry,
+        # A durable run is created for every selected topic before the first browser
+        # request starts. A process restart can therefore recover the whole selection;
+        # no remaining topic exists only in a worker's in-memory follow-up list.
+        queued_runs: list[int] = []
+        for topic_id in selected_ids:
+            topic_request_key = f"{request_key[:75]}-topic-{topic_id}"
+            queued = service.create_run(
+                course_id, run_type="lesson", topic_ids=[topic_id],
+                selection_mode="selected", request_key=topic_request_key,
+                force_retry=force_retry,
+            )
+            if queued["status"] != "queued":
+                raise ValueError(
+                    "برای یکی از سرفصل‌ها درخواست تکراری یا در حال اجرا وجود دارد؛ سوابق اجرا را بازخوانی کنید."
                 )
-                if queued["status"] != "queued":
-                    raise ValueError(
-                        "برای یکی از سرفصل‌ها درخواست تکراری وجود دارد؛ سوابق اجرا را بازخوانی کنید."
-                    )
-                queued_runs.append(int(queued["id"]))
+            queued_runs.append(int(queued["id"]))
+
+        if _ACTIVE:
             _log_event(
-                "lesson_retry_queued_while_active",
+                "lesson_batch_queued_while_active",
                 active_run_id=_ACTIVE_RUN_ID,
                 course_id=course_id,
                 queued_run_ids=queued_runs,
@@ -1459,39 +1467,27 @@ def start_lesson_run(course_id: int, topic_ids: list[int], request_key: str, for
                 "topic_ids": selected_ids,
                 "queued_topic_count": len(selected_ids),
                 "provider": "ChatGPT visible UI",
-                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل در صف ذخیره شد و پس از پایان اجرای فعلی آغاز می‌شود.",
+                "message": f"مرورگر مشغول است؛ درخواست {len(selected_ids)} سرفصل به‌صورت مستقل در صف پایدار ذخیره شد و پس از پایان اجرای فعلی به‌ترتیب اجرا می‌شود.",
             }
 
-        # Creating a single-topic run prevents oversized batches from ever being
-        # serialized into one browser prompt. Remaining selected IDs are processed
-        # sequentially by the same worker after each successful capture.
-        first_topic_id = selected_ids[0]
-        run = service.create_run(
-            course_id, run_type="lesson", topic_ids=[first_topic_id],
-            selection_mode="selected", request_key=request_key, force_retry=force_retry,
-        )
-        if run["status"] not in {"queued", "running"}:
-            raise ValueError("این درخواست قبلاً اجرا شده است؛ برای تلاش دوباره درخواست جدید بسازید.")
-        service.start_run(int(run["id"]))
-        run_id = int(run["id"])
-        _ACTIVE = True
-        _ACTIVE_RUN_ID = run_id
-        _ACTIVE_COURSE_ID = course_id
-        cancel_event = threading.Event()
-        _CANCEL_EVENTS[run_id] = cancel_event
-        followup_ids = selected_ids[1:]
-        thread = threading.Thread(
-            target=_worker,
-            args=(run_id, course_id, str(run["prompt_text"]), cancel_event, bool(followup_ids), followup_ids, force_retry),
-            name=f"ai-learning-selected-lessons-{run_id}", daemon=True,
-        )
-        _start_worker_thread(thread, run_id, cancel_event)
-        return {
-            "run_id": run_id, "status": "running", "course_id": course_id,
-            "topic_ids": selected_ids, "queued_topic_count": len(selected_ids),
-            "provider": "ChatGPT visible UI",
-            "message": f"دریافت درس برای {len(selected_ids)} سرفصل به‌صورت ترتیبی آغاز شد؛ هر درخواست فقط یک سرفصل دارد.",
-        }
+    # Dispatch outside _LOCK: the dispatcher acquires the same lock and enforces
+    # global FIFO ordering, including work submitted by earlier requests.
+    first_run_id = queued_runs[0]
+    dispatch = _dispatch_next_persisted_run()
+    started = dispatch.get("status") == "running" and int(dispatch.get("run_id") or 0) == first_run_id
+    return {
+        "run_id": first_run_id,
+        "status": "running" if started else "queued",
+        "course_id": course_id,
+        "topic_ids": selected_ids,
+        "queued_topic_count": len(selected_ids),
+        "provider": "ChatGPT visible UI",
+        "message": (
+            f"دریافت درس برای {len(selected_ids)} سرفصل در صف پایدار ثبت شد؛ هر سرفصل اجرای مستقل دارد و پس از هر اجرا، مورد بعدی از صف بازیابی می‌شود."
+            if started else
+            f"درخواست {len(selected_ids)} سرفصل در صف پایدار ثبت شد و پس از اجرای کارهای قدیمی‌تر آغاز می‌شود."
+        ),
+    }
 
 
 def cancel_run(run_id: int) -> dict[str, Any]:
@@ -1504,19 +1500,51 @@ def cancel_run(run_id: int) -> dict[str, Any]:
 
 
 def set_topic_paused(topic_id: int, paused: bool) -> dict[str, Any]:
-    """Pause one topic and cancel its active single-topic run if necessary."""
+    """Pause a topic without terminally cancelling its active durable lesson run."""
     result = service.set_topic_paused(topic_id, paused)
     if paused:
         with _LOCK:
             active_run_id = _ACTIVE_RUN_ID
+            active_cancel_event = _CANCEL_EVENTS.get(active_run_id) if active_run_id is not None else None
         if active_run_id is not None:
             try:
                 run = service.get_run(active_run_id)
                 if any(int(item["topic_id"]) == topic_id for item in run.get("topics", [])):
-                    cancel_run(active_run_id)
-                    _log_event("topic_run_paused", topic_id=topic_id, run_id=active_run_id)
+                    # Interrupt the browser wait, but keep the run recoverable in SQLite.
+                    if active_cancel_event is not None:
+                        active_cancel_event.set()
+                    queued = service.requeue_run_for_resume(active_run_id, "topic_paused")
+                    _log_event(
+                        "topic_run_paused",
+                        topic_id=topic_id,
+                        run_id=active_run_id,
+                        run_status=queued.get("status"),
+                    )
             except Exception as exc:
-                _log_event("topic_pause_cancel_failed", topic_id=topic_id, error=str(exc)[:300])
+                _log_event("topic_pause_requeue_failed", topic_id=topic_id, error=str(exc)[:300])
+                raise
+    else:
+        with _LOCK:
+            worker_active = _ACTIVE
+        if not worker_active:
+            # A paused queued run remains durable but is skipped by the dispatcher.
+            # Unpausing makes it eligible again, so wake the FIFO dispatcher now.
+            try:
+                dispatch = _dispatch_next_persisted_run()
+                _log_event(
+                    "topic_unpaused_queue_dispatch",
+                    topic_id=topic_id,
+                    dispatch_status=dispatch.get("status"),
+                    run_id=dispatch.get("run_id"),
+                )
+            except Exception as exc:
+                _log_event(
+                    "topic_unpaused_dispatch_failed",
+                    topic_id=topic_id,
+                    exception_type=type(exc).__name__,
+                    message=str(exc)[:300],
+                )
+                raise
     return result
 
 
@@ -1568,19 +1596,64 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             run = service.get_run(int(in_flight["id"]))
             run_id = int(run["id"])
             target_course = int(run["course_id"])
+
+            # Legacy versions kept selected follow-up topic IDs only in memory.
+            # If no durable same-course run remains, materialize the approved pending
+            # topics now, before the resumed worker starts. New batches already have
+            # queued records and are deliberately not expanded beyond their selection.
+            queued_topic_count = 0
+            if run.get("run_type") == "lesson" and not service.has_queued_run_for_course(target_course):
+                current_topic_ids = {
+                    int(item["topic_id"]) for item in run.get("topics", [])
+                }
+                course = service.get_course(target_course)
+                remaining = [
+                    int(topic["id"]) for topic in course.get("topics", [])
+                    if int(topic["id"]) not in current_topic_ids
+                    and topic.get("approval_status") == "approved"
+                    and topic.get("processing_status") != "paused"
+                    and int(topic.get("lesson_content_ready_count") or 0) == 0
+                ]
+                batch_key = str(int(time.time()))
+                for topic_id in remaining:
+                    request_key = f"playwright-lessons-{target_course}-{topic_id}-resume-{batch_key}"
+                    queued = service.create_run(
+                        target_course, run_type="lesson", topic_ids=[topic_id],
+                        selection_mode="selected", request_key=request_key,
+                    )
+                    if queued["status"] != "queued":
+                        raise ValueError("یکی از سرفصل‌های بازیابی از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                    queued_topic_count += 1
+
             _ACTIVE = True
             _ACTIVE_RUN_ID = run_id
             _ACTIVE_COURSE_ID = target_course
             cancel_event = threading.Event()
             _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
-                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event, True),
+                target=_worker, args=(run_id, target_course, str(run["prompt_text"]), cancel_event),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
             _start_worker_thread(thread, run_id, cancel_event)
-            _log_event("learning_run_recovered", run_id=run_id, course_id=target_course, run_type=run["run_type"])
-            return {"status": "resumed", "active": True, "run_id": run_id, "course_id": target_course,
-                    "message": "اجرای ناتمام دوباره آغاز شد؛ پاسخ‌های ثبت‌شده حفظ شده‌اند."}
+            _log_event(
+                "learning_run_recovered",
+                run_id=run_id,
+                course_id=target_course,
+                run_type=run["run_type"],
+                queued_followup_topic_count=queued_topic_count,
+            )
+            return {
+                "status": "resumed",
+                "active": True,
+                "run_id": run_id,
+                "course_id": target_course,
+                "queued_topic_count": queued_topic_count + (1 if run.get("run_type") == "lesson" else 0),
+                "message": (
+                    "اجرای ناتمام درس دوباره آغاز شد و سرفصل‌های تأییدشدهٔ باقی‌مانده در صف پایدار قرار گرفتند."
+                    if run.get("run_type") == "lesson"
+                    else "اجرای ناتمام طرح درس دوباره آغاز شد؛ پس از بررسی و تأیید سرفصل‌ها می‌توانید دریافت درس را آغاز کنید."
+                ),
+            }
 
         # Resolve eligible work in SQLite rather than scanning the dashboard's
         # bounded course pages. This fallback is used only when no durable run exists.
@@ -1597,13 +1670,20 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
                 # if their eligibility predicates ever diverge.
                 return {"status": "idle", "active": False,
                         "message": "کار ناتمامی برای ادامه پیدا نشد."}
-            # One topic per run makes per-topic pause/cancel deterministic and recoverable.
-            topic_ids = eligible[:1]
-            request_key = f"playwright-lessons-{cid}-" + "-".join(map(str, topic_ids))
-            request_key += "-resume-" + str(int(time.time()))
-            run = service.create_run(cid, run_type="lesson", topic_ids=topic_ids,
-                                     selection_mode="selected", request_key=request_key)
-            run = service.start_run(int(run["id"]))
+            # Persist the complete eligible set before starting the first topic.
+            # The remainder stays recoverable if the process exits during any capture.
+            batch_key = str(int(time.time()))
+            queued_run_ids: list[int] = []
+            for topic_id in eligible:
+                request_key = f"playwright-lessons-{cid}-{topic_id}-resume-{batch_key}"
+                queued = service.create_run(
+                    cid, run_type="lesson", topic_ids=[topic_id],
+                    selection_mode="selected", request_key=request_key,
+                )
+                if queued["status"] != "queued":
+                    raise ValueError("یکی از سرفصل‌های ادامهٔ یادگیری از قبل در صف یا در حال اجراست؛ وضعیت را بازخوانی کنید.")
+                queued_run_ids.append(int(queued["id"]))
+            run = service.start_run(queued_run_ids[0])
             run_id = int(run["id"])
             _ACTIVE = True
             _ACTIVE_RUN_ID = run_id
@@ -1611,11 +1691,23 @@ def resume_learning(course_id: int | None = None) -> dict[str, Any]:
             cancel_event = threading.Event()
             _CANCEL_EVENTS[run_id] = cancel_event
             thread = threading.Thread(
-                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event, True),
+                target=_worker, args=(run_id, cid, str(run["prompt_text"]), cancel_event),
                 name=f"ai-learning-resume-{run_id}", daemon=True,
             )
             _start_worker_thread(thread, run_id, cancel_event)
-            _log_event("lesson_workflow_resumed", run_id=run_id, course_id=cid, topic_ids=topic_ids)
-            return {"status": "resumed", "active": True, "run_id": run_id, "course_id": cid,
-                    "message": "تولید درس‌ها از سرفصل‌های تأییدشده‌ای که هنوز درس ندارند ادامه یافت."}
+            _log_event(
+                "lesson_workflow_resumed",
+                run_id=run_id,
+                course_id=cid,
+                topic_ids=eligible,
+                queued_run_ids=queued_run_ids,
+            )
+            return {
+                "status": "resumed",
+                "active": True,
+                "run_id": run_id,
+                "course_id": cid,
+                "queued_topic_count": len(eligible),
+                "message": f"ادامهٔ {len(eligible)} سرفصل تأییدشده در صف پایدار ثبت شد و به‌ترتیب اجرا می‌شود.",
+            }
         return {"status": "idle", "active": False, "message": "کار ناتمامی برای ادامه پیدا نشد."}

@@ -68,6 +68,100 @@ def test_startup_recovery_respects_durable_global_pause(isolated_store, monkeypa
     assert service.get_run(run["id"])["status"] == "queued"
 
 
+def test_paused_topic_run_is_skipped_until_topic_is_resumed(isolated_store, monkeypatch):
+    course = service.create_course(title="صف سرفصل مکث‌شده")
+    topic = service.add_topic(course["id"], "Paused topic")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="paused-topic-queued-run",
+    )
+    service.set_topic_paused(topic["id"], True)
+
+    assert service.get_oldest_queued_run() is None
+    assert service.get_oldest_resumable_run() is None
+    with pytest.raises(ValueError, match="paused topic"):
+        service.start_run(run["id"])
+    assert service.get_run(run["id"])["status"] == "queued"
+
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    skipped = browser_automation._dispatch_next_persisted_run()
+    assert skipped["status"] == "idle"
+    assert launched == []
+
+    browser_automation.set_topic_paused(topic["id"], False)
+    assert len(launched) == 1
+    assert launched[0][0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_pausing_active_topic_requeues_run_and_resume_dispatches_it(isolated_store, monkeypatch):
+    course = service.create_course(title="مکث اجرای فعال")
+    topic = service.add_topic(course["id"], "Active topic")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="active-topic-pause",
+    )
+    service.start_run(run["id"])
+    cancel_event = threading.Event()
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", run["id"])
+    monkeypatch.setitem(browser_automation._CANCEL_EVENTS, run["id"], cancel_event)
+
+    browser_automation.set_topic_paused(topic["id"], True)
+
+    assert cancel_event.is_set()
+    assert service.get_run(run["id"])["status"] == "queued"
+    assert next(item for item in service.get_course(course["id"])["topics"] if item["id"] == topic["id"])["processing_status"] == "paused"
+    assert service.get_oldest_queued_run() is None
+
+    # The active worker's finalizer clears its marker before dispatching the queue.
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    browser_automation._CANCEL_EVENTS.pop(run["id"], None)
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    browser_automation.set_topic_paused(topic["id"], False)
+
+    assert len(launched) == 1
+    assert launched[0][0] == run["id"]
+    assert service.get_run(run["id"])["status"] == "running"
+
+
+def test_lesson_completion_racing_with_topic_pause_is_requeued_without_saving(isolated_store):
+    course = service.create_course(title="رقابت مکث و تکمیل")
+    topic = service.add_topic(course["id"], "Paused before completion")
+    service.decide_topics([topic["id"]], "approved")
+    run = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topic["id"]],
+        selection_mode="selected", request_key="pause-completion-race",
+    )
+    service.start_run(run["id"])
+    service.set_topic_paused(topic["id"], True)
+
+    result = service.complete_run(run["id"], "متن کامل درس با توضیحات کافی و منبع https://example.com/reference")
+
+    assert result["status"] == "queued"
+    assert next(item for item in service.get_course(course["id"])["topics"] if item["id"] == topic["id"])["processing_status"] == "paused"
+    assert service.list_lessons(topic["id"]) == []
+
+
 def test_queue_dispatch_does_not_start_second_worker_when_one_is_active(isolated_store, monkeypatch):
     course = service.create_course(title="جلوگیری از اجرای هم‌زمان")
     run = service.create_run(course["id"], run_type="outline", request_key="already-active")
@@ -392,10 +486,53 @@ def test_manual_resume_finds_run_outside_dashboard_course_limit(isolated_store, 
     assert service.get_run(run["id"])["status"] == "running"
 
 
-def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolated_store, monkeypatch):
-    first_course = service.create_course(title="دورهٔ قدیمی با سرفصل ناتمام")
-    topic = service.add_topic(first_course["id"], "سرفصل خارج از صفحه")
-    service.decide_topics([topic["id"]], "approved")
+def test_manual_resume_materializes_legacy_lesson_followups_before_worker_start(isolated_store, monkeypatch):
+    course = service.create_course(title="بازیابی دستهٔ قدیمی")
+    topics = [service.add_topic(course["id"], f"موضوع {index}") for index in range(3)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+    legacy = service.create_run(
+        course["id"], run_type="lesson", topic_ids=[topics[0]["id"]],
+        selection_mode="selected", request_key="legacy-in-memory-followups",
+    )
+    service.start_run(legacy["id"])
+    launched = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            self.args = args
+        def start(self):
+            launched.append(self.args)
+
+    monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
+    resumed = browser_automation.resume_learning()
+
+    assert resumed["status"] == "resumed"
+    assert resumed["run_id"] == legacy["id"]
+    assert resumed["queued_topic_count"] == 3
+    assert len(service.list_course_runs(course["id"], 20)) == 3
+    assert service.has_queued_run_for_course(course["id"]) is True
+    assert len(launched) == 1
+    assert len(launched[0]) == 4  # follow-ups are durable, not worker arguments
+
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    recovered = browser_automation.recover_pending_runs()
+
+    assert recovered["status"] == "running"
+    assert recovered["run_id"] == legacy["id"]
+    assert len(launched) == 2
+    run_ids = [item["id"] for item in service.list_course_runs(course["id"], 20)]
+    statuses = [service.get_run(run_id)["status"] for run_id in run_ids]
+    assert statuses.count("running") == 1
+    assert statuses.count("queued") == 2
+
+
+def test_manual_resume_persists_all_pending_topics_outside_dashboard_course_limit(isolated_store, monkeypatch):
+    first_course = service.create_course(title="دورهٔ قدیمی با چند سرفصل ناتمام")
+    topics = [service.add_topic(first_course["id"], f"سرفصل خارج از صفحه {index}") for index in range(3)]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
     for index in range(100):
         service.create_course(title=f"دورهٔ جدید {index:03d}")
     assert all(
@@ -407,22 +544,41 @@ def test_manual_resume_finds_pending_topic_outside_dashboard_course_limit(isolat
 
     class FakeThread:
         def __init__(self, *, target, args, name, daemon):
-            self.target, self.args, self.name, self.daemon = target, args, name, daemon
-
+            self.args = args
         def start(self):
-            launched.append(self)
+            launched.append(self.args)
 
     monkeypatch.setattr(browser_automation.threading, "Thread", FakeThread)
     result = browser_automation.resume_learning()
 
     assert result["status"] == "resumed"
     assert result["course_id"] == first_course["id"]
+    assert result["queued_topic_count"] == 3
     assert len(launched) == 1
-    assert launched[0].args[0] == result["run_id"]
-    run = service.get_run(result["run_id"])
-    assert run["course_id"] == first_course["id"]
-    assert [item["topic_id"] for item in run["topics"]] == [topic["id"]]
-    assert run["status"] == "running"
+    assert len(service.list_course_runs(first_course["id"], 20)) == 3
+    assert service.has_queued_run_for_course(first_course["id"]) is True
+    run_ids = [item["id"] for item in service.list_course_runs(first_course["id"], 20)]
+    assert {
+        int(service.get_run(run_id)["topics"][0]["topic_id"])
+        for run_id in run_ids
+    } == {int(topic["id"]) for topic in topics}
+
+    # Simulate process loss and verify every not-yet-started topic survives in SQLite.
+    monkeypatch.setattr(browser_automation, "_ACTIVE", False)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", None)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_COURSE_ID", None)
+    monkeypatch.setattr(browser_automation, "_CANCEL_EVENTS", {})
+    recovered = browser_automation.recover_pending_runs()
+
+    assert recovered["status"] == "running"
+    assert recovered["run_id"] == result["run_id"]
+    assert len(launched) == 2
+    statuses = [
+        service.get_run(run_id)["status"]
+        for run_id in run_ids
+    ]
+    assert statuses.count("running") == 1
+    assert statuses.count("queued") == 2
 
 
 def test_dispatch_requeues_run_when_worker_thread_cannot_start(isolated_store, monkeypatch):
