@@ -480,7 +480,7 @@ def renew_worker_lease(owner: str, epoch: int, *, lease_seconds: int = 90) -> bo
             """UPDATE ai_learning_control
                SET worker_lease_until=datetime(CURRENT_TIMESTAMP, ?)
                WHERE id=1 AND worker_lease_owner=? AND worker_lease_epoch=?
-                 AND worker_lease_until>CURRENT_TIMESTAMP AND paused=0""",
+                 AND worker_lease_until>CURRENT_TIMESTAMP""",
             (f"+{lease_seconds} seconds", owner, epoch),
         )
         return cursor.rowcount == 1
