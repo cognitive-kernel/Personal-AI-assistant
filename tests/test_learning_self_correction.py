@@ -210,7 +210,7 @@ def test_learning_generation_uses_cheapest_installed_model_meeting_quality_and_b
     assert provenance["model_id"] == "cheap:latest"
     assert provenance["model_selection"]["status"] == "selected"
     assert provenance["model_selection"]["estimated_cost_microusd"] <= 100000
-    assert provenance["model_selection"]["budget_scope"] == "lesson_generation_and_single_repair_only"
+    assert provenance["model_selection"]["budget_scope"] == "lesson_generation_single_repair_and_optional_claim_review"
 
 
 def test_learning_generation_fails_closed_when_no_model_meets_explicit_budget(
