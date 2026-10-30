@@ -818,3 +818,17 @@ def test_manual_resume_resets_exhausted_retry_budget(isolated_store, monkeypatch
     assert saved["automatic_retry_count"] == 0
     assert saved["next_retry_at"] is None
     assert len(launched) == 1
+
+def test_future_retry_does_not_block_later_ready_queue_work(isolated_store):
+    course = service.create_course(title="صف بدون انسداد توسط تلاش آینده")
+    delayed = service.create_run(course["id"], run_type="outline", request_key="future-retry-first")
+    service.start_run(delayed["id"])
+    service.schedule_run_retry(
+        delayed["id"], "chatgpt_network_error", "temporary network failure",
+        delay_seconds=300,
+    )
+    ready = service.create_run(course["id"], run_type="outline", request_key="ready-second")
+
+    selected = service.get_oldest_queued_run()
+    assert selected is not None
+    assert selected["id"] == ready["id"]
