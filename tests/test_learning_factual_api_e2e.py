@@ -234,11 +234,12 @@ def test_learning_api_to_worker_persists_factual_claim_with_provenance(tmp_path,
         assert applicability["model_assisted_review_only"] is True
         assert applicability["independent_verification"] is False
 
-        # The durable budget created during generation is reused by candidate review.
+        # The same durable ledger includes initial generation and the optional
+        # web-source claim review before later candidate-review work is queued.
         from app.learning_durable_budget import get_job_budget
         generation_budget = get_job_budget(created["id"])
-        assert generation_budget["calls_used"] == 1
-        assert generation_budget["predict_tokens_reserved"] == 1200
+        assert generation_budget["calls_used"] == 2
+        assert generation_budget["predict_tokens_reserved"] == 2200
 
         with db.learning_connection() as conn:
             candidate = conn.execute(
