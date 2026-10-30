@@ -741,3 +741,31 @@ def test_scheduled_retry_budget_is_bounded_and_manual_resume_resets_it(isolated_
     assert recovered["status"] == "queued"
     assert recovered["automatic_retry_count"] == 0
     assert recovered["next_retry_at"] is None
+
+def test_provider_rate_limit_skips_short_retries_and_uses_delayed_schedule(isolated_store, monkeypatch):
+    course = service.create_course(title="محدودیت درخواست ارائه‌دهنده")
+    run = service.create_run(course["id"], run_type="outline", request_key="rate-limit-delay")
+    attempts = []
+
+    def rate_limited(*_args, **_kwargs):
+        attempts.append(1)
+        raise browser_automation.BrowserAutomationError(
+            "provider_rate_limited", "try again later"
+        )
+
+    monkeypatch.setattr(browser_automation, "_browser_capture", rate_limited)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_MAX_ATTEMPTS", 3)
+    monkeypatch.setattr(browser_automation, "_AUTO_RETRY_INITIAL_DELAY_SECONDS", 0)
+
+    with pytest.raises(browser_automation.BrowserAutomationError) as error:
+        browser_automation._capture_with_automatic_retry(
+            run["prompt_text"], threading.Event(), run_id=run["id"], phase="test"
+        )
+
+    assert error.value.code == "provider_rate_limited"
+    assert len(attempts) == 1
+    service.start_run(run["id"])
+    scheduled = browser_automation._schedule_transient_retry(run["id"], error.value)
+    assert scheduled is not None
+    assert scheduled["automatic_retry_count"] == 1
+    assert scheduled["next_retry_at"] is not None
