@@ -163,7 +163,7 @@ def _patch_linux_install_script(installer: Path) -> Path:
         raise RuntimeError("نصب‌کنندهٔ Linux تأییدشده قابل خواندن نیست.") from exc
 
     start_marker = "download_and_extract() {"
-    end_marker = "\\n}\\n\\nfor BINDIR in"
+    end_marker = "\n}\n\nfor BINDIR in"
     if script.count(start_marker) != 1:
         raise RuntimeError("ساختار تابع دانلود در نصب‌کنندهٔ رسمی Linux ناشناخته است؛ اجرا متوقف شد.")
     start = script.find(start_marker)
@@ -194,7 +194,7 @@ def _patch_linux_install_script(installer: Path) -> Path:
     patched = script[:start] + replacement + script[end + 2:]
     output = installer.with_name("ollama-install-verified.sh")
     output.unlink(missing_ok=True)
-    output.write_text(patched, encoding="utf-8", newline="\\n")
+    output.write_text(patched, encoding="utf-8", newline="\n")
     output.chmod(0o700)
     return output
 
