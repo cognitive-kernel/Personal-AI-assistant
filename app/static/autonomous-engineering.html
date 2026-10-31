@@ -95,6 +95,53 @@
 <div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
 </section>
 
+<section aria-labelledby="progress-title" class="progress-section">
+  <div class="section-heading">
+    <div><p class="eyebrow">LIVE PROGRESS</p><h2 id="progress-title">پیشرفت پروژه و فعالیت زنده</h2></div>
+    <span id="progress-updated" class="hint">در انتظار داده</span>
+  </div>
+  <div class="progress-overview">
+    <article class="progress-card">
+      <div class="progress-card-heading"><strong>پیشرفت چرخهٔ جاری</strong><strong id="cycle-progress-value">—</strong></div>
+      <progress id="cycle-progress" max="100" value="0"></progress>
+      <p id="current-phase" class="progress-meta">هنوز چرخه‌ای گزارش نشده است.</p>
+      <p id="current-activity" class="progress-activity">با شروع اجرا، مرحله و فعالیت جاری نمایش داده می‌شود.</p>
+      <p id="plan-progress" class="progress-meta"></p>
+    </article>
+    <article class="progress-card">
+      <strong>پیشرفت مهندسی پروژه</strong>
+      <div class="project-score" id="engineering-progress">—</div>
+      <p class="progress-meta">بر اساس scorecard وزن‌دار و شواهد ثبت‌شده</p>
+      <div class="progress-divider"></div>
+      <strong>پیشرفت پذیرش کلی</strong>
+      <div class="project-score" id="overall-progress">—</div>
+      <p class="progress-meta">شامل دروازه‌های بیرونی و بازبینی مستقل</p>
+    </article>
+  </div>
+  <details class="progress-details">
+    <summary>نمودار تاریخی پیشرفت پروژه</summary>
+    <div class="progress-filters">
+      <label class="field"><span>بازهٔ نمودار</span>
+        <select id="progress-period">
+          <option value="daily">روزانه · ۷ روز اخیر</option>
+          <option value="weekly">هفتگی · ۸ هفتهٔ اخیر</option>
+          <option value="custom">از تاریخ تا تاریخ</option>
+        </select>
+      </label>
+      <label class="field custom-date-field" id="progress-start-wrap" hidden><span>از تاریخ</span><input id="progress-start" type="date"></label>
+      <label class="field custom-date-field" id="progress-end-wrap" hidden><span>تا تاریخ</span><input id="progress-end" type="date"></label>
+      <button id="refresh-progress" type="button" class="secondary">اعمال بازه</button>
+    </div>
+    <div class="chart-legend"><span class="legend-engineering">تکمیل مهندسی</span><span class="legend-overall">پذیرش کلی</span></div>
+    <svg id="progress-chart" class="progress-chart" viewBox="0 0 800 260" role="img" aria-label="نمودار تغییر درصد پیشرفت پروژه"></svg>
+    <p id="progress-chart-caption" class="muted">تاریخچه پس از فعال‌شدن ثبت پیشرفت ایجاد می‌شود؛ دادهٔ گذشته حدس زده نمی‌شود.</p>
+  </details>
+  <details class="progress-details">
+    <summary>گزارش فعالیت‌های اخیر عامل</summary>
+    <ol id="progress-events" class="progress-events"><li class="muted">هنوز رویدادی ثبت نشده است.</li></ol>
+  </details>
+</section>
+
 <section aria-labelledby="setup-title">
 <p class="eyebrow">ONE-TIME SETUP</p>
 <h2 id="setup-title">راه‌اندازی روی ویندوز</h2>
