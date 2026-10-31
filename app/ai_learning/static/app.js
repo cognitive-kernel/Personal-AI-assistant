@@ -1,5 +1,5 @@
 "use strict";
-const API="/api/ai-learning", $=id=>document.getElementById(id);let courseId=null,topics=[],allCourseLessonsVisible=false,selectedTopicIds=new Set();
+const API="/api/ai-learning", $=id=>document.getElementById(id);let courseId=null,topics=[],allCourseLessonsVisible=false,selectedTopicIds=new Set(),renderedTopicsSnapshot="";
 async function api(path,options={}){const r=await fetch(API+path,{cache:"no-store",headers:{"Content-Type":"application/json",...(options.headers||{})},...options});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||("HTTP "+r.status));return d}
 function say(s,bad=false){$("status").textContent=s;$("status").className=bad?"error":"success"}
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
@@ -55,6 +55,7 @@ function refreshTopicParentOptions() {
  if(Array.from(select.options).some(option=>option.value===selected))select.value=selected;
 }
 function renderTopics(){
+ renderedTopicsSnapshot=JSON.stringify(topics);
  const root=$("topics");
  const expandedTopicIds=new Set(Array.from(root.querySelectorAll("details.topic[open]")).map(item=>Number(item.dataset.id)));
  root.replaceChildren();
@@ -94,8 +95,9 @@ function renderTopics(){
   check.onchange=()=>{if(check.checked)selectedTopicIds.add(Number(topic.id));else selectedTopicIds.delete(Number(topic.id))};
   const percent=topicProgress(topic);
   const status=topic.approval_status==="approved"?"تأییدشده":topic.approval_status==="rejected"?"ردشده":"در انتظار";
-  head.append(check,el("strong",numberPath+". "+topic.title),el("span",status+" · "+percent+"٪","small topic-state"));
+  head.append(el("strong",numberPath+". "+topic.title),el("span",status+" · "+percent+"٪","small topic-state"));
   card.append(head);
+  const selection=el("div",undefined,"topic-select");selection.append(check);card.append(selection);
   if(topic.description)card.append(el("p",topic.description,"muted"));
   card.append(progressMeter(percent,childrenOf(topic.id).length?"پیشرفت این مبحث و زیرمجموعه‌ها":topic.progress_label));
   const actions=el("div",undefined,"actions");
@@ -317,7 +319,7 @@ $("search-form").onsubmit=e=>{e.preventDefault();act(async()=>{
  feedback.append(helpful,notHelpful,status);root.append(feedback);
  say(r.count+" نتیجه بازیابی شد.")
 })};
-async function refreshCourseProgress(){if(!courseId)return;const d=await api("/courses/"+courseId);topics=d.topics||[];const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
+async function refreshCourseProgress(){if(!courseId)return;const d=await api("/courses/"+courseId);const nextTopics=d.topics||[];if(JSON.stringify(nextTopics)===renderedTopicsSnapshot)return;const inlineReviewOpen=!!document.querySelector(".topic-inline-lessons:not([hidden])");if(!inlineReviewOpen){topics=nextTopics;renderTopics();$("select-all-topics").checked=topics.length>0&&topics.every(t=>selectedTopicIds.has(Number(t.id)))}}
 async function refreshLearningControl(){
  const state=await api("/control");
  $("learning-control-status").textContent=state.paused
