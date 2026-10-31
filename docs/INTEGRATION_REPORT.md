@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `7a2cf05a7b3485e3b157e41860783fda2e76a846` (main پس از PR #627). آخرین commit `main` یعنی `7a2cf05a7b3485e3b157e41860783fda2e76a846` نیز post-merge CI کامل و موفق دارد: 1737 passed/5 skipped در 176.88 ثانیه، Windows storage، dashboard smoke و dependency audit همگی موفق.
+> commit مبنا: `4e1f89d9c0b7cf332ecf261a4ddc06230b949969` (main پس از PR #629). Exact-head CI روی PR #629 موفق است: 1738 passed/5 skipped؛ post-merge CI روی این SHA هنگام ثبت گزارش هنوز در حال اجراست. آخرین main با post-merge CI کامل و موفق پیش از این تغییر `7a2cf05a7b3485e3b157e41860783fda2e76a846` با 1737 passed/5 skipped است.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -239,3 +239,11 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR [#626](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/626) strengthened the local app boundary by requiring both a loopback peer and an exact local Host hostname, mitigating DNS-rebinding access through attacker-controlled Host values. It explicitly does not provide authentication or complete CSRF protection. Merged as `6fdd176e81aa408ff17cc1c01ba66ec198f42240`; post-merge tests [#41166685079](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41166685079) reported 1737 passed/5 skipped; dashboard smoke, Windows storage regressions, and dependency audit passed.
 - PR [#627](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/627) corrected the stale Linux Ollama installer security document to record the verified second-stage archive introduced by PR #620, while retaining the unperformed live target-host installation as an open gate. Merged as `7a2cf05a7b3485e3b157e41860783fda2e76a846`; exact-head CI passed (1730 passed/5 skipped), and post-merge CI on current `main` passed (1737 passed/5 skipped in 176.88s), including Windows storage, dashboard smoke, and dependency audit.
 - The current tree count and CI evidence are repository snapshots, not a claim that every line of all 400 files has been manually reviewed. Remaining acceptance gates include live-model/human adjudication, independent security review (Issue #52), target-host startup/crash/soak, staging restore/rollback, and the dedicated real-Docker acceptance path.
+
+## 2026-10-31 — Persistent AI-learning retrieval across process restart (PR #629)
+
+- PR [#629](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/629) adds a subprocess integration test for durable retrieval. The parent process creates an approved topic, publishes one reviewed content version, leaves a second version unpublished, and records the initial query-trace count.
+- A fresh Python interpreter then opens the same `AI_LEARNING_DB_PATH` and calls the production `integration.retrieve_context` adapter. The test asserts that the published version is returned, the draft is excluded, and the new process persists a query trace.
+- No Ollama call is required; deterministic fixture embeddings isolate duplicate detection. This is repository-level evidence for SQLite persistence and later-run retrieval, not evidence of live-model quality, factual correctness, or human adjudication.
+- Exact-head CI on `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` passed: 1738 passed/5 skipped, dashboard smoke, Windows storage regressions, and dependency audit. Post-merge CI on `4e1f89d9c0b7cf332ecf261a4ddc06230b949969` was still running at the time of this report.
+- Existing tests continue to cover version history, unpublish/withdrawal, and the retrieval feature gate. Staging backup/restore/rollback, live-model answer quality, and human adjudication remain separate acceptance gates.
