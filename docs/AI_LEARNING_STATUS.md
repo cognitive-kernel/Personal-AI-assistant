@@ -42,13 +42,13 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین اجرای کامل تأییدشده روی `main` commit `7a2cf05a7b3485e3b157e41860783fda2e76a846` در تاریخ 2026-10-31 موفق بوده است؛ post-merge CI همین SHA کامل و موفق است:
+آخرین اجرای کامل تأییدشده روی `main` commit `b50daaaaa12fab13d6526a47335613bd30a63eba` در تاریخ 2026-10-31 موفق بوده است؛ post-merge CI همین SHA کامل و موفق است: 1746 passed/5 skipped در 211.87 ثانیه:
 
-- مجموعهٔ کامل pytest: **1737 passed, 5 skipped** در 176.88 ثانیه. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
+- مجموعهٔ کامل pytest: **1746 passed, 5 skipped** در 211.87 ثانیه. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
-- اعتبارسنجی artifactهای یادگیری، 66 فایل Markdown، چرخه‌های import و benchmarkهای بازیابی/پوشش ادعا: موفق.
+- اعتبارسنجی artifactهای یادگیری، پیوندهای Markdown در 80 فایل، چرخه‌های import و benchmarkهای بازیابی/پوشش ادعا: موفق.
 - benchmark پوشش ادعا: 10 از 10 مورد ساختاری قبول؛ نرخ false-accept و false-reject در این مجموعهٔ مصنوعی صفر بود. این نتیجه صحت معنایی تست‌ها یا درستی واقعی ادعاها را اثبات نمی‌کند.
 
 ## گام‌های باقی‌مانده برای پذیرش
@@ -57,7 +57,7 @@
 2. ارزیابی انسانی کیفیت محتوای تولیدشده و کفایت منابع؛ benchmarkهای deterministic و smoke مرورگر جایگزین داوری انسانی یا آزمون زندهٔ ChatGPT نیستند.
 3. هماهنگی مالکیت worker بین فرایندهای یک میزبان با lease/heartbeat و fencing در کد پیاده‌سازی و با آزمون رقابت فرایندی، انقضای lease، بازیابی و رد نوشتن مالک قدیمی پوشش داده شده است. پذیرش crash/soak روی میزبان هدف همچنان باز است؛ چندمیزبانه و network filesystem پشتیبانی نمی‌شوند.
 - اجرای موفق main پس از تغییرات صف/ارزیابی: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292998)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292937)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343293027).
-- پیوندهای بالا شواهد تاریخی هستند و نباید به‌عنوان اجرای موفق commit جاری تعبیر شوند. برای هر تغییر جدید، وضعیت CI باید بر اساس SHA همان commit بررسی شود.
+- اجرای post-merge روی SHA جاری: [tests و Windows storage #41173647405](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41173647405)، [dashboard smoke #41173647351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41173647351)، [dependency audit #41173647348](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41173647348). این شواهد فقط CI مخزن را نشان می‌دهند و پذیرش میزبان هدف، کیفیت مدل یا داوری انسانی را ثابت نمی‌کنند.
 - تست ورود واقعی به ChatGPT، تست با حساب کاربر، قطع برق/شبکه روی دستگاه مقصد، و سنجش کارایی با مدل embedding نصب‌شده، عمداً خارج از CI خودکارند و هنوز باید عملی انجام شوند.
 
 ### شواهد محلی ویندوز (2026-10-27)
