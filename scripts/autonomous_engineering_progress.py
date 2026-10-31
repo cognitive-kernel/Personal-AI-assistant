@@ -125,7 +125,7 @@ def run_codex(args: argparse.Namespace) -> int:
     if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
         command = [
             os.getenv("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
-            subprocess.list2cmdline([executable, *arguments]),
+            '""' + executable + '" ' + subprocess.list2cmdline(arguments) + '"',
         ]
     else:
         command = [executable, *arguments]
