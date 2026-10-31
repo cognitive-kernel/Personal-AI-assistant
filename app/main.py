@@ -5,6 +5,7 @@ import sqlite3
 from contextlib import asynccontextmanager
 import logging
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, Literal
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
@@ -130,6 +131,49 @@ async def report_storage_schema_block(request, call_next):
     return await call_next(request)
 
 
+def _origin_matches_request(request, origin: str) -> bool:
+    """Compare a serialized browser Origin with the exact local request origin."""
+    try:
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or parsed.netloc.endswith(":")
+        ):
+            return False
+        request_url = request.url
+        if parsed.scheme.casefold() != request_url.scheme.casefold():
+            return False
+        request_host = request_url.hostname
+        if not request_host or parsed.hostname.casefold() != request_host.casefold():
+            return False
+        request_port = request_url.port or (443 if request_url.scheme == "https" else 80)
+        origin_port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        return origin_port == request_port
+    except ValueError:
+        return False
+
+
+def _same_origin_api_request_allowed(request) -> bool:
+    """Allow same-origin browser API calls and local non-browser clients only."""
+    fetch_site = request.headers.get("sec-fetch-site")
+    if fetch_site:
+        fetch_site = fetch_site.strip().casefold()
+        if fetch_site != "same-origin":
+            # "none" is only valid for safe, user-initiated navigations.
+            if not (fetch_site == "none" and request.method in {"GET", "HEAD", "OPTIONS"}):
+                return False
+    origin = request.headers.get("origin")
+    if origin is not None and not _origin_matches_request(request, origin):
+        return False
+    return True
+
+
 @app.middleware("http")
 async def enforce_loopback_only(request, call_next):
     """Require both a loopback peer and a local Host to block DNS-rebinding access."""
@@ -175,6 +219,18 @@ async def enforce_loopback_only(request, call_next):
         return JSONResponse(
             status_code=403,
             content={"detail": "This application is available from localhost only."},
+        )
+
+    # Loopback + Host checks prevent remote access and DNS rebinding, but do not
+    # prevent a hostile website from submitting simple cross-origin POST forms
+    # to localhost. Protect every API route, including GET APIs with side effects.
+    if request.url.path.startswith("/api/") and not _same_origin_api_request_allowed(request):
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": "Cross-origin requests are not allowed for the local API.",
+                "code": "cross_origin_api_request",
+            },
         )
     return await call_next(request)
 
