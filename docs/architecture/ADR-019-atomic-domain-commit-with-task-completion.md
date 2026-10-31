@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Date: 2026-11-01
-- Related work: PR #677 task-control checkpoints; follow-up branch `fix/atomic-task-result-commit-20261101`
+- Related work: PR #677 task-control checkpoints; PR #678 atomic completion follow-up
 - Scope: durable task handlers whose domain state and task queue share the learning SQLite database
 
 ## Context
