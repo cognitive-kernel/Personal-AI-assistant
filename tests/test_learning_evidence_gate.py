@@ -51,7 +51,7 @@ def test_primary_source_authority_rejects_userinfo_and_nonstandard_ports():
 
 
 def test_evidence_gate_does_not_count_nonstandard_port_as_primary_source():
-    urls = ["https://python.org:8443/3/", "https://learn.microsoft.com/en-us/sql/"]
+    urls = ["https://python.org:8443/3/", "https://docs.example.org/b"]
     result = evaluate_lesson_evidence(
         "Lesson cites " + " ".join(urls),
         [_source(url) for url in urls],
