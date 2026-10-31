@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-31  
-> آخرین commit بررسی‌شده در `main`: `7a2cf05a7b3485e3b157e41860783fda2e76a846` (ادغام PR #627). Post-merge CI روی همین SHA کاملاً موفق است: 1737 تست موفق و 5 مورد Skip در 176.88 ثانیه، Windows storage regressions، browser E2E و dependency audit همگی موفق. اجرای مستقل روی commit فعلی main تأیید شده است.
+> آخرین commit بررسی‌شده در `main`: `4e1f89d9c0b7cf332ecf261a4ddc06230b949969` (PR #629: آزمون بازیابی پس از process restart). Exact-head CI موفق است: 1738 تست موفق و 5 مورد Skip؛ post-merge CI روی همین SHA هنوز در حال اجراست. آخرین main با post-merge CI کامل و موفق پیش از این تغییر: `7a2cf05a7b3485e3b157e41860783fda2e76a846` با 1737 passed/5 skipped.
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -184,4 +184,12 @@
 - PR #626: middleware برنامه علاوه بر peer loopback، Host را به `localhost`، `127.0.0.1` و `::1` محدود می‌کند تا DNS-rebinding با Host مهاجم رد شود. این کنترل authentication یا دفاع کامل CSRF نیست. ادغام: `6fdd176e81aa408ff17cc1c01ba66ec198f42240`; post-merge tests 1737 passed/5 skipped و تمام workflowهای اصلی موفق.
 - PR #627: مستند امنیت نصب Ollama با پیاده‌سازی واقعی بررسی digest/size payload مرحله دوم Linux همگام شد؛ نصب زنده روی میزبان مقصد همچنان تأیید نشده است. ادغام: `7a2cf05a7b3485e3b157e41860783fda2e76a846`; exact-head CI و post-merge CI روی `main` موفق‌اند: 1737 passed/5 skipped در 176.88 ثانیه، Windows storage، dashboard smoke و dependency audit نیز موفق.
 - آخرین شمارش درخت Git: 400 فایل، 285 فایل Python، 157 فایل تست Python، 71 سند Markdown زیر docs و 41 تابع مستقل Browser E2E. این شمارش جایگزین بازبینی خط‌به‌خط همهٔ فایل‌ها نیست.
-- دروازه‌های باز: اجرای زنده و human adjudication، بازبینی امنیتی مستقل Issue #52، پذیرش crash/soak روی میزبان هدف، staging restore/rollback، و آزمون واقعی Docker/target-host.
+- دروازه‌های باز: live-model quality و human adjudication؛ بازبینی امنیتی مستقل Issue #52؛ پذیرش crash/soak روی میزبان هدف؛ staging backup/restore و rollback عملیاتی؛ آزمون واقعی Docker/target-host؛ و تکمیل ممیزی UI برای RTL/LTR، screen-reader، contrast و browser-origin/CSRF. بازیابی پایدار دانش پس از شروع فرایند جدید اکنون آزمون خودکار دارد.
+
+
+## 2026-10-31 — اثبات بازیابی دانش پس از شروع فرایند جدید
+
+- PR #629 با commit `4e1f89d9c0b7cf332ecf261a4ddc06230b949969` یک آزمون یکپارچگی subprocess اضافه کرد. پس از انتشار یک نسخهٔ بررسی‌شده و باقی‌گذاشتن نسخهٔ دیگر در وضعیت draft، یک Python process تازه همان فایل SQLite را باز می‌کند و از مسیر production یعنی `integration.retrieve_context` بازیابی انجام می‌دهد.
+- آزمون ثابت می‌کند نسخهٔ منتشرشده در فرایند جدید قابل بازیابی است، draft برگردانده نمی‌شود و query trace توسط همان فرایند ثبت می‌شود. هیچ فراخوانی Ollama لازم نیست.
+- Exact-head CI روی PR #629 موفق شد: 1738 passed/5 skipped؛ dashboard smoke، Windows storage regressions و dependency audit نیز pass شدند. Post-merge CI روی SHA ادغام‌شده در حال اجراست.
+- این آزمون ماندگاری SQLite و مرز retrieval را اثبات می‌کند؛ کیفیت پاسخ زنده، حقیقت‌سنجی منابع، human adjudication و restore/rollback عملیاتی staging را اثبات نمی‌کند.
