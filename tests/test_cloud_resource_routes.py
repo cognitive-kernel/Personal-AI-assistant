@@ -655,8 +655,8 @@ def test_manual_cloud_resource_rejects_non_https_and_duplicate_entries(tmp_path,
 
         for invalid_url in (
             "https://@compute.example.org/free-cloud-server",
-        "https://:secret@compute.example.org/free-cloud-server",
-        "https://user:@compute.example.org/free-cloud-server",
+            "https://:secret@compute.example.org/free-cloud-server",
+            "https://user:@compute.example.org/free-cloud-server",
             "https://compute.example.org:/free-cloud-server",
             "https://compute.example.org:not-a-port/free-cloud-server",
             "https://[2001:db8::1/free-cloud-server",
