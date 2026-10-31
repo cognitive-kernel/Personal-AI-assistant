@@ -258,6 +258,8 @@ def review_edge(
     }
     _task_checkpoint(context, "graph_edge_review_store", edge_id, status=status)
     return _store_edge_review(edge_id, expected_source_sha256, status, report)
+
+
 def _store_edge_review(edge_id: int, source_hash: str, status: str, report: dict[str, Any]) -> dict[str, Any]:
     with learning_connection() as connection:
         connection.execute(
