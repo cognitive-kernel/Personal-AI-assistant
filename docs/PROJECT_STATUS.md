@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-10-31  
-> آخرین commit شاخهٔ `main`: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` (ادغام PR #669). CI دقیق PR و CI پس از ادغام روی این SHA موفق شدند: tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310)، browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276)، dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245).
+> تاریخ بازبینی: 2026-11-01  
+> آخرین commit شاخهٔ `main`: `2a5c83bf0ba924f4a2c8f206338a04872562d72d` (ادغام PR #671). Exact-head CI برای PR #671 موفق شد؛ post-merge CI روی SHA فعلی هنوز در حال اجرا است: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370)، browser/dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374)، dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -222,3 +222,11 @@
 - PR [#634](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/634) با commit `b50daaaaa12fab13d6526a47335613bd30a63eba` ادغام شد. Post-merge CI: 1746 passed/5 skipped در 211.87s؛ Windows storage، dashboard smoke، dependency audit، artifact/link/import checks و benchmarkها موفق.
 
 - PR [#669](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/669): evaluator اکنون می‌تواند زبان مورد انتظار فارسی/انگلیسی را به‌صورت تشخیصی بررسی کند؛ code و URL از شمارش script کنار گذاشته می‌شوند، شواهد ناکافی fail-closed است و آستانهٔ ۶۵٪ با طبقه‌بندی script غالب هم‌راستا است. regressionهای متقارن ۶۰٪ رد و ۶۵٪ قبول اضافه شد. ادغام: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`; exact-head CI: 1807 passed/47 deselected، Windows storage، dashboard smoke، browser E2E، dependency audit، 90 Markdown files و benchmark 10/10. این تشخیص جایگزین ارزیابی معنایی یا داوری انسانی نیست.
+
+
+## 2026-11-01 — وضعیت پس از PR #671
+
+- PR #671 برای جلوگیری از ذخیرهٔ پیام خام exception و diagnostics غیرقابل‌اعتماد در کشف منابع ابری ادغام شد: `2a5c83bf0ba924f4a2c8f206338a04872562d72d`.
+- CI دقیق PR موفق است. Post-merge dependency audit و Windows storage موفق شده‌اند؛ تست اصلی و dashboard smoke در زمان این checkpoint هنوز در حال اجرا هستند. موفقیت نهایی آن‌ها تا تکمیل workflow ادعا نمی‌شود.
+- بررسی ایستای مسیر research نشان داد payload حداکثر سه منبع HTTPS می‌گیرد و audit پژوهش diagnostics را با allowlist جداگانه ذخیره می‌کند. علت گزارش قبلیِ صفر منبع در اجرای زنده هنوز اثبات نشده؛ تغییرات حدسی در discovery انجام نشد.
+- Issues #290 و #52 باز هستند. بررسی امنیتی مستقل Ollama، اجرای واقعی روی میزبان هدف، staging/rollback، ارزیابی زنده و داوری انسانی همچنان لازم‌اند.
