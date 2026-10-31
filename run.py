@@ -48,15 +48,17 @@ class _GitHubAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
         target = urllib.parse.urljoin(req.full_url, newurl)
         try:
             parsed = urllib.parse.urlsplit(target)
+            hostname = parsed.hostname
             port = parsed.port
         except ValueError:
             return None
         if (
             parsed.scheme != "https"
-            or (parsed.hostname or "").lower().rstrip(".") not in _OLLAMA_ASSET_REDIRECT_HOSTS
+            or (hostname or "").lower().rstrip(".") not in _OLLAMA_ASSET_REDIRECT_HOSTS
             or port not in {None, 443}
-            or parsed.username
-            or parsed.password
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.netloc.endswith(":")
         ):
             return None
         return super().redirect_request(req, fp, code, msg, headers, target)
@@ -680,16 +682,18 @@ def _download_ollama_asset_cli(arguments: list[str]) -> int:
     expected_path = f"/ollama/ollama/releases/download/{tag}/{asset_name}"
     try:
         parsed = urllib.parse.urlsplit(url)
+        hostname = parsed.hostname
         port = parsed.port
     except (TypeError, ValueError):
         raise RuntimeError("The pinned Ollama asset URL is invalid.") from None
     if (
         parsed.scheme != "https"
-        or parsed.hostname != "github.com"
+        or hostname != "github.com"
         or parsed.path != expected_path
         or port not in {None, 443}
-        or parsed.username
-        or parsed.password
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.netloc.endswith(":")
         or parsed.query
         or parsed.fragment
     ):
