@@ -130,3 +130,31 @@ def test_settings_api_rejects_invalid_learning_cost_preferences_atomically(
     assert after["learning_model_cost_profiles"] == before["learning_model_cost_profiles"]
     assert after["learning_model_minimum_quality_score"] == before["learning_model_minimum_quality_score"]
     assert after["learning_task_budget_microusd"] == before["learning_task_budget_microusd"]
+
+
+@pytest.mark.parametrize(
+    ("key", "invalid_value"),
+    [
+        ("ollama_num_ctx", 2048.5),
+        ("chat_max_concurrent_jobs", "2"),
+        ("learning_source_max_chars", 1000.25),
+    ],
+)
+def test_settings_api_rejects_non_integer_numeric_settings_atomically(
+    settings_client, key, invalid_value
+):
+    before = db.get_settings()
+    response = settings_client.patch(
+        "/api/settings",
+        json={
+            "values": {
+                key: invalid_value,
+                "chat_ollama_model": "must-not-save",
+            }
+        },
+    )
+
+    assert response.status_code == 422
+    after = db.get_settings()
+    assert after[key] == before[key]
+    assert after["chat_ollama_model"] == before["chat_ollama_model"]
