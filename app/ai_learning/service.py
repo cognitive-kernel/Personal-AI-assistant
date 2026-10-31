@@ -2703,7 +2703,7 @@ def submit_query_feedback(query_trace_id: int, rating: int, comment: str = "") -
     """Upsert a user's usefulness rating for a trace without storing the raw query."""
     if isinstance(query_trace_id, bool) or not isinstance(query_trace_id, int) or query_trace_id < 1:
         raise ValueError("query_trace_id must be a positive integer.")
-    if isinstance(rating, bool) or rating not in (-1, 1):
+    if isinstance(rating, bool) or not isinstance(rating, int) or rating not in (-1, 1):
         raise ValueError("rating must be 1 (helpful) or -1 (not helpful).")
     if not isinstance(comment, str) or len(comment) > 1000:
         raise ValueError("comment must be text no longer than 1000 characters.")
