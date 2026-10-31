@@ -403,3 +403,102 @@ First retrieve the live GitHub state and latest engineering checkpoint. Resume a
 Make actual changes, run tests, update documentation, and create PRs wherever the available tools and permissions allow. Report only actions supported by evidence.
 
 **Final objective:** deliver a genuinely complete, secure, stable, maintainable, and operationally verified Personal-AI-assistant project, with every remaining limitation explicitly documented.
+
+
+## 16. Engineering delivery baseline, schedule, and change control
+
+The following is the current documented planning baseline for engineering completion. It is a forecast, not a guaranteed delivery date. Revalidate it against the live repository, task evidence, actual throughput, and audit findings at the start of each work session.
+
+### 16.1 Baseline schedule
+
+- **Baseline effort:** 176 engineering hours.
+- **Planning capacity:** 8 focused engineering hours per working day.
+- **Baseline duration:** 22 working days.
+- **Task estimate:** 144 hours.
+- **Contingency reserve:** 32 hours (22.2% of the 144-hour task estimate).
+- **Planned start:** 2026-11-02.
+- **Target delivery:** 2026-12-01.
+- **Calendar assumption:** Monday–Friday working days; public holidays are not deducted.
+- **Baseline repository commit:** `348be1d2bd9f69e91f9631911f889e8ab6f442d2`.
+- **Estimate record:** `docs/ENGINEERING_DELIVERY_ESTIMATE.md` and the dated entry in `docs/ENGINEERING_LOG.md`, introduced by PR #673: https://github.com/cognitive-kernel/Personal-AI-assistant/pull/673
+
+The previous 12-working-day estimate is withdrawn because it did not have an auditable task-hour breakdown, contingency, or supporting evidence. Do not reuse it.
+
+### 16.2 Task-hour breakdown
+
+| ID | Engineering work package | Planned hours |
+|---|---|---:|
+| E-01 | Full repository and architecture audit | 20 |
+| E-02 | Architecture, API, and persistence contracts | 18 |
+| E-03 | AI, research, and learning engineering | 22 |
+| E-04 | UI functional parity and accessibility automation | 22 |
+| E-05 | Durable tasks, fault injection, and resilience | 18 |
+| E-06 | Security implementation and regression automation | 12 |
+| E-07 | Performance, dependencies, and CI | 8 |
+| E-08 | Integration, final review, and documentation | 24 |
+| | **Task estimate** | **144** |
+| E-09 | Contingency reserve | **32** |
+| | **Total baseline** | **176** |
+
+Do not silently reallocate hours or treat the contingency reserve as ordinary planned capacity. Record actual hours and remaining hours against each task ID.
+
+### 16.3 Definition of 100% engineering completion
+
+Engineering completion reaches 100% only when all of the following are evidenced against the exact final commit:
+
+1. Every in-scope feature and acceptance criterion in Issue #290 is implemented and covered by automated tests, or explicitly documented as intentionally disabled/out of scope with rationale.
+2. The repository and architecture audit has file/line-level evidence; all high/critical engineering findings are fixed or have an approved, documented disposition.
+3. API, data ownership, migration, and runtime contracts are reviewed, and required fixes and regression tests are merged.
+4. AI/research/learning/feedback governance has automated regression coverage, including provenance, uncertainty, conflicts, and unsafe knowledge-promotion cases.
+5. UI workflows and error states have browser automation coverage, including RTL/LTR, keyboard navigation, and focus behavior.
+6. Fault injection and recovery behavior are tested for every supported durable task type.
+7. Security implementation checks and dependency audits pass; code-level findings are resolved or formally dispositioned.
+8. All required CI suites pass on the exact final commit; no required suite is silently skipped or deselected.
+9. Documentation, roadmap, scorecard, and engineering log match the implementation and evidence on that same SHA.
+
+A historical stage score (including 60.47%) is not an effort denominator and must not be converted into remaining days. Recalculate progress from the current acceptance ledger and evidence.
+
+### 16.4 Explicit exclusions from engineering time and percentage
+
+Do not include the time needed for the following owner-side or external activities in the 176-hour engineering baseline or engineering-completion percentage:
+
+- User's local/manual testing and acceptance.
+- Manual acceptance or human adjudication of model quality.
+- Tests that require the user's target host, private environment, or physical device.
+- Target-host operational soak testing and owner-run backup/restore rehearsal.
+- The independent security review itself, including reviewer scheduling and approval.
+
+However, engineering work arising from these activities remains in scope: reproduce findings where possible, implement code/configuration fixes, add automated tests, and update documentation. Automated simulations and tests that can be run by the engineering workflow remain included. Do not mark an external gate as passed without its own evidence; report it separately under overall acceptance.
+
+### 16.5 Actuals, delays, and reforecast rules
+
+For every work package, maintain:
+
+- Task ID and scope.
+- Planned hours, actual engineering hours, and remaining hours.
+- Evidence discovered and files/lines affected.
+- Blockers, dependencies, and owner.
+- Contingency consumed and reason.
+- Schedule impact in working days.
+- Related issue, branch, PR, commit, and CI evidence.
+
+If the audit reveals omitted scope, estimates are exceeded, or a dependency blocks the schedule, do not hide the delay or silently change the baseline. Append a dated reforecast entry to `docs/ENGINEERING_LOG.md`, update the estimate/status documents, explain the evidence and cause, and preserve the original baseline for auditability.
+
+Calculate remaining engineering days as:
+
+`ceil(remaining approved engineering hours / 8)`
+
+Keep engineering completion separate from overall acceptance. The engineering percentage must not remain below 100% merely because a user-only, human-only, target-host, or independent-review gate is still pending. Conversely, never claim engineering completion while any engineering exit criterion above remains unresolved.
+
+### 16.6 Mandatory continuity behavior
+
+At the start of every new session:
+
+1. Read `docs/ENGINEERING_DELIVERY_ESTIMATE.md`, `docs/ENGINEERING_LOG.md`, and `docs/PROJECT_STATUS.md` from the live repository.
+2. Verify the current `main` SHA and the state of PR #673; do not assume it has merged.
+3. Recover the latest task-level planned/actual/remaining hours and the last verified evidence.
+4. Continue from the highest-priority unfinished engineering task without repeating completed work.
+5. Update the log after each meaningful task/PR/merge and at every reforecast.
+6. Report the baseline, actual progress, remaining hours/days, schedule variance, contingency use, and external gates separately.
+
+If the estimate document and this prompt ever disagree, inspect their dates and Git history, preserve the original baseline, and record an explicit dated correction. Do not silently choose whichever number looks more convenient.
