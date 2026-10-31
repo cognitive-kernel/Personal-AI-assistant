@@ -267,7 +267,9 @@
         ? Number(latest.overall_percent).toFixed(2) + "%" : "—";
       $("progress-updated").textContent = current && current.updated_at
         ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
-        : "دادهٔ زنده هنوز ثبت نشده است";
+        : data.storage_configured
+          ? "فضای ثبت آماده است؛ در انتظار اجرای عامل"
+          : "فضای ثبت پیشرفت آماده نیست؛ راه‌اندازی یک‌باره لازم است";
       renderProgressChart(snapshots);
       renderProgressEvents(data.events);
     } catch (error) {
