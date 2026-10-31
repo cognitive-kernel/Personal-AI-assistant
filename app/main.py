@@ -10,7 +10,7 @@ from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
+from pydantic import BaseModel, Field, StrictBool, StrictFloat, StrictInt, ConfigDict
 from . import backup_scheduler, assessment_review, browser_learning, knowledge_lifecycle_tasks, learning_knowledge_graph_tasks, learning_capabilities_routes, learning_recommendations, spaced_repetition, chat_feedback, chat_history, chat_research, cloud_resources, curricula, db, experience_tasks, factual_verification_tasks, learning, ollama, programming_tasks, research_planner, research_tasks, sandbox_tasks, storage_health, storage_routes, task_manager
 from .learning_tasks import LEARNING_TASK_TYPE, enqueue_learning_task, handle_learning_job, list_learning_escalations, reconcile_queued_learning_tasks, resolve_learning_escalation
 from . import learning_review_tasks
@@ -392,7 +392,7 @@ class LearningRequest(BaseModel):
 class BrowserLearningRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     cdp_url: str = Field(default="http://127.0.0.1:9222", min_length=1, max_length=200)
-    max_lessons: int = Field(default=20, ge=1, le=40)
+    max_lessons: StrictInt = Field(default=20, ge=1, le=40)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -426,13 +426,13 @@ class CurriculumEnrollment(BaseModel):
 
 class LessonReviewSubmission(BaseModel):
     outcomes: list[str] = Field(min_length=1, max_length=5)
-    value_rating: int = Field(ge=1, le=5)
+    value_rating: StrictInt = Field(ge=1, le=5)
     takeaway: str = Field(default="", max_length=3000)
     issues: str = Field(default="", max_length=3000)
 
 class PathTopicProgress(BaseModel):
     status: str = Field(min_length=1, max_length=30)
-    latest_score: float | None = Field(default=None, ge=0, le=100)
+    latest_score: StrictInt | StrictFloat | None = Field(default=None, ge=0, le=100)
 
 @app.get("/api/learning/operational-metrics", dependencies=[Depends(require_loopback_client)])
 def learning_operational_metrics() -> dict[str, Any]:
