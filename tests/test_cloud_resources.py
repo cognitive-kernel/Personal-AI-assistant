@@ -658,7 +658,7 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
 
 
-def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch):
+def test_discovery_records_safe_provider_codes_without_raw_error_messages(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
     sensitive_detail = "https://private.invalid/search?token=do-not-persist"
 
