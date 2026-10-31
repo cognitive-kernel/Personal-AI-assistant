@@ -245,3 +245,63 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
     result = agent._github_snapshot()
 
     assert result["settings"] == {"model": "qwen3:14b", "runs_per_day": 8}
+
+
+def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(monkeypatch, tmp_path):
+    from app import autonomous_engineering_progress as progress
+
+    scorecard = tmp_path / "ACCEPTANCE_SCORECARD.md"
+    scorecard.write_text(
+        "**Snapshot:** 2026-11-01\\n"
+        "**Scored baseline:** main at " + "a" * 40 + "\\n"
+        "- **Engineering completion:** score = 60.47%\\n"
+        "- **Overall acceptance progress:** score = 57.45%\\n",
+        encoding="utf-8",
+    )
+    storage = tmp_path / "telemetry"
+    storage.mkdir()
+    (storage / "history.jsonl").write_text(
+        json.dumps({
+            "type": "project_snapshot", "date": "2026-11-02",
+            "recorded_at": "2026-11-02T10:00:00+00:00",
+            "engineering_percent": 61.0, "overall_percent": 58.0, "sha": "b" * 40,
+        }) + "\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(progress, "_DEFAULT_SCORECARD", scorecard)
+    monkeypatch.setattr(progress, "_progress_dir", lambda: storage)
+
+    result = progress.get_progress(
+        period="custom", start_date="2026-11-01", end_date="2026-11-02"
+    )
+
+    assert [item["date"] for item in result["history"]] == ["2026-11-01", "2026-11-02"]
+    assert result["history"][0]["engineering_percent"] == 60.47
+    assert result["history"][0]["overall_percent"] == 57.45
+    assert result["history"][1]["engineering_percent"] == 61.0
+
+
+def test_progress_reader_rejects_invalid_custom_date_range():
+    from app.autonomous_engineering_progress import get_progress
+
+    result = get_progress(period="custom", start_date="2026-11-03", end_date="2026-11-01")
+
+    assert result["available"] is False
+    assert result["error"] == "بازهٔ تاریخ معتبر نیست."
+
+
+def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
+    root = Path(__file__).resolve().parents[1]
+    page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
+    script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
+    api_paths = {route.path for route in agent.router.routes}
+
+    assert "/api/autonomous-engineering/progress" in api_paths
+    assert 'id="cycle-progress"' in page
+    assert 'id="progress-chart"' in page
+    assert 'id="progress-period"' in page
+    assert 'id="progress-start"' in page
+    assert 'id="progress-end"' in page
+    assert 'id="progress-events"' in page
+    assert 'window.setInterval(refreshProgress, 5000)' in script
+    assert "createElementNS" in script
