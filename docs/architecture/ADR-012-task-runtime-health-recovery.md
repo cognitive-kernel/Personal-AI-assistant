@@ -21,7 +21,7 @@ Starting replacement threads before stopping surviving threads is also unsafe: t
 
 ## Verification
 
-Regression tests simulate unexpected worker-thread and maintenance-thread termination with `SystemExit`. They verify that the runtime reports unhealthy while surviving threads remain active, stops the old thread set before restarting, restores all configured threads, and shuts down cleanly. The startup regression verifies that a partially alive but unhealthy runtime set is rebuilt.
+Regression tests inject deterministic early termination of the worker-thread and maintenance-thread targets without emitting unhandled thread exceptions. They verify that the runtime reports unhealthy while surviving threads remain active, stops the old thread set before restarting, restores all configured threads, and shuts down cleanly. The startup regression verifies that a partially alive but unhealthy runtime set is rebuilt.
 
 ## Consequences and limits
 
