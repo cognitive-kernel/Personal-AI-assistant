@@ -579,3 +579,56 @@ def test_source_fetch_resolves_dns_once_at_pinned_transport_and_disables_proxies
         if isinstance(handler, urllib.request.ProxyHandler)
     ]
     assert len(proxies) == 1 and proxies[0].proxies == {}
+
+def test_discover_sources_records_bounded_fetch_failure_diagnostics(monkeypatch):
+    candidates = web_sources.SearchResultList(
+        [("First result", "https://example.org/first"), ("Second result", "https://example.org/second")],
+        provider_diagnostics=[{
+            "provider": "DuckDuckGo",
+            "attempts": [{"variant": "primary", "endpoint_variant": "html", "error": None}],
+            "parsed_result_count": 2,
+            "accepted_result_count": 2,
+            "unique_result_count": 2,
+            "duplicate_result_count": 0,
+        }],
+    )
+    monkeypatch.setattr(web_sources, "_search_results", lambda *_args, **_kwargs: candidates)
+
+    def reject(*_args, **_kwargs):
+        raise web_sources.SourceFetchError("private URL and response details must not be retained")
+
+    monkeypatch.setattr(web_sources, "_fetch_document", reject)
+    documents = web_sources.discover_sources("diagnostic test", limit=2)
+
+    assert documents == []
+    assert documents.search_provider_diagnostics == candidates.provider_diagnostics
+    assert documents.fetch_diagnostics == {
+        "candidate_count": 2,
+        "attempted_count": 2,
+        "fetched_count": 0,
+        "failure_counts": {"SourceFetchError": 2},
+    }
+
+
+def test_discover_sources_counts_successful_fetches(monkeypatch):
+    candidates = web_sources.SearchResultList([
+        ("First result", "https://example.org/first"),
+        ("Second result", "https://example.org/second"),
+    ])
+    document = web_sources.SourceDocument(
+        url="https://example.org/first",
+        title="First result",
+        text="A sufficiently long source excerpt for a deterministic retrieval test. " * 2,
+    )
+    monkeypatch.setattr(web_sources, "_search_results", lambda *_args, **_kwargs: candidates)
+    monkeypatch.setattr(web_sources, "_fetch_document", lambda *_args, **_kwargs: document)
+
+    documents = web_sources.discover_sources("diagnostic test", limit=1)
+
+    assert documents == [document]
+    assert documents.fetch_diagnostics == {
+        "candidate_count": 2,
+        "attempted_count": 1,
+        "fetched_count": 1,
+        "failure_counts": {},
+    }

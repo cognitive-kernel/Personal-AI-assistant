@@ -213,6 +213,16 @@ def _source_payload(documents: list[web_sources.SourceDocument]) -> list[dict[st
             })
     return result
 
+def _source_discovery_diagnostics(documents: Any) -> dict[str, Any]:
+    """Return bounded provider/fetch counters; never persist queries, URLs, or page text."""
+    providers = getattr(documents, "search_provider_diagnostics", [])
+    fetch = getattr(documents, "fetch_diagnostics", {})
+    return {
+        "providers": providers if isinstance(providers, list) else [],
+        "fetch": fetch if isinstance(fetch, dict) else {},
+    }
+
+
 
 def _warning(message: str, reason: str) -> str:
     if re.search(r"[\u0600-\u06FF]", message):
@@ -465,9 +475,18 @@ def answer(
         # exception type so offline/provider failures can be distinguished from
         # a successful search that returned no usable documents.
         source_discovery_error_type = type(exc).__name__
-        documents = []
+        documents = web_sources.SourceDocumentList(
+            search_provider_diagnostics=getattr(exc, "provider_diagnostics", []),
+            fetch_diagnostics={
+                "candidate_count": 0,
+                "attempted_count": 0,
+                "fetched_count": 0,
+                "failure_counts": {},
+            },
+        )
         logger.warning("Research source discovery failed (%s)", source_discovery_error_type)
     sources = _source_payload(documents)
+    source_discovery_diagnostics = _source_discovery_diagnostics(documents)
     _checkpoint(checkpoint, "source_discovery_completed", source_count=len(sources))
     payload = {
         "question": message[:3000],
@@ -588,6 +607,7 @@ def answer(
                 else "no_usable_sources"
             ),
             "reviewer": "local_ollama_model_assisted_not_independent",
+            "source_discovery": source_discovery_diagnostics,
         }
         _record_audit(message, reply, sources, "no_sources", no_source_review, memory, started_at)
         _checkpoint(
