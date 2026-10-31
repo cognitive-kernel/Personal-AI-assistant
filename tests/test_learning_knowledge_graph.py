@@ -28,6 +28,35 @@ def graph_store(tmp_path, monkeypatch):
     return ids
 
 
+@pytest.mark.parametrize(
+    "source_url",
+    [
+        "https://@docs.example.test/cache",
+        "https://:secret@docs.example.test/cache",
+        "https://user:@docs.example.test/cache",
+        "https://docs.example.test:/cache",
+        "https://docs.example.test:8443/cache",
+        "https://docs.example.test:not-a-port/cache",
+        "https://[2001:db8::1/cache",
+    ],
+)
+def test_graph_edge_proposal_rejects_invalid_source_authority(graph_store, source_url):
+    source_id, target_id = graph_store
+    with pytest.raises(ValueError, match="credential-free HTTPS"):
+        learning_knowledge_graph.propose_edge(
+            source_id,
+            target_id,
+            relation_type="supports",
+            source_url=source_url,
+            source_excerpt="The source excerpt is long enough to pass the content bound.",
+        )
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM learning_knowledge_graph_edges"
+        ).fetchone()[0]
+    assert count == 0
+
+
 def test_graph_edge_proposal_requires_retained_knowledge(graph_store):
     source_id, target_id = graph_store
     edge = learning_knowledge_graph.propose_edge(
