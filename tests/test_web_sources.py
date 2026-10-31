@@ -30,11 +30,48 @@ def test_search_result_parser_extracts_duckduckgo_redirect_target():
         "https://example.org:8443/",
         "https://kaggle.com/docs/notebooks",
         "https://www.kaggle.com/code/example/notebook",
+        "https://example.org:/",
+        "https://example.org:",
     ],
 )
 def test_url_validation_blocks_private_or_unsupported_destinations(url):
     with pytest.raises(web_sources.SourceFetchError):
         web_sources._validate_public_url(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://@example.org/",
+        "https://:secret@example.org/",
+        "https://user:@example.org/",
+    ],
+)
+def test_url_parser_rejects_any_userinfo_component(url):
+    with pytest.raises(web_sources.SourceFetchError, match="credentials"):
+        web_sources._parse_public_url(url)
+
+
+def test_parse_public_url_wraps_malformed_ipv6_authority():
+    with pytest.raises(web_sources.SourceFetchError, match="syntax"):
+        web_sources._parse_public_url("https://[not-an-ip]/")
+
+
+def test_normalize_search_results_skips_malformed_authority(monkeypatch):
+    monkeypatch.setattr(
+        web_sources.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [(None, None, None, None, ("8.8.8.8", 443))],
+    )
+    results = web_sources._normalize_search_results(
+        [
+            ("Malformed", "https://[not-an-ip]/"),
+            ("Valid", "https://example.org/docs"),
+        ],
+        limit=3,
+        provider_hosts=web_sources.SEARCH_PROVIDER_HOSTS,
+    )
+    assert results == [("Valid", "https://example.org/docs")]
 
 
 def test_page_text_parser_ignores_script_navigation_and_styles():

@@ -66,7 +66,8 @@ def _parse_url_policy(url: str) -> urllib.parse.SplitResult:
         raise ValueError("URL نامعتبر است.") from exc
     if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_HOSTS:
         raise ValueError("فعلاً فقط HTTPS از دامنه‌های رسمی allowlist شده پشتیبانی می‌شود.")
-    if parsed.username or parsed.password or port not in (None, 443):
+    if (parsed.username is not None or parsed.password is not None
+            or parsed.netloc.endswith(":") or port not in (None, 443)):
         raise ValueError("URL نباید اطلاعات ورود یا پورت سفارشی داشته باشد.")
     if not parsed.path or parsed.path.startswith("//"):
         raise ValueError("مسیر URL معتبر نیست.")
