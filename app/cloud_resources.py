@@ -565,7 +565,11 @@ def _safe_provider_diagnostics(value: Any) -> list[dict[str, Any]]:
                         count = attempt.get(field)
                         safe_attempt[field] = (
                             min(count, 1_000_000)
-                            if isinstance(count, int) and not isinstance(count, bool) and count >= 0
+                            if (
+                                isinstance(count, int)
+                                and not isinstance(count, bool)
+                                and count >= 0
+                            )
                             else 0
                         )
                 if "error" in attempt:
@@ -605,6 +609,7 @@ def _safe_provider_failure_summary(exc: BaseException) -> str:
                 if summary not in summaries:
                     summaries.append(summary)
     return ", ".join(summaries)
+
 
 def _safe_discovery_error(exc: BaseException) -> str:
     """Build a persistable error from type and allowlisted diagnostics only."""
