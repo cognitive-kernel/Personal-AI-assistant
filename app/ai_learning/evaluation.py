@@ -82,7 +82,7 @@ def evaluate_language_adherence(
             else "latin-script" if latin_ratio >= 0.65
             else "mixed"
         )
-        passed = ratio >= 0.5
+        passed = ratio >= 0.65
         reason = "passed" if passed else "expected_language_not_dominant"
     return {
         "checked": True,
