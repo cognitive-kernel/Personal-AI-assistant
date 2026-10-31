@@ -52,6 +52,41 @@
 <article class="status-card"><span class="status-label">GitHub Runner</span><strong id="runner-state">—</strong><p id="runner-detail">فرایند Runner.Listener بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub CLI</span><strong id="github-state">—</strong><p id="github-detail">احراز هویت محلی بررسی نشده است.</p></article>
 </div>
+<form id="agent-settings-form" class="settings-form">
+  <div class="section-heading">
+    <div><p class="eyebrow">SCHEDULE & MODEL</p><h3>تنظیمات اجرای خودکار</h3></div>
+    <span class="hint">تنظیمات برای اجراهای زمان‌بندی‌شده ذخیره می‌شوند.</span>
+  </div>
+  <div class="settings-grid">
+    <label class="field">
+      <span>تعداد اجرا در روز</span>
+      <select id="runs-per-day" name="runs_per_day">
+        <option value="1">۱ بار در روز</option>
+        <option value="2">۲ بار در روز</option>
+        <option value="3">۳ بار در روز</option>
+        <option value="4">۴ بار در روز</option>
+        <option value="6">۶ بار در روز</option>
+        <option value="8">۸ بار در روز</option>
+        <option value="12">۱۲ بار در روز</option>
+        <option value="24">۲۴ بار در روز (هر ساعت)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>مدل نصب‌شدهٔ Ollama</span>
+      <select id="ollama-model" name="model">
+        <option value="gpt-oss:20b">gpt-oss:20b (پیش‌فرض)</option>
+      </select>
+    </label>
+    <label class="field field-wide">
+      <span>یا شناسهٔ مدل دیگر Ollama</span>
+      <input id="custom-model" name="custom_model" type="text" maxlength="120" autocomplete="off" placeholder="مثلاً qwen3:14b">
+      <small>در صورت واردکردن شناسه، این مقدار جایگزین مدل انتخاب‌شده می‌شود. مدل باید روی همین رایانه نصب شده باشد.</small>
+    </label>
+  </div>
+  <div class="toolbar">
+    <button id="save-agent-settings" type="submit">ذخیرهٔ تنظیمات</button>
+  </div>
+</form>
 <div class="toolbar">
 <button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ مهندسی</button>
 <button id="cancel-agent" type="button" class="secondary" disabled>لغو اجرای فعال</button>
@@ -77,8 +112,8 @@
 <p class="eyebrow">OPERATING MODEL</p>
 <h2 id="operation-title">عامل چگونه کار می‌کند؟</h2>
 <ul>
-<li>هر شش ساعت، پس از push به شاخهٔ اصلی یا با درخواست دستی، GitHub یک اجرای محدود را به Runner محلی می‌سپارد.</li>
-<li>Codex با حالت OSS و مدل Ollama روی رایانهٔ شما اجرا می‌شود؛ درخواست استنتاج به endpoint محلی ارسال می‌شود.</li>
+<li>طبق تعداد اجرای روزانهٔ انتخاب‌شده (از ۱ تا ۲۴ بار در روز)، GitHub زمان‌بندی ساعتی را بررسی می‌کند و اجراها را بر اساس ساعت UTC به Runner محلی می‌سپارد؛ اجرای دستی جداگانه است.</li>
+<li>Codex با حالت OSS و مدل انتخاب‌شدهٔ Ollama روی رایانهٔ شما اجرا می‌شود؛ درخواست استنتاج به endpoint محلی ارسال می‌شود.</li>
 <li>عامل یک کار مستقل را انتخاب می‌کند، تغییرات و آزمون‌های مرتبط را آماده می‌کند و patch را تحویل می‌دهد.</li>
 <li>اعتبارسنجی روی Runner میزبانی‌شدهٔ GitHub و بدون دسترسی به مدل یا اطلاعات محرمانه انجام می‌شود.</li>
 <li>فقط پس از موفقیت همهٔ بررسی‌های تعریف‌شده، یک Pull Request پیش‌نویس ساخته می‌شود؛ ادغام و استقرار خودکار انجام نمی‌شود.</li>
