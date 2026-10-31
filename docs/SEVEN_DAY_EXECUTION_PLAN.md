@@ -220,6 +220,13 @@ Append dated entries with:
 - Still open: live-model and human adjudication; independent security review (Issue #52); target-host install/startup/crash/soak; real-Docker integration/target-host acceptance; staging restore/rollback; persistent learning retrieval/version/rollback proof; and the remaining UI RTL/LTR, screen-reader, contrast, and browser-origin/CSRF review.
 
 
+### 2026-10-31 — Persistent learning restart proof
+
+- PR #629 adds a fresh-process integration test using the same SQLite file and the production retrieval adapter. It proves that a published content version is retrievable after a new Python process starts, unpublished content remains excluded, and the new process writes a query trace.
+- The first CI run exposed a fixture-only semantic-embedding collision (all fixture vectors were identical). The test now uses deterministic hash-derived fixture vectors; production embedding/retrieval behavior was not weakened or changed.
+- Final exact-head CI on `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` passed: 1738 passed/5 skipped, dashboard smoke, Windows storage regressions, and dependency audit passed. The current main post-merge CI is independently green on `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`.
+- Remaining learning gates are live-model quality, human adjudication, factual verification, and operator-run staging restore/rollback; the subprocess test proves persistence mechanics only.
+
 ### 2026-10-31 — TaskRuntime partial-thread recovery
 
 - PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) separated any-thread activity from full runtime health and made startup reuse only healthy runtimes. Partial restart stops and joins surviving threads before replacements; a non-cooperative old thread blocks restart instead of permitting duplicate worker identities.
