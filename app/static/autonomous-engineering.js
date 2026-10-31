@@ -286,5 +286,9 @@
     if (!custom) refreshProgress();
   });
   $("refresh-progress").addEventListener("click", refreshProgress);
-\n  $("refresh-agent").addEventListener("click", refresh);\n  refresh();\n  refreshProgress();\n  window.setInterval(refresh, 30000);\n  window.setInterval(refreshProgress, 5000);
+  $("refresh-agent").addEventListener("click", refresh);
+  refresh();
+  refreshProgress();
+  window.setInterval(refresh, 30000);
+  window.setInterval(refreshProgress, 5000);
 })();
