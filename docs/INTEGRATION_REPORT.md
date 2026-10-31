@@ -227,6 +227,6 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 ## 2026-10-31 — Consistent HTTPS policy for research sources (PR #622)
 
 - PR [#622](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/622) rejects HTTP search results before applying the bounded result limit, so an HTTP-only candidate cannot crowd out a usable HTTPS result and later be discarded by the chat source-payload policy.
-- Document fetching independently rejects non-HTTPS URLs before network access. Search normalization, source payloads, citations, and evidence records now share the same HTTPS requirement.
+- Document fetching independently rejects non-HTTPS URLs before network access. Redirects from HTTPS to HTTP are also rejected, preventing transport downgrade. Search normalization, source payloads, citations, and evidence records now share the same HTTPS requirement.
 - Regression coverage checks HTTPS selection after an HTTP candidate, rejection before transport, and bounded discovery diagnostics.
 - Status: PR is open and final-head CI is pending. This closes a demonstrated URL-policy mismatch; it does not prove that this mismatch was the sole cause of the earlier live run's zero-source result.
