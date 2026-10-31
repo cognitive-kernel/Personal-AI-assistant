@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Baseline:** `main` after PR #646, merge commit `6b19b84c78e17d8b5c28122964c7130dcf42f853`
+**Baseline:** `main` after PR #655, merge commit `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88`
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
@@ -254,3 +254,11 @@ Append dated entries with:
 - Exact-head CI on `3ca98b26bb77f01f4f21396e4f81f3aaad3adb26`: tests [#41187960679](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187960679) — 1758 passed/5 skipped; Windows storage regressions, browser E2E [#41187960674](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187960674), dependency audit [#41187960681](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187960681), generated artifacts, 85 Markdown links, import-cycle scan, retrieval benchmark and claim-to-test 10/10 passed.
 - Post-merge CI on `6b19b84c78e17d8b5c28122964c7130dcf42f853`: tests [#41188392547](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392547), browser E2E [#41188392561](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392561), dependency audit [#41188392609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392609) — all passed.
 - Issue #52 remains open for independent security review. Local/owner-machine tests, live-model/human adjudication, target-host soak, staging restore/rollback and production acceptance remain external gates; none is claimed complete.
+
+
+### 2026-10-31 — URL authority and AI-learning feedback validation
+
+- PR [#653](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/653) hardened public-source and knowledge-indexer URL parsing against empty userinfo, explicit empty ports, and malformed bracketed IPv6; malformed results are converted to handled source errors so later valid results continue. Exact-head tests, browser E2E, and dependency audit passed; merged as `2208465d3b185b2d1705eb94b37cde986d21532d`.
+- PR [#656](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/656) enforced credential-free HTTPS on the default port for lesson evidence URLs and bumped the evidence-gate policy version. Exact-head and post-merge tests, browser E2E, and dependency audit passed; merged as `54a1a60af284e27d9631e1b4284ffb0f7ebc02e4`.
+- PR [#655](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/655) made query-feedback ratings strict integers at the service boundary; booleans, floats, and numeric strings are rejected while usefulness-only semantics remain unchanged. Exact-head tests, browser E2E, and dependency audit passed; merged as `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88`.
+- On the current `main` SHA, dependency audit [#41193247035](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193247035) passed; tests [#41193246970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246970) and browser E2E [#41193246992](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246992) were in progress at the time of this entry. No post-merge success is claimed until those runs finish.
