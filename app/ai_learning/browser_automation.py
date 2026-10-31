@@ -1295,6 +1295,8 @@ def _continue_lessons(
         first_run_id=queued.get("run_id"),
         dispatch_status=queued.get("status"),
     )
+
+
 def _schedule_transient_retry(
     run_id: int, error: BrowserAutomationError
 ) -> dict[str, Any] | None:
