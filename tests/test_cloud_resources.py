@@ -370,6 +370,21 @@ def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
     assert latest["query_results"][0]["candidate_filter"]["rejected_as_irrelevant"] == 1
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://@compute.example.org/free-cloud-server",
+        "https://compute.example.org:/free-cloud-server",
+        "https://compute.example.org:",
+        "https://compute.example.org:not-a-port/free-cloud-server",
+        "https://[2001:db8::1/free-cloud-server",
+    ],
+)
+def test_cloud_resource_source_url_rejects_invalid_authority(url):
+    with pytest.raises(CloudResourceError):
+        cloud_resources._normalize_source_url(url)
+
+
 def test_provider_domain_recognition_uses_safe_host_boundaries():
     assert cloud_resources._is_recognized_provider_domain("docs.oracle.com")
     assert cloud_resources._is_recognized_provider_domain("www.oracle.com")
