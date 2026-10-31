@@ -67,6 +67,7 @@ class TaskContext:
     worker_id: str
     checkpoint_data: dict[str, Any] | None = None
     lease_seconds: int = 300
+    completed_task: dict[str, Any] | None = None
 
     def checkpoint(self, value: dict[str, Any]) -> dict[str, Any]:
         saved = task_manager.save_checkpoint(self.task_id, self.worker_id, value)
@@ -76,6 +77,29 @@ class TaskContext:
         if saved["status"] == "cancelled":
             raise TaskInterrupted("Task cancelled at checkpoint.")
         return saved
+
+    def complete_with_commit(
+        self,
+        checkpoint: dict[str, Any],
+        operation: Callable[[sqlite3.Connection], dict[str, Any] | None],
+    ) -> dict[str, Any]:
+        """Commit a domain write and task success in one SQLite transaction."""
+        try:
+            saved = task_manager.complete_task(
+                self.task_id,
+                self.worker_id,
+                {},
+                checkpoint=checkpoint,
+                before_commit=operation,
+            )
+        except TaskManagerError:
+            # If a pause/cancel won the transaction race, settle it at a normal
+            # checkpoint and propagate TaskInterrupted to the worker loop.
+            self.checkpoint(self.checkpoint_data or {})
+            raise
+        self.checkpoint_data = saved["checkpoint"]
+        self.completed_task = saved
+        return saved["result"]
 
     def control_status(self) -> str:
         return task_manager.get_worker_control(self.task_id, self.worker_id)
@@ -244,11 +268,12 @@ class TaskWorker:
                 result = handler(task["payload"], task["checkpoint"], context)
             if not isinstance(result, dict):
                 raise TypeError("Task handlers must return a JSON object.")
-            control = context.control_status()
-            if control != "running":
-                context.checkpoint(context.checkpoint_data or {})
-                return True
-            task_manager.complete_task(task["id"], self.worker_id, result)
+            if context.completed_task is None:
+                control = context.control_status()
+                if control != "running":
+                    context.checkpoint(context.checkpoint_data or {})
+                    return True
+                task_manager.complete_task(task["id"], self.worker_id, result)
         except TaskInterrupted:
             # Checkpoint settled a pause/cancel request; do not overwrite that state.
             return True
