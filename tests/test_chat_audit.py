@@ -104,7 +104,26 @@ def test_research_chat_persists_audit_without_raw_question_or_answer(tmp_path, m
     _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(chat_research.experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(chat_research.experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(chat_research.web_sources, "discover_sources", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        chat_research.web_sources,
+        "discover_sources",
+        lambda *_args, **_kwargs: chat_research.web_sources.SourceDocumentList(
+            search_provider_diagnostics=[{
+                "provider": "DuckDuckGo",
+                "attempts": [{
+                    "variant": "primary", "endpoint_variant": "html",
+                    "error": "no_parseable_results", "private_url": "https://private.invalid/path",
+                }],
+                "parsed_result_count": 0, "accepted_result_count": 0,
+                "unique_result_count": 0, "duplicate_result_count": 0,
+            }],
+            fetch_diagnostics={
+                "candidate_count": 2, "attempted_count": 2, "fetched_count": 0,
+                "failure_counts": {"SourceFetchError": 2},
+                "private_query": "must not be persisted",
+            },
+        ),
+    )
     monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "The database answer is model-generated.")
 
     question = "How does a database query plan work?"
@@ -118,6 +137,19 @@ def test_research_chat_persists_audit_without_raw_question_or_answer(tmp_path, m
     assert row["query_sha256"] == hashlib.sha256(question.encode()).hexdigest()
     assert row["answer_sha256"] == hashlib.sha256(answer.encode()).hexdigest()
     assert row["review_status"] == "no_sources"
+    with db.learning_connection() as connection:
+        summary_row = connection.execute(
+            "SELECT review_summary_json FROM chat_research_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    summary = json.loads(summary_row["review_summary_json"])
+    diagnostics = summary["source_discovery"]
+    assert diagnostics["fetch"] == {
+        "candidate_count": 2, "attempted_count": 2, "fetched_count": 0,
+        "failure_counts": {"SourceFetchError": 2},
+    }
+    assert diagnostics["providers"][0]["attempts"][0]["error"] == "no_parseable_results"
+    assert "private.invalid" not in json.dumps(diagnostics)
+    assert "must not be persisted" not in json.dumps(diagnostics)
 
 
 def test_review_summary_preserves_conflict_url_pairs_without_raw_conflict_text():
