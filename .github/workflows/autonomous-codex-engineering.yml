@@ -65,6 +65,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          MANUAL_TASK: ${{ inputs.task_request }}
+          EVENT_NAME: ${{ github.event_name }}
         shell: pwsh
         run: |
           @'
@@ -137,7 +139,7 @@ jobs:
               encoding="utf-8",
           )
           request = {
-              "event": os.getenv("GITHUB_EVENT_NAME", ""),
+              "event": os.getenv("EVENT_NAME", ""),
               "manual_task": os.getenv("MANUAL_TASK", ""),
           }
           Path(".agent-request.json").write_text(
@@ -147,6 +149,14 @@ jobs:
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\capture_state.py"
           $env:MANUAL_TASK = "${{ inputs.task_request }}"
           python "$env:RUNNER_TEMP\capture_state.py"
+
+      - name: Install project dependencies for local test execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python --version
+          python -m venv .venv
+          .\\.venv\\Scripts\\python.exe -m pip install -e ".[dev]"
 
       - name: Prepare bounded engineering instructions
         shell: pwsh
