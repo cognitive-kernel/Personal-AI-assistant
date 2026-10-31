@@ -137,6 +137,19 @@ def test_same_origin_browser_and_local_nonbrowser_api_calls_remain_usable(monkey
     assert len(pause_calls) == 2
 
 
+def test_local_dashboard_responses_cannot_be_framed():
+    client = TestClient(
+        app,
+        client=("127.0.0.1", 54321),
+        base_url="http://127.0.0.1:8000",
+    )
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+
+
 def test_cross_site_api_reads_are_blocked_but_page_navigation_is_allowed():
     client = TestClient(
         app,
