@@ -16,6 +16,12 @@
 .topic-state{white-space:nowrap;font-weight:600;opacity:1}
 .topic>summary{scroll-margin-top:14px}
 
+/* Topic selection is a sibling of summary, never an interactive summary descendant. */
+.topic{position:relative}
+.topic>.topic-select{position:absolute;inset-inline-start:12px;top:14px;z-index:1}
+.topic>.topic-select input{margin:0}
+.topic>summary{padding-inline-start:34px}
+
 .parent-editor{padding:10px;border:1px dashed color-mix(in srgb,CanvasText 24%,transparent);border-radius:8px}
 .parent-editor-label{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap;width:100%}
 .parent-editor-label select{flex:1 1 240px}
