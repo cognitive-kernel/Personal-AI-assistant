@@ -113,6 +113,7 @@ def test_autonomous_engineering_routes_are_registered():
 
     assert "/autonomous-engineering" in page_paths
     assert "/api/autonomous-engineering/status" in api_paths
+    assert "/api/autonomous-engineering/progress" in api_paths
     assert "/api/autonomous-engineering/settings" in api_paths
     assert "/api/autonomous-engineering/dispatch" in api_paths
     assert "/api/autonomous-engineering/cancel" in api_paths
@@ -306,3 +307,81 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'id="progress-events"' in page
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
+
+
+def test_live_progress_uses_actual_github_validation_step(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_RUN_PROGRESS_CACHE", {"run_id": None, "at": 0.0, "value": None})
+    jobs = {
+        "jobs": [{
+            "name": "validate",
+            "status": "in_progress",
+            "steps": [
+                {"name": "Checkout", "status": "completed"},
+                {"name": "Apply patch", "status": "completed"},
+                {"name": "Install dependencies", "status": "in_progress"},
+                {"name": "Run tests", "status": "queued"},
+            ],
+        }]
+    }
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda command, timeout=8: subprocess.CompletedProcess(command, 0, json.dumps(jobs), ""),
+    )
+
+    result = agent._enrich_progress_from_github({
+        "run_id": "12345", "percent": 90, "status": "running",
+        "phase": "packaging", "activity": "handoff",
+    })
+
+    assert result["phase"] == "validation"
+    assert result["phase_label"] == "اعتبارسنجی مستقل روی GitHub"
+    assert result["percent"] == 94
+    assert result["activity"] == "Install dependencies"
+
+
+def test_live_progress_marks_all_successful_workflow_jobs_complete(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_RUN_PROGRESS_CACHE", {"run_id": None, "at": 0.0, "value": None})
+    jobs = {
+        "jobs": [
+            {"name": "codex", "status": "completed", "conclusion": "success", "steps": []},
+            {"name": "validate", "status": "completed", "conclusion": "success", "steps": []},
+            {"name": "open-draft-pr", "status": "completed", "conclusion": "success", "steps": []},
+        ]
+    }
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda command, timeout=8: subprocess.CompletedProcess(command, 0, json.dumps(jobs), ""),
+    )
+
+    result = agent._enrich_progress_from_github({"run_id": "12346", "percent": 98})
+
+    assert result["status"] == "completed"
+    assert result["percent"] == 100
+    assert result["phase"] == "complete"
+
+
+def test_codex_progress_plan_reports_completed_steps_without_raw_output(monkeypatch, tmp_path):
+    from scripts import autonomous_engineering_progress as writer
+
+    plan = tmp_path / ".agent-progress.json"
+    plan.write_text(json.dumps({
+        "schema_version": 1,
+        "plan": [
+            {"id": "a", "title": "Inspect backend", "status": "completed"},
+            {"id": "b", "title": "Implement fix", "status": "in_progress"},
+            {"id": "c", "title": "Run regression tests", "status": "pending"},
+        ],
+    }), encoding="utf-8")
+    monkeypatch.setattr(writer, "PLAN_FILE", plan)
+
+    completed, total, active = writer.plan_state()
+    activity = writer.codex_activity({
+        "type": "item.started",
+        "item": {"type": "command_execution", "command": "python -m pytest --secret-value hidden"},
+    })
+
+    assert (completed, total, active) == (1, 3, "Implement fix")
+    assert activity == "در حال اجرای ابزار python"
+    assert "hidden" not in activity
