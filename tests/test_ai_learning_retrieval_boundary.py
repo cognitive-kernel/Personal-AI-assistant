@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -63,6 +64,18 @@ def test_published_knowledge_is_retrievable_after_a_new_process(
     isolated_store, monkeypatch, tmp_path
 ):
     database_path = tmp_path / "ai_learning.db"
+
+    def distinct_embeddings(texts, model):
+        vectors = []
+        for text in texts:
+            digest = hashlib.sha256(text.encode("utf-8")).digest()
+            vectors.append([
+                1.0 if digest[index % len(digest)] & (1 << (index % 8)) else -1.0
+                for index in range(128)
+            ])
+        return vectors
+
+    monkeypatch.setattr(service, "ollama_embed", distinct_embeddings)
     monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
     monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
 
