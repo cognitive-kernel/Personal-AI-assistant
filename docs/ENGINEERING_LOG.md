@@ -155,3 +155,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added the agent destination to the main dashboard navigation and shared primary navigation to the standalone AI-learning and autonomous-engineering pages.
 - The workflow runs local Codex only on the labeled trusted-main self-hosted runner; candidate validation and draft-PR publication remain separate GitHub-hosted jobs.
 - Implementation and CI are in progress on `automation/codex-engineering-agent`. No test pass, runner installation, or target-host operation is claimed yet. The local runner must be registered and kept online by the repository owner.
+
+
+### Follow-up — live progress telemetry and scorecard history
+
+- Added a dedicated progress API and compact dashboard panel. The current cycle reports the active Codex plan item, completed/total plan steps, workflow phase, and progress percentage; later GitHub-hosted validation/publication stages are reconciled from the run's actual job and step states.
+- Codex JSONL events are reduced to bounded activity breadcrumbs. Raw command output, credentials, and model reasoning are not persisted or shown. The temporary `.agent-progress.json` plan is excluded from the candidate patch.
+- Added daily, weekly, and custom date-range SVG charts for the weighted engineering-completion and overall-acceptance scorecard metrics. The existing 2026-11-01 scorecard is the only historical baseline; new snapshots are recorded on worker-run dates, with no fabricated backfill.
+- Activity events and project score snapshots use separate bounded local files under `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`. A one-time ACL script grants access only to the dedicated Runner account, local application account, SYSTEM, and local administrators. The UI polls the small progress endpoint every five seconds; logs remain collapsed by default and no charting dependency is added.
+- Added API, scorecard parsing, plan-progress, GitHub step reconciliation, and compact UI regression tests. Exact-head CI and Windows ACL/runner verification remain pending; no operational telemetry is claimed until the shared directory is configured and a real workflow run reports events.
