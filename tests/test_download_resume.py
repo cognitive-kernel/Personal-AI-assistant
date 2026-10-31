@@ -522,6 +522,7 @@ def test_linux_verified_asset_helper_downloads_only_pinned_release_asset(tmp_pat
     }
     monkeypatch.setenv("OLLAMA_VERIFIED_RELEASE_ASSETS_JSON", json.dumps(manifest))
     monkeypatch.setenv("OLLAMA_VERIFIED_ASSET_DIR", str(tmp_path))
+    monkeypatch.setenv("OLLAMA_VERSION", tag.lstrip("v"))
     calls = []
 
     def fake_download(url_arg, destination, **kwargs):
@@ -542,6 +543,7 @@ def test_linux_verified_asset_helper_downloads_only_pinned_release_asset(tmp_pat
 
 def test_linux_verified_asset_helper_rejects_unpinned_or_untrusted_assets(tmp_path, monkeypatch):
     monkeypatch.setenv("OLLAMA_VERIFIED_ASSET_DIR", str(tmp_path))
+    monkeypatch.setenv("OLLAMA_VERSION", "0.40.13")
     monkeypatch.setenv(
         "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON",
         json.dumps({"tag": "v0.40.13", "assets": {}}),
@@ -566,6 +568,22 @@ def test_linux_verified_asset_helper_rejects_unpinned_or_untrusted_assets(tmp_pa
         }),
     )
     with pytest.raises(RuntimeError, match="does not match the official GitHub release"):
+        installer._download_ollama_asset_cli([asset_name])
+
+    monkeypatch.setenv(
+        "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON",
+        json.dumps({
+            "tag": "v0.40.13",
+            "assets": {
+                asset_name: {
+                    "url": f"https://github.com/ollama/ollama/releases/download/v0.40.13/{asset_name}",
+                    "sha256": "not-a-digest",
+                    "size": 10,
+                }
+            },
+        }),
+    )
+    with pytest.raises(RuntimeError, match="valid SHA-256 digest or size"):
         installer._download_ollama_asset_cli([asset_name])
 
 
