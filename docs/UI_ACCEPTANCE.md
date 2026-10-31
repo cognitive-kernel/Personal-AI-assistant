@@ -31,3 +31,7 @@
 Mark repository-level items complete only after the exact PR head CI passes. Browser automation does not replace manual accessibility review or target-host acceptance. Preserve existing API contracts and local data; do not enable remote provisioning or automatic deployment.
 
 - [x] User-selectable dark theme with OS preference fallback and locally persisted explicit choice; [PR #365](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/365) merged at `9702984f236e0c3fdefad16365e1127027e17b87`. Exact-head tests/Windows regressions, browser E2E, and dependency audit passed. Manual contrast and keyboard/screen-reader review remain separate gates.
+
+- [x] AI-learning course/topic/lesson review and reload persistence: \`test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist\` verifies topic approval, lesson review, publishing, and reconstruction of the published version after page reload using API state. This is mocked Chromium coverage, not live provider validation.
+- [x] Sandbox cancellation browser recovery: \`test_browser_sandbox_cancel_recovers_from_api_failure_and_settles_task\` verifies a failed cancellation request remains retryable, a second request succeeds, task polling reaches cancelled, and controls settle. The API is intercepted; real-Docker cancellation remains distinct.
+- Current Chromium E2E inventory: 41 independent test functions in \`tests/test_browser_e2e.py\`. Manual keyboard/screen-reader review, rendered-state contrast review, and target-host usability remain open.
