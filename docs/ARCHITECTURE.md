@@ -22,7 +22,7 @@
 - `app/task_manager.py`, `app/task_runtime.py`, `app/task_worker.py`: صف پایدار، lease/checkpoint و چرخهٔ اجرای وظایف؛ `TaskContext.complete_with_commit` برای هم‌ترازی اتمیک تغییر دامنه با موفقیت task.
 - `app/chat_research.py`, `app/research_planner.py`, `app/research_tasks.py`, `app/research_routes.py`, `app/web_sources.py`: برنامه‌ریزی و اجرای پژوهش، کشف/واکشی منابع عمومی و مسیرهای پژوهش.
 - `app/learning.py`, `app/learning_tasks.py`, `app/learning_review_adapters.py` و ماژول‌های مرتبط: یادگیری، ارزیابی، مرور فاصله‌دار، برنامهٔ درسی و مدیریت شواهد.
-- `app/learning_knowledge_graph.py`, `app/learning_knowledge_graph_tasks.py`, `app/learning_knowledge_graph_routes.py`: پیشنهاد و مرور روابط دانش؛ فقط یال‌های پذیرفته‌شده وارد context می‌شوند و commit نتیجهٔ task با تغییر یال در یک تراکنش انجام می‌شود.
+- `app/learning_knowledge_graph.py`, `app/learning_knowledge_graph_tasks.py`, `app/learning_knowledge_graph_routes.py`: پیشنهاد و مرور روابط دانش؛ فقط یال‌های پذیرفته‌شده وارد context می‌شوند و commit نتیجهٔ task با تغییر یال در یک تراکنش انجام می‌شود. مسیر نهایی pass/rejection در `app/knowledge_lifecycle.py` نیز تغییر وضعیت/پاک‌سازی نامزد را با موفقیت task اتمیک می‌کند.
 - `app/factual_knowledge.py`, `app/factual_source_checks.py`, `app/factual_semantic_review.py`, `app/factual_verification_tasks.py`: نگهداری دانش factual، بررسی منبع و مرور معنایی.
 - `app/cloud_resources.py`, `app/cloud_provider_adapters.py`, `app/cloud_resource_policy.py`, `app/cloud_resource_planner.py`: snapshot سهمیه، adapter ارائه‌دهنده و سیاست برنامه‌ریزی منابع ابری.
 - `app/experience_capture_consent.py`, `app/experience_tasks.py`, `app/experience_retrieval.py`, `app/experience_source_checks.py`: رضایت، ثبت، بازیابی و کنترل منبع تجربه.

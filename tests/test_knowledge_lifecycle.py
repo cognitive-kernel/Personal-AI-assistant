@@ -1,12 +1,14 @@
 import hashlib
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, knowledge_lifecycle
+from app import db, learning, knowledge_lifecycle, knowledge_lifecycle_tasks, task_manager
 from app.main import app
+from app.task_worker import TaskContext, TaskInterrupted
 
 
 @pytest.fixture
@@ -36,6 +38,76 @@ def _candidate(job_id: int, *, status: str = "awaiting_test") -> tuple[int, str]
              digest, json.dumps({"accepted": True}), status, "[]"),
         )
         return int(cursor.lastrowid), digest
+
+
+def _validation_candidate(job_title: str, content: str, urls: list[str]) -> tuple[dict[str, Any], int, str]:
+    job = learning.create_job(job_title)
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    with db.learning_connection() as connection:
+        connection.execute(
+            """INSERT INTO knowledge_items(topic, content, source_kind, version, status, job_id)
+               VALUES (?, ?, ?, ?, 'unverified', ?)""",
+            (job_title, content, "web_retrieved", 1, job["id"]),
+        )
+        candidate_id = int(connection.execute(
+            """INSERT INTO temporary_knowledge_candidates(
+                   job_id, topic, content, source_kind, source_urls_json,
+                   content_sha256, quality_report_json
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (job["id"], job_title, content, "web_retrieved",
+             json.dumps(urls), digest, json.dumps({"accepted": True})),
+        ).lastrowid)
+    return job, candidate_id, digest
+
+
+def _configure_candidate_review(monkeypatch, urls: list[str], texts: dict[str, str], verdict: str) -> None:
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda url, *_args, **_kwargs: SimpleNamespace(text=texts[url], title=url),
+    )
+    monkeypatch.setattr(
+        "app.ollama.list_models",
+        lambda: [
+            {"name": "reviewer-one", "digest": "digest-one"},
+            {"name": "reviewer-two", "digest": "digest-two"},
+        ],
+    )
+
+    def fake_chat(prompt, **kwargs):
+        request = json.loads(prompt)
+        rationale = (
+            "The central lesson claims are supported by both supplied independent sources."
+            if verdict == "supports"
+            else "The sources directly contradict the central lesson claim and its stated scope."
+        )
+        source_rationale = (
+            "This source directly supports the candidate's central claim and scope."
+            if verdict == "supports"
+            else "This source directly documents behavior incompatible with the candidate claim and scope."
+        )
+        return json.dumps({
+            "verdict": verdict,
+            "rationale": rationale,
+            "source_verdicts": [
+                {"url": source["url"], "verdict": verdict, "rationale": source_rationale}
+                for source in request["sources"]
+            ],
+        })
+
+    monkeypatch.setattr("app.ollama.chat", fake_chat)
+
+
+def _claim_validation_task(candidate_id: int, digest: str) -> tuple[dict[str, Any], str]:
+    task_manager.initialize_task_store()
+    task = task_manager.create_task(
+        knowledge_lifecycle_tasks.KNOWLEDGE_VALIDATE_TASK_TYPE,
+        {"candidate_id": candidate_id, "candidate_sha256": digest},
+    )
+    worker_id = f"candidate-validation-{task['id']}"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed["id"] == task["id"]
+    return task, worker_id
+
 
 
 def test_candidate_readiness_fails_closed_without_evidence(lifecycle_store):
@@ -232,6 +304,89 @@ def test_two_models_and_two_live_sources_allow_audited_promotion(lifecycle_store
     assert counts["source"] >= 2
     assert counts["ai_review"] == 2
     assert counts["test_review"] == 1
+
+
+
+@pytest.mark.parametrize("verdict", ["supports", "contradicts"])
+def test_candidate_validation_control_wins_before_final_domain_commit(
+    lifecycle_store, monkeypatch, verdict
+):
+    urls = ["https://alpha.example.test/guide", "https://beta.other.test/reference"]
+    texts = {
+        urls[0]: "Alpha source describes the mechanism, expected behavior, constraints, and version scope in detail.",
+        urls[1]: "Beta source independently documents the same mechanism, behavior, limitations, and version applicability.",
+    }
+    content = "A temporary lesson checked against two independent public sources."
+    job, candidate_id, digest = _validation_candidate("Atomic candidate validation", content, urls)
+    _configure_candidate_review(monkeypatch, urls, texts, verdict)
+    task, worker_id = _claim_validation_task(candidate_id, digest)
+
+    class CancelAtFinalCommitContext(TaskContext):
+        def complete_with_commit(self, checkpoint, operation):
+            task_manager.request_cancel(self.task_id)
+            return super().complete_with_commit(checkpoint, operation)
+
+    context = CancelAtFinalCommitContext(task["id"], worker_id)
+    with pytest.raises(TaskInterrupted, match="cancelled"):
+        knowledge_lifecycle_tasks.handle_validate_candidate(task["payload"], None, context)
+
+    saved_task = task_manager.get_task(task["id"])
+    assert saved_task["status"] == "cancelled"
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, content, promoted_knowledge_id FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        knowledge = connection.execute(
+            "SELECT status FROM knowledge_items WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        test_reviews = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=? AND review_kind='test_review'",
+            (candidate_id,),
+        ).fetchone()[0]
+        job_row = connection.execute(
+            "SELECT status FROM learning_jobs WHERE id=?",
+            (job["id"],),
+        ).fetchone()
+    assert candidate["status"] == "awaiting_test"
+    assert candidate["content"] == content
+    assert candidate["promoted_knowledge_id"] is None
+    assert knowledge["status"] == "unverified"
+    assert test_reviews == 0
+    assert job_row["status"] != "rejected"
+
+
+def test_candidate_validation_success_commits_task_and_candidate_together(lifecycle_store, monkeypatch):
+    urls = ["https://alpha.example.test/guide", "https://beta.other.test/reference"]
+    texts = {
+        urls[0]: "Alpha source describes the mechanism, expected behavior, constraints, and version scope in detail.",
+        urls[1]: "Beta source independently documents the same mechanism, behavior, limitations, and version applicability.",
+    }
+    content = "A temporary lesson checked against two independent public sources."
+    _job, candidate_id, digest = _validation_candidate("Successful atomic candidate validation", content, urls)
+    _configure_candidate_review(monkeypatch, urls, texts, "supports")
+    task, worker_id = _claim_validation_task(candidate_id, digest)
+    context = TaskContext(task["id"], worker_id)
+
+    result = knowledge_lifecycle_tasks.handle_validate_candidate(task["payload"], None, context)
+
+    saved_task = task_manager.get_task(task["id"])
+    assert saved_task["status"] == "succeeded"
+    assert context.completed_task is not None
+    assert saved_task["result"] == result
+    assert result["ready_for_promotion"] is True
+    with db.learning_connection() as connection:
+        candidate = connection.execute(
+            "SELECT status, test_results_json FROM temporary_knowledge_candidates WHERE id=?",
+            (candidate_id,),
+        ).fetchone()
+        test_reviews = connection.execute(
+            "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=? AND review_kind='test_review'",
+            (candidate_id,),
+        ).fetchone()[0]
+    assert candidate["status"] == "passed"
+    assert test_reviews == 1
 
 
 
