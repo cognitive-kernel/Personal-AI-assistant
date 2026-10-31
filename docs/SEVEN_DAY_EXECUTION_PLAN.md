@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Reviewed baseline before this documentation sync:** `main` after PR #666, commit `9308c1e8e8338a1aa52f3e562481bd308d938443` (documentation-only; application-code CI baseline remains `a23760805310154d83e47489eddf00fc9b91c7f6`)
+**Reviewed baseline:** `main` after PR #664 and #667, commit `6f601e8cc210419392bfbd1affb9590db978dd3a`; post-merge tests and browser E2E are pending, dependency audit passed.
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
