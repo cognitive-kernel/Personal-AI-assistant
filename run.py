@@ -650,9 +650,21 @@ def _download_ollama_asset_cli(arguments: list[str]) -> int:
     assets = release.get("assets") if isinstance(release, dict) else None
     if not isinstance(tag, str) or not _OLLAMA_RELEASE_TAG.fullmatch(tag) or not isinstance(assets, dict):
         raise RuntimeError("The pinned Ollama release manifest has an invalid structure.")
+    if os.environ.get("OLLAMA_VERSION") != tag.lstrip("v"):
+        raise RuntimeError("OLLAMA_VERSION does not match the pinned Ollama release tag.")
     asset = assets.get(asset_name)
     if not isinstance(asset, dict):
         raise RuntimeError(f"The pinned Ollama release does not contain {asset_name}.")
+    digest = asset.get("sha256")
+    asset_size = asset.get("size")
+    if (
+        not isinstance(digest, str)
+        or not re.fullmatch(r"[0-9a-fA-F]{64}", digest)
+        or isinstance(asset_size, bool)
+        or not isinstance(asset_size, int)
+        or not 1 <= asset_size <= 3_000_000_000
+    ):
+        raise RuntimeError("The pinned Ollama asset is missing a valid SHA-256 digest or size.")
     url = asset.get("url")
     expected_path = f"/ollama/ollama/releases/download/{tag}/{asset_name}"
     try:
