@@ -89,6 +89,8 @@ def test_ollama_policy_rejects_malformed_or_unsupported_urls(tmp_path, monkeypat
         "http://localhost:11434/api",
         "http://localhost:11434?token=unexpected",
         "http://localhost:11434#fragment",
+        "http://localhost:11434?",
+        "http://localhost:11434#",
     ],
 )
 def test_ollama_policy_rejects_non_base_urls(tmp_path, monkeypatch, url):
