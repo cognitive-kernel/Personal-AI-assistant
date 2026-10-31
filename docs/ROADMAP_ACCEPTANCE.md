@@ -190,3 +190,12 @@ Append evidence only after it has actually been produced.
 - Legacy title-only source rows are repaired only when the exact normalized title is found with a concrete URL in saved lesson/response content. Missing URLs are never inferred from a title or publisher; the UI labels these records as unavailable rather than rendering `127.0.0.1/null`.
 - Independent post-merge CI on the exact merge SHA passed: 1740 passed, 5 skipped in 180.24s; Windows storage regressions, dashboard smoke, dependency audit, generated-artifact validation, 78-file Markdown-link validation, import-cycle scan, deterministic lexical retrieval benchmark, and structural claim-to-test benchmark (10/10) all passed. [Tests workflow #41171335255](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41171335255).
 - Remaining acceptance limits are unchanged: this does not prove live ChatGPT DOM compatibility for every account/layout, source factual reliability, live-model answer quality, target-host operations, or independent security review. Those require separate evidence and are tracked by Issue #290 and Issue #52.
+
+
+## 2026-10-31 — TaskRuntime partial-thread recovery (PR #633)
+
+- PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) merged to `main` as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`.
+- Runtime activity and complete health are separate contracts: `is_running` means at least one managed thread remains alive; `is_healthy` means all configured worker threads and the optional maintenance thread are alive.
+- A partial restart stops and joins old threads before creating replacements. Failure to stop within the 10-second deadline is fail-closed; no overlapping replacement workers are started. ADR-012 records the decision and limits.
+- Independent post-merge CI on the exact merge SHA passed: 1742 passed/5 skipped in 138.58s; Windows storage regressions, dashboard smoke, dependency audit, generated-artifact checks, Markdown-link validation (79 files), import-cycle scan, lexical retrieval benchmark, and claim-to-test benchmark (10/10) passed. [Tests workflow #41172984426](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41172984426).
+- This does not prove multi-process orchestration or target-host crash/soak behavior; those remain separate operational acceptance gates.
