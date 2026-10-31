@@ -100,7 +100,7 @@ def test_language_adherence_ignores_urls_and_code_blocks():
         "fa",
     )
     assert result["passed"] is True
-    assert result["detected_language"] == "fa"
+    assert result["dominant_script"] == "arabic-script"
     assert result["latin_letter_count"] == len("SQLServer")
 
 
