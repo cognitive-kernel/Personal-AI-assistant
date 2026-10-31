@@ -161,6 +161,6 @@ def get_progress(
         "history": history,
         "events": _read_recent_events(),
         "available": bool(current or history),
-        "storage_configured": (_progress_dir() / "current.json").exists(),
+        "storage_configured": _progress_dir().is_dir(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
