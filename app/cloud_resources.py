@@ -532,7 +532,7 @@ def _safe_provider_failure_summary(exc: BaseException) -> str:
         if not isinstance(item, dict):
             continue
         provider = item.get("provider")
-        if provider not in _SAFE_SEARCH_PROVIDER_NAMES:
+        if not isinstance(provider, str) or provider not in _SAFE_SEARCH_PROVIDER_NAMES:
             continue
         attempts = item.get("attempts")
         if not isinstance(attempts, list):
@@ -541,7 +541,7 @@ def _safe_provider_failure_summary(exc: BaseException) -> str:
             if not isinstance(attempt, dict):
                 continue
             code = attempt.get("error")
-            if code in _SAFE_SEARCH_FAILURE_CODES:
+            if isinstance(code, str) and code in _SAFE_SEARCH_FAILURE_CODES:
                 summary = f"{provider}:{code}"
                 if summary not in summaries:
                     summaries.append(summary)
