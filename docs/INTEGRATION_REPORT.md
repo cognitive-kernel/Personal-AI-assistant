@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا در snapshot قبلی: `7a2cf05a7b3485e3b157e41860783fda2e76a846` (PR #627). به‌روزرسانی پس از آن: PR #631 روی `main` در `a6fe76168ab26fc73a7518a014c286e1bff8ff2c` ادغام شد؛ CI مستقل post-merge روی همین SHA موفق است: 1740 passed/5 skipped در 180.24 ثانیه، Windows storage، dashboard smoke، dependency audit، artifact/link/import checks و benchmarkها همگی موفق. جزئیات در بخش 1.1 و گزارش پذیرش ثبت شده‌اند.
+> commit مبنا: `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4` (main پس از PR #633). CI مستقل post-merge روی همین SHA موفق است: 1742 passed/5 skipped در 138.58 ثانیه، Windows storage، dashboard smoke، dependency audit، artifact/link/import checks و benchmarkها همگی موفق. جزئیات در بخش 1.1 و گزارش پذیرش ثبت شده‌اند.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -241,3 +241,10 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR [#631](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/631) fixed ChatGPT citation URL capture across conversation-turn/citation-card layouts and the Copy response fallback. Legacy title-only records are repaired only when an exact matching URL remains in saved content; missing URLs are explicitly unavailable and never inferred. Merged as `a6fe76168ab26fc73a7518a014c286e1bff8ff2c`; independent post-merge CI passed with 1740 passed/5 skipped, Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks.
 
 - The current tree count and CI evidence are repository snapshots, not a claim that every line of all 400 files has been manually reviewed. Remaining acceptance gates include live-model/human adjudication, independent security review (Issue #52), target-host startup/crash/soak, staging restore/rollback, and the dedicated real-Docker acceptance path.
+
+## 2026-10-31 — TaskRuntime partial-thread recovery (PR #633)
+
+- PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) separated runtime activity (`is_running`) from complete worker-set health (`is_healthy`). Application startup now reuses only healthy runtimes; shutdown still detects any live managed thread.
+- Restart of a partially alive runtime first requests stop and joins surviving threads against one bounded deadline. If an old thread remains alive, restart fails closed instead of starting a replacement with the same worker identity.
+- Regression tests cover an unexpectedly exited worker, an unexpectedly exited maintenance thread, and startup reconstruction of a partially alive runtime. ADR-012 records the lifecycle contract and limitations.
+- Merged as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`. Independent post-merge CI passed: 1742 passed/5 skipped; Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks passed.
