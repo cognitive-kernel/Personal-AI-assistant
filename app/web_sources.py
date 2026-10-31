@@ -142,7 +142,9 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         # DNS policy is enforced by the pinned transport at connection time.
         # Parsing here prevents redirects from escaping the URL policy without
         # performing a second, redundant DNS lookup.
-        _parse_public_url(newurl)
+        parsed = _parse_public_url(newurl)
+        if parsed.scheme.casefold() != "https":
+            raise SourceFetchError("HTTPS is required for research source redirects.")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
