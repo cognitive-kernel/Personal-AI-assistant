@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> آخرین commit بررسی‌شدهٔ `main`: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` پس از PR #669. PR #669 evaluator را به بررسی اختیاری زبان مورد انتظار و نسبت ۶۵٪ script غالب مجهز کرد؛ exact-head CI با 1807 passed/47 deselected، Windows storage، dashboard smoke، browser E2E، dependency audit، 90 Markdown files و benchmark 10/10 موفق شد. Post-merge CI روی SHA فعلی هنوز در حال اجرا/صف است.
+> آخرین commit بررسی‌شدهٔ `main`: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` پس از PR #669. PR #669 evaluator را به بررسی اختیاری زبان مورد انتظار و نسبت ۶۵٪ script غالب مجهز کرد؛ exact-head CI با 1807 passed/47 deselected، Windows storage، dashboard smoke، browser E2E، dependency audit، 90 Markdown files و benchmark 10/10 موفق شد. Post-merge CI روی SHA فعلی موفق شد: tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310)، browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276)، dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245).
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
