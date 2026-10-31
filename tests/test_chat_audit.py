@@ -177,7 +177,7 @@ def test_research_chat_retains_provider_diagnostics_when_search_fails(tmp_path, 
     _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(chat_research.experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(chat_research.experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
-    failure = web_sources.SourceFetchError("provider failure with private response details")
+    failure = chat_research.web_sources.SourceFetchError("provider failure with private response details")
     failure.provider_diagnostics = [{
         "provider": "Google",
         "attempts": [{
