@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-10-31  
 **Repository:** `cognitive-kernel/Personal-AI-assistant`  
-**Scored baseline:** `main` at `eec03b39e53399bb8ee21a15b9e8cb4930159c25`  
+**Scored baseline:** `main` at `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`  
 **Purpose:** Reproducible progress accounting required by `docs/MASTER_ENGINEERING_PROMPT.md`. This is a provisional engineering-progress measure, not a release-readiness or product-quality certification.
 
 ## Scoring method
@@ -27,7 +27,7 @@ A gate cannot be marked ACCEPTED solely because code exists or CI is green. If e
 | Repository and architecture audit | 12 | IN PROGRESS | 0.25 | 3.00 | Architecture map and module inventory exist; comprehensive risk-ranked audit and file/line coverage are not complete. |
 | Backend and API contracts | 10 | IN PROGRESS | 0.25 | 2.50 | Strict validation and API regressions exist; a complete endpoint-by-endpoint contract audit is not evidenced. |
 | Database and data integrity | 10 | AUTOMATED TESTED | 0.65 | 6.50 | Migration, restore, staging and Windows storage regression coverage exists; target-host migration evidence remains owner-reported/unverified. |
-| AI/LLM implementation and learning quality controls | 12 | AUTOMATED TESTED | 0.65 | 7.80 | Learning, retrieval, provenance, language and queue controls have automated coverage; live semantic quality and adjudication remain open. |
+| AI/LLM implementation and learning quality controls | 12 | CI VERIFIED | 0.75 | 9.00 | PR #669 added expected-language diagnostics and symmetric mixed-script regressions; exact-head tests, Windows storage, browser smoke/E2E and dependency audit passed. Live semantic quality and adjudication remain open. |
 | Persistent learning and feedback governance | 8 | CI VERIFIED | 0.75 | 6.00 | Published-only retrieval across a fresh process, feedback boundaries, and durable automatic follow-up have exact-head CI evidence; live quality remains open. |
 | Security implementation | 10 | CI VERIFIED | 0.75 | 7.50 | Loopback, URL, redirect/proxy, source egress, Origin/Fetch Metadata and anti-framing controls have CI evidence; independent review is a separate external gate. |
 | Frontend and functional UI parity | 10 | AUTOMATED TESTED | 0.65 | 6.50 | Chromium E2E covers major workflows and navigation; manual screen-reader, keyboard-only and rendered-state contrast reviews remain open. |
@@ -37,14 +37,14 @@ A gate cannot be marked ACCEPTED solely because code exists or CI is green. If e
 | Target-host startup, recovery, load/soak and rollback | 2 | BLOCKED — external | 0.00 | 0.00 | Requires the intended Windows host and operator-generated redacted evidence. |
 | Live Persian/English model evaluation and human adjudication | 1 | BLOCKED — human | 0.00 | 0.00 | Requires a pinned live model run and independent human scoring of the versioned evaluation set. |
 | Independent security review | 2 | BLOCKED — external | 0.00 | 0.00 | Issue #52 requires an independent reviewer; implementer CI cannot satisfy this gate. |
-| **Total** | **100** |  |  | **56.25** |  |
+| **Total** | **100** |  |  | **57.45** |  |
 
 ## Calculations
 
-- **Engineering completion:** repository-engineering points divided by repository-engineering weight. External-only gates (target-host, human adjudication, independent security review) are excluded from this denominator: `56.25 / 95 × 100 = 59.21%`.
-- **Overall acceptance progress:** all weighted points divided by 100, including external gates: `56.25 / 100 × 100 = 56.25%`.
+- **Engineering completion:** repository-engineering points divided by repository-engineering weight. External-only gates (target-host, human adjudication, independent security review) are excluded from this denominator: `57.45 / 95 × 100 = 60.47%`.
+- **Overall acceptance progress:** all weighted points divided by 100, including external gates: `57.45 / 100 × 100 = 57.45%`.
 
-These are **provisional, evidence-based progress scores** using the fixed stage factors above. The weights express project risk/prioritization, not statistical confidence. The score must be recalculated when a gate changes state, new evidence is accepted, or the scope/weights are revised. Do not interpret the score as a claim that 59.21% of source lines or features are complete.
+These are **provisional, evidence-based progress scores** using the fixed stage factors above. The weights express project risk/prioritization, not statistical confidence. The score must be recalculated when a gate changes state, new evidence is accepted, or the scope/weights are revised. Do not interpret the score as a claim that 60.47% of source lines or features are complete.
 
 ## Current exact-SHA evidence
 
@@ -61,3 +61,6 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 4. A deterministic or lexical benchmark is not proof of factual correctness or live-model quality.
 5. Keep the score below 100 while any required acceptance gate is blocked or unverified.
 6. Record changes to weights, status factors or scope with rationale and a dated engineering-log entry.
+
+- PR #669 exact head `bedf5f54bb55dd2cf64b267b9b5561436820ac61` passed **1,807 tests / 47 deselected**, Windows storage regressions, dashboard smoke, browser E2E, dependency audit, 90 Markdown files, import-cycle checks and benchmark 10/10; merged as `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830531) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830524) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830502).
+- Post-merge CI on `main` `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` is pending: tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310), browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276), dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245).
