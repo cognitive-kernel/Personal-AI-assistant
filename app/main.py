@@ -39,6 +39,7 @@ from .ai_learning.routes import router as ai_learning_router
 from .ai_learning import config as ai_learning_config, integration as ai_learning_integration
 from .ai_learning import browser_automation as ai_learning_browser_automation
 from .ai_learning.ui import router as ai_learning_ui_router
+from .autonomous_engineering import router as autonomous_engineering_router
 from .schema_migrations import UntrackedSchemaError
 
 @asynccontextmanager
@@ -77,6 +78,7 @@ app.include_router(knowledge_base_router)
 app.include_router(learning_capabilities_routes.router)
 app.include_router(ai_learning_router)
 app.include_router(ai_learning_ui_router)
+app.include_router(autonomous_engineering_router)
 app.include_router(storage_routes.router)
 
 logger = logging.getLogger("personal_ai_assistant.http")
@@ -261,6 +263,12 @@ async def add_local_security_headers(request, call_next):
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/autonomous-engineering", include_in_schema=False, dependencies=[Depends(require_loopback_client)])
+def autonomous_engineering_page() -> FileResponse:
+    """Serve the local autonomous engineering operations console."""
+    return FileResponse(STATIC_DIR / "autonomous-engineering.html", media_type="text/html")
 
 
 @app.get("/favicon.ico", include_in_schema=False)
