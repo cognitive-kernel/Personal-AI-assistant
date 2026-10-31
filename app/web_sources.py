@@ -437,13 +437,17 @@ def _normalize_search_results(
     seen: set[str] = set()
     for title, url in results:
         try:
-            parsed = _validate_public_url(url)
+            parsed = _parse_public_url(url)
         except SourceFetchError:
             continue
         # Research payloads, audit records, and citations require HTTPS. Reject
-        # HTTP search results here so they cannot consume the bounded result limit
-        # and later be discarded by chat_research._source_payload.
+        # HTTP search results before DNS resolution so they cannot consume the
+        # bounded result limit or incur an unnecessary lookup.
         if parsed.scheme.casefold() != "https":
+            continue
+        try:
+            _validated_public_addresses(parsed)
+        except SourceFetchError:
             continue
         hostname = (parsed.hostname or "").lower().rstrip(".")
         if any(hostname == host or hostname.endswith("." + host) for host in provider_hosts):
