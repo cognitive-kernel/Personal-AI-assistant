@@ -31,6 +31,19 @@ def store_dir() -> Path:
 
 
 
+def append_event(record: dict[str, Any]) -> None:
+    directory = store_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    events = directory / "events.jsonl"
+    if events.exists() and events.stat().st_size > 1024 * 1024:
+        retained = events.read_text(encoding="utf-8").splitlines()[-1000:]
+        temporary = directory / "events.jsonl.tmp"
+        temporary.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
+        temporary.replace(events)
+    with events.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def append_history(record: dict[str, Any]) -> None:
     directory = store_dir()
     directory.mkdir(parents=True, exist_ok=True)
@@ -52,7 +65,7 @@ def persist(record: dict[str, Any]) -> None:
         temporary = directory / "current.json.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(directory / "current.json")
-        append_history({"type": "progress_event", **payload})
+        append_event({"type": "progress_event", **payload})
     except OSError as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
 
