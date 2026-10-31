@@ -242,6 +242,14 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 
 - The current tree count and CI evidence are repository snapshots, not a claim that every line of all 400 files has been manually reviewed. Remaining acceptance gates include live-model/human adjudication, independent security review (Issue #52), target-host startup/crash/soak, staging restore/rollback, and the dedicated real-Docker acceptance path.
 
+## 2026-10-31 — Persistent AI-learning retrieval across process restart (PR #629)
+
+- PR [#629](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/629) adds a subprocess integration test for durable retrieval. The parent process creates an approved topic, publishes one reviewed content version, leaves a second version unpublished, and records the initial query-trace count.
+- A fresh Python interpreter then opens the same `AI_LEARNING_DB_PATH` and calls the production `integration.retrieve_context` adapter. The test asserts that the published version is returned, the draft is excluded, and the new process persists a query trace.
+- No Ollama call is required; deterministic fixture embeddings isolate duplicate detection. This is repository-level evidence for SQLite persistence and later-run retrieval, not evidence of live-model quality, factual correctness, or human adjudication.
+- Exact-head CI on `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` passed: 1738 passed/5 skipped, dashboard smoke, Windows storage regressions, and dependency audit. Post-merge CI on the PR #629 merge SHA was not yet verified at the time of that original report; current `main` post-merge evidence is recorded in the latest status header.
+- Existing tests continue to cover version history, unpublish/withdrawal, and the retrieval feature gate. Staging backup/restore/rollback, live-model answer quality, and human adjudication remain separate acceptance gates.
+
 ## 2026-10-31 — TaskRuntime partial-thread recovery (PR #633)
 
 - PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) separated runtime activity (`is_running`) from complete worker-set health (`is_healthy`). Application startup now reuses only healthy runtimes; shutdown still detects any live managed thread.
