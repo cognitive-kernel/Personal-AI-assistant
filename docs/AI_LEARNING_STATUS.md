@@ -43,9 +43,9 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین commit کد برنامه در `main` برابر `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` (پس از PR #642) است. آخرین مجموعهٔ کامل pytest روی head دقیق PR #642 یعنی `87d888490499c7f405f4a8798a17767837ded4df` **1752 passed, 5 skipped** بود؛ Windows storage، Chromium browser E2E و dependency audit نیز موفق شدند. این head فقط تست ناوبری داشبورد را اضافه می‌کند و post-merge CI روی SHA ادغام‌شده `c6a28ce` هنوز مستقلاً تأیید نشده است:
+آخرین commit مخزن در `main` برابر `1348ddd3a21b9ea7e987aff929700f44ee21fbb1` است؛ این commit فقط مستندات را تغییر می‌دهد و آخرین commit برنامه `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` است. آخرین مجموعهٔ کامل pytest روی head دقیق PR #644 یعنی `ba0ed1467826f8415a815fd3fde5da85713516af` **1752 passed, 5 skipped** بود؛ Windows storage، Chromium browser E2E و dependency audit نیز موفق شدند. این head بر کد `c6a28ce` مبتنی است و post-merge CI روی SHA مستندات `1348ddd` هنوز مستقلاً تأیید نشده است:
 
-- مجموعهٔ کامل pytest روی آخرین head دارای شواهد CI دقیق: **1752 passed, 5 skipped**. این اجرا روی head تستی PR #642 انجام شده و post-merge CI روی SHA `c6a28ce` هنوز تأیید نشده است؛ تست‌های skip‌شده به‌معنی پذیرش target-host یا اثبات اجرای زندهٔ provider نیستند.
+- مجموعهٔ کامل pytest روی آخرین head دارای شواهد CI دقیق: **1752 passed, 5 skipped** روی head PR #644 (تغییر مستندات فقط)؛ Windows storage، Chromium E2E، dependency audit، artifact/link/import checks و benchmarkها موفق شدند. post-merge CI روی `1348ddd` هنوز مستقلاً تأیید نشده است؛ تست‌های skip‌شده پذیرش target-host یا اجرای زندهٔ provider را اثبات نمی‌کنند.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
@@ -59,6 +59,7 @@
 3. هماهنگی مالکیت worker بین فرایندهای یک میزبان با lease/heartbeat و fencing در کد پیاده‌سازی و با آزمون رقابت فرایندی، انقضای lease، بازیابی و رد نوشتن مالک قدیمی پوشش داده شده است. پذیرش crash/soak روی میزبان هدف همچنان باز است؛ چندمیزبانه و network filesystem پشتیبانی نمی‌شوند.
 - اجرای موفق main پس از تغییرات صف/ارزیابی: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292998)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292937)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343293027).
 - آخرین CI مرتبط با قابلیت‌های AI-learning: PR #631 روی head دقیق `e280fb20458e09c8eb098d20734c57a8172842da` با 1740 passed و 5 skipped، Windows storage، Chromium dashboard smoke و dependency audit موفق شد؛ [tests #41170165292](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41170165292)، [browser E2E #41170165467](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41170165467)، [dependency audit #41170165290](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41170165290). PR #642 نیز CI کامل روی head خود را با 1752 passed/5 skipped گذراند، اما تغییر آن test-only است. هیچ‌یک از این شواهد جایگزین ورود واقعی به ChatGPT، بررسی منابع زنده یا پذیرش میزبان هدف نیستند.
+- PR #645 در حال رفع یک مرز شکست در queue reconciliation است: خطای enqueue یک job نباید jobهای بعدی را گرسنه نگه دارد؛ خطای query اولیه در startup نیز باید ثبت شود و به maintenance دوره‌ای واگذار شود. تست‌های regression برای هر دو مسیر افزوده شده‌اند؛ تا زمان تکمیل CI نتیجه‌ای ادعا نمی‌شود.
 - تست ورود واقعی به ChatGPT، تست با حساب کاربر، قطع برق/شبکه روی دستگاه مقصد، و سنجش کارایی با مدل embedding نصب‌شده، عمداً خارج از CI خودکارند و هنوز باید عملی انجام شوند.
 
 ### شواهد محلی ویندوز (2026-10-27)
