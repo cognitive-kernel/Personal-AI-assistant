@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-31  
-> آخرین commit شاخهٔ `main`: `6f601e8cc210419392bfbd1affb9590db978dd3a`. Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed.
+> آخرین commit شاخهٔ `main`: `eec03b39e53399bb8ee21a15b9e8cb4930159c25` (ادغام مستندات PR #668). Post-merge CI روی این SHA: dependency audit موفق؛ تست‌ها [#41215789440](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789440) و browser E2E [#41215789465](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789465) هنگام ثبت این وضعیت در حال اجرا بودند.
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** `main` اکنون روی `6f601e8cc210419392bfbd1affb9590db978dd3a` است؛ PR #664 و #667 ادغام شدند. Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
+**مبنای وضعیت:** PR #664 و #667 تغییرات مستندات و صف یادگیری را وارد main کردند؛ PR #668 نیز لاگ مهندسی و scorecard وزنی را اضافه کرد. CI پس از merge روی `eec03b39e53399bb8ee21a15b9e8cb4930159c25` در حال تکمیل است (dependency audit موفق؛ tests و browser E2E در حال اجرا). Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
