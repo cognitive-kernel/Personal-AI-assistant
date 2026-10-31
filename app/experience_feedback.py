@@ -11,8 +11,15 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+def _validate_experience_id(experience_id: Any) -> int:
+    if isinstance(experience_id, bool) or not isinstance(experience_id, int) or experience_id < 1:
+        raise ValueError("experience_id must be a positive integer.")
+    return experience_id
+
+
 def _require_experience_status(experience_id: int) -> str:
     """Read only the fields needed here, avoiding a dependency on app.experience."""
+    experience_id = _validate_experience_id(experience_id)
     init_databases()
     with learning_connection() as connection:
         row = connection.execute(
@@ -25,8 +32,9 @@ def _require_experience_status(experience_id: int) -> str:
 
 
 def set_feedback(experience_id: int, rating: int) -> dict[str, Any]:
-    if rating not in (-1, 1) or isinstance(rating, bool):
-        raise ValueError("Feedback rating must be -1 or 1.")
+    experience_id = _validate_experience_id(experience_id)
+    if isinstance(rating, bool) or not isinstance(rating, int) or rating not in (-1, 1):
+        raise ValueError("Feedback rating must be the integer -1 or 1.")
     if _require_experience_status(experience_id) != "verified":
         raise ValueError("Feedback can only be recorded for a verified experience.")
     updated_at = _now()
@@ -54,7 +62,12 @@ def get_feedback_map(experience_ids: list[int] | None = None) -> dict[int, dict[
                 "SELECT experience_id, rating, updated_at FROM learning_experience_feedback"
             ).fetchall()
         else:
-            ids = sorted({int(value) for value in experience_ids})
+            if not isinstance(experience_ids, list) or any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+                for value in experience_ids
+            ):
+                raise ValueError("experience_ids must be a list of positive integers.")
+            ids = sorted(set(experience_ids))
             if not ids:
                 return {}
             placeholders = ",".join("?" for _ in ids)
