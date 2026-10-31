@@ -507,6 +507,54 @@ def _update_run(
         connection.commit()
 
 
+_SAFE_SEARCH_PROVIDER_NAMES = frozenset({"DuckDuckGo", "Bing", "Google"})
+_SAFE_SEARCH_FAILURE_CODES = frozenset({
+    "SourceFetchError",
+    "challenge_page",
+    "challenge_or_consent_page",
+    "no_parseable_results",
+})
+
+
+def _safe_exception_type(exc: BaseException) -> str:
+    """Return only a bounded exception class name, never its free-form message."""
+    name = type(exc).__name__
+    return name if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", name) else "Exception"
+
+
+def _safe_provider_failure_summary(exc: BaseException) -> str:
+    """Extract only allowlisted provider/error codes from structured diagnostics."""
+    diagnostics = getattr(exc, "provider_diagnostics", None)
+    if not isinstance(diagnostics, list):
+        return ""
+    summaries: list[str] = []
+    for item in diagnostics[:3]:
+        if not isinstance(item, dict):
+            continue
+        provider = item.get("provider")
+        if provider not in _SAFE_SEARCH_PROVIDER_NAMES:
+            continue
+        attempts = item.get("attempts")
+        if not isinstance(attempts, list):
+            continue
+        for attempt in attempts[:8]:
+            if not isinstance(attempt, dict):
+                continue
+            code = attempt.get("error")
+            if code in _SAFE_SEARCH_FAILURE_CODES:
+                summary = f"{provider}:{code}"
+                if summary not in summaries:
+                    summaries.append(summary)
+    return ", ".join(summaries)
+
+
+def _safe_discovery_error(exc: BaseException) -> str:
+    """Build a persistable error from type and allowlisted diagnostics only."""
+    error_type = _safe_exception_type(exc)
+    provider_summary = _safe_provider_failure_summary(exc)
+    return f"{error_type}: {provider_summary}" if provider_summary else error_type
+
+
 def discover_resources(
     *,
     discover_fn: Callable[..., list[web_sources.SourceDocument]] | None = None,
@@ -538,12 +586,12 @@ def discover_resources(
                 if not isinstance(documents, list):
                     raise CloudResourceError("Source discovery returned an invalid result list.")
             except Exception as exc:
-                reason = " ".join(str(exc).split())[:180]
-                errors.append(f"query_{index + 1}:{type(exc).__name__}:{reason}")
+                safe_error = _safe_discovery_error(exc)
+                errors.append(f"query_{index + 1}:{safe_error}")
                 failed_query_result: dict[str, Any] = {
                     "query": query,
                     "result_count": 0,
-                    "error": f"{type(exc).__name__}: {reason}",
+                    "error": safe_error,
                 }
                 provider_diagnostics = getattr(exc, "provider_diagnostics", None)
                 if isinstance(provider_diagnostics, list):
@@ -609,9 +657,8 @@ def discover_resources(
                 try:
                     document = web_sources.fetch_public_document(source_url, title_hint)
                 except Exception as exc:
-                    reason = " ".join(str(exc).split())[:140]
                     host = urlparse(source_url).hostname or "unknown"
-                    fallback_errors.append(f"{host}:{type(exc).__name__}:{reason}")
+                    fallback_errors.append(f"{host}:{_safe_exception_type(exc)}")
                     continue
                 if not isinstance(document, web_sources.SourceDocument):
                     fallback_errors.append("invalid_source_document")
