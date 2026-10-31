@@ -37,6 +37,19 @@ def test_url_validation_blocks_private_or_unsupported_destinations(url):
         web_sources._validate_public_url(url)
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://@example.org/",
+        "https://:secret@example.org/",
+        "https://user:@example.org/",
+    ],
+)
+def test_url_parser_rejects_any_userinfo_component(url):
+    with pytest.raises(web_sources.SourceFetchError, match="credentials"):
+        web_sources._parse_public_url(url)
+
+
 def test_page_text_parser_ignores_script_navigation_and_styles():
     parser = web_sources._PageTextParser()
     parser.feed(
