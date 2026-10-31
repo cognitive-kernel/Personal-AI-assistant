@@ -157,7 +157,131 @@
       setMessage(error.message, "error");
     }
   });
-  $("refresh-agent").addEventListener("click", refresh);
-  refresh();
-  window.setInterval(refresh, 30000);
+
+  let progressBusy = false;
+  const svgNS = "http://www.w3.org/2000/svg";
+  function svgNode(name, attrs, text) {
+    const node = document.createElementNS(svgNS, name);
+    for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, String(value));
+    if (text !== undefined) node.textContent = String(text);
+    return node;
+  }
+  function renderProgressChart(points) {
+    const chart = $("progress-chart");
+    chart.replaceChildren();
+    const width = 800, height = 260, left = 58, right = 24, top = 18, bottom = 42;
+    const plotWidth = width - left - right, plotHeight = height - top - bottom;
+    for (const value of [0, 25, 50, 75, 100]) {
+      const y = top + plotHeight * (1 - value / 100);
+      chart.append(svgNode("line", {x1:left,y1:y,x2:width-right,y2:y,class:"chart-grid"}));
+      chart.append(svgNode("text", {x:left-12,y:y+4,"text-anchor":"end",class:"chart-axis"}, value + "%"));
+    }
+    if (!Array.isArray(points) || !points.length) {
+      $("progress-chart-caption").textContent = "برای این بازه هنوز snapshot ثبت‌شده‌ای وجود ندارد.";
+      return;
+    }
+    const xAt = index => points.length === 1 ? left + plotWidth / 2 : left + plotWidth * index / (points.length - 1);
+    const yAt = value => top + plotHeight * (1 - Math.max(0, Math.min(100, Number(value) || 0)) / 100);
+    const series = [
+      {key:"engineering_percent", className:"chart-engineering"},
+      {key:"overall_percent", className:"chart-overall"}
+    ];
+    for (const line of series) {
+      const valid = points.map((point,index) => ({point,index,value:Number(point[line.key])})).filter(item => Number.isFinite(item.value));
+      if (!valid.length) continue;
+      const d = valid.map((item,index) => (index ? "L" : "M") + xAt(item.index) + " " + yAt(item.value)).join(" ");
+      chart.append(svgNode("path",{d,class:line.className,fill:"none"}));
+      for (const item of valid) {
+        chart.append(svgNode("circle",{cx:xAt(item.index),cy:yAt(item.value),r:4,class:line.className}));
+      }
+    }
+    const labelStep = Math.max(1, Math.ceil(points.length / 6));
+    points.forEach((point,index) => {
+      if (index % labelStep !== 0 && index !== points.length - 1) return;
+      chart.append(svgNode("text",{x:xAt(index),y:height-12,"text-anchor":"middle",class:"chart-axis"},String(point.period || point.date || "")));
+    });
+    $("progress-chart-caption").textContent = points.length + " نقطهٔ ثبت‌شده؛ هر نقطه از scorecard ذخیره‌شده در همان تاریخ استخراج شده است.";
+  }
+  function renderProgressEvents(events) {
+    const host = $("progress-events");
+    host.replaceChildren();
+    if (!Array.isArray(events) || !events.length) {
+      const item = document.createElement("li");
+      item.className = "muted";
+      item.textContent = "هنوز رویدادی ثبت نشده است.";
+      host.append(item);
+      return;
+    }
+    for (const event of events.slice(-20).reverse()) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = String(event.phase_label || "فعالیت عامل");
+      const detail = document.createElement("span");
+      detail.textContent = String(event.activity || "");
+      const time = document.createElement("small");
+      const parsed = event.updated_at ? new Date(event.updated_at) : null;
+      time.textContent = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleString() : "";
+      item.append(title, detail, time);
+      host.append(item);
+    }
+  }
+  async function refreshProgress() {
+    if (progressBusy) return;
+    progressBusy = true;
+    const period = $("progress-period").value;
+    const params = new URLSearchParams({period});
+    if (period === "custom") {
+      const start = $("progress-start").value, end = $("progress-end").value;
+      if (!start || !end) {
+        $("progress-chart-caption").textContent = "تاریخ شروع و پایان را انتخاب کنید.";
+        progressBusy = false;
+        return;
+      }
+      params.set("start_date", start);
+      params.set("end_date", end);
+    }
+    try {
+      const data = await request("progress?" + params.toString());
+      const current = data.current;
+      if (current && Number.isFinite(Number(current.percent))) {
+        const percent = Math.max(0, Math.min(100, Number(current.percent)));
+        $("cycle-progress-value").textContent = percent + "%";
+        $("cycle-progress").value = percent;
+        $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + " · " + String(current.status || "");
+        $("current-activity").textContent = String(current.activity || "فعالیت جاری ثبت نشده است.");
+        $("plan-progress").textContent = Number(current.plan_total) > 0
+          ? "پیشرفت برنامه: " + Number(current.plan_completed || 0) + " از " + Number(current.plan_total) + " گام"
+          : "درصد مرحله‌ای؛ برنامهٔ جزئی عامل هنوز گزارش نشده است.";
+      } else {
+        $("cycle-progress-value").textContent = "—";
+        $("cycle-progress").value = 0;
+        $("current-phase").textContent = "چرخهٔ فعالی گزارش نشده است.";
+        $("current-activity").textContent = "با شروع اجرای عامل، فعالیت جاری در این قسمت نمایش داده می‌شود.";
+        $("plan-progress").textContent = "";
+      }
+      const snapshots = data.history || [];
+      const latest = snapshots.length ? snapshots[snapshots.length - 1] : null;
+      $("engineering-progress").textContent = latest && Number.isFinite(Number(latest.engineering_percent))
+        ? Number(latest.engineering_percent).toFixed(2) + "%" : "—";
+      $("overall-progress").textContent = latest && Number.isFinite(Number(latest.overall_percent))
+        ? Number(latest.overall_percent).toFixed(2) + "%" : "—";
+      $("progress-updated").textContent = current && current.updated_at
+        ? "آخرین رویداد: " + new Date(current.updated_at).toLocaleTimeString()
+        : "دادهٔ زنده هنوز ثبت نشده است";
+      renderProgressChart(snapshots);
+      renderProgressEvents(data.events);
+    } catch (error) {
+      $("progress-chart-caption").textContent = error.message || "دریافت دادهٔ پیشرفت ناموفق بود.";
+    } finally {
+      progressBusy = false;
+    }
+  }
+  $("progress-period").addEventListener("change", () => {
+    const custom = $("progress-period").value === "custom";
+    $("progress-start-wrap").hidden = !custom;
+    $("progress-end-wrap").hidden = !custom;
+    if (!custom) refreshProgress();
+  });
+  $("refresh-progress").addEventListener("click", refreshProgress);
+\n  $("refresh-agent").addEventListener("click", refresh);\n  refresh();\n  refreshProgress();\n  window.setInterval(refresh, 30000);\n  window.setInterval(refreshProgress, 5000);
 })();
