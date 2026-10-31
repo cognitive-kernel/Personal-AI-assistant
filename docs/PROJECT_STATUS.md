@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-31  
-> آخرین commit بررسی‌شده در `main`: `e6c40e2362d1082fb9631009a693db61cfc7fffc` (ادغام PR #617). CI روی head دقیق PR #617 یعنی `8c6aa6d68bafc95ee2509b59b9db786271e43c70` موفق بوده است: 1722 تست موفق و 5 مورد Skip، Windows storage regressions، browser E2E، dependency audit، artifact/link/import checks و benchmarkها. اجرای مستقل workflowهای post-merge روی SHA ادغام‌شده هنوز تأیید نشده و موفق فرض نمی‌شود.
+> آخرین commit بررسی‌شده در `main`: `7a2cf05a7b3485e3b157e41860783fda2e76a846` (ادغام PR #627). آخرین commit کد با post-merge CI کامل و موفق `6fdd176e81aa408ff17cc1c01ba66ec198f42240` است: 1737 تست موفق و 5 مورد Skip، Windows storage regressions، browser E2E و dependency audit همگی موفق. اجرای post-merge test روی commit مستنداتی `7a2cf05...` هنوز در حال اجراست.
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -173,3 +173,15 @@
 - لایهٔ دریافت سند نیز مستقل از مسیر جست‌وجو، URL غیر HTTPS را پیش از هر درخواست شبکه رد می‌کند؛ redirect از HTTPS به HTTP نیز برای جلوگیری از downgrade رد می‌شود. این رفتار با قرارداد citation، payload پژوهش و ثبت شواهد که HTTPS می‌خواهند یکسان است.
 - تست‌های regression انتخاب HTTPS پس از نتیجهٔ HTTP، رد HTTP پیش از transport و ثبت شمارنده‌های discovery را پوشش می‌دهند.
 - وضعیت: PR باز است و CI روی head نهایی باید کامل شود. این تغییر به‌تنهایی علت صفر بودن منابع در اجرای زندهٔ قبلی را اثبات نمی‌کند؛ فقط یک ناسازگاری قطعی در قرارداد URL را می‌بندد.
+
+
+## 2026-10-31 — امنیت منابع، ممیزی هوش مصنوعی و مستندات
+
+- PR #622: سیاست HTTPS برای کشف و دریافت منابع پژوهش یکسان شد؛ URL غیر HTTPS پیش از شبکه رد می‌شود و redirect از HTTPS به HTTP مجاز نیست. ادغام: `c46e136bb00e4dd56627e98990b80d27f73b93e9`. CI پس از ادغام: 1735 passed/5 skipped؛ Windows storage، dashboard smoke و dependency audit موفق.
+- PR #623: provenance نسخهٔ claim review، hash پرامپت، مدل و شمارنده‌های مجاز provider به audit پایدار و privacy-preserving اضافه شد؛ متن خام prompt/answer/claim/reason و source excerpt ذخیره نمی‌شود. ادغام: `1e46eff5aeafd1a470a421df6dbea81629a89266`; post-merge CI کامل موفق.
+- PR #624: وضعیت مستندات صف AI-learning و claim-review با پیاده‌سازی موجود همگام شد؛ lease بین‌فرایندی SQLite، fencing، محدودیت تک‌میزبان و claim-review-v2 ثبت شد. ادغام: `acb821df03c8c24c7b18cc912f3a1881964fb863`; exact-head و post-merge CI موفق.
+- PR #625: race در آزمون مرورگر پیشنهاد بهبود با انتظار برای پایان refresh فهرست اصلاح شد؛ رفتار runtime تغییر نکرد. ادغام: `04d325e244fc5b231d74ac7b700b571b4cf45283`; exact-head و post-merge CI موفق.
+- PR #626: middleware برنامه علاوه بر peer loopback، Host را به `localhost`، `127.0.0.1` و `::1` محدود می‌کند تا DNS-rebinding با Host مهاجم رد شود. این کنترل authentication یا دفاع کامل CSRF نیست. ادغام: `6fdd176e81aa408ff17cc1c01ba66ec198f42240`; post-merge tests 1737 passed/5 skipped و تمام workflowهای اصلی موفق.
+- PR #627: مستند امنیت نصب Ollama با پیاده‌سازی واقعی بررسی digest/size payload مرحله دوم Linux همگام شد؛ نصب زنده روی میزبان مقصد همچنان تأیید نشده است. ادغام: `7a2cf05a7b3485e3b157e41860783fda2e76a846`; exact-head CI موفق، post-merge test هنوز در حال اجراست.
+- آخرین شمارش درخت Git: 400 فایل، 285 فایل Python، 157 فایل تست Python، 71 سند Markdown زیر docs و 41 تابع مستقل Browser E2E. این شمارش جایگزین بازبینی خط‌به‌خط همهٔ فایل‌ها نیست.
+- دروازه‌های باز: اجرای زنده و human adjudication، بازبینی امنیتی مستقل Issue #52، پذیرش crash/soak روی میزبان هدف، staging restore/rollback، و آزمون واقعی Docker/target-host.
