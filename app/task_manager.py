@@ -426,7 +426,11 @@ def complete_task(
     checkpoint: dict[str, Any] | None = None,
     before_commit: Callable[[sqlite3.Connection], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
-    """Atomically commit an optional domain write and the task's terminal result."""
+    """Atomically commit an optional DB-only domain write and task terminal result.
+
+    before_commit must be short and synchronous, use only the supplied connection,
+    and must not perform network I/O or open another database connection.
+    """
     if not isinstance(result, dict):
         raise ValueError("result must be a JSON object.")
     if checkpoint is not None and not isinstance(checkpoint, dict):
