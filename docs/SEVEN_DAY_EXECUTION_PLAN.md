@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Baseline:** `main` after PR #663, commit `cc07ecb23bf0d922843b321eef0d45c0b1588d53`
+**Baseline:** `main` after PR #665, commit `a23760805310154d83e47489eddf00fc9b91c7f6`
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
@@ -263,3 +263,10 @@ Append dated entries with:
 - PR [#655](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/655) made query-feedback ratings strict integers at the service boundary; booleans, floats, and numeric strings are rejected while usefulness-only semantics remain unchanged. Exact-head tests, browser E2E, and dependency audit passed; merged as `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88`.
 - PR [#663](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/663) refreshed the AI-learning dashboard script cache and added a regression test for checkbox placement outside `summary`; merged as `cc07ecb23bf0d922843b321eef0d45c0b1588d53`.
 - Post-merge CI on current `main` passed: tests [#41208579786](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208579786) reported 1801 passed/5 skipped and Windows storage regressions passed; browser E2E [#41208579764](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208579764), dependency audit [#41208580010](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208580010), Markdown-link validation, and the deterministic benchmark 10/10 passed.
+
+
+### 2026-10-31 — Explicit environment-dependent test selection (PR #665)
+
+- PR [#665](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/665) corrected default-suite routing for environment-dependent tests and made browser E2E workflow selection explicit; missing workflow configuration now fails rather than silently skipping the browser suite.
+- Merged to `main` as `a23760805310154d83e47489eddf00fc9b91c7f6`. tests [#41210701513](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701513) reported 1800 passed and 47 deselected in the default suite; Windows storage regressions, browser E2E [#41210701574](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701574), Docker sandbox integration [#41210701572](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701572), and dependency audit [#41210701463](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701463) passed.
+- The default test job reports 47 deselected tests; dedicated Windows storage, browser E2E and Docker sandbox workflows were checked separately. Do not interpret the default-suite count as evidence that all environment-dependent scenarios were exercised on the owner's target machine.
