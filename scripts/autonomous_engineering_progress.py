@@ -30,6 +30,20 @@ def store_dir() -> Path:
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
+
+def append_history(record: dict[str, Any]) -> None:
+    directory = store_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    history = directory / "history.jsonl"
+    if history.exists() and history.stat().st_size > 8 * 1024 * 1024:
+        retained = history.read_text(encoding="utf-8").splitlines()[-5000:]
+        temporary = directory / "history.jsonl.tmp"
+        temporary.write_text("\\n".join(retained) + ("\\n" if retained else ""), encoding="utf-8")
+        temporary.replace(history)
+    with history.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\\n")
+
+
 def persist(record: dict[str, Any]) -> None:
     directory = store_dir()
     try:
@@ -167,7 +181,6 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
     directory = store_dir()
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        history = directory / "history.jsonl"
         record = {
             "type": "project_snapshot", "date": snapshot.group(1),
             "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
