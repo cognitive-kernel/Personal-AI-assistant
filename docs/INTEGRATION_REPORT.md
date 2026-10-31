@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `cc07ecb23bf0d922843b321eef0d45c0b1588d53` (main پس از PR #655). PRهای #653، #656 و #655 روی head دقیق خود tests، browser E2E و dependency audit را گذراندند. post-merge CI روی `54a1a60` برای PR #656 موفق شد؛ روی SHA فعلی main، tests [#41208579786](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208579786) با 1801 passed/5 skipped و Windows storage، browser E2E [#41208579764](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208579764)، dependency audit [#41208580010](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208580010)، Markdown-link validation و benchmark 10/10 موفق شدند.
+> commit مبنا: `cc07ecb23bf0d922843b321eef0d45c0b1588d53` (main پس از PR #663). PRهای #653، #656 و #655 روی head دقیق خود tests، browser E2E و dependency audit را گذراندند. post-merge CI روی `54a1a60` برای PR #656 موفق شد؛ روی SHA فعلی main، tests [#41208579786](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208579786) با 1801 passed/5 skipped و Windows storage، browser E2E [#41208579764](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208579764)، dependency audit [#41208580010](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41208580010)، Markdown-link validation و benchmark 10/10 موفق شدند.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -20,7 +20,7 @@
 - PR #646 در `6b19b84c78e17d8b5c28122964c7130dcf42f853` ادغام شد: Origin و Fetch Metadata برای تمام APIها، به‌همراه هدرهای ضد clickjacking. تست‌ها endpoint مخرب reset، API read، درخواست same-origin، کلاینت محلی بدون header، anti-framing و ناوبری عادی داشبورد را پوشش می‌دهند. exact-head و post-merge CI با 1758 passed/5 skipped، Windows storage، browser E2E، dependency audit، Markdown-link validation و benchmark 10/10 موفق شدند؛ issue #52 همچنان نیازمند ارزیابی مستقل است.
 - PR [#653](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/653): URL parserهای `web_sources` و `knowledge_base` userinfo خالی و پورت خالی را رد می‌کنند؛ malformed bracketed IPv6 به `SourceFetchError` تبدیل می‌شود تا normalization نتایج بعدی ادامه یابد. چهار فایل تغییر کردند و regressionهای parser اضافه شدند. ادغام: `2208465d3b185b2d1705eb94b37cde986d21532d`; exact-head tests، browser E2E و dependency audit موفق.
 - PR [#656](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/656): دروازهٔ evidence درس URL را به HTTPS بدون userinfo و فقط پورت پیش‌فرض محدود کرد و policy version را افزایش داد. ادغام: `54a1a60af284e27d9631e1b4284ffb0f7ebc02e4`; exact-head و post-merge tests، browser E2E و dependency audit موفق.
-- PR [#655](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/655): اعتبارسنجی rating در service layer اکنون type-strict است و `bool`، `float` و `str` را رد می‌کند؛ قرارداد usefulness-only feedback حفظ شد. ادغام: `cc07ecb23bf0d922843b321eef0d45c0b1588d53`; exact-head CI موفق. post-merge tests، browser E2E و dependency audit روی SHA فعلی main همگی موفق شدند.
+- PR [#655](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/655): اعتبارسنجی rating در service layer اکنون type-strict است و `bool`، `float` و `str` را رد می‌کند؛ قرارداد usefulness-only feedback حفظ شد. ادغام: `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88`; exact-head CI موفق شد.
 
 
 در snapshot مبنا، تغییرات زیر به‌صورت مرحله‌ای به `main` رسیده‌اند:
@@ -54,6 +54,8 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR [#524](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/524), merge `47a7a9cc77e59de516263118e3fcddcab37ddfed`: بازیابی سراسری runهای قطع‌شده و انتخاب FIFO از SQLite، بدون وابستگی به صفحه‌بندی داشبورد؛ بازیابی با شروع worker محلی سریالی شده است. test، dependency audit، browser E2E و Windows storage regressions روی head دقیق موفق شدند.
 - PR [#526](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/526), merge `d928404224771c343e4ed2495d378bc936632cd5`: بازیابی خودکار دوره‌های قطع‌شده در مسیر قدیمی browser learning، حفظ درس‌های تکمیل‌شده و dispatch صف‌شدهٔ تک‌نمونه‌ای؛ پس از شکست، برای جلوگیری از retry storm صف متوقف می‌ماند. test، dependency audit، browser E2E و Windows storage regressions روی head دقیق موفق شدند.
 - هر پنج PR روی head دقیق خود در CI آزمون‌ها، audit وابستگی‌ها و browser E2E را گذراندند؛ آزمون‌های storage ویندوز نیز در workflow مربوط موفق شدند. این شواهد خودکار جایگزین پذیرش میزبان هدف، اجرای زنده یا بررسی امنیتی مستقل نیستند.
+
+- PR [#663](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/663): cache-busting اسکریپت داشبورد یادگیری و regression test برای قرارگیری checkbox خارج از `summary`؛ ادغام: `cc07ecb23bf0d922843b321eef0d45c0b1588d53`. post-merge CI شامل 1801 passed/5 skipped، Windows storage، Chromium E2E و dependency audit موفق است.
 
 ## 2. نمای مخزن در commit مبنا
 
