@@ -1253,6 +1253,72 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
         browser.close()
 
 
+
+def test_dashboard_primary_navigation_is_keyboard_operable():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+    navigation_hrefs = [
+        "/page/storage-health-section",
+        "/",
+        "/page/learning-section",
+        "/ai-learning",
+        "/page/learning-paths-section",
+        "/page/knowledge-section",
+        "/page/task-manager-section",
+        "/page/experience-memory-section",
+        "/page/cloud-resources-section",
+        "/page/cloud-plan-section",
+        "/page/kaggle-quota-section",
+        "/page/oci-limits-section",
+        "/page/sandbox-section",
+        "/page/self-improvement-section",
+        "/page/settings-section",
+    ]
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.goto(base_url, wait_until="domcontentloaded")
+
+        # The skip link must move keyboard focus to the main landmark.
+        page.keyboard.press("Tab")
+        assert page.evaluate("document.activeElement.classList.contains('skip-link')")
+        page.keyboard.press("Enter")
+        assert page.evaluate("document.activeElement.id === 'main-content'")
+
+        # Every primary navigation destination must be reachable in DOM tab order.
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.keyboard.press("Tab")  # skip link
+        focused_hrefs = []
+        for href in navigation_hrefs:
+            page.keyboard.press("Tab")
+            focused_href = page.evaluate(
+                "document.activeElement instanceof HTMLAnchorElement ? "
+                "document.activeElement.getAttribute('href') : null"
+            )
+            focused_hrefs.append(focused_href)
+            assert focused_href == href, f"Keyboard focus skipped or reordered {href}"
+        assert focused_hrefs == navigation_hrefs
+
+        # Verify keyboard activation separately so the route change cannot truncate
+        # the tab-order assertions for destinations that follow the task manager.
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.keyboard.press("Tab")  # skip link
+        for href in navigation_hrefs:
+            page.keyboard.press("Tab")
+            if href == "/page/task-manager-section":
+                page.keyboard.press("Enter")
+                page.wait_for_url("**/page/task-manager-section", timeout=5000)
+                assert page.locator("#task-manager-section").is_visible()
+                assert page.locator(
+                    '.dashboard-nav a[aria-current="page"][href="/page/task-manager-section"]'
+                ).count() == 1
+                break
+        else:
+            raise AssertionError("Task manager navigation link was not reached by keyboard")
+        browser.close()
+
+
 def test_dashboard_theme_toggle_is_accessible_and_persists():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
