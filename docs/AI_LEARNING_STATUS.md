@@ -43,9 +43,9 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین commit کد برنامه در `main` برابر `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` (PR #641) است. آخرین اجرای کامل مستقلِ قابل‌تأیید مربوط به baseline قبلی `39a4d1e78d4cea3803a0e53e07d88933b8abe548` با 1750 passed/5 skipped است؛ CI پس از ادغام PR #641 در زمان بازبینی مستقلاً تأیید نشد:
+آخرین commit کد برنامه در `main` برابر `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` (پس از PR #642) است. آخرین مجموعهٔ کامل pytest روی head دقیق PR #642 یعنی `87d888490499c7f405f4a8798a17767837ded4df` **1752 passed, 5 skipped** بود؛ Windows storage، Chromium browser E2E و dependency audit نیز موفق شدند. این head فقط تست ناوبری داشبورد را اضافه می‌کند و post-merge CI روی SHA ادغام‌شده `c6a28ce` هنوز مستقلاً تأیید نشده است:
 
-- مجموعهٔ کامل pytest روی آخرین baseline دارای شواهد مستقل: **1750 passed, 5 skipped**. تست‌های skip‌شده به‌معنی پذیرش target-host یا اثبات اجرای زندهٔ provider نیستند؛ جزئیات هر skip باید از همان workflow دقیق خوانده شود و از روی شمار کل حدس زده نشود.
+- مجموعهٔ کامل pytest روی آخرین head دارای شواهد CI دقیق: **1752 passed, 5 skipped**. این اجرا روی head تستی PR #642 انجام شده و post-merge CI روی SHA `c6a28ce` هنوز تأیید نشده است؛ تست‌های skip‌شده به‌معنی پذیرش target-host یا اثبات اجرای زندهٔ provider نیستند.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
@@ -58,7 +58,7 @@
 2. ارزیابی انسانی کیفیت محتوای تولیدشده و کفایت منابع؛ benchmarkهای deterministic و smoke مرورگر جایگزین داوری انسانی یا آزمون زندهٔ ChatGPT نیستند.
 3. هماهنگی مالکیت worker بین فرایندهای یک میزبان با lease/heartbeat و fencing در کد پیاده‌سازی و با آزمون رقابت فرایندی، انقضای lease، بازیابی و رد نوشتن مالک قدیمی پوشش داده شده است. پذیرش crash/soak روی میزبان هدف همچنان باز است؛ چندمیزبانه و network filesystem پشتیبانی نمی‌شوند.
 - اجرای موفق main پس از تغییرات صف/ارزیابی: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292998)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292937)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343293027).
-- اجرای post-merge تأییدشده روی baseline قبلی `39a4d1e78d4cea3803a0e53e07d88933b8abe548`: [tests و Windows storage #41179455637](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41179455637)، [dashboard smoke #41179455593](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41179455593)، [dependency audit #41179455586](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41179455586). این شواهد فقط CI مخزن را نشان می‌دهند و پذیرش میزبان هدف، کیفیت مدل یا داوری انسانی را ثابت نمی‌کنند. برای commit جدید `8d7674c` هنوز post-merge CI تأیید نشده است.
+- آخرین CI مرتبط با قابلیت‌های AI-learning: PR #631 روی head دقیق `e280fb20458e09c8eb098d20734c57a8172842da` با 1740 passed و 5 skipped، Windows storage، Chromium dashboard smoke و dependency audit موفق شد؛ [tests #41170165292](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41170165292)، [browser E2E #41170165467](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41170165467)، [dependency audit #41170165290](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41170165290). PR #642 نیز CI کامل روی head خود را با 1752 passed/5 skipped گذراند، اما تغییر آن test-only است. هیچ‌یک از این شواهد جایگزین ورود واقعی به ChatGPT، بررسی منابع زنده یا پذیرش میزبان هدف نیستند.
 - تست ورود واقعی به ChatGPT، تست با حساب کاربر، قطع برق/شبکه روی دستگاه مقصد، و سنجش کارایی با مدل embedding نصب‌شده، عمداً خارج از CI خودکارند و هنوز باید عملی انجام شوند.
 
 ### شواهد محلی ویندوز (2026-10-27)
