@@ -154,6 +154,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           python --version
+          python -c "import sys; assert sys.version_info >= (3, 11)"
           python -m venv .venv
           .\\.venv\\Scripts\\python.exe -m pip install -e ".[dev]"
 
@@ -194,6 +195,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
           Get-Content -Raw "$env:RUNNER_TEMP\codex-prompt.md" |
             codex exec --oss --sandbox workspace-write --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --cd "$env:GITHUB_WORKSPACE" --output-last-message "$env:RUNNER_TEMP\codex-report.md" -
 
