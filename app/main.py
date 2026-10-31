@@ -193,7 +193,14 @@ _startup_storage_error: str | None = None
 
 
 def _maintain_learning_runtime() -> None:
-    """Run routine maintenance and recover/dispatch persisted browser-learning work safely."""
+    """Reconcile durable learning tasks and run routine learning/browser maintenance."""
+    try:
+        # Job creation and queue insertion use separate SQLite transactions. Startup
+        # reconciliation covers process crashes; periodic reconciliation also repairs
+        # an enqueue failure while the application remains running.
+        reconcile_queued_learning_tasks()
+    except Exception:
+        logger.exception("Queued learning-task reconciliation failed; it will retry next interval.")
     try:
         learning.maintain_factual_knowledge()
     except Exception:

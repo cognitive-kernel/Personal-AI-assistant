@@ -180,3 +180,51 @@ def test_startup_tracks_runtime_before_start_failure_for_lifespan_shutdown(monke
     assert constructed[0].stop_count == 1
     assert constructed[0].is_running is False
 
+
+def test_learning_runtime_maintenance_reconciles_missing_queue_tasks(tmp_path, monkeypatch):
+    from app import learning, task_manager
+
+    monkeypatch.setattr(main.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(main.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    job = learning.create_job("periodic learning queue recovery")
+    dedupe_key = f"learning-job:{job['id']}"
+    assert task_manager.get_task_by_dedupe_key(dedupe_key) is None
+
+    monkeypatch.setattr(main.learning, "maintain_factual_knowledge", lambda: 0)
+    monkeypatch.setattr(main.browser_learning, "recover_interrupted_courses", lambda: None)
+    monkeypatch.setattr(main.browser_learning, "dispatch_next_course", lambda: None)
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: False)
+
+    # The runtime maintenance cycle repairs the in-process enqueue failure window.
+    main._maintain_learning_runtime()
+    first = task_manager.get_task_by_dedupe_key(dedupe_key)
+    main._maintain_learning_runtime()
+    second = task_manager.get_task_by_dedupe_key(dedupe_key)
+
+    assert first is not None
+    assert first["task_type"] == "learning.run_job"
+    assert first["payload"] == {"job_id": job["id"]}
+    assert second["id"] == first["id"]
+
+
+def test_learning_runtime_maintenance_continues_after_reconciliation_failure(monkeypatch):
+    dispatched = []
+
+    def fail_reconciliation():
+        raise RuntimeError("injected reconciliation failure")
+
+    monkeypatch.setattr(main, "reconcile_queued_learning_tasks", fail_reconciliation)
+    monkeypatch.setattr(main.learning, "maintain_factual_knowledge", lambda: 0)
+    monkeypatch.setattr(main.browser_learning, "recover_interrupted_courses", lambda: None)
+    monkeypatch.setattr(
+        main.browser_learning, "dispatch_next_course", lambda: dispatched.append(True)
+    )
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: False)
+
+    # A failed queue repair is logged and retried next interval; it must not
+    # suppress unrelated maintenance work in this cycle.
+    main._maintain_learning_runtime()
+
+    assert dispatched == [True]
+
