@@ -5,7 +5,7 @@
 - [x] Local stylesheet and local-only dependencies (no CDN, remote fonts, or telemetry).
 - [x] Navigation anchors resolve to each primary dashboard workflow.
 - [x] Malformed percent-encoded dashboard routes fall back to the chat page without a JavaScript exception; covered by `tests/test_browser_e2e.py::test_dashboard_malformed_percent_encoded_route_falls_back_without_script_error`. Exact-head CI passed on [PR #550](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/550); merge-commit CI passed on `ec9f0e0e0c8d2b91f7c8ad176cdc93d72e5a86c6`.
-- [x] Persistent page navigation marks the active route with `aria-current=page`; browser coverage checks all 15 primary destinations and responsive navigation. See [Day 1 UI audit](UI_AUDIT_2026-10-30.md).
+- [x] Persistent page navigation marks the active route with `aria-current=page`; browser coverage checks all 16 primary destinations and responsive navigation. See [Day 1 UI audit](UI_AUDIT_2026-10-30.md).
 - [x] Skip-to-content link and visible focus styling.
 - [x] RTL page direction, text-direction handling for Persian/English, and LTR code/patch fields.
 - [x] Reduced-motion support and accessible names for controls, including dynamically generated learning review fields.
@@ -35,3 +35,6 @@ Mark repository-level items complete only after the exact PR head CI passes. Bro
 - [x] AI-learning course/topic/lesson review and reload persistence: \`test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist\` verifies topic approval, lesson review, publishing, and reconstruction of the published version after page reload using API state. This is mocked Chromium coverage, not live provider validation.
 - [x] Sandbox cancellation browser recovery: \`test_browser_sandbox_cancel_recovers_from_api_failure_and_settles_task\` verifies a failed cancellation request remains retryable, a second request succeeds, task polling reaches cancelled, and controls settle. The API is intercepted; real-Docker cancellation remains distinct.
 - Current Chromium E2E inventory: 42 independent test functions in \`tests/test_browser_e2e.py\`. Manual keyboard/screen-reader review, rendered-state contrast review, and target-host usability remain open.
+
+- [ ] Dedicated local autonomous-engineering console at `/autonomous-engineering`, with read-only Ollama/Codex/Runner/GitHub diagnostics and explicit workflow dispatch/cancel controls; exact-head unit and Chromium E2E evidence pending.
+- [ ] Shared primary navigation on the AI-learning and autonomous-engineering pages; automated navigation assertions added, CI evidence pending.
