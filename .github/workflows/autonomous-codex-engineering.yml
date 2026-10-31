@@ -3,14 +3,7 @@ name: Autonomous local Ollama engineering
 on:
   schedule:
     - cron: "17 * * * *"
-  push:
-    branches: [main]
   workflow_dispatch:
-    inputs:
-      task_request:
-        description: "Optional engineering task; treated as untrusted task data"
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -20,8 +13,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  schedule-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run_now: ${{ steps.gate.outputs.run_now }}
+    steps:
+      - name: Apply the configured daily execution frequency
+        id: gate
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUNS_PER_DAY: ${{ vars.AUTONOMOUS_ENGINEERING_RUNS_PER_DAY || '1' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "schedule" ]]; then
+            echo "run_now=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$RUNS_PER_DAY" in
+            1|2|3|4|6|8|12|24) ;;
+            *) echo "Invalid AUTONOMOUS_ENGINEERING_RUNS_PER_DAY; using safe default 1." ; RUNS_PER_DAY=1 ;;
+          esac
+          interval=$((24 / RUNS_PER_DAY))
+          hour=$((10#$(date -u +%H)))
+          if (( hour % interval == 0 )); then
+            echo "run_now=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_now=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping this hourly tick; configured frequency is $RUNS_PER_DAY run(s) per UTC day."
+          fi
+
   codex:
-    if: github.ref == 'refs/heads/main'
+    needs: schedule-gate
+    if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 75
     permissions:
@@ -33,7 +57,7 @@ jobs:
       base_sha: ${{ steps.base.outputs.sha }}
       patch_created: ${{ steps.capture.outputs.patch_created }}
     env:
-      AUTONOMOUS_ENGINEERING_MODEL: gpt-oss:20b
+      AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -65,7 +89,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          MANUAL_TASK: ${{ inputs.task_request }}
+          MANUAL_TASK: ""
           EVENT_NAME: ${{ github.event_name }}
         shell: pwsh
         run: |
