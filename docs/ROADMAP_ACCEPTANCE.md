@@ -179,5 +179,5 @@ Append evidence only after it has actually been produced.
 ## 2026-10-31 — Research source transport policy
 
 - [ ] Implementation in review: search-result normalization and document fetching both require HTTPS, matching the downstream chat payload/citation/evidence contract.
-- Automated regressions verify that HTTP candidates do not consume the result limit, HTTP documents are rejected before network access, and a later HTTPS candidate remains discoverable.
+- Automated regressions verify that HTTP candidates do not consume the result limit, HTTP documents are rejected before network access, HTTPS-to-HTTP redirects are rejected, and a later HTTPS candidate remains discoverable.
 - Do not interpret this isolated policy fix as proof that live source discovery is fully reliable; provider availability, fetch success, source relevance, and claim support remain separate quality gates.
