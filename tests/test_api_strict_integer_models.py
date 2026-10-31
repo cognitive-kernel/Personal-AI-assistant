@@ -19,6 +19,7 @@ from app.ai_learning.routes import (
     TopicOrder,
 )
 from app.experience_routes import (
+    ExperienceFeedbackRequest,
     ExperienceTestRunRequest,
     HypothesisProposalRequest,
     RetainedKnowledgeHypothesisRequest,
@@ -43,6 +44,8 @@ _CASES = [
     (TopicOrder, {}, "topic_ids", [1]),
     (TopicDecision, {"decision": "approve"}, "topic_ids", [1]),
     (QueryFeedback, {"rating": 1}, "query_trace_id", 1),
+    (QueryFeedback, {"query_trace_id": 1}, "rating", 1),
+    (ExperienceFeedbackRequest, {}, "rating", -1),
     (HypothesisProposalRequest, {"topic": "topic", "problem": "problem"}, "max_candidates", 1),
     (RetainedKnowledgeHypothesisRequest, {"problem": "problem", "max_candidates": 1}, "knowledge_id", 1),
     (RetainedKnowledgeHypothesisRequest, {"knowledge_id": 1, "problem": "problem"}, "max_candidates", 1),
