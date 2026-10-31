@@ -4,6 +4,8 @@
   const message = $("agent-message");
   const dispatchButton = $("dispatch-agent");
   const cancelButton = $("cancel-agent");
+  const saveButton = $("save-agent-settings");
+  const settingsForm = $("agent-settings-form");
   const labels = {
     ollama: $("ollama-state"), model: $("model-state"), codex: $("codex-state"),
     runner: $("runner-state"), github: $("github-state")
@@ -13,6 +15,21 @@
     message.dataset.kind = kind || "";
   }
   function stateText(ok) { return ok ? "آماده" : "نیازمند راه‌اندازی"; }
+  function renderModels(models, selectedModel) {
+    const select = $("ollama-model");
+    if (document.activeElement === select) return;
+    const names = Array.isArray(models) ? models.filter(name => typeof name === "string") : [];
+    if (!names.includes("gpt-oss:20b")) names.unshift("gpt-oss:20b");
+    if (selectedModel && !names.includes(selectedModel)) names.unshift(selectedModel);
+    select.replaceChildren();
+    for (const name of [...new Set(names)]) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name + (name === "gpt-oss:20b" ? " (پیش‌فرض)" : "");
+      select.append(option);
+    }
+    select.value = selectedModel || "gpt-oss:20b";
+  }
   function renderRuns(runs) {
     const host = $("recent-runs");
     host.replaceChildren();
@@ -44,7 +61,7 @@
   }
   async function request(path, options) {
     const response = await fetch("/api/autonomous-engineering/" + path, {
-      headers: {"Accept": "application/json", ...(options && options.headers || {})},
+      headers: {"Accept": "application/json", ...(options && options.body ? {"Content-Type": "application/json"} : {}), ...(options && options.headers || {})},
       ...(options || {})
     });
     let payload = {};
@@ -60,7 +77,12 @@
       labels.ollama.textContent = stateText(checks.ollama_online);
       $("ollama-detail").textContent = checks.ollama_online ? "پاسخ از 127.0.0.1:11434 دریافت شد." : "سرویس محلی در دسترس نیست.";
       labels.model.textContent = stateText(checks.model_installed);
-      $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "نامشخص");
+      $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "نامشخص") +
+        (checks.model_installed ? "" : "؛ نصب نشده است. برای نصب: ollama pull " + String(data.model || ""));
+      renderModels(data.models, data.model);
+      if (document.activeElement !== $("runs-per-day")) {
+        $("runs-per-day").value = String(data.runs_per_day || 1);
+      }
       labels.codex.textContent = stateText(checks.codex_installed);
       $("codex-detail").textContent = data.codex && data.codex.version ? data.codex.version : "Codex CLI پیدا نشد.";
       labels.runner.textContent = stateText(checks.runner_running);
@@ -90,6 +112,27 @@
       $("refresh-agent").disabled = false;
     }
   }
+  settingsForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    saveButton.disabled = true;
+    const customModel = $("custom-model").value.trim();
+    const model = customModel || $("ollama-model").value;
+    const runsPerDay = Number($("runs-per-day").value);
+    setMessage("در حال ذخیرهٔ مدل و تعداد اجرا در تنظیمات مخزن GitHub…");
+    try {
+      const result = await request("settings", {
+        method: "POST",
+        body: JSON.stringify({model, runs_per_day: runsPerDay})
+      });
+      $("custom-model").value = "";
+      setMessage(result.message || "تنظیمات ذخیره شد.", "success");
+      await refresh();
+    } catch (error) {
+      setMessage(error.message, "error");
+    } finally {
+      saveButton.disabled = false;
+    }
+  });
   dispatchButton.addEventListener("click", async () => {
     dispatchButton.disabled = true;
     setMessage("در حال ارسال درخواست اجرای Workflow به GitHub…");
