@@ -513,6 +513,18 @@ def test_redirect_handler_rejects_unsafe_url_policy_before_transport():
         )
 
 
+def test_redirect_handler_rejects_https_downgrade_before_transport():
+    handler = web_sources._SafeRedirectHandler()
+    request = urllib.request.Request("https://public.example/docs")
+    with pytest.raises(
+        web_sources.SourceFetchError,
+        match="HTTPS is required for research source redirects",
+    ):
+        handler.redirect_request(
+            request, None, 302, "Found", {}, "http://public.example/insecure"
+        )
+
+
 def test_pinned_resolver_rejects_private_redirect_target():
     with pytest.raises(web_sources.SourceFetchError):
         web_sources._resolve_public_ip("http://169.254.169.254/latest/meta-data/")
