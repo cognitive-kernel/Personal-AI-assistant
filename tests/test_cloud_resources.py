@@ -38,6 +38,7 @@ def _document(url="https://compute.example.org/free-tier", title="Free GPU compu
 def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
     document = _document()
+    sensitive_detail = "https://private.invalid/search?token=do-not-persist"
     diagnostics = [
         {
             "provider": "Google",
@@ -53,7 +54,15 @@ def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatc
             "accepted_result_count": 3,
             "unique_result_count": 2,
             "duplicate_result_count": 1,
-        }
+        },
+        {
+            "provider": "Google",
+            "attempts": [{
+                "variant": sensitive_detail,
+                "endpoint_variant": sensitive_detail,
+                "error": sensitive_detail,
+            }],
+        },
     ]
     documents = web_sources.SourceDocumentList(
         [document], search_provider_diagnostics=diagnostics
@@ -66,7 +75,18 @@ def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatc
     latest = cloud_resources.latest_discovery_run()
 
     assert report["status"] == "completed"
-    assert latest["query_results"][0]["provider_diagnostics"] == diagnostics
+    assert latest["query_results"][0]["provider_diagnostics"] == [
+        diagnostics[0],
+        {
+            "provider": "Google",
+            "attempts": [{
+                "variant": "unknown",
+                "endpoint_variant": "unknown",
+                "error": "other_error",
+            }],
+        },
+    ]
+    assert sensitive_detail not in str(latest["query_results"])
 
 
 def test_discovery_scope_is_broader_but_has_explicit_bounds():
