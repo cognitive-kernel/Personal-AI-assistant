@@ -52,7 +52,7 @@ def test_feedback_can_be_changed_without_duplicate_rows(isolated_store):
 
 @pytest.mark.parametrize(
     ("trace_id", "rating", "comment"),
-    [(0, 1, ""), (1, 0, ""), (1, True, ""), (1, -1, "x" * 1001)],
+    [(0, 1, ""), (1, 0, ""), (1, True, ""), (1, 1.0, ""), (1, -1.0, ""), (1, "1", ""), (1, -1, "x" * 1001)],
 )
 def test_feedback_rejects_invalid_values(isolated_store, trace_id, rating, comment):
     with pytest.raises(ValueError):
