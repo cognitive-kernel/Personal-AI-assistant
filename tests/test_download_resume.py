@@ -313,7 +313,7 @@ def test_download_rejects_content_larger_than_official_asset_size(tmp_path, monk
 
 def test_latest_ollama_release_requires_official_asset_digest_and_origin(monkeypatch):
     tag = "v0.40.13"
-    names = ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip")
+    names = ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip", "ollama-linux-amd64.tar.zst", "ollama-linux-amd64-rocm.tar.zst")
     assets = [
         {
             "name": name,
@@ -355,6 +355,8 @@ def test_latest_ollama_release_requires_official_asset_digest_and_origin(monkeyp
     assert result["tag"] == tag
     assert result["assets"]["OllamaSetup.exe"]["sha256"] == "2" * 64
     assert result["assets"]["OllamaSetup.exe"]["size"] == 101
+    assert result["assets"]["ollama-linux-amd64.tar.zst"]["sha256"] == "4" * 64
+    assert result["assets"]["ollama-linux-amd64.tar.zst"]["size"] == 103
     assert captured["request"].full_url == installer._OLLAMA_RELEASE_API
     assert captured["timeout"] == 15
     assert captured["read_limit"] == 2 * 1024 * 1024 + 1
@@ -431,13 +433,21 @@ def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeyp
                 "url": "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh",
                 "sha256": "a" * 64,
                 "size": 15902,
-            }
+            },
+            "ollama-linux-amd64.tar.zst": {
+                "url": "https://github.com/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+                "sha256": "b" * 64,
+                "size": 123456,
+            },
         },
     }
     calls = []
     find_results = iter([None, "/usr/bin/ollama"])
 
+    verified_installer_path = tmp_path / "ollama-install-verified.sh"
     monkeypatch.setattr(installer.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(installer.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(installer, "_patch_linux_install_script", lambda _path: verified_installer_path)
     monkeypatch.setattr(installer, "_find_ollama", lambda: next(find_results))
     monkeypatch.setattr(installer, "_latest_ollama_release_assets", lambda: release)
     monkeypatch.setattr(
@@ -464,8 +474,103 @@ def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeyp
     installer._ensure_ollama()
 
     install_call = next(item for item in calls if isinstance(item[0], list))
-    assert install_call[0] == ["sh", str(installer_path)]
+    assert install_call[0] == ["sh", str(verified_installer_path)]
     assert install_call[1]["OLLAMA_VERSION"] == "0.40.13"
+    assert install_call[1]["OLLAMA_VERIFIED_ASSET_DIR"].endswith("ollama-release-assets")
+    assert install_call[1]["OLLAMA_VERIFIED_PYTHON"] == installer.sys.executable
+    pinned = json.loads(install_call[1]["OLLAMA_VERIFIED_RELEASE_ASSETS_JSON"])
+    assert pinned["tag"] == "v0.40.13"
+    assert "ollama-linux-amd64.tar.zst" in pinned["assets"]
     download_call = next(item for item in calls if isinstance(item[0], str))
     assert download_call[2]["expected_sha256"] == "a" * 64
     assert download_call[2]["expected_size"] == 15902
+
+def test_linux_installer_patch_replaces_second_stage_curl_with_verified_helper(tmp_path):
+    original = tmp_path / "ollama-install.sh"
+    original.write_text(
+        "download_and_extract() {\\n"
+        "    curl --fail --show-error https://ollama.com/download/ollama-linux-amd64.tar.zst | zstd -d | tar -xf -\\n"
+        "}\\n\\n"
+        "for BINDIR in /usr/local/bin /usr/bin /bin; do\\n"
+        "    echo ready\\n"
+        "done\\n",
+        encoding="utf-8",
+    )
+
+    patched = installer._patch_linux_install_script(original)
+    text = patched.read_text(encoding="utf-8")
+    start = text.index("download_and_extract() {")
+    end = text.index("\\n}\\n\\nfor BINDIR in", start)
+    function = text[start:end]
+
+    assert "curl" not in function
+    assert "--download-ollama-asset" in function
+    assert "OLLAMA_VERIFIED_ASSET_DIR" in function
+    assert "zstd -d --stdout" in function
+    assert "curl --fail --show-error" in original.read_text(encoding="utf-8")
+
+
+def test_linux_verified_asset_helper_downloads_only_pinned_release_asset(tmp_path, monkeypatch):
+    tag = "v0.40.13"
+    asset_name = "ollama-linux-amd64.tar.zst"
+    url = f"https://github.com/ollama/ollama/releases/download/{tag}/{asset_name}"
+    manifest = {
+        "tag": tag,
+        "assets": {
+            asset_name: {"url": url, "sha256": "c" * 64, "size": 4567}
+        },
+    }
+    monkeypatch.setenv("OLLAMA_VERIFIED_RELEASE_ASSETS_JSON", json.dumps(manifest))
+    monkeypatch.setenv("OLLAMA_VERIFIED_ASSET_DIR", str(tmp_path))
+    calls = []
+
+    def fake_download(url_arg, destination, **kwargs):
+        calls.append((url_arg, destination, kwargs))
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"verified payload")
+        return destination
+
+    monkeypatch.setattr(installer, "_download_once", fake_download)
+
+    assert installer._download_ollama_asset_cli([asset_name]) == 0
+    assert calls[0][0] == url
+    assert calls[0][1] == tmp_path / asset_name
+    assert calls[0][2]["expected_sha256"] == "c" * 64
+    assert calls[0][2]["expected_size"] == 4567
+    assert isinstance(calls[0][2]["opener"], urllib.request.OpenerDirector)
+
+
+def test_linux_verified_asset_helper_rejects_unpinned_or_untrusted_assets(tmp_path, monkeypatch):
+    monkeypatch.setenv("OLLAMA_VERIFIED_ASSET_DIR", str(tmp_path))
+    monkeypatch.setenv(
+        "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON",
+        json.dumps({"tag": "v0.40.13", "assets": {}}),
+    )
+    with pytest.raises(ValueError, match="exact Linux"):
+        installer._download_ollama_asset_cli(["../install.sh"])
+    with pytest.raises(RuntimeError, match="does not contain"):
+        installer._download_ollama_asset_cli(["ollama-linux-amd64.tar.zst"])
+
+    asset_name = "ollama-linux-amd64.tar.zst"
+    monkeypatch.setenv(
+        "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON",
+        json.dumps({
+            "tag": "v0.40.13",
+            "assets": {
+                asset_name: {
+                    "url": "https://evil.example/ollama-linux-amd64.tar.zst",
+                    "sha256": "a" * 64,
+                    "size": 10,
+                }
+            },
+        }),
+    )
+    with pytest.raises(RuntimeError, match="does not match the official GitHub release"):
+        installer._download_ollama_asset_cli([asset_name])
+
+
+def test_linux_installer_patch_fails_closed_when_upstream_function_changes(tmp_path):
+    original = tmp_path / "changed-install.sh"
+    original.write_text("download_assets() { echo changed; }\\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="unknown|ناشناخته"):
+        installer._patch_linux_install_script(original)
