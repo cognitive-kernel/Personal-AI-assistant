@@ -3,21 +3,25 @@ name: Autonomous Codex Engineering
 on:
   schedule:
     - cron: "17 */6 * * *"
+  push:
+    branches: [main]
   workflow_dispatch:
-  issues:
-    types: [labeled]
+    inputs:
+      task_request:
+        description: "Optional engineering task; treated as untrusted task data"
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: codex-engineering-${{ github.event_name }}-${{ github.event.issue.number || github.run_id }}
+  group: codex-engineering-${{ github.event_name }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
   codex:
-    if: ${{ github.event_name != 'issues' || github.event.label.name == 'agent-ready' }}
-    runs-on: ubuntu-latest
+        runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
@@ -48,10 +52,7 @@ jobs:
       - name: Save event context as untrusted task data
         env:
           EVENT_NAME: ${{ github.event_name }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
+          MANUAL_TASK: ${{ inputs.task_request }}
         run: |
           python - <<'PY'
           import json
@@ -60,10 +61,7 @@ jobs:
 
           payload = {
               "event": os.environ.get("EVENT_NAME", ""),
-              "issue_number": os.environ.get("ISSUE_NUMBER", ""),
-              "issue_title": os.environ.get("ISSUE_TITLE", ""),
-              "issue_body": os.environ.get("ISSUE_BODY", ""),
-              "issue_url": os.environ.get("ISSUE_URL", ""),
+              "manual_task": os.environ.get("MANUAL_TASK", ""),
           }
           Path(".agent-request.json").write_text(
               json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
