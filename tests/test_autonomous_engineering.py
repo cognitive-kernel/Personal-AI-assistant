@@ -385,3 +385,24 @@ def test_codex_progress_plan_reports_completed_steps_without_raw_output(monkeypa
     assert (completed, total, active) == (1, 3, "Implement fix")
     assert activity == "در حال اجرای ابزار python"
     assert "hidden" not in activity
+
+
+def test_live_progress_reports_queued_github_validation_phase(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_RUN_PROGRESS_CACHE", {"run_id": None, "at": 0.0, "value": None})
+    jobs = {
+        "jobs": [
+            {"name": "codex", "status": "completed", "conclusion": "success", "steps": []},
+            {"name": "validate", "status": "queued", "conclusion": None, "steps": []},
+        ]
+    }
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda command, timeout=8: subprocess.CompletedProcess(command, 0, json.dumps(jobs), ""),
+    )
+
+    result = agent._enrich_progress_from_github({"run_id": "12347", "percent": 90})
+
+    assert result["phase"] == "validation"
+    assert result["percent"] == 92
+    assert result["status"] == "queued"
