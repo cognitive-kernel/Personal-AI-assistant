@@ -259,6 +259,21 @@ def test_task_cursor_pagination_is_stable_and_validated(tmp_path, monkeypatch):
         assert third.json()["has_more"] is False
         invalid = client.get("/api/tasks", params={"cursor": "not-a-cursor"})
         assert invalid.status_code == 422
+
+        # bool and float compare equal to integer 1 in Python; cursor versions
+        # must nevertheless be represented by a real JSON integer.
+        import base64
+        import json
+
+        for invalid_version in (True, 1.0):
+            raw_cursor = json.dumps(
+                {"v": invalid_version, "p": 0, "i": 1},
+                separators=(",", ":"),
+            ).encode("ascii")
+            cursor = base64.urlsafe_b64encode(raw_cursor).decode("ascii").rstrip("=")
+            response = client.get("/api/tasks", params={"cursor": cursor})
+            assert response.status_code == 422
+
         too_large = client.get("/api/tasks", params={"limit": 101})
         assert too_large.status_code == 422
 
