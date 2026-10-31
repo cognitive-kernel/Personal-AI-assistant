@@ -12,13 +12,35 @@ def test_non_loopback_peers_cannot_access_ui_or_api():
 
 
 def test_loopback_and_in_process_test_clients_remain_usable():
-    loopback = TestClient(app, client=("127.0.0.1", 54321))
+    loopback = TestClient(
+        app, client=("127.0.0.1", 54321), base_url="http://127.0.0.1"
+    )
     assert loopback.get("/").status_code == 200
 
-    # The in-process ASGI test transport uses a synthetic peer name rather than
-    # a socket IP; real network clients cannot choose request.client.host.
+    # The in-process ASGI test transport uses a synthetic peer name and Host;
+    # real network clients cannot choose request.client.host.
     test_client = TestClient(app)
     assert test_client.get("/").status_code == 200
+
+
+def test_dns_rebinding_and_nonlocal_host_headers_cannot_access_local_app():
+    client = TestClient(app, client=("127.0.0.1", 54321))
+    for host in (
+        "attacker.example",
+        "localhost.evil",
+        "127.0.0.1.attacker.example",
+        "localhost.",
+    ):
+        response = client.get("/api/health", headers={"host": host})
+        assert response.status_code == 403, host
+        assert response.json()["detail"] == "This application is available from localhost only."
+
+
+def test_supported_loopback_host_headers_remain_usable():
+    client = TestClient(app, client=("127.0.0.1", 54321))
+    for host in ("127.0.0.1:8000", "localhost:8000", "[::1]:8000"):
+        response = client.get("/api/health", headers={"host": host})
+        assert response.status_code == 200, host
 
 
 
