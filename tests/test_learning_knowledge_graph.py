@@ -192,6 +192,7 @@ def test_graph_review_honors_pause_after_source_fetch_before_model_calls(graph_s
         "app.learning_review_adapters.list_reviewers",
         lambda *_args, **_kwargs: pytest.fail("Reviewers must not be resolved after pause."),
     )
+    monkeypatch.setattr("app.ollama.list_models", lambda: pytest.fail("Models must not be listed after pause."))
 
     class InterruptingContext:
         def checkpoint(self, value):
