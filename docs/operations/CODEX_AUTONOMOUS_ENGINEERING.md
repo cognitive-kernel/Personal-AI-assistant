@@ -80,7 +80,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
    ```
 
-10. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When all readiness checks pass, use **اجرای یک چرخهٔ مهندسی** or start the workflow from GitHub Actions.
+11. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When all readiness checks pass, use **اجرای یک چرخهٔ مهندسی** or start the workflow from GitHub Actions.
 
 ## Workflow behavior
 
