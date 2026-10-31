@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-10-31  
 **Repository:** `cognitive-kernel/Personal-AI-assistant`  
-**Scored baseline:** `main` at `6f601e8cc210419392bfbd1affb9590db978dd3a`  
+**Scored baseline:** `main` at `eec03b39e53399bb8ee21a15b9e8cb4930159c25`  
 **Purpose:** Reproducible progress accounting required by `docs/MASTER_ENGINEERING_PROMPT.md`. This is a provisional engineering-progress measure, not a release-readiness or product-quality certification.
 
 ## Scoring method
@@ -33,24 +33,25 @@ A gate cannot be marked ACCEPTED solely because code exists or CI is green. If e
 | Frontend and functional UI parity | 10 | AUTOMATED TESTED | 0.65 | 6.50 | Chromium E2E covers major workflows and navigation; manual screen-reader, keyboard-only and rendered-state contrast reviews remain open. |
 | Test infrastructure and supply chain | 8 | CI VERIFIED | 0.75 | 6.00 | Exact-head and post-merge test, Windows storage, browser E2E, dependency audit and deterministic benchmark workflows passed on PR #664/#667; current main post-merge CI passed. |
 | Performance and reliability engineering | 8 | AUTOMATED TESTED | 0.65 | 5.20 | Durable queues, leases, retry/recovery regressions and deterministic benchmarks exist; target-host soak/load/crash evidence is not available. |
-| Documentation, developer and operations artifacts | 7 | IMPLEMENTED | 0.50 | 3.50 | Architecture, operations, acceptance and continuity documentation exist; continuity-log PR #668 is open and operator runbooks still need target-host rehearsal. |
+| Documentation, developer and operations artifacts | 7 | CI VERIFIED | 0.75 | 5.25 | PR #668 merged the durable continuity log, weighted scorecard and synchronized status/acceptance documents; exact-head tests, Windows storage, browser smoke/E2E and dependency audit passed. Operator runbooks still need target-host rehearsal. |
 | Target-host startup, recovery, load/soak and rollback | 2 | BLOCKED — external | 0.00 | 0.00 | Requires the intended Windows host and operator-generated redacted evidence. |
 | Live Persian/English model evaluation and human adjudication | 1 | BLOCKED — human | 0.00 | 0.00 | Requires a pinned live model run and independent human scoring of the versioned evaluation set. |
 | Independent security review | 2 | BLOCKED — external | 0.00 | 0.00 | Issue #52 requires an independent reviewer; implementer CI cannot satisfy this gate. |
-| **Total** | **100** |  |  | **54.50** |  |
+| **Total** | **100** |  |  | **56.25** |  |
 
 ## Calculations
 
-- **Engineering completion:** repository-engineering points divided by repository-engineering weight. External-only gates (target-host, human adjudication, independent security review) are excluded from this denominator: `54.50 / 95 × 100 = 57.37%`.
-- **Overall acceptance progress:** all weighted points divided by 100, including external gates: `54.50 / 100 × 100 = 54.50%`.
+- **Engineering completion:** repository-engineering points divided by repository-engineering weight. External-only gates (target-host, human adjudication, independent security review) are excluded from this denominator: `56.25 / 95 × 100 = 59.21%`.
+- **Overall acceptance progress:** all weighted points divided by 100, including external gates: `56.25 / 100 × 100 = 56.25%`.
 
-These are **provisional, evidence-based progress scores** using the fixed stage factors above. The weights express project risk/prioritization, not statistical confidence. The score must be recalculated when a gate changes state, new evidence is accepted, or the scope/weights are revised. Do not interpret the score as a claim that 57.37% of source lines or features are complete.
+These are **provisional, evidence-based progress scores** using the fixed stage factors above. The weights express project risk/prioritization, not statistical confidence. The score must be recalculated when a gate changes state, new evidence is accepted, or the scope/weights are revised. Do not interpret the score as a claim that 59.21% of source lines or features are complete.
 
 ## Current exact-SHA evidence
 
 - PR #664 exact head `19a95d93702d6281bdf6ae065a309a9b133de746`: 1,800 passed / 47 deselected; Windows storage, Chromium dashboard smoke, dependency audit, 88 Markdown files, import-cycle checks and benchmark 10/10 passed. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570053) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570102) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570079).
 - PR #667 exact head `810fe450668ff6c3e0e5b74c286533abb32dfb55`: 1,801 passed / 47 deselected; Windows storage, Chromium browser E2E, dependency audit, 87 Markdown files and benchmark 10/10 passed. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765586) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765242) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765399).
-- On scored `main` `6f601e8cc210419392bfbd1affb9590db978dd3a`, Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed.
+- PR #668 exact head `0bcd2a93bbf4516f180ac9fc3d8c647380545ade` passed tests, Windows storage regressions, dashboard smoke, browser E2E and dependency audit; merged as `eec03b39e53399bb8ee21a15b9e8cb4930159c25`. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673355) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673417) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673381).
+- On scored `main` `eec03b39e53399bb8ee21a15b9e8cb4930159c25`, dependency audit [#41215789470](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789470) passed; tests [#41215789440](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789440) and browser E2E [#41215789465](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789465) were in progress at this snapshot.
 
 ## Rules against score inflation
 
