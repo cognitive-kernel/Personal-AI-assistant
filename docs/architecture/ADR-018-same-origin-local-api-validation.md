@@ -15,6 +15,7 @@ The dashboard intentionally has no login because it is a local-first application
 - When an `Origin` header is present, require an exact match of scheme, hostname, and effective port with the request URL. Reject `null`, malformed origins, credentials, paths, queries, fragments, invalid ports, and origin mismatches.
 - Preserve local non-browser clients that omit both Origin and Fetch Metadata headers. The existing loopback peer check still applies.
 - Apply the policy to API routes, not ordinary dashboard navigation or static assets. Do not add permissive CORS behavior.
+- Set `X-Frame-Options: DENY` and `Content-Security-Policy: frame-ancestors 'none'` on all responses so an attacker cannot clickjack the local dashboard inside a cross-origin frame.
 
 ## Consequences
 
