@@ -221,7 +221,9 @@ class _SearchResultParser(HTMLParser):
             if parsed.hostname and parsed.hostname.lower().endswith("duckduckgo.com"):
                 redirected = urllib.parse.parse_qs(parsed.query).get("uddg", [])
                 if redirected:
-                    href = urllib.parse.unquote(redirected[0])
+                    # parse_qs already decodes the outer redirect parameter. A second
+                    # unquote would corrupt percent-encoded characters in the target URL.
+                    href = redirected[0]
             if title and href:
                 self.results.append((title, href))
             self._active_href = None
