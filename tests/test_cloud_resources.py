@@ -374,6 +374,8 @@ def test_discovery_rejects_irrelevant_search_results(tmp_path, monkeypatch):
     "url",
     [
         "https://@compute.example.org/free-cloud-server",
+        "https://:secret@compute.example.org/free-cloud-server",
+        "https://user:@compute.example.org/free-cloud-server",
         "https://compute.example.org:/free-cloud-server",
         "https://compute.example.org:",
         "https://compute.example.org:not-a-port/free-cloud-server",
