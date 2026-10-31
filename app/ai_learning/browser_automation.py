@@ -1245,97 +1245,56 @@ def _continue_lessons(
     selected_topic_ids: list[int] | None = None,
     force_retry: bool = False,
 ) -> None:
-    """Capture lessons sequentially, keeping every browser prompt bounded to one topic."""
-    global _ACTIVE_RUN_ID
+    """Persist the complete approved follow-up batch before any lesson browser work."""
     _ensure_process_identity()
-    # Never approve topics as a side effect of background learning. Approval is a
-    # deliberate dashboard action so users can review the outline before lesson capture.
-    pending_ids = list(dict.fromkeys(int(item) for item in selected_topic_ids or []))
-    while True:
-        _assert_worker_lease()
-        if service.get_learning_control()["paused"] or cancel_event.is_set():
-            _log_event("lesson_followup_paused", course_id=course_id)
-            return
-        course = service.get_course(course_id)
-        topics = course.get("topics", [])
-        if selected_topic_ids is None:
-            eligible = [
-                int(topic["id"]) for topic in topics
-                if topic.get("approval_status") == "approved"
-                and topic.get("processing_status") != "paused"
-                and int(topic.get("lesson_content_ready_count") or 0) == 0
-            ]
-            if not eligible:
-                return
-            topic_id = eligible[0]
-        else:
-            # Explicit selections must not silently expand to every approved topic.
-            eligible_by_id = {int(topic["id"]): topic for topic in topics}
-            while pending_ids:
-                candidate_id = pending_ids.pop(0)
-                topic = eligible_by_id.get(candidate_id)
-                if topic is None or topic.get("approval_status") != "approved" or topic.get("processing_status") == "paused":
-                    continue
-                if not force_retry and int(topic.get("lesson_content_ready_count") or 0) > 0:
-                    continue
-                topic_id = candidate_id
-                break
-            else:
-                return
-        topic_ids = [topic_id]
-        request_key = (
-            f"playwright-lessons-{course_id}-{topic_id}-"
-            f"{'retry' if force_retry else 'selected'}-{int(time.time())}"
-        )
-        _assert_worker_lease()
-        run = service.create_run(
-            course_id, run_type="lesson", topic_ids=topic_ids,
-            selection_mode="selected", request_key=request_key, force_retry=force_retry,
-        )
-        run_id = int(run["id"])
-        service.start_run(run_id, **_worker_lease_kwargs())
-        with _LOCK:
-            previous_active_run_id = _ACTIVE_RUN_ID
-            _ACTIVE_RUN_ID = run_id
-            _CANCEL_EVENTS[run_id] = cancel_event
-        try:
-            def save_followup_partial(text: str) -> dict[str, Any]:
-                _assert_worker_lease()
-                return service.save_run_partial_response(run_id, text, **_worker_lease_kwargs())
+    if cancel_event.is_set() or service.get_learning_control()["paused"]:
+        _log_event("lesson_followup_paused", course_id=course_id)
+        return
 
-            answer = _capture_with_automatic_retry(
-                run["prompt_text"], cancel_event,
-                save_followup_partial,
-                run_id=run_id, phase="lesson_followup",
-            )
-            _assert_worker_lease()
-            result = service.complete_run(run_id, answer, **_worker_lease_kwargs())
-        except BrowserAutomationError as exc:
-            if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
-                return
-            if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup", **_worker_lease_kwargs())
-                return
-            service.mark_run_needs_user_action(run_id, exc.code, str(exc), exc.partial_response, **_worker_lease_kwargs())
-            return
-        except Exception as exc:
-            if _WORKER_LEASE_EPOCH is not None and not service.owns_worker_lease(_WORKER_OWNER, _WORKER_LEASE_EPOCH):
-                return
-            if cancel_event.is_set() or service.get_learning_control()["paused"]:
-                service.requeue_run_for_resume(run_id, "manual_stop_during_lesson_followup", **_worker_lease_kwargs())
-                return
-            service.mark_run_needs_user_action(
-                run_id, "lesson_batch_failed", f"خطا در پردازش سرفصل: {str(exc)[:700]}",
-                **_worker_lease_kwargs(),
-            )
-            return
-        finally:
-            with _LOCK:
-                _CANCEL_EVENTS.pop(run_id, None)
-                if _ACTIVE_RUN_ID == run_id:
-                    _ACTIVE_RUN_ID = previous_active_run_id
-        if result.get("status") != "succeeded":
-            return
+    course = service.get_course(course_id)
+    topics = course.get("topics", [])
+    if selected_topic_ids is None:
+        eligible_ids = [
+            int(topic["id"]) for topic in topics
+            if topic.get("approval_status") == "approved"
+            and topic.get("processing_status") != "paused"
+            and int(topic.get("lesson_content_ready_count") or 0) == 0
+        ]
+    else:
+        topics_by_id = {int(topic["id"]): topic for topic in topics}
+        eligible_ids = []
+        for topic_id in dict.fromkeys(int(item) for item in selected_topic_ids):
+            topic = topics_by_id.get(topic_id)
+            if (
+                topic is None
+                or topic.get("approval_status") != "approved"
+                or topic.get("processing_status") == "paused"
+            ):
+                continue
+            if not force_retry and int(topic.get("lesson_content_ready_count") or 0) > 0:
+                continue
+            eligible_ids.append(topic_id)
+
+    if not eligible_ids:
+        _log_event("lesson_followup_no_eligible_topics", course_id=course_id)
+        return
+
+    # Use the same durable per-topic FIFO queue as the dashboard batch endpoint.
+    # This ensures a failed topic, provider cooldown, or process restart cannot
+    # discard the topics that have not reached the browser yet.
+    _assert_worker_lease()
+    request_key = f"playwright-followup-{course_id}-{uuid.uuid4().hex}"
+    queued = start_lesson_run(
+        course_id, eligible_ids, request_key, force_retry=force_retry
+    )
+    _log_event(
+        "lesson_followup_batch_enqueued",
+        course_id=course_id,
+        topic_ids=eligible_ids,
+        queued_topic_count=int(queued.get("queued_topic_count") or 0),
+        first_run_id=queued.get("run_id"),
+        dispatch_status=queued.get("status"),
+    )
 
 
 def _schedule_transient_retry(
