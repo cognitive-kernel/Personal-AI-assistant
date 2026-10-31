@@ -164,6 +164,8 @@ def restore_databases(
     if not isinstance(manifest, dict):
         raise BackupRestoreError("Unsupported backup manifest format.")
     format_version = manifest.get("format_version")
+    if isinstance(format_version, bool) or not isinstance(format_version, int):
+        raise BackupRestoreError("Unsupported backup manifest format.")
     if format_version == LEGACY_FORMAT_VERSION:
         database_files = LEGACY_DATABASE_FILES
     elif format_version == FORMAT_VERSION:
