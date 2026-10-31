@@ -51,12 +51,19 @@ This file is the durable session handoff required by `docs/MASTER_ENGINEERING_PR
 
 ### Progress accounting
 
-No completion percentage is published in this checkpoint. The existing acceptance ledger does not yet define a validated weighted scoring rubric across all gates. A reproducible weighted scorecard must be established from the live acceptance criteria before percentages are reported. This avoids converting code presence or green CI into a misleading project-completion claim.
+A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.md`](ACCEPTANCE_SCORECARD.md). Using its published gate weights and stage factors, the current snapshot is **57.37% engineering completion** (`54.50 / 95 × 100`, excluding external-only gates) and **54.50% overall acceptance progress** (`54.50 / 100 × 100`). These are explicitly provisional progress measures, not release approval; weights and status assignments must be revised only with dated evidence and rationale.
 
 ### Next actions
 
-1. Verify exact-SHA post-merge tests, browser E2E and dependency audit for both merge commits above.
-2. Build a weighted acceptance scorecard from Issue #290 and `docs/ROADMAP_ACCEPTANCE.md`, with separate engineering and overall-acceptance denominators; do not count human/target-host gates as repository engineering work.
-3. Reconcile the large set of historical branches against merged/closed PRs; preserve branches with unmerged useful work until their disposition is established.
-4. Continue the highest-risk uncompleted repository workstream from the live ledger, adding a regression for every reproduced defect.
+1. Verify exact-SHA post-merge tests, browser E2E and dependency audit for merge commit `6f601e8cc210419392bfbd1affb9590db978dd3a` and documentation PR #668.
+2. Reconcile the large set of historical branches against merged/closed PRs; preserve branches with unmerged useful work until their disposition is established.
+3. Continue the highest-risk uncompleted repository workstream from the live ledger, adding a regression for every reproduced defect.
+4. Recalculate the weighted score only when gate evidence or status changes.
 5. Keep all human-only and independent-review gates open until evidence is supplied by the responsible reviewer/operator.
+
+
+### Continuation update — same session
+
+- PR #668 adds this log, the weighted scorecard, and synchronizes five existing status/acceptance documents after PR #664 and #667.
+- PR #668 head: `bee2440a704b794434f75467d9b039f23f42e610`; tests, Windows storage regressions, browser E2E and dependency audit are running on that exact head.
+- Current `main` remains `6f601e8cc210419392bfbd1affb9590db978dd3a`; its dependency audit and browser E2E passed, while tests were still running at this update.
