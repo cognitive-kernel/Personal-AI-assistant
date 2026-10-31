@@ -680,6 +680,15 @@ def test_discovery_records_safe_provider_codes_without_raw_error_messages(tmp_pa
                 "provider": "Bing",
                 "attempts": [{"error": "no_parseable_results"}],
             },
+            {
+                "provider": "Google",
+                "attempts": [{
+                    "variant": sensitive_detail,
+                    "endpoint_variant": sensitive_detail,
+                    "error": sensitive_detail,
+                    "parsed_result_count": 1,
+                }],
+            },
         ]
         raise error
 
