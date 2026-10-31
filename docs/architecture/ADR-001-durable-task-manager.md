@@ -52,8 +52,4 @@ The task queue is initialized idempotently through initialize_task_store() in th
 - Integration with FastAPI and allow-listed learning handlers is implemented and covered by repository CI. Target-host crash/restart, sustained-load, full task-type fault injection, and local Windows database acceptance remain separate release gates.
 
 
-## Failure settlement and cooperative controls
-
-A failure write must not override a previously committed user pause or cancellation request. `fail_task()` therefore settles `pause_requested` to `paused` and `cancel_requested` to `cancelled` before considering automatic retry. This applies even when a failure occurs before the worker reaches its next checkpoint (for example, heartbeat-thread startup failure). A paused task can be resumed explicitly; a cancelled task is terminal.
-
-Regression coverage: `test_fail_task_honors_pending_control_before_retry` verifies both transitions, lease cleanup, no automatic requeue, and explicit resume behavior. No schema or retry-delay changes are involved.
+Failure settlement precedence for pause/cancel requests over retry is recorded in [ADR-013](ADR-013-task-control-priority.md).
