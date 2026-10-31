@@ -1212,7 +1212,7 @@ def list_content_sources(version_id: int) -> list[dict[str, Any]]:
         # Repair legacy title-only rows only when the exact source title and URL
         # are both present in the already-saved lesson/raw response. Never infer
         # or fabricate a URL from a publisher or a search-result title.
-        stored_text = str(version["markdown"] or "") + "\\n\\n" + str(version["raw_response"] or "")
+        stored_text = str(version["markdown"] or "") + "\n\n" + str(version["raw_response"] or "")
         extracted = _extract_references(stored_text)
         by_title: dict[str, dict[str, str | None]] = {}
         for item in extracted:
