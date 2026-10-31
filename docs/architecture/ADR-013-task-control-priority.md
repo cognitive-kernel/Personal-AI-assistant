@@ -19,7 +19,7 @@ A task may fail after a user has already requested pause or cancellation but bef
 
 ## Verification
 
-Parameterized regression tests cover both control states. They verify the final state, preserved failure message, lease cleanup, no automatic claim, and explicit resume of a paused task. Existing retry/backoff tests remain unchanged.
+Parameterized task-manager tests cover both control states, and worker-level tests reproduce the heartbeat-thread startup failure after committing a pause or cancellation request. They verify the final state, preserved failure message, lease cleanup, no automatic claim, no handler execution, and explicit resume of a paused task. Existing retry/backoff tests remain unchanged.
 
 ## Consequences and limits
 
