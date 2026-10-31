@@ -34,6 +34,12 @@ def test_research_audit_stores_hashes_and_provenance_without_raw_content(tmp_pat
                 {"claim": "another private claim", "verdict": "supported"},
             ],
             "reviewer": "local_ollama_model_assisted_not_independent",
+            "prompt_version": "claim-review-v2",
+            "prompt_sha256": "a" * 64,
+            "model_id": "qwen2.5:7b",
+            "model_digest": None,
+            "model_digest_status": "unavailable_from_current_ollama_path",
+            "provider_usage": {"prompt_eval_count": 100, "eval_count": 25},
         },
         memory={
             "verified_experience_guidance": [{"id": 7, "version": 3}],
@@ -61,6 +67,11 @@ def test_research_audit_stores_hashes_and_provenance_without_raw_content(tmp_pat
         "excerpt_chars": len(excerpt),
     }]
     assert review["verdict_counts"] == {"supported": 2}
+    assert review["prompt_version"] == "claim-review-v2"
+    assert review["prompt_sha256"] == "a" * 64
+    assert review["model_id"] == "qwen2.5:7b"
+    assert review["model_digest_status"] == "unavailable_from_current_ollama_path"
+    assert review["provider_usage"] == {"prompt_eval_count": 100, "eval_count": 25}
     assert "private claim text" not in row["review_summary_json"]
     assert memory == [
         {"id": 7, "version": 3, "status": "verified", "kind": "verified_experience_guidance"},
@@ -72,6 +83,62 @@ def test_research_audit_stores_hashes_and_provenance_without_raw_content(tmp_pat
     assert answer not in serialized
     assert excerpt not in serialized
     assert "secret" not in serialized
+
+
+def test_review_summary_retains_bounded_model_and_prompt_provenance():
+    prompt_digest = "a" * 64
+    model_digest = "b" * 64
+    summary = chat_audit._review_summary({
+        "passed": True,
+        "overall": "supported",
+        "claims": [{"verdict": "supported"}],
+        "prompt_version": "claim-review-v2",
+        "prompt_sha256": prompt_digest,
+        "model_id": "qwen2.5:7b",
+        "model_digest": model_digest,
+        "model_digest_status": "verified_local_manifest",
+        "provider_usage": {
+            "prompt_eval_count": 123,
+            "eval_count": 45,
+            "total_duration": 678,
+            "eval_duration": 600,
+            "private_prompt": "must not persist",
+            "negative_counter": -1,
+            "boolean_counter": True,
+            "oversized_counter": 10**30,
+        },
+    })
+    assert summary["prompt_version"] == "claim-review-v2"
+    assert summary["prompt_sha256"] == prompt_digest
+    assert summary["model_id"] == "qwen2.5:7b"
+    assert summary["model_digest"] == model_digest
+    assert summary["model_digest_status"] == "verified_local_manifest"
+    assert summary["provider_usage"] == {
+        "prompt_eval_count": 123,
+        "eval_count": 45,
+        "total_duration": 678,
+        "eval_duration": 600,
+    }
+    assert "private_prompt" not in json.dumps(summary)
+
+
+def test_review_summary_rejects_malformed_provenance_identifiers():
+    summary = chat_audit._review_summary({
+        "passed": False,
+        "claims": [],
+        "prompt_version": "x" * 1000,
+        "prompt_sha256": "not-a-digest",
+        "model_digest": "z" * 64,
+        "model_id": "m" * 300,
+        "model_digest_status": "s" * 1000,
+        "provider_usage": {"eval_count": "12", "total_duration": True},
+    })
+    assert "prompt_sha256" not in summary
+    assert "model_digest" not in summary
+    assert len(summary["prompt_version"]) == 80
+    assert len(summary["model_id"]) == 200
+    assert len(summary["model_digest_status"]) == 80
+    assert "provider_usage" not in summary
 
 
 def test_research_audit_bounds_duration_and_rejects_unknown_status(tmp_path, monkeypatch):

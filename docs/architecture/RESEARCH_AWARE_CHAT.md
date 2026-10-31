@@ -23,7 +23,7 @@ Ordinary small talk remains on the direct local Ollama chat path. Both paths che
 ## Limitations
 
 - A model-assisted claim review is not independent fact verification.
-- A local audit row stores query/answer hashes, source URLs/titles/content hashes, review status and summary, memory record references, and duration. Raw query text, answer text, and source excerpts are not stored in this audit table.
+- A local audit row stores query/answer hashes, source URLs/titles/content hashes, review status and summary, memory record references, duration, and bounded claim-review provenance (`prompt_version`, prompt SHA-256, model ID, optional model digest/status, and numeric provider usage counters). Raw query text, answer text, source excerpts, claim text, and free-form review reasons are not stored in this audit table. A missing model digest remains explicitly marked unavailable; the audit does not infer an immutable model identity from a model name.
 - Retrieval evaluation using a curated Persian/English dataset with Recall@5 and MRR is still required.
 - If external source discovery is unavailable, the chat answer is based on local model knowledge and is explicitly marked unverified.
 - Empty or non-text model responses fail closed with a localized fallback. The research path records a `generation_failed` audit outcome and skips claim review rather than treating an empty draft as a valid answer. The same validation applies to language-repair and claim-repair generations: invalid repair output is audited as a generation failure and is never passed to claim review, string concatenation, or experience capture.

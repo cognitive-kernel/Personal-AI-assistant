@@ -146,7 +146,48 @@ def _review_summary(review: dict[str, Any] | None) -> dict[str, Any] | None:
         "error": str(error)[:120] if error else None,
         "reviewer": str(review.get("reviewer", "local_ollama_model_assisted_not_independent"))[:100],
         "source_discovery": _source_discovery_summary(review.get("source_discovery")),
+        **_review_model_provenance(review),
     }
+
+
+def _review_model_provenance(review: dict[str, Any]) -> dict[str, Any]:
+    """Retain bounded model/prompt identifiers and token counters, never review text."""
+    result: dict[str, Any] = {}
+    prompt_version = review.get("prompt_version")
+    if isinstance(prompt_version, str) and prompt_version.strip():
+        result["prompt_version"] = prompt_version.strip()[:80]
+
+    for field in ("prompt_sha256", "model_digest"):
+        value = review.get(field)
+        if (
+            isinstance(value, str)
+            and len(value) == 64
+            and all(character in "0123456789abcdefABCDEF" for character in value)
+        ):
+            result[field] = value.lower()
+
+    model_id = review.get("model_id")
+    if isinstance(model_id, str) and model_id.strip():
+        result["model_id"] = model_id.strip()[:200]
+
+    digest_status = review.get("model_digest_status")
+    if isinstance(digest_status, str) and digest_status.strip():
+        result["model_digest_status"] = digest_status.strip()[:80]
+
+    usage = review.get("provider_usage")
+    if isinstance(usage, dict):
+        safe_usage = {
+            key: value
+            for key in (
+                "prompt_eval_count", "eval_count", "total_duration", "eval_duration"
+            )
+            if isinstance((value := usage.get(key)), int)
+            and not isinstance(value, bool)
+            and 0 <= value <= 10**15
+        }
+        if safe_usage:
+            result["provider_usage"] = safe_usage
+    return result
 
 
 def _memory_references(memory: dict[str, Any] | None) -> list[dict[str, Any]]:
