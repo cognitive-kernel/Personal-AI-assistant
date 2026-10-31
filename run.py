@@ -636,6 +636,55 @@ def _download_once(
         # Intentionally keep .part and its URL metadata for the next run.
         raise
 
+def _download_ollama_asset_cli(arguments: list[str]) -> int:
+    """Download one Linux archive from the exact release manifest passed by the parent."""
+    if len(arguments) != 1 or not _OLLAMA_LINUX_ASSET.fullmatch(arguments[0]):
+        raise ValueError("A supported, exact Linux Ollama release asset name is required.")
+    asset_name = arguments[0]
+    raw_manifest = os.environ.get("OLLAMA_VERIFIED_RELEASE_ASSETS_JSON", "")
+    try:
+        release = json.loads(raw_manifest)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("The pinned Ollama release manifest is unavailable or invalid.") from exc
+    tag = release.get("tag") if isinstance(release, dict) else None
+    assets = release.get("assets") if isinstance(release, dict) else None
+    if not isinstance(tag, str) or not _OLLAMA_RELEASE_TAG.fullmatch(tag) or not isinstance(assets, dict):
+        raise RuntimeError("The pinned Ollama release manifest has an invalid structure.")
+    asset = assets.get(asset_name)
+    if not isinstance(asset, dict):
+        raise RuntimeError(f"The pinned Ollama release does not contain {asset_name}.")
+    url = asset.get("url")
+    expected_path = f"/ollama/ollama/releases/download/{tag}/{asset_name}"
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except (TypeError, ValueError):
+        raise RuntimeError("The pinned Ollama asset URL is invalid.") from None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or parsed.path != expected_path
+        or port not in {None, 443}
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("The pinned Ollama asset URL does not match the official GitHub release.")
+    asset_dir = os.environ.get("OLLAMA_VERIFIED_ASSET_DIR", "").strip()
+    if not asset_dir:
+        raise RuntimeError("The verified Ollama asset cache directory is not configured.")
+    destination = Path(asset_dir) / asset_name
+    _download_once(
+        url,
+        destination,
+        expected_sha256=asset.get("sha256"),
+        expected_size=asset.get("size"),
+        opener=_ollama_asset_opener(),
+    )
+    return 0
+
+
 def _find_ollama() -> str | None:
     found = shutil.which("ollama")
     if found:
