@@ -57,19 +57,54 @@ class TaskRuntime:
         self._threads: list[threading.Thread] = []
         self._lock = threading.Lock()
 
+    def _managed_threads(self) -> list[threading.Thread]:
+        threads = list(self._threads)
+        if self._maintenance_thread is not None:
+            threads.append(self._maintenance_thread)
+        return threads
+
     @property
     def is_running(self) -> bool:
-        workers_running = any(thread.is_alive() for thread in self._threads)
-        maintenance_running = (
-            self._maintenance_thread is not None and self._maintenance_thread.is_alive()
+        """Return whether any managed thread is still alive."""
+        return any(thread.is_alive() for thread in self._managed_threads())
+
+    @property
+    def is_healthy(self) -> bool:
+        """Return whether every configured worker and maintenance thread is alive."""
+        if len(self._threads) != self.worker_count or not all(
+            thread.is_alive() for thread in self._threads
+        ):
+            return False
+        if self.maintenance_callback is None:
+            return self._maintenance_thread is None
+        return (
+            self._maintenance_thread is not None
+            and self._maintenance_thread.is_alive()
         )
-        return workers_running or maintenance_running
 
     def start(self) -> None:
-        """Start the configured workers; repeated start calls are idempotent."""
+        """Start the configured workers; only a fully healthy start is idempotent."""
         with self._lock:
-            if self.is_running:
+            if self.is_healthy:
                 return
+            # A partial runtime must be stopped before replacement threads start.
+            # Otherwise a surviving worker could overlap with its replacement and
+            # claim work under the same worker identity.
+            active_threads = [
+                thread for thread in self._managed_threads() if thread.is_alive()
+            ]
+            if active_threads:
+                self._stop_event.set()
+                deadline = time.monotonic() + 10.0
+                for thread in active_threads:
+                    thread.join(max(0.0, deadline - time.monotonic()))
+                if any(thread.is_alive() for thread in active_threads):
+                    raise RuntimeError(
+                        f"Cannot restart task runtime {self.worker_prefix}: "
+                        "previous worker threads did not stop."
+                    )
+            self._threads = []
+            self._maintenance_thread = None
             self._stop_event.clear()
             self._maintenance_ready.clear()
             self._threads = []
