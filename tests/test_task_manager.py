@@ -506,3 +506,39 @@ def test_task_control_mutations_lock_before_status_validation(task_store, monkey
         "reschedule": "queued",
     }
     assert result["status"] == expected_status[mutation]
+@pytest.mark.parametrize(
+    ("control", "expected_status"),
+    [("cancel", "cancelled"), ("pause", "paused")],
+)
+def test_fail_task_honors_pending_control_before_retry(task_store, control, expected_status):
+    task = task_manager.create_task(f"control-before-retry-{control}", {}, max_attempts=3)
+    claimed = task_manager.claim_next_task("worker-a", lease_seconds=30)
+    assert claimed is not None
+    assert claimed["id"] == task["id"]
+
+    requested = (
+        task_manager.request_cancel(task["id"])
+        if control == "cancel"
+        else task_manager.request_pause(task["id"])
+    )
+    assert requested["status"] == ("cancel_requested" if control == "cancel" else "pause_requested")
+
+    settled = task_manager.fail_task(
+        task["id"], "worker-a", "simulated failure before cooperative checkpoint", retry=True
+    )
+
+    assert settled["status"] == expected_status
+    assert settled["error"] == "simulated failure before cooperative checkpoint"
+    assert settled["lease_owner"] is None
+    assert settled["lease_expires_at"] is None
+    assert settled["attempts"] == 1
+    assert task_manager.claim_next_task("worker-b") is None
+
+    if control == "pause":
+        resumed = task_manager.resume_task(task["id"])
+        assert resumed["status"] == "queued"
+        reclaimed = task_manager.claim_next_task("worker-c")
+        assert reclaimed is not None
+        assert reclaimed["id"] == task["id"]
+        assert reclaimed["attempts"] == 2
+

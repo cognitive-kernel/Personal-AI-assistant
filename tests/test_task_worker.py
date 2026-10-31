@@ -551,6 +551,53 @@ def test_worker_requeues_claimed_task_when_heartbeat_thread_cannot_start(worker_
 
 
 
+
+@pytest.mark.parametrize(
+    ("control", "expected_status"),
+    [("cancel", "cancelled"), ("pause", "paused")],
+)
+def test_worker_heartbeat_start_failure_honors_pending_control(
+    worker_store, monkeypatch, control, expected_status
+):
+    task = task_manager.create_task(
+        f"test.heartbeat-control-{control}", {}, max_attempts=3
+    )
+    handler_calls = []
+
+    def handler(*_args):
+        handler_calls.append(True)
+        return {"must_not_run": True}
+
+    worker = TaskWorker(
+        f"worker-heartbeat-control-{control}",
+        {f"test.heartbeat-control-{control}": handler},
+    )
+
+    class BrokenThread:
+        def start(self):
+            if control == "cancel":
+                task_manager.request_cancel(task["id"])
+            else:
+                task_manager.request_pause(task["id"])
+            raise RuntimeError("simulated heartbeat startup failure")
+
+    monkeypatch.setattr(
+        worker, "_create_heartbeat_thread", lambda *_args: BrokenThread()
+    )
+
+    assert worker.run_once() is True
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == expected_status
+    assert saved["attempts"] == 1
+    assert saved["lease_owner"] is None
+    assert saved["lease_expires_at"] is None
+    assert saved["error"] == (
+        "HeartbeatStartupError: RuntimeError: simulated heartbeat startup failure"
+    )
+    assert handler_calls == []
+    assert task_manager.claim_next_task("worker-after-control") is None
+
+
 def test_worker_requeues_claimed_task_when_heartbeat_thread_construction_fails(worker_store, monkeypatch):
     task = task_manager.create_task("test.heartbeat-construction-failure", {}, max_attempts=2)
     worker_calls = []

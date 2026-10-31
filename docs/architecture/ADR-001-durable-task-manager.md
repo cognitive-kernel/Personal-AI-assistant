@@ -50,3 +50,6 @@ The task queue is initialized idempotently through initialize_task_store() in th
 - Worker regression tests also inject heartbeat-thread startup failure and verify that the handler is not executed and the claimed task is requeued with a bounded retry.
 - CI must pass on the exact pull-request head before merge.
 - Integration with FastAPI and allow-listed learning handlers is implemented and covered by repository CI. Target-host crash/restart, sustained-load, full task-type fault injection, and local Windows database acceptance remain separate release gates.
+
+
+Failure settlement precedence for pause/cancel requests over retry is recorded in [ADR-013](ADR-013-task-control-priority.md).
