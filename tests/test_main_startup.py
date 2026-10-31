@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from app import cloud_resources, db, main
 
 
@@ -119,3 +121,62 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     assert all(not runtime.is_running for runtime in previous_runtimes)
     assert all(runtime.stop_count == 1 for runtime in previous_runtimes)
     assert all(runtime.is_running for runtime in main._task_runtimes)
+
+def test_startup_tracks_runtime_before_start_failure_for_lifespan_shutdown(monkeypatch):
+    monkeypatch.setattr(main, "_task_runtimes", [])
+    monkeypatch.setattr(main, "_startup_storage_error", None)
+    monkeypatch.setattr(main.db, "init_databases", lambda: None)
+    monkeypatch.setattr(main.db, "get_settings", lambda: {})
+    monkeypatch.setattr(main.browser_learning, "recover_interrupted_courses", lambda: None)
+    monkeypatch.setattr(main.browser_learning, "dispatch_next_course", lambda: None)
+    monkeypatch.setattr(main.cloud_resources, "initialize_store", lambda: None)
+    monkeypatch.setattr(
+        main.cloud_resources,
+        "ensure_daily_discovery_scheduled",
+        lambda: {"status": "disabled_for_test"},
+    )
+    monkeypatch.setattr(main, "reconcile_queued_learning_tasks", lambda: None)
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: False)
+    monkeypatch.setattr(main.sandbox_tasks, "handler_from_environment", lambda **_kwargs: None)
+    monkeypatch.setattr(main.experience_tasks, "handler_from_environment", lambda: None)
+    monkeypatch.setattr(
+        main.factual_verification_tasks,
+        "handler_from_environment",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(main.ai_learning_browser_automation, "stop_browser_automation", lambda: None)
+    monkeypatch.setattr(main.backup_scheduler, "stop_backup_scheduler", lambda **_kwargs: None)
+
+    constructed = []
+
+    class RuntimeStub:
+        def __init__(self, _handlers, **kwargs):
+            self.worker_prefix = kwargs["worker_prefix"]
+            self.is_running = False
+            self.stop_count = 0
+            constructed.append(self)
+
+        def start(self):
+            self.is_running = True
+            raise RuntimeError("injected runtime startup failure")
+
+        def stop(self, timeout=10.0):
+            self.stop_count += 1
+            self.is_running = False
+            return True
+
+    monkeypatch.setattr(main, "TaskRuntime", RuntimeStub)
+
+    with pytest.raises(RuntimeError, match="injected runtime startup failure"):
+        main.startup()
+
+    assert constructed == main._task_runtimes
+    assert len(main._task_runtimes) == 1
+    assert main._task_runtimes[0].worker_prefix == "chat-worker"
+
+    # FastAPI lifespan executes shutdown in its finally block when startup fails.
+    main.shutdown()
+
+    assert constructed[0].stop_count == 1
+    assert constructed[0].is_running is False
+
