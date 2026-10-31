@@ -288,6 +288,12 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
             })
         else:
             updated["activity"] = step_name[:180]
+    elif failed_job:
+        updated.update({
+            "status": "failed",
+            "phase_label": "چرخه با خطا پایان یافت",
+            "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
+        })
     elif queued_job and queued_job.get("name") == "validate":
         updated.update({
             "phase": "validation", "phase_label": "در انتظار اعتبارسنجی مستقل",
@@ -297,12 +303,6 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
         updated.update({
             "phase": "publication", "phase_label": "در انتظار انتشار پیش‌نویس",
             "percent": 97, "activity": "اعتبارسنجی تمام شده؛ منتظر مرحلهٔ انتشار PR", "status": "queued",
-        })
-    elif failed_job:
-        updated.update({
-            "status": "failed",
-            "phase_label": "چرخه با خطا پایان یافت",
-            "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
         })
     elif all(
         isinstance(job, dict) and job.get("status") == "completed"
