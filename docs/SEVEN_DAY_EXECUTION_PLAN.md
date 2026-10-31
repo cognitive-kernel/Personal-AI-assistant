@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Baseline:** `main` after PR #633, merge commit `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`
+**Baseline:** `main` after PR #634, merge commit `b50daaaaa12fab13d6526a47335613bd30a63eba`
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
@@ -233,3 +233,10 @@ Append dated entries with:
 - Added regression coverage for worker-thread exit, maintenance-thread exit, and startup recovery; documented the decision in ADR-012.
 - Merged to `main` as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`. Post-merge CI passed: 1742 passed/5 skipped, Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both deterministic benchmarks.
 - Remaining operational gates are unchanged: target-host crash/soak and staging restore/rollback require the owner's environment; independent security review (Issue #52) and live-model/human adjudication cannot be self-certified.
+
+
+### 2026-10-31 — Task pause/cancel precedence over retry
+
+- PR #634 fixes failure settlement so committed pause/cancel requests are not overwritten by automatic retry. `cancel_requested` becomes terminal `cancelled`; `pause_requested` becomes `paused`; retry/backoff behavior for ordinary `running` failures is unchanged.
+- Regression coverage includes task-manager state transitions and worker heartbeat-start failure, with no handler execution and explicit resume semantics. ADR-013 records the contract.
+- Merged as `b50daaaaa12fab13d6526a47335613bd30a63eba`. Post-merge CI: 1746 passed/5 skipped in 211.87s; Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks passed.
