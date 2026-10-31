@@ -825,6 +825,8 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
         assert proposal["status"] == "proposed"
         assert proposal["approved_at"] is None
         assert development_doc.read_text(encoding="utf-8") == original_content
+        proposal_card = page.locator("#self-improvement-list article").filter(has_text=title)
+        proposal_card.wait_for(state="visible", timeout=10000)
         assert title in page.locator("#self-improvement-list").inner_text()
         browser.close()
 
