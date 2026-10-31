@@ -81,3 +81,8 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 
 - PR #668 is merged. No application code or user data changed in that PR.
 - PR #669 is still open; no merge is authorized until all checks pass on its final exact head and the PR remains conflict-free.
+
+
+### Historical CI note clarification
+
+The earlier sentence saying PR #664/#667 post-merge workflows were still running describes the initial checkpoint only. Those workflows later completed successfully on `6f601e8cc210419392bfbd1affb9590db978dd3a`, as recorded in the verified-main CI section.
