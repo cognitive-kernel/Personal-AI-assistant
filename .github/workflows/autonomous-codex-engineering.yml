@@ -182,7 +182,7 @@ jobs:
           security controls. If blocked, record the exact blocker and continue only with a
           separate safe task.
 
-          Only propose text changes under app/, tests/, docs/, or pyproject.toml.
+          Only propose text changes under app/, tests/, docs/, scripts/, or pyproject.toml.
           Do not modify .agent-request.json or .agent-github-state.json. Do not add generated
           artifacts, local databases, logs, credentials, or temporary files.
 
@@ -206,18 +206,18 @@ jobs:
           from pathlib import Path
 
           subprocess.run(
-              ["git", "add", "-N", "--", "app", "tests", "docs", "pyproject.toml"],
+              ["git", "add", "-N", "--", "app", "tests", "docs", "scripts", "pyproject.toml"],
               check=True,
           )
           result = subprocess.run(
-              ["git", "diff", "--check", "--", "app", "tests", "docs", "pyproject.toml"],
+              ["git", "diff", "--check", "--", "app", "tests", "docs", "scripts", "pyproject.toml"],
               capture_output=True,
               check=False,
           )
           if result.returncode:
               raise SystemExit(result.stderr.decode("utf-8", errors="replace"))
           diff = subprocess.run(
-              ["git", "diff", "--binary", "--", "app", "tests", "docs", "pyproject.toml"],
+              ["git", "diff", "--binary", "--", "app", "tests", "docs", "scripts", "pyproject.toml"],
               capture_output=True,
               check=True,
           ).stdout
