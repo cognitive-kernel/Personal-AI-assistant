@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from . import config, service, browser_automation
 from .db import StoreSchemaError, initialize_store
 from ..task_routes import require_loopback_client
@@ -106,6 +106,14 @@ class QueryFeedback(BaseModel):
     query_trace_id: StrictInt = Field(ge=1)
     rating: Literal[1, -1]
     comment: str = Field(default="", max_length=1000)
+
+    @field_validator("rating", mode="before")
+    @classmethod
+    def reject_coercive_rating(cls, value: Any) -> Any:
+        if type(value) is not int or value not in (-1, 1):
+            raise ValueError("rating must be the integer -1 or 1.")
+        return value
+
     model_config = ConfigDict(extra="forbid")
 
 def _ready() -> None:
