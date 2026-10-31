@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import subprocess
 from pathlib import Path
 
@@ -18,7 +19,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
-        "cli_installed": True, "authenticated": True, "recent_runs": []
+        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
     })
 
     result = agent.collect_status()
@@ -47,7 +48,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
 
 
 def test_dispatch_requires_authenticated_github_cli(monkeypatch):
-    monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True, "github": {"recent_runs": []}})
+    monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True, "github": {"recent_runs": [], "runs_available": True}})
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(
         agent, "_run",
@@ -62,7 +63,7 @@ def test_dispatch_requires_authenticated_github_cli(monkeypatch):
 
 def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     calls = []
-    monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True})
+    monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True, "github": {"runs_available": True}})
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
     def fake_run(command, timeout=8):
@@ -105,3 +106,65 @@ def test_autonomous_engineering_routes_are_registered():
     assert "/api/autonomous-engineering/status" in api_paths
     assert "/api/autonomous-engineering/dispatch" in api_paths
     assert "/api/autonomous-engineering/cancel" in api_paths
+
+
+def test_ollama_status_bypasses_environment_proxies(monkeypatch):
+    captured = {}
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            captured["url"] = request.full_url
+            captured["timeout"] = timeout
+            return io.BytesIO(b'{"models":[{"name":"gpt-oss:20b"}]}')
+
+    def fake_build_opener(*handlers):
+        captured["proxy_maps"] = [
+            handler.proxies
+            for handler in handlers
+            if isinstance(handler, agent.urllib.request.ProxyHandler)
+        ]
+        return FakeOpener()
+
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
+    monkeypatch.setattr(agent.urllib.request, "build_opener", fake_build_opener)
+
+    result = agent._ollama_status("gpt-oss:20b")
+
+    assert captured["proxy_maps"] == [{}]
+    assert captured["url"] == "http://127.0.0.1:11434/api/tags"
+    assert captured["timeout"] == 2
+    assert result["online"] is True
+    assert result["model_installed"] is True
+
+
+def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", "permission denied")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent._github_snapshot()
+
+    assert len(calls) == 2
+    assert result["authenticated"] is True
+    assert result["runs_available"] is False
+    assert result["recent_runs"] == []
+
+
+def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": False,
+        "github": {"runs_available": False},
+    })
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert error.value.status_code == 503
