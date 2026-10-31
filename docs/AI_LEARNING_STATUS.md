@@ -42,9 +42,9 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین اجرای کامل تأییدشده روی `main` commit `7a2cf05a7b3485e3b157e41860783fda2e76a846` در تاریخ 2026-10-31 موفق بوده است؛ post-merge CI همین SHA کامل و موفق است:
+آخرین اجرای کامل تأییدشده روی head PR #629 یعنی `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` در تاریخ 2026-10-31 موفق بوده است؛ 1738 passed/5 skipped. Post-merge CI روی commit `4e1f89d9c0b7cf332ecf261a4ddc06230b949969` هنوز در حال اجراست:
 
-- مجموعهٔ کامل pytest: **1737 passed, 5 skipped** در 176.88 ثانیه. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
+- مجموعهٔ کامل pytest: **1738 passed, 5 skipped** در اجرای exact-head PR #629. این اجرا شامل آزمون subprocess بازیابی پس از process restart است. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
@@ -89,3 +89,8 @@
 ## Worker startup failure recovery
 
 All learning entry points use one worker-start boundary. If `thread.start()` raises, the in-memory active markers and cancellation event are cleared, and the durable run is returned to the queued state for a later dispatch. The failure is logged with its exception type and bounded message; the caller receives a typed `worker_thread_start_failed` error. This avoids leaving a phantom `running` record with no worker. Regression coverage verifies the queue can dispatch the same run after a subsequent successful start. This repository test does not replace target-host Chrome/process-restart acceptance.
+
+
+## اثبات بازیابی پس از process restart
+
+`tests/test_ai_learning_retrieval_boundary.py::test_published_knowledge_is_retrievable_after_a_new_process` یک فرایند Python تازه را با همان `AI_LEARNING_DB_PATH` اجرا می‌کند. فرایند تازه فقط نسخهٔ منتشرشده را از مسیر `integration.retrieve_context` دریافت می‌کند، نسخهٔ draft را نمی‌بیند و query trace را در همان SQLite ثبت می‌کند. این آزمون ماندگاری و قرارداد retrieval را می‌سنجد؛ کیفیت زندهٔ مدل یا صحت factual پاسخ را نمی‌سنجد.
