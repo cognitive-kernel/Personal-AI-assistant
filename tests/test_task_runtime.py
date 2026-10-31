@@ -307,3 +307,81 @@ def test_runtime_rolls_back_threads_when_startup_fails_partway(runtime_store, mo
     assert len(created) == 2
     assert all(not thread.is_alive() for thread in created)
     assert runtime.is_running is False
+
+def test_runtime_restarts_partial_worker_set_after_worker_thread_exits(runtime_store, monkeypatch):
+    from app import task_worker
+
+    failed_once = threading.Event()
+    worker_exited = threading.Event()
+
+    def run_once(worker):
+        if worker.worker_id.endswith("-1") and not failed_once.is_set():
+            failed_once.set()
+            worker_exited.set()
+            raise SystemExit("simulated worker thread exit")
+        return False
+
+    monkeypatch.setattr(task_worker.TaskWorker, "run_once", run_once)
+    runtime = TaskRuntime(
+        {"runtime.noop": lambda *_: {"ok": True}},
+        worker_count=2,
+        poll_interval=0.05,
+    )
+    runtime.start()
+    previous_threads = list(runtime._threads)
+    try:
+        assert worker_exited.wait(timeout=3)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and runtime.is_healthy:
+            time.sleep(0.01)
+
+        assert runtime.is_running is True
+        assert runtime.is_healthy is False
+
+        runtime.start()
+
+        assert all(not thread.is_alive() for thread in previous_threads)
+        assert len(runtime._threads) == 2
+        assert runtime.is_healthy is True
+    finally:
+        assert runtime.stop(timeout=3) is True
+
+
+def test_runtime_restarts_when_maintenance_thread_exits(runtime_store):
+    failed_once = threading.Event()
+    maintenance_recovered = threading.Event()
+
+    def maintenance():
+        if not failed_once.is_set():
+            failed_once.set()
+            raise SystemExit("simulated maintenance thread exit")
+        maintenance_recovered.set()
+
+    runtime = TaskRuntime(
+        {"runtime.noop": lambda *_: {"ok": True}},
+        poll_interval=0.05,
+        maintenance_callback=maintenance,
+        maintenance_interval=30,
+    )
+    runtime.start()
+    previous_threads = list(runtime._threads)
+    previous_maintenance = runtime._maintenance_thread
+    try:
+        assert failed_once.wait(timeout=3)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and runtime.is_healthy:
+            time.sleep(0.01)
+
+        assert runtime.is_running is True
+        assert runtime.is_healthy is False
+
+        runtime.start()
+
+        assert maintenance_recovered.wait(timeout=3)
+        assert all(not thread.is_alive() for thread in previous_threads)
+        assert previous_maintenance is not None
+        assert not previous_maintenance.is_alive()
+        assert runtime.is_healthy is True
+    finally:
+        assert runtime.stop(timeout=3) is True
+
