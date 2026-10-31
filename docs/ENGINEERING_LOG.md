@@ -147,3 +147,20 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The old roadmap HTTPS-policy row was corrected in the same PR: PR #622 merged as `c46e136bb00e4dd56627e98990b80d27f73b93e9`; its implementation is not still in review.
 - E-03 baseline allocation remains 22 h. The planned start is 2026-11-02; this pre-start automation run does not book baseline hours. Runtime engineering time is not metered here, so no actual-hour figure is invented; no contingency consumption or schedule reforecast is recorded.
 - External acceptance remains open: the pinned-model live Persian/English evaluation and human adjudication, target-host operations/recovery, staging restore/rollback, and independent security review in Issue #52. The parser regression does not establish live provider availability or resolve the historical zero-source evaluation by itself.
+
+## 2026-11-01 — Local Ollama autonomous engineering console (PR #675)
+
+- Replaced the paid OpenAI API workflow design with a Windows self-hosted runner using Codex CLI `--oss` and local Ollama; no `OPENAI_API_KEY` is required.
+- Added a dedicated `/autonomous-engineering` operations page, local read-only diagnostics, explicit GitHub workflow dispatch/cancel actions, and a PowerShell readiness check.
+- Added the agent destination to the main dashboard navigation and shared primary navigation to the standalone AI-learning and autonomous-engineering pages.
+- The workflow runs local Codex only on the labeled trusted-main self-hosted runner; candidate validation and draft-PR publication remain separate GitHub-hosted jobs.
+- Implementation and CI are in progress on `automation/codex-engineering-agent`. No test pass, runner installation, or target-host operation is claimed yet. The local runner must be registered and kept online by the repository owner.
+
+
+### Follow-up — live progress telemetry and scorecard history
+
+- Added a dedicated progress API and compact dashboard panel. The current cycle reports the active Codex plan item, completed/total plan steps, workflow phase, and progress percentage; later GitHub-hosted validation/publication stages are reconciled from the run's actual job and step states.
+- Codex JSONL events are reduced to bounded activity breadcrumbs. Raw command output, credentials, and model reasoning are not persisted or shown. The temporary `.agent-progress.json` plan is excluded from the candidate patch.
+- Added daily, weekly, and custom date-range SVG charts for the weighted engineering-completion and overall-acceptance scorecard metrics. The existing 2026-11-01 scorecard is the only historical baseline; new snapshots are recorded on worker-run dates, with no fabricated backfill.
+- Activity events and project score snapshots use separate bounded local files under `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`. A one-time ACL script grants access only to the dedicated Runner account, local application account, SYSTEM, and local administrators. The UI polls the small progress endpoint every five seconds; logs remain collapsed by default and no charting dependency is added.
+- Added API, scorecard parsing, plan-progress, GitHub step reconciliation, and compact UI regression tests. Exact-head CI and Windows ACL/runner verification remain pending; no operational telemetry is claimed until the shared directory is configured and a real workflow run reports events.
