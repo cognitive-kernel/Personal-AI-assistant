@@ -98,8 +98,10 @@ def test_autonomous_engineering_page_and_navigation_are_present():
 def test_autonomous_engineering_routes_are_registered():
     from app.main import app
 
-    paths = {route.path for route in app.routes}
-    assert "/autonomous-engineering" in paths
-    assert "/api/autonomous-engineering/status" in paths
-    assert "/api/autonomous-engineering/dispatch" in paths
-    assert "/api/autonomous-engineering/cancel" in paths
+    page_paths = {getattr(route, "path", None) for route in app.routes}
+    api_paths = {route.path for route in agent.router.routes}
+
+    assert "/autonomous-engineering" in page_paths
+    assert "/api/autonomous-engineering/status" in api_paths
+    assert "/api/autonomous-engineering/dispatch" in api_paths
+    assert "/api/autonomous-engineering/cancel" in api_paths
