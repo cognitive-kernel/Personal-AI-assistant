@@ -190,7 +190,7 @@ async function showLessons(topic) {
             const box = node("div", undefined, "source-list");
             if (!sources.items.length) box.append(node("p", "برای این نسخه پیوند منبعی استخراج نشده است."));
             sources.items.forEach(s => {
-              const hasUrl = typeof s.url === "string" && /^https?:\\/\\//i.test(s.url);
+              const hasUrl = typeof s.url === "string" && (s.url.startsWith("https://") || s.url.startsWith("http://"));
               const status = s.validation_status || "unverified";
               const detail = hasUrl ? s.url : "نشانی منبع در پاسخ ذخیره‌شده موجود نیست؛ پیوندی ساخته نشده است.";
               const row = node("p", (s.title || "منبع") + " · " + status + " · " + detail);
