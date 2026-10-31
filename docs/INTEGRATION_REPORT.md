@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
- > commit مبنا: `fe1d533eb4a8cff86de978be4487898666afdddd` (main پس از PR #645). PR #645 failure isolation در reconciliation صف یادگیری را اضافه کرد؛ exact-head CI با 1754 passed/5 skipped موفق شد. post-merge CI روی همین SHA نیز موفق شد: tests [#41187073485](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073485)، Windows storage، browser E2E [#41187073406](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073406)، dependency audit [#41187073401](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073401)، بررسی 84 فایل Markdown و benchmark 10/10.
+> commit مبنا: `fe1d533eb4a8cff86de978be4487898666afdddd` (main پس از PR #645). PR #645 failure isolation در reconciliation صف یادگیری را اضافه کرد؛ exact-head CI با 1754 passed/5 skipped موفق شد. post-merge CI روی همین SHA نیز موفق شد: tests [#41187073485](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073485)، Windows storage، browser E2E [#41187073406](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073406)، dependency audit [#41187073401](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073401)، بررسی 84 فایل Markdown و benchmark 10/10.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
