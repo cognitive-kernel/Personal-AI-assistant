@@ -110,7 +110,7 @@ def test_browser_learning_api_accepts_integer_lesson_count(api_client, monkeypat
         json={"topic": "Valid lesson count", "max_lessons": 2},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert response.json()["max_lessons"] == 2
 
 
