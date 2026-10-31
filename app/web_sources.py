@@ -68,16 +68,18 @@ class SearchResultList(list[tuple[str, str]]):
 
 
 class SourceDocumentList(list[SourceDocument]):
-    """Fetched pages plus diagnostics for the search-engine calls that found them."""
+    """Fetched pages plus bounded diagnostics without retaining query or page content."""
 
     def __init__(
         self,
         values=(),
         *,
         search_provider_diagnostics: list[dict[str, object]] | None = None,
+        fetch_diagnostics: dict[str, object] | None = None,
     ) -> None:
         super().__init__(values)
         self.search_provider_diagnostics = search_provider_diagnostics or []
+        self.fetch_diagnostics = fetch_diagnostics or {}
 
 
 def _parse_public_url(url: str) -> urllib.parse.ParseResult:
@@ -641,15 +643,28 @@ def discover_sources(query: str, *, limit: int = 3) -> list[SourceDocument]:
     if not isinstance(query, str) or not query.strip():
         return SourceDocumentList()
     candidates = _search_results(query.strip()[:300], max(1, min(5, limit)))
+    fetch_diagnostics: dict[str, object] = {
+        "candidate_count": len(candidates),
+        "attempted_count": 0,
+        "fetched_count": 0,
+        "failure_counts": {},
+    }
     documents = SourceDocumentList(
         search_provider_diagnostics=getattr(candidates, "provider_diagnostics", []),
+        fetch_diagnostics=fetch_diagnostics,
     )
     for title, url in candidates:
+        fetch_diagnostics["attempted_count"] = int(fetch_diagnostics["attempted_count"]) + 1
         try:
             document = _fetch_document(url, title)
-        except SourceFetchError:
+        except SourceFetchError as exc:
+            failures = fetch_diagnostics["failure_counts"]
+            assert isinstance(failures, dict)
+            error_type = type(exc).__name__
+            failures[error_type] = int(failures.get(error_type, 0)) + 1
             continue
         documents.append(document)
+        fetch_diagnostics["fetched_count"] = int(fetch_diagnostics["fetched_count"]) + 1
         if len(documents) >= max(1, min(5, limit)):
             break
     return documents
