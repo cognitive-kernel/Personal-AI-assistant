@@ -511,6 +511,10 @@ def test_linux_installer_patch_replaces_second_stage_curl_with_verified_helper(t
     assert " | " not in function
     assert "set -o pipefail" not in function
     assert "curl --fail --show-error" in original.read_text(encoding="utf-8")
+    syntax_check = subprocess.run(
+        ["sh", "-n", str(patched)], capture_output=True, text=True, check=False
+    )
+    assert syntax_check.returncode == 0, syntax_check.stderr
 
 
 def test_linux_verified_asset_helper_downloads_only_pinned_release_asset(tmp_path, monkeypatch):
