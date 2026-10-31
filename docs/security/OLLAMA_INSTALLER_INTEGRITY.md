@@ -8,6 +8,7 @@ The launcher reads the latest release metadata from the fixed GitHub API endpoin
 
 - Release metadata and asset downloads bypass environment-configured proxies.
 - Release metadata redirects are rejected.
+- Release asset redirects and pinned manifest URLs reject any userinfo component (including empty username/password), explicit empty port delimiters, invalid ports, and malformed authority syntax before a download is followed or started.
 - Asset redirects are accepted only over HTTPS to the GitHub release asset hosts `github.com`, `release-assets.githubusercontent.com`, or `objects.githubusercontent.com`.
 - Downloaded bytes must match both the release API's SHA-256 digest and asset size before the file is promoted or executed/opened.
 - A mismatched download is deleted; an existing previously cached installer is not replaced.
