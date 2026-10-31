@@ -653,6 +653,20 @@ def test_manual_cloud_resource_rejects_non_https_and_duplicate_entries(tmp_path,
         )
         assert invalid.status_code == 422
 
+        for invalid_url in (
+            "https://@compute.example.org/free-cloud-server",
+            "https://compute.example.org:/free-cloud-server",
+            "https://compute.example.org:not-a-port/free-cloud-server",
+            "https://[2001:db8::1/free-cloud-server",
+        ):
+            rejected = client.post(
+                "/api/cloud-resources/manual",
+                json={**payload, "source_url": invalid_url},
+            )
+            assert rejected.status_code == 422, (invalid_url, rejected.text)
+
+        assert client.get("/api/cloud-resources").json()["candidates"] == []
+
         first = client.post("/api/cloud-resources/manual", json=payload)
         assert first.status_code == 201, first.text
         duplicate = client.post("/api/cloud-resources/manual", json=payload)
