@@ -1,6 +1,10 @@
 from fastapi.testclient import TestClient
 
-from app.ai_learning import browser_automation, config as ai_learning_config, routes as ai_learning_routes
+from app.ai_learning import (
+    browser_automation,
+    config as ai_learning_config,
+    routes as ai_learning_routes,
+)
 from app.main import app
 
 
@@ -62,6 +66,7 @@ def test_non_loopback_ipv6_peer_is_rejected():
     client = TestClient(app, client=("2001:db8::44", 54321))
     response = client.get("/api/health")
     assert response.status_code == 403
+
 
 def test_cross_origin_requests_cannot_reset_learning_data(monkeypatch):
     monkeypatch.setattr(ai_learning_config, "is_enabled", lambda: True)
