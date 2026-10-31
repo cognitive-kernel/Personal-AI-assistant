@@ -1289,14 +1289,23 @@ def test_dashboard_primary_navigation_is_keyboard_operable():
         # Every primary navigation destination must be reachable in DOM tab order.
         page.goto(base_url, wait_until="domcontentloaded")
         page.keyboard.press("Tab")  # skip link
+        focused_hrefs = []
         for href in navigation_hrefs:
             page.keyboard.press("Tab")
             focused_href = page.evaluate(
                 "document.activeElement instanceof HTMLAnchorElement ? "
                 "document.activeElement.getAttribute('href') : null"
             )
+            focused_hrefs.append(focused_href)
             assert focused_href == href, f"Keyboard focus skipped or reordered {href}"
+        assert focused_hrefs == navigation_hrefs
 
+        # Verify keyboard activation separately so the route change cannot truncate
+        # the tab-order assertions for destinations that follow the task manager.
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.keyboard.press("Tab")  # skip link
+        for href in navigation_hrefs:
+            page.keyboard.press("Tab")
             if href == "/page/task-manager-section":
                 page.keyboard.press("Enter")
                 page.wait_for_url("**/page/task-manager-section", timeout=5000)
