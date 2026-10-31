@@ -6,6 +6,7 @@ import os
 import platform
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 import re
@@ -17,6 +18,8 @@ from pydantic import BaseModel, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress
+
+_RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
 router = APIRouter(
     prefix="/api/autonomous-engineering",
@@ -222,11 +225,94 @@ def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
 
 
+def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(current, dict):
+        return current
+    run_id = str(current.get("run_id", ""))
+    if not run_id.isdigit():
+        return current
+    now = time.monotonic()
+    if _RUN_PROGRESS_CACHE.get("run_id") == run_id and now - float(_RUN_PROGRESS_CACHE.get("at", 0)) < 12:
+        cached = _RUN_PROGRESS_CACHE.get("value")
+        return dict(cached) if isinstance(cached, dict) else current
+    gh = shutil.which("gh")
+    if not gh:
+        return current
+    result = _run(
+        [gh, "api", f"repos/{_repository()}/actions/runs/{run_id}/jobs?per_page=100"],
+        timeout=8,
+    )
+    if not result or result.returncode != 0:
+        return current
+    try:
+        jobs = json.loads(result.stdout).get("jobs", [])
+    except (ValueError, AttributeError):
+        return current
+    if not isinstance(jobs, list) or not jobs:
+        return current
+    updated = dict(current)
+    active_job = next(
+        (job for job in jobs if isinstance(job, dict) and job.get("status") == "in_progress"),
+        None,
+    )
+    failed_job = next(
+        (job for job in jobs if isinstance(job, dict) and job.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}),
+        None,
+    )
+    if active_job:
+        name = str(active_job.get("name", ""))
+        steps = active_job.get("steps", [])
+        steps = steps if isinstance(steps, list) else []
+        completed = sum(isinstance(step, dict) and step.get("status") == "completed" for step in steps)
+        total = max(1, len(steps))
+        active_step = next(
+            (step for step in steps if isinstance(step, dict) and step.get("status") == "in_progress"),
+            None,
+        )
+        step_name = str(active_step.get("name", "در حال اجرای مرحله")) if active_step else "در انتظار مرحلهٔ بعد"
+        if name == "validate":
+            updated.update({
+                "phase": "validation", "phase_label": "اعتبارسنجی مستقل روی GitHub",
+                "percent": 92 + (5 * completed // total),
+                "activity": step_name[:180], "status": "running",
+            })
+        elif name == "open-draft-pr":
+            updated.update({
+                "phase": "publication", "phase_label": "انتشار پیش‌نویس Pull Request",
+                "percent": 98 + (completed // total),
+                "activity": step_name[:180], "status": "running",
+            })
+        else:
+            updated["activity"] = step_name[:180]
+    elif failed_job:
+        updated.update({
+            "status": "failed",
+            "phase_label": "چرخه با خطا پایان یافت",
+            "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
+        })
+    elif all(
+        isinstance(job, dict) and job.get("status") == "completed"
+        for job in jobs
+    ):
+        conclusions = {job.get("conclusion") for job in jobs if isinstance(job, dict)}
+        if conclusions.issubset({"success", "skipped", "neutral"}):
+            updated.update({
+                "status": "completed", "phase": "complete",
+                "phase_label": "چرخهٔ مهندسی کامل شد",
+                "activity": "تمام مراحل Workflow با موفقیت پایان یافتند",
+                "percent": 100,
+            })
+    _RUN_PROGRESS_CACHE.update({"run_id": run_id, "at": now, "value": dict(updated)})
+    return updated
+
+
 @router.get("/progress")
 def autonomous_engineering_progress(
     period: str = "daily", start_date: str | None = None, end_date: str | None = None
 ) -> dict[str, Any]:
-    return get_progress(period=period, start_date=start_date, end_date=end_date)
+    result = get_progress(period=period, start_date=start_date, end_date=end_date)
+    result["current"] = _enrich_progress_from_github(result.get("current"))
+    return result
 
 
 @router.post("/settings", status_code=200)
