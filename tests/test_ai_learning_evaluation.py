@@ -15,6 +15,7 @@ def test_answer_quality_checks_concepts_forbidden_claims_and_sources():
     result = evaluate_answer(
         answer,
         expected_concepts=["ایندکس", "جست‌وجوی رکوردها"],
+        expected_language="fa",
         must_not_claim=["همیشه سریع‌تر است"],
         expected_sources=["https://learn.microsoft.com/sql/"],
     )
