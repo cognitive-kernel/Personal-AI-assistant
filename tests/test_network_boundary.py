@@ -89,6 +89,7 @@ def test_cross_origin_requests_cannot_reset_learning_data(monkeypatch):
         {"origin": "null"},
         {"origin": "http://127.0.0.1:0"},
         {"origin": "http://127.0.0.1:8000/attacker"},
+        {"origin": "http://127.0.0.1:8000/"},
         {"origin": "http://user@127.0.0.1:8000"},
         {"origin": "http://127.0.0.1:99999"},
     )
