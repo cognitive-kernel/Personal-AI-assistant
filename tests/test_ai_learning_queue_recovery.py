@@ -1349,3 +1349,38 @@ def test_dispatch_restores_queued_state_when_thread_constructor_fails(isolated_s
     assert browser_automation._ACTIVE_RUN_ID is None
     assert service.get_run(run["id"])["status"] == "queued"
     assert service.get_learning_control()["worker_active"] is False
+
+
+def test_outline_followup_persists_all_approved_topics_before_browser_work(isolated_store, monkeypatch):
+    course = service.create_course(title="صف پایدار ادامهٔ طرح درس")
+    topics = [
+        service.add_topic(course["id"], f"سرفصل تأییدشده {index}")
+        for index in range(3)
+    ]
+    service.decide_topics([topic["id"] for topic in topics], "approved")
+
+    # This function is invoked from the active outline worker. The helper must
+    # persist the entire follow-up selection and leave dispatch to the worker's
+    # normal FIFO completion path.
+    monkeypatch.setattr(browser_automation, "_ACTIVE", True)
+    monkeypatch.setattr(browser_automation, "_ACTIVE_RUN_ID", 9001)
+    monkeypatch.setattr(browser_automation, "_assert_worker_lease", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_automation, "_log_event", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        browser_automation,
+        "_capture_with_automatic_retry",
+        lambda *_args, **_kwargs: pytest.fail("provider work must not start before the full batch is queued"),
+    )
+
+    browser_automation._continue_lessons(course["id"], threading.Event())
+
+    runs = service.list_course_runs(course["id"], 20)
+    assert len(runs) == len(topics)
+    assert all(run["status"] == "queued" for run in runs)
+    queued_topic_ids = {
+        int(service.get_run(run["id"])["topics"][0]["topic_id"])
+        for run in runs
+    }
+    assert queued_topic_ids == {int(topic["id"]) for topic in topics}
+    assert service.has_queued_run_for_course(course["id"]) is True
+
