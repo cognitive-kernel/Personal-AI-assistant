@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `b50daaaaa12fab13d6526a47335613bd30a63eba` (main پس از PR #634). CI مستقل post-merge روی همین SHA موفق است: 1746 passed/5 skipped در 211.87 ثانیه، Windows storage، dashboard smoke، dependency audit، artifact/link/import checks و benchmarkها همگی موفق. جزئیات در بخش 1.1 و گزارش پذیرش ثبت شده‌اند.
+> commit مبنا: `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` (main پس از PR #641). CI مستقل post-merge روی این SHA در بازبینی 2026-10-31 تأیید نشد؛ آخرین baseline دارای شواهد CI مستقل `39a4d1e78d4cea3803a0e53e07d88933b8abe548` با 1750 passed/5 skipped است. وضعیت CI جدید تا زمان مشاهدهٔ workflowهای دقیق همین SHA نامشخص باقی می‌ماند.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -12,6 +12,9 @@
 این گزارش به‌خودی‌خود ادعای اجرای محلی کل مجموعهٔ تست یا ممیزی خط‌به‌خط تمام 400 فایل نیست. برای چنین ادعایی باید checkout کامل، اجرای تست‌ها و ارزیابی عملی روی میزبان هدف در دسترس باشد.
 
 ## 1.1 تغییرات تأییدشده پس از بازبینی قبلی
+
+- PR [#641](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/641) در commit `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` به `main` رسیده است: maintenance دوره‌ای AI-learning، reconciliation idempotent وظایف `learning.run_job` را اجرا می‌کند تا enqueue ناموفق در زمان اجرای برنامه بدون restart ترمیم شود. خطای reconciliation جداگانه log می‌شود و maintenance factual/browser-learning ادامه می‌یابد. دو regression برای یکتایی task و تداوم maintenance پس از خطای تزریق‌شده اضافه شده‌اند؛ تصمیم و محدودیت transactional outbox در ADR-017 ثبت شده است. CI post-merge این SHA هنوز مستقلاً تأیید نشده است.
+
 
 در snapshot مبنا، تغییرات زیر به‌صورت مرحله‌ای به `main` رسیده‌اند:
 
