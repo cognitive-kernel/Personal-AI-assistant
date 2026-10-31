@@ -11,7 +11,7 @@ import sqlite3
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from .db import learning_connection
 from .task_routes import require_loopback_client
@@ -30,7 +30,7 @@ class CandidateTestPlanItem(BaseModel):
     python_test_code: str | None = Field(default=None, max_length=8192)
     expected_stdout: str | None = Field(default=None, max_length=1000)
     oracle_id: str | None = Field(default=None, min_length=1, max_length=120)
-    oracle_version: int | None = Field(default=None, ge=1, le=1000)
+    oracle_version: StrictInt | None = Field(default=None, ge=1, le=1000)
     claim: str | None = Field(default=None, min_length=10, max_length=1000)
     claim_ids: list[str] | None = Field(default=None, min_length=1, max_length=20)
 

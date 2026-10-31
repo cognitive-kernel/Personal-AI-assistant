@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, StrictBool, ConfigDict
+from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict, field_validator
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
@@ -32,15 +32,15 @@ EditableStatus = Literal[
 class HypothesisProposalRequest(BaseModel):
     topic: str = Field(min_length=1, max_length=300)
     problem: str = Field(min_length=1, max_length=10000)
-    max_candidates: int = Field(default=3, ge=1, le=3)
+    max_candidates: StrictInt = Field(default=3, ge=1, le=3)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class RetainedKnowledgeHypothesisRequest(BaseModel):
-    knowledge_id: int = Field(ge=1)
+    knowledge_id: StrictInt = Field(ge=1)
     problem: str = Field(min_length=1, max_length=6000)
-    max_candidates: int = Field(default=3, ge=1, le=3)
+    max_candidates: StrictInt = Field(default=3, ge=1, le=3)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -78,6 +78,13 @@ class ExperienceSourceRefreshRequest(BaseModel):
 
 class ExperienceFeedbackRequest(BaseModel):
     rating: Literal[-1, 1]
+
+    @field_validator("rating", mode="before")
+    @classmethod
+    def reject_coercive_rating(cls, value: Any) -> Any:
+        if type(value) is not int or value not in (-1, 1):
+            raise ValueError("rating must be the integer -1 or 1.")
+        return value
 
     model_config = ConfigDict(extra="forbid")
 
@@ -149,8 +156,8 @@ class ExperienceTestRunRequest(BaseModel):
     confirm: StrictBool
     test_name: str = Field(min_length=1, max_length=300)
     source_code: str = Field(min_length=1, max_length=65536)
-    timeout_seconds: int = Field(default=10, ge=1, le=120)
-    max_output_bytes: int = Field(default=32768, ge=1, le=65536)
+    timeout_seconds: StrictInt = Field(default=10, ge=1, le=120)
+    max_output_bytes: StrictInt = Field(default=32768, ge=1, le=65536)
 
     model_config = ConfigDict(extra="forbid")
 

@@ -5,7 +5,7 @@ import sqlite3
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import knowledge_base
 from .task_routes import require_loopback_client
@@ -26,7 +26,7 @@ class SourceIngestRequest(BaseModel):
 
 class SourceSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
-    limit: int = Field(default=5, ge=1, le=20)
+    limit: StrictInt = Field(default=5, ge=1, le=20)
 
     model_config = ConfigDict(extra="forbid")
 

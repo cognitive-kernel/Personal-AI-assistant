@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, StrictBool, ConfigDict, Field
+from pydantic import BaseModel, StrictBool, StrictInt, ConfigDict, Field
 
 from .config import defaults
 from .db_backup import BackupRestoreError, backup_configured_databases, restore_databases
@@ -37,15 +37,15 @@ class BackupRequest(BaseModel):
 class BackupPruneRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: StrictBool
-    keep_last: int = Field(default=3, ge=3, le=50)
-    min_age_days: int = Field(default=30, ge=30, le=3650)
+    keep_last: StrictInt = Field(default=3, ge=3, le=50)
+    min_age_days: StrictInt = Field(default=30, ge=30, le=3650)
 
 
 class RestoreStagingPruneRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     confirm: StrictBool
-    keep_last: int = Field(default=1, ge=1, le=20)
-    min_age_days: int = Field(default=7, ge=7, le=3650)
+    keep_last: StrictInt = Field(default=1, ge=1, le=20)
+    min_age_days: StrictInt = Field(default=7, ge=7, le=3650)
 
 
 def _backup_root() -> Path:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Literal
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator
 from . import config, service, browser_automation
 from .db import StoreSchemaError, initialize_store
 from ..task_routes import require_loopback_client
@@ -19,31 +19,31 @@ class CourseCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class BrowserOutlineStart(BaseModel):
-    course_id: int = Field(ge=1)
+    course_id: StrictInt = Field(ge=1)
     request_key: str = Field(min_length=1, max_length=100)
     model_config = ConfigDict(extra="forbid")
 
 class RunCreate(BaseModel):
-    course_id: int = Field(ge=1)
+    course_id: StrictInt = Field(ge=1)
     run_type: Literal["outline", "lesson"]
-    topic_ids: list[int] = Field(default_factory=list, max_length=100)
+    topic_ids: list[StrictInt] = Field(default_factory=list, max_length=100)
     selection_mode: Literal["single", "selected", "all_approved"] = "single"
     request_key: str = Field(min_length=1, max_length=100)
     model_config = ConfigDict(extra="forbid")
 
 class LearningResume(BaseModel):
-    course_id: int | None = Field(default=None, ge=1)
+    course_id: StrictInt | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
 
 class BrowserLessonStart(BaseModel):
-    course_id: int = Field(ge=1)
-    topic_ids: list[int] = Field(min_length=1, max_length=10000)
+    course_id: StrictInt = Field(ge=1)
+    topic_ids: list[StrictInt] = Field(min_length=1, max_length=10000)
     request_key: str = Field(min_length=1, max_length=100)
     force_retry: bool = False
     model_config = ConfigDict(extra="forbid")
 
 class RunHistoryDelete(BaseModel):
-    run_ids: list[int] = Field(min_length=1, max_length=500)
+    run_ids: list[StrictInt] = Field(min_length=1, max_length=500)
     model_config = ConfigDict(extra="forbid")
 
 class RunComplete(BaseModel):
@@ -64,13 +64,13 @@ class OutlineImport(BaseModel):
 class TopicCreate(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     description: str = Field(default="", max_length=4000)
-    parent_topic_id: int | None = Field(default=None, ge=1)
+    parent_topic_id: StrictInt | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
 
 class TopicEdit(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     description: str | None = Field(default=None, max_length=4000)
-    parent_topic_id: int | None = Field(default=None, ge=1)
+    parent_topic_id: StrictInt | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
 
 class PauseState(BaseModel):
@@ -78,11 +78,11 @@ class PauseState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class TopicOrder(BaseModel):
-    topic_ids: list[int] = Field(min_length=1, max_length=10000)
+    topic_ids: list[StrictInt] = Field(min_length=1, max_length=10000)
     model_config = ConfigDict(extra="forbid")
 
 class TopicDecision(BaseModel):
-    topic_ids: list[int] = Field(min_length=1, max_length=10000)
+    topic_ids: list[StrictInt] = Field(min_length=1, max_length=10000)
     decision: str
     model_config = ConfigDict(extra="forbid")
 
@@ -103,9 +103,17 @@ class ReviewDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 class QueryFeedback(BaseModel):
-    query_trace_id: int = Field(ge=1)
+    query_trace_id: StrictInt = Field(ge=1)
     rating: Literal[1, -1]
     comment: str = Field(default="", max_length=1000)
+
+    @field_validator("rating", mode="before")
+    @classmethod
+    def reject_coercive_rating(cls, value: Any) -> Any:
+        if type(value) is not int or value not in (-1, 1):
+            raise ValueError("rating must be the integer -1 or 1.")
+        return value
+
     model_config = ConfigDict(extra="forbid")
 
 def _ready() -> None:

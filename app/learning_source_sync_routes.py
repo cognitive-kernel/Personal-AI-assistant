@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import learning_source_sync
 from .task_routes import require_loopback_client
@@ -17,7 +17,7 @@ router = APIRouter(
 
 
 class SourceSyncCheckRequest(BaseModel):
-    limit: int = Field(default=5, ge=1, le=5)
+    limit: StrictInt = Field(default=5, ge=1, le=5)
 
     model_config = ConfigDict(extra="forbid")
 
