@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Baseline:** `main` after PR #634, merge commit `b50daaaaa12fab13d6526a47335613bd30a63eba`
+**Baseline:** `main` after PR #646, merge commit `6b19b84c78e17d8b5c28122964c7130dcf42f853`
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
@@ -240,3 +240,12 @@ Append dated entries with:
 - PR #634 fixes failure settlement so committed pause/cancel requests are not overwritten by automatic retry. `cancel_requested` becomes terminal `cancelled`; `pause_requested` becomes `paused`; retry/backoff behavior for ordinary `running` failures is unchanged.
 - Regression coverage includes task-manager state transitions and worker heartbeat-start failure, with no handler execution and explicit resume semantics. ADR-013 records the contract.
 - Merged as `b50daaaaa12fab13d6526a47335613bd30a63eba`. Post-merge CI: 1746 passed/5 skipped in 211.87s; Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks passed.
+
+
+### 2026-10-31 — Local API CSRF and clickjacking defense
+
+- PR [#646](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/646) merged to `main` as `6b19b84c78e17d8b5c28122964c7130dcf42f853`.
+- The API boundary validates serialized `Origin` and Fetch Metadata for `/api/` requests, rejects cross-site and same-site cross-origin browser requests, preserves same-origin browser use and local non-browser clients without browser metadata, and adds anti-framing headers. This is defense in depth, not authentication.
+- Exact-head CI on `3ca98b26bb77f01f4f21396e4f81f3aaad3adb26`: tests [#41187960679](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187960679) — 1758 passed/5 skipped; Windows storage regressions, browser E2E [#41187960674](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187960674), dependency audit [#41187960681](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187960681), generated artifacts, 85 Markdown links, import-cycle scan, retrieval benchmark and claim-to-test 10/10 passed.
+- Post-merge CI on `6b19b84c78e17d8b5c28122964c7130dcf42f853`: tests [#41188392547](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392547), browser E2E [#41188392561](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392561), dependency audit [#41188392609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392609) — all passed.
+- Issue #52 remains open for independent security review. Local/owner-machine tests, live-model/human adjudication, target-host soak, staging restore/rollback and production acceptance remain external gates; none is claimed complete.
