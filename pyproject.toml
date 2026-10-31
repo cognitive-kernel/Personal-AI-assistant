@@ -16,8 +16,11 @@ browser = ["playwright>=1.50,<2.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
-markers = ["sandbox_integration: requires Docker and a preloaded digest-pinned Python image"]
+addopts = "-q -m \"not browser_e2e and not sandbox_integration\""
+markers = [
+  "browser_e2e: requires a running local application and Playwright Chromium",
+  "sandbox_integration: requires Docker and a preloaded digest-pinned Python image",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
