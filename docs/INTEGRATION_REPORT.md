@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88` (main پس از PR #655). PRهای #653، #656 و #655 روی head دقیق خود tests، browser E2E و dependency audit را گذراندند. post-merge CI روی `54a1a60` برای PR #656 موفق شد؛ روی SHA فعلی main، dependency audit [#41193247035](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193247035) موفق و tests [#41193246970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246970) و browser E2E [#41193246992](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246992) هنگام ثبت در حال اجرا هستند.
+> commit مبنا: `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88` (main پس از PR #655). PRهای #653، #656 و #655 روی head دقیق خود tests، browser E2E و dependency audit را گذراندند. post-merge CI روی `54a1a60` برای PR #656 موفق شد؛ روی SHA فعلی main، tests [#41193246970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246970) با 1774 passed/5 skipped و Windows storage، browser E2E [#41193246992](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246992)، dependency audit [#41193247035](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193247035)، 85 Markdown links و benchmark 10/10 موفق شدند.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
