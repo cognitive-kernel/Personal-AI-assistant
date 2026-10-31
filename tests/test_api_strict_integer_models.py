@@ -108,3 +108,20 @@ def test_integer_request_fields_accept_valid_integers(model, base, field, valid_
     payload = {**base, field: valid_value}
     validated = model.model_validate(payload)
     assert getattr(validated, field) == valid_value
+
+
+_LIST_CASES = [
+    (RunCreate, {"course_id": 1, "run_type": "lesson", "request_key": "strict"}, "topic_ids"),
+    (BrowserLessonStart, {"course_id": 1, "request_key": "strict"}, "topic_ids"),
+    (RunHistoryDelete, {}, "run_ids"),
+    (TopicOrder, {}, "topic_ids"),
+    (TopicDecision, {"decision": "approve"}, "topic_ids"),
+]
+
+
+@pytest.mark.parametrize(("model", "base", "field"), _LIST_CASES)
+@pytest.mark.parametrize("invalid_item", [True, 1.5, "2"])
+def test_integer_list_request_fields_reject_coercion(model, base, field, invalid_item):
+    payload = {**base, field: [invalid_item]}
+    with pytest.raises(ValidationError):
+        model.model_validate(payload)
