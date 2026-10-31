@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Baseline:** `main` after PR #665, commit `a23760805310154d83e47489eddf00fc9b91c7f6`
+**Baseline:** `main` after PR #666, commit `9308c1e8e8338a1aa52f3e562481bd308d938443` (documentation-only; application-code CI baseline remains `a23760805310154d83e47489eddf00fc9b91c7f6`)
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
@@ -270,3 +270,9 @@ Append dated entries with:
 - PR [#665](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/665) corrected default-suite routing for environment-dependent tests and made browser E2E workflow selection explicit; missing workflow configuration now fails rather than silently skipping the browser suite.
 - Merged to `main` as `a23760805310154d83e47489eddf00fc9b91c7f6`. tests [#41210701513](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701513) reported 1800 passed and 47 deselected in the default suite; Windows storage regressions, browser E2E [#41210701574](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701574), Docker sandbox integration [#41210701572](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701572), and dependency audit [#41210701463](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41210701463) passed.
 - The default test job reports 47 deselected tests; dedicated Windows storage, browser E2E and Docker sandbox workflows were checked separately. Do not interpret the default-suite count as evidence that all environment-dependent scenarios were exercised on the owner's target machine.
+
+
+### 2026-10-31 — Master engineering continuity prompt (PR #666)
+
+- Added `docs/MASTER_ENGINEERING_PROMPT.md` as the persistent, reusable execution protocol for future sessions.
+- Merged to `main` as `9308c1e8e8338a1aa52f3e562481bd308d938443`; exact-head tests, browser E2E, and dependency audit passed on PR head. Post-merge workflows on the current documentation-only main commit are queued: tests [#41211823993](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211823993), browser E2E [#41211823939](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211823939), and dependency audit [#41211823949](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211823949).
