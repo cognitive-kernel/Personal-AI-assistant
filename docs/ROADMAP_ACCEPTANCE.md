@@ -170,8 +170,8 @@ Append evidence only after it has actually been produced.
 
 ## 2026-10-31 — Linux Ollama second-stage payload integrity (PR #620)
 
-- [ ] Implementation in review: Linux payload archives are now selected from the exact official GitHub release manifest and downloaded using the pinned URL, SHA-256 digest, and declared size through the existing bounded download implementation.
+- [x] Merged to `main` as `a85c7e85b93c322d6a093ee7ba0319b30a6f2147`: Linux payload archives are selected from the exact official GitHub release manifest and downloaded using the pinned URL, SHA-256 digest, and declared size through the existing bounded download implementation.
 - The upstream installer's second-stage unverified curl path is replaced with the verified helper. Unknown installer structure and unsupported architecture fail closed.
 - Extraction uses a temporary tar file rather than a shell pipeline, preserving POSIX /bin/sh compatibility and surfacing decompression failures.
 - Automated regression coverage includes official asset selection, version/URL/digest/size validation, untrusted/malformed asset rejection, upstream script drift, and sh -n syntax validation.
-- Evidence status: PR #620 is open. Do not mark this gate passed until all required checks succeed on the final exact PR head and the change is merged. Live Linux installation/target-host acceptance is intentionally not claimed because it is a local test.
+- Exact-head CI passed on `5c1c1f36f5f38b43a2ec20e720548fde299a43f8`: tests [#41164300720](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300720) (1728 passed, 5 skipped; Windows storage regressions, artifact/link/import checks, retrieval and claim-to-test benchmarks 10/10), browser E2E [#41164300693](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300693), and dependency audit [#41164300658](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300658). Independent post-merge CI on the squash SHA is not confirmed. Live Linux installation/target-host acceptance remains intentionally excluded as a local test.
