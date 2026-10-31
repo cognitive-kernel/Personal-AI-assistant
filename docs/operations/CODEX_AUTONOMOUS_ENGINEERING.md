@@ -23,9 +23,9 @@ The repository's target machine is documented as:
 - Intel Core i5-12400 (12th Gen)
 - Intel integrated graphics with 128 MB reported graphics memory
 
-The initial agent model is `gpt-oss:20b`. This machine will run inference primarily on CPU, so coding sessions may be slow. Ollama's Codex integration recommends a context window of at least 64k tokens. Actual memory use and throughput must be measured on the target host before treating this as production-ready. Do not silently substitute a smaller model if tool-calling or context requirements are not met.
+The default agent model is `gpt-oss:20b`. This machine will run inference primarily on CPU, so coding sessions may be slow. Ollama's Codex integration recommends a context window of at least 64k tokens. Actual memory use and throughput must be measured on the target host before treating this as production-ready. Do not silently substitute a smaller model if tool-calling or context requirements are not met.
 
-The model can be changed by setting `AUTONOMOUS_ENGINEERING_MODEL` consistently for the local app and runner environment, then updating the workflow's `AUTONOMOUS_ENGINEERING_MODEL` value. The selected model must already be installed.
+The autonomous-engineering page lets the operator select an installed Ollama model or enter another model tag. The selected model is stored as the repository Actions variable `AUTONOMOUS_ENGINEERING_MODEL`; the runner verifies that exact model is installed before invoking Codex. If a different model is selected, pull it on the Windows host first (for example, `ollama pull qwen3:14b`). The fallback remains `gpt-oss:20b`.
 
 ## One-time Windows setup
 
@@ -76,7 +76,8 @@ The model can be changed by setting `AUTONOMOUS_ENGINEERING_MODEL` consistently 
 
 ## Workflow behavior
 
-- Runs hourly at minute 17 (GitHub schedule is best-effort), on pushes to `main`, and on manual dispatch.
+- GitHub checks the schedule hourly at minute 17 UTC. The operator selects 1, 2, 3, 4, 6, 8, 12, or 24 scheduled runs per UTC day in the page; the workflow gates hourly ticks to the selected count. The default is one run per day. Manual dispatch is separate and can add an extra run.
+- The selected daily frequency is stored in the repository Actions variable `AUTONOMOUS_ENGINEERING_RUNS_PER_DAY`. The model and frequency are saved from the page using the local GitHub CLI account, which must have permission to manage repository Actions variables.
 - The Codex job runs only on a runner carrying `self-hosted`, `Windows`, `X64`, and `ollama` labels and only when the ref is `main`.
 - The local job checks that Ollama, the configured model, and Codex CLI are present before starting.
 - After Codex proposes changes, the Windows self-hosted runner executes the full default pytest suite and the repository artifact, Markdown-link, import-cycle, retrieval, and claim-to-test quality gates against the modified working tree. The default pytest configuration excludes only the separately marked browser E2E and Docker sandbox integration tests; those remain covered by their dedicated CI workflows.
