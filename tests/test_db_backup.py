@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 
@@ -218,4 +219,17 @@ def test_restore_revalidates_staged_snapshot_against_manifest(initialized_databa
     assert changed is True
     assert not destination.exists()
     assert not list(tmp_path.glob(".restored.restore-*"))
+
+
+def test_restore_rejects_non_integer_manifest_format_version(initialized_databases, tmp_path):
+    settings_path, learning_path, _cloud_path = initialized_databases
+    bundle = tmp_path / "backup"
+    backup_databases(settings_path, learning_path, bundle)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["format_version"] = True
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(BackupRestoreError, match="Unsupported backup manifest format"):
+        restore_databases(bundle, tmp_path / "restored")
 
