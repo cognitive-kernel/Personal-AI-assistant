@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -30,6 +31,33 @@ def store_dir() -> Path:
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
+
+def append_event(record: dict[str, Any]) -> None:
+    directory = store_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    events = directory / "events.jsonl"
+    if events.exists() and events.stat().st_size > 1024 * 1024:
+        retained = events.read_text(encoding="utf-8").splitlines()[-1000:]
+        temporary = directory / "events.jsonl.tmp"
+        temporary.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
+        temporary.replace(events)
+    with events.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def append_history(record: dict[str, Any]) -> None:
+    directory = store_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    history = directory / "history.jsonl"
+    if history.exists() and history.stat().st_size > 8 * 1024 * 1024:
+        retained = history.read_text(encoding="utf-8").splitlines()[-5000:]
+        temporary = directory / "history.jsonl.tmp"
+        temporary.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
+        temporary.replace(history)
+    with history.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def persist(record: dict[str, Any]) -> None:
     directory = store_dir()
     try:
@@ -38,9 +66,7 @@ def persist(record: dict[str, Any]) -> None:
         temporary = directory / "current.json.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(directory / "current.json")
-        history = directory / "history.jsonl"
-        with history.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"type": "progress_event", **payload}, ensure_ascii=False) + "\n")
+        append_event({"type": "progress_event", **payload})
     except OSError as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
 
@@ -66,6 +92,8 @@ def plan_state() -> tuple[int, int, str | None]:
 
 def codex_activity(event: dict[str, Any]) -> str | None:
     event_type = event.get("type")
+    if event_type == "turn.started":
+        return "عامل در حال تحلیل و اجرای وظیفه است"
     item = event.get("item")
     if not isinstance(item, dict):
         return None
@@ -81,17 +109,26 @@ def codex_activity(event: dict[str, Any]) -> str | None:
         return "به‌روزرسانی فایل‌ها: " + "، ".join(paths) if paths else "ثبت تغییرات کد"
     if event_type == "item.updated" and kind in {"todo_list", "plan_update"}:
         return "به‌روزرسانی برنامهٔ کار عامل"
-    if event_type == "turn.started":
-        return "عامل در حال تحلیل و اجرای وظیفه است"
     return None
 
 
 def run_codex(args: argparse.Namespace) -> int:
-    command = [
-        "codex", "exec", "--oss", "--sandbox", "workspace-write",
+    executable = shutil.which("codex")
+    if not executable:
+        print("Codex CLI executable was not found on PATH.", file=sys.stderr)
+        return 127
+    arguments = [
+        "exec", "--oss", "--sandbox", "workspace-write",
         "--model", args.model, "--cd", str(ROOT),
         "--output-last-message", args.report, "--json", "-",
     ]
+    if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
+        command = [
+            os.getenv("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
+            '""' + executable + '" ' + subprocess.list2cmdline(arguments) + '"',
+        ]
+    else:
+        command = [executable, *arguments]
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
     except OSError as exc:
@@ -164,19 +201,16 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not (engineering and overall and snapshot):
         return
-    directory = store_dir()
+    record = {
+        "type": "project_snapshot", "date": datetime.now(timezone.utc).date().isoformat(),
+        "scorecard_snapshot_date": snapshot.group(1),
+        "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
+        "engineering_percent": float(engineering.group(1)),
+        "overall_percent": float(overall.group(1)),
+        "sha": sha.group(1) if sha else None,
+    }
     try:
-        directory.mkdir(parents=True, exist_ok=True)
-        history = directory / "history.jsonl"
-        record = {
-            "type": "project_snapshot", "date": snapshot.group(1),
-            "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
-            "engineering_percent": float(engineering.group(1)),
-            "overall_percent": float(overall.group(1)),
-            "sha": sha.group(1) if sha else None,
-        }
-        with history.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        append_history(record)
     except OSError as exc:
         print(f"Could not persist scorecard snapshot: {type(exc).__name__}", file=sys.stderr)
 
