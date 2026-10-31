@@ -183,6 +183,37 @@ def test_reconciliation_does_not_duplicate_existing_task(learning_task_store):
 
 
 
+def test_reconciliation_continues_after_one_job_enqueue_failure(
+    learning_task_store, monkeypatch
+):
+    first = learning.create_job("First job has a transient enqueue failure")
+    second = learning.create_job("Second job must not be starved")
+    original_enqueue = enqueue_learning_task
+    attempted = []
+
+    def fail_first_job(job_id, *, priority=0):
+        attempted.append(job_id)
+        if job_id == first["id"]:
+            raise RuntimeError("injected transient enqueue failure")
+        return original_enqueue(job_id, priority=priority)
+
+    monkeypatch.setattr("app.learning_tasks.enqueue_learning_task", fail_first_job)
+
+    # The first failure is isolated; later jobs are still reconciled.
+    assert reconcile_queued_learning_tasks() == 1
+    assert attempted == [first["id"], second["id"]]
+    assert task_manager.get_task_by_dedupe_key(f"learning-job:{first['id']}") is None
+    second_task = task_manager.get_task_by_dedupe_key(f"learning-job:{second['id']}")
+    assert second_task is not None
+
+    # A later cycle retries the failed record and leaves the successful task idempotent.
+    monkeypatch.setattr("app.learning_tasks.enqueue_learning_task", original_enqueue)
+    assert reconcile_queued_learning_tasks() == 2
+    first_task = task_manager.get_task_by_dedupe_key(f"learning-job:{first['id']}")
+    assert first_task is not None
+    assert task_manager.get_task_by_dedupe_key(f"learning-job:{second['id']}")["id"] == second_task["id"]
+
+
 def test_stopping_queued_learning_cancels_its_queue_task(learning_task_store):
     job = learning.create_job("Cancel queued learning")
     task = enqueue_learning_task(job["id"])
