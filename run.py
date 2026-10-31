@@ -26,6 +26,7 @@ MIN_PYTHON = (3, 11)
 DEFAULT_MODEL = "qwen2.5:7b"
 _OLLAMA_RELEASE_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
 _OLLAMA_RELEASE_TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+_OLLAMA_LINUX_ASSET = re.compile(r"^ollama-linux-(?:amd64|arm64)(?:-rocm|-jetpack[56])?\.tar\.zst$")
 _OLLAMA_ASSET_REDIRECT_HOSTS = frozenset({
     "github.com",
     "release-assets.githubusercontent.com",
@@ -100,7 +101,15 @@ def _latest_ollama_release_assets() -> dict[str, Any]:
         raise RuntimeError("ساختار آخرین انتشار رسمی Ollama معتبر نیست.")
 
     selected: dict[str, dict[str, Any]] = {}
-    for asset_name in ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"):
+    linux_assets = {
+        item["name"]
+        for item in assets
+        if isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and _OLLAMA_LINUX_ASSET.fullmatch(item["name"])
+    }
+    selected_names = {"install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"} | linux_assets
+    for asset_name in sorted(selected_names):
         matches = [
             item for item in assets
             if isinstance(item, dict) and item.get("name") == asset_name
