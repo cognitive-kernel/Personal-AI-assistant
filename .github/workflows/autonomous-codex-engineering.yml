@@ -198,6 +198,28 @@ jobs:
           Get-Content -Raw "$env:RUNNER_TEMP\codex-prompt.md" |
             codex exec --oss --sandbox workspace-write --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --cd "$env:GITHUB_WORKSPACE" --output-last-message "$env:RUNNER_TEMP\codex-report.md" -
 
+      - name: Run the full default test suite on the Windows target host
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\\.venv\\Scripts\\python.exe -m pytest -vv --durations=25 -o faulthandler_timeout=60
+          if ($LASTEXITCODE -ne 0) { throw "Windows local test suite failed with exit code $LASTEXITCODE" }
+
+      - name: Run local repository quality gates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          .\\.venv\\Scripts\\python.exe scripts/generate_learning_artifacts.py --check
+          if ($LASTEXITCODE -ne 0) { throw "Learning artifact validation failed" }
+          .\\.venv\\Scripts\\python.exe scripts/check_markdown_links.py
+          if ($LASTEXITCODE -ne 0) { throw "Markdown link validation failed" }
+          .\\.venv\\Scripts\\python.exe scripts/check_import_cycles.py --fail-on-cycle
+          if ($LASTEXITCODE -ne 0) { throw "Import-cycle validation failed" }
+          .\\.venv\\Scripts\\python.exe scripts/evaluate_experience_retrieval.py --lexical-only
+          if ($LASTEXITCODE -ne 0) { throw "Retrieval benchmark failed" }
+          .\\.venv\\Scripts\\python.exe scripts/run_knowledge_acceptance_eval.py
+          if ($LASTEXITCODE -ne 0) { throw "Knowledge acceptance benchmark failed" }
+
       - name: Capture only allowlisted text changes
         id: capture
         shell: pwsh
