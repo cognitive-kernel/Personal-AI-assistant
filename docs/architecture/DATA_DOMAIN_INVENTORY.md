@@ -1,8 +1,8 @@
 # موجودی حوزه‌های داده و مسیرهای دسترسی
 
 - تاریخ بازبینی: 2026-10-31
-- مبنای کد: شاخهٔ `main` در commit `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` (PR #641)؛ بررسی schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore.
-- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. CI پس از ادغام روی `8d7674c` در این بازبینی مستقلاً تأیید نشد؛ آخرین baseline دارای شواهد CI مستقل `39a4d1e78d4cea3803a0e53e07d88933b8abe548` با 1750 passed/5 skipped، Windows storage، dashboard smoke و dependency audit است.
+- مبنای کد: شاخهٔ `main` در commit `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` (PR #642 پس از PR #641)؛ بررسی schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore.
+- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. CI دقیق head مربوط به PR #642 با 1752 passed/5 skipped، Windows storage، Chromium browser E2E و dependency audit موفق شد؛ post-merge CI روی `c6a28ce` هنوز مستقلاً تأیید نشده است.
 - ممیزی دقیق schema و خطرهای مهاجرت: [SCHEMA_MIGRATION_AUDIT.md](SCHEMA_MIGRATION_AUDIT.md)
 
 ## حوزه‌ها و مالکیت فعلی
