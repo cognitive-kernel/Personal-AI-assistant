@@ -34,7 +34,7 @@ def _require_experience_status(experience_id: int) -> str:
 def set_feedback(experience_id: int, rating: int) -> dict[str, Any]:
     experience_id = _validate_experience_id(experience_id)
     if isinstance(rating, bool) or not isinstance(rating, int) or rating not in (-1, 1):
-        raise ValueError("Feedback rating must be the integer -1 or 1.")
+        raise ValueError("Feedback rating must be -1 or 1 (integers only).")
     if _require_experience_status(experience_id) != "verified":
         raise ValueError("Feedback can only be recorded for a verified experience.")
     updated_at = _now()
