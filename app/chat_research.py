@@ -475,7 +475,15 @@ def answer(
         # exception type so offline/provider failures can be distinguished from
         # a successful search that returned no usable documents.
         source_discovery_error_type = type(exc).__name__
-        documents = []
+        documents = web_sources.SourceDocumentList(
+            search_provider_diagnostics=getattr(exc, "provider_diagnostics", []),
+            fetch_diagnostics={
+                "candidate_count": 0,
+                "attempted_count": 0,
+                "fetched_count": 0,
+                "failure_counts": {},
+            },
+        )
         logger.warning("Research source discovery failed (%s)", source_discovery_error_type)
     sources = _source_payload(documents)
     source_discovery_diagnostics = _source_discovery_diagnostics(documents)
