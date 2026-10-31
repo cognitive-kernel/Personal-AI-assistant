@@ -147,8 +147,7 @@ def review_edge(
     _task_checkpoint(context, "graph_edge_source_fetch_complete", edge_id)
     normalize = lambda value: re.sub(r"\s+", " ", value).strip()
     if normalize(excerpt) not in normalize(str(document.text)):
-        _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
-        return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
+        return _persist_edge_review(context, edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
             "reason": "The stored excerpt is no longer present on the live source page.",
             "source_live_sha256": hashlib.sha256(str(document.text).encode("utf-8")).hexdigest(),
@@ -164,8 +163,7 @@ def review_edge(
     reviewers = learning_review_adapters.list_reviewers(settings, installed)
     _task_checkpoint(context, "graph_edge_reviewers_ready", edge_id, reviewer_count=len(reviewers))
     if len(reviewers) < 2:
-        _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
-        return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
+        return _persist_edge_review(context, edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
             "reason": "Two attributable, digest-distinct reviewers are not available; no graph edge was accepted or rejected.",
             "reviews": [],
@@ -256,27 +254,61 @@ def review_edge(
         "reviews": reviews,
         "policy_version": "learning-knowledge-graph-review-v1",
     }
-    _task_checkpoint(context, "graph_edge_review_store", edge_id, status=status)
-    return _store_edge_review(edge_id, expected_source_sha256, status, report)
+    return _persist_edge_review(context, edge_id, expected_source_sha256, status, report)
 
 
-def _store_edge_review(edge_id: int, source_hash: str, status: str, report: dict[str, Any]) -> dict[str, Any]:
-    with learning_connection() as connection:
-        connection.execute(
-            """UPDATE learning_knowledge_graph_edges
-               SET status=?, review_json=?, reviewed_at=CURRENT_TIMESTAMP
-               WHERE id=? AND source_sha256=? AND status IN ('proposed','conflicting')""",
-            (status, json.dumps(report, ensure_ascii=False, sort_keys=True), edge_id, source_hash),
+def _persist_edge_review(
+    context: Any | None,
+    edge_id: int,
+    source_hash: str,
+    status: str,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    checkpoint = {"stage": "graph_edge_review_committed", "edge_id": edge_id, "status": status}
+    complete_with_commit = getattr(context, "complete_with_commit", None)
+    if callable(complete_with_commit):
+        # The graph mutation and durable task success share one BEGIN IMMEDIATE
+        # transaction, so a committed pause/cancel cannot race past this boundary.
+        return complete_with_commit(
+            checkpoint,
+            lambda connection: _store_edge_review_in_connection(
+                connection, edge_id, source_hash, status, report
+            ),
         )
-        row = connection.execute(
-            "SELECT id, status, review_json FROM learning_knowledge_graph_edges WHERE id=?",
-            (edge_id,),
-        ).fetchone()
+    _task_checkpoint(context, "graph_edge_review_store", edge_id, status=status)
+    return _store_edge_review(edge_id, source_hash, status, report)
+
+
+def _store_edge_review_in_connection(
+    connection: sqlite3.Connection,
+    edge_id: int,
+    source_hash: str,
+    status: str,
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    connection.execute(
+        """UPDATE learning_knowledge_graph_edges
+           SET status=?, review_json=?, reviewed_at=CURRENT_TIMESTAMP
+           WHERE id=? AND source_sha256=? AND status IN ('proposed','conflicting')""",
+        (status, json.dumps(report, ensure_ascii=False, sort_keys=True), edge_id, source_hash),
+    )
+    row = connection.execute(
+        "SELECT id, status, review_json FROM learning_knowledge_graph_edges WHERE id=?",
+        (edge_id,),
+    ).fetchone()
+    if row is None:
+        raise KeyError(edge_id)
     return {
         "edge_id": edge_id,
         "status": row["status"],
         "review": json.loads(row["review_json"] or "{}"),
     }
+
+
+def _store_edge_review(edge_id: int, source_hash: str, status: str, report: dict[str, Any]) -> dict[str, Any]:
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        return _store_edge_review_in_connection(connection, edge_id, source_hash, status, report)
 
 
 def get_graph_context_for_topic(topic: str, *, max_nodes: int = 8, max_edges: int = 12) -> dict[str, Any]:
