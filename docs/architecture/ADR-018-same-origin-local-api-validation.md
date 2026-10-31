@@ -22,6 +22,7 @@ The dashboard intentionally has no login because it is a local-first application
 - Cross-origin HTML forms and browser fetches cannot invoke bodyless local API actions, including destructive learning-data reset.
 - Same-origin dashboard requests continue to work. Local CLI/test clients without browser metadata remain supported.
 - This is CSRF defense in depth, not authentication. A local process or malicious local software can still access the API; the app must remain bound to loopback.
+- The anti-framing headers also block same-origin embedding; the local dashboard is not designed to be embedded in another page.
 - Independent security review tracked by [issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains required.
 
 ## Validation
