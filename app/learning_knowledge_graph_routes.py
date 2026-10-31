@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt
 
 from . import db, learning_knowledge_graph, task_manager
 from .learning_knowledge_graph_tasks import KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE
@@ -17,8 +17,8 @@ router = APIRouter(
 
 
 class EdgeProposalRequest(BaseModel):
-    source_knowledge_id: int = Field(ge=1)
-    target_knowledge_id: int = Field(ge=1)
+    source_knowledge_id: StrictInt = Field(ge=1)
+    target_knowledge_id: StrictInt = Field(ge=1)
     relation_type: Literal["supports", "causes", "depends_on", "contradicts", "supersedes"]
     source_url: str = Field(min_length=9, max_length=1500)
     source_excerpt: str = Field(min_length=20, max_length=1000)
