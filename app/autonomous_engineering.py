@@ -222,6 +222,13 @@ def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
 
 
+@router.get("/progress")
+def autonomous_engineering_progress(
+    period: str = "daily", start_date: str | None = None, end_date: str | None = None
+) -> dict[str, Any]:
+    return get_progress(period=period, start_date=start_date, end_date=end_date)
+
+
 @router.post("/settings", status_code=200)
 def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
     model = payload.model.strip()
