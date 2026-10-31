@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   codex:
-        runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
