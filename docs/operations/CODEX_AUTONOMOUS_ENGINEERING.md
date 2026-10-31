@@ -36,7 +36,7 @@ Codex uses the pinned OpenAI Codex GitHub Action, the `:workspace` permission pr
 
 The patch is transferred as an artifact to a separate job. That job applies it to the exact base commit, installs dependencies without the OpenAI secret, and runs the Linux test suite plus the repository's generated-artifact, Markdown-link, import-cycle, retrieval, and claim-to-test checks. Only after all configured checks pass does a separate write-enabled job create a **draft pull request**.
 
-The workflow never writes to `main`, merges, deploys, changes branch protections, modifies secrets, or performs destructive database operations. Normal PR CI and required human/independent reviews remain applicable. A passing Linux validation job does not replace Windows, browser, security, target-host, or human acceptance gates.
+The workflow never writes to `main`, merges, deploys, changes branch protections, modifies secrets, or performs destructive database operations. Normal PR CI runs on generated PRs. **At the time this workflow was added, `main` had no branch protection or required status checks**, so review/check enforcement is not guaranteed by GitHub settings; configure a repository ruleset/branch protection separately before relying on those gates. The draft-only behavior is a workflow convention, not an enforced merge lock. A passing Linux validation job does not replace Windows, browser, security, target-host, or human acceptance gates.
 
 ## Operational controls and limitations
 
