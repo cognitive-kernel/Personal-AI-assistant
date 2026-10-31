@@ -8,12 +8,12 @@ import shutil
 import subprocess
 import urllib.error
 import urllib.request
-from typing import Any
 import re
+from typing import Any
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 
@@ -32,8 +32,8 @@ _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 
 
 class EngineeringSettings(BaseModel):
-    model: str
-    runs_per_day: int
+    model: StrictStr
+    runs_per_day: StrictInt
 
 
 def _repository() -> str:
