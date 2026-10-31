@@ -89,3 +89,8 @@
 ## Worker startup failure recovery
 
 All learning entry points use one worker-start boundary. If `thread.start()` raises, the in-memory active markers and cancellation event are cleared, and the durable run is returned to the queued state for a later dispatch. The failure is logged with its exception type and bounded message; the caller receives a typed `worker_thread_start_failed` error. This avoids leaving a phantom `running` record with no worker. Regression coverage verifies the queue can dispatch the same run after a subsequent successful start. This repository test does not replace target-host Chrome/process-restart acceptance.
+
+
+## اثبات بازیابی پس از process restart
+
+`tests/test_ai_learning_retrieval_boundary.py::test_published_knowledge_is_retrievable_after_a_new_process` یک فرایند Python تازه را با همان `AI_LEARNING_DB_PATH` اجرا می‌کند. فرایند تازه فقط نسخهٔ منتشرشده را از مسیر `integration.retrieve_context` دریافت می‌کند، نسخهٔ draft را نمی‌بیند و query trace را در همان SQLite ثبت می‌کند. این آزمون ماندگاری و قرارداد retrieval را می‌سنجد؛ کیفیت زندهٔ مدل یا صحت factual پاسخ را نمی‌سنجد.
