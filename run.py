@@ -45,8 +45,8 @@ class _GitHubAssetRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Allow release downloads to use only GitHub's HTTPS asset hosts."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        target = urllib.parse.urljoin(req.full_url, newurl)
         try:
+            target = urllib.parse.urljoin(req.full_url, newurl)
             parsed = urllib.parse.urlsplit(target)
             hostname = parsed.hostname
             port = parsed.port
