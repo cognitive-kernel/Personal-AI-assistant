@@ -8,6 +8,7 @@
 
 - [x] پایگاه SQLite مستقل، مهاجرت‌های شماره‌دار با checksum و تراکنش‌ها؛ دیتابیس یادگیری از دیتابیس اصلی برنامه جدا است.
 - [x] ذخیرهٔ پایدار درخواست‌های صریح یادگیری با شناسهٔ درخواست و ترتیب FIFO.
+- [x] maintenance دوره‌ای AI-learning علاوه بر startup، وظایف `learning.run_job` فاقد task متناظر را با reconciliation idempotent ترمیم می‌کند؛ خطای این مرحله جداگانه log می‌شود و maintenance factual/browser-learning ادامه می‌یابد. این repair دوره‌ای است و atomic outbox محسوب نمی‌شود؛ قرارداد در ADR-017 ثبت شده است.
 - [x] بازیابی دستی اجرای ناتمام از صف سراسری استفاده می‌کند؛ در نبود اجرای ذخیره‌شده، مسیر ادامهٔ سرفصل‌های تأییدشده نیز سرفصل واجد شرایط را مستقیماً از SQLite پیدا می‌کند و به صفحه‌بندی ۱۰۰ دوره/۵۰ اجرا وابسته نیست. آزمون رگرسیون، دورهٔ دارای سرفصل ناتمام خارج از صفحه را پوشش می‌دهد.
 - [x] بازیابی اجرای صف‌شده/ناتمام هنگام راه‌اندازی، مگر آنکه مکث سراسری فعال باشد؛ پس از پایان کار، worker درخواست ذخیره‌شدهٔ بعدی را بررسی می‌کند. مسیر دستی «ادامه/بازیابی» نیز اکنون قدیمی‌ترین اجرای قابل‌بازیابی را از صف پایدار سراسری انتخاب می‌کند و به محدودیت صفحه‌بندی ۱۰۰ دوره/۵۰ اجرا وابسته نیست؛ آزمون رگرسیون، اجرای خارج از صفحهٔ داشبورد را پوشش می‌دهد.
 - [x] پاسخ سرفصل فقط وقتی موفق محسوب می‌شود که خط `AUDIT` صریحاً `COMPLETE` باشد، تعداد سرفصل‌های اعلام‌شده با متن قابل‌استخراج تطبیق کند و شماره‌گذاری از ۱ پیوسته باشد؛ پاسخ ناقص/بدون ممیزی همراه متن خام و سرفصل‌های قابل استخراج ذخیره می‌شود، اما اجرا در وضعیت نیازمند اقدام می‌ماند و تولید درس خودکار شروع نمی‌شود.
@@ -42,9 +43,9 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین اجرای کامل تأییدشده روی `main` commit `b50daaaaa12fab13d6526a47335613bd30a63eba` در تاریخ 2026-10-31 موفق بوده است؛ post-merge CI همین SHA کامل و موفق است: 1746 passed/5 skipped در 211.87 ثانیه:
+آخرین commit کد برنامه در `main` برابر `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` (PR #641) است. آخرین اجرای کامل مستقلِ قابل‌تأیید مربوط به baseline قبلی `39a4d1e78d4cea3803a0e53e07d88933b8abe548` با 1750 passed/5 skipped است؛ CI پس از ادغام PR #641 در زمان بازبینی مستقلاً تأیید نشد:
 
-- مجموعهٔ کامل pytest: **1746 passed, 5 skipped** در 211.87 ثانیه. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
+- مجموعهٔ کامل pytest روی آخرین baseline دارای شواهد مستقل: **1750 passed, 5 skipped**. تست‌های skip‌شده به‌معنی پذیرش target-host یا اثبات اجرای زندهٔ provider نیستند؛ جزئیات هر skip باید از همان workflow دقیق خوانده شود و از روی شمار کل حدس زده نشود.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
@@ -57,7 +58,7 @@
 2. ارزیابی انسانی کیفیت محتوای تولیدشده و کفایت منابع؛ benchmarkهای deterministic و smoke مرورگر جایگزین داوری انسانی یا آزمون زندهٔ ChatGPT نیستند.
 3. هماهنگی مالکیت worker بین فرایندهای یک میزبان با lease/heartbeat و fencing در کد پیاده‌سازی و با آزمون رقابت فرایندی، انقضای lease، بازیابی و رد نوشتن مالک قدیمی پوشش داده شده است. پذیرش crash/soak روی میزبان هدف همچنان باز است؛ چندمیزبانه و network filesystem پشتیبانی نمی‌شوند.
 - اجرای موفق main پس از تغییرات صف/ارزیابی: [tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292998)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343292937)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/40343293027).
-- اجرای post-merge روی SHA جاری: [tests و Windows storage #41173647405](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41173647405)، [dashboard smoke #41173647351](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41173647351)، [dependency audit #41173647348](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41173647348). این شواهد فقط CI مخزن را نشان می‌دهند و پذیرش میزبان هدف، کیفیت مدل یا داوری انسانی را ثابت نمی‌کنند.
+- اجرای post-merge تأییدشده روی baseline قبلی `39a4d1e78d4cea3803a0e53e07d88933b8abe548`: [tests و Windows storage #41179455637](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41179455637)، [dashboard smoke #41179455593](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41179455593)، [dependency audit #41179455586](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41179455586). این شواهد فقط CI مخزن را نشان می‌دهند و پذیرش میزبان هدف، کیفیت مدل یا داوری انسانی را ثابت نمی‌کنند. برای commit جدید `8d7674c` هنوز post-merge CI تأیید نشده است.
 - تست ورود واقعی به ChatGPT، تست با حساب کاربر، قطع برق/شبکه روی دستگاه مقصد، و سنجش کارایی با مدل embedding نصب‌شده، عمداً خارج از CI خودکارند و هنوز باید عملی انجام شوند.
 
 ### شواهد محلی ویندوز (2026-10-27)
