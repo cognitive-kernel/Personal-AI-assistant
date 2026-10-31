@@ -202,7 +202,8 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
     if not (engineering and overall and snapshot):
         return
     record = {
-        "type": "project_snapshot", "date": snapshot.group(1),
+        "type": "project_snapshot", "date": datetime.now(timezone.utc).date().isoformat(),
+        "scorecard_snapshot_date": snapshot.group(1),
         "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
         "engineering_percent": float(engineering.group(1)),
         "overall_percent": float(overall.group(1)),
