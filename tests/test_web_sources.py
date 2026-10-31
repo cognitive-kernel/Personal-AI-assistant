@@ -193,8 +193,9 @@ def test_search_results_fall_back_to_bing_when_duckduckgo_has_no_parseable_resul
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     assert web_sources._search_results("cloud compute free tier", 3) == [
         ("Official Compute Docs", "https://example.org/docs")
@@ -239,8 +240,9 @@ def test_search_results_aggregate_google_bing_and_duckduckgo_with_dedup(monkeypa
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     results = web_sources._search_results("cloud compute terms", 3)
 
@@ -289,8 +291,9 @@ def test_search_results_round_robin_unique_results_across_engines(monkeypatch):
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     results = web_sources._search_results("free cloud hosting", 3)
 
@@ -319,8 +322,9 @@ def test_duckduckgo_lite_fallback_is_used_when_primary_has_no_results(monkeypatc
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     results = web_sources._search_results("free cloud hosting", 3)
     diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
@@ -346,8 +350,9 @@ def test_google_basic_html_fallback_is_used_when_standard_markup_has_no_results(
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     results = web_sources._search_results("free cloud hosting", 3)
     diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
@@ -383,8 +388,9 @@ def test_search_results_include_per_engine_counts_and_duplicate_counts(monkeypat
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     results = web_sources._search_results("cloud compute terms", 3)
 
@@ -413,8 +419,9 @@ def test_successful_search_keeps_diagnostics_when_one_provider_fails(monkeypatch
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     results = web_sources._search_results("cloud compute terms", 3)
     diagnostics = {item["provider"]: item for item in results.provider_diagnostics}
@@ -428,8 +435,9 @@ def test_search_results_raise_diagnostic_when_all_providers_return_no_results(mo
         web_sources, "_open", lambda _url, **_kwargs: ("<html>blocked</html>", "text/html")
     )
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     with pytest.raises(web_sources.SourceFetchError, match="DuckDuckGo:no_parseable_results"):
         web_sources._search_results("cloud compute free tier", 3)
@@ -457,8 +465,9 @@ def test_sandbox_search_uses_bounded_alternate_queries_when_primary_is_unparseab
 
     monkeypatch.setattr(web_sources, "_open", fake_open)
     monkeypatch.setattr(
-        web_sources, "_validate_public_url", lambda url: urllib.parse.urlparse(url)
+        web_sources, "_parse_public_url", lambda url: urllib.parse.urlparse(url)
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [True])
 
     result = web_sources._search_results(
         "official free developer sandbox container compute limits", 3
