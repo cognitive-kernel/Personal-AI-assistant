@@ -46,3 +46,4 @@
 - ثبت runtime پیش از شروع threadها برای پاک‌سازی شکست startup: [ADR-014](architecture/ADR-014-track-runtime-before-start.md)
 - تطبیق snapshot نهایی بازیابی با manifest و رد تغییر هم‌زمان فایل پشتیبان: [ADR-015](architecture/ADR-015-verify-staged-restore.md)
 - جلوگیری از idempotent no-op شدن start هنگام shutdown در حال اجرا: [ADR-016](architecture/ADR-016-runtime-restart-after-stop.md)
+- ترمیم دوره‌ای فاصلهٔ بین ایجاد learning job و enqueue صف پایدار: [ADR-017](architecture/ADR-017-periodic-learning-task-reconciliation.md)
