@@ -1,6 +1,6 @@
 # ADR-018: Same-origin validation for the unauthenticated local API
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-10-31
 - Owners: Personal AI Assistant maintainers
 
@@ -27,4 +27,6 @@ The dashboard intentionally has no login because it is a local-first application
 
 ## Validation
 
-Regression tests cover cross-site POST reset attempts, same-site but cross-origin requests, `Origin: null`, cross-site API reads, same-origin browser POSTs, non-browser local POSTs, and ordinary dashboard navigation. Exact-head CI is required before this ADR is accepted.
+Regression tests cover cross-site POST reset attempts, same-site but cross-origin requests, `Origin: null`, malformed origins/ports/paths/credentials, cross-site API reads, same-origin browser POSTs, non-browser local POSTs, anti-framing headers, and ordinary dashboard navigation.
+
+Exact-head CI on PR #646 (`3ca98b26bb77f01f4f21396e4f81f3aaad3adb26`) passed: 1758 passed/5 skipped, Windows storage, Chromium E2E, dependency audit, 85 Markdown links, import-cycle scan, retrieval benchmark and claim-to-test benchmark 10/10. Post-merge CI on `6b19b84c78e17d8b5c28122964c7130dcf42f853` also passed: tests [#41188392547](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392547), browser E2E [#41188392561](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392561), dependency audit [#41188392609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392609).
