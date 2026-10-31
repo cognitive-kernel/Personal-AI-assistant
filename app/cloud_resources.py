@@ -304,16 +304,24 @@ def list_provider_quota_snapshots(
 def _normalize_source_url(url: str) -> tuple[str, str]:
     if not isinstance(url, str) or len(url) > 2048:
         raise CloudResourceError("Discovered source URL is invalid.")
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise CloudResourceError(
+            "Cloud resource source URL has an invalid authority or port."
+        ) from exc
     if (
         parsed.scheme != "https"
-        or not parsed.hostname
-        or parsed.username
-        or parsed.password
-        or parsed.port not in {None, 443}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.netloc.endswith(":")
+        or port not in {None, 443}
     ):
         raise CloudResourceError("Cloud resource sources must use public HTTPS URLs.")
-    hostname = parsed.hostname.rstrip(".").lower()
+    hostname = hostname.rstrip(".").lower()
     normalized = urlunparse(parsed._replace(fragment=""))
     return normalized, hostname
 
