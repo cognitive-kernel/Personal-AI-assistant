@@ -411,6 +411,27 @@ def test_github_asset_redirect_handler_rejects_non_github_hosts():
     ) is None
 
 
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://@github.com/ollama/ollama/releases/download/v0.40.13/install.sh",
+        "https://:secret@github.com/ollama/ollama/releases/download/v0.40.13/install.sh",
+        "https://user:@github.com/ollama/ollama/releases/download/v0.40.13/install.sh",
+        "https://github.com:/ollama/ollama/releases/download/v0.40.13/install.sh",
+        "https://github.com:not-a-port/ollama/ollama/releases/download/v0.40.13/install.sh",
+        "https://[2001:db8::1/ollama/ollama/releases/download/v0.40.13/install.sh",
+    ],
+)
+def test_github_asset_redirect_handler_rejects_invalid_authority(target):
+    handler = installer._GitHubAssetRedirectHandler()
+    request = urllib.request.Request(
+        "https://github.com/ollama/ollama/releases/download/v0.40.13/install.sh"
+    )
+    assert handler.redirect_request(
+        request, None, 302, "Found", {}, target
+    ) is None
+
+
 def test_github_asset_redirect_handler_allows_github_release_asset_host():
     handler = installer._GitHubAssetRedirectHandler()
     request = urllib.request.Request(
@@ -591,6 +612,32 @@ def test_linux_verified_asset_helper_rejects_unpinned_or_untrusted_assets(tmp_pa
         }),
     )
     with pytest.raises(RuntimeError, match="valid SHA-256 digest or size"):
+        installer._download_ollama_asset_cli([asset_name])
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://@github.com/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+        "https://:secret@github.com/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+        "https://user:@github.com/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+        "https://github.com:/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+        "https://github.com:not-a-port/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+        "https://[2001:db8::1/ollama/ollama/releases/download/v0.40.13/ollama-linux-amd64.tar.zst",
+    ],
+)
+def test_linux_verified_asset_helper_rejects_invalid_authority(url, tmp_path, monkeypatch):
+    asset_name = "ollama-linux-amd64.tar.zst"
+    monkeypatch.setenv("OLLAMA_VERIFIED_ASSET_DIR", str(tmp_path))
+    monkeypatch.setenv("OLLAMA_VERSION", "0.40.13")
+    monkeypatch.setenv(
+        "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON",
+        json.dumps({
+            "tag": "v0.40.13",
+            "assets": {asset_name: {"url": url, "sha256": "c" * 64, "size": 100}},
+        }),
+    )
+    with pytest.raises(RuntimeError):
         installer._download_ollama_asset_cli([asset_name])
 
 
