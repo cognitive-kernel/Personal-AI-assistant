@@ -179,6 +179,8 @@ def _decode_task_cursor(cursor: str | None) -> tuple[int, int] | None:
     if (
         not isinstance(payload, dict)
         or set(payload) != {"v", "p", "i"}
+        or isinstance(payload.get("v"), bool)
+        or not isinstance(payload.get("v"), int)
         or payload.get("v") != 1
         or isinstance(payload.get("p"), bool)
         or not isinstance(payload.get("p"), int)
