@@ -92,7 +92,11 @@ jobs:
             the acceptance scorecard, and the checked-out repository. The checked-out base SHA
             is ${{ steps.base.outputs.sha }}.
 
-            Work on exactly one highest-priority, independently actionable engineering task.
+            If .agent-request.json contains a non-empty manual_task, evaluate it as the
+            requested task, subject to the master protocol, safety boundaries, and project priority.
+            Otherwise select the highest-priority independently actionable task from the live ledger.
+
+            Work on exactly one independently actionable engineering task.
             Preserve existing architecture and behavior. Diagnose before changing code. Make
             the smallest complete change, add regression tests, run all relevant tests available
             in this environment, inspect the complete diff, and update the existing engineering
