@@ -90,6 +90,39 @@ def test_bilingual_evaluator_rejects_answers_in_the_wrong_language():
     )
 
 
+
+def test_language_adherence_requires_a_clear_expected_script_majority():
+    from app.ai_learning.evaluation import evaluate_language_adherence
+
+    english = evaluate_language_adherence("a" * 12 + "ا" * 8, "en", min_letters=1)
+    persian = evaluate_language_adherence("ا" * 12 + "a" * 8, "fa", min_letters=1)
+
+    assert english["expected_language_ratio"] == 0.6
+    assert english["dominant_script"] == "mixed"
+    assert english["passed"] is False
+    assert english["reason"] == "expected_language_not_dominant"
+
+    assert persian["expected_language_ratio"] == 0.6
+    assert persian["dominant_script"] == "mixed"
+    assert persian["passed"] is False
+    assert persian["reason"] == "expected_language_not_dominant"
+
+
+def test_language_adherence_accepts_the_declared_dominant_script_threshold():
+    from app.ai_learning.evaluation import evaluate_language_adherence
+
+    english = evaluate_language_adherence("a" * 13 + "ا" * 7, "en", min_letters=1)
+    persian = evaluate_language_adherence("ا" * 13 + "a" * 7, "fa", min_letters=1)
+
+    assert english["expected_language_ratio"] == 0.65
+    assert english["dominant_script"] == "latin-script"
+    assert english["passed"] is True
+
+    assert persian["expected_language_ratio"] == 0.65
+    assert persian["dominant_script"] == "arabic-script"
+    assert persian["passed"] is True
+
+
 def test_language_adherence_ignores_urls_and_code_blocks():
     from app.ai_learning.evaluation import evaluate_language_adherence
 
