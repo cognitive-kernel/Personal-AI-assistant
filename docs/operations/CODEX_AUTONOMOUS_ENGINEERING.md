@@ -62,7 +62,7 @@ The model can be changed by setting `AUTONOMOUS_ENGINEERING_MODEL` consistently 
 
 6. In the repository, open **Settings → Actions → Runners → New self-hosted runner**. Select **Windows x64**, follow GitHub's current download/configuration commands, and add the custom label `ollama`. Do not paste the temporary runner registration token into ChatGPT, source files, issue comments, or logs.
 
-7. Configure the runner to run as a Windows service. The runner service account must be able to reach the local Ollama server. If Ollama only runs in an interactive tray session, configure Ollama to start persistently under the same Windows account (for example, through an appropriately secured scheduled task/service) before relying on unattended runs. Do not run the runner as an administrator unless a separately reviewed requirement proves it necessary.
+7. Configure the runner to run as a Windows service under a dedicated, non-administrator Windows service account. Keep this account separate from the account that runs the local application. The runner account must be able to reach the local Ollama server, but must not be signed in to GitHub CLI and must not contain personal files or unrelated credentials. The local application account retains the GitHub CLI authentication used by the dashboard's explicit dispatch/cancel controls. If Ollama only runs in an interactive tray session, configure Ollama to start persistently under its own secured account/service before relying on unattended runs. Do not run the runner as an administrator unless a separately reviewed requirement proves it necessary.
 
 8. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. This is used only by the final GitHub-hosted publication job.
 
@@ -93,7 +93,7 @@ The AI-learning page and autonomous-engineering page both include the primary na
 
 ## Security and operational limitations
 
-- A self-hosted runner executes repository workflow code on the local host. Use a dedicated, non-administrator Windows account and do not register this machine for arbitrary repositories or untrusted PR workflows.
+- A self-hosted runner executes repository workflow code on the local host. Use a dedicated, non-administrator service account, separate from the local app user's GitHub CLI account; do not store a personal GitHub CLI login or unrelated credentials in the runner account. Do not register this machine for arbitrary repositories or untrusted PR workflows.
 - This workflow intentionally has no `pull_request` or `pull_request_target` trigger. Do not add either trigger to the self-hosted job.
 - Keep the runner's working directory and Windows account separate from personal documents, browser profiles, and unrelated credentials where practical.
 - Keep the app bound to loopback. The dashboard controls are not authentication; local processes on the computer can still access the local API.
