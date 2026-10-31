@@ -276,9 +276,26 @@ def cleanup_terminal_containers() -> None:
 
     # TaskWorker.run_once() calls claim_next_task() before runtime maintenance, so
     # expired leases are reconciled by the queue before terminal IDs are collected.
-    terminal_task_ids = set(
-        task_manager.list_terminal_task_ids(limit=1000, min_terminal_age_seconds=60)
-    )
+    terminal_task_ids: set[int] = set()
+    before_id: int | None = None
+    while True:
+        page = task_manager.list_terminal_task_ids(
+            limit=1000,
+            min_terminal_age_seconds=60,
+            before_id=before_id,
+        )
+        if not page:
+            break
+        terminal_task_ids.update(page)
+        if len(page) < 1000:
+            break
+        next_before_id = min(page)
+        if before_id is not None and next_before_id >= before_id:
+            logger.error("Sandbox cleanup stopped: terminal task pagination did not advance.")
+            return
+        before_id = next_before_id
+    if not terminal_task_ids:
+        return
     result = sandbox.cleanup_orphaned_containers(
         docker_executable=executable,
         terminal_task_ids=terminal_task_ids,
