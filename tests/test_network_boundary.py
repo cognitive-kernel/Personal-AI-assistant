@@ -82,6 +82,10 @@ def test_cross_origin_requests_cannot_reset_learning_data(monkeypatch):
         {"origin": "http://evil.localhost:8000", "sec-fetch-site": "same-site"},
         {"sec-fetch-site": "cross-site"},
         {"origin": "null"},
+        {"origin": "http://127.0.0.1:0"},
+        {"origin": "http://127.0.0.1:8000/attacker"},
+        {"origin": "http://user@127.0.0.1:8000"},
+        {"origin": "http://127.0.0.1:99999"},
     )
 
     for headers in hostile_headers:
