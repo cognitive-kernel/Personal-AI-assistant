@@ -67,17 +67,17 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 8. Configure the shared progress directory once from an elevated PowerShell window. Supply the exact Windows service identity used by the Runner and the Windows account that runs the local application:
 
    ```powershell
-   .\scripts\configure_autonomous_engineering_progress.ps1 -RunnerAccount "DOMAIN\\runner-svc" -AppAccount "DOMAIN\\app-user"
+   .\scripts\configure_autonomous_engineering_progress.ps1 -RunnerAccount "DOMAIN\runner-svc" -AppAccount "DOMAIN\app-user"
    ```
 
-   The script grants access only to those two accounts, SYSTEM, and local administrators. The directory is `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`; both the local app and the runner use this same location. Do not grant access to broad groups such as Everyone or Users.
+   The script grants access only to those two accounts, SYSTEM, and local administrators. The directory is `%ProgramData%\PersonalAIAssistant\autonomous-engineering`; both the local app and the runner use this same location. Do not grant access to broad groups such as Everyone or Users.
 
 9. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. This is used only by the final GitHub-hosted publication job.
 
 10. From the project root, run the read-only readiness check:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
+   powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1
    ```
 
 11. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When all readiness checks pass, use **اجرای یک چرخهٔ مهندسی** or start the workflow from GitHub Actions.
@@ -104,7 +104,7 @@ The page also separates two progress measures:
 - **Current cycle progress:** workflow phase progress plus the completed steps in Codex's structured task plan. Codex runs with `--json`; the wrapper records bounded activity events and never publishes raw command output or model reasoning. The plan file is temporary and excluded from the candidate patch.
 - **Project progress:** the engineering-completion and overall-acceptance percentages from `docs/ACCEPTANCE_SCORECARD.md`. A dated snapshot is recorded after a worker run so daily, weekly, and custom date-range charts can show verified changes. Historical points are not fabricated or backfilled.
 
-The app polls the lightweight progress endpoint every five seconds and draws the chart with native SVG; no charting dependency or full-page reload is used. Activity details are collapsed by default. Progress state and its bounded event history are stored under `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`. The Runner service account and local app account must both have access, configured by the one-time ACL script above. If that directory is not accessible, the page reports that live telemetry is unavailable rather than inventing values.
+The app polls the lightweight progress endpoint every five seconds and draws the chart with native SVG; no charting dependency or full-page reload is used. Activity details are collapsed by default. Progress state and its bounded event history are stored under `%ProgramData%\PersonalAIAssistant\autonomous-engineering`. The Runner service account and local app account must both have access, configured by the one-time ACL script above. If that directory is not accessible, the page reports that live telemetry is unavailable rather than inventing values.
 
 The AI-learning page and autonomous-engineering page both include the primary navigation menu. The main dashboard also links to the autonomous-engineering page.
 
