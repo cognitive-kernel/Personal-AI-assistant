@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-11-01  
-> آخرین commit شاخهٔ `main`: `2a5c83bf0ba924f4a2c8f206338a04872562d72d` (ادغام PR #671). Exact-head CI برای PR #671 موفق شد؛ post-merge CI روی SHA فعلی هنوز در حال اجرا است: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370)، browser/dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374)، dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
+> آخرین commit شاخهٔ `main`: `348be1d2bd9f69e91f9631911f889e8ab6f442d2` (ادغام PR #672). Exact-head CI برای PR #671 موفق شد؛ post-merge CI روی SHA فعلی هنوز در حال اجرا است: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370)، browser/dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374)، dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -235,3 +235,12 @@
 ### تکمیل CI پس از ادغام PR #671
 
 - سه workflow پس از ادغام روی SHA دقیق `2a5c83bf0ba924f4a2c8f206338a04872562d72d` با موفقیت پایان یافته‌اند: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370)، dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374)، و dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). تست‌های Windows storage نیز در workflow تست موفق بوده‌اند.
+
+
+## 2026-11-01 — Engineering delivery commitment
+
+- Current main baseline: `348be1d2bd9f69e91f9631911f889e8ab6f442d2` (PR #672 merged).
+- The engineering-only delivery baseline is **22 working days / 176 engineering hours**, with target date **2026-12-01** from a planned 2026-11-02 start. The calculation, work-package hours, scope boundaries, completion definition and reforecast rules are in [`docs/ENGINEERING_DELIVERY_ESTIMATE.md`](ENGINEERING_DELIVERY_ESTIMATE.md).
+- This schedule excludes local/manual owner testing, human adjudication, target-host operator acceptance and the independent security review itself. Automated tests/CI and code remediation remain in scope.
+- The earlier 12-day estimate is withdrawn as unsupported. The historical 60.47% gate score is not an effort estimate.
+- The 22-day figure is the preserved planning baseline; any delay must be explained with task-level evidence and actual/remaining engineering hours in `docs/ENGINEERING_LOG.md`. Do not overwrite the original baseline when reforecasting.

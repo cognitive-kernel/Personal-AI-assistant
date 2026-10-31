@@ -122,3 +122,18 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 
 - The initial PR #671 checkpoint above accurately recorded the workflows as running at that time. They have since completed successfully on the exact `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d`: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370), dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). The tests workflow's Windows storage regression job also passed.
 - This closes the post-merge CI follow-up for PR #671 only; it does not close the live-source, target-host, staging/rollback, accessibility, human-adjudication, or independent-security gates. Progress remains unchanged at 60.47% engineering / 57.45% overall.
+
+
+## 2026-11-01 — Engineering delivery baseline and schedule control
+
+- PR #672 was merged by squash as `348be1d2bd9f69e91f9631911f889e8ab6f442d2`; the merged checkpoint records PR #671 and its exact post-merge CI evidence.
+- Current baseline for this estimate: `348be1d2bd9f69e91f9631911f889e8ab6f442d2`.
+- Repository tree inventory at baseline: 412 tracked files, 285 Python files, 157 Python test files, and 83 Markdown files under `docs/`. This is inventory evidence, not proof of a completed line-by-line audit.
+- A dedicated estimate was added at [`docs/ENGINEERING_DELIVERY_ESTIMATE.md`](ENGINEERING_DELIVERY_ESTIMATE.md).
+- **Baseline commitment: 22 working days / 176 engineering hours**, calculated as 144 task hours plus 32 contingency hours, at 8 engineering hours per working day. Baseline start 2026-11-02; target delivery 2026-12-01, excluding public-holiday adjustments.
+- Work-package estimates: repository/architecture audit 20h; architecture/API/persistence contracts 18h; AI/research/learning engineering 22h; UI functional parity and automated accessibility coverage 22h; durable-task resilience/fault injection 18h; security implementation hardening 12h; performance/dependency/CI 8h; integration/final review/documentation 24h. Subtotal 144h. Contingency 32h (22.2% of task estimate). Total 176h = 22 days.
+- Scope excludes owner-run local tests, manual acceptance, human adjudication, target-host operator rehearsals, and the independent security review itself. Automated engineering simulations/tests and any code remediation remain included.
+- The previous 12-day estimate is withdrawn because it had no task-level effort calculation, contingency, or auditable schedule controls. It is retained only as an unsupported historical estimate.
+- The 60.47% score in the previous scorecard is not converted into hours and is not used to calculate this schedule; it remains a historical evidence-stage score.
+- Forecast-change rule: preserve this original baseline; for each discovered scope change or estimate overrun, record evidence, task ID, planned/actual/remaining hours, contingency consumption, schedule impact, and linked PR/issue. Remaining days are `ceil(remaining approved hours / 8)`.
+- This is a defensible planning baseline, not a measured guarantee. The estimate is intentionally subject to reforecast if the full audit identifies work beyond the 32-hour reserve. Do not silently change the original date or claim completion solely because the date passes.
