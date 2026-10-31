@@ -147,7 +147,6 @@ jobs:
               encoding="utf-8",
           )
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\capture_state.py"
-          $env:MANUAL_TASK = "${{ inputs.task_request }}"
           python "$env:RUNNER_TEMP\capture_state.py"
 
       - name: Install project dependencies for local test execution
