@@ -160,7 +160,7 @@ def test_research_api_rejects_boolean_conversation_id_without_mutation(api_clien
     assert main.chat_history.list_messages(conversation["id"]) == []
     with db.learning_connection() as connection:
         count = connection.execute(
-            "SELECT COUNT(*) FROM task_queue WHERE task_type='research.chat'"
+            "SELECT COUNT(*) FROM task_queue WHERE task_type='research.answer'"
         ).fetchone()[0]
     assert count == 0
 
