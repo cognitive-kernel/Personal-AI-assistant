@@ -34,6 +34,12 @@ def test_research_audit_stores_hashes_and_provenance_without_raw_content(tmp_pat
                 {"claim": "another private claim", "verdict": "supported"},
             ],
             "reviewer": "local_ollama_model_assisted_not_independent",
+            "prompt_version": "claim-review-v2",
+            "prompt_sha256": "a" * 64,
+            "model_id": "qwen2.5:7b",
+            "model_digest": None,
+            "model_digest_status": "unavailable_from_current_ollama_path",
+            "provider_usage": {"prompt_eval_count": 100, "eval_count": 25},
         },
         memory={
             "verified_experience_guidance": [{"id": 7, "version": 3}],
@@ -61,6 +67,11 @@ def test_research_audit_stores_hashes_and_provenance_without_raw_content(tmp_pat
         "excerpt_chars": len(excerpt),
     }]
     assert review["verdict_counts"] == {"supported": 2}
+    assert review["prompt_version"] == "claim-review-v2"
+    assert review["prompt_sha256"] == "a" * 64
+    assert review["model_id"] == "qwen2.5:7b"
+    assert review["model_digest_status"] == "unavailable_from_current_ollama_path"
+    assert review["provider_usage"] == {"prompt_eval_count": 100, "eval_count": 25}
     assert "private claim text" not in row["review_summary_json"]
     assert memory == [
         {"id": 7, "version": 3, "status": "verified", "kind": "verified_experience_guidance"},
