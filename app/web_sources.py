@@ -86,7 +86,10 @@ def _parse_public_url(url: str) -> urllib.parse.ParseResult:
     """Validate URL syntax and destination policy without performing DNS I/O."""
     if not isinstance(url, str) or len(url) > 2048:
         raise SourceFetchError("URL is invalid or too long.")
-    parsed = urllib.parse.urlparse(url)
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError as exc:
+        raise SourceFetchError("URL syntax is invalid.") from exc
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise SourceFetchError("Only absolute HTTP(S) URLs are supported.")
     if parsed.username is not None or parsed.password is not None:
