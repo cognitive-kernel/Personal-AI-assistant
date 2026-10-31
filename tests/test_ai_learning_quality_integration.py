@@ -48,6 +48,7 @@ def test_quality_benchmark_uses_real_published_only_retrieval(isolated_store):
     report = evaluate_dataset(
         [{
             "id": "published-persian-index",
+            "expected_language": "fa",
             "query": "ایندکس SQL Server",
             "expected_chunk_ids": expected_ids,
             "expected_concepts": ["ایندکس", "SQL Server"],
