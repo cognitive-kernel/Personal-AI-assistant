@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` (main پس از PR #641). CI مستقل post-merge روی این SHA در بازبینی 2026-10-31 تأیید نشد؛ آخرین baseline دارای شواهد CI مستقل `39a4d1e78d4cea3803a0e53e07d88933b8abe548` با 1750 passed/5 skipped است. وضعیت CI جدید تا زمان مشاهدهٔ workflowهای دقیق همین SHA نامشخص باقی می‌ماند.
+> commit مبنا: `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` (main پس از PR #642). PR #642 در head دقیق `87d888490499c7f405f4a8798a17767837ded4df` با 1752 passed/5 skipped، Windows storage، Chromium browser E2E و dependency audit موفق شد. اجرای post-merge workflow روی SHA ادغام‌شده هنوز مستقلاً تأیید نشده است؛ بنابراین CI روی `c6a28ce` موفق فرض نمی‌شود.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -14,6 +14,7 @@
 ## 1.1 تغییرات تأییدشده پس از بازبینی قبلی
 
 - PR [#641](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/641) در commit `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` به `main` رسیده است: maintenance دوره‌ای AI-learning، reconciliation idempotent وظایف `learning.run_job` را اجرا می‌کند تا enqueue ناموفق در زمان اجرای برنامه بدون restart ترمیم شود. خطای reconciliation جداگانه log می‌شود و maintenance factual/browser-learning ادامه می‌یابد. دو regression برای یکتایی task و تداوم maintenance پس از خطای تزریق‌شده اضافه شده‌اند؛ تصمیم و محدودیت transactional outbox در ADR-017 ثبت شده است. CI post-merge این SHA هنوز مستقلاً تأیید نشده است.
+- PR [#642](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/642) در commit `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` ادغام شد: آزمون Chromium تمام ۱۵ مقصد ناوبری صفحه‌کلید، فعال‌سازی Skip Link و مسیر مدیریت وظایف با Enter را بررسی می‌کند. تغییر فقط در `tests/test_browser_e2e.py` است. exact-head CI: 1752 passed/5 skipped؛ Windows storage، browser E2E و dependency audit موفق. بررسی دستی screen-reader همچنان خارج از CI است.
 
 
 در snapshot مبنا، تغییرات زیر به‌صورت مرحله‌ای به `main` رسیده‌اند:
