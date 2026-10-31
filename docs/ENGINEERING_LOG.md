@@ -8,7 +8,7 @@ This file is the durable session handoff required by `docs/MASTER_ENGINEERING_PR
 
 - Operating protocol: [`docs/MASTER_ENGINEERING_PROMPT.md`](MASTER_ENGINEERING_PROMPT.md), read from branch `docs/master-engineering-continuity-prompt`, blob `f9b67598a3cec5efb5d63ecd7cb5496732576478`.
 - Repository: `cognitive-kernel/Personal-AI-assistant`.
-- `main` after PR #668 documentation merge: `eec03b39e53399bb8ee21a15b9e8cb4930159c25`.
+- `main` after PR #669 language-evaluator merge: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`.
 - Previous application-code baseline: `a23760805310154d83e47489eddf00fc9b91c7f6`.
 - No production database, local user data, or target-host state was accessed or modified.
 
@@ -55,10 +55,10 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 
 ### Next actions
 
-1. Verify post-merge CI for documentation merge `eec03b39e53399bb8ee21a15b9e8cb4930159c25`.
-2. Complete PR #669 language-evaluation regression checks on its latest exact head; review its limitations before merge.
-3. Reconcile historical branches against merged/closed PRs without deleting useful unmerged work.
-4. Continue the highest-risk uncompleted repository workstream and add a regression for each reproduced defect.
+1. Verify exact-SHA post-merge CI for `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`.
+2. Complete PR #670 documentation synchronization after the PR #669 merge; require exact-head tests, Windows storage, browser smoke and dependency audit.
+3. Continue the next highest-risk independent workstream: inspect live-model source discovery/provenance evidence and determine whether missing sources are provider/environment failures or a code defect.
+4. Reconcile historical branches without deleting unmerged useful work.
 5. Keep target-host, human-adjudication and independent-review gates open until the responsible operator/reviewer supplies evidence.
 
 
@@ -86,3 +86,13 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 ### Historical CI note clarification
 
 The earlier sentence saying PR #664/#667 post-merge workflows were still running describes the initial checkpoint only. Those workflows later completed successfully on `6f601e8cc210419392bfbd1affb9590db978dd3a`, as recorded in the verified-main CI section.
+
+
+### PR #669 completion — 2026-10-31
+
+- Root cause: the offline evaluator had no expected-language check, so a generated answer could be lexically complete while responding in the wrong language.
+- Added optional Persian/English expected-language diagnostics. Natural-language Arabic-script and Latin-script counts exclude fenced/inline code and URLs; insufficient evidence fails closed. The pass threshold is 65%, matching the existing dominant-script classification; 60% mixed-script examples fail symmetrically, while exactly 65% passes.
+- Added positive and negative Persian/English benchmark cases, URL/code exclusion, insufficient-evidence and unsupported-language tests, and integration coverage. Existing evaluation cases without `expected_language` retain prior behavior.
+- PR [#669](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/669) merged as `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`; exact head `bedf5f54bb55dd2cf64b267b9b5561436820ac61`. CI: **1,807 passed / 47 deselected** in 210.52s; Windows storage regressions, dashboard smoke, browser E2E, dependency audit, Markdown validation (90 files), import-cycle checks and deterministic benchmark 10/10 passed. [Tests #41215830531](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830531) · [Browser #41215830524](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830524) · [Audit #41215830502](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830502).
+- Limitations: script-ratio diagnostics do not identify natural languages semantically and do not distinguish Persian from other Arabic-script languages or English from other Latin-script languages. Live-model evaluation and human adjudication remain open.
+- Current `main` is `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`. - Current-main post-merge tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310), browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276), and dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245) were queued/running at this checkpoint.
