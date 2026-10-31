@@ -65,8 +65,13 @@
       $("codex-detail").textContent = data.codex && data.codex.version ? data.codex.version : "Codex CLI پیدا نشد.";
       labels.runner.textContent = stateText(checks.runner_running);
       $("runner-detail").textContent = checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
-      labels.github.textContent = stateText(checks.github_cli_authenticated);
-      $("github-detail").textContent = checks.github_cli_authenticated ? "GitHub CLI احراز هویت شده است." : "gh auth login لازم است.";
+      const githubReady = checks.github_cli_authenticated && checks.github_runs_available;
+      labels.github.textContent = stateText(githubReady);
+      $("github-detail").textContent = !checks.github_cli_authenticated
+        ? "gh auth login لازم است."
+        : !checks.github_runs_available
+          ? "دریافت وضعیت اجراهای GitHub ناموفق است؛ دسترسی Actions را بررسی کنید."
+          : "GitHub CLI احراز هویت شده و وضعیت اجراها قابل دریافت است.";
       const ready = data.ready === true;
       const pill = $("agent-readiness");
       pill.textContent = ready ? "آمادهٔ اجرا" : "راه‌اندازی ناقص";
