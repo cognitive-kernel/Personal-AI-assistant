@@ -59,7 +59,9 @@ def _ollama_status(model: str) -> dict[str, Any]:
             "http://127.0.0.1:11434/api/tags",
             headers={"Accept": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=2) as response:
+        # Local Ollama metadata must never be sent through an environment proxy.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=2) as response:
             payload = json.loads(response.read(2_000_000).decode("utf-8"))
         models = payload.get("models", []) if isinstance(payload, dict) else []
         names = sorted(
@@ -104,10 +106,16 @@ def _runner_status() -> dict[str, Any]:
 def _github_snapshot() -> dict[str, Any]:
     gh = shutil.which("gh")
     if not gh:
-        return {"cli_installed": False, "authenticated": False, "recent_runs": []}
+        return {
+            "cli_installed": False,
+            "authenticated": False,
+            "recent_runs": [],
+            "runs_available": False,
+        }
     auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
+    runs_available = False
     if authenticated:
         result = _run(
             [
@@ -133,14 +141,15 @@ def _github_snapshot() -> dict[str, Any]:
                         for item in parsed[:5]
                         if isinstance(item, dict)
                     ]
+                    runs_available = True
             except ValueError:
                 recent_runs = []
     return {
         "cli_installed": True,
         "authenticated": authenticated,
         "recent_runs": recent_runs,
+        "runs_available": runs_available,
     }
-
 
 def collect_status() -> dict[str, Any]:
     model = _model()
@@ -154,6 +163,7 @@ def collect_status() -> dict[str, Any]:
         "codex_installed": codex["installed"],
         "runner_running": runner["running"],
         "github_cli_authenticated": github["authenticated"],
+        "github_runs_available": github.get("runs_available", False),
     }
     return {
         "ready": all(checks.values()),
@@ -178,6 +188,8 @@ def autonomous_engineering_status() -> dict[str, Any]:
 @router.post("/dispatch", status_code=202)
 def dispatch_autonomous_engineering() -> dict[str, Any]:
     readiness = collect_status()
+    if not readiness.get("github", {}).get("runs_available", False):
+        raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ اجرای جدید به‌صورت ایمن متوقف شد.")
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
     active_runs = readiness.get("github", {}).get("recent_runs", [])
