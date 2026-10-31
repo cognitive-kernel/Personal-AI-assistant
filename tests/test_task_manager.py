@@ -543,14 +543,18 @@ def test_fail_task_honors_pending_control_before_retry(task_store, control, expe
         assert reclaimed["attempts"] == 2
 
 def test_complete_task_commits_domain_write_and_task_result_atomically(task_store):
+    with db.learning_connection() as connection:
+        connection.execute(
+            "CREATE TABLE atomic_domain_test (task_id INTEGER PRIMARY KEY, value TEXT NOT NULL)"
+        )
     task = task_manager.create_task("atomic-completion", {})
     claimed = task_manager.claim_next_task("atomic-worker")
     assert claimed["id"] == task["id"]
 
     def persist_domain_result(connection):
         connection.execute(
-            "UPDATE task_queue SET priority=17 WHERE id=?",
-            (task["id"],),
+            "INSERT INTO atomic_domain_test(task_id, value) VALUES (?, ?)",
+            (task["id"], "committed"),
         )
         return {"domain_write": "committed"}
 
@@ -565,7 +569,12 @@ def test_complete_task_commits_domain_write_and_task_result_atomically(task_stor
     assert completed["status"] == "succeeded"
     assert completed["result"] == {"domain_write": "committed"}
     assert completed["checkpoint"] == {"stage": "domain_committed"}
-    assert task_manager.get_task(task["id"])["priority"] == 17
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT value FROM atomic_domain_test WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()
+    assert row["value"] == "committed"
 
 
 def test_complete_task_does_not_run_domain_callback_after_cancel_request(task_store):
@@ -588,14 +597,18 @@ def test_complete_task_does_not_run_domain_callback_after_cancel_request(task_st
 
 
 def test_complete_task_rolls_back_domain_callback_when_it_fails(task_store):
+    with db.learning_connection() as connection:
+        connection.execute(
+            "CREATE TABLE atomic_domain_test (task_id INTEGER PRIMARY KEY, value TEXT NOT NULL)"
+        )
     task = task_manager.create_task("atomic-rollback", {})
     claimed = task_manager.claim_next_task("atomic-worker")
     assert claimed["id"] == task["id"]
 
     def fail_after_domain_write(connection):
         connection.execute(
-            "UPDATE task_queue SET priority=99 WHERE id=?",
-            (task["id"],),
+            "INSERT INTO atomic_domain_test(task_id, value) VALUES (?, ?)",
+            (task["id"], "must-rollback"),
         )
         raise RuntimeError("simulated domain write failure")
 
@@ -609,5 +622,10 @@ def test_complete_task_rolls_back_domain_callback_when_it_fails(task_store):
 
     saved = task_manager.get_task(task["id"])
     assert saved["status"] == "running"
-    assert saved["priority"] == 0
     assert saved["result"] is None
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM atomic_domain_test WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()[0]
+    assert count == 0
