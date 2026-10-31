@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
- > commit مبنا: `6b19b84c78e17d8b5c28122964c7130dcf42f853` (main پس از PR #646). PR #646 محافظت CSRF و ضد clickjacking را اضافه کرد؛ exact-head و post-merge CI هر دو با 1758 passed/5 skipped موفق شدند. post-merge: tests [#41188392547](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392547)، Windows storage، browser E2E [#41188392561](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392561)، dependency audit [#41188392609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392609)، بررسی 85 فایل Markdown، import-cycle scan و benchmark 10/10.
+> commit مبنا: `6b19b84c78e17d8b5c28122964c7130dcf42f853` (main پس از PR #646). PR #646 محافظت CSRF و ضد clickjacking را اضافه کرد؛ exact-head و post-merge CI هر دو با 1758 passed/5 skipped موفق شدند. post-merge: tests [#41188392547](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392547)، Windows storage، browser E2E [#41188392561](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392561)، dependency audit [#41188392609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392609)، بررسی 85 فایل Markdown، import-cycle scan و benchmark 10/10.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
