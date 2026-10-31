@@ -1,8 +1,8 @@
 # موجودی حوزه‌های داده و مسیرهای دسترسی
 
 - تاریخ بازبینی: 2026-10-31
-- مبنای کد: آخرین commit مخزن و برنامه در `main` برابر `fe1d533eb4a8cff86de978be4487898666afdddd` است (PR #645). حوزه‌های schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore از همین کد بررسی شده‌اند.
-- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. post-merge CI روی `fe1d533` با 1754 passed/5 skipped، Windows storage، Chromium browser E2E، dependency audit، بررسی 84 فایل Markdown و benchmark 10/10 موفق شد.
+- مبنای کد: آخرین commit مخزن و برنامه در `main` برابر `6b19b84c78e17d8b5c28122964c7130dcf42f853` است (PR #646). حوزه‌های schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore از همین کد بررسی شده‌اند.
+- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. post-merge CI روی `6b19b84` با 1758 passed/5 skipped، Windows storage، Chromium browser E2E، dependency audit، بررسی 85 فایل Markdown، import-cycle scan و benchmarkهای retrieval و claim-to-test 10/10 موفق شد.
 - ممیزی دقیق schema و خطرهای مهاجرت: [SCHEMA_MIGRATION_AUDIT.md](SCHEMA_MIGRATION_AUDIT.md)
 
 ## حوزه‌ها و مالکیت فعلی
