@@ -2,7 +2,7 @@ name: Autonomous local Ollama engineering
 
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "17 * * * *"
   push:
     branches: [main]
   workflow_dispatch:
