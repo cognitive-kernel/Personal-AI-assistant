@@ -67,3 +67,10 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 - PR #668 adds this log, the weighted scorecard, and synchronizes five existing status/acceptance documents after PR #664 and #667.
 - PR #668 head: `bee2440a704b794434f75467d9b039f23f42e610`; tests, Windows storage regressions, browser E2E and dependency audit are running on that exact head.
 - Current `main` remains `6f601e8cc210419392bfbd1affb9590db978dd3a`; its dependency audit and browser E2E passed, while tests were still running at this update.
+
+
+### Verified main CI completion — 2026-10-31
+
+- Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` completed successfully: 1,801 passed / 47 deselected; Windows storage regressions; 88 Markdown files; import-cycle checks; deterministic benchmark 10/10; Chromium browser E2E; dependency audit.
+- Evidence: [tests #41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247), [browser E2E #41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268), [dependency audit #41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295).
+- This verifies merged PR #664/#667; external target-host, live-model, human, staging/rollback, and independent-security gates remain open.
