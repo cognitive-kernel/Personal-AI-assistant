@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-31  
-> آخرین commit شاخهٔ `main`: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` (ادغام PR #669). CI دقیق PR موفق بود؛ CI پس از ادغام روی این SHA در حال اجرا/صف است: tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310)، browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276)، dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245).
+> آخرین commit شاخهٔ `main`: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` (ادغام PR #669). CI دقیق PR و CI پس از ادغام روی این SHA موفق شدند: tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310)، browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276)، dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245).
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** PR #664 و #667 تغییرات مستندات و صف یادگیری را وارد main کردند؛ PR #668 لاگ مهندسی و scorecard وزنی را افزود؛ PR #669 تشخیص پاسخ‌های با زبان اشتباه را به evaluator اضافه کرد. Exact-head CI برای PR #669 موفق شد (1807 passed/47 deselected، Windows storage، browser smoke/E2E، dependency audit، 90 Markdown files و benchmark 10/10). Post-merge CI روی `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` هنوز pending است. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
+**مبنای وضعیت:** PR #664 و #667 تغییرات مستندات و صف یادگیری را وارد main کردند؛ PR #668 لاگ مهندسی و scorecard وزنی را افزود؛ PR #669 تشخیص پاسخ‌های با زبان اشتباه را به evaluator اضافه کرد. Exact-head CI برای PR #669 موفق شد (1807 passed/47 deselected، Windows storage، browser smoke/E2E، dependency audit، 90 Markdown files و benchmark 10/10). Post-merge CI روی `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` با موفقیت کامل شد. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
