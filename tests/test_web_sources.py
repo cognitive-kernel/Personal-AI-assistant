@@ -632,3 +632,63 @@ def test_discover_sources_counts_successful_fetches(monkeypatch):
         "fetched_count": 1,
         "failure_counts": {},
     }
+
+def test_search_result_normalization_skips_http_before_applying_result_limit(monkeypatch):
+    monkeypatch.setattr(
+        web_sources,
+        "_validate_public_url",
+        lambda url: urllib.parse.urlparse(url),
+    )
+
+    results = web_sources._normalize_search_results(
+        [
+            ("Insecure HTTP result", "http://insecure.example/docs"),
+            ("Secure HTTPS result", "https://secure.example/docs"),
+        ],
+        limit=1,
+        provider_hosts=(),
+    )
+
+    assert results == [("Secure HTTPS result", "https://secure.example/docs")]
+
+
+def test_research_document_fetch_rejects_http_before_network_access(monkeypatch):
+    def unexpected_open(*_args, **_kwargs):
+        raise AssertionError("HTTP source must be rejected before network access")
+
+    monkeypatch.setattr(web_sources, "_open", unexpected_open)
+
+    with pytest.raises(web_sources.SourceFetchError, match="HTTPS is required"):
+        web_sources._fetch_document("http://example.org/guide", "Guide")
+
+
+def test_discovery_skips_http_candidates_and_keeps_https_source(monkeypatch):
+    html = (
+        "<html><head><title>Official Guide</title></head><body>"
+        "<main><h1>Official Guide</h1>"
+        "<p>" + ("Verified public technical documentation. " * 8) + "</p>"
+        "</main></body></html>"
+    )
+    monkeypatch.setattr(
+        web_sources,
+        "_search_results",
+        lambda _query, _limit: [
+            ("HTTP mirror", "http://mirror.example.org/guide"),
+            ("Official HTTPS guide", "https://docs.example.org/guide"),
+        ],
+    )
+    monkeypatch.setattr(
+        web_sources,
+        "_open",
+        lambda url, **_kwargs: (html, "text/html")
+        if url == "https://docs.example.org/guide"
+        else (_ for _ in ()).throw(AssertionError("HTTP candidate reached transport")),
+    )
+
+    documents = web_sources.discover_sources("technical documentation", limit=1)
+
+    assert len(documents) == 1
+    assert documents[0].url == "https://docs.example.org/guide"
+    assert documents.fetch_diagnostics["attempted_count"] == 2
+    assert documents.fetch_diagnostics["fetched_count"] == 1
+    assert documents.fetch_diagnostics["failure_counts"] == {"SourceFetchError": 1}
