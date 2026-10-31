@@ -660,19 +660,28 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
 def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        web_sources,
-        "fetch_public_document",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            web_sources.SourceFetchError("official fallback disabled in this test")
-        ),
-    )
+    sensitive_detail = "https://private.invalid/search?token=do-not-persist"
+
+    def fail_fallback(*_args, **_kwargs):
+        raise web_sources.SourceFetchError(f"request failed for {sensitive_detail}")
+
+    monkeypatch.setattr(web_sources, "fetch_public_document", fail_fallback)
 
     def failed_search(_query, *, limit):
-        raise web_sources.SourceFetchError(
-            "All configured search providers failed or returned no parseable results "
-            "(DuckDuckGo:no_parseable_results, Bing:no_parseable_results)."
+        error = web_sources.SourceFetchError(
+            f"provider request failed for {sensitive_detail}"
         )
+        error.provider_diagnostics = [
+            {
+                "provider": "DuckDuckGo",
+                "attempts": [{"error": "no_parseable_results"}],
+            },
+            {
+                "provider": "Bing",
+                "attempts": [{"error": "no_parseable_results"}],
+            },
+        ]
+        raise error
 
     monkeypatch.setattr(web_sources, "discover_sources", failed_search)
 
@@ -682,8 +691,12 @@ def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch
     assert report["sources_seen"] == 0
     assert report["candidates_upserted"] == 0
     assert "DuckDuckGo:no_parseable_results" in report["error_summary"]
+    assert "Bing:no_parseable_results" in report["error_summary"]
+    assert sensitive_detail not in report["error_summary"]
     latest = cloud_resources.latest_discovery_run()
     assert "Bing:no_parseable_results" in latest["query_results"][0]["error"]
+    assert sensitive_detail not in latest["query_results"][0]["error"]
+    assert sensitive_detail not in str(latest["query_results"])
 
 
 
