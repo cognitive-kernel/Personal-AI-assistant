@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Any, Literal
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -131,7 +131,7 @@ async def report_storage_schema_block(request, call_next):
     return await call_next(request)
 
 
-def _origin_matches_request(request, origin: str) -> bool:
+def _origin_matches_request(request: Request, origin: str) -> bool:
     """Compare a serialized browser Origin with the exact local request origin."""
     try:
         parsed = urlsplit(origin)
@@ -144,6 +144,10 @@ def _origin_matches_request(request, origin: str) -> bool:
             or parsed.query
             or parsed.fragment
             or parsed.netloc.endswith(":")
+            or "?" in origin
+            or "#" in origin
+            or origin != origin.strip()
+            or any(ord(char) <= 32 for char in origin)
         ):
             return False
         request_url = request.url
@@ -152,14 +156,18 @@ def _origin_matches_request(request, origin: str) -> bool:
         request_host = request_url.hostname
         if not request_host or parsed.hostname.casefold() != request_host.casefold():
             return False
-        request_port = request_url.port or (443 if request_url.scheme == "https" else 80)
-        origin_port = parsed.port or (443 if parsed.scheme == "https" else 80)
-        return origin_port == request_port
+        request_port = request_url.port
+        if request_port is None:
+            request_port = 443 if request_url.scheme == "https" else 80
+        origin_port = parsed.port
+        if origin_port is None:
+            origin_port = 443 if parsed.scheme == "https" else 80
+        return 1 <= origin_port <= 65535 and 1 <= request_port <= 65535 and origin_port == request_port
     except ValueError:
         return False
 
 
-def _same_origin_api_request_allowed(request) -> bool:
+def _same_origin_api_request_allowed(request: Request) -> bool:
     """Allow same-origin browser API calls and local non-browser clients only."""
     fetch_site = request.headers.get("sec-fetch-site")
     if fetch_site:
