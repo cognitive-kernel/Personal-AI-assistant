@@ -51,7 +51,7 @@ def normalize_base_url(value: str) -> str:
         raise OllamaError("Ollama URL contains an invalid port.") from exc
     if parsed.netloc.endswith(":"):
         raise OllamaError("Ollama URL contains an invalid empty port.")
-    if parsed.path or parsed.query or parsed.fragment:
+    if parsed.path or parsed.query or parsed.fragment or "?" in base or "#" in base:
         raise OllamaError("Ollama URL must be a base URL without a path, query, or fragment.")
     if port is not None and not 1 <= port <= 65535:
         raise OllamaError("Ollama URL contains an invalid port.")
