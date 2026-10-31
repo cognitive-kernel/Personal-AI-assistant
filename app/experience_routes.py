@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict
+from pydantic import BaseModel, Field, StrictBool, StrictInt, ConfigDict, field_validator
 
 from . import experience, experience_capture_consent, experience_feedback, experience_source_checks, experience_tasks, sandbox_consent, task_manager
 from .task_routes import require_loopback_client
@@ -78,6 +78,13 @@ class ExperienceSourceRefreshRequest(BaseModel):
 
 class ExperienceFeedbackRequest(BaseModel):
     rating: Literal[-1, 1]
+
+    @field_validator("rating", mode="before")
+    @classmethod
+    def reject_coercive_rating(cls, value: Any) -> Any:
+        if type(value) is not int or value not in (-1, 1):
+            raise ValueError("rating must be the integer -1 or 1.")
+        return value
 
     model_config = ConfigDict(extra="forbid")
 
