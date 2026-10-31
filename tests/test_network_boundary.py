@@ -10,7 +10,7 @@ from app.main import app
 
 def test_non_loopback_peers_cannot_access_ui_or_api():
     client = TestClient(app, client=("192.0.2.44", 54321))
-    for path in ("/", "/api/health", "/api/settings", "/api/learning/jobs"):
+    for path in ("/", "/api/health", "/api/settings", "/api/learning/jobs", "/api/autonomous-engineering/status"):
         response = client.get(path)
         assert response.status_code == 403, path
         assert response.json()["detail"] == "This application is available from localhost only."
