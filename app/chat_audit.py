@@ -44,6 +44,72 @@ def _source_metadata(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def _source_discovery_summary(value: Any) -> dict[str, Any] | None:
+    """Keep only bounded, non-identifying search/fetch counters and known error labels."""
+    if not isinstance(value, dict):
+        return None
+    provider_rows = value.get("providers", [])
+    providers = []
+    if isinstance(provider_rows, list):
+        for item in provider_rows[:3]:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("provider")
+            if name not in {"DuckDuckGo", "Bing", "Google"}:
+                continue
+            attempts = item.get("attempts", [])
+            safe_attempts = []
+            if isinstance(attempts, list):
+                for attempt in attempts[:6]:
+                    if not isinstance(attempt, dict):
+                        continue
+                    variant = attempt.get("variant")
+                    endpoint = attempt.get("endpoint_variant")
+                    error = attempt.get("error")
+                    safe_attempts.append({
+                        "variant": variant if variant in {"primary", "alternate_1", "alternate_2"} else "other",
+                        "endpoint_variant": endpoint if endpoint in {"html", "lite", "standard", "basic_html"} else "other",
+                        "error": error if error in {
+                            "challenge_or_consent_page", "challenge_page",
+                            "no_parseable_results", "SourceFetchError",
+                        } else ("other" if error else None),
+                    })
+            def count(field: str) -> int:
+                raw = item.get(field, 0)
+                return raw if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0 else 0
+            providers.append({
+                "provider": name,
+                "attempt_count": len(safe_attempts),
+                "parsed_result_count": count("parsed_result_count"),
+                "accepted_result_count": count("accepted_result_count"),
+                "unique_result_count": count("unique_result_count"),
+                "duplicate_result_count": count("duplicate_result_count"),
+                "attempts": safe_attempts,
+            })
+    fetch = value.get("fetch", {})
+    if not isinstance(fetch, dict):
+        fetch = {}
+    def fetch_count(field: str) -> int:
+        raw = fetch.get(field, 0)
+        return raw if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0 else 0
+    raw_failures = fetch.get("failure_counts", {})
+    failures = {}
+    if isinstance(raw_failures, dict):
+        for key, raw in list(raw_failures.items())[:5]:
+            if key in {"SourceFetchError", "TimeoutError", "URLError", "OSError"}:
+                if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 0:
+                    failures[key] = raw
+    return {
+        "providers": providers,
+        "fetch": {
+            "candidate_count": fetch_count("candidate_count"),
+            "attempted_count": fetch_count("attempted_count"),
+            "fetched_count": fetch_count("fetched_count"),
+            "failure_counts": failures,
+        },
+    }
+
+
 def _review_summary(review: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(review, dict):
         return None
@@ -79,6 +145,7 @@ def _review_summary(review: dict[str, Any] | None) -> dict[str, Any] | None:
         "source_conflict_pairs": safe_conflicts,
         "error": str(error)[:120] if error else None,
         "reviewer": str(review.get("reviewer", "local_ollama_model_assisted_not_independent"))[:100],
+        "source_discovery": _source_discovery_summary(review.get("source_discovery")),
     }
 
 
