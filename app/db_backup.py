@@ -191,7 +191,17 @@ def restore_databases(
     temp_dir = Path(tempfile.mkdtemp(prefix=f".{destination.name}.restore-", dir=destination.parent))
     try:
         for role, filename in database_files.items():
-            _snapshot(source / filename, temp_dir / filename)
+            snapshot_metadata = _snapshot(source / filename, temp_dir / filename)
+            expected_metadata = database_manifest[role]
+            if (
+                snapshot_metadata["sha256"] != expected_metadata["sha256"]
+                or snapshot_metadata["user_version"] != expected_metadata["user_version"]
+                or snapshot_metadata["tables"] != expected_metadata["tables"]
+            ):
+                raise BackupRestoreError(
+                    f"Backup database for {role} changed during restore; "
+                    "the staged snapshot does not match the verified manifest."
+                )
         os.replace(temp_dir, destination)
     except Exception:
         shutil.rmtree(temp_dir, ignore_errors=True)
