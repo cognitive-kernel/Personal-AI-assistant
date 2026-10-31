@@ -115,7 +115,6 @@ jobs:
                   {
                       "number": item["number"],
                       "title": item["title"],
-                      "body": item.get("body") or "",
                       "url": item["html_url"],
                       "labels": [label["name"] for label in item.get("labels", [])],
                   }
