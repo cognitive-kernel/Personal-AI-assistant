@@ -224,8 +224,10 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          Get-Content -Raw "$env:RUNNER_TEMP\codex-prompt.md" |
-            codex exec --oss --sandbox workspace-write --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --cd "$env:GITHUB_WORKSPACE" --output-last-message "$env:RUNNER_TEMP\codex-report.md" -
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "آماده‌سازی عامل" --activity "آماده‌سازی محیط و شروع عامل" --percent 15
+          if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --report "$env:RUNNER_TEMP\codex-report.md"
+          if ($LASTEXITCODE -ne 0) { throw "Codex engineering session failed" }
 
       - name: Run the full default test suite on the Windows target host
         shell: pwsh
