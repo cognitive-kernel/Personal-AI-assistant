@@ -263,6 +263,44 @@ jobs:
           git apply --check candidate/codex-candidate.patch
           git apply candidate/codex-candidate.patch
           git diff --check
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          paths = [
+              item.decode("utf-8", errors="surrogateescape")
+              for item in subprocess.check_output(
+                  ["git", "diff", "--no-renames", "--name-only", "-z"]
+              ).split(b"\\0")
+              if item
+          ]
+          invalid = [
+              path for path in paths
+              if (
+                  path.startswith("/")
+                  or "\\\\" in path
+                  or any(part in {"", ".", "..", ".git"} for part in path.split("/"))
+                  or not (
+                      path == "pyproject.toml"
+                      or path.startswith(("app/", "tests/", "docs/", "scripts/"))
+                  )
+                  or Path(path).is_symlink()
+              )
+          ]
+          if invalid:
+              raise SystemExit("Candidate contains paths outside the text-change allowlist: " + repr(invalid))
+
+          records = subprocess.check_output(
+              ["git", "diff", "--no-renames", "--numstat", "-z"]
+          ).split(b"\\0")
+          if any(
+              record and (record.split(b"\\t", 2)[0] == b"-" or record.split(b"\\t", 2)[1] == b"-")
+              for record in records
+          ):
+              raise SystemExit("Binary changes are not allowed in an autonomous candidate patch.")
+          PY
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -323,6 +361,43 @@ jobs:
           set -euo pipefail
           git apply --check candidate/codex-candidate.patch
           git apply --index candidate/codex-candidate.patch
+          python - <<'PY'
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          paths = [
+              item.decode("utf-8", errors="surrogateescape")
+              for item in subprocess.check_output(
+                  ["git", "diff", "--cached", "--no-renames", "--name-only", "-z"]
+              ).split(b"\\0")
+              if item
+          ]
+          invalid = [
+              path for path in paths
+              if (
+                  path.startswith("/")
+                  or "\\\\" in path
+                  or any(part in {"", ".", "..", ".git"} for part in path.split("/"))
+                  or not (
+                      path == "pyproject.toml"
+                      or path.startswith(("app/", "tests/", "docs/", "scripts/"))
+                  )
+                  or Path(path).is_symlink()
+              )
+          ]
+          if invalid:
+              raise SystemExit("Refusing to publish paths outside the text-change allowlist: " + repr(invalid))
+          records = subprocess.check_output(
+              ["git", "diff", "--cached", "--no-renames", "--numstat", "-z"]
+          ).split(b"\\0")
+          if any(
+              record and (record.split(b"\\t", 2)[0] == b"-" or record.split(b"\\t", 2)[1] == b"-")
+              for record in records
+          ):
+              raise SystemExit("Refusing to publish binary autonomous changes.")
+          PY
+          git diff --cached --check
           if git diff --cached --quiet; then
             echo "No staged changes remain; nothing to publish."
             exit 0
