@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-11-01  
 **Repository:** `cognitive-kernel/Personal-AI-assistant`  
-**Scored baseline:** `main` at `2a5c83bf0ba924f4a2c8f206338a04872562d72d`  
+**Scored baseline:** `main` at `60597e13e70a3014f6a1871290cf843d188ca45e`  
 **Purpose:** Reproducible progress accounting required by `docs/MASTER_ENGINEERING_PROMPT.md`. This is a provisional engineering-progress measure, not a release-readiness or product-quality certification.
 
 ## Scoring method
@@ -31,8 +31,8 @@ A gate cannot be marked ACCEPTED solely because code exists or CI is green. If e
 | Persistent learning and feedback governance | 8 | CI VERIFIED | 0.75 | 6.00 | Published-only retrieval across a fresh process, feedback boundaries, and durable automatic follow-up have exact-head CI evidence; live quality remains open. |
 | Security implementation | 10 | CI VERIFIED | 0.75 | 7.50 | Loopback, URL, redirect/proxy, source egress, Origin/Fetch Metadata, anti-framing, and cloud-discovery diagnostic redaction have exact-head CI evidence; independent review is a separate external gate. |
 | Frontend and functional UI parity | 10 | AUTOMATED TESTED | 0.65 | 6.50 | Chromium E2E covers major workflows and navigation; manual screen-reader, keyboard-only and rendered-state contrast reviews remain open. |
-| Test infrastructure and supply chain | 8 | CI VERIFIED | 0.75 | 6.00 | Exact-head and post-merge test, Windows storage, browser E2E, dependency audit and deterministic benchmark workflows passed on PR #664/#667 and prior main `47ddaa7`; post-merge tests, dashboard smoke, Windows storage regressions, and dependency audit all passed on current `2a5c83b`. |
-| Performance and reliability engineering | 8 | AUTOMATED TESTED | 0.65 | 5.20 | Durable queues, leases, retry/recovery regressions and deterministic benchmarks exist; target-host soak/load/crash evidence is not available. |
+| Test infrastructure and supply chain | 8 | CI VERIFIED | 0.75 | 6.00 | Exact-head and post-merge test, Windows storage, browser E2E, dependency audit and deterministic benchmark workflows passed on PR #664/#667 and prior main `47ddaa7`; all four current-main checks, including tests, Windows storage, dashboard smoke and dependency audit, passed on `60597e1`. |
+| Performance and reliability engineering | 8 | AUTOMATED TESTED | 0.65 | 5.20 | PR #677 adds a pause/cancel boundary for graph review; PR #678 is extending atomic domain/task completion to candidate validation, but its exact-head tests/dashboard were still running and the full task-type fault-injection matrix is unfinished. Target-host soak/load/crash evidence is not available. |
 | Documentation, developer and operations artifacts | 7 | CI VERIFIED | 0.75 | 5.25 | PR #668 merged the durable continuity log, weighted scorecard and synchronized status/acceptance documents; exact-head tests, Windows storage, browser smoke/E2E and dependency audit passed. Operator runbooks still need target-host rehearsal. |
 | Target-host startup, recovery, load/soak and rollback | 2 | BLOCKED — external | 0.00 | 0.00 | Requires the intended Windows host and operator-generated redacted evidence. |
 | Live Persian/English model evaluation and human adjudication | 1 | BLOCKED — human | 0.00 | 0.00 | Requires a pinned live model run and independent human scoring of the versioned evaluation set. |
@@ -48,6 +48,8 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 
 ## Current exact-SHA evidence
 
+- Current `main` exact-SHA CI on `60597e13e70a3014f6a1871290cf843d188ca45e` passed: tests/Windows storage #41251532200, dashboard smoke #41251532202, dependency audit #41251532214. The weighted score remains 60.47% engineering / 57.45% overall; no acceptance gate is promoted solely from the new telemetry files or the unmerged PR #678.
+- PR #678 exact head `dddf346c81cac268deafafaf9f1ecf780d2af9f1`: `pip-audit` and Windows storage passed; tests and dashboard smoke were in progress. This PR is not counted in the score until merged and revalidated.
 - PR #664 exact head `19a95d93702d6281bdf6ae065a309a9b133de746`: 1,800 passed / 47 deselected; Windows storage, Chromium dashboard smoke, dependency audit, 88 Markdown files, import-cycle checks and benchmark 10/10 passed. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570053) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570102) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212570079).
 - PR #667 exact head `810fe450668ff6c3e0e5b74c286533abb32dfb55`: 1,801 passed / 47 deselected; Windows storage, Chromium browser E2E, dependency audit, 87 Markdown files and benchmark 10/10 passed. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765586) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765242) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41211765399).
 - PR #668 exact head `0bcd2a93bbf4516f180ac9fc3d8c647380545ade` passed tests, Windows storage regressions, dashboard smoke, browser E2E and dependency audit; merged as `eec03b39e53399bb8ee21a15b9e8cb4930159c25`. [Tests](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673355) · [Browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673417) · [Audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673381).
@@ -73,3 +75,10 @@ These are **provisional, evidence-based progress scores** using the fixed stage 
 - PR [#671](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/671) merged as exact `main` SHA `2a5c83bf0ba924f4a2c8f206338a04872562d72d`. Exact PR-head tests [#41221895391](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895391), browser E2E [#41221895422](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895422), and dependency audit [#41221895550](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41221895550) passed.
 - At the initial checkpoint, post-merge tests and dashboard smoke were still running. They subsequently completed successfully on the exact `main` SHA: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370) (including Windows storage regressions), dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374), and dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
 - Progress remains **60.47% engineering / 57.45% overall**; the change does not close an external gate.
+
+
+## 2026-11-01 checkpoint — current main and open reliability work
+
+- Scored baseline is current `main` `60597e13e70a3014f6a1871290cf843d188ca45e`; current-main tests/Windows storage, dashboard smoke and dependency audit all passed.
+- PR #677 is merged. PR #678 remains draft with exact-head tests/dashboard in progress; its code is not included in the weighted score. PR #675 remains draft and dirty.
+- Weighted progress remains **60.47% engineering / 57.45% overall**. Human adjudication, target-host operations, staging/rollback and independent security review remain open.
