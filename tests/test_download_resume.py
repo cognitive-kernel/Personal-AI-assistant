@@ -488,19 +488,19 @@ def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeyp
 def test_linux_installer_patch_replaces_second_stage_curl_with_verified_helper(tmp_path):
     original = tmp_path / "ollama-install.sh"
     original.write_text(
-        "download_and_extract() {\\n"
-        "    curl --fail --show-error https://ollama.com/download/ollama-linux-amd64.tar.zst | zstd -d | tar -xf -\\n"
-        "}\\n\\n"
-        "for BINDIR in /usr/local/bin /usr/bin /bin; do\\n"
-        "    echo ready\\n"
-        "done\\n",
+        "download_and_extract() {\n"
+        "    curl --fail --show-error https://ollama.com/download/ollama-linux-amd64.tar.zst | zstd -d | tar -xf -\n"
+        "}\n\n"
+        "for BINDIR in /usr/local/bin /usr/bin /bin; do\n"
+        "    echo ready\n"
+        "done\n",
         encoding="utf-8",
     )
 
     patched = installer._patch_linux_install_script(original)
     text = patched.read_text(encoding="utf-8")
     start = text.index("download_and_extract() {")
-    end = text.index("\\n}\\n\\nfor BINDIR in", start)
+    end = text.index("\n}\n\nfor BINDIR in", start)
     function = text[start:end]
 
     assert "curl" not in function
@@ -571,6 +571,6 @@ def test_linux_verified_asset_helper_rejects_unpinned_or_untrusted_assets(tmp_pa
 
 def test_linux_installer_patch_fails_closed_when_upstream_function_changes(tmp_path):
     original = tmp_path / "changed-install.sh"
-    original.write_text("download_assets() { echo changed; }\\n", encoding="utf-8")
+    original.write_text("download_assets() { echo changed; }\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="unknown|ناشناخته"):
         installer._patch_linux_install_script(original)
