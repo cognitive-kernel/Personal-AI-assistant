@@ -142,7 +142,9 @@ class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
         # DNS policy is enforced by the pinned transport at connection time.
         # Parsing here prevents redirects from escaping the URL policy without
         # performing a second, redundant DNS lookup.
-        _parse_public_url(newurl)
+        parsed = _parse_public_url(newurl)
+        if parsed.scheme.casefold() != "https":
+            raise SourceFetchError("HTTPS is required for research source redirects.")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -437,7 +439,16 @@ def _normalize_search_results(
     seen: set[str] = set()
     for title, url in results:
         try:
-            parsed = _validate_public_url(url)
+            parsed = _parse_public_url(url)
+        except SourceFetchError:
+            continue
+        # Research payloads, audit records, and citations require HTTPS. Reject
+        # HTTP search results before DNS resolution so they cannot consume the
+        # bounded result limit or incur an unnecessary lookup.
+        if parsed.scheme.casefold() != "https":
+            continue
+        try:
+            _validated_public_addresses(parsed)
         except SourceFetchError:
             continue
         hostname = (parsed.hostname or "").lower().rstrip(".")
@@ -609,6 +620,9 @@ def _search_results(query: str, limit: int) -> SearchResultList:
     raise error
 
 def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> SourceDocument:
+    parsed = _parse_public_url(url)
+    if parsed.scheme.casefold() != "https":
+        raise SourceFetchError("HTTPS is required for research source documents.")
     content, content_type = _open(url, max_bytes=MAX_RESPONSE_BYTES)
     if content_type == "text/plain":
         title = title_hint

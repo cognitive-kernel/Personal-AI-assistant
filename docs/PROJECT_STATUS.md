@@ -166,3 +166,10 @@
 - برای سازگاری با shebang رسمی /bin/sh، آرشیو ابتدا به فایل tar موقت decompression می‌شود و سپس استخراج می‌گردد؛ از قابلیت غیر POSIX مانند pipefail استفاده نمی‌شود.
 - تست‌های regression انتخاب asset رسمی، digest/size، URL غیرمجاز، نام asset نامعتبر، ناسازگاری نسخه، تغییر ساختار upstream و parse شدن اسکریپت patch‌شده با sh -n را پوشش می‌دهند.
 - PR #620 با squash commit `a85c7e85b93c322d6a093ee7ba0319b30a6f2147` در `main` ادغام شد. CI روی head دقیق PR یعنی `5c1c1f36f5f38b43a2ec20e720548fde299a43f8` موفق شد: tests [#41164300720](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300720) با 1728 passed و 5 skipped، Windows storage regressions، artifact validation، لینک‌های Markdown برای 77 فایل، import-cycle scan و benchmarkهای retrieval و claim-to-test (10/10)؛ browser E2E [#41164300693](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300693) و dependency audit [#41164300658](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300658) نیز موفق شدند. CI مستقل post-merge روی squash SHA تأیید نشده است. نصب زندهٔ Ollama عمداً اجرا نشده؛ پذیرش روی میزبان Linux جزو تست محلی مستثناشده است.
+
+## 2026-10-31 — یکسان‌سازی سیاست HTTPS در بازیابی منابع پژوهش (PR #622)
+
+- در PR [#622](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/622)، نتایج HTTP پیش از اعمال سقف تعداد نتایج کنار گذاشته می‌شوند؛ در نتیجه نتیجهٔ ناامن/ناسازگار HTTP نمی‌تواند جای منبع HTTPS قابل‌استفاده را در فهرست محدود بگیرد.
+- لایهٔ دریافت سند نیز مستقل از مسیر جست‌وجو، URL غیر HTTPS را پیش از هر درخواست شبکه رد می‌کند؛ redirect از HTTPS به HTTP نیز برای جلوگیری از downgrade رد می‌شود. این رفتار با قرارداد citation، payload پژوهش و ثبت شواهد که HTTPS می‌خواهند یکسان است.
+- تست‌های regression انتخاب HTTPS پس از نتیجهٔ HTTP، رد HTTP پیش از transport و ثبت شمارنده‌های discovery را پوشش می‌دهند.
+- وضعیت: PR باز است و CI روی head نهایی باید کامل شود. این تغییر به‌تنهایی علت صفر بودن منابع در اجرای زندهٔ قبلی را اثبات نمی‌کند؛ فقط یک ناسازگاری قطعی در قرارداد URL را می‌بندد.
