@@ -15,7 +15,8 @@ import psutil
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, StrictInt, StrictStr
 
-from .task_routes import require_loopback_client\nfrom .autonomous_engineering_progress import get_progress
+from .task_routes import require_loopback_client
+from .autonomous_engineering_progress import get_progress
 
 router = APIRouter(
     prefix="/api/autonomous-engineering",
