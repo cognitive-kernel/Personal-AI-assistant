@@ -68,6 +68,7 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
             self.handlers = handlers
             self.worker_prefix = kwargs.get("worker_prefix", "stub-worker")
             self.is_running = False
+            self.is_healthy = False
             self.start_count = 0
             self.stop_count = 0
             constructed.append(self)
@@ -75,10 +76,12 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
         def start(self):
             self.start_count += 1
             self.is_running = True
+            self.is_healthy = True
 
         def stop(self, timeout=10.0):
             self.stop_count += 1
             self.is_running = False
+            self.is_healthy = False
             return True
 
     monkeypatch.setattr(main, "TaskRuntime", RuntimeStub)
@@ -107,11 +110,12 @@ def test_startup_reconciles_missing_learning_task_idempotently(tmp_path, monkeyp
     # a healthy startup; all surviving workers stop before replacements start.
     previous_runtimes = list(constructed)
     previous_count = len(constructed)
-    previous_runtimes[0].is_running = False
+    # A runtime may still have a live worker while its configured worker set is degraded.
+    previous_runtimes[0].is_healthy = False
     main.startup()
 
     assert len(constructed) > previous_count
     assert main._task_runtimes != previous_runtimes
     assert all(not runtime.is_running for runtime in previous_runtimes)
-    assert all(runtime.stop_count == 1 for runtime in previous_runtimes if runtime is not previous_runtimes[0])
+    assert all(runtime.stop_count == 1 for runtime in previous_runtimes)
     assert all(runtime.is_running for runtime in main._task_runtimes)
