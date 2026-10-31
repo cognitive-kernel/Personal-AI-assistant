@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import sqlite3
 
 from fastapi.testclient import TestClient
 
@@ -128,6 +129,64 @@ def test_cloud_resource_review_api_requires_current_hash_and_terms_url(
         )
         assert stale_hash.status_code == 409
 
+
+
+def test_cloud_resource_review_api_rejects_time_stale_candidate_and_claim(
+    tmp_path, monkeypatch
+):
+    _configure(tmp_path, monkeypatch)
+    document = web_sources.SourceDocument(
+        url="https://compute.example.org/free-tier",
+        title="Free compute",
+        text=("Free tier includes 2 vCPU and 8 GB RAM. Read terms before use. " * 4),
+    )
+    monkeypatch.setattr(
+        web_sources, "discover_sources", lambda query, limit=3: [document]
+    )
+    cloud_resources.discover_resources()
+    candidate = cloud_resources.list_candidates()[0]
+    cpu_claim = next(
+        claim for claim in candidate["observed_claims"]
+        if claim["claim_type"] == "cpu_count"
+    )
+
+    with sqlite3.connect(db.defaults.cloud_resources_db_path) as connection:
+        connection.execute(
+            """UPDATE cloud_resource_candidates
+               SET review_status='approved', availability_status='available',
+                   reviewed_at=CURRENT_TIMESTAMP, reviewed_content_sha256=content_sha256,
+                   last_seen_at=datetime('now', '-31 days')
+               WHERE id=?""",
+            (candidate["id"],),
+        )
+        connection.commit()
+
+    with TestClient(app, client=("127.0.0.1", 12345)) as client:
+        stale_claim = client.patch(
+            f"/api/cloud-resources/{candidate['id']}/claims/{cpu_claim['id']}/review",
+            json={
+                "expected_source_content_sha256": candidate["content_sha256"],
+                "review_status": "accepted",
+            },
+        )
+        assert stale_claim.status_code == 409
+        assert "stale" in stale_claim.json()["detail"].lower()
+
+        stale_candidate = client.patch(
+            f"/api/cloud-resources/{candidate['id']}/review",
+            json={
+                "expected_content_sha256": candidate["content_sha256"],
+                "review_status": "approved",
+                "availability_status": "available",
+                "terms_url": "https://compute.example.org/terms",
+            },
+        )
+        assert stale_candidate.status_code == 409
+        assert "stale" in stale_candidate.json()["detail"].lower()
+
+        listed = client.get("/api/cloud-resources").json()["candidates"]
+        assert listed[0]["freshness_status"] == "stale"
+        assert listed[0]["availability_status"] == "unknown"
 
 
 def test_kaggle_quota_consent_is_opt_in_revocable_and_audited(tmp_path, monkeypatch):
