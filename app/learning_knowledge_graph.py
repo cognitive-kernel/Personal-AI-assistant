@@ -145,7 +145,7 @@ def review_edge(
         str(row["source_url"]), "learning causal graph evidence review", max_chars=100000
     )
     _task_checkpoint(context, "graph_edge_source_fetch_complete", edge_id)
-    normalize = lambda value: re.sub(r"\\s+", " ", value).strip()
+    normalize = lambda value: re.sub(r"\s+", " ", value).strip()
     if normalize(excerpt) not in normalize(str(document.text)):
         _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
         return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
