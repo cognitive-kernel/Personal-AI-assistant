@@ -228,6 +228,7 @@ def test_learning_runtime_maintenance_continues_after_reconciliation_failure(mon
 
     assert dispatched == [True]
 
+
 def test_startup_continues_when_initial_learning_reconciliation_fails(monkeypatch, caplog):
     monkeypatch.setattr(main, "_task_runtimes", [])
     monkeypatch.setattr(main.db, "init_databases", lambda: None)
