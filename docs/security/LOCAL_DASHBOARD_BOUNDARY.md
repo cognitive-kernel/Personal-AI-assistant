@@ -9,7 +9,7 @@ The application intentionally exposes an unauthenticated local dashboard and API
 - The request peer must be a loopback IP literal.
 - The HTTP `Host` hostname must be exactly `localhost`, `127.0.0.1`, or `::1`.
 - Forwarded-IP headers are not used to establish the peer identity.
-- The synthetic `testclient`/`testserver` exception exists only for the in-process ASGI test transport; a real TCP peer cannot select `request.client.host`.
+- The synthetic `testserver` exception is accepted only when the ASGI server scope itself reports the TestClient-only `testserver` tuple; a real TCP server reports its bound IP address.
 - Regression tests reject attacker-controlled Host values, including `localhost.evil` and rebinding-style hostnames, while retaining the supported loopback forms.
 
 ## Limits
