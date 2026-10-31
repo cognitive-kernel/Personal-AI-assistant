@@ -146,3 +146,34 @@ def test_task_priority_api_rejects_boolean_without_mutation(api_client):
 
     assert response.status_code == 422
     assert task_manager.get_task(task["id"])["priority"] == 0
+
+
+def test_research_api_rejects_boolean_conversation_id_without_mutation(api_client):
+    conversation = main.chat_history.create_conversation()
+
+    response = api_client.post(
+        "/api/research/tasks",
+        json={"message": "Find a primary source", "conversation_id": True},
+    )
+
+    assert response.status_code == 422
+    assert main.chat_history.list_messages(conversation["id"]) == []
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type='research.chat'"
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_research_plan_api_rejects_fractional_step_count_without_mutation(api_client):
+    response = api_client.post(
+        "/api/research/plans",
+        json={"goal": "Review the API contract", "max_steps": 2.5},
+    )
+
+    assert response.status_code == 422
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type='research.plan'"
+        ).fetchone()[0]
+    assert count == 0
