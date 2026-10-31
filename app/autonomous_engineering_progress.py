@@ -48,8 +48,8 @@ def _scorecard_baseline() -> dict[str, Any] | None:
         content = _DEFAULT_SCORECARD.read_text(encoding="utf-8")
     except OSError:
         return None
-    engineering = re.search(r"Engineering completion:.*?=\s*([0-9]+(?:\\.[0-9]+)?)%", content)
-    overall = re.search(r"Overall acceptance progress:.*?=\s*([0-9]+(?:\\.[0-9]+)?)%", content)
+    engineering = re.search(r"Engineering completion:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
+    overall = re.search(r"Overall acceptance progress:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
     snapshot = re.search(r"\*\*Snapshot:\*\*\s*(\d{4}-\d{2}-\d{2})", content)
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not engineering or not overall or not snapshot:
