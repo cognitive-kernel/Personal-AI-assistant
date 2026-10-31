@@ -47,6 +47,17 @@ def test_experience_cannot_be_verified_without_sources_and_passing_test(tmp_path
         )
 
 
+def test_experience_test_result_passed_requires_an_actual_boolean(tmp_path, monkeypatch):
+    setup_learning_db(tmp_path, monkeypatch)
+    item = experience.create_experience("Python", "Strict result type regression.")
+    for passed in (0, 1, "true", None):
+        with pytest.raises(ValueError, match="boolean passed"):
+            experience.update_experience(
+                item["id"],
+                test_results=[{"test": "strict result", "passed": passed}],
+            )
+
+
 def test_experience_rejects_non_https_sources_and_invalid_test_result(tmp_path, monkeypatch):
     setup_learning_db(tmp_path, monkeypatch)
     item = experience.create_experience("Python", "Unexpected exception.")
