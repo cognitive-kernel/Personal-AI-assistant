@@ -437,7 +437,7 @@ def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[
 def fail_task(
     task_id: int, worker_id: str, error: str, *, retry: bool = True
 ) -> dict[str, Any]:
-    """Record failure and schedule bounded exponential backoff for retryable attempts."""
+    """Honor pending pause/cancel controls before scheduling bounded retry backoff."""
     if not isinstance(error, str) or not error.strip():
         raise ValueError("error must be a non-empty string.")
     now_dt = _now()
