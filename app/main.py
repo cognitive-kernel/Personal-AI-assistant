@@ -324,8 +324,9 @@ def startup() -> None:
             maintenance_interval=30.0,
             restrict_task_types=True,
         )
-        runtime.start()
+        # Register before starting so lifespan shutdown can stop partially started runtimes.
         _task_runtimes.append(runtime)
+        runtime.start()
 
     # Preserve fail-closed behavior for tasks whose type has no registered handler.
     known_task_types = tuple(
@@ -341,8 +342,9 @@ def startup() -> None:
         lease_seconds=300,
         exclude_task_types=known_task_types + (fallback_placeholder,),
     )
-    fallback_runtime.start()
+    # Track the fallback runtime before start for the same partial-start cleanup guarantee.
     _task_runtimes.append(fallback_runtime)
+    fallback_runtime.start()
     backup_scheduler.start_backup_scheduler()
 
 def shutdown() -> None:
