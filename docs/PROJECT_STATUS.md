@@ -187,3 +187,10 @@
 - PR #627: مستند امنیت نصب Ollama با پیاده‌سازی واقعی بررسی digest/size payload مرحله دوم Linux همگام شد؛ نصب زنده روی میزبان مقصد همچنان تأیید نشده است. ادغام: `7a2cf05a7b3485e3b157e41860783fda2e76a846`; exact-head CI و post-merge CI روی `main` موفق‌اند: 1737 passed/5 skipped در 176.88 ثانیه، Windows storage، dashboard smoke و dependency audit نیز موفق.
 - آخرین شمارش درخت Git: 400 فایل، 285 فایل Python، 157 فایل تست Python، 71 سند Markdown زیر docs و 41 تابع مستقل Browser E2E. این شمارش جایگزین بازبینی خط‌به‌خط همهٔ فایل‌ها نیست.
 - دروازه‌های باز: اجرای زنده و human adjudication، بازبینی امنیتی مستقل Issue #52، پذیرش crash/soak روی میزبان هدف، staging restore/rollback، و آزمون واقعی Docker/target-host.
+
+## 2026-10-31 — TaskRuntime partial-thread recovery (PR #633)
+
+- `TaskRuntime.is_running` remains an activity signal for shutdown; new `is_healthy` requires every configured worker and optional maintenance thread to be alive.
+- `start()` is idempotent only for a healthy runtime. A partial runtime is stopped and joined before replacements are created; if any prior thread does not stop within the bounded 10-second deadline, restart raises `RuntimeError` and does not overlap worker identities.
+- Application startup now reconstructs an unhealthy runtime set. Regression tests cover worker exit, maintenance exit, and partially alive startup recovery. The contract and single-process limitations are recorded in [ADR-012](architecture/ADR-012-task-runtime-health-recovery.md).
+- PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) merged as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`. Post-merge CI: 1742 passed/5 skipped in 138.58s; Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both deterministic benchmarks passed.
