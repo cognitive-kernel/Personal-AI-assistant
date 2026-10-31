@@ -109,7 +109,7 @@ def test_language_adherence_fails_closed_when_there_is_not_enough_prose():
 
     result = evaluate_language_adherence("SQL `SELECT * FROM t` https://example.com", "fa")
     assert result["passed"] is False
-    assert result["detected_language"] == "unknown"
+    assert result["dominant_script"] == "unknown"
     assert result["reason"] == "insufficient_script_evidence"
 
 
