@@ -67,7 +67,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
             for item in models
             if isinstance(item, dict) and item.get("name")
         )
-        installed = model in names or any(name.split(":")[0] == model.split(":")[0] and name == model for name in names)
+        installed = model in names
         return {
             "online": True,
             "model": model,
@@ -177,6 +177,9 @@ def autonomous_engineering_status() -> dict[str, Any]:
 
 @router.post("/dispatch", status_code=202)
 def dispatch_autonomous_engineering() -> dict[str, Any]:
+    readiness = collect_status()
+    if not readiness["ready"]:
+        raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
