@@ -159,4 +159,4 @@ def test_topic_checkbox_is_outside_summary_and_script_cache_is_busted():
     assert 'head.append(el("strong",numberPath+". "+topic.title)' in script
     assert 'card.append(head);' in script
     assert 'const selection=el("div",undefined,"topic-select");selection.append(check);card.append(selection);' in script
-    assert 'head.append(check' not in script
+    assert 'head.append(check,el("h4","اجرای #"+run.id' in script
