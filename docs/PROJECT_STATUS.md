@@ -244,3 +244,12 @@
 - This schedule excludes local/manual owner testing, human adjudication, target-host operator acceptance and the independent security review itself. Automated tests/CI and code remediation remain in scope.
 - The earlier 12-day estimate is withdrawn as unsupported. The historical 60.47% gate score is not an effort estimate.
 - The 22-day figure is the preserved planning baseline; any delay must be explained with task-level evidence and actual/remaining engineering hours in `docs/ENGINEERING_LOG.md`. Do not overwrite the original baseline when reforecasting.
+
+
+## 2026-11-01 — Local autonomous engineering worker (PR #675)
+
+- The former paid API dependency is being replaced with Codex CLI local OSS mode through Ollama on a Windows self-hosted runner. No OpenAI API key is part of the proposed activation path.
+- New local operations console: `/autonomous-engineering`; it reports Ollama/model/Codex/Runner/GitHub CLI readiness and exposes explicit workflow dispatch/cancel controls.
+- Main dashboard, AI-learning page, and new operations page share the primary navigation.
+- Workflow architecture: trusted-main local coding job; GitHub-hosted secret-free patch validation; separate GitHub-hosted draft-PR publication. No direct main writes, auto-merge, or deployment.
+- Status: implementation branch active; tests and exact-head CI pending. Owner-side Windows runner registration, Ollama/Codex setup, and target-host soak have not been performed and are not claimed complete.
