@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import db, learning, learning_knowledge_graph
+from app import db, learning, learning_knowledge_graph, learning_knowledge_graph_tasks
+from app.task_worker import TaskInterrupted
 
 
 @pytest.fixture
@@ -175,3 +176,122 @@ def test_accepted_causal_edges_cannot_form_a_cycle(graph_store, monkeypatch):
             source_url="https://docs.example.test/cache",
             source_excerpt="A different source excerpt for the reverse causal edge.",
         )
+
+def test_graph_review_honors_pause_after_source_fetch_before_model_calls(graph_store, monkeypatch):
+    source_id, target_id = graph_store
+    excerpt = "The source directly describes how stale cache entries can result after writes."
+    edge = learning_knowledge_graph.propose_edge(
+        source_id, target_id, relation_type="supports",
+        source_url="https://docs.example.test/cache", source_excerpt=excerpt,
+    )
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=excerpt, title="Source"),
+    )
+    monkeypatch.setattr(
+        "app.learning_review_adapters.list_reviewers",
+        lambda *_args, **_kwargs: pytest.fail("Reviewers must not be resolved after pause."),
+    )
+
+    class InterruptingContext:
+        def checkpoint(self, value):
+            if value.get("stage") == "graph_edge_source_fetch_complete":
+                raise TaskInterrupted("Task paused at checkpoint.")
+
+    with pytest.raises(TaskInterrupted, match="paused"):
+        learning_knowledge_graph.review_edge(
+            edge["id"],
+            expected_source_sha256=edge["source_sha256"],
+            context=InterruptingContext(),
+        )
+
+    with db.learning_connection() as connection:
+        stored = connection.execute(
+            "SELECT status, review_json FROM learning_knowledge_graph_edges WHERE id=?",
+            (edge["id"],),
+        ).fetchone()
+    assert stored["status"] == "proposed"
+    assert stored["review_json"] is None
+
+
+def test_graph_review_honors_cancel_between_two_reviewer_calls(graph_store, monkeypatch):
+    source_id, target_id = graph_store
+    excerpt = "The source directly describes how stale cache entries can result after writes."
+    edge = learning_knowledge_graph.propose_edge(
+        source_id, target_id, relation_type="supports",
+        source_url="https://docs.example.test/cache", source_excerpt=excerpt,
+    )
+    reviewers = [
+        {"model": "reviewer-one", "provider_id": "test", "digest": "digest-one"},
+        {"model": "reviewer-two", "provider_id": "test", "digest": "digest-two"},
+    ]
+    calls = []
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=excerpt, title="Source"),
+    )
+    monkeypatch.setattr("app.ollama.list_models", lambda: [])
+    monkeypatch.setattr("app.learning_review_adapters.list_reviewers", lambda *_args, **_kwargs: reviewers)
+
+    def run_reviewer(reviewer, *_args, **_kwargs):
+        calls.append(reviewer["model"])
+        return {
+            "content": json.dumps({
+                "verdict": "supports",
+                "rationale": "The source directly supports the stated relationship in the requested scope.",
+            }),
+            "model": reviewer["model"],
+            "provider_id": reviewer["provider_id"],
+            "digest": reviewer["digest"],
+        }
+
+    monkeypatch.setattr("app.learning_review_adapters.run_reviewer", run_reviewer)
+
+    class InterruptingContext:
+        def checkpoint(self, value):
+            if value.get("stage") == "graph_edge_reviewer_complete" and value.get("reviewer_index") == 0:
+                raise TaskInterrupted("Task cancelled at checkpoint.")
+
+    with pytest.raises(TaskInterrupted, match="cancelled"):
+        learning_knowledge_graph.review_edge(
+            edge["id"],
+            expected_source_sha256=edge["source_sha256"],
+            context=InterruptingContext(),
+        )
+
+    assert calls == ["reviewer-one"]
+    with db.learning_connection() as connection:
+        stored = connection.execute(
+            "SELECT status, review_json FROM learning_knowledge_graph_edges WHERE id=?",
+            (edge["id"],),
+        ).fetchone()
+    assert stored["status"] == "proposed"
+    assert stored["review_json"] is None
+
+
+def test_graph_review_task_handler_passes_task_context_to_service(monkeypatch):
+    context = SimpleNamespace(checkpoints=[])
+    context.checkpoint = lambda value: context.checkpoints.append(value)
+    captured = {}
+
+    def fake_review_edge(edge_id, *, expected_source_sha256, context=None):
+        captured.update({
+            "edge_id": edge_id,
+            "source_hash": expected_source_sha256,
+            "context": context,
+        })
+        return {"edge_id": edge_id, "status": "accepted"}
+
+    monkeypatch.setattr(learning_knowledge_graph_tasks.learning_knowledge_graph, "review_edge", fake_review_edge)
+    result = learning_knowledge_graph_tasks.handle_review_graph_edge(
+        {"edge_id": 7, "source_sha256": "a" * 64},
+        None,
+        context,
+    )
+
+    assert result["status"] == "accepted"
+    assert captured == {"edge_id": 7, "source_hash": "a" * 64, "context": context}
+    assert [item["stage"] for item in context.checkpoints] == [
+        "graph_edge_review_started",
+        "graph_edge_review_finished",
+    ]
