@@ -228,3 +228,58 @@ def test_learning_runtime_maintenance_continues_after_reconciliation_failure(mon
 
     assert dispatched == [True]
 
+def test_startup_continues_when_initial_learning_reconciliation_fails(monkeypatch, caplog):
+    monkeypatch.setattr(main, "_task_runtimes", [])
+    monkeypatch.setattr(main.db, "init_databases", lambda: None)
+    monkeypatch.setattr(main.db, "get_settings", lambda: {})
+    monkeypatch.setattr(main.browser_learning, "recover_interrupted_courses", lambda: None)
+    monkeypatch.setattr(main.browser_learning, "dispatch_next_course", lambda: None)
+    monkeypatch.setattr(main.cloud_resources, "initialize_store", lambda: None)
+    monkeypatch.setattr(
+        main.cloud_resources,
+        "ensure_daily_discovery_scheduled",
+        lambda: {"status": "disabled_for_test"},
+    )
+
+    def fail_reconciliation():
+        raise RuntimeError("injected learning database lock")
+
+    monkeypatch.setattr(main, "reconcile_queued_learning_tasks", fail_reconciliation)
+    monkeypatch.setattr(main.ai_learning_config, "is_enabled", lambda: False)
+    monkeypatch.setattr(main.sandbox_tasks, "handler_from_environment", lambda **_kwargs: None)
+    monkeypatch.setattr(main.experience_tasks, "handler_from_environment", lambda: None)
+    monkeypatch.setattr(
+        main.factual_verification_tasks,
+        "handler_from_environment",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(main.backup_scheduler, "start_backup_scheduler", lambda: None)
+
+    constructed = []
+
+    class RuntimeStub:
+        def __init__(self, handlers, **kwargs):
+            self.handlers = handlers
+            self.worker_prefix = kwargs["worker_prefix"]
+            self.is_running = False
+            self.is_healthy = False
+            constructed.append(self)
+
+        def start(self):
+            self.is_running = True
+            self.is_healthy = True
+
+        def stop(self, timeout=10.0):
+            self.is_running = False
+            self.is_healthy = False
+            return True
+
+    monkeypatch.setattr(main, "TaskRuntime", RuntimeStub)
+
+    main.startup()
+
+    assert main._startup_storage_error is None
+    assert len(constructed) >= 4
+    assert all(runtime.is_running and runtime.is_healthy for runtime in constructed)
+    assert "Startup learning-task reconciliation failed" in caplog.text
+
