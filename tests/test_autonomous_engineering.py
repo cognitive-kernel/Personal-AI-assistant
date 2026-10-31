@@ -98,6 +98,10 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "OPENAI_API_KEY" not in page
     assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
     assert "checks.github_runs_available" in agent_script
+    assert 'id="runs-per-day"' in page
+    assert 'id="ollama-model"' in page
+    assert 'id="custom-model"' in page
+    assert 'id="save-agent-settings"' in page
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -108,6 +112,7 @@ def test_autonomous_engineering_routes_are_registered():
 
     assert "/autonomous-engineering" in page_paths
     assert "/api/autonomous-engineering/status" in api_paths
+    assert "/api/autonomous-engineering/settings" in api_paths
     assert "/api/autonomous-engineering/dispatch" in api_paths
     assert "/api/autonomous-engineering/cancel" in api_paths
 
@@ -156,7 +161,7 @@ def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
 
     result = agent._github_snapshot()
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert result["authenticated"] is True
     assert result["runs_available"] is False
     assert result["recent_runs"] == []
@@ -172,3 +177,71 @@ def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
         agent.dispatch_autonomous_engineering()
 
     assert error.value.status_code == 503
+
+
+
+def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.save_autonomous_engineering_settings(
+        agent.EngineeringSettings(model="qwen3:14b", runs_per_day=4)
+    )
+
+    assert result["saved"] is True
+    assert result["model"] == "qwen3:14b"
+    assert result["runs_per_day"] == 4
+    assert calls[0][1:4] == ["auth", "status", "--hostname"]
+    assert calls[1][1:] == [
+        "variable", "set", "AUTONOMOUS_ENGINEERING_MODEL",
+        "--body", "qwen3:14b", "--repo", "cognitive-kernel/Personal-AI-assistant",
+    ]
+    assert calls[2][1:] == [
+        "variable", "set", "AUTONOMOUS_ENGINEERING_RUNS_PER_DAY",
+        "--body", "4", "--repo", "cognitive-kernel/Personal-AI-assistant",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("model", "runs_per_day"),
+    [("bad model name", 1), ("qwen3:14b", 5), ("../unsafe", 2)],
+)
+def test_save_settings_rejects_invalid_values(monkeypatch, model, runs_per_day):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    with pytest.raises(HTTPException) as error:
+        agent.save_autonomous_engineering_settings(
+            agent.EngineeringSettings(model=model, runs_per_day=runs_per_day)
+        )
+
+    assert error.value.status_code == 422
+
+
+def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
+                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"8"}]',
+                "",
+            )
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent._github_snapshot()
+
+    assert result["settings"] == {"model": "qwen3:14b", "runs_per_day": 8}
