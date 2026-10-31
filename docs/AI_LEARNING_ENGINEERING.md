@@ -24,7 +24,7 @@ The optional module gathers structured knowledge for later use by Personal-AI-as
 - app/ai_learning/service.py: course/topic/version rules, chunking and lexical retrieval.
 - app/ai_learning/routes.py: HTTP contracts and error mapping.
 - app/ai_learning/browser_automation.py: visible-UI Playwright worker, provider-gate classification, and persisted-run recovery.
-- app/ai_learning/evaluation.py: deterministic, dependency-free retrieval/answer regression metrics.
+- app/ai_learning/evaluation.py: deterministic, dependency-free retrieval/answer regression metrics. Optional expected-language checks use a deterministic Arabic-script/Latin-script ratio after excluding code and URLs. This catches likely script mismatches only; it is not semantic language identification.
 - app/ai_learning/browser_extension/: Manifest V3 bridge with minimal host permissions, explicit user submission and manual capture of the latest visible answer.
 - tests/test_ai_learning_*.py: unit and integration tests that do not require internet, a real account or a live model.
 
