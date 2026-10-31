@@ -245,7 +245,7 @@ def startup() -> None:
             ai_learning_browser_automation.recover_pending_runs()
         except Exception:
             logger.exception("AI-learning persisted queue recovery failed; the dashboard remains available.")
-    if _task_runtimes and all(runtime.is_running for runtime in _task_runtimes):
+    if _task_runtimes and all(runtime.is_healthy for runtime in _task_runtimes):
         # A fully healthy runtime set makes repeated startup calls idempotent.
         backup_scheduler.start_backup_scheduler()
         return
