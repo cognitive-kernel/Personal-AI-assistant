@@ -164,3 +164,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added daily, weekly, and custom date-range SVG charts for the weighted engineering-completion and overall-acceptance scorecard metrics. The existing 2026-11-01 scorecard is the only historical baseline; new snapshots are recorded on worker-run dates, with no fabricated backfill.
 - Activity events and project score snapshots use separate bounded local files under `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`. A one-time ACL script grants access only to the dedicated Runner account, local application account, SYSTEM, and local administrators. The UI polls the small progress endpoint every five seconds; logs remain collapsed by default and no charting dependency is added.
 - Added API, scorecard parsing, plan-progress, GitHub step reconciliation, and compact UI regression tests. Exact-head CI and Windows ACL/runner verification remain pending; no operational telemetry is claimed until the shared directory is configured and a real workflow run reports events.
+
+
+### Branch-continuity correction — 2026-11-01
+
+- Two progress helper files were inadvertently committed directly to `main` while a branch argument was omitted from two GitHub Contents API updates: `f7d38e99ec717c35404c95eea535171e4c6e3280` added `app/autonomous_engineering_progress.py`, and `60597e13e70a3014f6a1871290cf843d188ca45e` added `scripts/autonomous_engineering_progress.py`. These commits changed only those two new helper files; they did not alter existing application routes or activate the feature.
+- The mistake was not hidden or force-rewritten. The replacement PR #680 is based on the resulting current-main SHA and updates both helpers together with the full UI, API, workflow, tests, and documentation integration. The superseded PR #675 was closed after #680 was opened.
+- All subsequent writes explicitly target `automation/codex-engineering-agent-rebased`. No direct-main write, force-push, or history rewrite is planned.
