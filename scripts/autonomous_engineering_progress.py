@@ -66,6 +66,8 @@ def plan_state() -> tuple[int, int, str | None]:
 
 def codex_activity(event: dict[str, Any]) -> str | None:
     event_type = event.get("type")
+    if event_type == "turn.started":
+        return "عامل در حال تحلیل و اجرای وظیفه است"
     item = event.get("item")
     if not isinstance(item, dict):
         return None
@@ -81,8 +83,6 @@ def codex_activity(event: dict[str, Any]) -> str | None:
         return "به‌روزرسانی فایل‌ها: " + "، ".join(paths) if paths else "ثبت تغییرات کد"
     if event_type == "item.updated" and kind in {"todo_list", "plan_update"}:
         return "به‌روزرسانی برنامهٔ کار عامل"
-    if event_type == "turn.started":
-        return "عامل در حال تحلیل و اجرای وظیفه است"
     return None
 
 
