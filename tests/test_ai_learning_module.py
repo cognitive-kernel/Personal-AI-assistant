@@ -40,6 +40,16 @@ def test_chatgpt_citation_hyperlinks_are_preserved_for_lesson_source_detection()
     assert enriched.count("https://learn.microsoft.com/sql/relational-databases/indexes/indexes") == 1
     assert 'citation_links = _capture_citation_links(page)' in Path(browser_automation.__file__).read_text(encoding="utf-8")
 
+def test_citation_capture_supports_conversation_turn_and_copy_response_fallback():
+    from pathlib import Path
+
+    source = Path(browser_automation.__file__).read_text(encoding="utf-8")
+    assert "node.closest('[data-testid^=\"conversation-turn-\"]')" in source
+    assert "button[aria-label=\"Copy response\"],button[data-testid*=\"copy-turn\"]" in source
+    assert "root.querySelectorAll('a[href]')" in source
+    assert "citation_links = _capture_citation_links(page)" in source
+
+
 def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store):
     course = service.create_course(title="Source-required lesson")
     topic = service.add_topic(course["id"], "Lesson without references")
@@ -945,6 +955,33 @@ def test_chatgpt_sources_are_persisted_with_content_versions(isolated_store):
     assert all(source["validation_status"] == "unverified" for source in sources)
     assert any(source["title"] == "Microsoft Learn" for source in sources)
     assert all(source["content_version_id"] == version["id"] for source in sources)
+
+
+def test_legacy_title_only_source_recovers_exact_url_from_saved_raw_response(isolated_store):
+    course = service.create_course(title="Legacy source URL recovery")
+    topic = service.add_topic(course["id"], "SQL Server references")
+    service.decide_topics([topic["id"]], "approved")
+    lesson = service.create_lesson(topic["id"], "SQL Server references")
+    title = "Search condition (Transact-SQL) — Microsoft Learn"
+    version = service.add_content_version(
+        lesson["id"],
+        "Substantive lesson content describing SQL Server search conditions and predicates.\n\n"
+        "## منابع\n- " + title,
+        source_kind="manual",
+    )
+    with connection() as conn:
+        conn.execute(
+            "UPDATE content_versions SET raw_response=? WHERE id=?",
+            ("[" + title + "](https://learn.microsoft.com/en-us/sql/t-sql/queries/search-condition-transact-sql)", version["id"]),
+        )
+
+    recovered = service.list_content_sources(version["id"])
+    assert len(recovered) == 1
+    assert recovered[0]["title"] == title
+    assert recovered[0]["url"] == (
+        "https://learn.microsoft.com/en-us/sql/t-sql/queries/search-condition-transact-sql"
+    )
+    assert recovered[0]["validation_status"] == "unverified"
 
 
 def test_source_extraction_deduplicates_urls():

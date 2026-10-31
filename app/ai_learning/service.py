@@ -1203,8 +1203,40 @@ def check_content_source(source_id: int) -> dict[str, Any]:
 
 def list_content_sources(version_id: int) -> list[dict[str, Any]]:
     with connection() as conn:
-        if conn.execute("SELECT 1 FROM content_versions WHERE id=?", (version_id,)).fetchone() is None:
+        version = conn.execute(
+            "SELECT markdown,raw_response FROM content_versions WHERE id=?", (version_id,)
+        ).fetchone()
+        if version is None:
             raise NotFoundError("Content version not found.")
+
+        # Repair legacy title-only rows only when the exact source title and URL
+        # are both present in the already-saved lesson/raw response. Never infer
+        # or fabricate a URL from a publisher or a search-result title.
+        stored_text = str(version["markdown"] or "") + "\n\n" + str(version["raw_response"] or "")
+        extracted = _extract_references(stored_text)
+        by_title: dict[str, dict[str, str | None]] = {}
+        for item in extracted:
+            title_key = " ".join(str(item.get("title") or "").split()).casefold()
+            if title_key and item.get("url"):
+                by_title.setdefault(title_key, item)
+        missing_rows = conn.execute(
+            "SELECT id,title FROM sources WHERE content_version_id=? AND (url IS NULL OR trim(url)='')",
+            (version_id,),
+        ).fetchall()
+        for row in missing_rows:
+            title_key = " ".join(str(row["title"] or "").split()).casefold()
+            recovered = by_title.get(title_key)
+            if recovered is None:
+                continue
+            url = str(recovered["url"])
+            publisher_match = re.match(r"https?://([^/]+)", url, re.IGNORECASE)
+            publisher = publisher_match.group(1).lower() if publisher_match else ""
+            conn.execute(
+                """UPDATE sources SET url=?,publisher=?,source_type='chatgpt_citation'
+                   WHERE id=? AND (url IS NULL OR trim(url)='')""",
+                (url, publisher[:300], row["id"]),
+            )
+
         rows = conn.execute(
             "SELECT id,content_version_id,title,url,publisher,source_type,accessed_at,excerpt,validation_status,created_at FROM sources WHERE content_version_id=? ORDER BY id",
             (version_id,),

@@ -190,8 +190,11 @@ async function showLessons(topic) {
             const box = node("div", undefined, "source-list");
             if (!sources.items.length) box.append(node("p", "برای این نسخه پیوند منبعی استخراج نشده است."));
             sources.items.forEach(s => {
-              const row = node("p", (s.title || s.url || "منبع") + " · " + (s.validation_status || "unverified") + " · " + (s.url || ""));
-              if (s.url) row.append(action("بررسی پیوند", async () => { await api("/api/ai-learning/sources/" + s.id + "/check", {method:"POST"}); await showLessons(topic); }));
+              const hasUrl = typeof s.url === "string" && (s.url.startsWith("https://") || s.url.startsWith("http://"));
+              const status = s.validation_status || "unverified";
+              const detail = hasUrl ? s.url : "نشانی منبع در پاسخ ذخیره‌شده موجود نیست؛ پیوندی ساخته نشده است.";
+              const row = node("p", (s.title || "منبع") + " · " + status + " · " + detail);
+              if (hasUrl) row.append(action("بررسی پیوند", async () => { await api("/api/ai-learning/sources/" + s.id + "/check", {method:"POST"}); await showLessons(topic); }));
               box.append(row);
             });
             vcard.append(box);

@@ -916,28 +916,94 @@ def _capture_lesson_until_complete(
 
 
 def _capture_citation_links(page: Any) -> list[dict[str, str]]:
-    """Read external citation hyperlinks from the latest visible ChatGPT answer."""
+    """Capture source hyperlinks from the newest assistant turn, including citation cards."""
+    script = r"""node => {
+      const turn = node.closest('[data-testid^="conversation-turn-"]') || node;
+      const roots = [
+        turn.querySelector('[data-message-content]'),
+        node.querySelector('[data-message-content]'),
+        turn,
+        node
+      ].filter(Boolean);
+      const result = [];
+      const seen = new Set();
+      for (const root of roots) {
+        for (const anchor of root.querySelectorAll('a[href]')) {
+          const raw = anchor.href || anchor.getAttribute('href') || '';
+          let parsed;
+          try { parsed = new URL(raw, location.href); } catch (_) { continue; }
+          if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+          if (parsed.hostname.toLowerCase() === location.hostname.toLowerCase()) continue;
+          const url = parsed.href;
+          if (seen.has(url)) continue;
+          seen.add(url);
+          const title = (anchor.innerText || anchor.getAttribute('aria-label') ||
+            anchor.getAttribute('title') || '').trim();
+          result.push({title, url});
+        }
+      }
+      return result;
+    }"""
+    links: list[dict[str, str]] = []
     try:
-        links = page.locator('[data-message-author-role="assistant"]').last.evaluate("""node => {
-          const root = node.querySelector('[data-message-content]') || node;
-          return Array.from(root.querySelectorAll('a[href]')).map(anchor => ({
-            title: (anchor.innerText || anchor.getAttribute('aria-label') || '').trim(),
-            url: anchor.href || ''
-          })).filter(item => {
-            try {
-              const url = new URL(item.url);
-              return (url.protocol === 'http:' || url.protocol === 'https:') &&
-                url.hostname.toLowerCase() !== 'chatgpt.com';
-            } catch (_) { return false; }
-          });
-        }""")
+        messages = page.locator('[data-message-author-role="assistant"]')
+        if messages.count():
+            links = messages.last.evaluate(script) or []
     except Exception as exc:
         _log_event("citation_link_capture_failed", exception_type=type(exc).__name__,
                    message=str(exc)[:200])
-        return []
+
+    # Newer/guest ChatGPT layouts may expose the response through a copy control
+    # without the legacy assistant-role attribute. Use the smallest response
+    # ancestor and the same extraction rules rather than silently losing URLs.
+    if not links:
+        try:
+            buttons = page.locator(
+                'button[aria-label="Copy response"],button[data-testid*="copy-turn"]'
+            )
+            for index in range(buttons.count() - 1, -1, -1):
+                try:
+                    links = buttons.nth(index).evaluate(r"""button => {
+                      let node = button;
+                      for (let depth = 0; node && depth < 8; depth++, node = node.parentElement) {
+                        if ((node.innerText || '').trim().length >= 20) {
+                          const turn = node.closest('[data-testid^="conversation-turn-"]') || node;
+                          const roots = [turn.querySelector('[data-message-content]'), turn, node]
+                            .filter(Boolean);
+                          const result = [];
+                          const seen = new Set();
+                          for (const root of roots) {
+                            for (const anchor of root.querySelectorAll('a[href]')) {
+                              let parsed;
+                              try { parsed = new URL(anchor.href || anchor.getAttribute('href'), location.href); }
+                              catch (_) { continue; }
+                              if (!['http:', 'https:'].includes(parsed.protocol) ||
+                                  parsed.hostname.toLowerCase() === location.hostname.toLowerCase()) continue;
+                              if (seen.has(parsed.href)) continue;
+                              seen.add(parsed.href);
+                              result.push({
+                                title: (anchor.innerText || anchor.getAttribute('aria-label') ||
+                                  anchor.getAttribute('title') || '').trim(),
+                                url: parsed.href
+                              });
+                            }
+                          }
+                          return result;
+                        }
+                      }
+                      return [];
+                    }""") or []
+                    if links:
+                        break
+                except Exception:
+                    continue
+        except Exception as exc:
+            _log_event("citation_link_fallback_failed", exception_type=type(exc).__name__,
+                       message=str(exc)[:200])
+
     result: list[dict[str, str]] = []
     seen: set[str] = set()
-    for item in links or []:
+    for item in links:
         if not isinstance(item, dict):
             continue
         url = str(item.get("url") or "").strip()
