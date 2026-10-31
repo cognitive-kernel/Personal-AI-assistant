@@ -83,7 +83,11 @@ class TaskContext:
         checkpoint: dict[str, Any],
         operation: Callable[[sqlite3.Connection], dict[str, Any] | None],
     ) -> dict[str, Any]:
-        """Commit a domain write and task success in one SQLite transaction."""
+        """Commit a short, synchronous DB-only domain write with task success atomically.
+
+        The operation must use the supplied connection and must not perform network
+        I/O or open another database connection.
+        """
         try:
             saved = task_manager.complete_task(
                 self.task_id,
