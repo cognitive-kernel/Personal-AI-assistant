@@ -101,12 +101,24 @@ def propose_edge(
     return dict(row)
 
 
-def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
-    """Live-check the evidence and require agreement from two digest-distinct reviewers."""
+def _task_checkpoint(context: Any | None, stage: str, edge_id: int, **details: Any) -> None:
+    """Cooperatively stop long graph reviews at durable task boundaries."""
+    if context is not None:
+        context.checkpoint({"stage": stage, "edge_id": edge_id, **details})
+
+
+def review_edge(
+    edge_id: int,
+    *,
+    expected_source_sha256: str,
+    context: Any | None = None,
+) -> dict[str, Any]:
+    """Live-check evidence and two reviewers, honoring durable task controls between operations."""
     if isinstance(edge_id, bool) or not isinstance(edge_id, int) or edge_id < 1:
         raise ValueError("edge_id must be a positive integer.")
     if not isinstance(expected_source_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_source_sha256):
         raise ValueError("expected_source_sha256 must be a lowercase SHA-256 digest.")
+    _task_checkpoint(context, "graph_edge_review_start", edge_id)
     init_databases()
     with learning_connection() as connection:
         row = connection.execute(
@@ -127,11 +139,15 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
     excerpt = str(row["source_excerpt"])
     if hashlib.sha256(excerpt.encode("utf-8")).hexdigest() != expected_source_sha256:
         raise ValueError("Graph evidence excerpt hash is invalid.")
+
+    _task_checkpoint(context, "graph_edge_source_fetch_start", edge_id)
     document = web_sources.fetch_public_document(
         str(row["source_url"]), "learning causal graph evidence review", max_chars=100000
     )
-    normalize = lambda value: re.sub(r"\s+", " ", value).strip()
+    _task_checkpoint(context, "graph_edge_source_fetch_complete", edge_id)
+    normalize = lambda value: re.sub(r"\\s+", " ", value).strip()
     if normalize(excerpt) not in normalize(str(document.text)):
+        _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
         return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
             "reason": "The stored excerpt is no longer present on the live source page.",
@@ -139,13 +155,16 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
             "reviews": [],
         })
 
+    _task_checkpoint(context, "graph_edge_reviewer_discovery", edge_id)
     settings = get_settings()
     try:
         installed = ollama.list_models()
     except Exception:
         installed = []
     reviewers = learning_review_adapters.list_reviewers(settings, installed)
+    _task_checkpoint(context, "graph_edge_reviewers_ready", edge_id, reviewer_count=len(reviewers))
     if len(reviewers) < 2:
+        _task_checkpoint(context, "graph_edge_review_store", edge_id, status="proposed")
         return _store_edge_review(edge_id, expected_source_sha256, "proposed", {
             "status": "inconclusive",
             "reason": "Two attributable, digest-distinct reviewers are not available; no graph edge was accepted or rejected.",
@@ -168,8 +187,8 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
         ),
     }
     reviews = []
-    reviews = []
     for index, reviewer in enumerate(reviewers):
+        _task_checkpoint(context, "graph_edge_reviewer_start", edge_id, reviewer_index=index)
         prompt = dict(prompt_base)
         role = "relation_evidence_synthesizer" if index == 0 else "skeptical_causal_auditor"
         prompt["specialist_role"] = role
@@ -216,6 +235,9 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
                 "input_sha256": input_hash,
                 "output_sha256": hashlib.sha256(rationale.encode()).hexdigest(),
             })
+        # Keep this outside the reviewer exception handler: TaskInterrupted must propagate.
+        _task_checkpoint(context, "graph_edge_reviewer_complete", edge_id, reviewer_index=index)
+
     verdicts = [item["verdict"] for item in reviews]
     status = "accepted" if verdicts == ["supports", "supports"] else (
         "rejected" if verdicts == ["contradicts", "contradicts"] else "conflicting"
@@ -234,9 +256,8 @@ def review_edge(edge_id: int, *, expected_source_sha256: str) -> dict[str, Any]:
         "reviews": reviews,
         "policy_version": "learning-knowledge-graph-review-v1",
     }
+    _task_checkpoint(context, "graph_edge_review_store", edge_id, status=status)
     return _store_edge_review(edge_id, expected_source_sha256, status, report)
-
-
 def _store_edge_review(edge_id: int, source_hash: str, status: str, report: dict[str, Any]) -> dict[str, Any]:
     with learning_connection() as connection:
         connection.execute(
