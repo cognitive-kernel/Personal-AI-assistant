@@ -172,3 +172,39 @@ def test_review_summary_preserves_conflict_url_pairs_without_raw_conflict_text()
     }]
     assert "private topic text" not in json.dumps(summary)
     assert "private explanatory text" not in json.dumps(summary)
+
+def test_research_chat_retains_provider_diagnostics_when_search_fails(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(chat_research.experience, "search_relevant_experiences", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(chat_research.experience, "search_relevant_failures", lambda *_args, **_kwargs: [])
+    failure = web_sources.SourceFetchError("provider failure with private response details")
+    failure.provider_diagnostics = [{
+        "provider": "Google",
+        "attempts": [{
+            "variant": "primary", "endpoint_variant": "standard",
+            "error": "challenge_or_consent_page",
+            "private_url": "https://private.invalid/search?q=secret",
+        }],
+        "parsed_result_count": 0, "accepted_result_count": 0,
+        "unique_result_count": 0, "duplicate_result_count": 0,
+    }]
+
+    def fail_discovery(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(chat_research.web_sources, "discover_sources", fail_discovery)
+    monkeypatch.setattr(ollama, "chat", lambda *_args, **_kwargs: "A cautious answer without external sources.")
+
+    answer = chat_research.answer("How does a database query plan work?")
+    assert "No usable external source was found" in answer
+
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT review_summary_json FROM chat_research_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    diagnostics = json.loads(row["review_summary_json"])["source_discovery"]
+    assert diagnostics["providers"][0]["provider"] == "Google"
+    assert diagnostics["providers"][0]["attempts"][0]["error"] == "challenge_or_consent_page"
+    assert "private.invalid" not in json.dumps(diagnostics)
+    assert "secret" not in json.dumps(diagnostics)
+    assert "private response details" not in json.dumps(diagnostics)
