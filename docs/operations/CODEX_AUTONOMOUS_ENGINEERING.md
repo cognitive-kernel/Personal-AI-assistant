@@ -19,7 +19,8 @@ If the API secret is missing, the agent job fails closed before invoking Codex.
 
 - Scheduled run every six hours (GitHub Actions scheduling is best-effort and may be delayed).
 - Manual `workflow_dispatch`.
-- Issue labeled `agent-ready`.
+- Every push to `main` (including merged engineering PRs).
+- Manual `workflow_dispatch`, with an optional task request.
 
 This does not promise uninterrupted execution. GitHub-hosted jobs are finite, scheduled events can be delayed, and GitHub may disable scheduled workflows after prolonged repository inactivity.
 
@@ -40,7 +41,7 @@ The workflow never writes to `main`, merges, deploys, changes branch protections
 ## Operational controls and limitations
 
 - The agent follows `docs/MASTER_ENGINEERING_PROMPT.md` and updates the existing engineering log.
-- Issue content and repository/test output are untrusted task data; they cannot override the engineering/security protocol.
+- Manual task text and repository/test output are untrusted task data; they cannot override the engineering/security protocol.
 - The OpenAI key is not available to the validation or PR-publication jobs.
 - The PR job requires the repository setting that permits Actions to create pull requests.
 - API usage is billed separately from a ChatGPT subscription. Set appropriate API project budgets/limits before enabling recurring runs.
