@@ -957,6 +957,32 @@ def test_chatgpt_sources_are_persisted_with_content_versions(isolated_store):
     assert all(source["content_version_id"] == version["id"] for source in sources)
 
 
+def test_legacy_title_only_source_recovers_exact_url_from_saved_raw_response(isolated_store):
+    course = service.create_course(title="Legacy source URL recovery")
+    topic = service.add_topic(course["id"], "SQL Server references")
+    lesson = service.create_lesson(topic["id"], "SQL Server references")
+    title = "Search condition (Transact-SQL) — Microsoft Learn"
+    version = service.add_content_version(
+        lesson["id"],
+        "Substantive lesson content describing SQL Server search conditions and predicates.\\n\\n"
+        "## منابع\\n- " + title,
+        source_kind="manual",
+    )
+    with connection() as conn:
+        conn.execute(
+            "UPDATE content_versions SET raw_response=? WHERE id=?",
+            ("[" + title + "](https://learn.microsoft.com/en-us/sql/t-sql/queries/search-condition-transact-sql)", version["id"]),
+        )
+
+    recovered = service.list_content_sources(version["id"])
+    assert len(recovered) == 1
+    assert recovered[0]["title"] == title
+    assert recovered[0]["url"] == (
+        "https://learn.microsoft.com/en-us/sql/t-sql/queries/search-condition-transact-sql"
+    )
+    assert recovered[0]["validation_status"] == "unverified"
+
+
 def test_source_extraction_deduplicates_urls():
     text = "[Microsoft](https://learn.microsoft.com/sql/) and https://learn.microsoft.com/sql/"
     sources = service._extract_references(text)
