@@ -145,3 +145,18 @@ def test_dashboard_exposes_cross_process_worker_and_recovery_state():
     assert "state.worker_active" in script
     assert "state.worker_recovery_pending" in script
     assert "ممکن است در پردازه دیگری اجرا شود" in script
+
+
+
+def test_topic_checkbox_is_outside_summary_and_script_cache_is_busted():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static"
+    html = (root / "index.html").read_text(encoding="utf-8")
+    script = (root / "app.js").read_text(encoding="utf-8")
+
+    assert '/ai-learning-assets/app.js?v=20261031-1' in html
+    assert 'head.append(el("strong",numberPath+". "+topic.title)' in script
+    assert 'card.append(head);' in script
+    assert 'const selection=el("div",undefined,"topic-select");selection.append(check);card.append(selection);' in script
+    assert 'head.append(check' not in script
