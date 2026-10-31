@@ -71,15 +71,15 @@ def evaluate_language_adherence(
     expected_letters = persian_letters if expected == "fa" else latin_letters
     ratio = expected_letters / total_letters if total_letters else 0.0
     if total_letters < max(1, int(min_letters)):
-        detected = "unknown"
+        dominant_script = "unknown"
         passed = False
         reason = "insufficient_script_evidence"
     else:
         persian_ratio = persian_letters / total_letters
         latin_ratio = latin_letters / total_letters
-        detected = (
-            "fa" if persian_ratio >= 0.65
-            else "en" if latin_ratio >= 0.65
+        dominant_script = (
+            "arabic-script" if persian_ratio >= 0.65
+            else "latin-script" if latin_ratio >= 0.65
             else "mixed"
         )
         passed = ratio >= 0.5
@@ -88,7 +88,7 @@ def evaluate_language_adherence(
         "checked": True,
         "passed": passed,
         "expected_language": expected,
-        "detected_language": detected,
+        "dominant_script": dominant_script,
         "persian_letter_count": persian_letters,
         "latin_letter_count": latin_letters,
         "expected_language_ratio": round(ratio, 4),
