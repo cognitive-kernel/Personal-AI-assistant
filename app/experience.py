@@ -261,7 +261,7 @@ def update_experience(
     if test_results is not None:
         test_results = _json_list(test_results, "test_results")
         for item in test_results:
-            if item.get("passed") not in (True, False):
+            if not isinstance(item.get("passed"), bool):
                 raise ValueError("Every test result must have a boolean passed field.")
             if not isinstance(item.get("test"), str) or not item["test"].strip():
                 raise ValueError("Every test result must name the test performed.")
