@@ -58,7 +58,10 @@ def test_main_chat_adapter_never_returns_unpublished_content(isolated_store, mon
     assert "never-return-this-draft-token" not in combined
     assert all(item.get("content_version_id") == approved_version["id"] for item in items)
 
-def test_published_knowledge_is_retrievable_after_a_new_process(isolated_store, monkeypatch, tmp_path):
+
+def test_published_knowledge_is_retrievable_after_a_new_process(
+    isolated_store, monkeypatch, tmp_path
+):
     database_path = tmp_path / "ai_learning.db"
     monkeypatch.setenv("AI_LEARNING_ENABLED", "1")
     monkeypatch.setenv("AI_LEARNING_RETRIEVAL_ENABLED", "1")
