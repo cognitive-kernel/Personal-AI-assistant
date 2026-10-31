@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from app import db, learning, learning_knowledge_graph, learning_knowledge_graph_tasks, task_manager
-from app.task_worker import TaskContext, TaskInterrupted
+from app.task_worker import TaskContext, TaskInterrupted, TaskWorker
 
 
 @pytest.fixture
@@ -350,6 +350,71 @@ def test_graph_review_commits_edge_and_task_control_atomically(
         ).fetchone()
     assert saved_edge["status"] == "proposed"
     assert saved_edge["review_json"] is None
+
+
+def test_graph_review_worker_commits_edge_and_task_success_together(
+    graph_store, monkeypatch
+):
+    source_id, target_id = graph_store
+    excerpt = "The source directly describes how stale cache entries can result after writes."
+    edge = learning_knowledge_graph.propose_edge(
+        source_id,
+        target_id,
+        relation_type="supports",
+        source_url="https://docs.example.test/cache",
+        source_excerpt=excerpt,
+    )
+    task_manager.initialize_task_store()
+    task = task_manager.create_task(
+        learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE,
+        {"edge_id": edge["id"], "source_sha256": edge["source_sha256"]},
+    )
+
+    monkeypatch.setattr(
+        "app.web_sources.fetch_public_document",
+        lambda *_args, **_kwargs: SimpleNamespace(text=excerpt, title="Source"),
+    )
+    monkeypatch.setattr("app.ollama.list_models", lambda: [])
+    reviewers = [
+        {"model": "reviewer-one", "provider_id": "test", "digest": "digest-one"},
+        {"model": "reviewer-two", "provider_id": "test", "digest": "digest-two"},
+    ]
+    monkeypatch.setattr(
+        "app.learning_review_adapters.list_reviewers",
+        lambda *_args, **_kwargs: reviewers,
+    )
+    monkeypatch.setattr(
+        "app.learning_review_adapters.run_reviewer",
+        lambda reviewer, *_args, **_kwargs: {
+            "content": json.dumps({
+                "verdict": "supports",
+                "rationale": "The source directly supports the stated relationship in the requested scope.",
+            }),
+            "model": reviewer["model"],
+            "provider_id": reviewer["provider_id"],
+            "digest": reviewer["digest"],
+        },
+    )
+
+    worker = TaskWorker(
+        "graph-review-success-worker",
+        {
+            learning_knowledge_graph_tasks.KNOWLEDGE_GRAPH_REVIEW_TASK_TYPE:
+                learning_knowledge_graph_tasks.handle_review_graph_edge
+        },
+    )
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    assert saved_task["status"] == "succeeded"
+    assert saved_task["result"]["status"] == "accepted"
+    with db.learning_connection() as connection:
+        saved_edge = connection.execute(
+            "SELECT status, review_json FROM learning_knowledge_graph_edges WHERE id=?",
+            (edge["id"],),
+        ).fetchone()
+    assert saved_edge["status"] == "accepted"
+    assert json.loads(saved_edge["review_json"])["status"] == "accepted"
 
 
 def test_graph_review_task_handler_passes_task_context_to_service(monkeypatch):
