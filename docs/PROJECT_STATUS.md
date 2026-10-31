@@ -1,14 +1,14 @@
 # وضعیت یکپارچهٔ پروژه
 
 > تاریخ بازبینی: 2026-10-31  
-> آخرین commit شاخهٔ `main`: `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88` (ادغام PR #655). exact-head CI برای PRهای کد #653، #656 و #655 موفق شد. روی SHA فعلی main، dependency audit [#41193247035](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193247035) موفق است؛ tests [#41193246970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246970) و browser E2E [#41193246992](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246992) هنگام ثبت این snapshot هنوز در حال اجرا هستند.
+> آخرین commit شاخهٔ `main`: `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88` (ادغام PR #655). روی SHA فعلی main، tests [#41193246970](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246970) با 1774 passed و 5 skipped، Windows storage، browser E2E [#41193246992](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193246992)، dependency audit [#41193247035](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41193247035)، بررسی 85 فایل Markdown و benchmark قطعی 10/10 موفق شدند.
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** main روی `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88` است. PR #653 سخت‌گیری URL parserهای منابع عمومی و knowledge indexer، PR #656 اعتبارسنجی strict HTTPS برای URL شواهد درس، و PR #655 اعتبارسنجی integer واقعی برای rating بازخورد را اضافه کردند. exact-head CI هر سه PR موفق بود؛ post-merge CI برای PR #656 روی `54a1a60` موفق شد و post-merge CI روی SHA فعلی `5ec2ab3` در زمان ثبت این snapshot هنوز در حال اجراست. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
+**مبنای وضعیت:** main روی `5ec2ab3484f5ba0248e9983bbb8c7fbddba34f88` است. PR #653 سخت‌گیری URL parserهای منابع عمومی و knowledge indexer، PR #656 اعتبارسنجی strict HTTPS برای URL شواهد درس، و PR #655 اعتبارسنجی integer واقعی برای rating بازخورد را اضافه کردند. exact-head CI هر سه PR موفق بود؛ post-merge CI برای PR #656 روی `54a1a60` موفق شد و post-merge CI روی SHA فعلی main نیز با 1774 passed/5 skipped، Windows storage، browser E2E، dependency audit، 85 Markdown links و benchmark 10/10 موفق شد. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
