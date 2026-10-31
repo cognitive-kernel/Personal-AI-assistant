@@ -47,6 +47,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
 
 
 def test_dispatch_requires_authenticated_github_cli(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True})
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(
         agent, "_run",
@@ -61,6 +62,7 @@ def test_dispatch_requires_authenticated_github_cli(monkeypatch):
 
 def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     calls = []
+    monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True})
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
     def fake_run(command, timeout=8):
