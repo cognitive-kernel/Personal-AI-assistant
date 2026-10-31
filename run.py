@@ -188,9 +188,19 @@ def _patch_linux_install_script(installer: Path) -> Path:
     if [ ! -s "$archive_path" ]; then
         error "The verified Ollama archive is missing or empty: ${asset_name}"
     fi
-    status "Extracting SHA-256 verified ${asset_name}"
-    set -o pipefail
-    zstd -d --stdout "$archive_path" | $SUDO tar -xf - -C "$dest_dir"
+    local tar_path="${archive_path}.extract.tar"
+    status "Decompressing SHA-256 verified ${asset_name}"
+    rm -f "$tar_path"
+    if ! zstd -d --force "$archive_path" -o "$tar_path"; then
+        rm -f "$tar_path"
+        error "Verified Ollama archive decompression failed."
+    fi
+    status "Extracting verified Ollama archive"
+    if ! $SUDO tar -xf "$tar_path" -C "$dest_dir"; then
+        rm -f "$tar_path"
+        error "Verified Ollama archive extraction failed."
+    fi
+    rm -f "$tar_path"
 }"""
     patched = script[:start] + replacement + script[end + 2:]
     output = installer.with_name("ollama-install-verified.sh")
