@@ -89,7 +89,7 @@ def _parse_public_url(url: str) -> urllib.parse.ParseResult:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise SourceFetchError("Only absolute HTTP(S) URLs are supported.")
-    if parsed.username or parsed.password:
+    if parsed.username is not None or parsed.password is not None:
         raise SourceFetchError("URLs containing credentials are not allowed.")
     try:
         port = parsed.port
