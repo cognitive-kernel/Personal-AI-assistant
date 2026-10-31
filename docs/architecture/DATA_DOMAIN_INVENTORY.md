@@ -1,8 +1,8 @@
 # موجودی حوزه‌های داده و مسیرهای دسترسی
 
 - تاریخ بازبینی: 2026-10-31
-- مبنای کد: شاخهٔ `main` در commit `39a4d1e78d4cea3803a0e53e07d88933b8abe548` (PR #639)؛ بررسی schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore.
-- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. CI دقیق این commit: 1750 passed/5 skipped، Windows storage، dashboard smoke و dependency audit موفق.
+- مبنای کد: شاخهٔ `main` در commit `8d7674cde9ebb5684ab6102eecf4e0ca8a0a824d` (PR #641)؛ بررسی schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore.
+- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. CI پس از ادغام روی `8d7674c` در این بازبینی مستقلاً تأیید نشد؛ آخرین baseline دارای شواهد CI مستقل `39a4d1e78d4cea3803a0e53e07d88933b8abe548` با 1750 passed/5 skipped، Windows storage، dashboard smoke و dependency audit است.
 - ممیزی دقیق schema و خطرهای مهاجرت: [SCHEMA_MIGRATION_AUDIT.md](SCHEMA_MIGRATION_AUDIT.md)
 
 ## حوزه‌ها و مالکیت فعلی
@@ -14,7 +14,7 @@
 | صف وظایف | `app/task_manager.py` | `task_queue` در همان فایل learning؛ lease، checkpoint، retry و dedupe پایدار | از نظر کد ماژول جداست ولی از نظر فایل مستقل نیست؛ جداکردن فیزیکی فقط پس از تحلیل تراکنش‌ها و بازیابی. |
 | کشف منابع ابری | `app/cloud_resources.py`, `app/cloud_resource_routes.py`, `cloud_resources.db` | نامزدهای مبتنی بر منابع عمومی و تاریخچهٔ discovery در فایل مستقل با migration نسخه‌بندی‌شده؛ وضعیت پیش‌فرض unreviewed/unknown | مرز مستقل به‌دلیل چرخهٔ عمر عملیاتی، تازگی داده، بررسی شرایط استفاده و سیاست مجوزدهی توجیه دارد؛ این DB ظرفیت واقعی یا مجوز اجرای کار را اثبات نمی‌کند. |
 | پشتیبان‌گیری و بازیابی | `app/db_backup.py`; `tests/test_db_backup.py` | snapshotهای settings/learning و cloud-resource با manifest، SHA-256، SQLite integrity و metadata schema؛ PR #637 snapshot staged را بعد از copy دوباره با manifest تطبیق می‌دهد | manifest consistency در CI پوشش دارد، اما signature/authenticity نیست؛ restore/rollback در staging و روی میزبان هدف همچنان باید جداگانه تمرین شود. |
-| اجرای وظایف | `app/task_worker.py`, `app/task_runtime.py`, `app/main.py` | فقط handlerهای allow-list شده اجرا می‌شوند؛ PR #636 ثبت runtime پیش از start را تضمین می‌کند و PR #639 runtime در حال shutdown را unhealthy می‌شناسد تا restart زودهنگام no-op نشود | lifecycle startup/shutdown و بازیابی threadها تست خودکار دارند؛ crash/soak روی میزبان هدف و هماهنگی چندفرایندی هنوز اثبات نشده است. |
+| اجرای وظایف | `app/task_worker.py`, `app/task_runtime.py`, `app/main.py` | فقط handlerهای allow-list شده اجرا می‌شوند؛ PR #636 ثبت runtime پیش از start را تضمین می‌کند، PR #639 مانع restart زودهنگام هنگام shutdown می‌شود و PR #641 reconciliation دوره‌ای taskهای ناقص learning را اضافه می‌کند | lifecycle startup/shutdown، بازیابی threadها و repair دوره‌ای queue با تست خودکار پوشش دارند؛ crash/soak روی میزبان هدف و هماهنگی چندفرایندی هنوز اثبات نشده است. |
 | لغو یادگیری | `app/learning_tasks.py`, `app/task_routes.py`, `app/learning.py` | توقف مسیر/درس و API عمومی task، وضعیت task و learning job را هماهنگ می‌کنند | درخواست لغو حین درخواست HTTP مدل تعاونی است؛ قطع فوری محاسبهٔ مدل تضمین نشده است. |
 | گزارش عملیاتی و ممیزی | logging و ستون‌های خطا/زمان | مخزن مستقل audit با سیاست retention و قرارداد مالکیت تأیید نشده | پیش از ایجاد DB مستقل، نیازهای نگهداری، حریم خصوصی و جست‌وجو مشخص شوند. |
 | آرشیو مکالمه | مسیرهای API گفتگو و history ورودی | ذخیره‌سازی canonical مکالمه از کد ممیزی‌شده اثبات نشده است | پیش از ساخت مخزن، رفتار فعلی و الزامات حریم خصوصی/حذف بررسی شود. |
@@ -26,7 +26,7 @@
 - `settings.db` فقط تنظیمات را نگه می‌دارد؛ `learning.db` داده‌های یادگیری و صف را نگه می‌دارد.
 - schemaها در `app/schema_registry.py` به‌صورت migrationهای نسخه‌بندی‌شده تعریف شده‌اند و `db.init_databases()` و `task_manager.initialize_task_store()` از همان registry استفاده می‌کنند. قبل از baseline/ارتقا backup اعتبارسنجی‌شده تهیه می‌شود؛ schema ناشناخته و drift بیرونی خودکار پذیرفته یا تعمیر نمی‌شود.
 - `learning.submit_job()` و شروع/تولید مجدد درس‌ها به task پایدار `learning.run_job` ارسال می‌شوند؛ payload صف فقط `job_id` دارد و متن منبع را کپی نمی‌کند.
-- `learning_tasks.reconcile_queued_learning_tasks()` در startup برای رکوردهای queued/running، task متناظر را به‌صورت idempotent تضمین می‌کند.
+- `learning_tasks.reconcile_queued_learning_tasks()` در startup و maintenance دوره‌ای برای رکوردهای واجد شرایط queued/running، task متناظر را به‌صورت idempotent تضمین می‌کند؛ maintenance failure را جداگانه log می‌کند تا مسیرهای مستقل ادامه یابند (PR #641، ADR-017).
 - `task_manager.get_task_by_dedupe_key()` و آداپتر یادگیری، توقف از API عمومی صف را با وضعیت رکورد دامنه هماهنگ می‌کنند.
 - هیچ داده‌ای از settings/learning به DB کشف منابع ابری منتقل نشده است؛ این DB فقط نامزدها و تاریخچهٔ discovery خودش را نگه می‌دارد. برای تجربه، مکالمه، retrieval یا graph هنوز تصمیمی برای دیتابیس مستقل گرفته نشده است.
 
