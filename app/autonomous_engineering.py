@@ -9,9 +9,11 @@ import subprocess
 import urllib.error
 import urllib.request
 from typing import Any
+import re
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from .task_routes import require_loopback_client
 
@@ -24,6 +26,14 @@ router = APIRouter(
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_MODEL = "gpt-oss:20b"
+_DEFAULT_RUNS_PER_DAY = 1
+_ALLOWED_RUNS_PER_DAY = {1, 2, 3, 4, 6, 8, 12, 24}
+_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
+
+
+class EngineeringSettings(BaseModel):
+    model: str
+    runs_per_day: int
 
 
 def _repository() -> str:
@@ -116,6 +126,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
+    settings = {"model": _model(), "runs_per_day": _DEFAULT_RUNS_PER_DAY}
     if authenticated:
         result = _run(
             [
@@ -144,19 +155,42 @@ def _github_snapshot() -> dict[str, Any]:
                     runs_available = True
             except ValueError:
                 recent_runs = []
+        variables = _run(
+            [gh, "variable", "list", "--repo", _repository(), "--json", "name,value"],
+            timeout=12,
+        )
+        if variables and variables.returncode == 0:
+            try:
+                values = json.loads(variables.stdout)
+                if isinstance(values, list):
+                    configured = {
+                        str(item.get("name")): str(item.get("value", ""))
+                        for item in values if isinstance(item, dict)
+                    }
+                    candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
+                    candidate_runs = configured.get("AUTONOMOUS_ENGINEERING_RUNS_PER_DAY", "")
+                    if _MODEL_PATTERN.fullmatch(candidate_model):
+                        settings["model"] = candidate_model
+                    if candidate_runs.isdigit() and int(candidate_runs) in _ALLOWED_RUNS_PER_DAY:
+                        settings["runs_per_day"] = int(candidate_runs)
+            except (ValueError, TypeError):
+                pass
     return {
         "cli_installed": True,
         "authenticated": authenticated,
         "recent_runs": recent_runs,
         "runs_available": runs_available,
+        "settings": settings,
     }
 
 def collect_status() -> dict[str, Any]:
-    model = _model()
+    github = _github_snapshot()
+    settings = github.get("settings", {})
+    model = settings.get("model", _model())
+    runs_per_day = settings.get("runs_per_day", _DEFAULT_RUNS_PER_DAY)
     ollama = _ollama_status(model)
     codex = _codex_status()
     runner = _runner_status()
-    github = _github_snapshot()
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
@@ -175,6 +209,8 @@ def collect_status() -> dict[str, Any]:
         "repository": _repository(),
         "workflow": _WORKFLOW,
         "model": model,
+        "models": ollama.get("models", []),
+        "runs_per_day": runs_per_day,
         "platform": platform.platform(),
         "local_only_inference": True,
     }
@@ -183,6 +219,38 @@ def collect_status() -> dict[str, Any]:
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
+
+
+@router.post("/settings", status_code=200)
+def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
+    model = payload.model.strip()
+    if not _MODEL_PATTERN.fullmatch(model):
+        raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
+    if payload.runs_per_day not in _ALLOWED_RUNS_PER_DAY:
+        raise HTTPException(status_code=422, detail="تعداد اجرا باید یکی از مقادیر مجاز روزانه باشد.")
+    gh = shutil.which("gh")
+    if not gh:
+        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
+    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
+    if not auth or auth.returncode != 0:
+        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
+    updates = (
+        ("AUTONOMOUS_ENGINEERING_MODEL", model),
+        ("AUTONOMOUS_ENGINEERING_RUNS_PER_DAY", str(payload.runs_per_day)),
+    )
+    for name, value in updates:
+        result = _run(
+            [gh, "variable", "set", name, "--body", value, "--repo", _repository()],
+            timeout=15,
+        )
+        if not result or result.returncode != 0:
+            raise HTTPException(status_code=502, detail=f"ذخیرهٔ تنظیم {name} در GitHub ناموفق بود.")
+    return {
+        "saved": True,
+        "model": model,
+        "runs_per_day": payload.runs_per_day,
+        "message": "تنظیمات عامل در متغیرهای مخزن GitHub ذخیره شد.",
+    }
 
 
 @router.post("/dispatch", status_code=202)
