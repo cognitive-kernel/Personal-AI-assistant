@@ -36,6 +36,15 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project and test dependencies before Codex receives its API credential
+        run: python -m pip install -e ".[dev]"
+
       - name: Save event context as untrusted task data
         env:
           EVENT_NAME: ${{ github.event_name }}
