@@ -41,3 +41,4 @@
 - راهنمای جامع یادگیری: [LEARNING.md](LEARNING.md)
 - توسعه و اجرای آزمون‌ها: [DEVELOPMENT.md](DEVELOPMENT.md)
 - گزارش یکپارچه‌سازی و حذف مستند تکراری: [INTEGRATION_REPORT.md](INTEGRATION_REPORT.md)
+- تصمیم بازیابی خرابی جزئی threadهای صف وظایف: [ADR-012](architecture/ADR-012-task-runtime-health-recovery.md)
