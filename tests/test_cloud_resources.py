@@ -38,6 +38,7 @@ def _document(url="https://compute.example.org/free-tier", title="Free GPU compu
 def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
     document = _document()
+    sensitive_detail = "https://private.invalid/search?token=do-not-persist"
     diagnostics = [
         {
             "provider": "Google",
@@ -53,7 +54,15 @@ def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatc
             "accepted_result_count": 3,
             "unique_result_count": 2,
             "duplicate_result_count": 1,
-        }
+        },
+        {
+            "provider": "Google",
+            "attempts": [{
+                "variant": sensitive_detail,
+                "endpoint_variant": sensitive_detail,
+                "error": sensitive_detail,
+            }],
+        },
     ]
     documents = web_sources.SourceDocumentList(
         [document], search_provider_diagnostics=diagnostics
@@ -66,7 +75,18 @@ def test_discovery_persists_per_provider_search_diagnostics(tmp_path, monkeypatc
     latest = cloud_resources.latest_discovery_run()
 
     assert report["status"] == "completed"
-    assert latest["query_results"][0]["provider_diagnostics"] == diagnostics
+    assert latest["query_results"][0]["provider_diagnostics"] == [
+        diagnostics[0],
+        {
+            "provider": "Google",
+            "attempts": [{
+                "variant": "unknown",
+                "endpoint_variant": "unknown",
+                "error": "other_error",
+            }],
+        },
+    ]
+    assert sensitive_detail not in str(latest["query_results"])
 
 
 def test_discovery_scope_is_broader_but_has_explicit_bounds():
@@ -658,21 +678,39 @@ def test_discovery_rejects_http_sources_and_records_empty_runs(tmp_path, monkeyp
 
 
 
-def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch):
+def test_discovery_records_safe_provider_codes_without_raw_error_messages(tmp_path, monkeypatch):
     _configure_paths(tmp_path, monkeypatch)
-    monkeypatch.setattr(
-        web_sources,
-        "fetch_public_document",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            web_sources.SourceFetchError("official fallback disabled in this test")
-        ),
-    )
+    sensitive_detail = "https://private.invalid/search?token=do-not-persist"
+
+    def fail_fallback(*_args, **_kwargs):
+        raise web_sources.SourceFetchError(f"request failed for {sensitive_detail}")
+
+    monkeypatch.setattr(web_sources, "fetch_public_document", fail_fallback)
 
     def failed_search(_query, *, limit):
-        raise web_sources.SourceFetchError(
-            "All configured search providers failed or returned no parseable results "
-            "(DuckDuckGo:no_parseable_results, Bing:no_parseable_results)."
+        error = web_sources.SourceFetchError(
+            f"provider request failed for {sensitive_detail}"
         )
+        error.provider_diagnostics = [
+            {
+                "provider": "DuckDuckGo",
+                "attempts": [{"error": "no_parseable_results"}],
+            },
+            {
+                "provider": "Bing",
+                "attempts": [{"error": "no_parseable_results"}],
+            },
+            {
+                "provider": "Google",
+                "attempts": [{
+                    "variant": sensitive_detail,
+                    "endpoint_variant": sensitive_detail,
+                    "error": sensitive_detail,
+                    "parsed_result_count": 1,
+                }],
+            },
+        ]
+        raise error
 
     monkeypatch.setattr(web_sources, "discover_sources", failed_search)
 
@@ -682,8 +720,12 @@ def test_discovery_records_search_provider_failure_details(tmp_path, monkeypatch
     assert report["sources_seen"] == 0
     assert report["candidates_upserted"] == 0
     assert "DuckDuckGo:no_parseable_results" in report["error_summary"]
+    assert "Bing:no_parseable_results" in report["error_summary"]
+    assert sensitive_detail not in report["error_summary"]
     latest = cloud_resources.latest_discovery_run()
     assert "Bing:no_parseable_results" in latest["query_results"][0]["error"]
+    assert sensitive_detail not in latest["query_results"][0]["error"]
+    assert sensitive_detail not in str(latest["query_results"])
 
 
 

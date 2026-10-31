@@ -507,6 +507,117 @@ def _update_run(
         connection.commit()
 
 
+_SAFE_SEARCH_PROVIDER_NAMES = frozenset({"DuckDuckGo", "Bing", "Google"})
+_SAFE_SEARCH_FAILURE_CODES = frozenset({
+    "SourceFetchError",
+    "challenge_page",
+    "challenge_or_consent_page",
+    "no_parseable_results",
+})
+
+
+def _safe_exception_type(exc: BaseException) -> str:
+    """Return only a bounded exception class name, never its free-form message."""
+    name = type(exc).__name__
+    return name if re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", name) else "Exception"
+
+
+def _safe_provider_diagnostics(value: Any) -> list[dict[str, Any]]:
+    """Allowlist and bound provider diagnostics before they are persisted."""
+    if not isinstance(value, list):
+        return []
+    safe_diagnostics: list[dict[str, Any]] = []
+    for item in value[:3]:
+        if not isinstance(item, dict):
+            continue
+        provider = item.get("provider")
+        if not isinstance(provider, str) or provider not in _SAFE_SEARCH_PROVIDER_NAMES:
+            continue
+        safe_item: dict[str, Any] = {"provider": provider}
+        attempts = item.get("attempts")
+        if isinstance(attempts, list):
+            safe_attempts: list[dict[str, Any]] = []
+            for attempt in attempts[:8]:
+                if not isinstance(attempt, dict):
+                    continue
+                safe_attempt: dict[str, Any] = {}
+                if "variant" in attempt:
+                    variant = attempt.get("variant")
+                    safe_attempt["variant"] = (
+                        variant if isinstance(variant, str)
+                        and re.fullmatch(r"(?:primary|alternate_[1-3])", variant)
+                        else "unknown"
+                    )
+                if "endpoint_variant" in attempt:
+                    endpoint = attempt.get("endpoint_variant")
+                    safe_attempt["endpoint_variant"] = (
+                        endpoint if isinstance(endpoint, str)
+                        and endpoint in {"html", "lite", "standard", "basic_html"}
+                        else "unknown"
+                    )
+                for field in (
+                    "parsed_result_count",
+                    "accepted_result_count",
+                    "unique_result_count",
+                    "duplicate_result_count",
+                ):
+                    if field in attempt:
+                        count = attempt.get(field)
+                        safe_attempt[field] = (
+                            min(count, 1_000_000)
+                            if (
+                                isinstance(count, int)
+                                and not isinstance(count, bool)
+                                and count >= 0
+                            )
+                            else 0
+                        )
+                if "error" in attempt:
+                    error = attempt.get("error")
+                    safe_attempt["error"] = (
+                        error if isinstance(error, str) and error in _SAFE_SEARCH_FAILURE_CODES
+                        else ("other_error" if error else None)
+                    )
+                safe_attempts.append(safe_attempt)
+            safe_item["attempts"] = safe_attempts
+        for field in (
+            "parsed_result_count",
+            "accepted_result_count",
+            "unique_result_count",
+            "duplicate_result_count",
+        ):
+            if field in item:
+                count = item.get(field)
+                safe_item[field] = (
+                    min(count, 1_000_000)
+                    if isinstance(count, int) and not isinstance(count, bool) and count >= 0
+                    else 0
+                )
+        safe_diagnostics.append(safe_item)
+    return safe_diagnostics
+
+
+def _safe_provider_failure_summary(exc: BaseException) -> str:
+    """Extract only allowlisted provider/error codes from structured diagnostics."""
+    diagnostics = _safe_provider_diagnostics(getattr(exc, "provider_diagnostics", None))
+    summaries: list[str] = []
+    for item in diagnostics:
+        for attempt in item.get("attempts", []):
+            code = attempt.get("error")
+            if isinstance(code, str) and code in _SAFE_SEARCH_FAILURE_CODES:
+                summary = f"{item['provider']}:{code}"
+                if summary not in summaries:
+                    summaries.append(summary)
+    return ", ".join(summaries)
+
+
+def _safe_discovery_error(exc: BaseException) -> str:
+    """Build a persistable error from type and allowlisted diagnostics only."""
+    error_type = _safe_exception_type(exc)
+    provider_summary = _safe_provider_failure_summary(exc)
+    return f"{error_type}: {provider_summary}" if provider_summary else error_type
+
+
 def discover_resources(
     *,
     discover_fn: Callable[..., list[web_sources.SourceDocument]] | None = None,
@@ -538,15 +649,17 @@ def discover_resources(
                 if not isinstance(documents, list):
                     raise CloudResourceError("Source discovery returned an invalid result list.")
             except Exception as exc:
-                reason = " ".join(str(exc).split())[:180]
-                errors.append(f"query_{index + 1}:{type(exc).__name__}:{reason}")
+                safe_error = _safe_discovery_error(exc)
+                errors.append(f"query_{index + 1}:{safe_error}")
                 failed_query_result: dict[str, Any] = {
                     "query": query,
                     "result_count": 0,
-                    "error": f"{type(exc).__name__}: {reason}",
+                    "error": safe_error,
                 }
-                provider_diagnostics = getattr(exc, "provider_diagnostics", None)
-                if isinstance(provider_diagnostics, list):
+                provider_diagnostics = _safe_provider_diagnostics(
+                    getattr(exc, "provider_diagnostics", None)
+                )
+                if provider_diagnostics:
                     failed_query_result["provider_diagnostics"] = provider_diagnostics
                 query_results.append(failed_query_result)
                 continue
@@ -556,8 +669,10 @@ def discover_resources(
                 "result_count": len(documents),
                 "error": None,
             }
-            provider_diagnostics = getattr(documents, "search_provider_diagnostics", None)
-            if isinstance(provider_diagnostics, list):
+            provider_diagnostics = _safe_provider_diagnostics(
+                getattr(documents, "search_provider_diagnostics", None)
+            )
+            if provider_diagnostics:
                 query_result["provider_diagnostics"] = provider_diagnostics
             sources_seen += len(documents)
             checked_documents = 0
@@ -609,9 +724,8 @@ def discover_resources(
                 try:
                     document = web_sources.fetch_public_document(source_url, title_hint)
                 except Exception as exc:
-                    reason = " ".join(str(exc).split())[:140]
                     host = urlparse(source_url).hostname or "unknown"
-                    fallback_errors.append(f"{host}:{type(exc).__name__}:{reason}")
+                    fallback_errors.append(f"{host}:{_safe_exception_type(exc)}")
                     continue
                 if not isinstance(document, web_sources.SourceDocument):
                     fallback_errors.append("invalid_source_document")
