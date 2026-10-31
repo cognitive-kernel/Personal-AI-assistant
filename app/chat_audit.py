@@ -55,7 +55,7 @@ def _source_discovery_summary(value: Any) -> dict[str, Any] | None:
             if not isinstance(item, dict):
                 continue
             name = item.get("provider")
-            if name not in {"DuckDuckGo", "Bing", "Google"}:
+            if not isinstance(name, str) or name not in {"DuckDuckGo", "Bing", "Google"}:
                 continue
             attempts = item.get("attempts", [])
             safe_attempts = []
@@ -67,9 +67,9 @@ def _source_discovery_summary(value: Any) -> dict[str, Any] | None:
                     endpoint = attempt.get("endpoint_variant")
                     error = attempt.get("error")
                     safe_attempts.append({
-                        "variant": variant if variant in {"primary", "alternate_1", "alternate_2"} else "other",
-                        "endpoint_variant": endpoint if endpoint in {"html", "lite", "standard", "basic_html"} else "other",
-                        "error": error if error in {
+                        "variant": variant if isinstance(variant, str) and variant in {"primary", "alternate_1", "alternate_2"} else "other",
+                        "endpoint_variant": endpoint if isinstance(endpoint, str) and endpoint in {"html", "lite", "standard", "basic_html"} else "other",
+                        "error": error if isinstance(error, str) and error in {
                             "challenge_or_consent_page", "challenge_page",
                             "no_parseable_results", "SourceFetchError",
                         } else ("other" if error else None),
