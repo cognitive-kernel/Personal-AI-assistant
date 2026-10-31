@@ -84,6 +84,32 @@ def _read_history() -> list[dict[str, Any]]:
     return records
 
 
+
+def _read_recent_events() -> list[dict[str, Any]]:
+    path = _progress_dir() / "history.jsonl"
+    try:
+        if not path.is_file() or path.stat().st_size > _MAX_HISTORY_BYTES:
+            return []
+        lines = path.read_text(encoding="utf-8").splitlines()[-300:]
+    except OSError:
+        return []
+    events: list[dict[str, Any]] = []
+    for line in lines:
+        try:
+            item = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(item, dict) and item.get("type") == "progress_event":
+            events.append({
+                "updated_at": item.get("updated_at"),
+                "phase_label": item.get("phase_label"),
+                "activity": item.get("activity"),
+                "percent": item.get("percent"),
+                "status": item.get("status"),
+            })
+    return events[-100:]
+
+
 def _aggregate_snapshots(
     records: list[dict[str, Any]], period: str, start: date | None, end: date | None
 ) -> list[dict[str, Any]]:
@@ -133,6 +159,7 @@ def get_progress(
     return {
         "current": current,
         "history": history,
+        "events": _read_recent_events(),
         "available": bool(current or history),
         "storage_configured": (_progress_dir() / "current.json").exists(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
