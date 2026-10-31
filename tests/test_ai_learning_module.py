@@ -40,6 +40,16 @@ def test_chatgpt_citation_hyperlinks_are_preserved_for_lesson_source_detection()
     assert enriched.count("https://learn.microsoft.com/sql/relational-databases/indexes/indexes") == 1
     assert 'citation_links = _capture_citation_links(page)' in Path(browser_automation.__file__).read_text(encoding="utf-8")
 
+def test_citation_capture_supports_conversation_turn_and_copy_response_fallback():
+    from pathlib import Path
+
+    source = Path(browser_automation.__file__).read_text(encoding="utf-8")
+    assert "node.closest('[data-testid^=\"conversation-turn-\"]')" in source
+    assert "button[aria-label=\"Copy response\"],button[data-testid*=\"copy-turn\"]" in source
+    assert "node.querySelectorAll('a[href]')" in source
+    assert "citation_links = _capture_citation_links(page)" in source
+
+
 def test_generated_lesson_without_source_is_skipped_and_not_saved(isolated_store):
     course = service.create_course(title="Source-required lesson")
     topic = service.add_topic(course["id"], "Lesson without references")
