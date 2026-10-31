@@ -636,9 +636,10 @@ def test_discover_sources_counts_successful_fetches(monkeypatch):
 def test_search_result_normalization_skips_http_before_applying_result_limit(monkeypatch):
     monkeypatch.setattr(
         web_sources,
-        "_validate_public_url",
+        "_parse_public_url",
         lambda url: urllib.parse.urlparse(url),
     )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [])
 
     results = web_sources._normalize_search_results(
         [
