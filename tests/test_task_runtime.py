@@ -309,19 +309,18 @@ def test_runtime_rolls_back_threads_when_startup_fails_partway(runtime_store, mo
     assert runtime.is_running is False
 
 def test_runtime_restarts_partial_worker_set_after_worker_thread_exits(runtime_store, monkeypatch):
-    from app import task_worker
-
     failed_once = threading.Event()
     worker_exited = threading.Event()
+    original_run_worker = TaskRuntime._run_worker
 
-    def run_once(worker):
+    def run_worker(runtime, worker):
         if worker.worker_id.endswith("-1") and not failed_once.is_set():
             failed_once.set()
             worker_exited.set()
-            raise SystemExit("simulated worker thread exit")
-        return False
+            return
+        original_run_worker(runtime, worker)
 
-    monkeypatch.setattr(task_worker.TaskWorker, "run_once", run_once)
+    monkeypatch.setattr(TaskRuntime, "_run_worker", run_worker)
     runtime = TaskRuntime(
         {"runtime.noop": lambda *_: {"ok": True}},
         worker_count=2,
@@ -347,14 +346,20 @@ def test_runtime_restarts_partial_worker_set_after_worker_thread_exits(runtime_s
         assert runtime.stop(timeout=3) is True
 
 
-def test_runtime_restarts_when_maintenance_thread_exits(runtime_store):
+def test_runtime_restarts_when_maintenance_thread_exits(runtime_store, monkeypatch):
     failed_once = threading.Event()
     maintenance_recovered = threading.Event()
+    original_run_maintenance = TaskRuntime._run_maintenance
 
-    def maintenance():
+    def run_maintenance(runtime):
         if not failed_once.is_set():
             failed_once.set()
-            raise SystemExit("simulated maintenance thread exit")
+            return
+        original_run_maintenance(runtime)
+
+    monkeypatch.setattr(TaskRuntime, "_run_maintenance", run_maintenance)
+
+    def maintenance():
         maintenance_recovered.set()
 
     runtime = TaskRuntime(
