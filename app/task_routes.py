@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 from . import task_manager
 from .task_manager import TaskManagerError, TaskNotFoundError
@@ -33,13 +33,13 @@ router = APIRouter(
 class TaskCreateRequest(BaseModel):
     task_type: str = Field(min_length=1, max_length=100)
     payload: dict[str, Any]
-    priority: int = Field(default=0, ge=-100000, le=100000)
-    max_attempts: int = Field(default=1, ge=1, le=20)
+    priority: StrictInt = Field(default=0, ge=-100000, le=100000)
+    max_attempts: StrictInt = Field(default=1, ge=1, le=20)
     scheduled_at: datetime | None = None
 
 
 class TaskPriorityRequest(BaseModel):
-    priority: int = Field(ge=-100000, le=100000)
+    priority: StrictInt = Field(ge=-100000, le=100000)
 
 
 class TaskScheduleRequest(BaseModel):
