@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections import defaultdict
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -86,11 +85,11 @@ def _read_history() -> list[dict[str, Any]]:
 
 
 def _read_recent_events() -> list[dict[str, Any]]:
-    path = _progress_dir() / "history.jsonl"
+    path = _progress_dir() / "events.jsonl"
     try:
-        if not path.is_file() or path.stat().st_size > _MAX_HISTORY_BYTES:
+        if not path.is_file() or path.stat().st_size > 1024 * 1024:
             return []
-        lines = path.read_text(encoding="utf-8").splitlines()[-300:]
+        lines = path.read_text(encoding="utf-8").splitlines()[-100:]
     except OSError:
         return []
     events: list[dict[str, Any]] = []
@@ -107,7 +106,7 @@ def _read_recent_events() -> list[dict[str, Any]]:
                 "percent": item.get("percent"),
                 "status": item.get("status"),
             })
-    return events[-100:]
+    return events[-50:]
 
 
 def _aggregate_snapshots(
@@ -146,6 +145,8 @@ def get_progress(
         return {"current": None, "history": [], "available": False, "error": "بازهٔ تاریخ معتبر نیست."}
     current = _read_json(_progress_dir() / "current.json")
     records = _read_history()
+    all_snapshots = _aggregate_snapshots(records, "daily", None, None)
+    latest_snapshot = all_snapshots[-1] if all_snapshots else _scorecard_baseline()
     chart_period = "weekly" if period == "weekly" else "daily"
     history = _aggregate_snapshots(records, chart_period, start, end)
     if period == "daily" and start is None and end is None:
@@ -159,8 +160,9 @@ def get_progress(
     return {
         "current": current,
         "history": history,
+        "latest_snapshot": latest_snapshot,
         "events": _read_recent_events(),
         "available": bool(current or history),
-        "storage_configured": (_progress_dir() / "current.json").exists(),
+        "storage_configured": _progress_dir().is_dir(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
