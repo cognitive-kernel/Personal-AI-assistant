@@ -10,7 +10,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit
 
-GATE_VERSION = "lesson-evidence-v3"
+GATE_VERSION = "lesson-evidence-v4"
 # Curated primary/official domains only. This is deliberately conservative and
 # must be extended through reviewed code changes, not model-generated trust.
 _TRUSTED_DOMAIN_ROOTS = {
@@ -24,13 +24,29 @@ _TRUSTED_DOMAIN_ROOTS = {
 }
 
 
+def _has_safe_https_authority(parsed: urllib.parse.SplitResult) -> bool:
+    """Require credential-free HTTPS on the default TLS port."""
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.netloc.endswith(":")
+    ):
+        return False
+    try:
+        return parsed.port in {None, 443}
+    except ValueError:
+        return False
+
+
 def is_allowlisted_primary_source(url: str) -> bool:
     """Return whether an HTTPS URL belongs to a curated primary-source domain."""
     if not isinstance(url, str):
         return False
     try:
         parsed = urlsplit(url)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+        if not _has_safe_https_authority(parsed):
             return False
         host = parsed.hostname.casefold().rstrip(".")
     except ValueError:
@@ -47,13 +63,7 @@ def _https_source(source: Any) -> tuple[str, str] | None:
         return None
     try:
         parsed = urlsplit(url)
-        if (
-            parsed.scheme != "https"
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.fragment
-        ):
+        if not _has_safe_https_authority(parsed) or parsed.fragment:
             return None
     except ValueError:
         return None
