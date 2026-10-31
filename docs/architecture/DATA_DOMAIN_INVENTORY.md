@@ -2,7 +2,7 @@
 
 - تاریخ بازبینی: 2026-10-31
 - مبنای کد: آخرین commit مخزن در `main` برابر `1348ddd3a21b9ea7e987aff929700f44ee21fbb1` است (PR #644، docs-only)؛ آخرین commit برنامه `c6a28ce21cfaa6130bed36e7fbb173e4cf39a9be` است. حوزه‌های schema registry، مالکیت سه پایگاه SQLite، صف پایدار، lifecycle worker و مسیر backup/restore از همین کد بررسی شده‌اند.
-- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. head دقیق PR #644 با 1752 passed/5 skipped، Windows storage، Chromium browser E2E، dependency audit، بررسی 84 فایل Markdown و benchmark 10/10 موفق شد؛ post-merge CI روی `1348ddd` هنوز مستقلاً تأیید نشده است.
+- دامنه: بازبینی استاتیک کد و شواهد CI؛ داده‌های محلی/کاربر خوانده یا تغییر داده نشده‌اند و تست محلی/انسانی اجرا نشده است. head دقیق PR #644 با 1752 passed/5 skipped، Windows storage، Chromium browser E2E، dependency audit، بررسی 84 فایل Markdown و benchmark 10/10 موفق شد؛ post-merge CI روی `1348ddd` نیز با 1752 passed/5 skipped، Windows storage، Chromium browser E2E، dependency audit، 84 Markdown links و benchmark 10/10 موفق شد.
 - ممیزی دقیق schema و خطرهای مهاجرت: [SCHEMA_MIGRATION_AUDIT.md](SCHEMA_MIGRATION_AUDIT.md)
 
 ## حوزه‌ها و مالکیت فعلی
