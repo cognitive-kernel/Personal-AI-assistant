@@ -5,6 +5,7 @@ actual learning outcome instead of treating a swallowed application error as suc
 """
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Any
 
@@ -13,6 +14,8 @@ from .db import learning_connection
 from . import task_manager
 from . import ollama
 from .task_worker import PermanentTaskError, RetryableTaskError, TaskContext
+
+logger = logging.getLogger(__name__)
 
 LEARNING_TASK_TYPE = "learning.run_job"
 _TERMINAL_LEARNING_STATUSES = {"completed", "rejected", "cancelled"}
@@ -75,14 +78,29 @@ def enqueue_learning_task(job_id: int, *, priority: int = 0) -> dict[str, Any]:
 
 
 def reconcile_queued_learning_tasks() -> int:
-    """Ensure queued/running learning records have a durable task after a restart."""
+    """Repair each queued/running learning record independently.
+
+    A single malformed record or transient enqueue failure must not starve later
+    jobs or prevent application startup. Failed records are logged and retried
+    by the next startup/maintenance reconciliation cycle.
+    """
     with learning_connection() as conn:
         rows = conn.execute(
             "SELECT id FROM learning_jobs WHERE status IN ('queued', 'running') ORDER BY id"
         ).fetchall()
+    reconciled = 0
     for row in rows:
-        enqueue_learning_task(int(row["id"]))
-    return len(rows)
+        job_id = int(row["id"])
+        try:
+            enqueue_learning_task(job_id)
+        except Exception:
+            logger.exception(
+                "Could not reconcile durable learning task for job %s; it will be retried.",
+                job_id,
+            )
+            continue
+        reconciled += 1
+    return reconciled
 
 
 def _record_learning_escalation(

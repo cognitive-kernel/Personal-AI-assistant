@@ -20,6 +20,13 @@ Creating a learning job and inserting its `learning.run_job` task are separate S
 - An integration regression creates a learning job without its queue task, runs the maintenance callback, and verifies that exactly one matching durable task is created across repeated cycles.
 - A failure-injection regression verifies that a reconciliation exception does not prevent unrelated maintenance work from running.
 
+## Failure isolation follow-up (2026-10-31)
+
+- Reconcile each learning job independently. A failure enqueueing one job is logged with its job ID and does not prevent later queued/running jobs from being repaired in the same pass.
+- If the initial database-level reconciliation query fails after schema initialization, application startup logs the failure and continues to start the local UI and worker lanes. The existing periodic maintenance callback retries the reconciliation; schema-fingerprint failures remain fail-closed in database initialization.
+- The reconciliation return value counts successfully processed job records, not the number of new queue rows created.
+- Regression tests inject one per-job enqueue failure and one startup-level reconciliation failure. They verify later jobs are not starved, a later cycle retries the failed job idempotently, and the app still starts.
+
 ## Consequences and limits
 
 - A transient enqueue failure can be repaired without requiring an application restart.
