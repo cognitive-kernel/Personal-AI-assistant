@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> آخرین commit بررسی‌شدهٔ `main`: `6f601e8cc210419392bfbd1affb9590db978dd3a` (پس از ادغام PR #664 و #667). `main` اکنون روی `6f601e8cc210419392bfbd1affb9590db978dd3a` است؛ PR #664 مستندات پذیرش و وضعیت را همگام کرد و PR #667 اصلاح کد صف یادگیری را وارد کرد. exact-head CI هر دو PR موفق شد. PR #667: **1801 passed, 47 deselected**، Windows storage، Chromium E2E، dependency audit، 87 Markdown files و benchmark 10/10؛ PR #664: **1800 passed, 47 deselected**، Windows storage، dashboard smoke، dependency audit، 88 Markdown files و benchmark 10/10. Post-merge tests و browser E2E روی SHA فعلی `6f601e8cc210419392bfbd1affb9590db978dd3a` هنوز در حال اجرا هستند؛ dependency audit موفق شده است.
+> آخرین commit بررسی‌شدهٔ `main`: `6f601e8cc210419392bfbd1affb9590db978dd3a` (پس از ادغام PR #664 و #667). Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
