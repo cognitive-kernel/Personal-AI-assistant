@@ -180,6 +180,9 @@ def dispatch_autonomous_engineering() -> dict[str, Any]:
     readiness = collect_status()
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
+    active_runs = readiness.get("github", {}).get("recent_runs", [])
+    if any(item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"} for item in active_runs):
+        raise HTTPException(status_code=409, detail="یک اجرای عامل در حال انجام است؛ ابتدا وضعیت آن را بررسی کنید.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
