@@ -108,6 +108,7 @@ def test_graph_edge_requires_two_model_reviews_and_live_source(graph_store, monk
     assert len(context["nodes"]) == 2
 
 
+
 def test_graph_review_stays_proposed_when_only_one_reviewer_is_available(graph_store, monkeypatch):
     source_id, target_id = graph_store
     excerpt = "The source directly describes how stale cache entries can result after writes."
@@ -177,6 +178,7 @@ def test_accepted_causal_edges_cannot_form_a_cycle(graph_store, monkeypatch):
             source_excerpt="A different source excerpt for the reverse causal edge.",
         )
 
+
 def test_graph_review_honors_pause_after_source_fetch_before_model_calls(graph_store, monkeypatch):
     source_id, target_id = graph_store
     excerpt = "The source directly describes how stale cache entries can result after writes."
@@ -213,6 +215,7 @@ def test_graph_review_honors_pause_after_source_fetch_before_model_calls(graph_s
         ).fetchone()
     assert stored["status"] == "proposed"
     assert stored["review_json"] is None
+
 
 
 def test_graph_review_honors_cancel_between_two_reviewer_calls(graph_store, monkeypatch):
@@ -268,6 +271,7 @@ def test_graph_review_honors_cancel_between_two_reviewer_calls(graph_store, monk
         ).fetchone()
     assert stored["status"] == "proposed"
     assert stored["review_json"] is None
+
 
 
 def test_graph_review_task_handler_passes_task_context_to_service(monkeypatch):
