@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>عامل مهندسی خودکار | دستیار هوش مصنوعی شخصی</title>
+<link rel="stylesheet" href="/static/autonomous-engineering.css">
+<script src="/static/autonomous-engineering.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
+<nav class="main-nav" aria-label="منوی اصلی">
+<a href="/">گفتگو و پژوهش</a>
+<a href="/page/storage-health-section">سلامت و پشتیبان</a>
+<a href="/page/learning-section">یادگیری</a>
+<a href="/ai-learning">یادگیری از هوش مصنوعی</a>
+<a href="/autonomous-engineering" aria-current="page">عامل مهندسی خودکار</a>
+<a href="/page/learning-paths-section">مسیرهای آموزشی</a>
+<a href="/page/knowledge-section">دانش ذخیره‌شده</a>
+<a href="/page/task-manager-section">وظایف</a>
+<a href="/page/experience-memory-section">حافظهٔ تجربه</a>
+<a href="/page/cloud-resources-section">منابع پردازشی</a>
+<a href="/page/cloud-plan-section">برنامه‌ریزی منابع</a>
+<a href="/page/kaggle-quota-section">سهمیهٔ Kaggle</a>
+<a href="/page/oci-limits-section">محدودیت‌های OCI</a>
+<a href="/page/sandbox-section">محیط ایزوله</a>
+<a href="/page/self-improvement-section">بهبود کد</a>
+<a href="/page/settings-section">تنظیمات</a>
+</nav>
+<main id="main-content" tabindex="-1">
+<header class="hero">
+<p class="eyebrow">LOCAL-FIRST · OLLAMA · GITHUB ACTIONS</p>
+<h1>عامل مهندسی خودکار</h1>
+<p>عامل کدنویسی محلی که با روشن‌بودن رایانه و سرویس Runner می‌تواند به‌صورت زمان‌بندی‌شده روی مخزن GitHub کار کند؛ بدون کلید API پولی.</p>
+<div class="hero-actions">
+<button id="refresh-agent" type="button">بازخوانی وضعیت</button>
+<a class="button-link" href="https://github.com/cognitive-kernel/Personal-AI-assistant/actions/workflows/autonomous-codex-engineering.yml" target="_blank" rel="noopener noreferrer">مشاهده اجراها در GitHub Actions</a>
+</div>
+<p id="agent-message" role="status" aria-live="polite">در حال بررسی اجزای محلی…</p>
+</header>
+
+<section aria-labelledby="agent-status-title">
+<div class="section-heading">
+<div><p class="eyebrow">LIVE READINESS</p><h2 id="agent-status-title">وضعیت اجزای عامل</h2></div>
+<span id="agent-readiness" class="status-pill status-unknown">در حال بررسی</span>
+</div>
+<div class="status-grid">
+<article class="status-card"><span class="status-label">سرویس Ollama</span><strong id="ollama-state">—</strong><p id="ollama-detail">اتصال محلی بررسی نشده است.</p></article>
+<article class="status-card"><span class="status-label">مدل کدنویسی</span><strong id="model-state">—</strong><p id="model-detail">مدل موردنیاز: gpt-oss:20b</p></article>
+<article class="status-card"><span class="status-label">Codex CLI</span><strong id="codex-state">—</strong><p id="codex-detail">نصب و نسخه بررسی نشده است.</p></article>
+<article class="status-card"><span class="status-label">GitHub Runner</span><strong id="runner-state">—</strong><p id="runner-detail">فرایند Runner.Listener بررسی نشده است.</p></article>
+<article class="status-card"><span class="status-label">GitHub CLI</span><strong id="github-state">—</strong><p id="github-detail">احراز هویت محلی بررسی نشده است.</p></article>
+</div>
+<form id="agent-settings-form" class="settings-form">
+  <div class="section-heading">
+    <div><p class="eyebrow">SCHEDULE & MODEL</p><h3>تنظیمات اجرای خودکار</h3></div>
+    <span class="hint">تنظیمات برای اجراهای زمان‌بندی‌شده ذخیره می‌شوند.</span>
+  </div>
+  <div class="settings-grid">
+    <label class="field">
+      <span>تعداد اجرا در روز</span>
+      <select id="runs-per-day" name="runs_per_day">
+        <option value="1">۱ بار در روز</option>
+        <option value="2">۲ بار در روز</option>
+        <option value="3">۳ بار در روز</option>
+        <option value="4">۴ بار در روز</option>
+        <option value="6">۶ بار در روز</option>
+        <option value="8">۸ بار در روز</option>
+        <option value="12">۱۲ بار در روز</option>
+        <option value="24">۲۴ بار در روز (هر ساعت)</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>مدل نصب‌شدهٔ Ollama</span>
+      <select id="ollama-model" name="model">
+        <option value="gpt-oss:20b">gpt-oss:20b (پیش‌فرض)</option>
+      </select>
+    </label>
+    <label class="field field-wide">
+      <span>یا شناسهٔ مدل دیگر Ollama</span>
+      <input id="custom-model" name="custom_model" type="text" maxlength="120" autocomplete="off" placeholder="مثلاً qwen3:14b">
+      <small>در صورت واردکردن شناسه، این مقدار جایگزین مدل انتخاب‌شده می‌شود. مدل باید روی همین رایانه نصب شده باشد.</small>
+    </label>
+  </div>
+  <div class="toolbar">
+    <button id="save-agent-settings" type="submit">ذخیرهٔ تنظیمات</button>
+  </div>
+</form>
+<div class="toolbar">
+<button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ مهندسی</button>
+<button id="cancel-agent" type="button" class="secondary" disabled>لغو اجرای فعال</button>
+</div>
+<p class="hint">اجرای دستی فقط وقتی فعال می‌شود که Ollama، مدل، Codex CLI، Runner و احراز هویت GitHub آماده باشند. دکمهٔ اجرا یک درخواست Workflow به GitHub می‌فرستد؛ شروع واقعی را در فهرست اجراها تأیید کنید.</p>
+<div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
+</section>
+
+<section aria-labelledby="progress-title" class="progress-section">
+  <div class="section-heading">
+    <div><p class="eyebrow">LIVE PROGRESS</p><h2 id="progress-title">پیشرفت پروژه و فعالیت زنده</h2></div>
+    <span id="progress-updated" class="hint">در انتظار داده</span>
+  </div>
+  <div class="progress-overview">
+    <article class="progress-card">
+      <div class="progress-card-heading"><strong>پیشرفت چرخهٔ جاری</strong><strong id="cycle-progress-value">—</strong></div>
+      <progress id="cycle-progress" max="100" value="0"></progress>
+      <p id="current-phase" class="progress-meta">هنوز چرخه‌ای گزارش نشده است.</p>
+      <p id="current-activity" class="progress-activity">با شروع اجرا، مرحله و فعالیت جاری نمایش داده می‌شود.</p>
+      <p id="plan-progress" class="progress-meta"></p>
+    </article>
+    <article class="progress-card">
+      <strong>پیشرفت مهندسی پروژه</strong>
+      <div class="project-score" id="engineering-progress">—</div>
+      <p class="progress-meta">بر اساس scorecard وزن‌دار و شواهد ثبت‌شده</p>
+      <div class="progress-divider"></div>
+      <strong>پیشرفت پذیرش کلی</strong>
+      <div class="project-score" id="overall-progress">—</div>
+      <p class="progress-meta">شامل دروازه‌های بیرونی و بازبینی مستقل</p>
+    </article>
+  </div>
+  <details class="progress-details">
+    <summary>نمودار تاریخی پیشرفت پروژه</summary>
+    <div class="progress-filters">
+      <label class="field"><span>بازهٔ نمودار</span>
+        <select id="progress-period">
+          <option value="daily">روزانه · ۷ روز اخیر</option>
+          <option value="weekly">هفتگی · ۸ هفتهٔ اخیر</option>
+          <option value="custom">از تاریخ تا تاریخ</option>
+        </select>
+      </label>
+      <label class="field custom-date-field" id="progress-start-wrap" hidden><span>از تاریخ</span><input id="progress-start" type="date"></label>
+      <label class="field custom-date-field" id="progress-end-wrap" hidden><span>تا تاریخ</span><input id="progress-end" type="date"></label>
+      <button id="refresh-progress" type="button" class="secondary">اعمال بازه</button>
+    </div>
+    <div class="chart-legend"><span class="legend-engineering">تکمیل مهندسی</span><span class="legend-overall">پذیرش کلی</span></div>
+    <svg id="progress-chart" class="progress-chart" viewBox="0 0 800 260" role="img" aria-label="نمودار تغییر درصد پیشرفت پروژه"></svg>
+    <p id="progress-chart-caption" class="muted">تاریخچه پس از فعال‌شدن ثبت پیشرفت ایجاد می‌شود؛ دادهٔ گذشته حدس زده نمی‌شود.</p>
+  </details>
+  <details class="progress-details">
+    <summary>گزارش فعالیت‌های اخیر عامل</summary>
+    <ol id="progress-events" class="progress-events"><li class="muted">هنوز رویدادی ثبت نشده است.</li></ol>
+  </details>
+</section>
+
+<section aria-labelledby="setup-title">
+<p class="eyebrow">ONE-TIME SETUP</p>
+<h2 id="setup-title">راه‌اندازی روی ویندوز</h2>
+<ol class="setup-list">
+<li><strong>Ollama را نصب و مدل را دریافت کنید.</strong><p>در ترمینال اجرا کنید:</p><code>ollama pull gpt-oss:20b</code></li>
+<li><strong>Codex CLI را نصب کنید.</strong><p>Node.js لازم است:</p><code>npm install -g @openai/codex</code></li>
+<li><strong>GitHub CLI را نصب و وارد حساب شوید.</strong><p>دسترسی لازم برای اجرای Workflow روی همین مخزن را تأیید کنید:</p><code>gh auth login</code></li>
+<li><strong>Self-hosted Runner بسازید.</strong><p>در مخزن GitHub به Settings → Actions → Runners → New self-hosted runner بروید. نسخهٔ Windows x64 را انتخاب و طبق دستور خود GitHub نصب کنید. هنگام پیکربندی، برچسب اضافی <code>ollama</code> را اضافه کنید.</p></li>
+<li><strong>Runner را با حساب سرویس مجزا اجرا کنید.</strong><p>یک حساب Windows اختصاصی و غیرمدیر برای سرویس Runner بسازید؛ این حساب باید به endpoint محلی Ollama دسترسی داشته باشد، اما نباید با GitHub CLI وارد حساب شود یا فایل‌ها و اعتبارنامه‌های شخصی داشته باشد. حسابی که برنامهٔ محلی را اجرا می‌کند جداگانه با <code>gh auth login</code> احراز هویت می‌شود. توکن ثبت Runner موقت است؛ آن را در کد، چت یا فایل تنظیمات پروژه ذخیره نکنید.</p></li>
+<li><strong>آمادگی محیط را بررسی کنید.</strong><p>در پوشهٔ پروژه، PowerShell را باز کنید و اجرا کنید:</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1</code></li>
+</ol>
+</section>
+
+<section aria-labelledby="operation-title">
+<p class="eyebrow">OPERATING MODEL</p>
+<h2 id="operation-title">عامل چگونه کار می‌کند؟</h2>
+<ul>
+<li>طبق تعداد اجرای روزانهٔ انتخاب‌شده (از ۱ تا ۲۴ بار در روز)، GitHub زمان‌بندی ساعتی را بررسی می‌کند و اجراها را بر اساس ساعت UTC به Runner محلی می‌سپارد؛ اجرای دستی جداگانه است.</li>
+<li>Codex با حالت OSS و مدل انتخاب‌شدهٔ Ollama روی رایانهٔ شما اجرا می‌شود؛ درخواست استنتاج به endpoint محلی ارسال می‌شود.</li>
+<li>عامل یک کار مستقل را انتخاب می‌کند، تغییرات و آزمون‌های مرتبط را آماده می‌کند و patch را تحویل می‌دهد.</li>
+<li>اعتبارسنجی روی Runner میزبانی‌شدهٔ GitHub و بدون دسترسی به مدل یا اطلاعات محرمانه انجام می‌شود.</li>
+<li>فقط پس از موفقیت همهٔ بررسی‌های تعریف‌شده، یک Pull Request پیش‌نویس ساخته می‌شود؛ ادغام و استقرار خودکار انجام نمی‌شود.</li>
+</ul>
+<p class="notice"><strong>تفاوت ۲۴ ساعته:</strong> Runner می‌تواند شبانه‌روزی روشن و آمادهٔ دریافت کار باشد؛ اما مدل به‌طور پیوسته کد تولید نمی‌کند. Workflowها نوبتی و محدود اجرا می‌شوند و زمان‌بندی GitHub تضمین لحظه‌ای ندارد. خاموش‌شدن رایانه، قطع اینترنت یا توقف سرویس Runner اجرای کار را متوقف می‌کند.</p>
+</section>
+
+<section aria-labelledby="safety-title">
+<p class="eyebrow">SECURITY BOUNDARIES</p>
+<h2 id="safety-title">مرزهای امنیتی و محدودیت‌ها</h2>
+<ul>
+<li>عامل فقط از رویدادهای شاخهٔ اصلی اجرا می‌شود؛ Workflow روی Pull Requestهای ناشناس اجرا نمی‌شود.</li>
+<li>Codex مجوز نوشتن مستقیم در GitHub ندارد. انتشار Pull Request در یک job جداگانه و با مجوز محدود انجام می‌شود.</li>
+<li>patch قبل از انتشار روی Runner میزبانی‌شده و بدون secret اعتبارسنجی می‌شود.</li>
+<li>تغییر تنظیمات امنیتی، secrets، دیتابیس واقعی، انتشار نسخه و ادغام در main خودکار نیست.</li>
+<li>مدل محلی ممکن است در کدنویسی پیچیده کندتر یا کم‌دقت‌تر از مدل‌های ابری باشد؛ نتیجهٔ CI جایگزین بازبینی مستقل و آزمون روی رایانهٔ هدف نیست.</li>
+</ul>
+</section>
+</main>
+</body>
+</html>
