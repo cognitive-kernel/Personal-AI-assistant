@@ -26,6 +26,7 @@ MIN_PYTHON = (3, 11)
 DEFAULT_MODEL = "qwen2.5:7b"
 _OLLAMA_RELEASE_API = "https://api.github.com/repos/ollama/ollama/releases/latest"
 _OLLAMA_RELEASE_TAG = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
+_OLLAMA_LINUX_ASSET = re.compile(r"^ollama-linux-(?:amd64|arm64)(?:-rocm|-jetpack[56])?\.tar\.zst$")
 _OLLAMA_ASSET_REDIRECT_HOSTS = frozenset({
     "github.com",
     "release-assets.githubusercontent.com",
@@ -100,7 +101,15 @@ def _latest_ollama_release_assets() -> dict[str, Any]:
         raise RuntimeError("ساختار آخرین انتشار رسمی Ollama معتبر نیست.")
 
     selected: dict[str, dict[str, Any]] = {}
-    for asset_name in ("install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"):
+    linux_assets = {
+        item["name"]
+        for item in assets
+        if isinstance(item, dict)
+        and isinstance(item.get("name"), str)
+        and _OLLAMA_LINUX_ASSET.fullmatch(item["name"])
+    }
+    selected_names = {"install.sh", "OllamaSetup.exe", "Ollama-darwin.zip"} | linux_assets
+    for asset_name in sorted(selected_names):
         matches = [
             item for item in assets
             if isinstance(item, dict) and item.get("name") == asset_name
@@ -144,6 +153,61 @@ def _latest_ollama_release_assets() -> dict[str, Any]:
             "size": asset_size,
         }
     return {"tag": tag, "assets": selected}
+
+
+def _patch_linux_install_script(installer: Path) -> Path:
+    """Replace upstream's unverified second-stage curl pipeline with the verified asset helper."""
+    try:
+        script = installer.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError("نصب‌کنندهٔ Linux تأییدشده قابل خواندن نیست.") from exc
+
+    start_marker = "download_and_extract() {"
+    end_marker = "\n}\n\nfor BINDIR in"
+    if script.count(start_marker) != 1:
+        raise RuntimeError("ساختار تابع دانلود در نصب‌کنندهٔ رسمی Linux ناشناخته است؛ اجرا متوقف شد.")
+    start = script.find(start_marker)
+    end = script.find(end_marker, start)
+    if end < 0:
+        raise RuntimeError("مرز تابع دانلود در نصب‌کنندهٔ رسمی Linux پیدا نشد؛ اجرا متوقف شد.")
+
+    replacement = """download_and_extract() {
+    local url_base="$1"
+    local dest_dir="$2"
+    local filename="$3"
+    local asset_name="${filename}.tar.zst"
+    local archive_path="${OLLAMA_VERIFIED_ASSET_DIR}/${asset_name}"
+
+    if ! available zstd; then
+        error "Verified Ollama archives require zstd. Install zstd and retry."
+    fi
+    status "Downloading and verifying ${asset_name} from the pinned GitHub release"
+    if ! "$OLLAMA_VERIFIED_PYTHON" "$OLLAMA_VERIFIED_RUNNER" --download-ollama-asset "$asset_name"; then
+        error "The pinned Ollama release asset could not be verified; extraction was refused."
+    fi
+    if [ ! -s "$archive_path" ]; then
+        error "The verified Ollama archive is missing or empty: ${asset_name}"
+    fi
+    local tar_path="${archive_path}.extract.tar"
+    status "Decompressing SHA-256 verified ${asset_name}"
+    rm -f "$tar_path"
+    if ! zstd -d --force "$archive_path" -o "$tar_path"; then
+        rm -f "$tar_path"
+        error "Verified Ollama archive decompression failed."
+    fi
+    status "Extracting verified Ollama archive"
+    if ! $SUDO tar -xf "$tar_path" -C "$dest_dir"; then
+        rm -f "$tar_path"
+        error "Verified Ollama archive extraction failed."
+    fi
+    rm -f "$tar_path"
+}"""
+    patched = script[:start] + replacement + script[end + 2:]
+    output = installer.with_name("ollama-install-verified.sh")
+    output.unlink(missing_ok=True)
+    output.write_text(patched, encoding="utf-8", newline="\n")
+    output.chmod(0o700)
+    return output
 
 
 def _ollama_asset_opener() -> urllib.request.OpenerDirector:
@@ -583,6 +647,67 @@ def _download_once(
         # Intentionally keep .part and its URL metadata for the next run.
         raise
 
+def _download_ollama_asset_cli(arguments: list[str]) -> int:
+    """Download one Linux archive from the exact release manifest passed by the parent."""
+    if len(arguments) != 1 or not _OLLAMA_LINUX_ASSET.fullmatch(arguments[0]):
+        raise ValueError("A supported, exact Linux Ollama release asset name is required.")
+    asset_name = arguments[0]
+    raw_manifest = os.environ.get("OLLAMA_VERIFIED_RELEASE_ASSETS_JSON", "")
+    try:
+        release = json.loads(raw_manifest)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("The pinned Ollama release manifest is unavailable or invalid.") from exc
+    tag = release.get("tag") if isinstance(release, dict) else None
+    assets = release.get("assets") if isinstance(release, dict) else None
+    if not isinstance(tag, str) or not _OLLAMA_RELEASE_TAG.fullmatch(tag) or not isinstance(assets, dict):
+        raise RuntimeError("The pinned Ollama release manifest has an invalid structure.")
+    if os.environ.get("OLLAMA_VERSION") != tag.lstrip("v"):
+        raise RuntimeError("OLLAMA_VERSION does not match the pinned Ollama release tag.")
+    asset = assets.get(asset_name)
+    if not isinstance(asset, dict):
+        raise RuntimeError(f"The pinned Ollama release does not contain {asset_name}.")
+    digest = asset.get("sha256")
+    asset_size = asset.get("size")
+    if (
+        not isinstance(digest, str)
+        or not re.fullmatch(r"[0-9a-fA-F]{64}", digest)
+        or isinstance(asset_size, bool)
+        or not isinstance(asset_size, int)
+        or not 1 <= asset_size <= 3_000_000_000
+    ):
+        raise RuntimeError("The pinned Ollama asset is missing a valid SHA-256 digest or size.")
+    url = asset.get("url")
+    expected_path = f"/ollama/ollama/releases/download/{tag}/{asset_name}"
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
+    except (TypeError, ValueError):
+        raise RuntimeError("The pinned Ollama asset URL is invalid.") from None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or parsed.path != expected_path
+        or port not in {None, 443}
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("The pinned Ollama asset URL does not match the official GitHub release.")
+    asset_dir = os.environ.get("OLLAMA_VERIFIED_ASSET_DIR", "").strip()
+    if not asset_dir:
+        raise RuntimeError("The verified Ollama asset cache directory is not configured.")
+    destination = Path(asset_dir) / asset_name
+    _download_once(
+        url,
+        destination,
+        expected_sha256=asset.get("sha256"),
+        expected_size=asset.get("size"),
+        opener=_ollama_asset_opener(),
+    )
+    return 0
+
+
 def _find_ollama() -> str | None:
     found = shutil.which("ollama")
     if found:
@@ -614,6 +739,16 @@ def _ensure_ollama() -> None:
         if asset_name is None:
             raise RuntimeError(f"نصب خودکار Ollama برای سیستم‌عامل {system} پشتیبانی نمی‌شود.")
         release = _latest_ollama_release_assets()
+        if system == "Linux":
+            machine = platform.machine().lower()
+            architecture = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
+            if architecture is None:
+                raise RuntimeError(f"معماری Linux پشتیبانی نمی‌شود: {machine}")
+            base_asset = f"ollama-linux-{architecture}.tar.zst"
+            if base_asset not in release["assets"]:
+                raise RuntimeError(
+                    f"انتشار {release['tag']} بستهٔ Linux تأییدپذیر {base_asset} را ندارد."
+                )
         asset = release["assets"].get(asset_name)
         if asset is None:
             raise RuntimeError(
@@ -640,10 +775,20 @@ def _ensure_ollama() -> None:
         if system == "Windows":
             result = _run([str(installer)])
         elif system == "Linux":
+            if release is None:
+                raise RuntimeError("اطلاعات انتشار تأییدشده برای نصب Linux موجود نیست.")
+            verified_installer = _patch_linux_install_script(installer)
             install_env = os.environ.copy()
-            if release is not None:
-                install_env["OLLAMA_VERSION"] = release["tag"].lstrip("v")
-            result = _run(["sh", str(installer)], env=install_env)
+            install_env.update({
+                "OLLAMA_VERSION": release["tag"].lstrip("v"),
+                "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON": json.dumps(
+                    release, ensure_ascii=True, separators=(",", ":")
+                ),
+                "OLLAMA_VERIFIED_ASSET_DIR": str(INSTALLERS / "ollama-release-assets"),
+                "OLLAMA_VERIFIED_PYTHON": sys.executable,
+                "OLLAMA_VERIFIED_RUNNER": str(Path(__file__).resolve()),
+            })
+            result = _run(["sh", str(verified_installer)], env=install_env)
         else:
             # macOS app installation is intentionally left interactive; opening the
             # cached archive lets the user complete the signed app installation.
@@ -713,4 +858,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--download-ollama-asset"]:
+        try:
+            raise SystemExit(_download_ollama_asset_cli(sys.argv[2:]))
+        except Exception as exc:
+            print(f"Verified Ollama asset download failed: {exc}", file=sys.stderr)
+            raise SystemExit(2)
     raise SystemExit(main())

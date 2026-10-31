@@ -215,3 +215,11 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - exact-head CI روی \`8c6aa6d68bafc95ee2509b59b9db786271e43c70\` موفق شد: tests [#41162151299](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41162151299) با 1722 passed و 5 skipped، Windows storage regressions، browser E2E [#41162151340](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41162151340)، dependency audit [#41162151309](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41162151309)، artifact/link/import checks و benchmarkهای retrieval و claim-to-test.
 - PR #617 با squash commit \`e6c40e2362d1082fb9631009a693db61cfc7fffc\` ادغام شد. اجرای مستقل post-merge روی این SHA در شواهد قابل‌دسترسی تأیید نشده است.
 - محدودیت: این تغییر منشأ خطای صفر منبع را در گزارش مشخص می‌کند؛ provider availability، صحت factual پاسخ، اجرای زندهٔ Ollama و human adjudication را اثبات نمی‌کند.
+
+## 2026-10-31 — Linux Ollama second-stage payload integrity (PR #620)
+
+- PR [#620](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/620) closes the known Linux installer gap: the actual Linux archive is selected from the same official GitHub release manifest as install.sh, and downloaded with the exact release URL, SHA-256 digest, and declared size.
+- The upstream download_and_extract implementation is patched to call the existing bounded _download_once path instead of its unverified second-stage curl download. Redirect-host restrictions, response-size checks, and digest verification are reused rather than duplicated.
+- Unknown upstream installer structure and unsupported architectures fail closed. The verified archive is decompressed to a temporary tar file before extraction so the official /bin/sh installer remains POSIX-compatible and decompression errors cannot be hidden by a pipeline.
+- Regression tests cover supported release asset discovery, version/URL/digest/size validation, rejection of untrusted or malformed assets, upstream script drift, and POSIX sh -n syntax validation.
+- Status: PR is open; CI evidence must be checked against its final head before merge. No live Linux installation was run; target-host installation remains an excluded local acceptance step.

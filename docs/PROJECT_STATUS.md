@@ -158,3 +158,11 @@
 - CI روی head دقیق PR یعنی `9b629f2a5bef699261fbc0097f411e011b656366`: tests [#41087746251](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41087746251) شامل Windows storage regressions، browser E2E [#41087746167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41087746167) و dependency audit [#41087746175](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41087746175) همگی موفق شدند. مجموعه تست: 1556 passed و 5 skipped؛ بررسی لینک‌های Markdown برای 73 فایل، بررسی import-cycle روی 112 ماژول، تولید artifactها و benchmarkهای CI نیز موفق شدند.
 - benchmark واژگانی روی 16 query از fixture: recall@5 برابر 1.0، precision@5 برابر 0.225 و MRR برابر 1.0. benchmark پوشش claim-to-test روی 10 مورد ساختاری موفق شد؛ این benchmarkها کیفیت عمومی retrieval یا کفایت معنایی تست‌ها را اثبات نمی‌کنند.
 - commit ادغام‌شده `e02b5941345512353189c25678832f129324f7ff` در گزارش workflowهای PR-triggered قابل مشاهده نبود؛ بنابراین CI مستقل post-merge روی SHA ادغام‌شده تأیید نشده و موفق فرض نمی‌شود. آزمون live provider، پذیرش target-host، crash/multi-process، staging restore/rollback و بازبینی امنیتی مستقل همچنان باز هستند.
+
+## 2026-10-31 — یکپارچگی بستهٔ دومرحله‌ای نصب Ollama در Linux (PR #620)
+
+- مسیر نصب Linux در PR [#620](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/620) اصلاح شد: علاوه بر install.sh، آرشیو واقعی Linux نیز از manifest همان انتشار رسمی GitHub با URL، اندازه و SHA-256 پین‌شده دریافت و پیش از استخراج تأیید می‌شود.
+- تابع دانلود ثانویهٔ اسکریپت رسمی با helper داخلی مبتنی بر _download_once جایگزین می‌شود؛ محدودیت اندازه، کنترل redirect و اعتبارسنجی هش از مسیر دانلود موجود پروژه استفاده می‌شوند. ساختار ناشناختهٔ اسکریپت یا معماری پشتیبانی‌نشده باعث توقف امن نصب می‌شود.
+- برای سازگاری با shebang رسمی /bin/sh، آرشیو ابتدا به فایل tar موقت decompression می‌شود و سپس استخراج می‌گردد؛ از قابلیت غیر POSIX مانند pipefail استفاده نمی‌شود.
+- تست‌های regression انتخاب asset رسمی، digest/size، URL غیرمجاز، نام asset نامعتبر، ناسازگاری نسخه، تغییر ساختار upstream و parse شدن اسکریپت patch‌شده با sh -n را پوشش می‌دهند.
+- وضعیت: PR باز است و CI روی آخرین head باید کامل شود. نصب زندهٔ Ollama عمداً اجرا نشده؛ پذیرش روی میزبان Linux جزو تست محلی مستثناشده است.
