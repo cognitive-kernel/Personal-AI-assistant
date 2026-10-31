@@ -155,6 +155,50 @@ def _latest_ollama_release_assets() -> dict[str, Any]:
     return {"tag": tag, "assets": selected}
 
 
+def _patch_linux_install_script(installer: Path) -> Path:
+    """Replace upstream's unverified second-stage curl pipeline with the verified asset helper."""
+    try:
+        script = installer.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError("نصب‌کنندهٔ Linux تأییدشده قابل خواندن نیست.") from exc
+
+    start_marker = "download_and_extract() {"
+    end_marker = "\\n}\\n\\nfor BINDIR in"
+    if script.count(start_marker) != 1:
+        raise RuntimeError("ساختار تابع دانلود در نصب‌کنندهٔ رسمی Linux ناشناخته است؛ اجرا متوقف شد.")
+    start = script.find(start_marker)
+    end = script.find(end_marker, start)
+    if end < 0:
+        raise RuntimeError("مرز تابع دانلود در نصب‌کنندهٔ رسمی Linux پیدا نشد؛ اجرا متوقف شد.")
+
+    replacement = """download_and_extract() {
+    local url_base="$1"
+    local dest_dir="$2"
+    local filename="$3"
+    local asset_name="${filename}.tar.zst"
+    local archive_path="${OLLAMA_VERIFIED_ASSET_DIR}/${asset_name}"
+
+    if ! available zstd; then
+        error "Verified Ollama archives require zstd. Install zstd and retry."
+    fi
+    status "Downloading and verifying ${asset_name} from the pinned GitHub release"
+    if ! "$OLLAMA_VERIFIED_PYTHON" "$OLLAMA_VERIFIED_RUNNER" --download-ollama-asset "$asset_name"; then
+        error "The pinned Ollama release asset could not be verified; extraction was refused."
+    fi
+    if [ ! -s "$archive_path" ]; then
+        error "The verified Ollama archive is missing or empty: ${asset_name}"
+    fi
+    status "Extracting SHA-256 verified ${asset_name}"
+    zstd -d --stdout "$archive_path" | $SUDO tar -xf - -C "$dest_dir"
+}"""
+    patched = script[:start] + replacement + script[end + 2:]
+    output = installer.with_name("ollama-install-verified.sh")
+    output.unlink(missing_ok=True)
+    output.write_text(patched, encoding="utf-8", newline="\\n")
+    output.chmod(0o700)
+    return output
+
+
 def _ollama_asset_opener() -> urllib.request.OpenerDirector:
     return urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
