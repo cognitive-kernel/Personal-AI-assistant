@@ -77,3 +77,38 @@ def test_learning_path_api_rejects_boolean_score_without_mutation(api_client):
             "SELECT latest_score FROM learning_path_topics WHERE id=?", (topic_id,)
         ).fetchone()["latest_score"]
     assert score is None
+
+
+@pytest.mark.parametrize("score", [82, 82.5])
+def test_learning_path_api_preserves_valid_integer_and_float_scores(
+    api_client, score
+):
+    with db.learning_connection() as connection:
+        path_id = connection.execute(
+            "INSERT INTO learning_paths(curriculum_slug, title) VALUES (?, ?)",
+            ("valid-score-test", "Valid score test"),
+        ).lastrowid
+        topic_id = connection.execute(
+            "INSERT INTO learning_path_topics(path_id, topic, position) VALUES (?, ?, ?)",
+            (path_id, "Valid score topic", 1),
+        ).lastrowid
+
+    response = api_client.patch(
+        f"/api/learning/paths/{path_id}/topics/{topic_id}",
+        json={"status": "in_progress", "latest_score": score},
+    )
+
+    assert response.status_code == 200
+    assert float(response.json()["topics"][0]["latest_score"]) == score
+
+
+def test_browser_learning_api_accepts_integer_lesson_count(api_client, monkeypatch):
+    monkeypatch.setattr(main.browser_learning, "dispatch_next_course", lambda: None)
+
+    response = api_client.post(
+        "/api/learning/browser/courses",
+        json={"topic": "Valid lesson count", "max_lessons": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["max_lessons"] == 2
