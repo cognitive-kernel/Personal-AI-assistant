@@ -18,7 +18,6 @@ If the API secret is missing, the agent job fails closed before invoking Codex.
 ## Triggers
 
 - Scheduled run every six hours (GitHub Actions scheduling is best-effort and may be delayed).
-- Manual `workflow_dispatch`.
 - Every push to `main` (including merged engineering PRs).
 - Manual `workflow_dispatch`, with an optional task request.
 
@@ -28,11 +27,11 @@ This does not promise uninterrupted execution. GitHub-hosted jobs are finite, sc
 
 | Job | Permissions | Receives OpenAI key | Executes candidate code |
 |---|---|---:|---:|
-| Codex | `contents: read` | Yes, only through the Codex Action input/proxy | No privileged GitHub write |
+| Codex | `contents: read`, `pull-requests: read`, `issues: read`, `actions: read` | Yes, only through the Codex Action input/proxy | No privileged GitHub write |
 | Validation | `contents: read` | No | Yes, tests the candidate patch |
 | Draft PR publication | `contents: write`, `pull-requests: write` | No | No project tests or candidate scripts |
 
-Codex uses the pinned OpenAI Codex GitHub Action, the `:workspace` permission profile, and the Linux `drop-sudo` safety strategy. Its candidate patch is restricted to `app/`, `tests/`, `docs/`, and `pyproject.toml`.
+Before Codex starts, a read-only GitHub API snapshot records the current default-branch SHA, branch-protection state, open PRs and their checks/reviews, open issues, recent workflow runs, and branches. Codex uses that snapshot because its workspace profile has no direct network access. The workflow uses the pinned OpenAI Codex GitHub Action, the `:workspace` permission profile, and the Linux `drop-sudo` safety strategy. Its candidate patch is restricted to `app/`, `tests/`, `docs/`, and `pyproject.toml`.
 
 The patch is transferred as an artifact to a separate job. That job applies it to the exact base commit, installs dependencies without the OpenAI secret, and runs the Linux test suite plus the repository's generated-artifact, Markdown-link, import-cycle, retrieval, and claim-to-test checks. Only after all configured checks pass does a separate write-enabled job create a **draft pull request**.
 
