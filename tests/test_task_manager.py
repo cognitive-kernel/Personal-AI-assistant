@@ -542,3 +542,31 @@ def test_fail_task_honors_pending_control_before_retry(task_store, control, expe
         assert reclaimed["id"] == task["id"]
         assert reclaimed["attempts"] == 2
 
+def test_list_terminal_task_ids_keyset_pages_include_all_terminal_tasks(task_store):
+    completed_ids = []
+    for index in range(5):
+        task = task_manager.create_task(f"terminal.page.{index}", {})
+        claimed = task_manager.claim_next_task(f"worker-page-{index}")
+        assert claimed is not None
+        completed = task_manager.complete_task(task["id"], claimed["lease_owner"], {"ok": True})
+        completed_ids.append(completed["id"])
+
+    first = task_manager.list_terminal_task_ids(limit=2, min_terminal_age_seconds=0)
+    second = task_manager.list_terminal_task_ids(
+        limit=2, min_terminal_age_seconds=0, before_id=first[-1]
+    )
+    third = task_manager.list_terminal_task_ids(
+        limit=2, min_terminal_age_seconds=0, before_id=second[-1]
+    )
+
+    assert first == completed_ids[-2:][::-1]
+    assert second == completed_ids[-4:-2][::-1]
+    assert third == completed_ids[:1]
+    assert set(first + second + third) == set(completed_ids)
+
+
+@pytest.mark.parametrize("before_id", [0, -1, True, 1.5])
+def test_terminal_task_cursor_validates_positive_integer(before_id, task_store):
+    with pytest.raises(ValueError, match="positive integer"):
+        task_manager.list_terminal_task_ids(before_id=before_id)
+
