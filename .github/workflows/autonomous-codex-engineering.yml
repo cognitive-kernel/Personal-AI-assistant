@@ -200,6 +200,7 @@ jobs:
         uses: openai/codex-action@13e9c17417b29e9a276f73ec6ed7fb574137d3c3 # verified upstream commit
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          codex-version: "0.166.0"
           permission-profile: ":workspace"
           safety-strategy: drop-sudo
           output-file: ${{ runner.temp }}/codex-report.md
