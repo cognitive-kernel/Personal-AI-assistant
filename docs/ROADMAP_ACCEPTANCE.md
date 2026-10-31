@@ -192,6 +192,11 @@ Append evidence only after it has actually been produced.
 - Remaining acceptance limits are unchanged: this does not prove live ChatGPT DOM compatibility for every account/layout, source factual reliability, live-model answer quality, target-host operations, or independent security review. Those require separate evidence and are tracked by Issue #290 and Issue #52.
 
 
+## 2026-10-31 — Persistent AI-learning retrieval across process restart (PR #629)
+
+- PR [#629](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/629) adds a fresh-process integration test using the same SQLite file and the production `integration.retrieve_context` adapter. It verifies that the published version is returned, an unpublished draft is excluded, and the new process persists a query trace.
+- Exact-head CI on `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` passed (1738 passed/5 skipped). This is deterministic persistence/retrieval evidence only; live-model quality, factual correctness, human adjudication, and staging restore/rollback remain separate gates.
+
 ## 2026-10-31 — TaskRuntime partial-thread recovery (PR #633)
 
 - PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) merged to `main` as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`.
