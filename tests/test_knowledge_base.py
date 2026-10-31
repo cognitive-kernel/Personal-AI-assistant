@@ -8,7 +8,9 @@ from app import knowledge_base
 @pytest.mark.parametrize("url", [
     "http://learn.microsoft.com/en-us/sql/", "https://example.com/page",
     "https://learn.microsoft.com.evil.example/page", "https://user:pass@learn.microsoft.com/en-us/sql/",
-    "https://learn.microsoft.com:8443/en-us/sql/", "file:///etc/passwd",
+    "https://learn.microsoft.com:8443/en-us/sql/",
+    "https://@learn.microsoft.com/en-us/sql/",
+    "https://learn.microsoft.com:/en-us/sql/", "file:///etc/passwd",
 ])
 def test_url_policy_rejects_unapproved_urls(monkeypatch, url):
     monkeypatch.setattr(knowledge_base.socket, "getaddrinfo", lambda *a, **k: [(None, None, None, None, ("8.8.8.8", 443))])
