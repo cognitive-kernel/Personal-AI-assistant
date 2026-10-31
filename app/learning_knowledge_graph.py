@@ -50,9 +50,21 @@ def propose_edge(
         raise ValueError("Unsupported knowledge graph relation.")
     if not isinstance(source_url, str) or len(source_url) > 1500:
         raise ValueError("source_url must be an HTTPS URL.")
-    parsed = urlparse(source_url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError("source_url must be credential-free HTTPS.")
+    try:
+        parsed = urlparse(source_url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("source_url must be a valid credential-free HTTPS URL.") from exc
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.netloc.endswith(":")
+        or port not in {None, 443}
+    ):
+        raise ValueError("source_url must be a valid credential-free HTTPS URL.")
     if not isinstance(source_excerpt, str) or not 20 <= len(source_excerpt.strip()) <= 1000:
         raise ValueError("source_excerpt must contain 20–1000 characters.")
     excerpt = source_excerpt.strip()
