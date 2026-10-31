@@ -244,7 +244,14 @@ def startup() -> None:
         # prevent the local chat and learning runtime from starting.
         logger.exception("Cloud resource discovery could not be initialized or scheduled.")
     # Repair the crash window between creating a learning record and enqueueing it.
-    reconcile_queued_learning_tasks()
+    # A storage-level reconciliation failure is logged and retried by runtime maintenance;
+    # it must not prevent the local UI and unrelated worker lanes from starting.
+    try:
+        reconcile_queued_learning_tasks()
+    except Exception:
+        logger.exception(
+            "Startup learning-task reconciliation failed; runtime maintenance will retry."
+        )
     # Recover only explicit, persisted AI-learning runs. This never auto-generates
     # new topics/lessons and respects the durable global pause flag.
     if ai_learning_config.is_enabled():
