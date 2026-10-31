@@ -525,6 +525,16 @@ def test_redirect_handler_rejects_https_downgrade_before_transport():
         )
 
 
+def test_redirect_handler_allows_https_redirects():
+    handler = web_sources._SafeRedirectHandler()
+    request = urllib.request.Request("https://public.example/docs")
+    redirected = handler.redirect_request(
+        request, None, 302, "Found", {}, "https://cdn.public.example/docs"
+    )
+    assert redirected is not None
+    assert redirected.full_url == "https://cdn.public.example/docs"
+
+
 def test_pinned_resolver_rejects_private_redirect_target():
     with pytest.raises(web_sources.SourceFetchError):
         web_sources._resolve_public_ip("http://169.254.169.254/latest/meta-data/")
