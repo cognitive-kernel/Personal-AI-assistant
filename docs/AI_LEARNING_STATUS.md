@@ -42,9 +42,9 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین اجرای کامل تأییدشده روی commit کد `6fdd176e81aa408ff17cc1c01ba66ec198f42240` در تاریخ 2026-10-31 موفق بوده است؛ commit مستنداتی جاری `7a2cf05...` پس از آن است و post-merge test آن هنوز در حال اجراست:
+آخرین اجرای کامل تأییدشده روی `main` commit `7a2cf05a7b3485e3b157e41860783fda2e76a846` در تاریخ 2026-10-31 موفق بوده است؛ post-merge CI همین SHA کامل و موفق است:
 
-- مجموعهٔ کامل pytest: **1737 passed, 5 skipped** در 201.85 ثانیه. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
+- مجموعهٔ کامل pytest: **1737 passed, 5 skipped** در 176.88 ثانیه. چهار مورد skip مربوط به تست‌های real-Docker در `tests/test_sandbox_integration.py` هستند که در workflow عمومی اجرا نمی‌شوند؛ این اجرا پذیرش واقعی Docker/target-host را اثبات نمی‌کند.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
