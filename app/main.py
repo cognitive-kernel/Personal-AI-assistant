@@ -161,8 +161,15 @@ async def enforce_loopback_only(request, call_next):
     except ValueError:
         host = None
     allowed_hosts = {"localhost", "127.0.0.1", "::1"}
-    # TestClient uses a synthetic Host only when its peer is also synthetic.
-    if client.host == "testclient" and host == "testserver":
+    # Starlette TestClient exposes a synthetic server tuple; a real TCP server
+    # reports its bound IP address, not this test-only hostname.
+    server = request.scope.get("server")
+    if (
+        isinstance(server, (tuple, list))
+        and server
+        and server[0] == "testserver"
+        and host == "testserver"
+    ):
         allowed_hosts.add("testserver")
     if not isinstance(host, str) or host.casefold() not in allowed_hosts:
         return JSONResponse(
