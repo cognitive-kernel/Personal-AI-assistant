@@ -263,9 +263,12 @@ def list_task_events(
 
 
 def list_terminal_task_ids(
-    *, limit: int = 1000, min_terminal_age_seconds: int = 60
+    *,
+    limit: int = 1000,
+    min_terminal_age_seconds: int = 60,
+    before_id: int | None = None,
 ) -> list[int]:
-    """Return settled task IDs only after a grace period since terminal transition."""
+    """Return one keyset page of settled task IDs after the terminal grace period."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 1000:
         raise ValueError("limit must be between 1 and 1000.")
     if (
@@ -274,14 +277,23 @@ def list_terminal_task_ids(
         or min_terminal_age_seconds < 0
     ):
         raise ValueError("min_terminal_age_seconds must be a non-negative integer.")
+    if before_id is not None and (
+        isinstance(before_id, bool) or not isinstance(before_id, int) or before_id < 1
+    ):
+        raise ValueError("before_id must be a positive integer.")
     cutoff = _timestamp(_now() - timedelta(seconds=min_terminal_age_seconds))
+    query = (
+        "SELECT id FROM task_queue "
+        "WHERE status IN ('succeeded', 'failed', 'cancelled') AND updated_at <= ?"
+    )
+    params: list[Any] = [cutoff]
+    if before_id is not None:
+        query += " AND id < ?"
+        params.append(before_id)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
     with db.learning_connection() as conn:
-        rows = conn.execute(
-            """SELECT id FROM task_queue
-               WHERE status IN ('succeeded', 'failed', 'cancelled') AND updated_at <= ?
-               ORDER BY updated_at DESC, id DESC LIMIT ?""",
-            (cutoff, limit),
-        ).fetchall()
+        rows = conn.execute(query, tuple(params)).fetchall()
     return [int(row["id"]) for row in rows]
 
 
