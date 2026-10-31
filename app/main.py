@@ -247,6 +247,15 @@ async def enforce_loopback_only(request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def add_local_security_headers(request, call_next):
+    """Prevent clickjacking of the local dashboard and API responses."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    return response
+
+
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
