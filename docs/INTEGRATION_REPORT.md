@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> آخرین commit بررسی‌شدهٔ `main`: `6f601e8cc210419392bfbd1affb9590db978dd3a` (پس از ادغام PR #664 و #667). Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed.
+> آخرین commit بررسی‌شدهٔ `main`: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` پس از PR #669. PR #669 evaluator را به بررسی اختیاری زبان مورد انتظار و نسبت ۶۵٪ script غالب مجهز کرد؛ exact-head CI با 1807 passed/47 deselected، Windows storage، dashboard smoke، browser E2E، dependency audit، 90 Markdown files و benchmark 10/10 موفق شد. Post-merge CI روی SHA فعلی هنوز در حال اجرا/صف است.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -279,3 +279,5 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - The state decision is made inside the existing `BEGIN IMMEDIATE` transaction after lease ownership validation. Failure diagnostics are preserved and the lease is cleared for each terminal/paused settlement.
 - Task-manager and worker tests cover both controls, including heartbeat startup failure and ensuring the handler does not run. ADR-013 records the state-machine decision.
 - Merged as `b50daaaaa12fab13d6526a47335613bd30a63eba`; post-merge CI passed with 1746 passed/5 skipped, Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks.
+
+- PR [#669](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/669) تشخیص اختیاری زبان پاسخ را به evaluator افزود؛ scriptهای عربی/لاتین در متن طبیعی شمرده می‌شوند، fenced/inline code و URL حذف می‌شوند، شواهد ناکافی رد می‌شود و آستانهٔ ۶۵٪ با طبقه‌بندی script غالب سازگار است. Regressionهای متقارن برای نسبت ۶۰٪ و ۶۵٪ اضافه شدند. Merge: `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`. Exact-head CI: 1807 passed/47 deselected، Windows storage، browser smoke/E2E، dependency audit، 90 Markdown files و benchmark 10/10. محدودیت: این روش language identification معنایی نیست و جایگزین live model/human evaluation نمی‌شود.
