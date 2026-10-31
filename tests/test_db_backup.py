@@ -1,9 +1,10 @@
+import json
 import os
 import sqlite3
 
 import pytest
 
-from app import cloud_resources, db, task_manager
+from app import cloud_resources, db, db_backup, task_manager
 from app.db_backup import BackupRestoreError, backup_databases, restore_databases
 
 
@@ -189,3 +190,46 @@ def test_restore_rejects_destination_inside_source_backup(initialized_databases,
     assert sorted(path.name for path in bundle.iterdir()) == [
         "learning.sqlite3", "manifest.json", "settings.sqlite3"
     ]
+
+def test_restore_revalidates_staged_snapshot_against_manifest(initialized_databases, tmp_path, monkeypatch):
+    settings_path, learning_path, _cloud_path = initialized_databases
+    bundle = tmp_path / "backup"
+    backup_databases(settings_path, learning_path, bundle)
+    original_snapshot = db_backup._snapshot
+    changed = False
+
+    def mutate_backup_before_snapshot(source_path, destination_path):
+        nonlocal changed
+        if not changed and source_path.name == "settings.sqlite3":
+            # Simulate a valid SQLite file changing after preflight verification
+            # but before the actual restore snapshot is copied.
+            with sqlite3.connect(source_path) as connection:
+                connection.execute(
+                    "INSERT INTO settings(key, value_json) VALUES ('restore-race', 'true')"
+                )
+            changed = True
+        return original_snapshot(source_path, destination_path)
+
+    monkeypatch.setattr(db_backup, "_snapshot", mutate_backup_before_snapshot)
+    destination = tmp_path / "restored"
+
+    with pytest.raises(BackupRestoreError, match="changed during restore"):
+        restore_databases(bundle, destination)
+
+    assert changed is True
+    assert not destination.exists()
+    assert not list(tmp_path.glob(".restored.restore-*"))
+
+
+def test_restore_rejects_non_integer_manifest_format_version(initialized_databases, tmp_path):
+    settings_path, learning_path, _cloud_path = initialized_databases
+    bundle = tmp_path / "backup"
+    backup_databases(settings_path, learning_path, bundle)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["format_version"] = True
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(BackupRestoreError, match="Unsupported backup manifest format"):
+        restore_databases(bundle, tmp_path / "restored")
+

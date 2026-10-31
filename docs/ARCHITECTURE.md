@@ -44,3 +44,4 @@
 - تصمیم بازیابی خرابی جزئی threadهای صف وظایف: [ADR-012](architecture/ADR-012-task-runtime-health-recovery.md)
 - تقدم درخواست توقف/لغو بر retry خودکار صف: [ADR-013](architecture/ADR-013-task-control-priority.md)
 - ثبت runtime پیش از شروع threadها برای پاک‌سازی شکست startup: [ADR-014](architecture/ADR-014-track-runtime-before-start.md)
+- تطبیق snapshot نهایی بازیابی با manifest و رد تغییر هم‌زمان فایل پشتیبان: [ADR-015](architecture/ADR-015-verify-staged-restore.md)
