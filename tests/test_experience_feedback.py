@@ -61,7 +61,7 @@ def test_feedback_service_rejects_coercive_ratings_and_experience_ids(tmp_path, 
     item = _verified()
 
     for rating in (True, 1.0, -1.0, "1", " -1 "):
-        with pytest.raises(ValueError, match="integer -1 or 1"):
+        with pytest.raises(ValueError, match="must be -1 or 1"):
             experience_feedback.set_feedback(item["id"], rating)
 
     for experience_id in (True, 1.0, "1", 0, -1):
