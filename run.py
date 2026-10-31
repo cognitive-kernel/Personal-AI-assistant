@@ -189,6 +189,7 @@ def _patch_linux_install_script(installer: Path) -> Path:
         error "The verified Ollama archive is missing or empty: ${asset_name}"
     fi
     status "Extracting SHA-256 verified ${asset_name}"
+    set -o pipefail
     zstd -d --stdout "$archive_path" | $SUDO tar -xf - -C "$dest_dir"
 }"""
     patched = script[:start] + replacement + script[end + 2:]
