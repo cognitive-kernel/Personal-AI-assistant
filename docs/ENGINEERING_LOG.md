@@ -55,11 +55,10 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 
 ### Next actions
 
-1. Verify exact-SHA post-merge CI for `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`.
-2. Complete PR #670 documentation synchronization after the PR #669 merge; require exact-head tests, Windows storage, browser smoke and dependency audit.
-3. Continue the next highest-risk independent workstream: inspect live-model source discovery/provenance evidence and determine whether missing sources are provider/environment failures or a code defect.
-4. Reconcile historical branches without deleting unmerged useful work.
-5. Keep target-host, human-adjudication and independent-review gates open until the responsible operator/reviewer supplies evidence.
+1. Investigate source discovery/provenance reliability in the live-model answer pipeline; distinguish provider/environment failures from application defects and add a reproducible regression for any confirmed code defect.
+2. Reconcile historical branches without deleting unmerged useful work.
+3. Recalculate the scorecard only when new evidence changes a gate.
+4. Keep target-host, human-adjudication and independent-review gates open until the responsible operator/reviewer supplies evidence.
 
 
 ### Continuation update — same session
@@ -80,7 +79,7 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 ### Post-merge and PR #669 checkpoint — 2026-10-31
 
 - PR #668 is merged. No application code or user data changed in that PR.
-- PR #669 is still open; no merge is authorized until all checks pass on its final exact head and the PR remains conflict-free.
+- At this historical checkpoint PR #669 was open; it subsequently merged as `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` after all exact-head checks passed.
 
 
 ### Historical CI note clarification
@@ -95,4 +94,12 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - Added positive and negative Persian/English benchmark cases, URL/code exclusion, insufficient-evidence and unsupported-language tests, and integration coverage. Existing evaluation cases without `expected_language` retain prior behavior.
 - PR [#669](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/669) merged as `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`; exact head `bedf5f54bb55dd2cf64b267b9b5561436820ac61`. CI: **1,807 passed / 47 deselected** in 210.52s; Windows storage regressions, dashboard smoke, browser E2E, dependency audit, Markdown validation (90 files), import-cycle checks and deterministic benchmark 10/10 passed. [Tests #41215830531](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830531) · [Browser #41215830524](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830524) · [Audit #41215830502](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830502).
 - Limitations: script-ratio diagnostics do not identify natural languages semantically and do not distinguish Persian from other Arabic-script languages or English from other Latin-script languages. Live-model evaluation and human adjudication remain open.
-- Current `main` is `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`. - Current-main post-merge tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310), browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276), and dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245) were queued/running at this checkpoint.
+- Current `main` is `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6`.
+- Current-main post-merge CI on `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` completed successfully: tests [#41216212310](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212310), browser E2E [#41216212276](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212276), and dependency audit [#41216212245](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41216212245).
+
+
+### CI completion reconciliation — 2026-10-31
+
+- The earlier pending/queued wording was accurate only at the time of its original snapshot. All three current-main workflows on `47ddaa7973c59115e6e41aed7ebf70ebd3778bd6` subsequently completed successfully (tests, browser E2E, dependency audit).
+- PR #670 documentation synchronization exact head `1d00000055573acb1edc30e402b7a8692e16ce69` also passed tests, browser E2E and dependency audit. Its changes remain documentation-only; merge after review of the final diff.
+- Next implementation investigation: source discovery/provenance and live-model provider error classification. Do not claim live-model quality until a pinned model run and human adjudication exist.
