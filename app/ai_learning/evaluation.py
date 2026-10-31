@@ -105,7 +105,7 @@ def evaluate_answer(
     min_chars: int = 20,
     expected_language: str | None = None,
 ) -> dict[str, Any]:
-    """Score answer completeness, rule violations, and optional language adherence.""
+    """Score answer completeness, rule violations, and optional language adherence."""
     normalized = normalize_text(answer)
     concepts = [normalize_text(item) for item in expected_concepts if normalize_text(item)]
     forbidden = [normalize_text(item) for item in must_not_claim if normalize_text(item)]
