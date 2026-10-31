@@ -253,3 +253,11 @@
 - PR [#676](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/676) در وضعیت draft است. commit پیاده‌سازی `f0ff075e9474817cd6fdf643f30087c98b93761f`، commit تست `1b1f0229cd62b3109928da3455a445992d209d7f` و checkpoint مستندات `d08bbc3e25114bc76baa8ccbb4a661f371fa7d54` هستند. پس از checkpoint مستندات، SHA نهایی branch باید دوباره از GitHub خوانده شود.
 - CI روی head پیش از مستندات: dependency audit، dashboard smoke و Windows storage موفق؛ test workflow در حال اجرا بود. این نتیجه برای head نهایی پس از مستندات معتبر نیست؛ CI دقیق همان head باید دوباره تأیید شود. اجرای محلی pytest در این runtime انجام نشده است.
 - این اصلاح یکپارچگی query URL را حفظ می‌کند؛ منبع‌یابی زنده، دسترس‌پذیری providerها و ارزیابی زندهٔ مدل را اثبات نمی‌کند. ارزیابی pinned-model و human adjudication همچنان باز هستند؛ Issue #52 نیز نیازمند independent security review است.
+
+## 2026-11-01 — Local autonomous engineering worker (PR #675)
+
+- The former paid API dependency is being replaced with Codex CLI local OSS mode through Ollama on a Windows self-hosted runner. No OpenAI API key is part of the proposed activation path.
+- New local operations console: `/autonomous-engineering`; it reports Ollama/model/Codex/Runner/GitHub CLI readiness and exposes explicit workflow dispatch/cancel controls.
+- Main dashboard, AI-learning page, and new operations page share the primary navigation.
+- Workflow architecture: trusted-main local coding job; GitHub-hosted secret-free patch validation; separate GitHub-hosted draft-PR publication. No direct main writes, auto-merge, or deployment.
+- Status: implementation branch active; tests and exact-head CI pending. Owner-side Windows runner registration, Ollama/Codex setup, and target-host soak have not been performed and are not claimed complete.
