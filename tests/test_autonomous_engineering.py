@@ -254,10 +254,10 @@ def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(mon
 
     scorecard = tmp_path / "ACCEPTANCE_SCORECARD.md"
     scorecard.write_text(
-        "**Snapshot:** 2026-11-01\\n"
-        "**Scored baseline:** main at " + "a" * 40 + "\\n"
-        "- **Engineering completion:** score = 60.47%\\n"
-        "- **Overall acceptance progress:** score = 57.45%\\n",
+        "**Snapshot:** 2026-11-01\n"
+        "**Scored baseline:** main at " + "a" * 40 + "\n"
+        "- **Engineering completion:** score = 60.47%\n"
+        "- **Overall acceptance progress:** score = 57.45%\n",
         encoding="utf-8",
     )
     storage = tmp_path / "telemetry"
@@ -267,7 +267,7 @@ def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(mon
             "type": "project_snapshot", "date": "2026-11-02",
             "recorded_at": "2026-11-02T10:00:00+00:00",
             "engineering_percent": 61.0, "overall_percent": 58.0, "sha": "b" * 40,
-        }) + "\\n",
+        }) + "\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(progress, "_DEFAULT_SCORECARD", scorecard)
