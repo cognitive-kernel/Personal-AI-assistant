@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, StrictInt, ConfigDict
 
 from . import chat_history, db, research_planner, research_tasks, task_manager
 from .task_routes import require_loopback_client
@@ -19,14 +19,14 @@ router = APIRouter(
 class ResearchTaskRequest(BaseModel):
     message: str = Field(min_length=1, max_length=12000)
     history: list[dict[str, str]] = Field(default_factory=list, max_length=30)
-    conversation_id: int | None = Field(default=None, ge=1)
+    conversation_id: StrictInt | None = Field(default=None, ge=1)
 
     model_config = ConfigDict(extra="forbid")
 
 
 class ResearchPlanRequest(BaseModel):
     goal: str = Field(min_length=1, max_length=12000)
-    max_steps: int = Field(default=4, ge=2, le=5)
+    max_steps: StrictInt = Field(default=4, ge=2, le=5)
 
     model_config = ConfigDict(extra="forbid")
 
