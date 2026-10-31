@@ -107,8 +107,6 @@ class TaskRuntime:
             self._maintenance_thread = None
             self._stop_event.clear()
             self._maintenance_ready.clear()
-            self._threads = []
-            self._maintenance_thread = None
             try:
                 for index in range(self.worker_count):
                     worker = TaskWorker(
