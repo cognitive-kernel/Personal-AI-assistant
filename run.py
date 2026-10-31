@@ -716,6 +716,16 @@ def _ensure_ollama() -> None:
         if asset_name is None:
             raise RuntimeError(f"نصب خودکار Ollama برای سیستم‌عامل {system} پشتیبانی نمی‌شود.")
         release = _latest_ollama_release_assets()
+        if system == "Linux":
+            machine = platform.machine().lower()
+            architecture = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
+            if architecture is None:
+                raise RuntimeError(f"معماری Linux پشتیبانی نمی‌شود: {machine}")
+            base_asset = f"ollama-linux-{architecture}.tar.zst"
+            if base_asset not in release["assets"]:
+                raise RuntimeError(
+                    f"انتشار {release['tag']} بستهٔ Linux تأییدپذیر {base_asset} را ندارد."
+                )
         asset = release["assets"].get(asset_name)
         if asset is None:
             raise RuntimeError(
@@ -742,10 +752,20 @@ def _ensure_ollama() -> None:
         if system == "Windows":
             result = _run([str(installer)])
         elif system == "Linux":
+            if release is None:
+                raise RuntimeError("اطلاعات انتشار تأییدشده برای نصب Linux موجود نیست.")
+            verified_installer = _patch_linux_install_script(installer)
             install_env = os.environ.copy()
-            if release is not None:
-                install_env["OLLAMA_VERSION"] = release["tag"].lstrip("v")
-            result = _run(["sh", str(installer)], env=install_env)
+            install_env.update({
+                "OLLAMA_VERSION": release["tag"].lstrip("v"),
+                "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON": json.dumps(
+                    release, ensure_ascii=True, separators=(",", ":")
+                ),
+                "OLLAMA_VERIFIED_ASSET_DIR": str(INSTALLERS / "ollama-release-assets"),
+                "OLLAMA_VERIFIED_PYTHON": sys.executable,
+                "OLLAMA_VERIFIED_RUNNER": str(Path(__file__).resolve()),
+            })
+            result = _run(["sh", str(verified_installer)], env=install_env)
         else:
             # macOS app installation is intentionally left interactive; opening the
             # cached archive lets the user complete the signed app installation.
@@ -815,4 +835,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--download-ollama-asset"]:
+        try:
+            raise SystemExit(_download_ollama_asset_cli(sys.argv[2:]))
+        except Exception as exc:
+            print(f"Verified Ollama asset download failed: {exc}", file=sys.stderr)
+            raise SystemExit(2)
     raise SystemExit(main())
