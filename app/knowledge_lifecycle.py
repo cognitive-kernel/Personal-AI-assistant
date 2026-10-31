@@ -154,35 +154,35 @@ def record_candidate_review(
     return dict(row)
 
 
-def candidate_readiness(candidate_id: int) -> dict[str, Any]:
-    """Compute conservative readiness from distinct, current-hash evidence."""
-    init_databases()
-    with learning_connection() as connection:
-        candidate = _candidate_row(connection, candidate_id)
-        if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
-            total_reviews = int(connection.execute(
-                "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?", (candidate_id,)
-            ).fetchone()[0])
-            return {
-                "candidate_id": candidate_id,
-                "candidate_sha256": candidate["content_sha256"],
-                "status": "rejected_after_review",
-                "ready_for_promotion": False,
-                "checks": {"content_scrubbed": True, "promotion_blocked": True},
-                "evidence_counts": {"review_records": total_reviews},
-                "contradictions": [],
-                "note": "Rejected content was scrubbed after multi-source review; audit hashes and review records remain.",
-            }
-        reviews = [dict(row) for row in connection.execute(
-            """SELECT * FROM knowledge_candidate_reviews
-               WHERE candidate_id=? AND candidate_sha256=?
-               ORDER BY id""",
-            (candidate_id, candidate["content_sha256"]),
-        ).fetchall()]
-        all_reviews = int(connection.execute(
-            "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?",
-            (candidate_id,),
+def _candidate_readiness_in_connection(
+    connection, candidate_id: int, settings: dict[str, Any]
+) -> dict[str, Any]:
+    """Compute readiness using only the supplied learning-database connection."""
+    candidate = _candidate_row(connection, candidate_id)
+    if candidate["status"] == "failed" and str(candidate["failure_reason"] or "").startswith("rejected_after_review:"):
+        total_reviews = int(connection.execute(
+            "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?", (candidate_id,)
         ).fetchone()[0])
+        return {
+            "candidate_id": candidate_id,
+            "candidate_sha256": candidate["content_sha256"],
+            "status": "rejected_after_review",
+            "ready_for_promotion": False,
+            "checks": {"content_scrubbed": True, "promotion_blocked": True},
+            "evidence_counts": {"review_records": total_reviews},
+            "contradictions": [],
+            "note": "Rejected content was scrubbed after multi-source review; audit hashes and review records remain.",
+        }
+    reviews = [dict(row) for row in connection.execute(
+        """SELECT * FROM knowledge_candidate_reviews
+           WHERE candidate_id=? AND candidate_sha256=?
+           ORDER BY id""",
+        (candidate_id, candidate["content_sha256"]),
+    ).fetchall()]
+    all_reviews = int(connection.execute(
+        "SELECT COUNT(*) FROM knowledge_candidate_reviews WHERE candidate_id=?",
+        (candidate_id,),
+    ).fetchone()[0])
     sources = {
         _registrable_source_domain(str(item["source_host"])) for item in reviews
         if item["review_kind"] == "source" and item["verdict"] == "supports"
@@ -207,7 +207,6 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
         and bool(test_results)
         and any(isinstance(item, dict) and item.get("passed") is True for item in test_results)
     )
-    settings = get_settings()
     generation_models = {
         str(settings.get("learning_ollama_model", "")).strip(),
         str(settings.get("ollama_model", "")).strip(),
@@ -248,6 +247,14 @@ def candidate_readiness(candidate_id: int) -> dict[str, Any]:
             "from trusted adapters; source-host diversity alone does not prove organizational independence."
         ),
     }
+
+
+def candidate_readiness(candidate_id: int) -> dict[str, Any]:
+    """Compute conservative readiness from distinct, current-hash evidence."""
+    init_databases()
+    settings = get_settings()
+    with learning_connection() as connection:
+        return _candidate_readiness_in_connection(connection, candidate_id, settings)
 
 
 def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> dict[str, Any]:
@@ -332,6 +339,17 @@ def promote_candidate(candidate_id: int, *, expected_candidate_sha256: str) -> d
         "note": "The temporary candidate and immutable review history remain available for audit.",
     }
 
+
+
+
+def _complete_candidate_validation(context, checkpoint, operation):
+    """Commit the final candidate state and durable task success together when available."""
+    complete_with_commit = getattr(context, "complete_with_commit", None)
+    if callable(complete_with_commit):
+        return complete_with_commit(checkpoint, operation)
+    with learning_connection() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        return operation(connection)
 
 
 def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str, Any]:
@@ -570,41 +588,100 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
             "source_sha256": [item["sha256"] for item in documents],
             "reviewer_digests": [item["digest"] for item in model_results],
         }
-        test_input_hash = hashlib.sha256(json.dumps({"candidate": current_hash, "sources": test_result["source_sha256"]}, sort_keys=True).encode()).hexdigest()
+        test_input_hash = hashlib.sha256(json.dumps(
+            {"candidate": current_hash, "sources": test_result["source_sha256"]}, sort_keys=True
+        ).encode()).hexdigest()
         test_output_hash = hashlib.sha256(json.dumps(test_result, sort_keys=True).encode()).hexdigest()
-        record_candidate_review(
-            candidate_id, candidate_sha256=current_hash, review_kind="test_review",
-            verdict="supports", reviewer_id="multi-model-source-consistency-v1",
-            note="Two digest-distinct reviewer models independently supported the lesson against current source pages.",
-            input_sha256=test_input_hash, output_sha256=test_output_hash, _trusted_adapter=True,
-        )
-        with learning_connection() as connection:
-            connection.execute(
+        test_note = "Two digest-distinct reviewer models independently supported the lesson against current source pages."
+
+        def persist_supported_candidate(connection):
+            current = _candidate_row(connection, candidate_id)
+            if current["content_sha256"] != current_hash or current["promoted_knowledge_id"] is not None:
+                raise ValueError("Candidate changed or was promoted before validation could be committed.")
+            if current["status"] not in {"awaiting_test", "conflicting", "passed"}:
+                raise ValueError("Candidate is no longer eligible for a successful validation outcome.")
+            existing_review = connection.execute(
+                """SELECT id FROM knowledge_candidate_reviews
+                   WHERE candidate_id=? AND candidate_sha256=? AND review_kind='test_review'
+                     AND verdict='supports' AND reviewer_id=? AND input_sha256=? AND output_sha256=?
+                   LIMIT 1""",
+                (candidate_id, current_hash, "multi-model-source-consistency-v1", test_input_hash, test_output_hash),
+            ).fetchone()
+            if existing_review is None:
+                connection.execute(
+                    """INSERT INTO knowledge_candidate_reviews(
+                           candidate_id, candidate_sha256, review_kind, verdict, reviewer_id,
+                           model_id, source_url, source_host, source_sha256,
+                           input_sha256, output_sha256, note
+                       ) VALUES (?, ?, 'test_review', 'supports', ?, NULL, NULL, NULL, NULL, ?, ?, ?)""",
+                    (candidate_id, current_hash, "multi-model-source-consistency-v1",
+                     test_input_hash, test_output_hash, test_note),
+                )
+            updated = connection.execute(
                 """UPDATE temporary_knowledge_candidates
                    SET status='passed', test_results_json=?, failure_reason='',
                        updated_at=CURRENT_TIMESTAMP
                    WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL""",
                 (json.dumps([test_result], ensure_ascii=False, sort_keys=True), candidate_id, current_hash),
             )
-    elif all_contradict and len(source_hosts_contradicting) >= 2:
-        reason = "rejected_after_review: two digest-distinct reviewers and at least two distinct live source hosts contradicted this candidate; content scrubbed, hashes retained."
-        with learning_connection() as connection:
+            if updated.rowcount != 1:
+                raise ValueError("Candidate changed before its validation outcome could be committed.")
+            readiness = _candidate_readiness_in_connection(connection, candidate_id, settings)
+            return {
+                "candidate_id": candidate_id,
+                "status": readiness["status"],
+                "ready_for_promotion": readiness["ready_for_promotion"],
+                "reviewers": model_results,
+                "source_hosts_reviewed": [item["host"] for item in documents],
+                "readiness": readiness,
+                "note": "A failed fetch, model error, or one disagreement leaves the candidate temporary; only repeated multi-source contradiction marks it rejected.",
+            }
+
+        return _complete_candidate_validation(
+            context,
+            {"stage": "candidate_validation_committed", "candidate_id": candidate_id, "status": "passed"},
+            persist_supported_candidate,
+        )
+
+    if all_contradict and len(source_hosts_contradicting) >= 2:
+        reason = (
+            "rejected_after_review: two digest-distinct reviewers and at least two distinct live source hosts "
+            "contradicted this candidate; content scrubbed, hashes retained."
+        )
+
+        def persist_rejected_candidate(connection):
+            current = _candidate_row(connection, candidate_id)
+            if current["content_sha256"] != current_hash or current["promoted_knowledge_id"] is not None:
+                raise ValueError("Candidate changed or was promoted before rejection could be committed.")
+            if current["status"] == "failed" and str(current["failure_reason"] or "").startswith("rejected_after_review:"):
+                readiness = _candidate_readiness_in_connection(connection, candidate_id, settings)
+                return {
+                    "candidate_id": candidate_id,
+                    "status": "rejected_after_review",
+                    "ready_for_promotion": False,
+                    "reviewers": model_results,
+                    "source_hosts_reviewed": [item["host"] for item in documents],
+                    "readiness": readiness,
+                    "note": "A failed fetch, model error, or one disagreement leaves the candidate temporary; only repeated multi-source contradiction marks it rejected.",
+                }
             connection.execute(
                 "DELETE FROM learning_source_text WHERE job_id=?",
-                (candidate["job_id"],),
+                (current["job_id"],),
             )
             connection.execute(
                 "DELETE FROM knowledge_items WHERE job_id=? AND status='unverified'",
-                (candidate["job_id"],),
+                (current["job_id"],),
             )
-            connection.execute(
+            job_update = connection.execute(
                 """UPDATE learning_jobs
                    SET status='rejected', assessment_json=NULL, error=?,
                        updated_at=CURRENT_TIMESTAMP
                    WHERE id=?""",
-                (reason, candidate["job_id"]),
+                (reason, current["job_id"]),
             )
-            connection.execute(
+            if job_update.rowcount != 1:
+                raise ValueError("Learning job changed before candidate rejection could be committed.")
+            candidate_update = connection.execute(
                 """UPDATE temporary_knowledge_candidates
                    SET content='', source_urls_json='[]', quality_report_json='{}',
                        test_plan_json='[]', status='failed', failure_reason=?,
@@ -612,10 +689,29 @@ def validate_candidate_with_models(candidate_id: int, context=None) -> dict[str,
                    WHERE id=? AND content_sha256=? AND promoted_knowledge_id IS NULL""",
                 (reason, candidate_id, current_hash),
             )
+            if candidate_update.rowcount != 1:
+                raise ValueError("Candidate changed before rejection could be committed.")
+            readiness = _candidate_readiness_in_connection(connection, candidate_id, settings)
+            return {
+                "candidate_id": candidate_id,
+                "status": "rejected_after_review",
+                "ready_for_promotion": False,
+                "reviewers": model_results,
+                "source_hosts_reviewed": [item["host"] for item in documents],
+                "readiness": readiness,
+                "note": "A failed fetch, model error, or one disagreement leaves the candidate temporary; only repeated multi-source contradiction marks it rejected.",
+            }
+
+        return _complete_candidate_validation(
+            context,
+            {"stage": "candidate_validation_committed", "candidate_id": candidate_id, "status": "rejected_after_review"},
+            persist_rejected_candidate,
+        )
+
     readiness = candidate_readiness(candidate_id)
     return {
         "candidate_id": candidate_id,
-        "status": readiness["status"] if not all_contradict else "rejected_after_review",
+        "status": readiness["status"],
         "ready_for_promotion": readiness["ready_for_promotion"],
         "reviewers": model_results,
         "source_hosts_reviewed": [item["host"] for item in documents],

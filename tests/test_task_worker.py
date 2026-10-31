@@ -33,6 +33,26 @@ def test_worker_dispatches_only_registered_handler_and_persists_result(worker_st
     assert worker.run_once() is False
 
 
+def test_worker_skips_second_completion_after_atomic_handler_commit(worker_store):
+    task = task_manager.create_task("test.atomic-completion", {})
+
+    def handler(_payload, _checkpoint, context):
+        result = {"domain_write": "committed"}
+        context.complete_with_commit(
+            {"stage": "domain_committed"},
+            lambda _connection: result,
+        )
+        return result
+
+    worker = TaskWorker("worker-atomic", {"test.atomic-completion": handler})
+    assert worker.run_once() is True
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "succeeded"
+    assert saved["result"] == {"domain_write": "committed"}
+    assert saved["checkpoint"] == {"stage": "domain_committed"}
+
+
 def test_worker_fails_unknown_task_type_without_executing_payload(worker_store):
     task = task_manager.create_task("unregistered.type", {"command": "must not run"})
     worker = TaskWorker("worker-1", {"known.type": lambda *_: {"ok": True}})

@@ -28,5 +28,6 @@ def handle_validate_candidate(
     if readiness["candidate_sha256"] != candidate_sha256:
         raise ValueError("Candidate content changed after the validation task was queued.")
     result = knowledge_lifecycle.validate_candidate_with_models(candidate_id, context=context)
-    context.checkpoint({"stage": "finished", "candidate_id": candidate_id})
+    if getattr(context, "completed_task", None) is None:
+        context.checkpoint({"stage": "finished", "candidate_id": candidate_id})
     return result

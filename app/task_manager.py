@@ -11,7 +11,7 @@ import json
 import sqlite3
 import random
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from . import db
 
@@ -418,19 +418,42 @@ def save_checkpoint(task_id: int, worker_id: str, checkpoint: dict[str, Any]) ->
     return _task(updated)  # type: ignore[return-value]
 
 
-def complete_task(task_id: int, worker_id: str, result: dict[str, Any]) -> dict[str, Any]:
-    encoded = _json(result)
+def complete_task(
+    task_id: int,
+    worker_id: str,
+    result: dict[str, Any],
+    *,
+    checkpoint: dict[str, Any] | None = None,
+    before_commit: Callable[[sqlite3.Connection], dict[str, Any] | None] | None = None,
+) -> dict[str, Any]:
+    """Atomically commit an optional DB-only domain write and task terminal result.
+
+    before_commit must be short and synchronous, use only the supplied connection,
+    and must not perform network I/O or open another database connection.
+    """
+    if not isinstance(result, dict):
+        raise ValueError("result must be a JSON object.")
+    if checkpoint is not None and not isinstance(checkpoint, dict):
+        raise ValueError("checkpoint must be a JSON object when provided.")
+    encoded_checkpoint = _json(checkpoint) if checkpoint is not None else None
     now = _timestamp()
     with db.learning_connection() as conn:
-        # A reclaiming worker must not interleave between validation and completion.
+        # A reclaiming worker or pause/cancel request cannot interleave with the
+        # domain write and terminal task transition.
         conn.execute("BEGIN IMMEDIATE")
         row = _owned_running_task(conn, task_id, worker_id)
         if row["status"] != "running":
             raise TaskManagerError(f"Cannot complete a task with status {row['status']}.")
+        committed_result = before_commit(conn) if before_commit is not None else None
+        final_result = committed_result if committed_result is not None else result
+        if not isinstance(final_result, dict):
+            raise ValueError("The atomic commit callback must return a JSON object or None.")
+        encoded_result = _json(final_result)
         conn.execute(
             """UPDATE task_queue SET status='succeeded', result_json=?, error=NULL,
+               checkpoint_json=COALESCE(?, checkpoint_json),
                lease_owner=NULL, lease_expires_at=NULL, updated_at=? WHERE id=?""",
-            (encoded, now, task_id),
+            (encoded_result, encoded_checkpoint, now, task_id),
         )
         updated = conn.execute("SELECT * FROM task_queue WHERE id=?", (task_id,)).fetchone()
     return _task(updated)  # type: ignore[return-value]

@@ -542,3 +542,90 @@ def test_fail_task_honors_pending_control_before_retry(task_store, control, expe
         assert reclaimed["id"] == task["id"]
         assert reclaimed["attempts"] == 2
 
+def test_complete_task_commits_domain_write_and_task_result_atomically(task_store):
+    with db.learning_connection() as connection:
+        connection.execute(
+            "CREATE TABLE atomic_domain_test (task_id INTEGER PRIMARY KEY, value TEXT NOT NULL)"
+        )
+    task = task_manager.create_task("atomic-completion", {})
+    claimed = task_manager.claim_next_task("atomic-worker")
+    assert claimed["id"] == task["id"]
+
+    def persist_domain_result(connection):
+        connection.execute(
+            "INSERT INTO atomic_domain_test(task_id, value) VALUES (?, ?)",
+            (task["id"], "committed"),
+        )
+        return {"domain_write": "committed"}
+
+    completed = task_manager.complete_task(
+        task["id"],
+        "atomic-worker",
+        {},
+        checkpoint={"stage": "domain_committed"},
+        before_commit=persist_domain_result,
+    )
+
+    assert completed["status"] == "succeeded"
+    assert completed["result"] == {"domain_write": "committed"}
+    assert completed["checkpoint"] == {"stage": "domain_committed"}
+    with db.learning_connection() as connection:
+        row = connection.execute(
+            "SELECT value FROM atomic_domain_test WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()
+    assert row["value"] == "committed"
+
+
+def test_complete_task_does_not_run_domain_callback_after_cancel_request(task_store):
+    task = task_manager.create_task("atomic-cancel", {})
+    claimed = task_manager.claim_next_task("atomic-worker")
+    assert claimed["id"] == task["id"]
+    task_manager.request_cancel(task["id"])
+    calls = []
+
+    with pytest.raises(TaskManagerError, match="cancel_requested"):
+        task_manager.complete_task(
+            task["id"],
+            "atomic-worker",
+            {},
+            before_commit=lambda _connection: calls.append(True) or {"must_not_commit": True},
+        )
+
+    assert calls == []
+    assert task_manager.get_task(task["id"])["status"] == "cancel_requested"
+
+
+def test_complete_task_rolls_back_domain_callback_when_it_fails(task_store):
+    with db.learning_connection() as connection:
+        connection.execute(
+            "CREATE TABLE atomic_domain_test (task_id INTEGER PRIMARY KEY, value TEXT NOT NULL)"
+        )
+    task = task_manager.create_task("atomic-rollback", {})
+    claimed = task_manager.claim_next_task("atomic-worker")
+    assert claimed["id"] == task["id"]
+
+    def fail_after_domain_write(connection):
+        connection.execute(
+            "INSERT INTO atomic_domain_test(task_id, value) VALUES (?, ?)",
+            (task["id"], "must-rollback"),
+        )
+        raise RuntimeError("simulated domain write failure")
+
+    with pytest.raises(RuntimeError, match="simulated domain write failure"):
+        task_manager.complete_task(
+            task["id"],
+            "atomic-worker",
+            {},
+            before_commit=fail_after_domain_write,
+        )
+
+    saved = task_manager.get_task(task["id"])
+    assert saved["status"] == "running"
+    assert saved["result"] is None
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM atomic_domain_test WHERE task_id=?",
+            (task["id"],),
+        ).fetchone()[0]
+    assert count == 0
