@@ -1,7 +1,7 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-11-01  
-> آخرین commit شاخهٔ `main`: `348be1d2bd9f69e91f9631911f889e8ab6f442d2` (ادغام PR #672). Exact-head CI برای PR #671 موفق شد؛ post-merge CI روی SHA فعلی هنوز در حال اجرا است: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370)، browser/dashboard smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374)، dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466).
+> تاریخ بازبینی: 2026-10-31  
+> آخرین commit شاخهٔ `main`: `bcb04de842faab596d31c3955fa5046a407c9fc7` (ادغام PR #673؛ والد آن merge commit مربوط به PR #674 است). پس از ادغام، تمام checkهای همین SHA موفق شده‌اند: tests و Windows storage [#41246877787](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41246877787)، dashboard smoke [#41246877793](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41246877793)، dependency audit [#41246877791](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41246877791).
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 ## 1. خلاصهٔ وضعیت
@@ -244,3 +244,12 @@
 - This schedule excludes local/manual owner testing, human adjudication, target-host operator acceptance and the independent security review itself. Automated tests/CI and code remediation remain in scope.
 - The earlier 12-day estimate is withdrawn as unsupported. The historical 60.47% gate score is not an effort estimate.
 - The 22-day figure is the preserved planning baseline; any delay must be explained with task-level evidence and actual/remaining engineering hours in `docs/ENGINEERING_LOG.md`. Do not overwrite the original baseline when reforecasting.
+
+## 2026-10-31 — اصلاح یکپارچگی URL در جست‌وجوی منابع (PR #676)
+
+
+- مبنای PR: شاخهٔ `main` در SHA `bcb04de842faab596d31c3955fa5046a407c9fc7`؛ هیچ تغییری مستقیم روی `main` انجام نشده است.
+- در parser نتایج DuckDuckGo، مقدار `uddg` ابتدا با `parse_qs` decode می‌شد و سپس دوباره با `unquote`. این decode دوم می‌توانست `%2B` و `%26` موجود در query مقصد را به داده/جداکننده‌های متفاوت تبدیل کند. اصلاح در `app/web_sources.py` و regression یکپارچهٔ parser/normalizer در `tests/test_web_sources.py` قرار دارد.
+- PR [#676](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/676) در وضعیت draft است. commit پیاده‌سازی `f0ff075e9474817cd6fdf643f30087c98b93761f`، commit تست `1b1f0229cd62b3109928da3455a445992d209d7f` و checkpoint مستندات `d08bbc3e25114bc76baa8ccbb4a661f371fa7d54` هستند. پس از checkpoint مستندات، SHA نهایی branch باید دوباره از GitHub خوانده شود.
+- CI روی head پیش از مستندات: dependency audit، dashboard smoke و Windows storage موفق؛ test workflow در حال اجرا بود. این نتیجه برای head نهایی پس از مستندات معتبر نیست؛ CI دقیق همان head باید دوباره تأیید شود. اجرای محلی pytest در این runtime انجام نشده است.
+- این اصلاح یکپارچگی query URL را حفظ می‌کند؛ منبع‌یابی زنده، دسترس‌پذیری providerها و ارزیابی زندهٔ مدل را اثبات نمی‌کند. ارزیابی pinned-model و human adjudication همچنان باز هستند؛ Issue #52 نیز نیازمند independent security review است.

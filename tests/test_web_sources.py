@@ -18,6 +18,26 @@ def test_search_result_parser_extracts_duckduckgo_redirect_target():
     assert parser.results == [("Official Docs", "https://example.org/docs?x=1")]
 
 
+def test_duckduckgo_redirect_preserves_encoded_target_query_parameters(monkeypatch):
+    parser = web_sources._SearchResultParser()
+    parser.feed(
+        '<a class="result__a" href="https://duckduckgo.com/l/?uddg='
+        'https%3A%2F%2Fexample.org%2Fsearch%3Fq%3Dalpha%252Bbeta%2526mode%253Dstrict">'
+        'Encoded target</a>'
+    )
+    monkeypatch.setattr(web_sources, "_validated_public_addresses", lambda _parsed: [])
+
+    normalized = web_sources._normalize_search_results(
+        parser.results,
+        limit=1,
+        provider_hosts=web_sources.SEARCH_PROVIDER_HOSTS,
+    )
+
+    assert normalized == [
+        ("Encoded target", "https://example.org/search?q=alpha%2Bbeta%26mode%3Dstrict")
+    ]
+
+
 @pytest.mark.parametrize(
     "url",
     [
