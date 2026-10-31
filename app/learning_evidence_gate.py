@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 GATE_VERSION = "lesson-evidence-v4"
 # Curated primary/official domains only. This is deliberately conservative and
@@ -24,7 +24,7 @@ _TRUSTED_DOMAIN_ROOTS = {
 }
 
 
-def _has_safe_https_authority(parsed: urllib.parse.SplitResult) -> bool:
+def _has_safe_https_authority(parsed: SplitResult) -> bool:
     """Require credential-free HTTPS on the default TLS port."""
     if (
         parsed.scheme != "https"
