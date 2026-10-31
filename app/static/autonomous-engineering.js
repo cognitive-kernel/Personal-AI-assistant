@@ -71,9 +71,9 @@
       const pill = $("agent-readiness");
       pill.textContent = ready ? "آمادهٔ اجرا" : "راه‌اندازی ناقص";
       pill.className = "status-pill " + (ready ? "status-ready" : "status-blocked");
-      dispatchButton.disabled = !ready;
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
+      dispatchButton.disabled = !ready || active;
       cancelButton.disabled = !active;
       renderRuns(data.github && data.github.recent_runs);
       setMessage(ready ? "همهٔ پیش‌نیازهای محلی آماده‌اند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید.", ready ? "success" : "");
