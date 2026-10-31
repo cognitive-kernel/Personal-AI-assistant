@@ -236,7 +236,10 @@ async def enforce_loopback_only(request, call_next):
     # Loopback + Host checks prevent remote access and DNS rebinding, but do not
     # prevent a hostile website from submitting simple cross-origin POST forms
     # to localhost. Protect every API route, including GET APIs with side effects.
-    if request.url.path.startswith("/api/") and not _same_origin_api_request_allowed(request):
+    if (
+        request.url.path.startswith("/api/")
+        and not _same_origin_api_request_allowed(request)
+    ):
         return JSONResponse(
             status_code=403,
             content={
