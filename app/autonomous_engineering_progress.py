@@ -86,11 +86,11 @@ def _read_history() -> list[dict[str, Any]]:
 
 
 def _read_recent_events() -> list[dict[str, Any]]:
-    path = _progress_dir() / "history.jsonl"
+    path = _progress_dir() / "events.jsonl"
     try:
-        if not path.is_file() or path.stat().st_size > _MAX_HISTORY_BYTES:
+        if not path.is_file() or path.stat().st_size > 1024 * 1024:
             return []
-        lines = path.read_text(encoding="utf-8").splitlines()[-300:]
+        lines = path.read_text(encoding="utf-8").splitlines()[-100:]
     except OSError:
         return []
     events: list[dict[str, Any]] = []
@@ -107,7 +107,7 @@ def _read_recent_events() -> list[dict[str, Any]]:
                 "percent": item.get("percent"),
                 "status": item.get("status"),
             })
-    return events[-100:]
+    return events[-50:]
 
 
 def _aggregate_snapshots(
