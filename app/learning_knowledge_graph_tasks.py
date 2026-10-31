@@ -24,6 +24,6 @@ def handle_review_graph_edge(
     if not isinstance(source_hash, str) or len(source_hash) != 64:
         raise ValueError("source_sha256 must be a SHA-256 digest.")
     context.checkpoint({"stage": "graph_edge_review_started", "edge_id": edge_id})
-    result = learning_knowledge_graph.review_edge(edge_id, expected_source_sha256=source_hash)
+    result = learning_knowledge_graph.review_edge(edge_id, expected_source_sha256=source_hash, context=context)
     context.checkpoint({"stage": "graph_edge_review_finished", "edge_id": edge_id, "status": result["status"]})
     return result
