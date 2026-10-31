@@ -84,3 +84,12 @@ The proposed methodology for evidence-based knowledge validation, with a primary
 ## AI-learning status and acceptance
 
 See [AI_LEARNING_STATUS.md](AI_LEARNING_STATUS.md) for the implementation checklist, automated CI evidence, known limitations, and the remaining target-machine checks. Query feedback is available through the search UI and the loopback-only API. It is a usefulness signal, not a verification signal: feedback must never mark a source or lesson as factually verified. A new migration stores one replaceable feedback record per retrieval trace; deleting a trace cascades its feedback. Do not expose this API beyond loopback without a separately reviewed authentication and abuse-control design.
+
+## Process-restart retrieval regression
+
+`tests/test_ai_learning_retrieval_boundary.py::test_published_knowledge_is_retrievable_after_a_new_process` verifies persistence across a fresh Python interpreter, not merely across requests in one process. The test writes a reviewed/published version and a separate unpublished draft to the isolated SQLite database, starts a subprocess with the same `AI_LEARNING_DB_PATH`, calls the production `integration.retrieve_context` adapter, and asserts:
+- the published version is returned;
+- the unpublished draft is not returned;
+- the subprocess records a query trace in the same database.
+
+The test uses deterministic fixture embeddings and makes no Ollama/model request. It proves SQLite persistence and the published-only retrieval boundary; it does not prove answer quality, factual correctness, or live-model behavior.

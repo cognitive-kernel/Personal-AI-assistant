@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Baseline:** `main` after PR #570, merge commit `aa4990ddd64b1060e5890d69509553a35d31bc7b`  
+**Baseline:** `main` after PR #634, merge commit `b50daaaaa12fab13d6526a47335613bd30a63eba`
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
@@ -218,3 +218,25 @@ Append dated entries with:
 - PR #627 corrected the stale Linux Ollama installer security document to reflect the verified second-stage archive from PR #620, merged as `7a2cf05a7b3485e3b157e41860783fda2e76a846`. Exact-head CI passed (1730 passed/5 skipped); post-merge CI on current `main` passed (1737 passed/5 skipped in 176.88s), including Windows storage, dashboard smoke, and dependency audit.
 - Reconciled the current repository snapshot: 400 tracked files, 285 Python files, 157 Python test files, 71 Markdown documents under `docs/`, and 41 independent Chromium E2E test functions. This inventory is not a claim of a line-by-line review of every file.
 - Still open: live-model and human adjudication; independent security review (Issue #52); target-host install/startup/crash/soak; real-Docker integration/target-host acceptance; staging restore/rollback; persistent learning retrieval/version/rollback proof; and the remaining UI RTL/LTR, screen-reader, contrast, and browser-origin/CSRF review.
+
+
+### 2026-10-31 — Persistent learning restart proof
+
+- PR #629 adds a fresh-process integration test using the same SQLite file and the production retrieval adapter. It proves that a published content version is retrievable after a new Python process starts, unpublished content remains excluded, and the new process writes a query trace.
+- The first CI run exposed a fixture-only semantic-embedding collision (all fixture vectors were identical). The test now uses deterministic hash-derived fixture vectors; production embedding/retrieval behavior was not weakened or changed.
+- Final exact-head CI on `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` passed: 1738 passed/5 skipped, dashboard smoke, Windows storage regressions, and dependency audit passed. The current main post-merge CI is independently green on `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`.
+- Remaining learning gates are live-model quality, human adjudication, factual verification, and operator-run staging restore/rollback; the subprocess test proves persistence mechanics only.
+
+### 2026-10-31 — TaskRuntime partial-thread recovery
+
+- PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) separated any-thread activity from full runtime health and made startup reuse only healthy runtimes. Partial restart stops and joins surviving threads before replacements; a non-cooperative old thread blocks restart instead of permitting duplicate worker identities.
+- Added regression coverage for worker-thread exit, maintenance-thread exit, and startup recovery; documented the decision in ADR-012.
+- Merged to `main` as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`. Post-merge CI passed: 1742 passed/5 skipped, Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both deterministic benchmarks.
+- Remaining operational gates are unchanged: target-host crash/soak and staging restore/rollback require the owner's environment; independent security review (Issue #52) and live-model/human adjudication cannot be self-certified.
+
+
+### 2026-10-31 — Task pause/cancel precedence over retry
+
+- PR #634 fixes failure settlement so committed pause/cancel requests are not overwritten by automatic retry. `cancel_requested` becomes terminal `cancelled`; `pause_requested` becomes `paused`; retry/backoff behavior for ordinary `running` failures is unchanged.
+- Regression coverage includes task-manager state transitions and worker heartbeat-start failure, with no handler execution and explicit resume semantics. ADR-013 records the contract.
+- Merged as `b50daaaaa12fab13d6526a47335613bd30a63eba`. Post-merge CI: 1746 passed/5 skipped in 211.87s; Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks passed.

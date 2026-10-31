@@ -2,7 +2,7 @@
 
 > تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا در snapshot قبلی: `7a2cf05a7b3485e3b157e41860783fda2e76a846` (PR #627). به‌روزرسانی پس از آن: PR #631 روی `main` در `a6fe76168ab26fc73a7518a014c286e1bff8ff2c` ادغام شد؛ CI مستقل post-merge روی همین SHA موفق است: 1740 passed/5 skipped در 180.24 ثانیه، Windows storage، dashboard smoke، dependency audit، artifact/link/import checks و benchmarkها همگی موفق. جزئیات در بخش 1.1 و گزارش پذیرش ثبت شده‌اند.
+> commit مبنا: `b50daaaaa12fab13d6526a47335613bd30a63eba` (main پس از PR #634). CI مستقل post-merge روی همین SHA موفق است: 1746 passed/5 skipped در 211.87 ثانیه، Windows storage، dashboard smoke، dependency audit، artifact/link/import checks و benchmarkها همگی موفق. جزئیات در بخش 1.1 و گزارش پذیرش ثبت شده‌اند.
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -241,3 +241,25 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - PR [#631](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/631) fixed ChatGPT citation URL capture across conversation-turn/citation-card layouts and the Copy response fallback. Legacy title-only records are repaired only when an exact matching URL remains in saved content; missing URLs are explicitly unavailable and never inferred. Merged as `a6fe76168ab26fc73a7518a014c286e1bff8ff2c`; independent post-merge CI passed with 1740 passed/5 skipped, Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks.
 
 - The current tree count and CI evidence are repository snapshots, not a claim that every line of all 400 files has been manually reviewed. Remaining acceptance gates include live-model/human adjudication, independent security review (Issue #52), target-host startup/crash/soak, staging restore/rollback, and the dedicated real-Docker acceptance path.
+
+## 2026-10-31 — Persistent AI-learning retrieval across process restart (PR #629)
+
+- PR [#629](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/629) adds a subprocess integration test for durable retrieval. The parent process creates an approved topic, publishes one reviewed content version, leaves a second version unpublished, and records the initial query-trace count.
+- A fresh Python interpreter then opens the same `AI_LEARNING_DB_PATH` and calls the production `integration.retrieve_context` adapter. The test asserts that the published version is returned, the draft is excluded, and the new process persists a query trace.
+- No Ollama call is required; deterministic fixture embeddings isolate duplicate detection. This is repository-level evidence for SQLite persistence and later-run retrieval, not evidence of live-model quality, factual correctness, or human adjudication.
+- Exact-head CI on `ea13dd3fdc7a4a7da93975fe78ce2d8f7f556b2b` passed: 1738 passed/5 skipped, dashboard smoke, Windows storage regressions, and dependency audit. Post-merge CI on the PR #629 merge SHA was not yet verified at the time of that original report; current `main` post-merge evidence is recorded in the latest status header.
+- Existing tests continue to cover version history, unpublish/withdrawal, and the retrieval feature gate. Staging backup/restore/rollback, live-model answer quality, and human adjudication remain separate acceptance gates.
+
+## 2026-10-31 — TaskRuntime partial-thread recovery (PR #633)
+
+- PR [#633](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/633) separated runtime activity (`is_running`) from complete worker-set health (`is_healthy`). Application startup now reuses only healthy runtimes; shutdown still detects any live managed thread.
+- Restart of a partially alive runtime first requests stop and joins surviving threads against one bounded deadline. If an old thread remains alive, restart fails closed instead of starting a replacement with the same worker identity.
+- Regression tests cover an unexpectedly exited worker, an unexpectedly exited maintenance thread, and startup reconstruction of a partially alive runtime. ADR-012 records the lifecycle contract and limitations.
+- Merged as `f900dc014c491e2dc6a01cdcf1f22bd230c31bb4`. Independent post-merge CI passed: 1742 passed/5 skipped; Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks passed.
+
+## 2026-10-31 — Task control precedence during failure settlement (PR #634)
+
+- PR [#634](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/634) fixes a task-state race: a committed `pause_requested` or `cancel_requested` state is now honored by `fail_task()` before retry scheduling. Cancellation settles as `cancelled`; pause settles as `paused`; bounded exponential backoff remains unchanged for tasks still in `running`.
+- The state decision is made inside the existing `BEGIN IMMEDIATE` transaction after lease ownership validation. Failure diagnostics are preserved and the lease is cleared for each terminal/paused settlement.
+- Task-manager and worker tests cover both controls, including heartbeat startup failure and ensuring the handler does not run. ADR-013 records the state-machine decision.
+- Merged as `b50daaaaa12fab13d6526a47335613bd30a63eba`; post-merge CI passed with 1746 passed/5 skipped, Windows storage, dashboard smoke, dependency audit, artifact/link/import checks, and both benchmarks.
