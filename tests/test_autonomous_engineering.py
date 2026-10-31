@@ -37,7 +37,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
-        "cli_installed": True, "authenticated": True, "recent_runs": []
+        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
     })
 
     result = agent.collect_status()
@@ -86,6 +86,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
     main = (root / "app" / "static" / "index.html").read_text(encoding="utf-8")
     learning = (root / "app" / "ai_learning" / "static" / "index.html").read_text(encoding="utf-8")
+    agent_page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
+    agent_script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
 
     assert 'href="/autonomous-engineering"' in main
     assert 'href="/autonomous-engineering"' in learning
@@ -94,6 +96,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="dispatch-agent"' in page
     assert 'id="cancel-agent"' in page
     assert "OPENAI_API_KEY" not in page
+    assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
+    assert "checks.github_runs_available" in agent_script
 
 
 def test_autonomous_engineering_routes_are_registered():
