@@ -140,7 +140,7 @@ def _origin_matches_request(request: Request, origin: str) -> bool:
             or not parsed.hostname
             or parsed.username is not None
             or parsed.password is not None
-            or parsed.path not in {"", "/"}
+            or parsed.path != ""
             or parsed.query
             or parsed.fragment
             or parsed.netloc.endswith(":")
@@ -162,7 +162,11 @@ def _origin_matches_request(request: Request, origin: str) -> bool:
         origin_port = parsed.port
         if origin_port is None:
             origin_port = 443 if parsed.scheme == "https" else 80
-        return 1 <= origin_port <= 65535 and 1 <= request_port <= 65535 and origin_port == request_port
+        return (
+            1 <= origin_port <= 65535
+            and 1 <= request_port <= 65535
+            and origin_port == request_port
+        )
     except ValueError:
         return False
 
