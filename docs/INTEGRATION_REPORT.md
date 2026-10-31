@@ -1,8 +1,8 @@
 # گزارش یکپارچه‌سازی و ممیزی معماری مخزن
 
-> تاریخ بررسی: 2026-10-30
+> تاریخ بررسی: 2026-10-31
 > شاخهٔ مبنا: `main`  
-> commit مبنا: `ef40c6ca333dbac6c9585bfee382a5eac8b76905` (main پس از PR #600؛ exact-head CI برای PR #599 و #600 موفق؛ اجرای مستقل post-merge روی این SHA در این بازبینی تأیید نشده است).
+> commit مبنا: `2fd885a583e0c6252aa6b77a23c5cff56bc87c31` (main پس از PR #611؛ exact-head CI روی head PR #611 موفق؛ اجرای مستقل post-merge روی این SHA در این بازبینی تأیید نشده است).
 > هدف این سند: تعیین مرزهای ادغام، منابع مرجع مستندات و مواردی که پیش از ادعای آمادگی نهایی باید آزموده شوند.
 
 ## 1. نتیجهٔ اجرایی
@@ -188,3 +188,10 @@ PRهای قدیمی #462، #495، #459، #370، #369 و تلاش ادغام قد
 - ورود، CAPTCHA/تأیید انسانی، وابستگی‌های نصب‌نشده، بسته‌شدن غیرقابل‌بازیابی مرورگر و خطاهای محتوا/ذخیره‌سازی در مسیر `needs_user_action` می‌مانند. کاربر می‌تواند پس از رفع علت بازیابی دستی انجام دهد؛ cancellation و pause به retry خودکار تبدیل نمی‌شوند.
 - exact-head CI روی `9b629f2a5bef699261fbc0097f411e011b656366`: tests [#41087746251](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41087746251) (1556 passed، 5 skipped و Windows storage regressions)، browser E2E [#41087746167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41087746167)، dependency audit [#41087746175](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41087746175) — همگی موفق. 73 فایل Markdown از نظر لینک، 112 ماژول از نظر import-cycle و artifactهای تولیدشده نیز بررسی شدند.
 - محدودیت: E2E مرورگر و تست‌های retry با fixture/mock انجام می‌شوند و اجرای زندهٔ ChatGPT یا دسترس‌پذیری واقعی provider را ثابت نمی‌کنند. benchmark lexical با 16 query روی fixture و claim-test با 10 case فقط regressionهای تعریف‌شده را می‌سنجند. اجرای مستقل post-merge CI روی SHA ادغام‌شده در شواهد این بازبینی تأیید نشد. صف worker هنوز single-process است و lease توزیع‌شده یا restore دقیق session مرورگر وجود ندارد.
+
+
+## 17. API regression برای شواهد ابری منقضی‌شده — PR #611
+
+- PR [#611](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/611) added an API regression for a previously approved/available cloud candidate whose last observation is 31 days old. It independently exercises stale claim review and candidate review, expects HTTP 409 for both, and verifies the list API exposes stale freshness with availability reset to unknown. The change is test-only; production behavior and schema are unchanged. Exact PR-head CI on `ec693cb218b7f311c7ed82458d67ada0f58cdf4a` passed: tests [#41158610985](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41158610985) (including Windows storage regressions and repository quality checks), browser E2E [#41158611003](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41158611003), and dependency audit [#41158610974](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41158610974). Squash merge commit: `2fd885a583e0c6252aa6b77a23c5cff56bc87c31`. The available GitHub evidence did not confirm post-merge workflows on the squash SHA, so post-merge CI is not claimed. Automated Codex review could not complete because the repository review quota was exhausted; no completed independent code review is claimed.
+- ممیزی منطق موجود در `app/cloud_resources.py` نشان داد هر دو مسیر `review_candidate` و `review_claim` پیش از تغییر وضعیت، stale بودن candidate را بررسی می‌کنند؛ مسیر list نیز وضعیت freshness و reset availability را منعکس می‌کند. PR #611 این قراردادهای موجود را در سطح HTTP پوشش داد و منطق تولید را تغییر نداد.
+- محدودیت باقیمانده: اجرای CI روی head دقیق PR تأیید شده است، اما اجرای مستقل workflowهای post-merge روی commit ادغام‌شده از شواهد قابل‌دسترسی این بازبینی قابل تأیید نیست. بازبینی خودکار Codex نیز به علت سقف مصرف کامل نشد.
