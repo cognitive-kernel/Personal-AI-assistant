@@ -30,6 +30,8 @@ def test_search_result_parser_extracts_duckduckgo_redirect_target():
         "https://example.org:8443/",
         "https://kaggle.com/docs/notebooks",
         "https://www.kaggle.com/code/example/notebook",
+        "https://example.org:/",
+        "https://example.org:",
     ],
 )
 def test_url_validation_blocks_private_or_unsupported_destinations(url):
