@@ -47,3 +47,8 @@
 - تطبیق snapshot نهایی بازیابی با manifest و رد تغییر هم‌زمان فایل پشتیبان: [ADR-015](architecture/ADR-015-verify-staged-restore.md)
 - جلوگیری از idempotent no-op شدن start هنگام shutdown در حال اجرا: [ADR-016](architecture/ADR-016-runtime-restart-after-stop.md)
 - ترمیم دوره‌ای فاصلهٔ بین ایجاد learning job و enqueue صف پایدار: [ADR-017](architecture/ADR-017-periodic-learning-task-reconciliation.md)
+
+
+## Cloud discovery cancellation boundary
+
+`app.cloud_resources.discover_resources` uses a separate `cloud_resources.db` from the durable task queue in `learning.db`. It therefore cannot atomically commit both stores in one SQLite transaction. The handler checkpoints after each search, around official-reference fallback, before candidate upserts, before the candidate batch commit, and before run finalization. Cancellation before the candidate batch commit rolls back uncommitted candidate writes; cancellation after that commit preserves the idempotent candidate upserts and records the discovery run as partial with the committed candidate count. See `docs/architecture/ADR-020-cloud-discovery-cancellation-checkpoints.md` for the explicit cross-store limitation.

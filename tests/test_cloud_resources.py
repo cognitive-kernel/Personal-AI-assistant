@@ -9,6 +9,7 @@ import pytest
 
 from app import cloud_resources, db, task_manager, web_sources
 from app.cloud_resources import CloudResourceError
+from app.task_worker import TaskContext, TaskInterrupted
 from app.schema_migrations import MigrationRunner
 from app.schema_registry import CLOUD_RESOURCE_MIGRATIONS, initialize_database_file
 
@@ -727,6 +728,68 @@ def test_discovery_records_safe_provider_codes_without_raw_error_messages(tmp_pa
     assert sensitive_detail not in latest["query_results"][0]["error"]
     assert sensitive_detail not in str(latest["query_results"])
 
+
+
+
+@pytest.mark.parametrize(
+    ("control", "phase", "expected_candidates"),
+    [
+        ("cancel", "cloud_discovery_query_complete", 0),
+        ("pause", "cloud_discovery_query_complete", 0),
+        ("cancel", "cloud_discovery_before_candidate_commit", 0),
+        ("pause", "cloud_discovery_before_candidate_commit", 0),
+        ("cancel", "cloud_discovery_before_run_finalize", 1),
+        ("pause", "cloud_discovery_before_run_finalize", 1),
+    ],
+)
+def test_discovery_handler_honors_control_at_query_and_commit_boundaries(
+    tmp_path, monkeypatch, control, phase, expected_candidates
+):
+    _configure_paths(tmp_path, monkeypatch)
+    monkeypatch.setattr(cloud_resources, "DISCOVERY_QUERIES", ("bounded compute query",))
+    document = _document()
+    monkeypatch.setattr(
+        web_sources,
+        "discover_sources",
+        lambda query, limit=5: [document],
+    )
+    task = task_manager.create_task(
+        cloud_resources.CLOUD_DISCOVERY_TASK_TYPE,
+        {"trigger": "manual"},
+        max_attempts=1,
+    )
+    worker_id = f"cloud-discovery-{task['id']}"
+    claimed = task_manager.claim_next_task(worker_id)
+    assert claimed["id"] == task["id"]
+
+    class ControlAtBoundaryContext(TaskContext):
+        def checkpoint(self, data):
+            if data.get("phase") == phase:
+                if control == "cancel":
+                    task_manager.request_cancel(self.task_id)
+                else:
+                    task_manager.request_pause(self.task_id)
+            return super().checkpoint(data)
+
+    context = ControlAtBoundaryContext(task["id"], worker_id)
+    with pytest.raises(TaskInterrupted):
+        cloud_resources.handle_discovery_task(task["payload"], task["checkpoint"], context)
+
+    saved_task = task_manager.get_task(task["id"])
+    assert saved_task["status"] == ("cancelled" if control == "cancel" else "paused")
+    run = cloud_resources.latest_discovery_run()
+    assert run is not None
+    assert run["status"] == "partial"
+    assert run["candidates_upserted"] == expected_candidates
+    assert len(cloud_resources.list_candidates()) == expected_candidates
+
+    with db.learning_connection() as connection:
+        followups = connection.execute(
+            """SELECT payload_json FROM task_queue
+               WHERE task_type=? AND status='queued' AND id<>?""",
+            (cloud_resources.CLOUD_DISCOVERY_TASK_TYPE, task["id"]),
+        ).fetchall()
+    assert any(json.loads(row["payload_json"]) == {"trigger": "scheduled"} for row in followups)
 
 
 def test_daily_discovery_enqueue_is_idempotent(tmp_path, monkeypatch):

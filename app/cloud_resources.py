@@ -638,6 +638,7 @@ def discover_resources(
     errors: list[str] = []
     queries_attempted = 0
     sources_seen = 0
+    candidates_upserted = 0
 
     try:
         for index, query in enumerate(DISCOVERY_QUERIES):
@@ -705,12 +706,16 @@ def discover_resources(
                 "not_checked_due_to_candidate_cap": skipped_due_to_candidate_cap,
             }
             query_results.append(query_result)
+            if checkpoint is not None:
+                checkpoint({"phase": "cloud_discovery_query_complete", "query_index": index})
 
         # A public search engine can return technically valid but irrelevant
         # pages (for example lyrics pages for a cloud-compute query). Do not
         # persist those results. If none qualify, try a tiny set of official
         # references through the same URL/redirect/content safety checks.
         if not unique:
+            if checkpoint is not None:
+                checkpoint({"phase": "cloud_discovery_fallback_start"})
             if sources_seen:
                 errors.append("search_results_filtered_as_irrelevant")
             fallback_query = "official_reference_fallback"
@@ -720,7 +725,9 @@ def discover_resources(
             fallback_irrelevant = 0
             fallback_duplicates = 0
             fallback_errors: list[str] = []
-            for source_url, title_hint in OFFICIAL_REFERENCE_SOURCES:
+            for source_index, (source_url, title_hint) in enumerate(OFFICIAL_REFERENCE_SOURCES):
+                if checkpoint is not None:
+                    checkpoint({"phase": "cloud_discovery_fallback_source", "source_index": source_index})
                 try:
                     document = web_sources.fetch_public_document(source_url, title_hint)
                 except Exception as exc:
@@ -730,6 +737,8 @@ def discover_resources(
                 if not isinstance(document, web_sources.SourceDocument):
                     fallback_errors.append("invalid_source_document")
                     continue
+                if checkpoint is not None:
+                    checkpoint({"phase": "cloud_discovery_fallback_source_complete", "source_index": source_index})
                 fallback_documents += 1
                 sources_seen += 1
                 candidate = _candidate_record(document, fallback_query)
@@ -759,7 +768,9 @@ def discover_resources(
                 )
 
         with closing(_connect()) as connection:
-            for candidate in unique.values():
+            for candidate_index, candidate in enumerate(unique.values()):
+                if checkpoint is not None:
+                    checkpoint({"phase": "cloud_discovery_candidate_persist", "candidate_index": candidate_index})
                 previous = connection.execute(
                     "SELECT id, content_sha256 FROM cloud_resource_candidates WHERE source_url=?",
                     (candidate["source_url"],),
@@ -857,7 +868,13 @@ def discover_resources(
                         ),
                     )
             _mark_stale_candidates(connection, max_age_days=30)
+            if checkpoint is not None:
+                checkpoint({"phase": "cloud_discovery_before_candidate_commit", "candidate_count": len(unique)})
             connection.commit()
+            candidates_upserted = len(unique)
+
+        if checkpoint is not None:
+            checkpoint({"phase": "cloud_discovery_before_run_finalize", "candidate_count": candidates_upserted})
 
         if errors and unique:
             status = "partial"
@@ -875,7 +892,7 @@ def discover_resources(
             status="partial" if unique else "failed",
             queries_attempted=queries_attempted,
             sources_seen=sources_seen,
-            candidates_upserted=0,
+            candidates_upserted=candidates_upserted,
             query_results=query_results,
             error_summary="; ".join(errors),
         )
