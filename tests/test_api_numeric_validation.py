@@ -3,7 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, learning, main
+from app import db, learning, main, task_manager
 
 
 @pytest.fixture
@@ -112,3 +112,37 @@ def test_browser_learning_api_accepts_integer_lesson_count(api_client, monkeypat
 
     assert response.status_code == 200
     assert response.json()["max_lessons"] == 2
+
+
+@pytest.mark.parametrize("field", ["priority", "max_attempts"])
+def test_task_create_api_rejects_boolean_integer_fields_atomically(
+    api_client, field
+):
+    response = api_client.post(
+        "/api/tasks",
+        json={
+            "task_type": "api.numeric-validation",
+            "payload": {},
+            field: True,
+        },
+    )
+
+    assert response.status_code == 422
+    with db.learning_connection() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM task_queue WHERE task_type=?",
+            ("api.numeric-validation",),
+        ).fetchone()[0]
+    assert count == 0
+
+
+def test_task_priority_api_rejects_boolean_without_mutation(api_client):
+    task = task_manager.create_task("api.numeric-validation", {})
+
+    response = api_client.patch(
+        f"/api/tasks/{task['id']}/priority",
+        json={"priority": True},
+    )
+
+    assert response.status_code == 422
+    assert task_manager.get_task(task["id"])["priority"] == 0
