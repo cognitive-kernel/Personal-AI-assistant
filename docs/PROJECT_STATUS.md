@@ -8,7 +8,7 @@
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** PR #664، #667، #668 و #669 قبلاً مستندات، صف پایدار یادگیری، لاگ مهندسی، scorecard و کنترل تشخیص زبان را به main افزودند. PR #671 نیز ذخیرهٔ exception خام و diagnostics کنترل‌نشده در کشف منابع ابری را حذف کرد و با squash commit `2a5c83bf0ba924f4a2c8f206338a04872562d72d` ادغام شد. Exact-head CI برای PR #671 موفق است؛ post-merge tests و dashboard smoke روی SHA فعلی هنوز در حال اجرا هستند و dependency audit و Windows storage موفق شده‌اند. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
+**مبنای وضعیت:** PR #664، #667، #668 و #669 قبلاً مستندات، صف پایدار یادگیری، لاگ مهندسی، scorecard و کنترل تشخیص زبان را به main افزودند. PR #671 نیز ذخیرهٔ exception خام و diagnostics کنترل‌نشده در کشف منابع ابری را حذف کرد و با squash commit `2a5c83bf0ba924f4a2c8f206338a04872562d72d` ادغام شد. Exact-head CI برای PR #671 موفق است؛ post-merge tests، dashboard smoke، dependency audit و Windows storage روی SHA فعلی همگی موفق شده‌اند. Issue #52، پذیرش میزبان هدف، staging restore/rollback و ارزیابی زنده همچنان دروازه‌های باز هستند.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
@@ -230,3 +230,8 @@
 - CI دقیق PR موفق است. Post-merge dependency audit و Windows storage موفق شده‌اند؛ تست اصلی و dashboard smoke در زمان این checkpoint هنوز در حال اجرا هستند. موفقیت نهایی آن‌ها تا تکمیل workflow ادعا نمی‌شود.
 - بررسی ایستای مسیر research نشان داد payload حداکثر سه منبع HTTPS می‌گیرد و audit پژوهش diagnostics را با allowlist جداگانه ذخیره می‌کند. علت گزارش قبلیِ صفر منبع در اجرای زنده هنوز اثبات نشده؛ تغییرات حدسی در discovery انجام نشد.
 - Issues #290 و #52 باز هستند. بررسی امنیتی مستقل Ollama، اجرای واقعی روی میزبان هدف، staging/rollback، ارزیابی زنده و داوری انسانی همچنان لازم‌اند.
+
+
+### تکمیل CI پس از ادغام PR #671
+
+- سه workflow پس از ادغام روی SHA دقیق `2a5c83bf0ba924f4a2c8f206338a04872562d72d` با موفقیت پایان یافته‌اند: tests [#41239355370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355370)، dashboard/browser smoke [#41239355374](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355374)، و dependency audit [#41239355466](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41239355466). تست‌های Windows storage نیز در workflow تست موفق بوده‌اند.
