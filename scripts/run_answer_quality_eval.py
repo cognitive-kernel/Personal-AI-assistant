@@ -83,6 +83,8 @@ def _audit_diagnostics(question: str) -> dict[str, Any]:
     except (TypeError, ValueError):
         review = {}
     error = review.get("error") if isinstance(review, dict) else None
+    if isinstance(review, dict) and isinstance(review.get("source_discovery"), dict):
+        result["source_discovery_diagnostics"] = review["source_discovery"]
     if isinstance(error, str) and error.startswith("source_discovery_failed:"):
         result["source_discovery_status"] = "failed"
         result["source_discovery_error_type"] = error.split(":", 1)[1][:80]
