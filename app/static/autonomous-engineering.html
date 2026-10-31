@@ -68,7 +68,7 @@
 <li><strong>Codex CLI را نصب کنید.</strong><p>Node.js لازم است:</p><code>npm install -g @openai/codex</code></li>
 <li><strong>GitHub CLI را نصب و وارد حساب شوید.</strong><p>دسترسی لازم برای اجرای Workflow روی همین مخزن را تأیید کنید:</p><code>gh auth login</code></li>
 <li><strong>Self-hosted Runner بسازید.</strong><p>در مخزن GitHub به Settings → Actions → Runners → New self-hosted runner بروید. نسخهٔ Windows x64 را انتخاب و طبق دستور خود GitHub نصب کنید. هنگام پیکربندی، برچسب اضافی <code>ollama</code> را اضافه کنید.</p></li>
-<li><strong>Runner را به‌صورت سرویس دائمی اجرا کنید.</strong><p>سرویس Runner و Ollama باید در همان رایانه فعال باشند و حساب سرویس Runner باید به endpoint محلی Ollama دسترسی داشته باشد. توکن ثبت Runner موقت است؛ آن را در کد، چت یا فایل تنظیمات پروژه ذخیره نکنید.</p></li>
+<li><strong>Runner را با حساب سرویس مجزا اجرا کنید.</strong><p>یک حساب Windows اختصاصی و غیرمدیر برای سرویس Runner بسازید؛ این حساب باید به endpoint محلی Ollama دسترسی داشته باشد، اما نباید با GitHub CLI وارد حساب شود یا فایل‌ها و اعتبارنامه‌های شخصی داشته باشد. حسابی که برنامهٔ محلی را اجرا می‌کند جداگانه با <code>gh auth login</code> احراز هویت می‌شود. توکن ثبت Runner موقت است؛ آن را در کد، چت یا فایل تنظیمات پروژه ذخیره نکنید.</p></li>
 <li><strong>آمادگی محیط را بررسی کنید.</strong><p>در پوشهٔ پروژه، PowerShell را باز کنید و اجرا کنید:</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1</code></li>
 </ol>
 </section>
