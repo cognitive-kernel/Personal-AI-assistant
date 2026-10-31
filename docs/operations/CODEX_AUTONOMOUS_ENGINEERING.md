@@ -76,7 +76,7 @@ The model can be changed by setting `AUTONOMOUS_ENGINEERING_MODEL` consistently 
 
 ## Workflow behavior
 
-- Runs every six hours (GitHub schedule is best-effort), on pushes to `main`, and on manual dispatch.
+- Runs hourly at minute 17 (GitHub schedule is best-effort), on pushes to `main`, and on manual dispatch.
 - The Codex job runs only on a runner carrying `self-hosted`, `Windows`, `X64`, and `ollama` labels and only when the ref is `main`.
 - The local job checks that Ollama, the configured model, and Codex CLI are present before starting.
 - After Codex proposes changes, the Windows self-hosted runner executes the full default pytest suite and the repository artifact, Markdown-link, import-cycle, retrieval, and claim-to-test quality gates against the modified working tree. The default pytest configuration excludes only the separately marked browser E2E and Docker sandbox integration tests; those remain covered by their dedicated CI workflows.
