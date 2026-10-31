@@ -95,6 +95,8 @@ def _parse_public_url(url: str) -> urllib.parse.ParseResult:
         port = parsed.port
     except ValueError as exc:
         raise SourceFetchError("URL port is invalid.") from exc
+    if parsed.netloc.endswith(":"):
+        raise SourceFetchError("URL port is invalid.")
     if port not in {None, 80, 443}:
         raise SourceFetchError("Non-standard ports are not allowed.")
     hostname = parsed.hostname.rstrip(".").lower()
