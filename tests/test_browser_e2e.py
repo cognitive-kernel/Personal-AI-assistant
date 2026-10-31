@@ -1267,6 +1267,7 @@ def test_dashboard_primary_navigation_is_keyboard_operable():
         "/",
         "/page/learning-section",
         "/ai-learning",
+        "/autonomous-engineering",
         "/page/learning-paths-section",
         "/page/knowledge-section",
         "/page/task-manager-section",
@@ -3294,5 +3295,33 @@ def test_browser_sandbox_cancel_recovers_from_api_failure_and_settles_task():
         assert state["cancel_attempts"] == 2
         assert state["cancelled"] is True
         assert state["polls"] >= 1
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+
+def test_autonomous_engineering_console_renders_and_reports_local_status():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        assert page.get_by_role("heading", name="عامل مهندسی خودکار").is_visible()
+        assert page.get_by_role("navigation", name="منوی اصلی").get_by_role("link", name="یادگیری از هوش مصنوعی").is_visible()
+        assert page.locator("#dispatch-agent").is_disabled()
+        page.wait_for_function(
+            "() => document.querySelector('#agent-readiness')?.textContent !== 'در حال بررسی'",
+            timeout=10000,
+        )
+        status_response = page.request.get(base_url.rstrip("/") + "/api/autonomous-engineering/status")
+        assert status_response.status == 200
+        status = status_response.json()
+        assert "checks" in status and "ollama_online" in status["checks"]
+        assert status["local_only_inference"] is True
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
