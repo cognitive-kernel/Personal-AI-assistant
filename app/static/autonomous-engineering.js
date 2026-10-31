@@ -242,6 +242,7 @@
     }
     try {
       const data = await request("progress?" + params.toString());
+      if (data.error) throw new Error(data.error);
       const current = data.current;
       if (current && Number.isFinite(Number(current.percent))) {
         const percent = Math.max(0, Math.min(100, Number(current.percent)));
