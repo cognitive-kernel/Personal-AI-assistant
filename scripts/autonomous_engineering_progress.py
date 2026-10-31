@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -112,11 +113,22 @@ def codex_activity(event: dict[str, Any]) -> str | None:
 
 
 def run_codex(args: argparse.Namespace) -> int:
-    command = [
-        "codex", "exec", "--oss", "--sandbox", "workspace-write",
+    executable = shutil.which("codex")
+    if not executable:
+        print("Codex CLI executable was not found on PATH.", file=sys.stderr)
+        return 127
+    arguments = [
+        "exec", "--oss", "--sandbox", "workspace-write",
         "--model", args.model, "--cd", str(ROOT),
         "--output-last-message", args.report, "--json", "-",
     ]
+    if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
+        command = [
+            os.getenv("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
+            subprocess.list2cmdline([executable, *arguments]),
+        ]
+    else:
+        command = [executable, *arguments]
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
     except OSError as exc:
