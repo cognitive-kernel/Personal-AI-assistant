@@ -158,8 +158,8 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
         content = SCORECARD.read_text(encoding="utf-8")
     except OSError:
         return
-    engineering = re.search(r"Engineering completion:.*?=\s*([0-9]+(?:\\.[0-9]+)?)%", content)
-    overall = re.search(r"Overall acceptance progress:.*?=\s*([0-9]+(?:\\.[0-9]+)?)%", content)
+    engineering = re.search(r"Engineering completion:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
+    overall = re.search(r"Overall acceptance progress:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
     snapshot = re.search(r"\*\*Snapshot:\*\*\s*(\d{4}-\d{2}-\d{2})", content)
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not (engineering and overall and snapshot):
