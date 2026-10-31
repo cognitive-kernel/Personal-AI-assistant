@@ -15,7 +15,7 @@ def api_client(tmp_path, monkeypatch):
     )
     db.init_databases()
     monkeypatch.setattr(main, "_startup_storage_error", None)
-    return TestClient(main.app)
+    return TestClient(main.app, client=("127.0.0.1", 12345))
 
 
 def test_browser_learning_api_rejects_boolean_lesson_count(api_client, monkeypatch):
