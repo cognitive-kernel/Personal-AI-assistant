@@ -2,7 +2,7 @@
 
 **Status:** Execution plan — active  
 **Created:** 2026-10-30  
-**Reviewed baseline:** `main` after PR #664 and #667, commit `6f601e8cc210419392bfbd1affb9590db978dd3a`; post-merge tests and browser E2E are pending, dependency audit passed.
+**Reviewed baseline:** `main` after PR #664 and #667, commit `6f601e8cc210419392bfbd1affb9590db978dd3a`; Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` passed: tests [#41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247) — **1801 passed, 47 deselected**, Windows storage regressions, Markdown validation (88 files), import-cycle checks and deterministic benchmark (10/10); Chromium browser E2E [#41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268) and dependency audit [#41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295) also passed.
 **Tracking issue:** [#290](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/290)
 
 ## 1. Objective and scope
