@@ -609,14 +609,10 @@ def patch_settings(request: SettingsPatch) -> dict[str, Any]:
     ])
     for key, low, high in numeric_ranges:
         if key in values:
-            try:
-                raw_value = values[key]
-                if isinstance(raw_value, bool):
-                    raise ValueError
-                values[key] = int(raw_value)
-            except (ValueError, TypeError) as exc:
-                raise HTTPException(status_code=422, detail=f"{key} must be an integer.") from exc
-            if not low <= values[key] <= high:
+            raw_value = values[key]
+            if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+                raise HTTPException(status_code=422, detail=f"{key} must be an integer.")
+            if not low <= raw_value <= high:
                 raise HTTPException(status_code=422, detail=f"{key} must be between {low} and {high}.")
     for key in ("ollama_model", "chat_ollama_model", "learning_ollama_model", "programming_ollama_model"):
         if key in values and (
