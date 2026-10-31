@@ -8,7 +8,7 @@ This file is the durable session handoff required by `docs/MASTER_ENGINEERING_PR
 
 - Operating protocol: [`docs/MASTER_ENGINEERING_PROMPT.md`](MASTER_ENGINEERING_PROMPT.md), read from branch `docs/master-engineering-continuity-prompt`, blob `f9b67598a3cec5efb5d63ecd7cb5496732576478`.
 - Repository: `cognitive-kernel/Personal-AI-assistant`.
-- `main` after the changes in this checkpoint: `6f601e8cc210419392bfbd1affb9590db978dd3a`.
+- `main` after PR #668 documentation merge: `eec03b39e53399bb8ee21a15b9e8cb4930159c25`.
 - Previous application-code baseline: `a23760805310154d83e47489eddf00fc9b91c7f6`.
 - No production database, local user data, or target-host state was accessed or modified.
 
@@ -55,18 +55,19 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 
 ### Next actions
 
-1. Verify exact-SHA post-merge tests, browser E2E and dependency audit for merge commit `6f601e8cc210419392bfbd1affb9590db978dd3a` and documentation PR #668.
-2. Reconcile the large set of historical branches against merged/closed PRs; preserve branches with unmerged useful work until their disposition is established.
-3. Continue the highest-risk uncompleted repository workstream from the live ledger, adding a regression for every reproduced defect.
-4. Recalculate the weighted score only when gate evidence or status changes.
-5. Keep all human-only and independent-review gates open until evidence is supplied by the responsible reviewer/operator.
+1. Verify post-merge CI for documentation merge `eec03b39e53399bb8ee21a15b9e8cb4930159c25`.
+2. Complete PR #669 language-evaluation regression checks on its latest exact head; review its limitations before merge.
+3. Reconcile historical branches against merged/closed PRs without deleting useful unmerged work.
+4. Continue the highest-risk uncompleted repository workstream and add a regression for each reproduced defect.
+5. Keep target-host, human-adjudication and independent-review gates open until the responsible operator/reviewer supplies evidence.
 
 
 ### Continuation update — same session
 
+- PR #668 merged as `eec03b39e53399bb8ee21a15b9e8cb4930159c25`; its final exact head was `0bcd2a93bbf4516f180ac9fc3d8c647380545ade`. Tests, Windows storage regressions, dashboard smoke, browser E2E and dependency audit passed on that head: [tests #41213673355](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673355), [browser E2E #41213673417](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673417), [dependency audit #41213673381](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41213673381).
 - PR #668 adds this log, the weighted scorecard, and synchronizes five existing status/acceptance documents after PR #664 and #667.
-- PR #668 head: `bee2440a704b794434f75467d9b039f23f42e610`; tests, Windows storage regressions, browser E2E and dependency audit are running on that exact head.
-- Current `main` remains `6f601e8cc210419392bfbd1affb9590db978dd3a`; its dependency audit and browser E2E passed, while tests were still running at this update.
+- Current `main` is `eec03b39e53399bb8ee21a15b9e8cb4930159c25`; its dependency audit passed [#41215789470](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789470), while post-merge tests [#41215789440](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789440) and browser E2E [#41215789465](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215789465) were still running at this update.
+- PR #669 is the next code workstream: wrong-language answers were not rejected by the offline evaluator. The 65% expected-script threshold now matches the `dominant_script` classification, with symmetric 60% mixed-script rejection and exact 65% acceptance regressions. Latest head `bedf5f54bb55dd2cf64b267b9b5561436820ac61`; tests/browser E2E are running, dependency audit passed [#41215830502](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41215830502).
 
 
 ### Verified main CI completion — 2026-10-31
@@ -74,3 +75,9 @@ A provisional weighted scorecard is now defined in [`docs/ACCEPTANCE_SCORECARD.m
 - Post-merge CI on `6f601e8cc210419392bfbd1affb9590db978dd3a` completed successfully: 1,801 passed / 47 deselected; Windows storage regressions; 88 Markdown files; import-cycle checks; deterministic benchmark 10/10; Chromium browser E2E; dependency audit.
 - Evidence: [tests #41212956247](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956247), [browser E2E #41212956268](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956268), [dependency audit #41212956295](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41212956295).
 - This verifies merged PR #664/#667; external target-host, live-model, human, staging/rollback, and independent-security gates remain open.
+
+
+### Post-merge and PR #669 checkpoint — 2026-10-31
+
+- PR #668 is merged. No application code or user data changed in that PR.
+- PR #669 is still open; no merge is authorized until all checks pass on its final exact head and the PR remains conflict-free.
