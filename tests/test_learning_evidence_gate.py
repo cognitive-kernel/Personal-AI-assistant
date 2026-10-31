@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from app import learning_evidence_gate
 from app.learning_evidence_gate import evaluate_lesson_evidence
 
 
@@ -34,6 +35,34 @@ def test_evidence_gate_passes_only_with_two_cited_hosts_and_supported_claims():
     assert result["claim_count"] == 1
     assert result["explicitly_mapped_claim_count"] == 1
     assert result["failed_gates"] == []
+
+
+def test_primary_source_authority_rejects_userinfo_and_nonstandard_ports():
+    urls = [
+        "https://@python.org/3/",
+        "https://:secret@python.org/3/",
+        "https://user:@python.org/3/",
+        "https://python.org:/3/",
+        "https://python.org:8443/3/",
+    ]
+    for url in urls:
+        assert learning_evidence_gate.is_allowlisted_primary_source(url) is False
+        assert learning_evidence_gate._https_source(_source(url)) is None
+
+
+def test_evidence_gate_does_not_count_nonstandard_port_as_primary_source():
+    urls = ["https://python.org:8443/3/", "https://learn.microsoft.com/en-us/sql/"]
+    result = evaluate_lesson_evidence(
+        "Lesson cites " + " ".join(urls),
+        [_source(url) for url in urls],
+        _review(urls),
+    )
+
+    assert result["version"] == "lesson-evidence-v4"
+    assert result["accepted"] is False
+    assert result["source_count"] == 1
+    assert result["trusted_cited_host_count"] == 0
+    assert "at_least_one_allowlisted_primary_source" in result["failed_gates"]
 
 
 def test_evidence_gate_fails_closed_without_multiple_domains():
