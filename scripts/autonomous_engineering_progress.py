@@ -38,10 +38,10 @@ def append_history(record: dict[str, Any]) -> None:
     if history.exists() and history.stat().st_size > 8 * 1024 * 1024:
         retained = history.read_text(encoding="utf-8").splitlines()[-5000:]
         temporary = directory / "history.jsonl.tmp"
-        temporary.write_text("\\n".join(retained) + ("\\n" if retained else ""), encoding="utf-8")
+        temporary.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
         temporary.replace(history)
     with history.open("a", encoding="utf-8") as stream:
-        stream.write(json.dumps(record, ensure_ascii=False) + "\\n")
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def persist(record: dict[str, Any]) -> None:
@@ -52,9 +52,7 @@ def persist(record: dict[str, Any]) -> None:
         temporary = directory / "current.json.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(directory / "current.json")
-        history = directory / "history.jsonl"
-        with history.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"type": "progress_event", **payload}, ensure_ascii=False) + "\n")
+        append_history({"type": "progress_event", **payload})
     except OSError as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
 
@@ -178,18 +176,15 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not (engineering and overall and snapshot):
         return
-    directory = store_dir()
+    record = {
+        "type": "project_snapshot", "date": snapshot.group(1),
+        "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
+        "engineering_percent": float(engineering.group(1)),
+        "overall_percent": float(overall.group(1)),
+        "sha": sha.group(1) if sha else None,
+    }
     try:
-        directory.mkdir(parents=True, exist_ok=True)
-        record = {
-            "type": "project_snapshot", "date": snapshot.group(1),
-            "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
-            "engineering_percent": float(engineering.group(1)),
-            "overall_percent": float(overall.group(1)),
-            "sha": sha.group(1) if sha else None,
-        }
-        with history.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        append_history(record)
     except OSError as exc:
         print(f"Could not persist scorecard snapshot: {type(exc).__name__}", file=sys.stderr)
 
