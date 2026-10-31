@@ -46,7 +46,7 @@ def test_citation_capture_supports_conversation_turn_and_copy_response_fallback(
     source = Path(browser_automation.__file__).read_text(encoding="utf-8")
     assert "node.closest('[data-testid^=\"conversation-turn-\"]')" in source
     assert "button[aria-label=\"Copy response\"],button[data-testid*=\"copy-turn\"]" in source
-    assert "node.querySelectorAll('a[href]')" in source
+    assert "root.querySelectorAll('a[href]')" in source
     assert "citation_links = _capture_citation_links(page)" in source
 
 
@@ -960,6 +960,7 @@ def test_chatgpt_sources_are_persisted_with_content_versions(isolated_store):
 def test_legacy_title_only_source_recovers_exact_url_from_saved_raw_response(isolated_store):
     course = service.create_course(title="Legacy source URL recovery")
     topic = service.add_topic(course["id"], "SQL Server references")
+    service.decide_topics([topic["id"]], "approved")
     lesson = service.create_lesson(topic["id"], "SQL Server references")
     title = "Search condition (Transact-SQL) — Microsoft Learn"
     version = service.add_content_version(
