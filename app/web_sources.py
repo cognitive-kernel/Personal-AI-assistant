@@ -440,6 +440,11 @@ def _normalize_search_results(
             parsed = _validate_public_url(url)
         except SourceFetchError:
             continue
+        # Research payloads, audit records, and citations require HTTPS. Reject
+        # HTTP search results here so they cannot consume the bounded result limit
+        # and later be discarded by chat_research._source_payload.
+        if parsed.scheme.casefold() != "https":
+            continue
         hostname = (parsed.hostname or "").lower().rstrip(".")
         if any(hostname == host or hostname.endswith("." + host) for host in provider_hosts):
             continue
@@ -609,6 +614,9 @@ def _search_results(query: str, limit: int) -> SearchResultList:
     raise error
 
 def _fetch_document(url: str, title_hint: str, *, max_chars: int = 6000) -> SourceDocument:
+    parsed = _parse_public_url(url)
+    if parsed.scheme.casefold() != "https":
+        raise SourceFetchError("HTTPS is required for research source documents.")
     content, content_type = _open(url, max_bytes=MAX_RESPONSE_BYTES)
     if content_type == "text/plain":
         title = title_hint
