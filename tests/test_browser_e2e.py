@@ -1,6 +1,6 @@
 """Small real-browser smoke tests for the local dashboard.
 
-The regular unit suite skips these unless E2E_BASE_URL is explicitly configured.
+Run this suite only in the dedicated browser-e2e workflow.
 """
 import json
 import os
@@ -9,8 +9,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-playwright_api = pytest.importorskip("playwright.sync_api")
-sync_playwright = playwright_api.sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ModuleNotFoundError:
+    sync_playwright = None
+
+pytestmark = pytest.mark.browser_e2e
 
 
 def _goto_section(page, base_url: str, page_id: str):
@@ -24,7 +28,7 @@ def _goto_section(page, base_url: str, page_id: str):
 def test_dashboard_loads_and_core_panels_work_without_a_live_model():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     browser_errors = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -116,7 +120,7 @@ def test_dashboard_loads_and_core_panels_work_without_a_live_model():
 def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -202,7 +206,7 @@ def test_experience_creation_stays_unverified_and_auto_capture_defaults_off():
 def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     task_reads = {"count": 0}
     with sync_playwright() as playwright:
@@ -292,7 +296,7 @@ def test_browser_cloud_discovery_displays_query_progress_until_task_finishes():
 def test_browser_can_cancel_a_persisted_scheduled_task():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -346,7 +350,7 @@ def test_browser_can_cancel_a_persisted_scheduled_task():
 def test_browser_task_audit_history_loads_older_cursor_pages():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     task = {
         "id": 424242,
@@ -424,7 +428,7 @@ def test_browser_task_audit_history_loads_older_cursor_pages():
 def test_browser_task_filter_and_cursor_pagination_preserve_cards():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     def task(task_id, name, status):
         return {
@@ -481,7 +485,7 @@ def test_browser_task_filter_and_cursor_pagination_preserve_cards():
 def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     tasks = [
         {"id": 6001, "task_type": "e2e.research", "status": "queued", "priority": 1,
@@ -569,7 +573,7 @@ def test_browser_task_search_and_live_summary_are_bounded_to_loaded_tasks():
 def test_browser_task_diagnostics_are_collapsed_and_accessibly_disclosed():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     task = {
         "id": 6201,
@@ -621,7 +625,7 @@ def test_browser_task_diagnostics_are_collapsed_and_accessibly_disclosed():
 def test_browser_task_bulk_controls_only_submit_actions_for_eligible_selected_tasks():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     tasks = [
         {"id": 6101, "task_type": "e2e.queued", "status": "queued", "priority": 1,
@@ -676,7 +680,7 @@ def test_browser_task_bulk_controls_only_submit_actions_for_eligible_selected_ta
 def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     requests = []
     task = {
@@ -742,7 +746,7 @@ def test_browser_task_priority_and_schedule_controls_submit_validated_updates():
 def test_browser_task_priority_and_schedule_controls_hidden_for_running_task():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     task = {
         "id": 5152,
@@ -783,7 +787,7 @@ def test_browser_task_priority_and_schedule_controls_hidden_for_running_task():
 def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     development_doc = Path(__file__).resolve().parents[1] / "docs" / "DEVELOPMENT.md"
     original_content = development_doc.read_text(encoding="utf-8")
     title = "Browser E2E proposal safety boundary"
@@ -834,7 +838,7 @@ def test_browser_self_improvement_proposal_is_saved_without_mutating_checkout():
 def test_browser_restores_saved_semantic_review_and_only_generates_after_confirmation():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -943,7 +947,7 @@ def test_browser_restores_saved_semantic_review_and_only_generates_after_confirm
 def test_browser_reloads_and_recovers_persisted_research_task():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     private_message = "E2E private research reload marker 7d91a2"
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -974,7 +978,7 @@ def test_browser_reloads_and_recovers_persisted_research_task():
 def test_browser_validates_and_rejects_self_improvement_proposal_without_applying_patch():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     proposed_doc = Path(__file__).resolve().parents[1] / "docs" / "E2E-REJECTED-PROPOSAL.md"
     assert not proposed_doc.exists()
     title = "Browser E2E proposal validation and rejection"
@@ -1039,7 +1043,7 @@ def test_browser_validates_and_rejects_self_improvement_proposal_without_applyin
 def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     proposal_id = 990123
     proposal = {
@@ -1130,7 +1134,7 @@ def test_browser_requires_confirmation_for_draft_pr_and_rollback_requests():
 def test_browser_can_review_and_persist_an_unverified_experience():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     topic = "Browser E2E experience review persistence"
     takeaway = "Review changes persist while verification remains explicit."
     with sync_playwright() as playwright:
@@ -1185,7 +1189,7 @@ def test_browser_can_review_and_persist_an_unverified_experience():
 def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -1257,7 +1261,7 @@ def test_dashboard_navigation_and_layout_are_accessible_and_responsive():
 def test_dashboard_primary_navigation_is_keyboard_operable():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     navigation_hrefs = [
         "/page/storage-health-section",
         "/",
@@ -1322,7 +1326,7 @@ def test_dashboard_primary_navigation_is_keyboard_operable():
 def test_dashboard_theme_toggle_is_accessible_and_persists():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -1344,7 +1348,7 @@ def test_dashboard_theme_toggle_is_accessible_and_persists():
 def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -1364,7 +1368,7 @@ def test_text_fields_adapt_direction_to_language_and_keep_code_ltr():
 def test_learning_path_progress_is_derived_and_accessible():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     path = {
         "id": 7101,
@@ -1416,7 +1420,7 @@ def test_learning_path_progress_is_derived_and_accessible():
 def test_learning_lesson_history_survives_refresh_and_shows_task_events():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -1513,7 +1517,7 @@ def test_learning_lesson_history_survives_refresh_and_shows_task_events():
 def test_factual_learning_review_test_queue_and_history_panels_load():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
@@ -1558,7 +1562,7 @@ def test_factual_learning_review_test_queue_and_history_panels_load():
 def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     browser_errors = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -1588,7 +1592,7 @@ def test_learning_candidate_review_panel_loads_without_executing_or_promoting():
 def test_ai_learning_search_feedback_is_bound_to_trace_and_persisted():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     api_base = base_url.rstrip("/") + "/api/ai-learning"
     with sync_playwright() as playwright:
@@ -1694,7 +1698,7 @@ def test_ai_learning_search_feedback_is_bound_to_trace_and_persisted():
 def test_dashboard_malformed_percent_encoded_route_falls_back_without_script_error():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
     browser_errors = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -1728,7 +1732,7 @@ def test_dashboard_malformed_percent_encoded_route_falls_back_without_script_err
 def test_storage_backup_failure_is_reported_and_controls_recover():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     browser_errors = []
     backup_requests = []
@@ -1773,7 +1777,7 @@ def test_storage_backup_failure_is_reported_and_controls_recover():
 def test_browser_sandbox_consent_fails_closed_and_runs_bounded_task():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"consent": False, "lookup_failures": 1, "run_payloads": [], "polls": 0}
     task_id = 990771
@@ -1894,7 +1898,7 @@ def test_browser_sandbox_consent_fails_closed_and_runs_bounded_task():
 def test_browser_cloud_planner_validates_and_displays_dry_run_without_execution():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     requests = []
     responses = [
@@ -1990,7 +1994,7 @@ def test_browser_cloud_planner_validates_and_displays_dry_run_without_execution(
 def test_browser_cloud_planner_recovers_after_api_failure():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     requests = []
     browser_errors = []
@@ -2043,7 +2047,7 @@ def test_browser_cloud_planner_recovers_after_api_failure():
 def test_browser_cloud_stale_evidence_disables_review_and_claim_actions():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     patch_calls = []
     candidate = {
@@ -2133,7 +2137,7 @@ def test_browser_cloud_stale_evidence_disables_review_and_claim_actions():
 def test_browser_settings_form_persists_values_and_surfaces_api_failure():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     browser_errors = []
     with sync_playwright() as playwright:
@@ -2213,7 +2217,7 @@ def test_browser_settings_form_persists_values_and_surfaces_api_failure():
 def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {
         "enabled": False,
@@ -2341,7 +2345,7 @@ def test_browser_kaggle_quota_requires_consent_and_recovers_from_refresh_failure
 def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {
         "enabled": False,
@@ -2490,7 +2494,7 @@ def test_browser_oci_limits_requires_consent_and_never_authorizes_execution():
 def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failure():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"submissions": [], "polls": 0}
     browser_errors = []
@@ -2572,7 +2576,7 @@ def test_browser_programming_assistance_queues_polls_and_recovers_from_api_failu
 def test_browser_knowledge_source_ingest_list_search_and_error_recovery():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"ingest": 0, "list": 0, "search": 0}
     browser_errors = []
@@ -2691,7 +2695,7 @@ def test_browser_knowledge_source_ingest_list_search_and_error_recovery():
 def test_ai_learning_global_pause_resume_ui_recovers_after_api_failure():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"paused": False, "resume_failures": 1, "pause_calls": 0, "resume_payloads": []}
     browser_errors = []
@@ -2802,7 +2806,7 @@ def test_ai_learning_global_pause_resume_ui_recovers_after_api_failure():
 def test_ai_learning_resume_preserves_selected_course_id():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"resume_payloads": [], "paused": True}
     browser_errors = []
@@ -2886,7 +2890,7 @@ def test_ai_learning_resume_preserves_selected_course_id():
 def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {
         "topic": {
@@ -3053,7 +3057,7 @@ def test_ai_learning_topic_approval_lesson_review_publish_and_reload_persist():
 def test_browser_learning_course_task_history_loads_older_cursor_pages():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     path_data = {
         "paths": [{
@@ -3187,7 +3191,7 @@ def test_browser_learning_course_task_history_loads_older_cursor_pages():
 def test_browser_sandbox_cancel_recovers_from_api_failure_and_settles_task():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
-        pytest.skip("Set E2E_BASE_URL to run browser smoke tests.")
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
     state = {"cancel_attempts": 0, "cancelled": False, "polls": 0, "payloads": []}
     task_id = 990772
