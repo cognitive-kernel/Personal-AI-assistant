@@ -260,7 +260,7 @@
         $("plan-progress").textContent = "";
       }
       const snapshots = data.history || [];
-      const latest = snapshots.length ? snapshots[snapshots.length - 1] : null;
+      const latest = data.latest_snapshot || (snapshots.length ? snapshots[snapshots.length - 1] : null);
       $("engineering-progress").textContent = latest && Number.isFinite(Number(latest.engineering_percent))
         ? Number(latest.engineering_percent).toFixed(2) + "%" : "—";
       $("overall-progress").textContent = latest && Number.isFinite(Number(latest.overall_percent))
