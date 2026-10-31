@@ -8,7 +8,7 @@
 
 پروژه قابل اجرا و در حال توسعه است، اما برای بهره‌برداری حساس یا مستقل هنوز تأیید نهایی نشده است. قابلیت‌های تحقیق منبع‌محور، حافظهٔ تجربه، یادگیری مسیرمحور، صف پایدار وظایف، sandbox و گردش‌کار خودبهبوددهی کنترل‌شده وجود دارند؛ با این حال ارزیابی جامع مستقل کیفیت دانش، پذیرش عملیاتی روی میزبان مقصد، و برخی دروازه‌های امنیتی و بازیابی همچنان باز هستند.
 
-**مبنای وضعیت:** آخرین commit مخزن و برنامه در `main` برابر `fe1d533eb4a8cff86de978be4487898666afdddd` است؛ PR #645 failure isolation در reconciliation صف یادگیری را اضافه کرد. CI پس از ادغام روی همین SHA با 1754 passed و 5 skipped، Windows storage، browser E2E، dependency audit، بررسی 84 فایل Markdown و benchmark پوشش 10/10 موفق شد. PR #646 در حال افزودن اعتبارسنجی Origin و Fetch Metadata برای API محلی است؛ تا تکمیل CI آن ادغام یا موفقیت ادعا نمی‌شود. این شواهد جایگزین پذیرش میزبان مقصد، restore واقعی در staging، ارزیابی زنده یا بازبینی مستقل امنیتی نیست.
+**مبنای وضعیت:** آخرین commit مخزن و برنامه در `main` برابر `fe1d533eb4a8cff86de978be4487898666afdddd` است؛ PR #645 failure isolation در reconciliation صف یادگیری را اضافه کرد. CI پس از ادغام روی همین SHA با 1754 passed و 5 skipped، Windows storage، browser E2E، dependency audit، بررسی 84 فایل Markdown و benchmark پوشش 10/10 موفق شد. PR #646 در حال افزودن اعتبارسنجی Origin و Fetch Metadata برای API محلی و هدرهای ضد clickjacking (`X-Frame-Options: DENY` و `frame-ancestors 'none'`) است؛ تا تکمیل CI آن ادغام یا موفقیت ادعا نمی‌شود. این شواهد جایگزین پذیرش میزبان مقصد، restore واقعی در staging، ارزیابی زنده یا بازبینی مستقل امنیتی نیست.
 
 ## 1.1 تغییرات جدید پس از snapshot قبلی
 
