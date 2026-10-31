@@ -390,3 +390,35 @@ def test_runtime_restarts_when_maintenance_thread_exits(runtime_store, monkeypat
     finally:
         assert runtime.stop(timeout=3) is True
 
+
+def test_runtime_restart_after_timed_out_stop_waits_for_old_worker(runtime_store):
+    handler_started = threading.Event()
+    release_handler = threading.Event()
+    task_manager.create_task("runtime.blocking", {})
+
+    def blocking_handler(_payload, _checkpoint, _context):
+        handler_started.set()
+        assert release_handler.wait(timeout=5)
+        return {"finished": True}
+
+    runtime = TaskRuntime({"runtime.blocking": blocking_handler}, poll_interval=0.05)
+    runtime.start()
+    previous_worker = runtime._threads[0]
+    try:
+        assert handler_started.wait(timeout=3)
+        assert runtime.stop(timeout=0) is False
+        # A stop request means the runtime is no longer healthy, even while a
+        # cooperative handler is still unwinding.
+        assert runtime.is_healthy is False
+
+        release_handler.set()
+        previous_worker.join(timeout=3)
+        assert not previous_worker.is_alive()
+
+        runtime.start()
+        assert runtime.is_healthy is True
+        assert runtime._threads[0] is not previous_worker
+    finally:
+        release_handler.set()
+        assert runtime.stop(timeout=3) is True
+

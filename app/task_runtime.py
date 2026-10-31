@@ -70,7 +70,9 @@ class TaskRuntime:
 
     @property
     def is_healthy(self) -> bool:
-        """Return whether every configured worker and maintenance thread is alive."""
+        """Return whether all managed threads are alive and shutdown is not pending."""
+        if self._stop_event.is_set():
+            return False
         if len(self._threads) != self.worker_count or not all(
             thread.is_alive() for thread in self._threads
         ):
