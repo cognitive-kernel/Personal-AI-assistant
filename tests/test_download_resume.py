@@ -506,8 +506,10 @@ def test_linux_installer_patch_replaces_second_stage_curl_with_verified_helper(t
     assert "curl" not in function
     assert "--download-ollama-asset" in function
     assert "OLLAMA_VERIFIED_ASSET_DIR" in function
-    assert "zstd -d --stdout" in function
-    assert "set -o pipefail" in function
+    assert "zstd -d --force" in function
+    assert 'tar -xf "$tar_path"' in function
+    assert " | " not in function
+    assert "set -o pipefail" not in function
     assert "curl --fail --show-error" in original.read_text(encoding="utf-8")
 
 
