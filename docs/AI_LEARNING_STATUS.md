@@ -43,9 +43,9 @@
 
 ## آزمون‌ها و شواهد CI
 
-آخرین commit مخزن و برنامه در `main` برابر `fe1d533eb4a8cff86de978be4487898666afdddd` است. PR #645 اصلاح failure isolation در queue reconciliation را ادغام کرد. post-merge CI روی همین SHA با **1754 passed, 5 skipped**، Windows storage، Chromium browser E2E، dependency audit، 84 Markdown links و benchmark 10/10 موفق شد؛ [tests #41187073485](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073485)، [browser E2E #41187073406](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073406)، [dependency audit #41187073401](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41187073401):
+آخرین commit مخزن و برنامه در `main` برابر `6b19b84c78e17d8b5c28122964c7130dcf42f853` است. PR #646 محافظت CSRF و ضد clickjacking را اضافه کرد. post-merge CI روی همین SHA با **1758 passed, 5 skipped**، Windows storage، Chromium browser E2E، dependency audit، 85 Markdown links و benchmark 10/10 موفق شد؛ [tests #41188392547](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392547)، [browser E2E #41188392561](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392561)، [dependency audit #41188392609](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41188392609):
 
-- مجموعهٔ کامل pytest روی آخرین main: **1754 passed, 5 skipped** روی merge commit PR #645؛ Windows storage، Chromium E2E، dependency audit، artifact/link/import checks و benchmarkها موفق شدند. تست‌های skip‌شده پذیرش target-host یا اجرای زندهٔ provider را اثبات نمی‌کنند.
+- مجموعهٔ کامل pytest روی آخرین main: **1758 passed, 5 skipped** روی merge commit PR #646؛ Windows storage، Chromium E2E، dependency audit، artifact/link/import checks و benchmarkها موفق شدند. چهار تست real-Docker در suite عمومی با env خاموش skip می‌شوند و در workflow اختصاصی `sandbox-integration-ci.yml` برای تغییرات sandbox اجرا می‌شوند؛ تست‌های skip‌شده به‌تنهایی پذیرش target-host یا اجرای زندهٔ provider را اثبات نمی‌کنند.
 - آزمون مرورگر واقعی داشبورد با Chromium و برنامهٔ محلی ایزوله: موفق.
 - آزمون‌های مهاجرت، بازیابی و پاک‌سازی staging در Windows: موفق.
 - ممیزی وابستگی‌ها: موفق.
