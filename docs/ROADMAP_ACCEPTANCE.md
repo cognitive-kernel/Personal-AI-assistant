@@ -175,3 +175,9 @@ Append evidence only after it has actually been produced.
 - Extraction uses a temporary tar file rather than a shell pipeline, preserving POSIX /bin/sh compatibility and surfacing decompression failures.
 - Automated regression coverage includes official asset selection, version/URL/digest/size validation, untrusted/malformed asset rejection, upstream script drift, and sh -n syntax validation.
 - Exact-head CI passed on `5c1c1f36f5f38b43a2ec20e720548fde299a43f8`: tests [#41164300720](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300720) (1728 passed, 5 skipped; Windows storage regressions, artifact/link/import checks, retrieval and claim-to-test benchmarks 10/10), browser E2E [#41164300693](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300693), and dependency audit [#41164300658](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41164300658). Independent post-merge CI on the squash SHA is not confirmed. Live Linux installation/target-host acceptance remains intentionally excluded as a local test.
+
+## 2026-10-31 — Research source transport policy
+
+- [ ] Implementation in review: search-result normalization and document fetching both require HTTPS, matching the downstream chat payload/citation/evidence contract.
+- Automated regressions verify that HTTP candidates do not consume the result limit, HTTP documents are rejected before network access, and a later HTTPS candidate remains discoverable.
+- Do not interpret this isolated policy fix as proof that live source discovery is fully reliable; provider availability, fetch success, source relevance, and claim support remain separate quality gates.
