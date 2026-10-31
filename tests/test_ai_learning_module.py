@@ -964,8 +964,8 @@ def test_legacy_title_only_source_recovers_exact_url_from_saved_raw_response(iso
     title = "Search condition (Transact-SQL) — Microsoft Learn"
     version = service.add_content_version(
         lesson["id"],
-        "Substantive lesson content describing SQL Server search conditions and predicates.\\n\\n"
-        "## منابع\\n- " + title,
+        "Substantive lesson content describing SQL Server search conditions and predicates.\n\n"
+        "## منابع\n- " + title,
         source_kind="manual",
     )
     with connection() as conn:
