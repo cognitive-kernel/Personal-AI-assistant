@@ -132,7 +132,7 @@ async def report_storage_schema_block(request, call_next):
 
 @app.middleware("http")
 async def enforce_loopback_only(request, call_next):
-    """Block unauthenticated dashboard and API access from non-loopback peers."""
+    """Require both a loopback peer and a local Host to block DNS-rebinding access."""
     client = request.client
     if client is None:
         return JSONResponse(
@@ -155,6 +155,27 @@ async def enforce_loopback_only(request, call_next):
                 status_code=403,
                 content={"detail": "This application is available from localhost only."},
             )
+
+    try:
+        host = request.url.hostname
+    except ValueError:
+        host = None
+    allowed_hosts = {"localhost", "127.0.0.1", "::1"}
+    # Starlette TestClient exposes a synthetic server tuple; a real TCP server
+    # reports its bound IP address, not this test-only hostname.
+    server = request.scope.get("server")
+    if (
+        isinstance(server, (tuple, list))
+        and server
+        and server[0] == "testserver"
+        and host == "testserver"
+    ):
+        allowed_hosts.add("testserver")
+    if not isinstance(host, str) or host.casefold() not in allowed_hosts:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "This application is available from localhost only."},
+        )
     return await call_next(request)
 
 
