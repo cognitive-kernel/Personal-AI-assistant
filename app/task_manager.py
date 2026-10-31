@@ -446,25 +446,34 @@ def fail_task(
         # Serialize retry scheduling with any competing lease reclamation.
         conn.execute("BEGIN IMMEDIATE")
         row = _owned_running_task(conn, task_id, worker_id)
-        should_retry = retry and row["attempts"] < row["max_attempts"]
-        if should_retry:
-            # The attempt that just failed determines a 2s, 4s, 8s... delay, capped at 5m.
-            exponential_delay = min(
-                RETRY_MAX_DELAY_SECONDS,
-                RETRY_BASE_DELAY_SECONDS * (2 ** min(max(int(row["attempts"]) - 1, 0), 8)),
-            )
-            # Add bounded jitter so many failed jobs do not retry in lockstep.
-            # The maximum remains a hard cap even when jitter selects its upper bound.
-            jittered_delay = random.uniform(
-                exponential_delay * 0.8,
-                exponential_delay * 1.2,
-            )
-            delay = min(RETRY_MAX_DELAY_SECONDS, jittered_delay)
-            scheduled_at = _timestamp(now_dt + timedelta(seconds=delay))
-            status = "queued"
-        else:
+        # Explicit user control takes precedence over automatic retry. This also
+        # covers failures before a handler reaches its next cooperative checkpoint.
+        if row["status"] == "cancel_requested":
             scheduled_at = row["scheduled_at"]
-            status = "failed"
+            status = "cancelled"
+        elif row["status"] == "pause_requested":
+            scheduled_at = row["scheduled_at"]
+            status = "paused"
+        else:
+            should_retry = retry and row["attempts"] < row["max_attempts"]
+            if should_retry:
+                # The attempt that just failed determines a 2s, 4s, 8s... delay, capped at 5m.
+                exponential_delay = min(
+                    RETRY_MAX_DELAY_SECONDS,
+                    RETRY_BASE_DELAY_SECONDS * (2 ** min(max(int(row["attempts"]) - 1, 0), 8)),
+                )
+                # Add bounded jitter so many failed jobs do not retry in lockstep.
+                # The maximum remains a hard cap even when jitter selects its upper bound.
+                jittered_delay = random.uniform(
+                    exponential_delay * 0.8,
+                    exponential_delay * 1.2,
+                )
+                delay = min(RETRY_MAX_DELAY_SECONDS, jittered_delay)
+                scheduled_at = _timestamp(now_dt + timedelta(seconds=delay))
+                status = "queued"
+            else:
+                scheduled_at = row["scheduled_at"]
+                status = "failed"
         conn.execute(
             """UPDATE task_queue SET status=?, error=?, scheduled_at=?,
                lease_owner=NULL, lease_expires_at=NULL, updated_at=? WHERE id=?""",
