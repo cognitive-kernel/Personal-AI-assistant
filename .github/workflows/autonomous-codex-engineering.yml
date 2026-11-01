@@ -187,7 +187,7 @@ jobs:
               encoding="utf-8",
           )
           manual_task = os.getenv("MANUAL_TASK", "")
-          if len(manual_task) > 2000 or "\\x00" in manual_task:
+          if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
           request = {
               "event": os.getenv("EVENT_NAME", ""),
