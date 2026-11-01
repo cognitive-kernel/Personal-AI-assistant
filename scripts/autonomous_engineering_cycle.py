@@ -15,6 +15,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = ("app/", "tests/", "docs/", "scripts/")
+RUNTIME_FILES = {".agent-request.json", ".agent-github-state.json", ".agent-progress.json"}
 PROTECTED = {
     ".github/workflows/autonomous-codex-engineering.yml",
     "scripts/autonomous_engineering_cycle.py",
@@ -70,7 +71,7 @@ def task_marker(report: Path) -> str:
 def changed_paths() -> list[str]:
     tracked = checked(["git", "diff", "--name-only", "-z"]).split("\0")
     untracked = checked(["git", "ls-files", "--others", "--exclude-standard", "-z"]).split("\0")
-    return sorted({p.replace("\\", "/") for p in tracked + untracked if p})
+    return sorted({p.replace("\\", "/") for p in tracked + untracked if p and p.replace("\\", "/") not in RUNTIME_FILES})
 
 
 def validate_paths(paths: list[str]) -> None:
