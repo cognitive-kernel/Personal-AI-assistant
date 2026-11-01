@@ -201,16 +201,51 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not (engineering and overall and snapshot):
         return
-    record = {
-        "type": "project_snapshot", "date": datetime.now(timezone.utc).date().isoformat(),
+    signature = {
         "scorecard_snapshot_date": snapshot.group(1),
-        "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
         "engineering_percent": float(engineering.group(1)),
         "overall_percent": float(overall.group(1)),
         "sha": sha.group(1) if sha else None,
     }
+    directory = store_dir()
+    state_path = directory / "scorecard-state.json"
+    previous: dict[str, Any] | None = None
     try:
-        append_history(record)
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if isinstance(state, dict):
+            previous = state
+    except (OSError, ValueError):
+        pass
+    if previous is None:
+        history_path = directory / "history.jsonl"
+        try:
+            if history_path.is_file() and history_path.stat().st_size <= 8 * 1024 * 1024:
+                for line in reversed(history_path.read_text(encoding="utf-8").splitlines()):
+                    try:
+                        candidate = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(candidate, dict) and candidate.get("type") == "project_snapshot":
+                        previous = {
+                            key: candidate.get(key)
+                            for key in ("scorecard_snapshot_date", "engineering_percent", "overall_percent", "sha")
+                        }
+                        break
+        except OSError:
+            pass
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        if previous == signature:
+            return
+        if previous is not None:
+            record = {
+                "type": "project_snapshot", "date": datetime.now(timezone.utc).date().isoformat(),
+                **signature, "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
+            }
+            append_history(record)
+        temporary = state_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(signature, ensure_ascii=False) + "\\n", encoding="utf-8")
+        temporary.replace(state_path)
     except OSError as exc:
         print(f"Could not persist scorecard snapshot: {type(exc).__name__}", file=sys.stderr)
 
