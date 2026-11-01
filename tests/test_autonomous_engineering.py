@@ -465,6 +465,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "non-administrator service account" in workflow
     assert '"${RunnerAccount}:(OI)(CI)M"' in acl_script
     assert '"${AppAccount}:(OI)(CI)RX"' in acl_script
+    assert "/inheritance:r /T /C /grant:r" in acl_script
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
 
