@@ -64,7 +64,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
    .\\scripts\\configure_autonomous_engineering_progress.ps1 -RunnerAccount "DOMAIN\\runner-svc" -AppAccount "DOMAIN\\app-user"
    \`\`\`
 
-   The script rejects identical account names and grants access only to those two accounts, SYSTEM, and local administrators. The directory is \`%ProgramData%\\PersonalAIAssistant\\autonomous-engineering\`; the app reads it and the Runner writes it. Do not grant access to broad groups such as Everyone or Users.
+   The script rejects identical account names, grants Modify only to the Runner account, and grants read/execute to the application account; SYSTEM and local administrators retain full control. The directory is \`%ProgramData%\\PersonalAIAssistant\\autonomous-engineering\`; the app reads it and the Runner writes it. Do not grant access to broad groups such as Everyone or Users.
 9. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. This permission is used only by the final GitHub-hosted publication job.
 10. From the application account and the application checkout, run the app-side readiness check:
 
