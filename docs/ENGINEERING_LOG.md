@@ -1,6 +1,39 @@
 # Engineering Continuity Log
 
+## 2026-11-01 — PR #680: per-task autonomous engineering, retry, CI, and merge controller
+
+- Implementation branch: `automation/codex-engineering-agent-rebased`; reviewed code head before this log update: `05bf0f34472f9789fa79e95a4a4a703cb5c4e47f`; base `main`: `60597e13e70a3014f6a1871290cf843d188ca45e`. PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) remains open and unmerged.
+- Replaced the previous aggregate continuous patch path with `scripts/autonomous_engineering_cycle.py`: each task gets a fresh Codex process on its own branch, full Windows pytest and repository quality gates, a controller-created PR, exact-head verification, GitHub-hosted CI, merge, and a fetch/reset to the new `origin/main` before the next task.
+- Verification failures are passed verbatim (as untrusted diagnostic output) into a fresh Codex session for the same task. The queue does not advance and no PR is published/merged until all local gates pass. A six-hour GitHub Actions job limit remains; if a task cannot pass within that runner window, the workflow fails closed and does not start another task.
+- Each candidate PR now explicitly dispatches `tests.yml`, `browser-e2e.yml`, and `dependency-audit.yml` against the candidate branch and waits for successful runs whose `head_sha` exactly matches the candidate commit before merging. `workflow_dispatch` was added to the first two workflows because push/PR events created with `GITHUB_TOKEN` do not automatically trigger downstream workflows.
+- Continuous mode processes up to eight independently tested/merged tasks per run, then dispatches a continuation run from `main`; an empty ledger stops without creating a PR. The one-shot manual task is cleared only after its successful merge.
+- The workflow token is removed from the Codex process environment. The controller uses it only for git publication, PR/merge API operations, required workflow dispatch, and continuation. Candidate paths and protected controller/workflow files are validated before commit; PR head SHA, base branch, merge response, and post-merge ancestry are checked.
+- Added regression coverage for task markers, path allowlisting, same-task retry after a failing test suite, and keeping the GitHub token out of child-process environment variables.
+- Exact-head CI for the implementation is pending at the time of this entry. Do not use prior PR #680 CI results as evidence for these new controller changes. Update this entry with final exact-head test, browser, Windows-storage, and audit results after the latest commit finishes.
+- No merge of PR #680 or direct write to `main` was performed. Owner-side Windows Runner/Ollama configuration, target-host soak/recovery/rollback, human acceptance, and independent Issue #52 review remain external gates.
+
+
 This file is the durable session handoff required by `docs/MASTER_ENGINEERING_PROMPT.md`. It records repository facts and evidence, not an assertion that the full project is accepted.
+
+
+## 2026-11-01 — PR #680 final pre-pull engineering review
+
+- Current base: `main` SHA `60597e13e70a3014f6a1871290cf843d188ca45e`. The feature remains isolated on `automation/codex-engineering-agent-rebased`; no direct-main write, merge, deployment, or history rewrite was performed.
+- Exact reviewed PR head: `c7ec867df63baac9dec74b736b65a64284a525e4`; PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) is open, Draft, and unmerged.
+- Final review corrected progress semantics: the displayed plan percentage is completed/total structured Codex plan items (equal-weight task count, not estimated effort). Workflow phase and active step are separate; plan completion may reach 100% before validation and PR publication finish.
+- Project history is evidence-safe: the workflow snapshots the trusted `main` scorecard before Codex starts; the original baseline is persisted separately; new points are added only when accepted scorecard percentages change on `main`. Unmerged candidate scorecard changes and unchanged percentages do not create chart points.
+- Live progress starts before prerequisite checks. The current plan percentage is retained through tests, quality gates, GitHub validation, and draft-PR publication. The workflow fails closed if progress telemetry cannot be persisted.
+- Security hardening: candidate patches cannot modify `pyproject.toml`; Codex explicitly selects Ollama with `--oss --local-provider ollama`; app and non-admin Runner accounts have separate checks; the Runner is rejected if it is a local administrator; the Runner account does not use GitHub CLI authentication; the Runner receives Modify on telemetry while the app receives read/execute only.
+- Windows setup documentation now distinguishes app and Runner accounts, includes separate readiness scripts, explains the 64k Ollama context requirement, and identifies target-host checks that remain external.
+- Exact-head CI for `c7ec867df63baac9dec74b736b65a64284a525e4` passed:
+  - Tests: **1,840 passed, 48 deselected**.
+  - Deterministic lexical retrieval benchmark: passed.
+  - Fail-closed claim-to-test coverage benchmark: **10/10**, zero failed cases.
+  - Windows storage regressions: passed.
+  - Chromium dashboard smoke: passed.
+  - Dependency audit: passed.
+  - Actions: [tests and Windows regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589102), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589078), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589074).
+- Pull readiness is limited to checking out the feature branch. The PR is not merged. Before enabling scheduled operation or merging, the owner must complete Windows Runner registration, verify the dedicated non-admin account and ProgramData ACLs, validate the 64k Ollama context and performance/soak on the target host, and obtain the independent security review. Manual keyboard/screen-reader and target-host usability reviews also remain open.
 
 ## 2026-10-31 — resumed engineering execution
 
@@ -147,3 +180,63 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The old roadmap HTTPS-policy row was corrected in the same PR: PR #622 merged as `c46e136bb00e4dd56627e98990b80d27f73b93e9`; its implementation is not still in review.
 - E-03 baseline allocation remains 22 h. The planned start is 2026-11-02; this pre-start automation run does not book baseline hours. Runtime engineering time is not metered here, so no actual-hour figure is invented; no contingency consumption or schedule reforecast is recorded.
 - External acceptance remains open: the pinned-model live Persian/English evaluation and human adjudication, target-host operations/recovery, staging restore/rollback, and independent security review in Issue #52. The parser regression does not establish live provider availability or resolve the historical zero-source evaluation by itself.
+
+## 2026-11-01 — Local Ollama autonomous engineering console (PR #675)
+
+- Replaced the paid OpenAI API workflow design with a Windows self-hosted runner using Codex CLI `--oss` and local Ollama; no `OPENAI_API_KEY` is required.
+- Added a dedicated `/autonomous-engineering` operations page, local read-only diagnostics, explicit GitHub workflow dispatch/cancel actions, and a PowerShell readiness check.
+- Added the agent destination to the main dashboard navigation and shared primary navigation to the standalone AI-learning and autonomous-engineering pages.
+- The workflow runs local Codex only on the labeled trusted-main self-hosted runner; candidate validation and draft-PR publication remain separate GitHub-hosted jobs.
+- Implementation and CI are in progress on `automation/codex-engineering-agent`. No test pass, runner installation, or target-host operation is claimed yet. The local runner must be registered and kept online by the repository owner.
+
+
+### Follow-up — live progress telemetry and scorecard history
+
+- Added a dedicated progress API and compact dashboard panel. The current cycle reports the active Codex plan item, completed/total plan steps, workflow phase, and progress percentage; later GitHub-hosted validation/publication stages are reconciled from the run's actual job and step states.
+- Codex JSONL events are reduced to bounded activity breadcrumbs. Raw command output, credentials, and model reasoning are not persisted or shown. The temporary `.agent-progress.json` plan is excluded from the candidate patch.
+- Added daily, weekly, and custom date-range SVG charts for the weighted engineering-completion and overall-acceptance scorecard metrics. The existing 2026-11-01 scorecard is the only historical baseline; new snapshots are recorded on worker-run dates, with no fabricated backfill.
+- Activity events and project score snapshots use separate bounded local files under `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering`. A one-time ACL script grants access only to the dedicated Runner account, local application account, SYSTEM, and local administrators. The UI polls the small progress endpoint every five seconds; logs remain collapsed by default and no charting dependency is added.
+- Added API, scorecard parsing, plan-progress, GitHub step reconciliation, and compact UI regression tests. Exact-head CI and Windows ACL/runner verification remain pending; no operational telemetry is claimed until the shared directory is configured and a real workflow run reports events.
+
+
+### Branch-continuity correction — 2026-11-01
+
+- Two progress helper files were inadvertently committed directly to `main` while a branch argument was omitted from two GitHub Contents API updates: `f7d38e99ec717c35404c95eea535171e4c6e3280` added `app/autonomous_engineering_progress.py`, and `60597e13e70a3014f6a1871290cf843d188ca45e` added `scripts/autonomous_engineering_progress.py`. These commits changed only those two new helper files; they did not alter existing application routes or activate the feature.
+- The mistake was not hidden or force-rewritten. The replacement PR #680 is based on the resulting current-main SHA and updates both helpers together with the full UI, API, workflow, tests, and documentation integration. The superseded PR #675 was closed after #680 was opened.
+- All subsequent writes explicitly target `automation/codex-engineering-agent-rebased`. No direct-main write, force-push, or history rewrite is planned.
+
+
+## 2026-11-01 — Local Ollama autonomous engineering console: exact-head verification (PR #680)
+
+- Revalidated live repository state: `main` is `60597e13e70a3014f6a1871290cf843d188ca45e`; PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) targets that exact base from `automation/codex-engineering-agent-rebased` at head `e3c8702db7eb21689f15f01232dca7c76ea137c7`. The PR is mergeable and remains unmerged.
+- Reviewed the complete feature implementation surfaces: FastAPI status/settings/dispatch/cancel/progress routes, loopback dependency, Ollama diagnostics, bounded progress reader/writer, Windows Runner preflight and ACL scripts, RTL dashboard JavaScript/HTML, workflow isolation, regression tests, and setup documentation.
+- Exact-head automated verification passed on `e3c8702db7eb21689f15f01232dca7c76ea137c7`: tests workflow [#41269501876](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41269501876) including `windows-storage-regressions` and the main test job; real Chromium dashboard smoke [#41269501826](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41269501826); dependency audit [#41269501856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41269501856). Every job completed with `success`.
+- No local target-machine test, human acceptance test, human model adjudication, or independent security review was performed. These are intentionally deferred to the owner/reviewer after engineering handoff; Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) remains open until independent review evidence is recorded.
+- Operational prerequisites remain external: register the Windows self-hosted Runner under a dedicated non-administrator account; configure the shared ProgramData ACL for the exact Runner and app identities; ensure Ollama and the configured model are available to the Runner account; execute the target-host soak/recovery and rollback rehearsal. CI smoke tests do not prove these host-specific prerequisites.
+- No acceptance-score increase is recorded: the PR adds a new operations path, but it does not close project-wide UI parity, operational, human, or independent-review gates. The historical scorecard values are not inflated.
+- The two accidental helper commits on `main` remain documented in the prior branch-continuity entry; no history rewrite or force-push was performed.
+
+## 2026-11-01 — Autonomous engineering console hardening and direct task submission (PR #680)
+
+- Added the missing direct-task form to /autonomous-engineering. A bounded request (maximum 2,000 characters) is sent through the local app's authenticated GitHub CLI as a workflow_dispatch input; the workflow validates it again and places it in the ephemeral untracked request file. Codex is explicitly instructed to treat the task as untrusted data, and the existing allowlisted patch/independent-validation boundaries remain unchanged.
+- The page warns that task text is part of GitHub workflow event metadata; users must not submit passwords, tokens, API keys, private user data, or secrets. The periodic worker continues selecting work from the project ledger when no direct task is supplied.
+- Security review found the one-time progress ACL script only applied inheritance removal to the root directory, not existing descendants. Updated it to apply the restricted ACL recursively (/T /C) and added a regression assertion. Existing descendants are now included when the script is rerun; new files inherit the configured directory ACL.
+- Final exact-head verification on 016f0004afa7443660868d0ba93eca9fdad7f649: tests [#41312855384](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41312855384) passed **1,842 tests / 49 deselected** in 199.52 seconds; Windows storage regressions passed; browser E2E [#41312855370](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41312855370) passed, including the real-browser manual-task submission regression; dependency audit [#41312855311](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41312855311) passed. Generated learning artifacts, Markdown links (92 files), import-cycle scan, lexical retrieval benchmark, and claim-to-test benchmark (10/10) also passed.
+- The exact-head tests workflow had one intermediate failure on the preceding SHA caused by misplaced test assertions (NameError in a test); the assertions were moved to the test that defines the workflow fixture, and the final exact SHA above is green. No production-code failure remained from that intermediate run.
+- No local target-machine test, human acceptance test, human model adjudication, or independent security review was performed. Owner-side Windows Runner registration, dedicated non-admin identity, Ollama/model readiness, target-host soak/recovery/rollback, and independent Issue #52 review remain external acceptance gates.
+- No scorecard increase is claimed: this console and its automated regressions do not close the project-wide UI parity, target-host, human-quality, staging/rollback, or independent-review gates. The project remains below 100% overall acceptance.
+
+### Exact-head verification update — implementation SHA `91542f14ad51b2662528b45b602d43ac40d03e35`
+
+- The exact implementation head passed all four GitHub checks: tests [run 41319480167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480167), browser E2E [run 41319480147](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480147), dependency audit [run 41319480179](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480179), and Windows storage regressions in run `41319480167`.
+- Test suite: **1,860 passed, 49 deselected** in 142.52 seconds. The Windows storage regression job passed. Browser dashboard smoke passed. Dependency audit passed. Learning artifact validation, Markdown links (92 files), import-cycle check, lexical retrieval evaluation, and claim-to-test acceptance benchmark (10/10) passed.
+- The retry regression test verifies that a failed full test suite causes a fresh Codex session to repair the same task before publication. Token-isolation and protected-path tests also passed.
+- These results verify the implementation SHA above. Documentation-only checkpoint updates are being added separately and must receive their own exact-head CI before pull readiness is declared. PR #680 remains open and unmerged.
+
+### Final exact-head verification — `9018fefb128738a0c22a92a25482ec6393b4c29e`
+
+- Latest PR head `9018fefb128738a0c22a92a25482ec6393b4c29e` passed all four checks: tests + Windows storage [run 41319954134](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954134), browser E2E [run 41319954115](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954115), and dependency audit [run 41319954116](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954116).
+- Full suite: **1,860 passed, 49 deselected** in 202.78 seconds. Windows storage regression job passed. Browser dashboard smoke and dependency audit passed. Generated learning artifacts passed; Markdown links passed for 92 files; AST import-cycle checker found no cycles; lexical retrieval and claim-to-test benchmark (10/10) passed.
+- The test suite includes both local full-suite failure retry and GitHub-hosted CI failure retry coverage. No task advances until the same task passes again and its PR merges.
+- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) remains open, unmerged, and ready for the owner's pull/local acceptance test. No merge or direct-main write was performed by this session.
+

@@ -1,12 +1,20 @@
 <!doctype html>
 <html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><link rel="icon" href="/favicon.ico" sizes="32x32" type="image/x-icon"><title>مدیریت دانش هوش مصنوعی</title><link rel="stylesheet" href="/ai-learning-assets/style.css"><script src="/ai-learning-assets/app.js?v=20261031-1" defer></script></head>
-<body><header><h1>مدیریت دانش هوش مصنوعی</h1><p>دانش پس از بازبینی و انتشار، به‌صورت اختیاری در پاسخ‌گویی عادی دستیار استفاده می‌شود.</p><p id="status" role="status" aria-live="polite">در حال بارگذاری…</p>
+<body>
+<a class="skip-link" href="#main-content">رفتن به محتوای اصلی</a>
+<nav class="main-nav" aria-label="منوی اصلی">
+<a href="/">گفتگو و پژوهش</a><a href="/page/storage-health-section">سلامت و پشتیبان</a><a href="/page/learning-section">یادگیری</a>
+<a href="/ai-learning" aria-current="page">یادگیری از هوش مصنوعی</a><a href="/autonomous-engineering">عامل مهندسی خودکار</a>
+<a href="/page/learning-paths-section">مسیرهای آموزشی</a><a href="/page/knowledge-section">دانش ذخیره‌شده</a><a href="/page/task-manager-section">وظایف</a>
+<a href="/page/experience-memory-section">حافظهٔ تجربه</a><a href="/page/cloud-resources-section">منابع پردازشی</a><a href="/page/cloud-plan-section">برنامه‌ریزی منابع</a>
+<a href="/page/kaggle-quota-section">سهمیهٔ Kaggle</a><a href="/page/oci-limits-section">محدودیت‌های OCI</a><a href="/page/sandbox-section">محیط ایزوله</a>
+<a href="/page/self-improvement-section">بهبود کد</a><a href="/page/settings-section">تنظیمات</a></nav><header><h1>مدیریت دانش هوش مصنوعی</h1><p>دانش پس از بازبینی و انتشار، به‌صورت اختیاری در پاسخ‌گویی عادی دستیار استفاده می‌شود.</p><p id="status" role="status" aria-live="polite">در حال بارگذاری…</p>
 <div class="toolbar" aria-label="کنترل سراسری یادگیری">
 <button id="pause-learning" type="button" class="secondary">مکث همهٔ فرایندهای ChatGPT</button>
 <button id="resume-learning" type="button">ادامه و دریافت درس‌های باقی‌مانده</button>
 <button id="reset-learning-data" type="button" class="secondary">پاک‌سازی داده‌های یادگیری و شروع از صفر</button>
 </div>
-<p id="learning-control-status" class="hint" role="status">وضعیت مکث در حال بررسی است.</p></header><main>
+<p id="learning-control-status" class="hint" role="status">وضعیت مکث در حال بررسی است.</p></header><main id="main-content" tabindex="-1">
 <section><h2>۱. ایجاد دوره</h2><form id="course-form" class="grid"><label>موضوع<input name="title" required maxlength="300" placeholder="مثلاً SQL Server 2005"></label><label>سرویس<select name="provider"><option value="manual">ورود دستی</option><option value="chatgpt_ui">ChatGPT در Chrome</option><option value="other_provider">سرویس دیگر</option></select></label><label>زبان<input name="language" value="fa" maxlength="20"></label><label>سطح<input name="target_level" value="از پایه تا پیشرفته" maxlength="80"></label><label class="wide">محدوده<textarea name="scope_notes" maxlength="4000" rows="2"></textarea></label><button type="submit">ایجاد دوره</button></form></section>
 <section><h2>۲. دوره و سرفصل‌ها</h2><label>دوره<select id="course-select"></select></label><div class="toolbar"><button id="reload" type="button" class="secondary">بازخوانی</button><button id="delete-course" type="button" class="secondary">حذف دوره انتخاب‌شده</button></div>
 <form id="outline-form"><label>واردکردن پاسخ سرفصل‌ها<textarea id="outline-text" rows="4" maxlength="100000" placeholder="1. معماری&#10;2. ساختار داده&#10;3. پشتیبان‌گیری"></textarea></label><button type="submit">ثبت سرفصل‌های دریافتی</button></form><p class="hint">با زدن «بازخوانی»، سرویس Playwright یک پنجره Chrome با پروفایل پایدار باز می‌کند، درخواست سرفصل‌های دورهٔ انتخاب‌شده را در رابط قابل مشاهده ChatGPT ارسال می‌کند و پس از دریافت پاسخ کامل، سرفصل‌های جدید را خودکار ثبت می‌کند. افزونهٔ Chrome لازم نیست. اگر ChatGPT اجازهٔ ارسال و دریافت عمومی بدهد، نیازی به ورود نیست؛ در صورت نمایش صفحه ورود، می‌توانید در پنجره بازشده وارد شوید. سرفصل‌های تکراری دوباره ثبت نمی‌شوند.</p>

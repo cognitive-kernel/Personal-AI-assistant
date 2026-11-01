@@ -1267,6 +1267,7 @@ def test_dashboard_primary_navigation_is_keyboard_operable():
         "/",
         "/page/learning-section",
         "/ai-learning",
+        "/autonomous-engineering",
         "/page/learning-paths-section",
         "/page/knowledge-section",
         "/page/task-manager-section",
@@ -3294,5 +3295,91 @@ def test_browser_sandbox_cancel_recovers_from_api_failure_and_settles_task():
         assert state["cancel_attempts"] == 2
         assert state["cancelled"] is True
         assert state["polls"] >= 1
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+
+def test_autonomous_engineering_console_renders_and_reports_local_status():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        assert page.get_by_role("heading", name="عامل مهندسی خودکار").is_visible()
+        assert page.get_by_role("navigation", name="منوی اصلی").get_by_role("link", name="یادگیری از هوش مصنوعی").is_visible()
+        assert page.locator("#dispatch-agent").is_disabled()
+        page.wait_for_function(
+            "() => document.querySelector('#agent-readiness')?.textContent !== 'در حال بررسی'",
+            timeout=10000,
+        )
+        status_response = page.request.get(base_url.rstrip("/") + "/api/autonomous-engineering/status")
+        assert status_response.status == 200
+        status = status_response.json()
+        assert "checks" in status and "ollama_online" in status["checks"]
+        assert status["local_only_inference"] is True
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    status_payload = {
+        "ready": True,
+        "checks": {
+            "ollama_online": True, "model_installed": True, "codex_installed": False,
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "model": "gpt-oss:20b", "models": ["gpt-oss:20b"], "runs_per_day": 1,
+        "codex": {"installed": False, "version": None},
+        "github": {"recent_runs": [], "settings": {"model": "gpt-oss:20b", "runs_per_day": 1}},
+        "local_only_inference": True,
+    }
+    progress_payload = {
+        "current": None, "history": [], "latest_snapshot": None,
+        "events": [], "available": False, "storage_configured": True,
+    }
+    browser_errors = []
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(status=200, json=progress_payload),
+        )
+        page.route(
+            "**/api/autonomous-engineering/dispatch",
+            lambda route: route.fulfill(status=202, json={
+                "accepted": True, "manual_task_submitted": True,
+                "message": "وظیفهٔ دستی ارسال شد.",
+            }),
+        )
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#send-agent-task')?.disabled === false",
+            timeout=10000,
+        )
+        task = "بررسی Issue #52؛ متن ; gh secret list باید فقط داده تلقی شود"
+        page.locator("#manual-task").fill(task)
+        with page.expect_request("**/api/autonomous-engineering/dispatch") as request_info:
+            page.locator("#send-agent-task").click()
+        assert request_info.value.post_data_json == {"task": task}
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
