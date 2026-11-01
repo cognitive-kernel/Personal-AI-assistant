@@ -1,8 +1,17 @@
 # وضعیت یکپارچهٔ پروژه
 
-> تاریخ بازبینی: 2026-10-31  
-> آخرین commit شاخهٔ `main`: `bcb04de842faab596d31c3955fa5046a407c9fc7` (ادغام PR #673؛ والد آن merge commit مربوط به PR #674 است). پس از ادغام، تمام checkهای همین SHA موفق شده‌اند: tests و Windows storage [#41246877787](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41246877787)، dashboard smoke [#41246877793](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41246877793)، dependency audit [#41246877791](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41246877791).
+> تاریخ بازبینی: 2026-11-01  
+> آخرین commit شاخهٔ `main`: `60597e13e70a3014f6a1871290cf843d188ca45e`. Checkهای exact همین SHA موفق‌اند: tests و Windows storage [#41251532200](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41251532200)، dashboard smoke [#41251532202](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41251532202)، dependency audit [#41251532214](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41251532214).
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
+
+
+## وضعیت فعلی کنسول مهندسی خودکار — PR #680
+
+- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) روی شاخهٔ `automation/codex-engineering-agent-rebased` و head `c7ec867df63baac9dec74b736b65a64284a525e4` قرار دارد؛ باز، Draft و هنوز merge نشده است.
+- وضعیت دقیق همین head: **1,840 تست موفق، 48 مورد deselected، benchmark بازیابی واژگانی موفق، benchmark پوشش claim-to-test برابر 10/10، رگرسیون Windows storage موفق، Chromium dashboard smoke موفق، dependency audit موفق**. شواهد: [tests + Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589102)، [browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589078)، [audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589074).
+- از نظر کد و CI، این بخش برای checkout/pull شاخه آماده است؛ این وضعیت به معنی merge یا آماده‌بودن بهره‌برداری خودکار نیست.
+- در داشبورد، درصد برنامهٔ عامل از تعداد گام‌های تکمیل‌شدهٔ plan ساختاریافته محاسبه می‌شود، نه تخمین effort؛ فاز و فعالیت جاری جداگانه نمایش داده می‌شوند. درصد پروژه از scorecard وزنی و تاریخچهٔ تأییدشده می‌آید؛ snapshot فقط از `main` و قبل از شروع Codex ثبت می‌شود، نه از تغییرات PR ادغام‌نشده.
+- دروازه‌های عملیاتی باز: ثبت Windows Runner با حساب سرویس non-admin، اجرای ACL پوشهٔ ProgramData با دسترسی Modify برای Runner و read/execute برای app، تأیید context حداقل 64k و performance/soak واقعی Ollama، و independent security review. بررسی دستی keyboard/screen-reader و پذیرش usability روی میزبان مقصد نیز باز است.
 
 ## 1. خلاصهٔ وضعیت
 
@@ -254,7 +263,7 @@
 - CI روی head پیش از مستندات: dependency audit، dashboard smoke و Windows storage موفق؛ test workflow در حال اجرا بود. این نتیجه برای head نهایی پس از مستندات معتبر نیست؛ CI دقیق همان head باید دوباره تأیید شود. اجرای محلی pytest در این runtime انجام نشده است.
 - این اصلاح یکپارچگی query URL را حفظ می‌کند؛ منبع‌یابی زنده، دسترس‌پذیری providerها و ارزیابی زندهٔ مدل را اثبات نمی‌کند. ارزیابی pinned-model و human adjudication همچنان باز هستند؛ Issue #52 نیز نیازمند independent security review است.
 
-## 2026-11-01 — Local autonomous engineering worker (PR #675)
+## 2026-11-01 — Initial local autonomous engineering proposal (PR #675; superseded by PR #680)
 
 - The former paid API dependency is being replaced with Codex CLI local OSS mode through Ollama on a Windows self-hosted runner. No OpenAI API key is part of the proposed activation path.
 - New local operations console: `/autonomous-engineering`; it reports Ollama/model/Codex/Runner/GitHub CLI readiness and exposes explicit workflow dispatch/cancel controls.
