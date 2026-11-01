@@ -7,7 +7,7 @@
 
 ## وضعیت فعلی کنسول مهندسی خودکار — PR #680
 
-- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) روی شاخهٔ `automation/codex-engineering-agent-rebased` و head `c7ec867df63baac9dec74b736b65a64284a525e4` قرار دارد؛ باز، Draft و هنوز merge نشده است.
+- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) روی شاخهٔ `automation/codex-engineering-agent-rebased` است؛ implementation head بررسی‌شده `c7ec867df63baac9dec74b736b65a64284a525e4` و آخرین head مستندات `48734e6ea7037c3fb972531f3b9fa19421c07791` است. PR باز، Draft و هنوز merge نشده است.
 - وضعیت دقیق همین head: **1,840 تست موفق، 48 مورد deselected، benchmark بازیابی واژگانی موفق، benchmark پوشش claim-to-test برابر 10/10، رگرسیون Windows storage موفق، Chromium dashboard smoke موفق، dependency audit موفق**. شواهد: [tests + Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589102)، [browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589078)، [audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589074).
 - از نظر کد و CI، این بخش برای checkout/pull شاخه آماده است؛ این وضعیت به معنی merge یا آماده‌بودن بهره‌برداری خودکار نیست.
 - در داشبورد، درصد برنامهٔ عامل از تعداد گام‌های تکمیل‌شدهٔ plan ساختاریافته محاسبه می‌شود، نه تخمین effort؛ فاز و فعالیت جاری جداگانه نمایش داده می‌شوند. درصد پروژه از scorecard وزنی و تاریخچهٔ تأییدشده می‌آید؛ snapshot فقط از `main` و قبل از شروع Codex ثبت می‌شود، نه از تغییرات PR ادغام‌نشده.
