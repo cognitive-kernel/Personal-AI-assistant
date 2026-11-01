@@ -1,41 +1,23 @@
 # وضعیت یکپارچهٔ پروژه
+## وضعیت فعلی عامل مهندسی خودکار — PR #680
 
-### تأیید نهایی exact-head برای PR #680
-
-- آخرین head قبل از این ثبت مستندات: `9018fefb128738a0c22a92a25482ec6393b4c29e`. تمام چهار check موفق شدند: tests و Windows storage [41319954134](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954134)، browser E2E [41319954115](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954115)، dependency audit [41319954116](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954116).
-- نتیجهٔ تست: **۱٬۸۶۰ موفق، ۴۹ مورد deselected** در ۲۰۲٫۷۸ ثانیه. Windows storage، مرورگر و audit موفق شدند؛ artifact generation، لینک‌های ۹۲ فایل Markdown، import-cycle، retrieval و benchmark پوشش claim-to-test (۱۰/۱۰) نیز موفق بودند.
-- تست‌های رگرسیون retry شکست در full suite و شکست CI میزبان GitHub را پوشش می‌دهند. PR #680 باز و merge‌نشده است؛ پس از ثبت این مستندات، CI باید روی head جدید هم اجرا شود.
-
-
-### شواهد CI آخرین نسخهٔ پیاده‌سازی
-
-- کد کنترل‌کننده در SHA `91542f14ad51b2662528b45b602d43ac40d03e35` بررسی شد. هر چهار check موفق شدند: tests [41319480167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480167)، browser E2E [41319480147](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480147)، dependency audit [41319480179](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480179)، و Windows storage regressions در run `41319480167`.
-- مجموعهٔ تست: **۱٬۸۶۰ موفق، ۴۹ مورد deselected** در ۱۴۲٫۵۲ ثانیه. آزمون‌های Windows storage، مرورگر، audit، artifact generation، لینک‌های ۹۲ فایل Markdown، import-cycle، retrieval و benchmark پوشش claim-to-test (۱۰/۱۰) موفق شدند.
-- این شواهد مربوط به SHA کد فوق است. پس از ثبت این به‌روزرسانی مستندات، CI باید روی head جدید نیز کامل شود؛ تا آن زمان pull readiness نهایی اعلام نمی‌شود. PR #680 همچنان باز و merge‌نشده است.
-
-
-## وضعیت به‌روز عامل مهندسی خودکار — PR #680
-
-- شاخهٔ پیاده‌سازی: `automation/codex-engineering-agent-rebased`. کد کنترل‌کنندهٔ تسک مستقل در commit `05bf0f34472f9789fa79e95a4a4a703cb5c4e47f` اضافه/اصلاح شده و ثبت مستندات در commit بعدی انجام شده است. PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) باز و merge‌نشده است.
-- در حالت continuous هر تسک در نشست تازه و شاخهٔ مستقل اجرا می‌شود. پس از تست کامل Windows و quality gates، سه Workflow تست، مرورگر و audit روی همان SHA اجرا می‌شوند؛ ادغام فقط در صورت موفقیت همهٔ آن‌ها انجام می‌شود.
-- شکست Codex یا هر gate باعث ارسال خروجی خطا به نشست تازه برای همان تسک می‌شود؛ تسک بعدی تا ادغام موفق شروع نمی‌شود. محدودیت سخت پلتفرم: هر اجرای GitHub Actions حداکثر ۶ ساعت است؛ در صورت تمام‌شدن زمان، همان تسک بدون ادغام متوقف می‌شود.
-- پس از ادغام، کنترل‌کننده `main` را fetch/reset می‌کند و تسک بعدی را از وضعیت تازه‌شده می‌خواند. پس از هر ۸ تسک موفق، اجرای continuous دیگری از `main` dispatch می‌شود؛ صف خالی باعث توقف می‌شود.
-- برای PRهای ساخته‌شده با `GITHUB_TOKEN`، سه Workflow لازم به‌صورت صریح با `workflow_dispatch` روی شاخهٔ کاندید اجرا می‌شوند؛ نتیجه فقط وقتی معتبر است که `head_sha` دقیقاً با SHA کاندید برابر باشد.
-- وضعیت CI دقیق این نسخه هنوز در حال بررسی است؛ تا پایان همهٔ checkهای exact-head، این پیاده‌سازی برای pull و تست محلی آماده اعلام نمی‌شود. PR #680 و `main` ادغام نشده‌اند.
-
+- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) روی شاخهٔ `automation/codex-engineering-agent-rebased` باز و merge‌نشده است. آخرین head پیش از این ویرایش مستندات: `e4b683f6aca8e3bac8f706422ab1cbba14243fb8`؛ base شاخهٔ `main`: `60597e13e70a3014f6a1871290cf843d188ca45e`.
+- هر تسک در نشست Codex و شاخهٔ مستقل اجرا می‌شود. full pytest و quality gates محلی اجرا می‌شوند؛ سپس سه Workflow تست، مرورگر و dependency audit روی همان SHA dispatch و تا موفقیت هر سه بررسی می‌شوند. شکست تست محلی یا CI به نشست تازه برای همان تسک بازگردانده می‌شود.
+- ادغام PR مستقل فقط پس از تطبیق SHA کاندید، base دقیق `main`، موفقیت سه Workflow و تأیید merge انجام می‌شود. پس از ادغام، `main` تازه دریافت و تسک بعدی از ledger به‌روز انتخاب می‌شود. پس از هر ۸ تسک، اجرای continuous دیگری dispatch می‌شود.
+- CI exact-head برای SHA فوق موفق است: **۱٬۸۶۰ تست موفق، ۴۹ مورد deselected** در ۱۷۲٫۵۵ ثانیه؛ Windows storage regressions، dashboard smoke، dependency audit، artifact generation، لینک‌های ۹۲ فایل Markdown، import-cycle، retrieval و claim-to-test (۱۰/۱۰) همگی موفق‌اند. شواهد: [tests و Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41320385890)، [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41320385844)، [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41320385821).
+- محدودیت پلتفرم: هر اجرای GitHub Actions حداکثر ۶ ساعت است؛ اگر یک تسک تا آن زمان موفق نشود، چرخه بدون ادغام و بدون شروع تسک بعدی متوقف می‌شود.
+- PR #680 برای pull و آزمون محلی آماده است؛ merge یا direct write به `main` انجام نشده است. پذیرش عملیاتی هنوز به ثبت Windows Runner با حساب non-admin، ACLهای ProgramData، بررسی مدل/context و soak روی میزبان هدف، human acceptance و بررسی مستقل امنیتی Issue #52 نیاز دارد.
 
 > تاریخ بازبینی: 2026-11-01  
 > آخرین commit شاخهٔ `main`: `60597e13e70a3014f6a1871290cf843d188ca45e`. Checkهای exact همین SHA موفق‌اند: tests و Windows storage [#41251532200](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41251532200)، dashboard smoke [#41251532202](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41251532202)، dependency audit [#41251532214](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41251532214).
 > این سند مرجع وضعیت کلی پروژه و دروازه‌های عملیاتی است؛ مرجع واحد جزئیات یادگیری، محدودیت‌ها و نقشهٔ راه آن `docs/LEARNING.md` است. تیک فقط برای قابلیتی است که وجود آن در کد یا قرارداد فعلی مخزن شواهد دارد؛ تیک به‌تنهایی به معنی پذیرش عملیاتی روی دستگاه مقصد یا اثبات صحت علمی نیست. تست‌های محلی و تست‌های انسانی در فهرست کارهای باقی‌ماندهٔ این سند شمرده نشده‌اند.
 
 
-## وضعیت فعلی کنسول مهندسی خودکار — PR #680
+## وضعیت کنسول مهندسی خودکار — جزئیات عملکرد
 
-- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) روی شاخهٔ `automation/codex-engineering-agent-rebased` است؛ implementation head بررسی‌شده `c7ec867df63baac9dec74b736b65a64284a525e4` است و commitهای بعدی فقط مستندات پذیرش و وضعیت را همگام کرده‌اند. PR باز، Draft و هنوز merge نشده است.
-- وضعیت دقیق همین head: **1,840 تست موفق، 48 مورد deselected، benchmark بازیابی واژگانی موفق، benchmark پوشش claim-to-test برابر 10/10، رگرسیون Windows storage موفق، Chromium dashboard smoke موفق، dependency audit موفق**. شواهد: [tests + Windows](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589102)، [browser](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589078)، [audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589074).
-- از نظر کد و CI، این بخش برای checkout/pull شاخه آماده است؛ این وضعیت به معنی merge یا آماده‌بودن بهره‌برداری خودکار نیست.
-- در داشبورد، درصد برنامهٔ عامل از تعداد گام‌های تکمیل‌شدهٔ plan ساختاریافته محاسبه می‌شود، نه تخمین effort؛ فاز و فعالیت جاری جداگانه نمایش داده می‌شوند. درصد پروژه از scorecard وزنی و تاریخچهٔ تأییدشده می‌آید؛ snapshot فقط از `main` و قبل از شروع Codex ثبت می‌شود، نه از تغییرات PR ادغام‌نشده.
-- دروازه‌های عملیاتی باز: ثبت Windows Runner با حساب سرویس non-admin، اجرای ACL پوشهٔ ProgramData با دسترسی Modify برای Runner و read/execute برای app، تأیید context حداقل 64k و performance/soak واقعی Ollama، و independent security review. بررسی دستی keyboard/screen-reader و پذیرش usability روی میزبان مقصد نیز باز است.
+- رابط عملیات محلی، readiness diagnostics، تنظیم مدل و frequency، اجرای دستی و لغو workflow، نمایش زندهٔ plan و phase، و نمودار پیشرفت مبتنی بر scorecard در PR #680 پیاده‌سازی شده‌اند.
+- عامل Codex به توکن GitHub دسترسی ندارد. کنترل‌کنندهٔ مورداعتماد، push/PR/merge و dispatch تست‌ها را انجام می‌دهد. مسیرهای تغییر مجاز allowlist شده‌اند و فایل‌های controller/workflow و runtime state محافظت می‌شوند.
+- وضعیت نهایی CI و SHA دقیق در بخش بالای همین سند و `docs/ENGINEERING_LOG.md` ثبت شده است. PR #680 همچنان منتظر pull و پذیرش محلی مالک است.
 
 ## 1. خلاصهٔ وضعیت
 
