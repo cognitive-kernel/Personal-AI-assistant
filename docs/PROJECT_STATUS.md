@@ -1,5 +1,12 @@
 # وضعیت یکپارچهٔ پروژه
 
+### شواهد CI آخرین نسخهٔ پیاده‌سازی
+
+- کد کنترل‌کننده در SHA `91542f14ad51b2662528b45b602d43ac40d03e35` بررسی شد. هر چهار check موفق شدند: tests [41319480167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480167)، browser E2E [41319480147](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480147)، dependency audit [41319480179](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480179)، و Windows storage regressions در run `41319480167`.
+- مجموعهٔ تست: **۱٬۸۶۰ موفق، ۴۹ مورد deselected** در ۱۴۲٫۵۲ ثانیه. آزمون‌های Windows storage، مرورگر، audit، artifact generation، لینک‌های ۹۲ فایل Markdown، import-cycle، retrieval و benchmark پوشش claim-to-test (۱۰/۱۰) موفق شدند.
+- این شواهد مربوط به SHA کد فوق است. پس از ثبت این به‌روزرسانی مستندات، CI باید روی head جدید نیز کامل شود؛ تا آن زمان pull readiness نهایی اعلام نمی‌شود. PR #680 همچنان باز و merge‌نشده است.
+
+
 ## وضعیت به‌روز عامل مهندسی خودکار — PR #680
 
 - شاخهٔ پیاده‌سازی: `automation/codex-engineering-agent-rebased`. کد کنترل‌کنندهٔ تسک مستقل در commit `05bf0f34472f9789fa79e95a4a4a703cb5c4e47f` اضافه/اصلاح شده و ثبت مستندات در commit بعدی انجام شده است. PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) باز و merge‌نشده است.
