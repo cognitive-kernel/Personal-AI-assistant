@@ -102,7 +102,7 @@ The local page at `/autonomous-engineering` reports Ollama reachability, selecte
 The page also separates two progress measures:
 
 - **Current cycle progress:** workflow phase progress plus the completed steps in Codex's structured task plan. Codex runs with `--json`; the wrapper records bounded activity events and never publishes raw command output or model reasoning. The plan file is temporary and excluded from the candidate patch.
-- **Project progress:** the engineering-completion and overall-acceptance percentages from `docs/ACCEPTANCE_SCORECARD.md`. A dated snapshot is recorded after a worker run so daily, weekly, and custom date-range charts can show verified changes. Historical points are not fabricated or backfilled.
+- **Project progress:** the engineering-completion and overall-acceptance percentages from `docs/ACCEPTANCE_SCORECARD.md`. A dated snapshot is recorded only when the accepted scorecard percentages change; repeated runs with unchanged scores do not create artificial chart points. This keeps daily, weekly, and custom date-range charts limited to verified progress changes. Historical points are not fabricated or backfilled.
 
 The app polls the lightweight progress endpoint every five seconds and draws the chart with native SVG; no charting dependency or full-page reload is used. Activity details are collapsed by default. Progress state and its bounded event history are stored under `%ProgramData%\PersonalAIAssistant\autonomous-engineering`. The Runner service account and local app account must both have access, configured by the one-time ACL script above. If that directory is not accessible, the page reports that live telemetry is unavailable rather than inventing values.
 
