@@ -48,7 +48,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
    codex --version
    \`\`\`
 
-   The workflow explicitly passes \`-c oss_provider=ollama\` to \`codex exec --oss\`; it does not depend on a Codex profile created under the application account. Do not run \`gh auth login\` or store GitHub CLI credentials in the Runner account. Restart the Runner service after changing its \`PATH\`.
+   The workflow explicitly passes \`-c 'oss_provider="ollama"'\` to \`codex exec --oss\`; it does not depend on a Codex profile created under the application account. Do not run \`gh auth login\` or store GitHub CLI credentials in the Runner account. Restart the Runner service after changing its \`PATH\`.
 6. Install GitHub CLI and authenticate only as the Windows account that runs the local application:
 
    \`\`\`powershell
