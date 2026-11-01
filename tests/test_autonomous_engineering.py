@@ -289,10 +289,10 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
     scorecard = tmp_path / "ACCEPTANCE_SCORECARD.md"
     storage = tmp_path / "telemetry"
     scorecard.write_text(
-        "**Snapshot:** 2026-11-01\\n"
-        "**Scored baseline:** main at " + "a" * 40 + "\\n"
-        "- **Engineering completion:** score = 60.47%\\n"
-        "- **Overall acceptance progress:** score = 57.45%\\n",
+        "**Snapshot:** 2026-11-01\n"
+        "**Scored baseline:** main at " + "a" * 40 + "\n"
+        "- **Engineering completion:** score = 60.47%\n"
+        "- **Overall acceptance progress:** score = 57.45%\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(writer, "SCORECARD", scorecard)
@@ -307,10 +307,10 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
     assert not history.exists()
 
     scorecard.write_text(
-        "**Snapshot:** 2026-11-02\\n"
-        "**Scored baseline:** main at " + "b" * 40 + "\\n"
-        "- **Engineering completion:** score = 61.00%\\n"
-        "- **Overall acceptance progress:** score = 58.00%\\n",
+        "**Snapshot:** 2026-11-02\n"
+        "**Scored baseline:** main at " + "b" * 40 + "\n"
+        "- **Engineering completion:** score = 61.00%\n"
+        "- **Overall acceptance progress:** score = 58.00%\n",
         encoding="utf-8",
     )
     writer.snapshot_project("102", "1")
