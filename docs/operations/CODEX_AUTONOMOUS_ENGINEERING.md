@@ -48,7 +48,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
    codex --version
    \`\`\`
 
-   The workflow explicitly passes \`-c 'oss_provider="ollama"'\` to \`codex exec --oss\`; it does not depend on a Codex profile created under the application account. Do not run \`gh auth login\` or store GitHub CLI credentials in the Runner account. Restart the Runner service after changing its \`PATH\`.
+   The workflow explicitly passes \`--local-provider ollama\` to \`codex exec --oss\`; it does not depend on a Codex profile created under the application account. Do not run \`gh auth login\` or store GitHub CLI credentials in the Runner account. Restart the Runner service after changing its \`PATH\`.
 6. Install GitHub CLI and authenticate only as the Windows account that runs the local application:
 
    \`\`\`powershell
@@ -90,7 +90,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 - The local job checks that Ollama, the configured model, and Codex CLI are present before starting.
 - After Codex proposes changes, the Windows self-hosted runner executes the full default pytest suite and the repository artifact, Markdown-link, import-cycle, retrieval, and claim-to-test quality gates against the modified working tree. The default pytest configuration excludes only the separately marked browser E2E and Docker sandbox integration tests; those remain covered by their dedicated CI workflows.
 - A read-only GitHub API snapshot is created before Codex runs. The workflow token is not passed to the Codex process.
-- Codex is invoked using `codex exec --oss -c 'oss_provider="ollama"' --sandbox workspace-write`; Ollama is selected explicitly for the Runner account. Its proposed patch is restricted to `app/`, `tests/`, and `docs/` (including `scripts/`).
+- Codex is invoked using `codex exec --oss --local-provider ollama --sandbox workspace-write`; Ollama is selected explicitly for the Runner account. Its proposed patch is restricted to `app/`, `tests/`, and `docs/` (including `scripts/`).
 - Candidate code is transferred as an artifact to a separate GitHub-hosted job. That job applies the patch to the exact base SHA and runs the configured Linux test and quality checks without access to the local runner or any API credential.
 - A separate GitHub-hosted job with narrow write permissions creates a draft PR only after validation succeeds.
 - The agent never writes directly to `main`, merges, deploys, changes secrets/security settings, or modifies real databases.
