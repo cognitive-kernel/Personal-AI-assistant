@@ -8,7 +8,7 @@
   const settingsForm = $("agent-settings-form");
   const labels = {
     ollama: $("ollama-state"), model: $("model-state"), codex: $("codex-state"),
-    runner: $("runner-state"), github: $("github-state")
+    runner: $("runner-state"), github: $("github-state"), storage: $("storage-state")
   };
   function setMessage(text, kind) {
     message.textContent = text;
@@ -94,6 +94,10 @@
         : !checks.github_runs_available
           ? "دریافت وضعیت اجراهای GitHub ناموفق است؛ دسترسی Actions را بررسی کنید."
           : "GitHub CLI احراز هویت شده و وضعیت اجراها قابل دریافت است.";
+      labels.storage.textContent = stateText(checks.progress_storage_accessible);
+      $("storage-detail").textContent = checks.progress_storage_accessible
+        ? "پوشهٔ مشترک پیشرفت برای برنامه قابل خواندن است."
+        : "پوشهٔ مشترک را با scripts/configure_autonomous_engineering_progress.ps1 پیکربندی کنید.";
       const ready = data.ready === true;
       const pill = $("agent-readiness");
       pill.textContent = ready ? "آمادهٔ اجرا" : "راه‌اندازی ناقص";
