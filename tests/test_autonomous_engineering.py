@@ -352,6 +352,15 @@ def test_record_phase_preserves_plan_percentage_for_same_run(monkeypatch, tmp_pa
     assert current["plan_percent"] == 50
 
 
+def test_scorecard_snapshot_fails_when_scorecard_is_missing(monkeypatch, tmp_path):
+    from scripts import autonomous_engineering_progress as writer
+
+    monkeypatch.setattr(writer, "SCORECARD", tmp_path / "missing-scorecard.md")
+    monkeypatch.setattr(writer, "store_dir", lambda: tmp_path / "telemetry")
+
+    assert writer.snapshot_project("202", "1") is False
+
+
 def test_record_phase_fails_when_current_progress_cannot_be_written(monkeypatch, tmp_path):
     from scripts import autonomous_engineering_progress as writer
 
@@ -376,8 +385,8 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
     monkeypatch.setattr(writer, "SCORECARD", scorecard)
     monkeypatch.setattr(writer, "store_dir", lambda: storage)
 
-    writer.snapshot_project("100", "1")
-    writer.snapshot_project("101", "1")
+    assert writer.snapshot_project("100", "1") is True
+    assert writer.snapshot_project("101", "1") is True
 
     history = storage / "history.jsonl"
     state = storage / "scorecard-state.json"
@@ -394,7 +403,7 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
         "- **Overall acceptance progress:** score = 57.45%\n",
         encoding="utf-8",
     )
-    writer.snapshot_project("102", "1")
+    assert writer.snapshot_project("102", "1") is True
     assert not history.exists()
 
     scorecard.write_text(
@@ -404,8 +413,8 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
         "- **Overall acceptance progress:** score = 58.00%\n",
         encoding="utf-8",
     )
-    writer.snapshot_project("103", "1")
-    writer.snapshot_project("104", "1")
+    assert writer.snapshot_project("103", "1") is True
+    assert writer.snapshot_project("104", "1") is True
 
     records = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
     assert len(records) == 1
@@ -443,6 +452,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Run Codex against the local Ollama model")
+    assert workflow.count("snapshot --run-id") == 1
     assert "oss_provider=ollama" in workflow or "oss_provider=ollama" in (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     assert "pyproject.toml" not in workflow
     assert "WriteAllText" in runner_check
