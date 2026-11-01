@@ -2,23 +2,15 @@ $ErrorActionPreference = "Stop"
 $model = if ($env:AUTONOMOUS_ENGINEERING_MODEL) { $env:AUTONOMOUS_ENGINEERING_MODEL } else { "gpt-oss:20b" }
 $checks = @()
 
-$ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
 $ollamaOnline = $false
 $modelInstalled = $false
-if ($ollamaCommand) {
-    try {
-        $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4
-        $ollamaOnline = $true
-        $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
-    } catch {}
-}
-$checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Install/start Ollama" } }
-$checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } else { "Run: ollama pull $model" } }
-
-$codexCommand = Get-Command codex -ErrorAction SilentlyContinue
-$codexReady = [bool]$codexCommand
-$codexVersion = if ($codexReady) { (& codex --version 2>$null | Select-Object -First 1) } else { "Codex CLI not found" }
-$checks += [pscustomobject]@{ Component = "Codex CLI"; Ready = $codexReady; Detail = $codexVersion }
+try {
+    $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 4
+    $ollamaOnline = $true
+    $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
+} catch {}
+$checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Start the local Ollama service" } }
+$checks += [pscustomobject]@{ Component = "Local model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } else { "Install the configured model in Ollama" } }
 
 $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
 $ghReady = $false
@@ -50,4 +42,4 @@ $checks | Format-Table -AutoSize
 if (@($checks | Where-Object { -not $_.Ready }).Count -gt 0) {
     exit 1
 }
-Write-Host "All local autonomous-engineering prerequisites are ready."
+Write-Host "App-account prerequisites are ready. Run check_autonomous_runner.ps1 as the dedicated Runner service account to verify Codex and runner access."
