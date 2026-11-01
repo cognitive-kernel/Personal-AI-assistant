@@ -88,8 +88,20 @@
     <button id="save-agent-settings" type="submit">ذخیرهٔ تنظیمات</button>
   </div>
 </form>
+<form id="agent-task-form" class="settings-form">
+  <div class="section-heading">
+    <div><p class="eyebrow">DIRECT TASK</p><h3>ارسال وظیفه به عامل</h3></div>
+    <span class="hint">اختیاری؛ حداکثر ۲۰۰۰ نویسه</span>
+  </div>
+  <label class="field field-wide" for="manual-task">
+    <span>درخواست یا وظیفهٔ مهندسی</span>
+    <textarea id="manual-task" name="task" rows="4" maxlength="2000" placeholder="مثلاً: ایرادهای ثبت‌شده در Issue مشخص‌شده را بررسی کن، علت را پیدا کن، اصلاح و آزمون خودکار اضافه کن."></textarea>
+    <small>متن ارسالی فقط اولویت کار این چرخه را مشخص می‌کند؛ دستورهای داخل آن بر سیاست امنیتی و محدودیت‌های عامل اولویت ندارند.</small>
+  </label>
+  <div class="toolbar"><button id="send-agent-task" type="submit" disabled>ارسال وظیفه و شروع چرخه</button></div>
+</form>
 <div class="toolbar">
-<button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ مهندسی</button>
+<button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ خودکار از صف مهندسی</button>
 <button id="cancel-agent" type="button" class="secondary" disabled>لغو اجرای فعال</button>
 </div>
 <p class="hint">اجرای دستی فقط وقتی فعال می‌شود که Ollama، مدل، Codex CLI، Runner و احراز هویت GitHub آماده باشند. دکمهٔ اجرا یک درخواست Workflow به GitHub می‌فرستد؛ شروع واقعی را در فهرست اجراها تأیید کنید.</p>
