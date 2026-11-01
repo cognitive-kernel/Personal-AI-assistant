@@ -309,20 +309,30 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
     scorecard.write_text(
         "**Snapshot:** 2026-11-02\n"
         "**Scored baseline:** main at " + "b" * 40 + "\n"
+        "- **Engineering completion:** score = 60.47%\n"
+        "- **Overall acceptance progress:** score = 57.45%\n",
+        encoding="utf-8",
+    )
+    writer.snapshot_project("102", "1")
+    assert not history.exists()
+
+    scorecard.write_text(
+        "**Snapshot:** 2026-11-03\n"
+        "**Scored baseline:** main at " + "c" * 40 + "\n"
         "- **Engineering completion:** score = 61.00%\n"
         "- **Overall acceptance progress:** score = 58.00%\n",
         encoding="utf-8",
     )
-    writer.snapshot_project("102", "1")
     writer.snapshot_project("103", "1")
+    writer.snapshot_project("104", "1")
 
     records = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
     assert len(records) == 1
     assert records[0]["type"] == "project_snapshot"
-    assert records[0]["scorecard_snapshot_date"] == "2026-11-02"
+    assert records[0]["scorecard_snapshot_date"] == "2026-11-03"
     assert records[0]["engineering_percent"] == 61.0
     assert records[0]["overall_percent"] == 58.0
-    assert records[0]["sha"] == "b" * 40
+    assert records[0]["sha"] == "c" * 40
 
 
 def test_progress_reader_rejects_invalid_custom_date_range():
