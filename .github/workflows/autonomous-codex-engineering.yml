@@ -70,6 +70,12 @@ jobs:
         shell: pwsh
         run: "echo \"sha=$(git rev-parse HEAD)\" >> $env:GITHUB_OUTPUT"
 
+      - name: Initialize live progress before prerequisite checks
+        shell: pwsh
+        run: |
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "شروع چرخهٔ مهندسی" --activity "Workflow شروع شد؛ در حال بررسی پیش‌نیازهای محیط" --percent 0
+          if ($LASTEXITCODE -ne 0) { throw "Could not initialize engineering progress" }
+
       - name: Verify local Ollama and Codex prerequisites
         shell: pwsh
         run: |
