@@ -228,17 +228,19 @@ def run_codex(args: argparse.Namespace) -> int:
             pass
 
 
-def snapshot_project(run_id: str, run_attempt: str) -> None:
+def snapshot_project(run_id: str, run_attempt: str) -> bool:
     try:
         content = SCORECARD.read_text(encoding="utf-8")
-    except OSError:
-        return
+    except OSError as exc:
+        print(f"Could not read acceptance scorecard: {type(exc).__name__}", file=sys.stderr)
+        return False
     engineering = re.search(r"Engineering completion:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
     overall = re.search(r"Overall acceptance progress:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
     snapshot = re.search(r"\*\*Snapshot:\*\*\s*(\d{4}-\d{2}-\d{2})", content)
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not (engineering and overall and snapshot):
-        return
+        print("Acceptance scorecard is missing required snapshot or percentage fields.", file=sys.stderr)
+        return False
     signature = {
         "scorecard_snapshot_date": snapshot.group(1),
         "engineering_percent": float(engineering.group(1)),
@@ -316,6 +318,8 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
         temporary.replace(state_path)
     except OSError as exc:
         print(f"Could not persist scorecard snapshot: {type(exc).__name__}", file=sys.stderr)
+        return False
+    return True
 
 
 def main() -> int:
@@ -346,8 +350,7 @@ def main() -> int:
         ) else 1
     if args.action == "codex":
         return run_codex(args)
-    snapshot_project(args.run_id, args.run_attempt)
-    return 0
+    return 0 if snapshot_project(args.run_id, args.run_attempt) else 1
 
 
 if __name__ == "__main__":
