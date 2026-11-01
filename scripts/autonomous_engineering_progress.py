@@ -244,7 +244,7 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
             }
             append_history(record)
         temporary = state_path.with_suffix(".json.tmp")
-        temporary.write_text(json.dumps(signature, ensure_ascii=False) + "\\n", encoding="utf-8")
+        temporary.write_text(json.dumps(signature, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(state_path)
     except OSError as exc:
         print(f"Could not persist scorecard snapshot: {type(exc).__name__}", file=sys.stderr)
