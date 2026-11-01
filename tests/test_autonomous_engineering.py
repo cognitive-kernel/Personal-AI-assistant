@@ -50,6 +50,23 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
     assert result["checks"]["model_installed"] is False
 
 
+def test_status_is_not_ready_when_shared_progress_storage_is_unavailable(monkeypatch):
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True, "models": [model]
+    })
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: False)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
+    })
+
+    result = agent.collect_status()
+
+    assert result["ready"] is False
+    assert result["checks"]["progress_storage_accessible"] is False
+
+
 def test_dispatch_requires_authenticated_github_cli(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {"ready": True, "github": {"recent_runs": [], "runs_available": True}})
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
