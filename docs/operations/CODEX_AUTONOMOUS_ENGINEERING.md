@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This workflow replaces the paid OpenAI API dependency with the local Codex CLI connected to Ollama. A Windows self-hosted GitHub Actions runner on the target computer executes the coding session. GitHub-hosted runners perform candidate validation and draft-PR publication.
+This workflow replaces the paid OpenAI API dependency with the local Codex CLI connected to Ollama. A Windows self-hosted GitHub Actions runner on the target computer executes one bounded coding task at a time. Each task gets its own pull request; GitHub-hosted test, browser E2E, and dependency-audit workflows validate that exact commit before the PR is squash-merged into `main`.
 
 The worker is event-driven and periodic. It is not a model process generating code continuously for 24 hours.
 
@@ -65,7 +65,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
    \`\`\`
 
    The script rejects identical account names, grants Modify only to the Runner account, and grants read/execute to the application account; SYSTEM and local administrators retain full control. The directory is \`%ProgramData%\\PersonalAIAssistant\\autonomous-engineering\`; the app reads it and the Runner writes it. Do not grant access to broad groups such as Everyone or Users.
-9. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. This permission is used only by the final GitHub-hosted publication job.
+9. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create and merge pull requests. The autonomous workflow also requires `contents: write`, `pull-requests: write`, and `actions: write` at the job level to publish each isolated task PR, dispatch exact-commit validation workflows, and merge only after all checks pass.
 10. From the application account and the application checkout, run the app-side readiness check:
 
    \`\`\`powershell
@@ -86,16 +86,16 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 
 - GitHub checks the schedule hourly at minute 17 UTC. The operator selects 1, 2, 3, 4, 6, 8, 12, or 24 scheduled runs per UTC day in the page; the workflow gates hourly ticks to the selected count. The default is one run per day. Manual dispatch is separate and can add an extra run.
 - The selected daily frequency is stored in the repository Actions variable `AUTONOMOUS_ENGINEERING_RUNS_PER_DAY`. The model and frequency are saved from the page using the local GitHub CLI account, which must have permission to manage repository Actions variables.
-- The execution mode is stored in `AUTONOMOUS_ENGINEERING_MODE` (`scheduled` or `continuous`). In `scheduled` mode, hourly cron ticks are gated to the configured daily frequency. In `continuous` mode, scheduled ticks are ignored; an operator manually starts the queue, and after each completed task the same workflow immediately starts a fresh Codex session against the updated working tree and engineering ledger. The first session may consume the submitted manual task; subsequent sessions select the next independently actionable ledger task.
-- Continuous mode is bounded to 8 tasks and 6 hours per workflow run. It stops on an empty queue, a blocked/invalid completion marker, a task failure, or the safety limit. It runs final test/quality gates once against the combined candidate and publishes at most one draft PR. It does not merge or deploy.
+- The execution mode is stored in `AUTONOMOUS_ENGINEERING_MODE` (`scheduled` or `continuous`). In `scheduled` mode, hourly cron ticks are gated to the configured daily frequency. In `continuous` mode, scheduled ticks are ignored; an operator manually starts the queue. After each task, the Windows full test suite and repository quality gates run, then an individual PR is created. The workflow dispatches `tests.yml`, `browser-e2e.yml`, and `dependency-audit.yml` against that exact PR head and waits for all three to succeed. Only then does it squash-merge that PR into `main`, refresh the local checkout from `origin/main`, and start a fresh Codex session. The first session may consume the submitted manual task; later sessions select the next independently actionable ledger task from the updated `main` branch.
+- Continuous mode is bounded to 8 successfully merged tasks and 6 hours per workflow run. After the eighth merge, it automatically dispatches a new run against `main` if more work may remain. It stops when the queue is empty, a task is blocked, local verification cannot be repaired, a GitHub validation workflow fails, a PR cannot be merged, or the safety limit is reached. A failed task is never counted as complete and never permits the next task to start. No deployment is performed.
 - The Codex job runs only on a runner carrying `self-hosted`, `Windows`, `X64`, and `ollama` labels and only when the ref is `main`.
 - The local job checks that Ollama, the configured model, and Codex CLI are present before starting.
-- After Codex proposes changes, the Windows self-hosted runner executes the full default pytest suite and the repository artifact, Markdown-link, import-cycle, retrieval, and claim-to-test quality gates against the modified working tree. The default pytest configuration excludes only the separately marked browser E2E and Docker sandbox integration tests; those remain covered by their dedicated CI workflows.
+- After each Codex task, the Windows self-hosted runner executes the full default pytest suite and the repository artifact, Markdown-link, import-cycle, retrieval, and claim-to-test quality gates against that task's working tree. Before merge, the three GitHub-hosted workflows independently test the exact PR head, including the browser E2E suite and dependency audit.
 - A read-only GitHub API snapshot is created before Codex runs. The workflow token is not passed to the Codex process.
 - Codex is invoked using `codex exec --oss --local-provider ollama --sandbox workspace-write`; Ollama is selected explicitly for the Runner account. Its proposed patch is restricted to `app/`, `tests/`, and `docs/` (including `scripts/`).
-- Candidate code is transferred as an artifact to a separate GitHub-hosted job. That job applies the patch to the exact base SHA and runs the configured Linux test and quality checks without access to the local runner or any API credential.
-- A separate GitHub-hosted job with narrow write permissions creates a draft PR only after validation succeeds.
-- The agent never writes directly to `main`, merges, deploys, changes secrets/security settings, or modifies real databases.
+- The task controller creates one isolated PR per verified task. It explicitly dispatches the repository's Linux test, browser E2E, and dependency-audit workflows on the PR branch and verifies each completed run's branch and head SHA before requesting a squash merge.
+- The workflow token is removed from the controller process environment before Codex or test subprocesses start. A separate publisher subprocess receives the token only after local verification has succeeded; it creates the PR, dispatches the exact-commit checks, and merges only after all checks pass.
+- The agent never pushes directly to `main` or deploys. The trusted controller merges each isolated PR into `main` only after all required checks succeed; branch protection or merge restrictions cause a safe stop. The agent cannot change secrets/security settings or modify real databases.
 
 ## Dashboard
 
