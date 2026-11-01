@@ -82,6 +82,9 @@
       $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "نامشخص") +
         (checks.model_installed ? "" : "؛ نصب نشده است. برای نصب: ollama pull " + String(data.model || ""));
       renderModels(data.models, data.model);
+      if (document.activeElement !== $("execution-mode")) {
+        $("execution-mode").value = data.execution_mode || "scheduled";
+      }
       if (document.activeElement !== $("runs-per-day")) {
         $("runs-per-day").value = String(data.runs_per_day || 1);
       }
@@ -128,11 +131,12 @@
     const customModel = $("custom-model").value.trim();
     const model = customModel || $("ollama-model").value;
     const runsPerDay = Number($("runs-per-day").value);
-    setMessage("در حال ذخیرهٔ مدل و تعداد اجرا در تنظیمات مخزن GitHub…");
+    const executionMode = $("execution-mode").value;
+    setMessage("در حال ذخیرهٔ مدل و حالت اجرای عامل در تنظیمات مخزن GitHub…");
     try {
       const result = await request("settings", {
         method: "POST",
-        body: JSON.stringify({model, runs_per_day: runsPerDay})
+        body: JSON.stringify({model, runs_per_day: runsPerDay, execution_mode: executionMode})
       });
       $("custom-model").value = "";
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
