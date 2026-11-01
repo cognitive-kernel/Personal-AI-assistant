@@ -440,6 +440,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
     runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
+    acl_script = (root / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
     api_paths = {route.path for route in agent.router.routes}
 
     assert "/api/autonomous-engineering/progress" in api_paths
@@ -458,6 +459,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "pyproject.toml" not in workflow
     assert "WriteAllText" in runner_check
     assert "gh auth login" not in runner_check
+    assert '"${RunnerAccount}:(OI)(CI)M"' in acl_script
+    assert '"${AppAccount}:(OI)(CI)RX"' in acl_script
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
 
