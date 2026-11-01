@@ -242,10 +242,12 @@ def run_cycle(args: argparse.Namespace) -> int:
     started = time.monotonic()
     maximum = 8 if args.mode == "continuous" else 1
     request_file = ROOT / ".agent-request.json"
+    continuation_needed = False
 
     for task in range(1, maximum + 1):
         if time.monotonic() - started >= CYCLE_LIMIT - 60:
-            print("Six-hour cycle limit reached; remaining tasks are deferred.")
+            print("Six-hour cycle limit reached after the previous task was merged; remaining tasks are deferred.")
+            continuation_needed = True
             break
         branch = f"codex/local-engineering-{args.run_id}-{args.run_attempt}-task-{task}"
         checked(["git", "switch", "main"])
@@ -340,6 +342,11 @@ def run_cycle(args: argparse.Namespace) -> int:
             break
         if task == maximum:
             print(f"Reached the safe per-run task limit ({maximum}); remaining ledger work is deferred.")
+            continuation_needed = True
+
+    if args.mode == "continuous" and continuation_needed:
+        record(args.run_id, args.run_attempt, "continuation", "ادامهٔ صف مهندسی", "تمام تسک‌های این اجرا ادغام شدند؛ اجرای بعدی از main تازه آغاز می‌شود")
+        api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {"ref": "main"})
 
     record(args.run_id, args.run_attempt, "complete", "پایان چرخهٔ مهندسی", "چرخه با ادغام‌های موفق یا توقف ایمن پایان یافت")
     return 0
