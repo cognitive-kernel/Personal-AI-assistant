@@ -357,6 +357,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'id="progress-start"' in page
     assert 'id="progress-end"' in page
     assert 'id="progress-events"' in page
+    assert "current.plan_percent" in script
+    assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
 
@@ -435,6 +437,8 @@ def test_codex_progress_plan_reports_completed_steps_without_raw_output(monkeypa
     })
 
     assert (completed, total, active) == (1, 3, "Implement fix")
+    assert writer.plan_percentage(completed, total) == 33
+    assert writer.plan_percentage(0, 0) is None
     assert activity == "در حال اجرای ابزار python"
     assert "hidden" not in activity
 
