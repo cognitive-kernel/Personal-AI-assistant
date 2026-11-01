@@ -233,3 +233,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - The retry regression test verifies that a failed full test suite causes a fresh Codex session to repair the same task before publication. Token-isolation and protected-path tests also passed.
 - These results verify the implementation SHA above. Documentation-only checkpoint updates are being added separately and must receive their own exact-head CI before pull readiness is declared. PR #680 remains open and unmerged.
 
+### Final exact-head verification — `9018fefb128738a0c22a92a25482ec6393b4c29e`
+
+- Latest PR head `9018fefb128738a0c22a92a25482ec6393b4c29e` passed all four checks: tests + Windows storage [run 41319954134](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954134), browser E2E [run 41319954115](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954115), and dependency audit [run 41319954116](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954116).
+- Full suite: **1,860 passed, 49 deselected** in 202.78 seconds. Windows storage regression job passed. Browser dashboard smoke and dependency audit passed. Generated learning artifacts passed; Markdown links passed for 92 files; AST import-cycle checker found no cycles; lexical retrieval and claim-to-test benchmark (10/10) passed.
+- The test suite includes both local full-suite failure retry and GitHub-hosted CI failure retry coverage. No task advances until the same task passes again and its PR merges.
+- PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) remains open, unmerged, and ready for the owner's pull/local acceptance test. No merge or direct-main write was performed by this session.
+
