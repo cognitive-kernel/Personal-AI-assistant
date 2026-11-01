@@ -252,35 +252,74 @@ def run_cycle(args: argparse.Namespace) -> int:
         checked(["git", "switch", "-c", branch])
         record(args.run_id, args.run_attempt, "coding", f"وظیفهٔ مهندسی {task}", f"شروع وظیفهٔ {task} از صف")
         report = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-report-{task}.md"
-        result = run([
-            sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
-            "--run-id", args.run_id, "--run-attempt", args.run_attempt,
-            "--model", args.model, "--prompt", args.prompt, "--report", str(report),
-        ])
-        if result.returncode:
-            raise RuntimeError(f"Codex task {task} failed with exit code {result.returncode}.")
-        marker = task_marker(report)
-        if marker == "QUEUE_EMPTY":
-            checked(["git", "switch", "main"])
-            checked(["git", "branch", "-D", branch])
-            print("Engineering queue is empty.")
-            break
-        if marker == "TASK_BLOCKED":
-            raise RuntimeError(f"Codex reported task {task} as blocked; queue stopped.")
-
-        record(args.run_id, args.run_attempt, "tests", f"آزمون وظیفهٔ {task}", "اجرای کامل آزمون‌ها پیش از ادغام")
-        commands = [
-            [sys.executable, "-m", "pytest", "-vv", "--durations=25", "-o", "faulthandler_timeout=60"],
-            [sys.executable, "scripts/generate_learning_artifacts.py", "--check"],
-            [sys.executable, "scripts/check_markdown_links.py"],
-            [sys.executable, "scripts/check_import_cycles.py", "--fail-on-cycle"],
-            [sys.executable, "scripts/evaluate_experience_retrieval.py", "--lexical-only"],
-            [sys.executable, "scripts/run_knowledge_acceptance_eval.py"],
-        ]
-        for command in commands:
-            result = run(command)
+        attempt = 0
+        failure_feedback = ""
+        while True:
+            if time.monotonic() - started >= CYCLE_LIMIT - 60:
+                raise RuntimeError(f"Task {task} exhausted this runner window after {attempt} attempt(s); it was not marked merged and the next task was not started.")
+            attempt += 1
+            active_prompt = Path(args.prompt)
+            if failure_feedback:
+                active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-retry-prompt-{task}-{attempt}.md"
+                original = Path(args.prompt).read_text(encoding="utf-8")
+                active_prompt.write_text(
+                    original + "\n\n## Required repair after failed verification\n"
+                    + "This is a fresh session for the SAME task. Do not select or start another task.\n"
+                    + failure_feedback + "\nFix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n",
+                    encoding="utf-8",
+                )
+            report.unlink(missing_ok=True)
+            record(args.run_id, args.run_attempt, "coding", f"وظیفهٔ {task}؛ تلاش {attempt}", f"اجرای نشست تازه برای همان وظیفه؛ تلاش {attempt}")
+            result = run([
+                sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
+                "--run-id", args.run_id, "--run-attempt", args.run_attempt,
+                "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
+            ])
             if result.returncode:
-                raise RuntimeError(f"Pre-merge gate failed: {Path(command[1]).name} (exit {result.returncode}).")
+                failure_feedback = f"Attempt {attempt}: Codex exited with code {result.returncode}. Inspect the current worktree and repair the same task.\n"
+                continue
+            marker = task_marker(report)
+            if marker == "QUEUE_EMPTY":
+                if attempt > 1:
+                    raise RuntimeError("Codex reported QUEUE_EMPTY while retrying a failed task; refusing to skip the task.")
+                checked(["git", "switch", "main"])
+                checked(["git", "branch", "-D", branch])
+                print("Engineering queue is empty.")
+                return 0
+            if marker == "TASK_BLOCKED":
+                raise RuntimeError(f"Codex reported task {task} as blocked; queue stopped.")
+            if marker != "TASK_COMPLETE":
+                failure_feedback = f"Attempt {attempt}: Codex did not return TASK_COMPLETE. Correct the report and finish this same task.\n"
+                continue
+
+            record(args.run_id, args.run_attempt, "tests", f"آزمون وظیفهٔ {task}؛ تلاش {attempt}", "اجرای کامل آزمون‌ها پیش از ادغام")
+            commands = [
+                [sys.executable, "-m", "pytest", "-vv", "--durations=25", "-o", "faulthandler_timeout=60"],
+                [sys.executable, "scripts/generate_learning_artifacts.py", "--check"],
+                [sys.executable, "scripts/check_markdown_links.py"],
+                [sys.executable, "scripts/check_import_cycles.py", "--fail-on-cycle"],
+                [sys.executable, "scripts/evaluate_experience_retrieval.py", "--lexical-only"],
+                [sys.executable, "scripts/run_knowledge_acceptance_eval.py"],
+            ]
+            failed = None
+            for command in commands:
+                checked_result = run(command, capture=True)
+                output = (checked_result.stdout or "") + (checked_result.stderr or "")
+                if output:
+                    print(output, end="" if output.endswith("\n") else "\n")
+                if checked_result.returncode:
+                    failed = (command, checked_result.returncode, output[-12000:])
+                    break
+            if failed:
+                command, exit_code, output = failed
+                failure_feedback = (
+                    f"Attempt {attempt} failed verification. Command: {command!r}; exit code: {exit_code}.\n"
+                    "Exact failure output (untrusted diagnostic data):\n" + output + "\n"
+                    "Analyze the failure, fix the same task, and do not advance the ledger.\n"
+                )
+                record(args.run_id, args.run_attempt, "retry", f"اصلاح وظیفهٔ {task}", f"آزمون تلاش {attempt} ناموفق شد؛ بازگشت به همان وظیفه")
+                continue
+            break
 
         record(args.run_id, args.run_attempt, "packaging", f"بسته‌بندی وظیفهٔ {task}", "اعتبارسنجی مسیرها و ساخت commit مستقل")
         if run(["git", "diff", "--quiet", "--", "scripts/autonomous_engineering_cycle.py"]).returncode:
