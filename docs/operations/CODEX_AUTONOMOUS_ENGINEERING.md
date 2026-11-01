@@ -29,58 +29,56 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 
 ## One-time Windows setup
 
-1. Install Ollama and verify that its local server is available at `http://127.0.0.1:11434`.
-2. Download the selected model:
+1. Install Ollama for Windows and keep its server available at \`http://127.0.0.1:11434\`. If it normally runs only in an interactive tray session, configure a persistent service/startup method before relying on unattended runs.
+2. Download the configured model and ensure the Ollama server context window is at least 64k tokens:
 
-   ```powershell
+   \`\`\`powershell
    ollama pull gpt-oss:20b
-   ```
+   \`\`\`
 
-3. Configure the Codex integration and context settings once:
+   The model can be pulled under the application/administrator account; the Runner service account only needs access to the local Ollama HTTP endpoint.
+3. Install Node.js LTS system-wide so the executable is available to the Windows Runner service.
+4. Create a dedicated, non-administrator Windows service account for GitHub Actions Runner. Do not use the interactive application account.
+5. Sign in once as the Runner service account, install Codex CLI in that account, and ensure its npm global binary directory is included in the service account's \`PATH\`:
 
-   ```powershell
-   ollama launch codex --config
-   ```
-
-   Follow the Ollama setup to select the installed local model and configure a context window of at least 64k. The workflow invokes `codex exec --oss` non-interactively; it does not use an OpenAI API credential.
-
-4. Install Node.js and Codex CLI:
-
-   ```powershell
+   \`\`\`powershell
    npm install -g @openai/codex
    codex --version
-   ```
+   \`\`\`
 
-5. Install GitHub CLI and authenticate as the Windows account that runs the local application:
+   The workflow explicitly passes \`-c oss_provider=ollama\` to \`codex exec --oss\`; it does not depend on a Codex profile created under the application account. Do not run \`gh auth login\` or store GitHub CLI credentials in the Runner account. Restart the Runner service after changing its \`PATH\`.
+6. Install GitHub CLI and authenticate only as the Windows account that runs the local application:
 
-   ```powershell
+   \`\`\`powershell
    gh auth login
    gh auth status
-   ```
+   \`\`\`
 
-   The local dashboard uses this existing GitHub CLI authentication only when the user explicitly dispatches or cancels a workflow, or requests recent run status. The app never reads or displays the stored token.
-
-6. In the repository, open **Settings → Actions → Runners → New self-hosted runner**. Select **Windows x64**, follow GitHub's current download/configuration commands, and add the custom label `ollama`. Do not paste the temporary runner registration token into ChatGPT, source files, issue comments, or logs.
-
-7. Configure the runner to run as a Windows service under a dedicated, non-administrator Windows service account. Keep this account separate from the account that runs the local application. The runner account must be able to reach the local Ollama server, but must not be signed in to GitHub CLI and must not contain personal files or unrelated credentials. The local application account retains the GitHub CLI authentication used by the dashboard's explicit dispatch/cancel controls. If Ollama only runs in an interactive tray session, configure Ollama to start persistently under its own secured account/service before relying on unattended runs. Do not run the runner as an administrator unless a separately reviewed requirement proves it necessary.
-
+   This application account is used by the dashboard's explicit dispatch/cancel controls and repository-variable settings. The app never reads or displays the stored token.
+7. In the repository, open **Settings → Actions → Runners → New self-hosted runner**. Select **Windows x64**, follow GitHub's current download/configuration commands, add the custom label \`ollama\`, and configure the Runner service to use the dedicated account created in step 4. Do not paste the temporary runner registration token into ChatGPT, source files, issue comments, or logs.
 8. Configure the shared progress directory once from an elevated PowerShell window. Supply the exact Windows service identity used by the Runner and the Windows account that runs the local application:
 
-   ```powershell
-   .\scripts\configure_autonomous_engineering_progress.ps1 -RunnerAccount "DOMAIN\runner-svc" -AppAccount "DOMAIN\app-user"
-   ```
+   \`\`\`powershell
+   .\\scripts\\configure_autonomous_engineering_progress.ps1 -RunnerAccount "DOMAIN\\runner-svc" -AppAccount "DOMAIN\\app-user"
+   \`\`\`
 
-   The script grants access only to those two accounts, SYSTEM, and local administrators. The directory is `%ProgramData%\PersonalAIAssistant\autonomous-engineering`; both the local app and the runner use this same location. Do not grant access to broad groups such as Everyone or Users.
+   The script rejects identical account names and grants access only to those two accounts, SYSTEM, and local administrators. The directory is \`%ProgramData%\\PersonalAIAssistant\\autonomous-engineering\`; the app reads it and the Runner writes it. Do not grant access to broad groups such as Everyone or Users.
+9. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. This permission is used only by the final GitHub-hosted publication job.
+10. From the application account and the application checkout, run the app-side readiness check:
 
-9. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. This is used only by the final GitHub-hosted publication job.
+   \`\`\`powershell
+   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
+   \`\`\`
 
-10. From the project root, run the read-only readiness check:
+   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. It intentionally does not require Codex CLI to be installed in the application account.
+11. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1
-   ```
+   \`\`\`powershell
+   powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
+   \`\`\`
 
-11. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When all readiness checks pass, use **اجرای یک چرخهٔ مهندسی** or start the workflow from GitHub Actions.
+   This checks Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
+12. Start the local app and open \`http://127.0.0.1:8000/autonomous-engineering\`. When application-side readiness passes, use **اجرای یک چرخهٔ مهندسی** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
 
 ## Workflow behavior
 
@@ -90,14 +88,14 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 - The local job checks that Ollama, the configured model, and Codex CLI are present before starting.
 - After Codex proposes changes, the Windows self-hosted runner executes the full default pytest suite and the repository artifact, Markdown-link, import-cycle, retrieval, and claim-to-test quality gates against the modified working tree. The default pytest configuration excludes only the separately marked browser E2E and Docker sandbox integration tests; those remain covered by their dedicated CI workflows.
 - A read-only GitHub API snapshot is created before Codex runs. The workflow token is not passed to the Codex process.
-- Codex is invoked using `codex exec --oss --sandbox workspace-write`. Its proposed patch is restricted to `app/`, `tests/`, and `docs/` (including `scripts/`).
+- Codex is invoked using `codex exec --oss -c oss_provider=ollama --sandbox workspace-write`; Ollama is selected explicitly for the Runner account. Its proposed patch is restricted to `app/`, `tests/`, and `docs/` (including `scripts/`).
 - Candidate code is transferred as an artifact to a separate GitHub-hosted job. That job applies the patch to the exact base SHA and runs the configured Linux test and quality checks without access to the local runner or any API credential.
 - A separate GitHub-hosted job with narrow write permissions creates a draft PR only after validation succeeds.
 - The agent never writes directly to `main`, merges, deploys, changes secrets/security settings, or modifies real databases.
 
 ## Dashboard
 
-The local page at `/autonomous-engineering` reports Ollama reachability, selected-model presence, Codex CLI version, Runner.Listener process state, GitHub CLI authentication, and recent workflow runs. It provides explicit manual dispatch and cancellation controls. It does not install the runner or silently start privileged Windows services.
+The local page at `/autonomous-engineering` reports Ollama reachability, selected-model presence, the Codex CLI visible to the application account (informational only), Runner.Listener process state, application-account GitHub CLI authentication, shared progress-storage access, and recent workflow runs. The workflow separately verifies Codex CLI and write access under the actual Runner service account before every coding session. It provides explicit manual dispatch and cancellation controls. It does not install the runner or silently start privileged Windows services.
 
 The page also separates two progress measures:
 
