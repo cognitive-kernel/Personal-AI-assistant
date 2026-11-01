@@ -283,6 +283,30 @@ def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(mon
     assert result["history"][1]["engineering_percent"] == 61.0
 
 
+def test_record_phase_preserves_plan_percentage_for_same_run(monkeypatch, tmp_path):
+    from scripts import autonomous_engineering_progress as writer
+
+    storage = tmp_path / "telemetry"
+    storage.mkdir()
+    (storage / "current.json").write_text(json.dumps({
+        "run_id": "200",
+        "run_attempt": "1",
+        "plan_completed": 2,
+        "plan_total": 4,
+        "plan_percent": 50,
+    }), encoding="utf-8")
+    monkeypatch.setattr(writer, "store_dir", lambda: storage)
+
+    writer.record_phase("200", "1", "tests", "آزمون‌ها", "در حال اجرای آزمون", 70)
+
+    current = json.loads((storage / "current.json").read_text(encoding="utf-8"))
+    assert current["phase"] == "tests"
+    assert current["percent"] == 70
+    assert current["plan_completed"] == 2
+    assert current["plan_total"] == 4
+    assert current["plan_percent"] == 50
+
+
 def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatch, tmp_path):
     from scripts import autonomous_engineering_progress as writer
 
