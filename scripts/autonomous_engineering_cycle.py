@@ -194,8 +194,11 @@ def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: s
     })
     number = pr.get("number")
     pr_head = (pr.get("head") or {}).get("sha")
+    pr_base = (pr.get("base") or {}).get("ref")
     if not isinstance(number, int) or not isinstance(pr_head, str):
         raise RuntimeError("GitHub did not return a valid pull request and head SHA.")
+    if pr_head != head_sha or pr_base != "main" or pr.get("draft") is True:
+        raise RuntimeError("Refusing to merge: PR head, base branch, or draft state does not match the validated candidate.")
     for workflow in ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"):
         dispatch_and_wait(token, repo, workflow, branch, pr_head)
     result = api(token, repo, "PUT", f"pulls/{number}/merge", {
