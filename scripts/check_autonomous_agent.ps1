@@ -1,5 +1,12 @@
+param([string]$SelectedModel)
 $ErrorActionPreference = "Stop"
-$model = if ($env:AUTONOMOUS_ENGINEERING_MODEL) { $env:AUTONOMOUS_ENGINEERING_MODEL } else { "gpt-oss:20b" }
+$model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
+    $SelectedModel
+} elseif ($env:AUTONOMOUS_ENGINEERING_MODEL) {
+    $env:AUTONOMOUS_ENGINEERING_MODEL
+} else {
+    "gpt-oss:20b"
+}
 $checks = @()
 
 $ollamaOnline = $false
