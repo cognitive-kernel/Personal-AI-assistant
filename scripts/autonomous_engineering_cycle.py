@@ -10,6 +10,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +136,39 @@ def api(token: str, repo: str, method: str, path: str, payload: dict[str, Any] |
         raise RuntimeError(f"GitHub API {method} {path} failed: {type(exc).__name__}") from exc
 
 
+def dispatch_and_wait(token: str, repo: str, workflow: str, branch: str, expected_sha: str) -> None:
+    dispatched_at = time.time()
+    api(token, repo, "POST", f"actions/workflows/{workflow}/dispatches", {"ref": branch})
+    deadline = time.monotonic() + 20 * 60
+    query_branch = quote(branch, safe="")
+    while time.monotonic() < deadline:
+        response = api(
+            token, repo, "GET",
+            f"actions/workflows/{workflow}/runs?branch={query_branch}&event=workflow_dispatch&per_page=20",
+        )
+        matches = [
+            item for item in response.get("workflow_runs", [])
+            if item.get("head_branch") == branch
+            and item.get("head_sha") == expected_sha
+            and item.get("event") == "workflow_dispatch"
+            and item.get("created_at")
+            and __import__("datetime").datetime.fromisoformat(
+                item["created_at"].replace("Z", "+00:00")
+            ).timestamp() >= dispatched_at - 10
+        ]
+        if matches:
+            latest = max(matches, key=lambda item: item.get("run_number", 0))
+            if latest.get("status") == "completed":
+                if latest.get("conclusion") != "success":
+                    raise RuntimeError(
+                        f"Required workflow {workflow} failed for task commit {expected_sha}: "
+                        f"{latest.get('html_url', '')} ({latest.get('conclusion')})"
+                    )
+                return
+        time.sleep(5)
+    raise RuntimeError(f"Timed out waiting for required workflow {workflow} on {expected_sha}.")
+
+
 def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str) -> str:
     env = os.environ.copy()
     encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
@@ -162,6 +196,8 @@ def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: s
     pr_head = (pr.get("head") or {}).get("sha")
     if not isinstance(number, int) or not isinstance(pr_head, str):
         raise RuntimeError("GitHub did not return a valid pull request and head SHA.")
+    for workflow in ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"):
+        dispatch_and_wait(token, repo, workflow, branch, pr_head)
     result = api(token, repo, "PUT", f"pulls/{number}/merge", {
         "merge_method": "squash", "sha": pr_head,
     })
