@@ -77,7 +77,7 @@ def persist(record: dict[str, Any]) -> bool:
 
 
 def record_phase(
-    run_id: str, run_attempt: str, phase: str, label: str, activity: str, percent: int, status: str = "running"
+    run_id: str, run_attempt: str, phase: str, label: str, activity: str, status: str = "running"
 ) -> bool:
     previous: dict[str, Any] = {}
     try:
@@ -93,7 +93,6 @@ def record_phase(
         "run_id": run_id, "run_attempt": run_attempt,
         "status": status, "phase": phase,
         "phase_label": label, "activity": activity,
-        "percent": max(0, min(100, percent)),
         "plan_completed": previous.get("plan_completed", 0),
         "plan_total": previous.get("plan_total", 0),
         "plan_percent": previous.get("plan_percent"),
@@ -181,7 +180,7 @@ def run_codex(args: argparse.Namespace) -> int:
     persist({
         "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
         "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
-        "activity": "عامل در حال شروع تحلیل است", "percent": 20,
+        "activity": "عامل در حال شروع تحلیل است",
         "plan_completed": 0, "plan_total": 0, "plan_percent": None,
     })
     try:
@@ -194,14 +193,13 @@ def run_codex(args: argparse.Namespace) -> int:
                 continue
             completed, total, active_title = plan_state()
             activity = active_title or codex_activity(event) or "عامل در حال کار روی وظیفهٔ جاری است"
-            percent = 20 + (45 * completed // total if total else 0)
-            signature = (percent, activity, completed, total)
+            signature = (activity, completed, total)
             if signature != last_signature:
                 persist({
                     "run_id": args.run_id, "run_attempt": args.run_attempt,
                     "status": "running", "phase": "coding",
                     "phase_label": "تحلیل و پیاده‌سازی",
-                    "activity": activity, "percent": percent,
+                    "activity": activity,
                     "plan_completed": completed, "plan_total": total,
                     "plan_percent": plan_percentage(completed, total),
                 })
@@ -213,7 +211,6 @@ def run_codex(args: argparse.Namespace) -> int:
             "status": "completed" if return_code == 0 else "failed",
             "phase": "coding", "phase_label": "پایان مرحلهٔ کدنویسی",
             "activity": "مرحلهٔ کدنویسی پایان یافت" if return_code == 0 else "مرحلهٔ کدنویسی با خطا متوقف شد",
-            "percent": 65 if return_code == 0 else 20 + (45 * completed // total if total else 0),
             "plan_completed": completed, "plan_total": total,
             "plan_percent": plan_percentage(completed, total),
         })
@@ -331,7 +328,6 @@ def main() -> int:
     record.add_argument("--phase", required=True)
     record.add_argument("--label", required=True)
     record.add_argument("--activity", required=True)
-    record.add_argument("--percent", type=int, required=True)
     record.add_argument("--status", default="running")
     codex = sub.add_parser("codex")
     codex.add_argument("--run-id", required=True)
@@ -346,7 +342,7 @@ def main() -> int:
     if args.action == "record":
         return 0 if record_phase(
             args.run_id, args.run_attempt, args.phase, args.label,
-            args.activity, args.percent, args.status,
+            args.activity, args.status,
         ) else 1
     if args.action == "codex":
         return run_codex(args)
