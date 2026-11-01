@@ -70,9 +70,11 @@ def task_marker(report: Path) -> str:
 
 
 def changed_paths() -> list[str]:
-    tracked = checked(["git", "diff", "--name-only", "-z"]).split("\0")
+    unstaged = checked(["git", "diff", "--name-only", "-z"]).split("\0")
+    staged = checked(["git", "diff", "--cached", "--name-only", "-z"]).split("\0")
     untracked = checked(["git", "ls-files", "--others", "--exclude-standard", "-z"]).split("\0")
-    return sorted({p.replace("\\", "/") for p in tracked + untracked if p and p.replace("\\", "/") not in RUNTIME_FILES})
+    all_paths = unstaged + staged + untracked
+    return sorted({p.replace("\\", "/") for p in all_paths if p and p.replace("\\", "/") not in RUNTIME_FILES})
 
 
 def validate_paths(paths: list[str]) -> None:
@@ -136,27 +138,31 @@ def api(token: str, repo: str, method: str, path: str, payload: dict[str, Any] |
         raise RuntimeError(f"GitHub API {method} {path} failed: {type(exc).__name__}") from exc
 
 
-def dispatch_and_wait(token: str, repo: str, workflow: str, branch: str, expected_sha: str) -> None:
+def dispatch_and_wait_all(token: str, repo: str, workflows: tuple[str, ...], branch: str, expected_sha: str) -> None:
     dispatched_at = time.time()
-    api(token, repo, "POST", f"actions/workflows/{workflow}/dispatches", {"ref": branch})
+    for workflow in workflows:
+        api(token, repo, "POST", f"actions/workflows/{workflow}/dispatches", {"ref": branch})
     deadline = time.monotonic() + 20 * 60
     query_branch = quote(branch, safe="")
-    while time.monotonic() < deadline:
-        response = api(
-            token, repo, "GET",
-            f"actions/workflows/{workflow}/runs?branch={query_branch}&event=workflow_dispatch&per_page=20",
-        )
-        matches = [
-            item for item in response.get("workflow_runs", [])
-            if item.get("head_branch") == branch
-            and item.get("head_sha") == expected_sha
-            and item.get("event") == "workflow_dispatch"
-            and item.get("created_at")
-            and __import__("datetime").datetime.fromisoformat(
-                item["created_at"].replace("Z", "+00:00")
-            ).timestamp() >= dispatched_at - 10
-        ]
-        if matches:
+    pending = set(workflows)
+    while pending and time.monotonic() < deadline:
+        for workflow in tuple(pending):
+            response = api(
+                token, repo, "GET",
+                f"actions/workflows/{workflow}/runs?branch={query_branch}&event=workflow_dispatch&per_page=20",
+            )
+            matches = [
+                item for item in response.get("workflow_runs", [])
+                if item.get("head_branch") == branch
+                and item.get("head_sha") == expected_sha
+                and item.get("event") == "workflow_dispatch"
+                and item.get("created_at")
+                and __import__("datetime").datetime.fromisoformat(
+                    item["created_at"].replace("Z", "+00:00")
+                ).timestamp() >= dispatched_at - 10
+            ]
+            if not matches:
+                continue
             latest = max(matches, key=lambda item: item.get("run_number", 0))
             if latest.get("status") == "completed":
                 if latest.get("conclusion") != "success":
@@ -164,9 +170,17 @@ def dispatch_and_wait(token: str, repo: str, workflow: str, branch: str, expecte
                         f"Required workflow {workflow} failed for task commit {expected_sha}: "
                         f"{latest.get('html_url', '')} ({latest.get('conclusion')})"
                     )
-                return
-        time.sleep(5)
-    raise RuntimeError(f"Timed out waiting for required workflow {workflow} on {expected_sha}.")
+                pending.remove(workflow)
+        if pending:
+            time.sleep(5)
+    if pending:
+        raise RuntimeError("Timed out waiting for required workflows: " + ", ".join(sorted(pending)))
+
+
+
+def git_auth_env(token: str) -> dict[str, str]:
+    env = git_auth_env(token)
+    return env
 
 
 def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str) -> str:
@@ -199,8 +213,7 @@ def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: s
         raise RuntimeError("GitHub did not return a valid pull request and head SHA.")
     if pr_head != head_sha or pr_base != "main" or pr.get("draft") is True:
         raise RuntimeError("Refusing to merge: PR head, base branch, or draft state does not match the validated candidate.")
-    for workflow in ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"):
-        dispatch_and_wait(token, repo, workflow, branch, pr_head)
+    dispatch_and_wait_all(token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head)
     result = api(token, repo, "PUT", f"pulls/{number}/merge", {
         "merge_method": "squash", "sha": pr_head,
     })
@@ -253,7 +266,10 @@ def run_cycle(args: argparse.Namespace) -> int:
             continuation_needed = True
             break
         branch = f"codex/local-engineering-{args.run_id}-{args.run_attempt}-task-{task}"
+        checked(["git", "fetch", "origin", "main"], env=git_auth_env(token))
         checked(["git", "switch", "main"])
+        checked(["git", "reset", "--hard", "origin/main"])
+        base_sha = checked(["git", "rev-parse", "HEAD"])
         checked(["git", "switch", "-c", branch])
         record(args.run_id, args.run_attempt, "coding", f"وظیفهٔ مهندسی {task}", f"شروع وظیفهٔ {task} از صف")
         report = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-report-{task}.md"
@@ -326,6 +342,10 @@ def run_cycle(args: argparse.Namespace) -> int:
                 continue
             break
 
+        if checked(["git", "rev-parse", "HEAD"]) != base_sha:
+            raise RuntimeError("Codex must not create commits; only the trusted controller may commit.")
+        if checked(["git", "branch", "--show-current"]) != branch:
+            raise RuntimeError("Codex changed the task branch; refusing to publish.")
         record(args.run_id, args.run_attempt, "packaging", f"بسته‌بندی وظیفهٔ {task}", "اعتبارسنجی مسیرها و ساخت commit مستقل")
         if run(["git", "diff", "--quiet", "--", "scripts/autonomous_engineering_cycle.py"]).returncode:
             raise RuntimeError("The trusted cycle controller was modified by the task.")
