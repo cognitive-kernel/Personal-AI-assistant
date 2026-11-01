@@ -137,6 +137,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
     assert "checks.github_runs_available" in agent_script
     assert 'id="runs-per-day"' in page
+    assert 'id="execution-mode"' in page
+    assert 'value="continuous"' in page
     assert 'id="ollama-model"' in page
     assert 'id="custom-model"' in page
     assert 'id="agent-task-form"' in page
@@ -235,12 +237,13 @@ def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
     monkeypatch.setattr(agent, "_run", fake_run)
 
     result = agent.save_autonomous_engineering_settings(
-        agent.EngineeringSettings(model="qwen3:14b", runs_per_day=4)
+        agent.EngineeringSettings(model="qwen3:14b", runs_per_day=4, execution_mode="continuous")
     )
 
     assert result["saved"] is True
     assert result["model"] == "qwen3:14b"
     assert result["runs_per_day"] == 4
+    assert result["execution_mode"] == "continuous"
     assert calls[0][1:4] == ["auth", "status", "--hostname"]
     assert calls[1][1:] == [
         "variable", "set", "AUTONOMOUS_ENGINEERING_MODEL",
@@ -249,6 +252,10 @@ def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
     assert calls[2][1:] == [
         "variable", "set", "AUTONOMOUS_ENGINEERING_RUNS_PER_DAY",
         "--body", "4", "--repo", "cognitive-kernel/Personal-AI-assistant",
+    ]
+    assert calls[3][1:] == [
+        "variable", "set", "AUTONOMOUS_ENGINEERING_MODE",
+        "--body", "continuous", "--repo", "cognitive-kernel/Personal-AI-assistant",
     ]
 
 
@@ -279,7 +286,8 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
             return subprocess.CompletedProcess(
                 command, 0,
                 '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
-                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"8"}]',
+                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"8"},
+                {"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"}]',
                 "",
             )
         raise AssertionError(command)
@@ -288,7 +296,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
 
     result = agent._github_snapshot()
 
-    assert result["settings"] == {"model": "qwen3:14b", "runs_per_day": 8}
+    assert result["settings"] == {"model": "qwen3:14b", "runs_per_day": 8, "execution_mode": "continuous"}
 
 
 def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(monkeypatch, tmp_path):
