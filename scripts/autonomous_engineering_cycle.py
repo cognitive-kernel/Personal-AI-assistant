@@ -179,11 +179,6 @@ def dispatch_and_wait_all(token: str, repo: str, workflows: tuple[str, ...], bra
 
 
 def git_auth_env(token: str) -> dict[str, str]:
-    env = git_auth_env(token)
-    return env
-
-
-def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str) -> str:
     env = os.environ.copy()
     encoded = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
     env.update({
@@ -193,6 +188,11 @@ def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: s
     })
     env.pop("GH_TOKEN", None)
     env.pop("GITHUB_TOKEN", None)
+    return env
+
+
+def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str) -> str:
+    env = git_auth_env(token)
     checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=env)
     pr = api(token, repo, "POST", "pulls", {
         "title": f"Autonomous engineering task {task_index} (run {run_id})",
