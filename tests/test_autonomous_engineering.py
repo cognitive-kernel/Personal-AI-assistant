@@ -318,7 +318,7 @@ def test_record_phase_preserves_plan_percentage_for_same_run(monkeypatch, tmp_pa
     }), encoding="utf-8")
     monkeypatch.setattr(writer, "store_dir", lambda: storage)
 
-    writer.record_phase("200", "1", "tests", "آزمون‌ها", "در حال اجرای آزمون", 70)
+    assert writer.record_phase("200", "1", "tests", "آزمون‌ها", "در حال اجرای آزمون", 70) is True
 
     current = json.loads((storage / "current.json").read_text(encoding="utf-8"))
     assert current["phase"] == "tests"
@@ -326,6 +326,15 @@ def test_record_phase_preserves_plan_percentage_for_same_run(monkeypatch, tmp_pa
     assert current["plan_completed"] == 2
     assert current["plan_total"] == 4
     assert current["plan_percent"] == 50
+
+
+def test_record_phase_fails_when_current_progress_cannot_be_written(monkeypatch, tmp_path):
+    from scripts import autonomous_engineering_progress as writer
+
+    monkeypatch.setattr(writer, "store_dir", lambda: tmp_path / "unavailable")
+    monkeypatch.setattr(writer, "persist", lambda record: False)
+
+    assert writer.record_phase("201", "1", "preparation", "شروع", "آغاز", 0) is False
 
 
 def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatch, tmp_path):
