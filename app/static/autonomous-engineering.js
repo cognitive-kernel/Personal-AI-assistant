@@ -244,15 +244,15 @@
       const data = await request("progress?" + params.toString());
       if (data.error) throw new Error(data.error);
       const current = data.current;
-      if (current && Number.isFinite(Number(current.percent))) {
-        const percent = Math.max(0, Math.min(100, Number(current.percent)));
+      if (current && current.plan_percent !== null && current.plan_percent !== undefined && Number.isFinite(Number(current.plan_percent))) {
+        const percent = Math.max(0, Math.min(100, Number(current.plan_percent)));
         $("cycle-progress-value").textContent = percent + "%";
         $("cycle-progress").value = percent;
         $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + " · " + String(current.status || "");
         $("current-activity").textContent = String(current.activity || "فعالیت جاری ثبت نشده است.");
         $("plan-progress").textContent = Number(current.plan_total) > 0
           ? "پیشرفت برنامه: " + Number(current.plan_completed || 0) + " از " + Number(current.plan_total) + " گام"
-          : "درصد مرحله‌ای؛ برنامهٔ جزئی عامل هنوز گزارش نشده است.";
+          : "درصد دقیق برنامه تا زمان ثبت گام‌های عامل در دسترس نیست.";
       } else {
         $("cycle-progress-value").textContent = "—";
         $("cycle-progress").value = 0;
