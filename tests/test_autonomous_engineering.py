@@ -286,8 +286,8 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
             return subprocess.CompletedProcess(
                 command, 0,
                 '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
-                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"8"},
-                {"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"}]',
+                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"8"},'
+                '{"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"}]',
                 "",
             )
         raise AssertionError(command)
@@ -465,7 +465,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
-    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Run Codex against the local Ollama model")
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Run one task or chain queued engineering tasks")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     assert '"--local-provider", "ollama"' in progress_writer
