@@ -89,7 +89,9 @@ jobs:
             throw "Required local model '$model' is not installed. Run: ollama pull $model"
           }
           codex --version
+          if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
           ollama --version
+          if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
       - name: Capture live GitHub state with the read-only workflow token
         env:
