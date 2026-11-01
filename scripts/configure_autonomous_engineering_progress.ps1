@@ -28,7 +28,7 @@ $rules = @(
     "BUILTIN\Administrators:(OI)(CI)F"
 )
 
-& icacls.exe $progressPath /inheritance:r /grant:r $rules
+& icacls.exe $progressPath /inheritance:r /T /C /grant:r $rules
 if ($LASTEXITCODE -ne 0) {
     throw "Could not configure progress directory permissions (icacls exit code $LASTEXITCODE)."
 }
