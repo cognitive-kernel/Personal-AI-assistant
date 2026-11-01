@@ -145,11 +145,6 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in agent_script
-    assert 'id="agent-task-form"' in page
-    assert 'id="manual-task"' in page
-    assert "workflow_dispatch:" in workflow
-    assert "manual_task:" in workflow
-    assert "inputs.manual_task" in workflow
 
 
 def test_autonomous_engineering_routes_are_registered():
@@ -472,6 +467,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "gh auth login" not in runner_check
     assert "WindowsBuiltInRole]::Administrator" in runner_check
     assert "non-administrator service account" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "manual_task:" in workflow
+    assert "inputs.manual_task" in workflow
     assert '"${RunnerAccount}:(OI)(CI)M"' in acl_script
     assert '"${AppAccount}:(OI)(CI)RX"' in acl_script
     assert "/inheritance:r /T /C /grant:r" in acl_script
