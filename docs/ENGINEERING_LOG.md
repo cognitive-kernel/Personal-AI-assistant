@@ -2,6 +2,26 @@
 
 This file is the durable session handoff required by `docs/MASTER_ENGINEERING_PROMPT.md`. It records repository facts and evidence, not an assertion that the full project is accepted.
 
+
+## 2026-11-01 — PR #680 final pre-pull engineering review
+
+- Current base: `main` SHA `60597e13e70a3014f6a1871290cf843d188ca45e`. The feature remains isolated on `automation/codex-engineering-agent-rebased`; no direct-main write, merge, deployment, or history rewrite was performed.
+- Exact reviewed PR head: `c7ec867df63baac9dec74b736b65a64284a525e4`; PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) is open, Draft, and unmerged.
+- Final review corrected progress semantics: the displayed plan percentage is completed/total structured Codex plan items (equal-weight task count, not estimated effort). Workflow phase and active step are separate; plan completion may reach 100% before validation and PR publication finish.
+- Project history is evidence-safe: the workflow snapshots the trusted `main` scorecard before Codex starts; the original baseline is persisted separately; new points are added only when accepted scorecard percentages change on `main`. Unmerged candidate scorecard changes and unchanged percentages do not create chart points.
+- Live progress starts before prerequisite checks. The current plan percentage is retained through tests, quality gates, GitHub validation, and draft-PR publication. The workflow fails closed if progress telemetry cannot be persisted.
+- Security hardening: candidate patches cannot modify `pyproject.toml`; Codex explicitly selects Ollama with `--oss --local-provider ollama`; app and non-admin Runner accounts have separate checks; the Runner is rejected if it is a local administrator; the Runner account does not use GitHub CLI authentication; the Runner receives Modify on telemetry while the app receives read/execute only.
+- Windows setup documentation now distinguishes app and Runner accounts, includes separate readiness scripts, explains the 64k Ollama context requirement, and identifies target-host checks that remain external.
+- Exact-head CI for `c7ec867df63baac9dec74b736b65a64284a525e4` passed:
+  - Tests: **1,840 passed, 48 deselected**.
+  - Deterministic lexical retrieval benchmark: passed.
+  - Fail-closed claim-to-test coverage benchmark: **10/10**, zero failed cases.
+  - Windows storage regressions: passed.
+  - Chromium dashboard smoke: passed.
+  - Dependency audit: passed.
+  - Actions: [tests and Windows regressions](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589102), [browser E2E](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589078), [dependency audit](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41268589074).
+- Pull readiness is limited to checking out the feature branch. The PR is not merged. Before enabling scheduled operation or merging, the owner must complete Windows Runner registration, verify the dedicated non-admin account and ProgramData ACLs, validate the 64k Ollama context and performance/soak on the target host, and obtain the independent security review. Manual keyboard/screen-reader and target-host usability reviews also remain open.
+
 ## 2026-10-31 — resumed engineering execution
 
 ### Source of instructions and baseline
