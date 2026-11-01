@@ -83,3 +83,16 @@ def test_failed_full_suite_retries_same_task_before_publishing(tmp_path: Path, m
     assert len(published) == 1
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     assert "Exact failure output" in retry_prompt.read_text(encoding="utf-8")
+
+
+
+def test_git_auth_environment_keeps_token_out_of_child_environment(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("GH_TOKEN", "secret-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "secret-token")
+
+    env = cycle.git_auth_env("secret-token")
+
+    assert "GH_TOKEN" not in env
+    assert "GITHUB_TOKEN" not in env
+    assert env["GIT_CONFIG_KEY_0"] == "http.extraheader"
+    assert env["GIT_CONFIG_VALUE_0"].startswith("AUTHORIZATION: basic ")
