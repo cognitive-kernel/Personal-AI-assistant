@@ -275,14 +275,21 @@ def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(mon
 
     scorecard = tmp_path / "ACCEPTANCE_SCORECARD.md"
     scorecard.write_text(
-        "**Snapshot:** 2026-11-01\n"
-        "**Scored baseline:** main at " + "a" * 40 + "\n"
-        "- **Engineering completion:** score = 60.47%\n"
-        "- **Overall acceptance progress:** score = 57.45%\n",
+        "**Snapshot:** 2026-11-03\n"
+        "**Scored baseline:** main at " + "c" * 40 + "\n"
+        "- **Engineering completion:** score = 62.00%\n"
+        "- **Overall acceptance progress:** score = 59.00%\n",
         encoding="utf-8",
     )
     storage = tmp_path / "telemetry"
     storage.mkdir()
+    (storage / "scorecard-baseline.json").write_text(json.dumps({
+        "date": "2026-11-01",
+        "engineering_percent": 60.47,
+        "overall_percent": 57.45,
+        "sha": "a" * 40,
+        "source": "scorecard-baseline",
+    }), encoding="utf-8")
     (storage / "history.jsonl").write_text(
         json.dumps({
             "type": "project_snapshot", "date": "2026-11-02",
@@ -358,6 +365,9 @@ def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatc
     history = storage / "history.jsonl"
     state = storage / "scorecard-state.json"
     assert state.is_file()
+    baseline = json.loads((storage / "scorecard-baseline.json").read_text(encoding="utf-8"))
+    assert baseline["date"] == "2026-11-01"
+    assert baseline["engineering_percent"] == 60.47
     assert not history.exists()
 
     scorecard.write_text(
