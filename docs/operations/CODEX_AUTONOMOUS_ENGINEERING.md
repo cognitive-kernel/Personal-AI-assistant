@@ -72,14 +72,14 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
    \`\`\`
 
-   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. It intentionally does not require Codex CLI to be installed in the application account.
+   This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. Pass the exact model selected in the dashboard via `-SelectedModel` if it is not `gpt-oss:20b`. It intentionally does not require Codex CLI to be installed in the application account.
 11. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
    \`\`\`powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
    \`\`\`
 
-   This checks Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
+   This checks Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. Pass the exact dashboard-selected model via `-SelectedModel` if it is not `gpt-oss:20b`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
 12. Start the local app and open \`http://127.0.0.1:8000/autonomous-engineering\`. When application-side readiness passes, use **اجرای یک چرخهٔ مهندسی** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
 
 ## Workflow behavior
