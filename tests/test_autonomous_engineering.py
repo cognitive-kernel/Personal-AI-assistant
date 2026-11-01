@@ -50,6 +50,23 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
     assert result["checks"]["model_installed"] is False
 
 
+def test_app_readiness_does_not_require_codex_in_the_app_account(monkeypatch):
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True, "models": [model]
+    })
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": False, "version": None})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
+    })
+
+    result = agent.collect_status()
+
+    assert result["ready"] is True
+    assert result["checks"]["codex_installed"] is False
+
+
 def test_status_is_not_ready_when_shared_progress_storage_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent, "_ollama_status", lambda model: {
         "online": True, "model": model, "model_installed": True, "models": [model]
@@ -413,6 +430,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     page = (root / "app" / "static" / "autonomous-engineering.html").read_text(encoding="utf-8")
     script = (root / "app" / "static" / "autonomous-engineering.js").read_text(encoding="utf-8")
     workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    runner_check = (root / "scripts" / "check_autonomous_runner.ps1").read_text(encoding="utf-8")
     api_paths = {route.path for route in agent.router.routes}
 
     assert "/api/autonomous-engineering/progress" in api_paths
@@ -425,7 +443,10 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
+    assert "oss_provider=ollama" in workflow or "oss_provider=ollama" in (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     assert "pyproject.toml" not in workflow
+    assert "WriteAllText" in runner_check
+    assert "gh auth login" not in runner_check
     assert 'window.setInterval(refreshProgress, 5000)' in script
     assert "createElementNS" in script
 
