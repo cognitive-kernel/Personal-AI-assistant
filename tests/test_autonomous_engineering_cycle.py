@@ -55,18 +55,32 @@ def test_failed_full_suite_retries_same_task_before_publishing(tmp_path: Path, m
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setattr(cycle, "record", lambda *args: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    head = ["base-sha"]
+
     def fake_checked(command, **kwargs):
         if command[:3] == ["git", "rev-parse", "HEAD"]:
-            return "base-sha"
+            return head[0]
         if command[1:3] == ["branch", "--show-current"]:
             return "codex/local-engineering-123-1-task-1"
         return ""
 
     monkeypatch.setattr(cycle, "checked", fake_checked)
     monkeypatch.setattr(cycle, "changed_paths", lambda: ["app/fix.py"])
-    monkeypatch.setattr(cycle, "prepare_commit", lambda task: "candidate-sha")
+
+    def fake_prepare_commit(task):
+        head[0] = "candidate-sha"
+        return head[0]
+
+    monkeypatch.setattr(cycle, "prepare_commit", fake_prepare_commit)
     published = []
-    monkeypatch.setattr(cycle, "publish_subprocess", lambda *args: published.append(args) or "main-sha")
+
+    def fake_publish(*args):
+        published.append(args)
+        if len(published) == 1:
+            raise RuntimeError("Per-task PR merge failed: Required workflow tests.yml failed for candidate SHA.")
+        return "main-sha"
+
+    monkeypatch.setattr(cycle, "publish_subprocess", fake_publish)
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False):
@@ -87,10 +101,12 @@ def test_failed_full_suite_retries_same_task_before_publishing(tmp_path: Path, m
     })()
 
     assert cycle.run_cycle(args) == 0
-    assert calls == {"codex": 2, "pytest": 2}
-    assert len(published) == 1
-    retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
-    assert "Exact failure output" in retry_prompt.read_text(encoding="utf-8")
+    assert calls == {"codex": 3, "pytest": 3}
+    assert len(published) == 2
+    local_retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
+    ci_retry_prompt = tmp_path / "codex-retry-prompt-1-3.md"
+    assert "Exact failure output" in local_retry_prompt.read_text(encoding="utf-8")
+    assert "GitHub-hosted verification failed" in ci_retry_prompt.read_text(encoding="utf-8")
 
 
 
