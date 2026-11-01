@@ -458,6 +458,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     assert '"--local-provider", "ollama"' in progress_writer
     assert "pyproject.toml" not in workflow
+    assert workflow.count("is_relative_to(Path.cwd().resolve())") == 2
     assert "WriteAllText" in runner_check
     assert "gh auth login" not in runner_check
     assert "WindowsBuiltInRole]::Administrator" in runner_check
