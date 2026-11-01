@@ -1,5 +1,18 @@
 # Engineering Continuity Log
 
+## 2026-11-01 — PR #680: per-task autonomous engineering, retry, CI, and merge controller
+
+- Implementation branch: `automation/codex-engineering-agent-rebased`; reviewed code head before this log update: `05bf0f34472f9789fa79e95a4a4a703cb5c4e47f`; base `main`: `60597e13e70a3014f6a1871290cf843d188ca45e`. PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) remains open and unmerged.
+- Replaced the previous aggregate continuous patch path with `scripts/autonomous_engineering_cycle.py`: each task gets a fresh Codex process on its own branch, full Windows pytest and repository quality gates, a controller-created PR, exact-head verification, GitHub-hosted CI, merge, and a fetch/reset to the new `origin/main` before the next task.
+- Verification failures are passed verbatim (as untrusted diagnostic output) into a fresh Codex session for the same task. The queue does not advance and no PR is published/merged until all local gates pass. A six-hour GitHub Actions job limit remains; if a task cannot pass within that runner window, the workflow fails closed and does not start another task.
+- Each candidate PR now explicitly dispatches `tests.yml`, `browser-e2e.yml`, and `dependency-audit.yml` against the candidate branch and waits for successful runs whose `head_sha` exactly matches the candidate commit before merging. `workflow_dispatch` was added to the first two workflows because push/PR events created with `GITHUB_TOKEN` do not automatically trigger downstream workflows.
+- Continuous mode processes up to eight independently tested/merged tasks per run, then dispatches a continuation run from `main`; an empty ledger stops without creating a PR. The one-shot manual task is cleared only after its successful merge.
+- The workflow token is removed from the Codex process environment. The controller uses it only for git publication, PR/merge API operations, required workflow dispatch, and continuation. Candidate paths and protected controller/workflow files are validated before commit; PR head SHA, base branch, merge response, and post-merge ancestry are checked.
+- Added regression coverage for task markers, path allowlisting, same-task retry after a failing test suite, and keeping the GitHub token out of child-process environment variables.
+- Exact-head CI for the implementation is pending at the time of this entry. Do not use prior PR #680 CI results as evidence for these new controller changes. Update this entry with final exact-head test, browser, Windows-storage, and audit results after the latest commit finishes.
+- No merge of PR #680 or direct write to `main` was performed. Owner-side Windows Runner/Ollama configuration, target-host soak/recovery/rollback, human acceptance, and independent Issue #52 review remain external gates.
+
+
 This file is the durable session handoff required by `docs/MASTER_ENGINEERING_PROMPT.md`. It records repository facts and evidence, not an assertion that the full project is accepted.
 
 
