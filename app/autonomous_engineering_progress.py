@@ -23,6 +23,11 @@ def _progress_dir() -> Path:
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
+def storage_accessible() -> bool:
+    directory = _progress_dir()
+    return directory.is_dir() and os.access(directory, os.R_OK)
+
+
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         if not path.is_file() or path.stat().st_size > 256_000:
