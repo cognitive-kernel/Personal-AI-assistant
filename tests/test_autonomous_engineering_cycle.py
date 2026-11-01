@@ -70,7 +70,7 @@ def test_failed_full_suite_retries_same_task_before_publishing(tmp_path: Path, m
     calls = {"codex": 0, "pytest": 0}
 
     def fake_run(command, *, env=None, capture=False):
-        if "autonomous_engineering_progress.py" in command:
+        if any("autonomous_engineering_progress.py" in str(part) for part in command):
             calls["codex"] += 1
             report = Path(command[command.index("--report") + 1])
             report.write_text("TASK_COMPLETE\n", encoding="utf-8")
