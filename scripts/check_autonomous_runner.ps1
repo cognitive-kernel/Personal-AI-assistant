@@ -13,6 +13,11 @@ $checks += [pscustomobject]@{ Component = "Codex CLI"; Ready = $codexReady; Deta
 
 $ollamaCommand = Get-Command ollama -ErrorAction SilentlyContinue
 $ollamaCliReady = [bool]$ollamaCommand
+$ollamaVersion = "Ollama CLI not found in Runner account PATH"
+if ($ollamaCliReady) {
+    $ollamaVersion = (& ollama --version 2>$null | Select-Object -First 1)
+    $ollamaCliReady = ($LASTEXITCODE -eq 0 -and [bool]$ollamaVersion)
+}
 $ollamaOnline = $false
 $modelInstalled = $false
 try {
@@ -20,7 +25,7 @@ try {
     $ollamaOnline = $true
     $modelInstalled = @($tags.models | ForEach-Object { $_.name }) -contains $model
 } catch {}
-$checks += [pscustomobject]@{ Component = "Ollama CLI"; Ready = $ollamaCliReady; Detail = if ($ollamaCliReady) { "Available in Runner account PATH" } else { "Install Ollama CLI or add it to the Runner service PATH" } }
+$checks += [pscustomobject]@{ Component = "Ollama CLI"; Ready = $ollamaCliReady; Detail = if ($ollamaCliReady) { $ollamaVersion } else { "Install Ollama CLI or add it to the Runner service PATH" } }
 $checks += [pscustomobject]@{ Component = "Ollama server"; Ready = $ollamaOnline; Detail = if ($ollamaOnline) { "127.0.0.1:11434" } else { "Local Ollama endpoint is unavailable" } }
 $checks += [pscustomobject]@{ Component = "Configured model"; Ready = $modelInstalled; Detail = if ($modelInstalled) { $model } else { "Install the configured model in Ollama: $model" } }
 
