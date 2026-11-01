@@ -366,6 +366,7 @@ jobs:
                   or not (
                       path.startswith(("app/", "tests/", "docs/", "scripts/"))
                   )
+                  or not (Path.cwd().resolve() / path).resolve().is_relative_to(Path.cwd().resolve())
                   or Path(path).is_symlink()
               )
           ]
@@ -462,6 +463,7 @@ jobs:
                   or not (
                       path.startswith(("app/", "tests/", "docs/", "scripts/"))
                   )
+                  or not (Path.cwd().resolve() / path).resolve().is_relative_to(Path.cwd().resolve())
                   or Path(path).is_symlink()
               )
           ]
