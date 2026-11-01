@@ -14,7 +14,7 @@ from typing import Any
 
 import psutil
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, StrictInt, StrictStr
+from pydantic import BaseModel, Field, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import get_progress, storage_accessible
@@ -38,6 +38,10 @@ _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 class EngineeringSettings(BaseModel):
     model: StrictStr
     runs_per_day: StrictInt
+
+
+class ManualTaskRequest(BaseModel):
+    task: StrictStr = Field(default="", max_length=2000)
 
 
 def _repository() -> str:
@@ -365,7 +369,10 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
 
 
 @router.post("/dispatch", status_code=202)
-def dispatch_autonomous_engineering() -> dict[str, Any]:
+def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
+    manual_task = payload.task.strip() if payload else ""
+    if "\\x00" in manual_task:
+        raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
     readiness = collect_status()
     if not readiness.get("github", {}).get("runs_available", False):
         raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ اجرای جدید به‌صورت ایمن متوقف شد.")
@@ -381,7 +388,10 @@ def dispatch_autonomous_engineering() -> dict[str, Any]:
     if not auth or auth.returncode != 0:
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
     result = _run(
-        [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"],
+        [
+            gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
+            "--field", f"manual_task={manual_task}",
+        ],
         timeout=20,
     )
     if not result or result.returncode != 0:
