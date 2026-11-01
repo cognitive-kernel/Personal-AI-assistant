@@ -38,6 +38,7 @@ _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 class EngineeringSettings(BaseModel):
     model: StrictStr
     runs_per_day: StrictInt
+    execution_mode: StrictStr = "scheduled"
 
 
 class ManualTaskRequest(BaseModel):
@@ -134,7 +135,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": _model(), "runs_per_day": _DEFAULT_RUNS_PER_DAY}
+    settings = {"model": _model(), "runs_per_day": _DEFAULT_RUNS_PER_DAY, "execution_mode": "scheduled"}
     if authenticated:
         result = _run(
             [
@@ -177,10 +178,13 @@ def _github_snapshot() -> dict[str, Any]:
                     }
                     candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
                     candidate_runs = configured.get("AUTONOMOUS_ENGINEERING_RUNS_PER_DAY", "")
+                    candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "scheduled")
                     if _MODEL_PATTERN.fullmatch(candidate_model):
                         settings["model"] = candidate_model
                     if candidate_runs.isdigit() and int(candidate_runs) in _ALLOWED_RUNS_PER_DAY:
                         settings["runs_per_day"] = int(candidate_runs)
+                    if candidate_mode in {"scheduled", "continuous"}:
+                        settings["execution_mode"] = candidate_mode
             except (ValueError, TypeError):
                 pass
     return {
@@ -196,6 +200,7 @@ def collect_status() -> dict[str, Any]:
     settings = github.get("settings", {})
     model = settings.get("model", _model())
     runs_per_day = settings.get("runs_per_day", _DEFAULT_RUNS_PER_DAY)
+    execution_mode = settings.get("execution_mode", "scheduled")
     ollama = _ollama_status(model)
     codex = _codex_status()
     runner = _runner_status()
@@ -221,6 +226,7 @@ def collect_status() -> dict[str, Any]:
         "model": model,
         "models": ollama.get("models", []),
         "runs_per_day": runs_per_day,
+        "execution_mode": execution_mode,
         "progress_storage_accessible": progress_storage,
         "platform": platform.platform(),
         "local_only_inference": True,
@@ -343,6 +349,8 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
     if payload.runs_per_day not in _ALLOWED_RUNS_PER_DAY:
         raise HTTPException(status_code=422, detail="تعداد اجرا باید یکی از مقادیر مجاز روزانه باشد.")
+    if payload.execution_mode not in {"scheduled", "continuous"}:
+        raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -352,6 +360,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     updates = (
         ("AUTONOMOUS_ENGINEERING_MODEL", model),
         ("AUTONOMOUS_ENGINEERING_RUNS_PER_DAY", str(payload.runs_per_day)),
+        ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
     )
     for name, value in updates:
         result = _run(
@@ -364,6 +373,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         "saved": True,
         "model": model,
         "runs_per_day": payload.runs_per_day,
+        "execution_mode": payload.execution_mode,
         "message": "تنظیمات عامل در متغیرهای مخزن GitHub ذخیره شد.",
     }
 
