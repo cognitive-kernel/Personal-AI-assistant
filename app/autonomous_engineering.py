@@ -371,7 +371,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
 @router.post("/dispatch", status_code=202)
 def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) -> dict[str, Any]:
     manual_task = payload.task.strip() if payload else ""
-    if "\\x00" in manual_task:
+    if "\x00" in manual_task:
         raise HTTPException(status_code=422, detail="متن وظیفه شامل نویسهٔ نامعتبر است.")
     readiness = collect_status()
     if not readiness.get("github", {}).get("runs_available", False):
@@ -400,7 +400,12 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
         "accepted": True,
         "repository": _repository(),
         "workflow": _WORKFLOW,
-        "message": "درخواست اجرا ارسال شد؛ برای تأیید شروع، وضعیت GitHub Actions را بازخوانی کنید.",
+        "manual_task_submitted": bool(manual_task),
+        "message": (
+            "وظیفهٔ دستی ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
+            if manual_task else
+            "درخواست اجرای چرخهٔ خودکار ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
+        ),
     }
 
 
