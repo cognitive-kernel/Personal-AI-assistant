@@ -86,6 +86,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+          if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw "The autonomous Runner must use a non-administrator service account"
+          }
           $ollama = Get-Command ollama -ErrorAction Stop
           $codex = Get-Command codex -ErrorAction Stop
           $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
