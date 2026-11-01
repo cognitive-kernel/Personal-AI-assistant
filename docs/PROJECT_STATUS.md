@@ -1,5 +1,12 @@
 # وضعیت یکپارچهٔ پروژه
 
+### تأیید نهایی exact-head برای PR #680
+
+- آخرین head قبل از این ثبت مستندات: `9018fefb128738a0c22a92a25482ec6393b4c29e`. تمام چهار check موفق شدند: tests و Windows storage [41319954134](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954134)، browser E2E [41319954115](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954115)، dependency audit [41319954116](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319954116).
+- نتیجهٔ تست: **۱٬۸۶۰ موفق، ۴۹ مورد deselected** در ۲۰۲٫۷۸ ثانیه. Windows storage، مرورگر و audit موفق شدند؛ artifact generation، لینک‌های ۹۲ فایل Markdown، import-cycle، retrieval و benchmark پوشش claim-to-test (۱۰/۱۰) نیز موفق بودند.
+- تست‌های رگرسیون retry شکست در full suite و شکست CI میزبان GitHub را پوشش می‌دهند. PR #680 باز و merge‌نشده است؛ پس از ثبت این مستندات، CI باید روی head جدید هم اجرا شود.
+
+
 ### شواهد CI آخرین نسخهٔ پیاده‌سازی
 
 - کد کنترل‌کننده در SHA `91542f14ad51b2662528b45b602d43ac40d03e35` بررسی شد. هر چهار check موفق شدند: tests [41319480167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480167)، browser E2E [41319480147](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480147)، dependency audit [41319480179](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480179)، و Windows storage regressions در run `41319480167`.
