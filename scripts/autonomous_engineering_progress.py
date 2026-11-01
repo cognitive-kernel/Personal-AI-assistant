@@ -235,9 +235,11 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
             pass
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        if previous == signature:
-            return
-        if previous is not None:
+        same_scores = previous is not None and (
+            previous.get("engineering_percent") == signature["engineering_percent"]
+            and previous.get("overall_percent") == signature["overall_percent"]
+        )
+        if previous is not None and not same_scores:
             record = {
                 "type": "project_snapshot", "date": datetime.now(timezone.utc).date().isoformat(),
                 **signature, "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
