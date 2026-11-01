@@ -167,7 +167,6 @@
       window.setTimeout(refresh, 2500);
     } catch (error) {
       setMessage(error.message, "error");
-    } finally {
       await refresh();
     }
   });
