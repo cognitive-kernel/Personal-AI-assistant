@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
+    inputs:
+      manual_task:
+        description: "Optional bounded engineering task supplied by the repository owner"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -108,7 +114,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          MANUAL_TASK: ""
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
           EVENT_NAME: ${{ github.event_name }}
         shell: pwsh
         run: |
