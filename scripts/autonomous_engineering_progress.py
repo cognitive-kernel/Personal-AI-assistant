@@ -71,6 +71,30 @@ def persist(record: dict[str, Any]) -> None:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
+def record_phase(
+    run_id: str, run_attempt: str, phase: str, label: str, activity: str, percent: int, status: str = "running"
+) -> None:
+    previous: dict[str, Any] = {}
+    try:
+        value = json.loads((store_dir() / "current.json").read_text(encoding="utf-8"))
+        if isinstance(value, dict) and (
+            str(value.get("run_id")) == str(run_id)
+            and str(value.get("run_attempt", "1")) == str(run_attempt)
+        ):
+            previous = value
+    except (OSError, ValueError):
+        pass
+    persist({
+        "run_id": run_id, "run_attempt": run_attempt,
+        "status": status, "phase": phase,
+        "phase_label": label, "activity": activity,
+        "percent": max(0, min(100, percent)),
+        "plan_completed": previous.get("plan_completed", 0),
+        "plan_total": previous.get("plan_total", 0),
+        "plan_percent": previous.get("plan_percent"),
+    })
+
+
 def plan_percentage(completed: int, total: int) -> int | None:
     if total <= 0:
         return None
@@ -282,12 +306,10 @@ def main() -> int:
     snapshot.add_argument("--run-attempt", default="1")
     args = parser.parse_args()
     if args.action == "record":
-        persist({
-            "run_id": args.run_id, "run_attempt": args.run_attempt,
-            "status": args.status, "phase": args.phase,
-            "phase_label": args.label, "activity": args.activity,
-            "percent": max(0, min(100, args.percent)), "plan_percent": None,
-        })
+        record_phase(
+            args.run_id, args.run_attempt, args.phase, args.label,
+            args.activity, args.percent, args.status,
+        )
         return 0
     if args.action == "codex":
         return run_codex(args)
