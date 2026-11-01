@@ -60,6 +60,14 @@
   </div>
   <div class="settings-grid">
     <label class="field">
+      <span>حالت اجرای عامل</span>
+      <select id="execution-mode" name="execution_mode">
+        <option value="scheduled">زمان‌بندی‌شده (طبق تعداد اجرا در روز)</option>
+        <option value="continuous">پیوسته (شروع تسک بعدی بلافاصله پس از اتمام تسک جاری)</option>
+      </select>
+      <small>در حالت پیوسته، اجرا با دکمهٔ شروع صف آغاز می‌شود و حداکثر ۸ تسک در هر چرخه انجام می‌شود؛ اجرای زمان‌بندی‌شده غیرفعال است.</small>
+    </label>
+    <label class="field">
       <span>تعداد اجرا در روز</span>
       <select id="runs-per-day" name="runs_per_day">
         <option value="1">۱ بار در روز</option>
@@ -104,7 +112,7 @@
 <button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ خودکار از صف مهندسی</button>
 <button id="cancel-agent" type="button" class="secondary" disabled>لغو اجرای فعال</button>
 </div>
-<p class="hint">اجرای دستی فقط وقتی فعال می‌شود که Ollama، مدل، Codex CLI، Runner و احراز هویت GitHub آماده باشند. دکمهٔ اجرا یک درخواست Workflow به GitHub می‌فرستد؛ شروع واقعی را در فهرست اجراها تأیید کنید.</p>
+<p class="hint">در حالت زمان‌بندی‌شده، عامل طبق تعداد اجرا در روز فعال می‌شود. در حالت پیوسته، اجرای صف را با دکمهٔ زیر به‌صورت دستی آغاز کنید. اجرای دستی فقط وقتی فعال می‌شود که Ollama، مدل، Codex CLI، Runner و احراز هویت GitHub آماده باشند. دکمهٔ اجرا یک درخواست Workflow به GitHub می‌فرستد؛ شروع واقعی را در فهرست اجراها تأیید کنید.</p>
 <div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
 </section>
 
