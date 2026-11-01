@@ -542,7 +542,8 @@ def test_codex_progress_plan_reports_completed_steps_without_raw_output(monkeypa
     })
 
     assert (completed, total, active) == (1, 3, "Implement fix")
-    assert writer.plan_percentage(completed, total) == 33
+    assert writer.plan_percentage(completed, total) == 33.33
+    assert writer.plan_percentage(2, 3) == 66.67
     assert writer.plan_percentage(0, 0) is None
     assert activity == "در حال اجرای ابزار python"
     assert "hidden" not in activity
