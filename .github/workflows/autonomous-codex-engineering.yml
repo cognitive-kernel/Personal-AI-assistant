@@ -79,6 +79,7 @@ jobs:
       - name: Snapshot accepted scorecard from trusted main
         shell: pwsh
         run: |
+          python scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
           if ($LASTEXITCODE -ne 0) { throw "Could not snapshot the accepted main-branch scorecard" }
 
       - name: Verify local Ollama and Codex prerequisites
@@ -277,7 +278,6 @@ jobs:
         run: |
           python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase packaging --label "آماده‌سازی تغییرات" --activity "بازبینی و بسته‌بندی patch مجاز" --percent 90
           if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
-          python scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
           @'
           import os, subprocess
           from pathlib import Path
