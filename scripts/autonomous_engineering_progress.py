@@ -101,10 +101,10 @@ def record_phase(
     })
 
 
-def plan_percentage(completed: int, total: int) -> int | None:
+def plan_percentage(completed: int, total: int) -> float | None:
     if total <= 0:
         return None
-    return max(0, min(100, round(completed * 100 / total)))
+    return round(max(0, min(total, completed)) * 100 / total, 2)
 
 
 def plan_state() -> tuple[int, int, str | None]:
