@@ -38,6 +38,7 @@ def test_status_is_not_ready_when_local_model_is_missing(monkeypatch):
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
     })
