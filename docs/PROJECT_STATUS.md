@@ -270,3 +270,13 @@
 - Main dashboard, AI-learning page, and new operations page share the primary navigation.
 - Workflow architecture: trusted-main local coding job; GitHub-hosted secret-free patch validation; separate GitHub-hosted draft-PR publication. No direct main writes, auto-merge, or deployment.
 - Status: implementation branch active; tests and exact-head CI pending. Owner-side Windows runner registration, Ollama/Codex setup, and target-host soak have not been performed and are not claimed complete.
+
+
+## 2026-11-01 — Local Ollama autonomous engineering console (PR #680)
+
+- Implementation: [PR #680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680), branch `automation/codex-engineering-agent-rebased`, exact head `e3c8702db7eb21689f15f01232dca7c76ea137c7`, based on current `main` SHA `60597e13e70a3014f6a1871290cf843d188ca45e`. PR is open, mergeable, and not merged.
+- Feature includes local Ollama/Codex readiness diagnostics, explicit workflow dispatch/cancel, model and daily-frequency configuration, live Codex plan/workflow phase progress, evidence-based scorecard history charts, bounded telemetry, and Windows Runner/ACL setup checks.
+- Exact-head GitHub Actions all passed: tests + Windows storage regressions [#41269501876](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41269501876), Chromium dashboard smoke [#41269501826](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41269501826), dependency audit [#41269501856](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41269501856). All jobs report success.
+- Owner-side local installation/testing and human acceptance are intentionally not performed in this engineering pass. Still required before operational use: install/register the Windows self-hosted Runner as a non-admin service identity, configure ProgramData permissions for the exact Runner/app accounts, verify Ollama/model access under that identity, and run target-host soak/recovery/rollback checks.
+- Independent review for the existing Ollama loopback boundary remains open in [Issue #52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52). Do not mark it complete or close it based on implementation tests.
+- Project-wide acceptance remains below 100%; this feature does not close the remaining UI parity, target-host, live-model/human adjudication, staging/rollback, or independent-review gates. No score increase is claimed.
