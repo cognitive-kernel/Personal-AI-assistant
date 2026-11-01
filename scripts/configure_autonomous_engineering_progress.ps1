@@ -10,6 +10,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$RunnerAccount = $RunnerAccount.Trim()
+$AppAccount = $AppAccount.Trim()
+if ([string]::Equals($RunnerAccount, $AppAccount, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "RunnerAccount and AppAccount must be different Windows identities."
+}
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 
 if (-not (Test-Path -LiteralPath $progressPath)) {
