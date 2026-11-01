@@ -32,7 +32,7 @@ $runner = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue | Se
 $runnerReady = [bool]$runner
 $checks += [pscustomobject]@{ Component = "GitHub Runner"; Ready = $runnerReady; Detail = if ($runnerReady) { "Listener process active" } else { "Register and start the self-hosted runner with label ollama" } }
 
-$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\\autonomous-engineering"
+$progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 $progressReady = $false
 if (Test-Path -LiteralPath $progressPath -PathType Container) {
     try {
