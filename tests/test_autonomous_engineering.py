@@ -19,6 +19,7 @@ def test_status_readiness_requires_every_local_dependency(monkeypatch):
     })
     monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
     monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
     monkeypatch.setattr(agent, "_github_snapshot", lambda: {
         "cli_installed": True, "authenticated": True, "recent_runs": [], "runs_available": True
     })
@@ -103,6 +104,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="ollama-model"' in page
     assert 'id="custom-model"' in page
     assert 'id="save-agent-settings"' in page
+    assert 'id="storage-state"' in page
+    assert "checks.progress_storage_accessible" in agent_script
 
 
 def test_autonomous_engineering_routes_are_registered():
