@@ -115,6 +115,7 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     assert calls[1][1:] == [
         "workflow", "run", "autonomous-codex-engineering.yml",
         "--repo", "cognitive-kernel/Personal-AI-assistant", "--ref", "main",
+        "--field", "manual_task=",
     ]
 
 
@@ -570,3 +571,32 @@ def test_live_progress_reports_queued_github_validation_phase(monkeypatch):
     assert result["phase"] == "validation"
     assert result["percent"] == 92
     assert result["status"] == "queued"
+
+
+def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True, "github": {"runs_available": True, "recent_runs": []}
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    task = "بررسی Issue #52؛ عبارت ; gh secret list نباید اجرا شود"
+
+    result = agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=task))
+
+    assert result["accepted"] is True
+    assert calls[-1][-2:] == ["--field", "manual_task=" + task]
+
+
+def test_manual_task_rejects_null_byte_and_excessive_length():
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task="\x00"))
+    assert error.value.status_code == 422
+
+    with pytest.raises(ValueError):
+        agent.ManualTaskRequest(task="x" * 2001)
