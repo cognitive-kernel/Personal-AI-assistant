@@ -142,6 +142,11 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in agent_script
+    assert 'id="agent-task-form"' in page
+    assert 'id="manual-task"' in page
+    assert "workflow_dispatch:" in workflow
+    assert "manual_task:" in workflow
+    assert "inputs.manual_task" in workflow
 
 
 def test_autonomous_engineering_routes_are_registered():
