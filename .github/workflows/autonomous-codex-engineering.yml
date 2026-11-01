@@ -29,11 +29,17 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           RUNS_PER_DAY: ${{ vars.AUTONOMOUS_ENGINEERING_RUNS_PER_DAY || '1' }}
+          EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$EVENT_NAME" != "schedule" ]]; then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$EXECUTION_MODE" == "continuous" ]]; then
+            echo "run_now=false" >> "$GITHUB_OUTPUT"
+            echo "Continuous mode is started manually and chains tasks until the queue is empty."
             exit 0
           fi
           case "$RUNS_PER_DAY" in
@@ -53,7 +59,7 @@ jobs:
     needs: schedule-gate
     if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, Windows, X64, ollama]
-    timeout-minutes: 75
+    timeout-minutes: 360
     permissions:
       contents: read
       pull-requests: read
@@ -64,6 +70,7 @@ jobs:
       patch_created: ${{ steps.capture.outputs.patch_created }}
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
+      AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -246,19 +253,48 @@ jobs:
           Do not modify .agent-request.json or .agent-github-state.json. Do not add generated
           artifacts, local databases, logs, credentials, or temporary files.
 
+          At the end of this single task, the final report MUST end with exactly one machine-readable marker:
+          TASK_COMPLETE when the selected task and its required tests/documentation are complete;
+          QUEUE_EMPTY when no independently actionable task remains in the engineering ledger;
+          TASK_BLOCKED when the task cannot safely be completed. Do not claim completion without evidence.
+          In continuous mode, the workflow starts another isolated Codex session immediately after TASK_COMPLETE.
+          The first session may consume the manual task; later sessions must select the next task from the updated ledger.
+
           The workflow will transfer the patch to a separate GitHub-hosted job for validation.
           A separate write-enabled GitHub-hosted job creates a draft PR only after all checks pass.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
 
-      - name: Run Codex against the local Ollama model
+      - name: Run one task or chain queued engineering tasks
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "آماده‌سازی عامل" --activity "آماده‌سازی محیط و شروع عامل"
-          if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --report "$env:RUNNER_TEMP\codex-report.md"
-          if ($LASTEXITCODE -ne 0) { throw "Codex engineering session failed" }
+          $mode = $env:AUTONOMOUS_ENGINEERING_MODE
+          $maxTasks = if ($mode -eq "continuous") { 8 } else { 1 }
+          for ($taskIndex = 1; $taskIndex -le $maxTasks; $taskIndex++) {
+            python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase coding --label "وظیفهٔ مهندسی $taskIndex" --activity "شروع وظیفهٔ $taskIndex از صف"
+            if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
+            $report = Join-Path $env:RUNNER_TEMP "codex-report-$taskIndex.md"
+            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --report "$report"
+            if ($LASTEXITCODE -ne 0) { throw "Codex task $taskIndex failed" }
+            $result = if (Test-Path $report) { Get-Content -Raw $report } else { "" }
+            if ($result -match '(?m)^QUEUE_EMPTY\s*$') {
+              Write-Host "Engineering queue is empty."
+              break
+            }
+            if ($result -match '(?m)^TASK_BLOCKED\s*$') {
+              throw "Codex reported that task $taskIndex is blocked; continuous execution stopped safely."
+            }
+            if ($result -notmatch '(?m)^TASK_COMPLETE\s*$') {
+              throw "Codex did not provide a valid task completion marker; refusing to start another task."
+            }
+            if ($mode -ne "continuous") { break }
+            python -c "import json,pathlib; p=pathlib.Path(r'$env:GITHUB_WORKSPACE\.agent-request.json'); d=json.loads(p.read_text(encoding='utf-8-sig')); d['manual_task']=''; p.write_text(json.dumps(d,ensure_ascii=False)+'\n',encoding='utf-8')"
+            if ($LASTEXITCODE -ne 0) { throw "Could not clear the one-shot manual task request" }
+            if ($taskIndex -eq $maxTasks) {
+              Write-Host "Reached the safe per-run task limit ($maxTasks); remaining ledger work is deferred to the next manual start."
+            }
+          }
 
       - name: Run the full default test suite on the Windows target host
         shell: pwsh
