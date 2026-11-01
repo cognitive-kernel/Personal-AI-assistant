@@ -242,23 +242,24 @@ jobs:
 
           Do not change workflows, branch rules, security settings, secrets, release/deployment
           configuration, real databases, or user data. Do not force-push, commit, push branches,
-          create PRs, merge, deploy, or perform irreversible actions. Do not weaken tests or
-          security controls. If blocked, record the exact blocker and continue only with a
-          separate safe task.
+          create PRs, merge, deploy, or perform irreversible actions. The trusted workflow
+          controller publishes and merges each task only after all required tests pass.
+          Do not weaken tests or security controls. If blocked, record the exact blocker.
 
           Only propose text changes under app/, tests/, docs/, or scripts/. Do not modify dependency or build configuration.
-          Do not modify .agent-request.json or .agent-github-state.json. Do not add generated
+          Never modify scripts/autonomous_engineering_cycle.py, scripts/autonomous_engineering_progress.py,
+          .github/workflows/, .agent-request.json, or .agent-github-state.json. Do not add generated
           artifacts, local databases, logs, credentials, or temporary files.
 
           At the end of this single task, the final report MUST end with exactly one machine-readable marker:
           TASK_COMPLETE when the selected task and its required tests/documentation are complete;
           QUEUE_EMPTY when no independently actionable task remains in the engineering ledger;
           TASK_BLOCKED when the task cannot safely be completed. Do not claim completion without evidence.
-          In continuous mode, the workflow starts another isolated Codex session immediately after TASK_COMPLETE.
-          The first session may consume the manual task; later sessions must select the next task from the updated ledger.
-
-          The workflow will transfer the patch to a separate GitHub-hosted job for validation.
-          A separate write-enabled GitHub-hosted job creates a draft PR only after all checks pass.
+          In continuous mode, another isolated Codex session starts only after this task passes
+          the full Windows test suite and quality gates and its individual pull request is merged
+          into main. Every new session starts from the refreshed main branch and selects the next
+          task from the updated engineering ledger. The first session may consume the manual task
+          only once. A task is not complete for queue progression until its merge is confirmed.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
 
       - name: Execute isolated tasks with per-task tests and main-branch merge
