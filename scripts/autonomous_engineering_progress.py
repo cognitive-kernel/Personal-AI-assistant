@@ -272,6 +272,34 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
             pass
     try:
         directory.mkdir(parents=True, exist_ok=True)
+        baseline_path = directory / "scorecard-baseline.json"
+        if not baseline_path.exists():
+            baseline = {
+                "date": signature["scorecard_snapshot_date"],
+                "engineering_percent": signature["engineering_percent"],
+                "overall_percent": signature["overall_percent"],
+                "sha": signature["sha"],
+                "source": "scorecard-baseline",
+            }
+            history_path = directory / "history.jsonl"
+            if history_path.is_file() and history_path.stat().st_size <= 8 * 1024 * 1024:
+                for line in history_path.read_text(encoding="utf-8").splitlines():
+                    try:
+                        candidate = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(candidate, dict) and candidate.get("type") == "project_snapshot":
+                        baseline = {
+                            "date": candidate.get("scorecard_snapshot_date") or candidate.get("date"),
+                            "engineering_percent": candidate.get("engineering_percent"),
+                            "overall_percent": candidate.get("overall_percent"),
+                            "sha": candidate.get("sha"),
+                            "source": "scorecard-baseline",
+                        }
+                        break
+            baseline_temp = baseline_path.with_suffix(".json.tmp")
+            baseline_temp.write_text(json.dumps(baseline, ensure_ascii=False) + "\\n", encoding="utf-8")
+            baseline_temp.replace(baseline_path)
         same_scores = previous is not None and (
             previous.get("engineering_percent") == signature["engineering_percent"]
             and previous.get("overall_percent") == signature["overall_percent"]
