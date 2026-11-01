@@ -226,3 +226,10 @@ The earlier sentence saying PR #664/#667 post-merge workflows were still running
 - No local target-machine test, human acceptance test, human model adjudication, or independent security review was performed. Owner-side Windows Runner registration, dedicated non-admin identity, Ollama/model readiness, target-host soak/recovery/rollback, and independent Issue #52 review remain external acceptance gates.
 - No scorecard increase is claimed: this console and its automated regressions do not close the project-wide UI parity, target-host, human-quality, staging/rollback, or independent-review gates. The project remains below 100% overall acceptance.
 
+### Exact-head verification update — implementation SHA `91542f14ad51b2662528b45b602d43ac40d03e35`
+
+- The exact implementation head passed all four GitHub checks: tests [run 41319480167](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480167), browser E2E [run 41319480147](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480147), dependency audit [run 41319480179](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/41319480179), and Windows storage regressions in run `41319480167`.
+- Test suite: **1,860 passed, 49 deselected** in 142.52 seconds. The Windows storage regression job passed. Browser dashboard smoke passed. Dependency audit passed. Learning artifact validation, Markdown links (92 files), import-cycle check, lexical retrieval evaluation, and claim-to-test acceptance benchmark (10/10) passed.
+- The retry regression test verifies that a failed full test suite causes a fresh Codex session to repair the same task before publication. Token-isolation and protected-path tests also passed.
+- These results verify the implementation SHA above. Documentation-only checkpoint updates are being added separately and must receive their own exact-head CI before pull readiness is declared. PR #680 remains open and unmerged.
+
