@@ -186,9 +186,12 @@ jobs:
               json.dumps(snapshot, ensure_ascii=False, indent=2) + "\n",
               encoding="utf-8",
           )
+          manual_task = os.getenv("MANUAL_TASK", "")
+          if len(manual_task) > 2000 or "\\x00" in manual_task:
+              raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
           request = {
               "event": os.getenv("EVENT_NAME", ""),
-              "manual_task": os.getenv("MANUAL_TASK", ""),
+              "manual_task": manual_task,
           }
           Path(".agent-request.json").write_text(
               json.dumps(request, ensure_ascii=False, indent=2) + "\n",
