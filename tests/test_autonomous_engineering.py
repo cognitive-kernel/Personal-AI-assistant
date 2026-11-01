@@ -139,6 +139,9 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="runs-per-day"' in page
     assert 'id="ollama-model"' in page
     assert 'id="custom-model"' in page
+    assert 'id="agent-task-form"' in page
+    assert 'id="manual-task"' in page
+    assert 'id="send-agent-task"' in page
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in agent_script
