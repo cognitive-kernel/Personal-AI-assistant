@@ -30,12 +30,14 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 ## One-time Windows setup
 
 1. Install Ollama for Windows and keep its server available at \`http://127.0.0.1:11434\`. If it normally runs only in an interactive tray session, configure a persistent service/startup method before relying on unattended runs.
-2. Download the configured model and ensure the Ollama server context window is at least 64k tokens:
+2. Download the configured model and set Ollama's context length to at least 64,000 tokens:
 
    \`\`\`powershell
    ollama pull gpt-oss:20b
    \`\`\`
 
+   In the Ollama app, open **Settings → Context Length** and set at least 64k, then restart/reload the model. Ollama defaults to 4k when VRAM is below 24 GiB, so the target machine's integrated graphics does not meet this requirement by default. If the app setting is unavailable, configure \`OLLAMA_CONTEXT_LENGTH=64000\` for the Ollama server process and restart that server. After the model is loaded, verify the actual allocated context with \`ollama ps\`. See the [official Ollama context-length guide](https://docs.ollama.com/context-length). The larger context increases memory use; measure stability on the target host.
+   
    The model can be pulled under the application/administrator account; the Runner service account only needs access to the local Ollama HTTP endpoint.
 3. Install Node.js LTS system-wide so the executable is available to the Windows Runner service.
 4. Create a dedicated, non-administrator Windows service account for GitHub Actions Runner. Do not use the interactive application account.
