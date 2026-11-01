@@ -73,7 +73,7 @@ jobs:
       - name: Initialize live progress before prerequisite checks
         shell: pwsh
         run: |
-          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "شروع چرخهٔ مهندسی" --activity "Workflow شروع شد؛ در حال بررسی پیش‌نیازهای محیط" --percent 0
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "شروع چرخهٔ مهندسی" --activity "Workflow شروع شد؛ در حال بررسی پیش‌نیازهای محیط"
           if ($LASTEXITCODE -ne 0) { throw "Could not initialize engineering progress" }
 
       - name: Snapshot accepted scorecard from trusted main
@@ -246,7 +246,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "آماده‌سازی عامل" --activity "آماده‌سازی محیط و شروع عامل" --percent 15
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase preparation --label "آماده‌سازی عامل" --activity "آماده‌سازی محیط و شروع عامل"
           if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
           python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --report "$env:RUNNER_TEMP\codex-report.md"
           if ($LASTEXITCODE -ne 0) { throw "Codex engineering session failed" }
@@ -255,7 +255,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase tests --label "آزمون‌های خودکار" --activity "اجرای مجموعهٔ کامل آزمون‌های پیش‌فرض روی ویندوز" --percent 70
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase tests --label "آزمون‌های خودکار" --activity "اجرای مجموعهٔ کامل آزمون‌های پیش‌فرض روی ویندوز"
           if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
           .\\.venv\\Scripts\\python.exe -m pytest -vv --durations=25 -o faulthandler_timeout=60
           if ($LASTEXITCODE -ne 0) { throw "Windows local test suite failed with exit code $LASTEXITCODE" }
@@ -264,7 +264,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase quality --label "بوابة‌های کیفیت" --activity "بررسی مستندات، چرخهٔ import و معیارهای کیفیت" --percent 82
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase quality --label "بوابة‌های کیفیت" --activity "بررسی مستندات، چرخهٔ import و معیارهای کیفیت"
           if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
           .\\.venv\\Scripts\\python.exe scripts/generate_learning_artifacts.py --check
           if ($LASTEXITCODE -ne 0) { throw "Learning artifact validation failed" }
@@ -281,7 +281,7 @@ jobs:
         id: capture
         shell: pwsh
         run: |
-          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase packaging --label "آماده‌سازی تغییرات" --activity "بازبینی و بسته‌بندی patch مجاز" --percent 90
+          python scripts/autonomous_engineering_progress.py record --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --phase packaging --label "آماده‌سازی تغییرات" --activity "بازبینی و بسته‌بندی patch مجاز"
           if ($LASTEXITCODE -ne 0) { throw "Could not record engineering progress" }
           @'
           import os, subprocess
