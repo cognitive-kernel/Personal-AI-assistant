@@ -206,7 +206,7 @@ def collect_status() -> dict[str, Any]:
         "progress_storage_accessible": progress_storage,
     }
     return {
-        "ready": all(checks.values()),
+        "ready": all(value for key, value in checks.items() if key != "codex_installed"),
         "checks": checks,
         "ollama": ollama,
         "codex": codex,
