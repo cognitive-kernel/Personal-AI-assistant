@@ -23,7 +23,7 @@ if (-not (Test-Path -LiteralPath $progressPath)) {
 
 $rules = @(
     "${RunnerAccount}:(OI)(CI)M",
-    "${AppAccount}:(OI)(CI)M",
+    "${AppAccount}:(OI)(CI)RX",
     "SYSTEM:(OI)(CI)F",
     "BUILTIN\Administrators:(OI)(CI)F"
 )
