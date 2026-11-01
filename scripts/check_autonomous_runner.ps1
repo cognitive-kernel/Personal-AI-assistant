@@ -9,6 +9,15 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
 }
 $checks = @()
 
+$identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+$principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+$runnerIsAdmin = $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+$checks += [pscustomobject]@{
+    Component = "Runner privilege"
+    Ready = -not $runnerIsAdmin
+    Detail = if ($runnerIsAdmin) { "Do not run the autonomous Runner as a local administrator" } else { "Non-administrator service account" }
+}
+
 $codexCommand = Get-Command codex -ErrorAction SilentlyContinue
 $codexReady = [bool]$codexCommand
 $codexVersion = "Codex CLI not found in Runner account PATH"
