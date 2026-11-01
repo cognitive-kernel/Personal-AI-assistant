@@ -343,8 +343,7 @@ jobs:
                   or "\\" in path
                   or any(part in {"", ".", "..", ".git"} for part in path.split("/"))
                   or not (
-                      path == "pyproject.toml"
-                      or path.startswith(("app/", "tests/", "docs/", "scripts/"))
+                      path.startswith(("app/", "tests/", "docs/", "scripts/"))
                   )
                   or Path(path).is_symlink()
               )
@@ -440,8 +439,7 @@ jobs:
                   or "\\" in path
                   or any(part in {"", ".", "..", ".git"} for part in path.split("/"))
                   or not (
-                      path == "pyproject.toml"
-                      or path.startswith(("app/", "tests/", "docs/", "scripts/"))
+                      path.startswith(("app/", "tests/", "docs/", "scripts/"))
                   )
                   or Path(path).is_symlink()
               )
