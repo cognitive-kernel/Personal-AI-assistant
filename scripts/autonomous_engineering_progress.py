@@ -58,7 +58,7 @@ def append_history(record: dict[str, Any]) -> None:
         stream.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-def persist(record: dict[str, Any]) -> None:
+def persist(record: dict[str, Any]) -> bool:
     directory = store_dir()
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -66,14 +66,19 @@ def persist(record: dict[str, Any]) -> None:
         temporary = directory / "current.json.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(directory / "current.json")
-        append_event({"type": "progress_event", **payload})
     except OSError as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return False
+    try:
+        append_event({"type": "progress_event", **payload})
+    except OSError as exc:
+        print(f"Progress event log unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return True
 
 
 def record_phase(
     run_id: str, run_attempt: str, phase: str, label: str, activity: str, percent: int, status: str = "running"
-) -> None:
+) -> bool:
     previous: dict[str, Any] = {}
     try:
         value = json.loads((store_dir() / "current.json").read_text(encoding="utf-8"))
@@ -84,7 +89,7 @@ def record_phase(
             previous = value
     except (OSError, ValueError):
         pass
-    persist({
+    return persist({
         "run_id": run_id, "run_attempt": run_attempt,
         "status": status, "phase": phase,
         "phase_label": label, "activity": activity,
@@ -306,11 +311,10 @@ def main() -> int:
     snapshot.add_argument("--run-attempt", default="1")
     args = parser.parse_args()
     if args.action == "record":
-        record_phase(
+        return 0 if record_phase(
             args.run_id, args.run_attempt, args.phase, args.label,
             args.activity, args.percent, args.status,
-        )
-        return 0
+        ) else 1
     if args.action == "codex":
         return run_codex(args)
     snapshot_project(args.run_id, args.run_attempt)
