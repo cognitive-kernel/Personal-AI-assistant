@@ -64,7 +64,7 @@ jobs:
       contents: write
       pull-requests: write
       issues: read
-      actions: read
+      actions: write
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
