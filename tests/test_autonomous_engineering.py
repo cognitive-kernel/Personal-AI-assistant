@@ -465,12 +465,21 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
-    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Run one task or chain queued engineering tasks")
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute isolated tasks with per-task tests and main-branch merge")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
+    cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
+    tests_workflow = (root / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    browser_workflow = (root / ".github" / "workflows" / "browser-e2e.yml").read_text(encoding="utf-8")
     assert '"--local-provider", "ollama"' in progress_writer
+    assert "scripts/autonomous_engineering_cycle.py run" in workflow
+    assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
+    assert "publish_merge" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
+    assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
+    assert "open-draft-pr:" not in workflow and "  validate:" not in workflow
+    assert "pytest" in cycle_controller and "tests.yml" in cycle_controller
+    assert "workflow_dispatch:" in tests_workflow and "workflow_dispatch:" in browser_workflow
     assert "pyproject.toml" not in workflow
-    assert workflow.count("is_relative_to(Path.cwd().resolve())") == 2
     assert "WriteAllText" in runner_check
     assert "gh auth login" not in runner_check
     assert "WindowsBuiltInRole]::Administrator" in runner_check
@@ -614,3 +623,29 @@ def test_manual_task_rejects_null_byte_and_excessive_length():
 
     with pytest.raises(ValueError):
         agent.ManualTaskRequest(task="x" * 2001)
+
+
+def test_autonomous_cycle_requires_one_exact_completion_marker(tmp_path):
+    from scripts import autonomous_engineering_cycle as cycle
+
+    report = tmp_path / "report.md"
+    report.write_text("Task evidence\nTASK_COMPLETE\n", encoding="utf-8")
+    assert cycle.task_marker(report) == "TASK_COMPLETE"
+
+    report.write_text("TASK_COMPLETE\nQUEUE_EMPTY\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="exactly one"):
+        cycle.task_marker(report)
+
+
+def test_autonomous_cycle_rejects_protected_and_non_allowlisted_paths():
+    from scripts import autonomous_engineering_cycle as cycle
+
+    cycle.validate_paths(["app/example.py", "tests/test_example.py"])
+    for path in (
+        ".github/workflows/autonomous-codex-engineering.yml",
+        "scripts/autonomous_engineering_cycle.py",
+        ".env",
+        "../outside.py",
+    ):
+        with pytest.raises(RuntimeError, match="protected or non-allowlisted"):
+            cycle.validate_paths([path])
