@@ -85,6 +85,9 @@
       if (document.activeElement !== $("execution-mode")) {
         $("execution-mode").value = data.execution_mode || "scheduled";
       }
+      dispatchButton.textContent = data.execution_mode === "continuous"
+        ? "شروع صف پیوسته"
+        : "اجرای یک چرخهٔ خودکار از صف مهندسی";
       if (document.activeElement !== $("runs-per-day")) {
         $("runs-per-day").value = String(data.runs_per_day || 1);
       }
