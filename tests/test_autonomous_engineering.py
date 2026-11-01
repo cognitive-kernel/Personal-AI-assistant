@@ -283,6 +283,48 @@ def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(mon
     assert result["history"][1]["engineering_percent"] == 61.0
 
 
+def test_scorecard_snapshots_are_recorded_only_when_scorecard_changes(monkeypatch, tmp_path):
+    from scripts import autonomous_engineering_progress as writer
+
+    scorecard = tmp_path / "ACCEPTANCE_SCORECARD.md"
+    storage = tmp_path / "telemetry"
+    scorecard.write_text(
+        "**Snapshot:** 2026-11-01\\n"
+        "**Scored baseline:** main at " + "a" * 40 + "\\n"
+        "- **Engineering completion:** score = 60.47%\\n"
+        "- **Overall acceptance progress:** score = 57.45%\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(writer, "SCORECARD", scorecard)
+    monkeypatch.setattr(writer, "store_dir", lambda: storage)
+
+    writer.snapshot_project("100", "1")
+    writer.snapshot_project("101", "1")
+
+    history = storage / "history.jsonl"
+    state = storage / "scorecard-state.json"
+    assert state.is_file()
+    assert not history.exists()
+
+    scorecard.write_text(
+        "**Snapshot:** 2026-11-02\\n"
+        "**Scored baseline:** main at " + "b" * 40 + "\\n"
+        "- **Engineering completion:** score = 61.00%\\n"
+        "- **Overall acceptance progress:** score = 58.00%\\n",
+        encoding="utf-8",
+    )
+    writer.snapshot_project("102", "1")
+    writer.snapshot_project("103", "1")
+
+    records = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    assert records[0]["type"] == "project_snapshot"
+    assert records[0]["scorecard_snapshot_date"] == "2026-11-02"
+    assert records[0]["engineering_percent"] == 61.0
+    assert records[0]["overall_percent"] == 58.0
+    assert records[0]["sha"] == "b" * 40
+
+
 def test_progress_reader_rejects_invalid_custom_date_range():
     from app.autonomous_engineering_progress import get_progress
 
