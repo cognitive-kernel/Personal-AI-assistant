@@ -150,7 +150,7 @@
       setMessage("ابتدا متن وظیفه را وارد کنید.", "error");
       return;
     }
-    if (task.length > 2000 || task.includes("\\u0000")) {
+    if (task.length > 2000 || task.includes(String.fromCharCode(0))) {
       setMessage("متن وظیفه نامعتبر یا طولانی است.", "error");
       return;
     }
