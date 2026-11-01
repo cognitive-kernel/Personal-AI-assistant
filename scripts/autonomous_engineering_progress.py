@@ -77,7 +77,8 @@ def persist(record: dict[str, Any]) -> bool:
 
 
 def record_phase(
-    run_id: str, run_attempt: str, phase: str, label: str, activity: str, status: str = "running"
+    run_id: str, run_attempt: str, phase: str, label: str, activity: str,
+    percent: int | None = None, status: str = "running",
 ) -> bool:
     previous: dict[str, Any] = {}
     try:
@@ -93,6 +94,7 @@ def record_phase(
         "run_id": run_id, "run_attempt": run_attempt,
         "status": status, "phase": phase,
         "phase_label": label, "activity": activity,
+        "percent": max(0, min(100, percent)) if isinstance(percent, int) else None,
         "plan_completed": previous.get("plan_completed", 0),
         "plan_total": previous.get("plan_total", 0),
         "plan_percent": previous.get("plan_percent"),
@@ -342,7 +344,7 @@ def main() -> int:
     if args.action == "record":
         return 0 if record_phase(
             args.run_id, args.run_attempt, args.phase, args.label,
-            args.activity, args.status,
+            args.activity, status=args.status,
         ) else 1
     if args.action == "codex":
         return run_codex(args)
