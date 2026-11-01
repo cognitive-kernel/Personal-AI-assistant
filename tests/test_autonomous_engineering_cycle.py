@@ -55,7 +55,14 @@ def test_failed_full_suite_retries_same_task_before_publishing(tmp_path: Path, m
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setattr(cycle, "record", lambda *args: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
-    monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: "")
+    def fake_checked(command, **kwargs):
+        if command[:3] == ["git", "rev-parse", "HEAD"]:
+            return "base-sha"
+        if command[1:3] == ["branch", "--show-current"]:
+            return "codex/local-engineering-123-1-task-1"
+        return ""
+
+    monkeypatch.setattr(cycle, "checked", fake_checked)
     monkeypatch.setattr(cycle, "prepare_commit", lambda task: "candidate-sha")
     published = []
     monkeypatch.setattr(cycle, "publish_subprocess", lambda *args: published.append(args) or "main-sha")
