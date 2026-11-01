@@ -153,7 +153,7 @@ def run_codex(args: argparse.Namespace) -> int:
         print("Codex CLI executable was not found on PATH.", file=sys.stderr)
         return 127
     arguments = [
-        "exec", "--oss", "-c", 'oss_provider="ollama"',
+        "exec", "--oss", "--local-provider", "ollama",
         "--sandbox", "workspace-write",
         "--model", args.model, "--cd", str(ROOT),
         "--output-last-message", args.report, "--json", "-",
