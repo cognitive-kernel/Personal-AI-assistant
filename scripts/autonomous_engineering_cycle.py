@@ -194,7 +194,9 @@ def git_auth_env(token: str) -> dict[str, str]:
 def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str, base_sha: str) -> str:
     env = git_auth_env(token)
     checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=env)
-    pr = api(token, repo, "POST", "pulls", {
+    owner = repo.split("/", 1)[0]
+    existing = api(token, repo, "GET", f"pulls?state=open&head={quote(owner + ':' + branch, safe='')}&base=main&per_page=5")
+    pr = existing[0] if existing else api(token, repo, "POST", "pulls", {
         "title": f"Autonomous engineering task {task_index} (run {run_id})",
         "head": branch, "base": "main", "draft": False,
         "body": (
@@ -279,6 +281,8 @@ def run_cycle(args: argparse.Namespace) -> int:
         report = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-report-{task}.md"
         attempt = 0
         failure_feedback = ""
+        trusted_head = base_sha
+        main_sha = None
         while True:
             if time.monotonic() - started >= CYCLE_LIMIT - 60:
                 raise RuntimeError(f"Task {task} exhausted this runner window after {attempt} attempt(s); it was not marked merged and the next task was not started.")
@@ -316,6 +320,10 @@ def run_cycle(args: argparse.Namespace) -> int:
             if marker != "TASK_COMPLETE":
                 failure_feedback = f"Attempt {attempt}: Codex did not return TASK_COMPLETE. Correct the report and finish this same task.\n"
                 continue
+            if checked(["git", "rev-parse", "HEAD"]) != trusted_head:
+                raise RuntimeError("Codex must not create or rewrite commits; only the trusted controller may commit.")
+            if checked(["git", "branch", "--show-current"]) != branch:
+                raise RuntimeError("Codex changed the task branch; refusing to publish.")
 
             record(args.run_id, args.run_attempt, "tests", f"آزمون وظیفهٔ {task}؛ تلاش {attempt}", "اجرای کامل آزمون‌ها پیش از ادغام")
             commands = [
@@ -344,18 +352,35 @@ def run_cycle(args: argparse.Namespace) -> int:
                 )
                 record(args.run_id, args.run_attempt, "retry", f"اصلاح وظیفهٔ {task}", f"آزمون تلاش {attempt} ناموفق شد؛ بازگشت به همان وظیفه")
                 continue
+
+            record(args.run_id, args.run_attempt, "packaging", f"بسته‌بندی وظیفهٔ {task}", "اعتبارسنجی مسیرها و ساخت commit مستقل")
+            if run(["git", "diff", "--quiet", "--", "scripts/autonomous_engineering_cycle.py"]).returncode:
+                raise RuntimeError("The trusted cycle controller was modified by the task.")
+            if changed_paths():
+                head_sha = prepare_commit(task)
+                trusted_head = head_sha
+            elif trusted_head != base_sha:
+                head_sha = trusted_head
+            else:
+                raise RuntimeError("Task reported completion but produced no reviewable changes.")
+            record(args.run_id, args.run_attempt, "merge", f"ادغام وظیفهٔ {task}", "تست‌ها موفق شدند؛ در حال ادغام PR مستقل در main")
+            try:
+                main_sha = publish_subprocess(token, repo, branch, task, args.run_id, head_sha, base_sha)
+            except RuntimeError as exc:
+                message = str(exc)
+                if "Required workflow" not in message:
+                    raise
+                failure_feedback = (
+                    f"Attempt {attempt}: GitHub-hosted verification failed for candidate {head_sha}.\n"
+                    "The existing task PR remains open. Review this exact CI failure and repair the SAME task; do not start another task.\n"
+                    + message + "\n"
+                )
+                record(args.run_id, args.run_attempt, "retry", f"اصلاح CI وظیفهٔ {task}", f"CI گیت‌هاب تلاش {attempt} ناموفق شد؛ اصلاح همان وظیفه")
+                continue
             break
 
-        if checked(["git", "rev-parse", "HEAD"]) != base_sha:
-            raise RuntimeError("Codex must not create commits; only the trusted controller may commit.")
-        if checked(["git", "branch", "--show-current"]) != branch:
-            raise RuntimeError("Codex changed the task branch; refusing to publish.")
-        record(args.run_id, args.run_attempt, "packaging", f"بسته‌بندی وظیفهٔ {task}", "اعتبارسنجی مسیرها و ساخت commit مستقل")
-        if run(["git", "diff", "--quiet", "--", "scripts/autonomous_engineering_cycle.py"]).returncode:
-            raise RuntimeError("The trusted cycle controller was modified by the task.")
-        head_sha = prepare_commit(task)
-        record(args.run_id, args.run_attempt, "merge", f"ادغام وظیفهٔ {task}", "تست‌ها موفق شدند؛ در حال ادغام PR مستقل در main")
-        main_sha = publish_subprocess(token, repo, branch, task, args.run_id, head_sha, base_sha)
+        if not main_sha:
+            raise RuntimeError("Task exited its verification loop without a confirmed main merge.")
         snapshot(args.run_id, args.run_attempt)
         if task == 1 and request_file.is_file():
             try:
