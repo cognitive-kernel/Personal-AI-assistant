@@ -52,6 +52,25 @@ def _parse_date(value: str | None) -> date | None:
 
 
 def _scorecard_baseline() -> dict[str, Any] | None:
+    saved = _read_json(_progress_dir() / "scorecard-baseline.json")
+    if isinstance(saved, dict):
+        saved_date = _parse_date(str(saved.get("date", "")))
+        engineering_value = saved.get("engineering_percent")
+        overall_value = saved.get("overall_percent")
+        if (
+            saved_date is not None
+            and isinstance(engineering_value, (int, float))
+            and isinstance(overall_value, (int, float))
+            and 0 <= engineering_value <= 100
+            and 0 <= overall_value <= 100
+        ):
+            return {
+                "date": saved_date.isoformat(),
+                "engineering_percent": float(engineering_value),
+                "overall_percent": float(overall_value),
+                "sha": saved.get("sha"),
+                "source": "scorecard-baseline",
+            }
     try:
         content = _DEFAULT_SCORECARD.read_text(encoding="utf-8")
     except OSError:
