@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, StrictInt, StrictStr
 
 from .task_routes import require_loopback_client
-from .autonomous_engineering_progress import get_progress
+from .autonomous_engineering_progress import get_progress, storage_accessible
 
 _RUN_PROGRESS_CACHE: dict[str, Any] = {"run_id": None, "at": 0.0, "value": None}
 
@@ -195,6 +195,7 @@ def collect_status() -> dict[str, Any]:
     ollama = _ollama_status(model)
     codex = _codex_status()
     runner = _runner_status()
+    progress_storage = storage_accessible()
     checks = {
         "ollama_online": ollama["online"],
         "model_installed": ollama["model_installed"],
@@ -202,6 +203,7 @@ def collect_status() -> dict[str, Any]:
         "runner_running": runner["running"],
         "github_cli_authenticated": github["authenticated"],
         "github_runs_available": github.get("runs_available", False),
+        "progress_storage_accessible": progress_storage,
     }
     return {
         "ready": all(checks.values()),
@@ -215,6 +217,7 @@ def collect_status() -> dict[str, Any]:
         "model": model,
         "models": ollama.get("models", []),
         "runs_per_day": runs_per_day,
+        "progress_storage_accessible": progress_storage,
         "platform": platform.platform(),
         "local_only_inference": True,
     }
