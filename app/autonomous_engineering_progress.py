@@ -25,7 +25,11 @@ def _progress_dir() -> Path:
 
 def storage_accessible() -> bool:
     directory = _progress_dir()
-    return directory.is_dir() and os.access(directory, os.R_OK)
+    try:
+        with os.scandir(directory):
+            return True
+    except OSError:
+        return False
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
