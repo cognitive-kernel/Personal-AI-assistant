@@ -71,6 +71,12 @@ def persist(record: dict[str, Any]) -> None:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
 
 
+def plan_percentage(completed: int, total: int) -> int | None:
+    if total <= 0:
+        return None
+    return max(0, min(100, round(completed * 100 / total)))
+
+
 def plan_state() -> tuple[int, int, str | None]:
     try:
         value = json.loads(PLAN_FILE.read_text(encoding="utf-8"))
@@ -146,7 +152,7 @@ def run_codex(args: argparse.Namespace) -> int:
         "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
         "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
         "activity": "عامل در حال شروع تحلیل است", "percent": 20,
-        "plan_completed": 0, "plan_total": 0,
+        "plan_completed": 0, "plan_total": 0, "plan_percent": None,
     })
     try:
         for line in process.stdout:
@@ -167,6 +173,7 @@ def run_codex(args: argparse.Namespace) -> int:
                     "phase_label": "تحلیل و پیاده‌سازی",
                     "activity": activity, "percent": percent,
                     "plan_completed": completed, "plan_total": total,
+                    "plan_percent": plan_percentage(completed, total),
                 })
                 last_signature = signature
         return_code = process.wait()
@@ -178,6 +185,7 @@ def run_codex(args: argparse.Namespace) -> int:
             "activity": "مرحلهٔ کدنویسی پایان یافت" if return_code == 0 else "مرحلهٔ کدنویسی با خطا متوقف شد",
             "percent": 65 if return_code == 0 else 20 + (45 * completed // total if total else 0),
             "plan_completed": completed, "plan_total": total,
+            "plan_percent": plan_percentage(completed, total),
         })
         return return_code
     finally:
@@ -278,7 +286,7 @@ def main() -> int:
             "run_id": args.run_id, "run_attempt": args.run_attempt,
             "status": args.status, "phase": args.phase,
             "phase_label": args.label, "activity": args.activity,
-            "percent": max(0, min(100, args.percent)),
+            "percent": max(0, min(100, args.percent)), "plan_percent": None,
         })
         return 0
     if args.action == "codex":
