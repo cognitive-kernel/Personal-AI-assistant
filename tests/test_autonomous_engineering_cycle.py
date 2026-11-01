@@ -63,6 +63,7 @@ def test_failed_full_suite_retries_same_task_before_publishing(tmp_path: Path, m
         return ""
 
     monkeypatch.setattr(cycle, "checked", fake_checked)
+    monkeypatch.setattr(cycle, "changed_paths", lambda: ["app/fix.py"])
     monkeypatch.setattr(cycle, "prepare_commit", lambda task: "candidate-sha")
     published = []
     monkeypatch.setattr(cycle, "publish_subprocess", lambda *args: published.append(args) or "main-sha")
