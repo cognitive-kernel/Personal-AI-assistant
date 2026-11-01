@@ -191,7 +191,7 @@ def git_auth_env(token: str) -> dict[str, str]:
     return env
 
 
-def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str) -> str:
+def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: str, head_sha: str, base_sha: str) -> str:
     env = git_auth_env(token)
     checked(["git", "push", "origin", f"HEAD:refs/heads/{branch}"], env=env)
     pr = api(token, repo, "POST", "pulls", {
@@ -209,11 +209,15 @@ def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: s
     number = pr.get("number")
     pr_head = (pr.get("head") or {}).get("sha")
     pr_base = (pr.get("base") or {}).get("ref")
+    pr_base_sha = (pr.get("base") or {}).get("sha")
     if not isinstance(number, int) or not isinstance(pr_head, str):
         raise RuntimeError("GitHub did not return a valid pull request and head SHA.")
-    if pr_head != head_sha or pr_base != "main" or pr.get("draft") is True:
-        raise RuntimeError("Refusing to merge: PR head, base branch, or draft state does not match the validated candidate.")
+    if pr_head != head_sha or pr_base != "main" or pr_base_sha != base_sha or pr.get("draft") is True:
+        raise RuntimeError("Refusing to merge: PR head or exact main base does not match the validated candidate.")
     dispatch_and_wait_all(token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head)
+    current_main = api(token, repo, "GET", "branches/main")
+    if (current_main.get("commit") or {}).get("sha") != base_sha:
+        raise RuntimeError("main changed while the task was being validated; refusing a stale-base merge.")
     result = api(token, repo, "PUT", f"pulls/{number}/merge", {
         "merge_method": "squash", "sha": pr_head,
     })
@@ -229,12 +233,12 @@ def publish_merge(token: str, repo: str, branch: str, task_index: int, run_id: s
     return main_sha
 
 
-def publish_subprocess(token: str, repo: str, branch: str, task: int, run_id: str, sha: str) -> str:
+def publish_subprocess(token: str, repo: str, branch: str, task: int, run_id: str, sha: str, base_sha: str) -> str:
     env = os.environ.copy()
     env.update({"GH_TOKEN": token, "GH_REPO": repo})
     result = run([
         sys.executable, str(Path(__file__).resolve()), "publish",
-        "--branch", branch, "--task", str(task), "--run-id", run_id, "--sha", sha,
+        "--branch", branch, "--task", str(task), "--run-id", run_id, "--sha", sha, "--base-sha", base_sha,
     ], env=env, capture=True)
     if result.returncode:
         raise RuntimeError("Per-task PR merge failed: " + (result.stderr or result.stdout or "")[-4000:])
@@ -246,7 +250,7 @@ def publish_command(args: argparse.Namespace) -> int:
     repo = os.environ.pop("GH_REPO", "")
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
-    print(publish_merge(token, repo, args.branch, args.task, args.run_id, args.sha))
+    print(publish_merge(token, repo, args.branch, args.task, args.run_id, args.sha, args.base_sha))
     return 0
 
 
@@ -351,7 +355,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             raise RuntimeError("The trusted cycle controller was modified by the task.")
         head_sha = prepare_commit(task)
         record(args.run_id, args.run_attempt, "merge", f"ادغام وظیفهٔ {task}", "تست‌ها موفق شدند؛ در حال ادغام PR مستقل در main")
-        main_sha = publish_subprocess(token, repo, branch, task, args.run_id, head_sha)
+        main_sha = publish_subprocess(token, repo, branch, task, args.run_id, head_sha, base_sha)
         snapshot(args.run_id, args.run_attempt)
         if task == 1 and request_file.is_file():
             try:
@@ -389,6 +393,7 @@ def main() -> int:
     pub.add_argument("--task", required=True, type=int)
     pub.add_argument("--run-id", required=True)
     pub.add_argument("--sha", required=True)
+    pub.add_argument("--base-sha", required=True)
     args = parser.parse_args()
     return publish_command(args) if args.command == "publish" else run_cycle(args)
 
