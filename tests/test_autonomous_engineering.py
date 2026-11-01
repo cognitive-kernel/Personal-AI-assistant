@@ -455,7 +455,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Initialize live progress before prerequisite checks" in workflow
     assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Run Codex against the local Ollama model")
     assert workflow.count("snapshot --run-id") == 1
-    assert "oss_provider=ollama" in workflow or "oss_provider=ollama" in (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
+    assert 'oss_provider="ollama"' in (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     assert "pyproject.toml" not in workflow
     assert "WriteAllText" in runner_check
     assert "gh auth login" not in runner_check
