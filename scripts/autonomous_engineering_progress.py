@@ -298,7 +298,7 @@ def snapshot_project(run_id: str, run_attempt: str) -> None:
                         }
                         break
             baseline_temp = baseline_path.with_suffix(".json.tmp")
-            baseline_temp.write_text(json.dumps(baseline, ensure_ascii=False) + "\\n", encoding="utf-8")
+            baseline_temp.write_text(json.dumps(baseline, ensure_ascii=False) + "\n", encoding="utf-8")
             baseline_temp.replace(baseline_path)
         same_scores = previous is not None and (
             previous.get("engineering_percent") == signature["engineering_percent"]
