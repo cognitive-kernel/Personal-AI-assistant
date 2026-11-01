@@ -6,6 +6,8 @@
   const cancelButton = $("cancel-agent");
   const saveButton = $("save-agent-settings");
   const settingsForm = $("agent-settings-form");
+  const taskForm = $("agent-task-form");
+  const taskButton = $("send-agent-task");
   const labels = {
     ollama: $("ollama-state"), model: $("model-state"), codex: $("codex-state"),
     runner: $("runner-state"), github: $("github-state"), storage: $("storage-state")
@@ -107,12 +109,14 @@
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
       dispatchButton.disabled = !ready || active;
+      taskButton.disabled = !ready || active;
       cancelButton.disabled = !active;
       renderRuns(data.github && data.github.recent_runs);
       setMessage(ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید.", ready ? "success" : "");
     } catch (error) {
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
       dispatchButton.disabled = true;
+      taskButton.disabled = true;
       cancelButton.disabled = true;
     } finally {
       $("refresh-agent").disabled = false;
@@ -137,6 +141,34 @@
       setMessage(error.message, "error");
     } finally {
       saveButton.disabled = false;
+    }
+  });
+  taskForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const task = $("manual-task").value.trim();
+    if (!task) {
+      setMessage("ابتدا متن وظیفه را وارد کنید.", "error");
+      return;
+    }
+    if (task.length > 2000 || task.includes("\\u0000")) {
+      setMessage("متن وظیفه نامعتبر یا طولانی است.", "error");
+      return;
+    }
+    taskButton.disabled = true;
+    dispatchButton.disabled = true;
+    setMessage("در حال ارسال وظیفه به عامل محلی و درخواست شروع چرخه…");
+    try {
+      const result = await request("dispatch", {
+        method: "POST",
+        body: JSON.stringify({task})
+      });
+      $("manual-task").value = "";
+      setMessage(result.message || "وظیفه برای عامل ارسال شد.", "success");
+      window.setTimeout(refresh, 2500);
+    } catch (error) {
+      setMessage(error.message, "error");
+    } finally {
+      await refresh();
     }
   });
   dispatchButton.addEventListener("click", async () => {
