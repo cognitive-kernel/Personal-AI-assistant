@@ -83,8 +83,10 @@
       if (document.activeElement !== $("runs-per-day")) {
         $("runs-per-day").value = String(data.runs_per_day || 1);
       }
-      labels.codex.textContent = stateText(checks.codex_installed);
-      $("codex-detail").textContent = data.codex && data.codex.version ? data.codex.version : "Codex CLI پیدا نشد.";
+      labels.codex.textContent = checks.codex_installed ? "موجود" : "در حساب برنامه نصب نیست";
+      $("codex-detail").textContent = data.codex && data.codex.version
+        ? data.codex.version + "؛ این بررسی فقط حساب برنامه را پوشش می‌دهد."
+        : "حساب Runner جداگانه و هنگام اجرای Workflow بررسی می‌شود.";
       labels.runner.textContent = stateText(checks.runner_running);
       $("runner-detail").textContent = checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
       const githubReady = checks.github_cli_authenticated && checks.github_runs_available;
@@ -100,14 +102,14 @@
         : "پوشهٔ مشترک را با scripts/configure_autonomous_engineering_progress.ps1 پیکربندی کنید.";
       const ready = data.ready === true;
       const pill = $("agent-readiness");
-      pill.textContent = ready ? "آمادهٔ اجرا" : "راه‌اندازی ناقص";
+      pill.textContent = ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص";
       pill.className = "status-pill " + (ready ? "status-ready" : "status-blocked");
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
       dispatchButton.disabled = !ready || active;
       cancelButton.disabled = !active;
       renderRuns(data.github && data.github.recent_runs);
-      setMessage(ready ? "همهٔ پیش‌نیازهای محلی آماده‌اند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید.", ready ? "success" : "");
+      setMessage(ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید.", ready ? "success" : "");
     } catch (error) {
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
       dispatchButton.disabled = true;
