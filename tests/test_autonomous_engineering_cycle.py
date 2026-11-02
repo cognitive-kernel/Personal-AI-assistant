@@ -151,6 +151,22 @@ def test_find_open_autonomous_pr_detects_pending_generated_review(monkeypatch: p
     }
 
 
+def test_find_open_autonomous_pr_ignores_non_controller_authored_branches(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(cycle, "api", lambda *args: [{
+        "number": 78,
+        "html_url": "https://github.com/owner/repository/pull/78",
+        "head": {
+            "ref": "codex/local-engineering-101-1-task-1",
+            "sha": "a" * 40,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main", "sha": "b" * 40},
+        "user": {"login": "untrusted-contributor"},
+    }])
+
+    assert cycle.find_open_autonomous_pr("token", "owner/repository") is None
+
+
 def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
     monkeypatch: pytest.MonkeyPatch,
 ):
