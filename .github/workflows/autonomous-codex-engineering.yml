@@ -384,7 +384,7 @@ jobs:
           task when one can be safely completed in this same session.
 
           Only propose text changes under app/, tests/, docs/, or scripts/. Do not modify dependency or build configuration.
-          Never modify scripts/autonomous_engineering_cycle.py, scripts/autonomous_engineering_progress.py,
+          Never modify scripts/autonomous_engineering_cycle.py, scripts/autonomous_engineering_progress.py,\n          scripts/autonomous_engineering_checkpoint.py,
           .github/workflows/, .agent-request.json, or .agent-github-state.json. Do not add generated
           artifacts, local databases, logs, credentials, or temporary files.
 
@@ -396,7 +396,7 @@ jobs:
           test suite and quality gates pass. The trusted controller merges it only after exact-SHA
           GitHub checks pass, then dispatches the next isolated run from refreshed main in continuous
           mode. The overall continuous queue is not capped at eight tasks or one workflow run.
-          The first session may consume the manual task only once. No task is treated as accepted
+          The submitted manual task is durable and must be continued across retries and restarts until its verified merge; the trusted controller clears it only after acceptance. No task is treated as accepted
           or complete for project progress until its PR is merged and post-merge evidence is recorded.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
 
