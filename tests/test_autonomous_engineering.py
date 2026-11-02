@@ -205,7 +205,7 @@ def test_autonomous_recovery_workflow_retries_continuous_failures_without_an_aut
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
     assert "continuous" in recovery
     assert "/dispatches" in recovery
-    assert "delay_seconds = min(1800, 30 * (2 ** min(streak - 1, 6)))" in recovery
+    assert "delay_seconds = min(240, 30 * (2 ** min(streak - 1, 3)))" in recovery
     assert "streak >= 4" not in recovery
 
 
