@@ -1,6 +1,8 @@
 name: Autonomous local Ollama engineering
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -71,6 +73,15 @@ jobs:
           fi
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$EXECUTION_MODE" == "continuous" ]]; then
+              echo "run_now=true" >> "$GITHUB_OUTPUT"
+              echo "Continuous mode starts immediately after a main-branch update."
+            else
+              echo "run_now=false" >> "$GITHUB_OUTPUT"
+            fi
             exit 0
           fi
           if [[ "$EVENT_NAME" != "schedule" ]]; then
