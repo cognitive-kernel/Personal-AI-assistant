@@ -283,8 +283,6 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
         name = str(active_job.get("name", ""))
         steps = active_job.get("steps", [])
         steps = steps if isinstance(steps, list) else []
-        completed = sum(isinstance(step, dict) and step.get("status") == "completed" for step in steps)
-        total = max(1, len(steps))
         active_step = next(
             (step for step in steps if isinstance(step, dict) and step.get("status") == "in_progress"),
             None,
