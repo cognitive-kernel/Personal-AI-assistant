@@ -8,6 +8,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -42,6 +43,20 @@ jobs:
           python-version: "3.11"
       - name: Install project and test dependencies
         run: python -m pip install -e ".[dev]"
+      - name: Parse all PowerShell scripts
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -LiteralPath scripts -Filter *.ps1 -File -Recurse
+          foreach ($file in $files) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$($file.FullName): $($_.Message)" }
+              throw "PowerShell syntax validation failed."
+            }
+          }
+          Write-Host "Parsed $($files.Count) PowerShell scripts successfully."
       - name: Test SQLite migration, restore, and staging cleanup on Windows
         run: >-
           python -m pytest -q

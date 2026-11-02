@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -30,7 +31,34 @@ def store_dir() -> Path:
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
-def persist(record: dict[str, Any]) -> None:
+
+def append_event(record: dict[str, Any]) -> None:
+    directory = store_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    events = directory / "events.jsonl"
+    if events.exists() and events.stat().st_size > 1024 * 1024:
+        retained = events.read_text(encoding="utf-8").splitlines()[-1000:]
+        temporary = directory / "events.jsonl.tmp"
+        temporary.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
+        temporary.replace(events)
+    with events.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def append_history(record: dict[str, Any]) -> None:
+    directory = store_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    history = directory / "history.jsonl"
+    if history.exists() and history.stat().st_size > 8 * 1024 * 1024:
+        retained = history.read_text(encoding="utf-8").splitlines()[-5000:]
+        temporary = directory / "history.jsonl.tmp"
+        temporary.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
+        temporary.replace(history)
+    with history.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def persist(record: dict[str, Any]) -> bool:
     directory = store_dir()
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -38,11 +66,45 @@ def persist(record: dict[str, Any]) -> None:
         temporary = directory / "current.json.tmp"
         temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
         temporary.replace(directory / "current.json")
-        history = directory / "history.jsonl"
-        with history.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps({"type": "progress_event", **payload}, ensure_ascii=False) + "\n")
     except OSError as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return False
+    try:
+        append_event({"type": "progress_event", **payload})
+    except OSError as exc:
+        print(f"Progress event log unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+    return True
+
+
+def record_phase(
+    run_id: str, run_attempt: str, phase: str, label: str, activity: str,
+    percent: int | None = None, status: str = "running",
+) -> bool:
+    previous: dict[str, Any] = {}
+    try:
+        value = json.loads((store_dir() / "current.json").read_text(encoding="utf-8"))
+        if isinstance(value, dict) and (
+            str(value.get("run_id")) == str(run_id)
+            and str(value.get("run_attempt", "1")) == str(run_attempt)
+        ):
+            previous = value
+    except (OSError, ValueError):
+        pass
+    return persist({
+        "run_id": run_id, "run_attempt": run_attempt,
+        "status": status, "phase": phase,
+        "phase_label": label, "activity": activity,
+        "percent": max(0, min(100, percent)) if isinstance(percent, int) else None,
+        "plan_completed": previous.get("plan_completed", 0),
+        "plan_total": previous.get("plan_total", 0),
+        "plan_percent": previous.get("plan_percent"),
+    })
+
+
+def plan_percentage(completed: int, total: int) -> float | None:
+    if total <= 0:
+        return None
+    return round(max(0, min(total, completed)) * 100 / total, 2)
 
 
 def plan_state() -> tuple[int, int, str | None]:
@@ -66,6 +128,8 @@ def plan_state() -> tuple[int, int, str | None]:
 
 def codex_activity(event: dict[str, Any]) -> str | None:
     event_type = event.get("type")
+    if event_type == "turn.started":
+        return "عامل در حال تحلیل و اجرای وظیفه است"
     item = event.get("item")
     if not isinstance(item, dict):
         return None
@@ -81,17 +145,27 @@ def codex_activity(event: dict[str, Any]) -> str | None:
         return "به‌روزرسانی فایل‌ها: " + "، ".join(paths) if paths else "ثبت تغییرات کد"
     if event_type == "item.updated" and kind in {"todo_list", "plan_update"}:
         return "به‌روزرسانی برنامهٔ کار عامل"
-    if event_type == "turn.started":
-        return "عامل در حال تحلیل و اجرای وظیفه است"
     return None
 
 
 def run_codex(args: argparse.Namespace) -> int:
-    command = [
-        "codex", "exec", "--oss", "--sandbox", "workspace-write",
+    executable = shutil.which("codex")
+    if not executable:
+        print("Codex CLI executable was not found on PATH.", file=sys.stderr)
+        return 127
+    arguments = [
+        "exec", "--oss", "--local-provider", "ollama",
+        "--sandbox", "workspace-write",
         "--model", args.model, "--cd", str(ROOT),
         "--output-last-message", args.report, "--json", "-",
     ]
+    if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
+        command = [
+            os.getenv("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
+            '""' + executable + '" ' + subprocess.list2cmdline(arguments) + '"',
+        ]
+    else:
+        command = [executable, *arguments]
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
     except OSError as exc:
@@ -108,8 +182,8 @@ def run_codex(args: argparse.Namespace) -> int:
     persist({
         "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
         "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
-        "activity": "عامل در حال شروع تحلیل است", "percent": 20,
-        "plan_completed": 0, "plan_total": 0,
+        "activity": "عامل در حال شروع تحلیل است",
+        "plan_completed": 0, "plan_total": 0, "plan_percent": None,
     })
     try:
         for line in process.stdout:
@@ -121,15 +195,15 @@ def run_codex(args: argparse.Namespace) -> int:
                 continue
             completed, total, active_title = plan_state()
             activity = active_title or codex_activity(event) or "عامل در حال کار روی وظیفهٔ جاری است"
-            percent = 20 + (45 * completed // total if total else 0)
-            signature = (percent, activity, completed, total)
+            signature = (activity, completed, total)
             if signature != last_signature:
                 persist({
                     "run_id": args.run_id, "run_attempt": args.run_attempt,
                     "status": "running", "phase": "coding",
                     "phase_label": "تحلیل و پیاده‌سازی",
-                    "activity": activity, "percent": percent,
+                    "activity": activity,
                     "plan_completed": completed, "plan_total": total,
+                    "plan_percent": plan_percentage(completed, total),
                 })
                 last_signature = signature
         return_code = process.wait()
@@ -139,8 +213,8 @@ def run_codex(args: argparse.Namespace) -> int:
             "status": "completed" if return_code == 0 else "failed",
             "phase": "coding", "phase_label": "پایان مرحلهٔ کدنویسی",
             "activity": "مرحلهٔ کدنویسی پایان یافت" if return_code == 0 else "مرحلهٔ کدنویسی با خطا متوقف شد",
-            "percent": 65 if return_code == 0 else 20 + (45 * completed // total if total else 0),
             "plan_completed": completed, "plan_total": total,
+            "plan_percent": plan_percentage(completed, total),
         })
         return return_code
     finally:
@@ -153,32 +227,98 @@ def run_codex(args: argparse.Namespace) -> int:
             pass
 
 
-def snapshot_project(run_id: str, run_attempt: str) -> None:
+def snapshot_project(run_id: str, run_attempt: str) -> bool:
     try:
         content = SCORECARD.read_text(encoding="utf-8")
-    except OSError:
-        return
+    except OSError as exc:
+        print(f"Could not read acceptance scorecard: {type(exc).__name__}", file=sys.stderr)
+        return False
     engineering = re.search(r"Engineering completion:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
     overall = re.search(r"Overall acceptance progress:.*?=\s*([0-9]+(?:\.[0-9]+)?)%", content)
     snapshot = re.search(r"\*\*Snapshot:\*\*\s*(\d{4}-\d{2}-\d{2})", content)
     sha = re.search(r"\*\*Scored baseline:\*\*.*?([0-9a-f]{40})", content)
     if not (engineering and overall and snapshot):
-        return
+        print("Acceptance scorecard is missing required snapshot or percentage fields.", file=sys.stderr)
+        return False
+    signature = {
+        "scorecard_snapshot_date": snapshot.group(1),
+        "engineering_percent": float(engineering.group(1)),
+        "overall_percent": float(overall.group(1)),
+        "sha": sha.group(1) if sha else None,
+    }
     directory = store_dir()
+    state_path = directory / "scorecard-state.json"
+    previous: dict[str, Any] | None = None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if isinstance(state, dict):
+            previous = state
+    except (OSError, ValueError):
+        pass
+    if previous is None:
+        history_path = directory / "history.jsonl"
+        try:
+            if history_path.is_file() and history_path.stat().st_size <= 8 * 1024 * 1024:
+                for line in reversed(history_path.read_text(encoding="utf-8").splitlines()):
+                    try:
+                        candidate = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(candidate, dict) and candidate.get("type") == "project_snapshot":
+                        previous = {
+                            key: candidate.get(key)
+                            for key in ("scorecard_snapshot_date", "engineering_percent", "overall_percent", "sha")
+                        }
+                        break
+        except OSError:
+            pass
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        history = directory / "history.jsonl"
-        record = {
-            "type": "project_snapshot", "date": snapshot.group(1),
-            "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
-            "engineering_percent": float(engineering.group(1)),
-            "overall_percent": float(overall.group(1)),
-            "sha": sha.group(1) if sha else None,
-        }
-        with history.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        baseline_path = directory / "scorecard-baseline.json"
+        if not baseline_path.exists():
+            baseline = {
+                "date": signature["scorecard_snapshot_date"],
+                "engineering_percent": signature["engineering_percent"],
+                "overall_percent": signature["overall_percent"],
+                "sha": signature["sha"],
+                "source": "scorecard-baseline",
+            }
+            history_path = directory / "history.jsonl"
+            if history_path.is_file() and history_path.stat().st_size <= 8 * 1024 * 1024:
+                for line in history_path.read_text(encoding="utf-8").splitlines():
+                    try:
+                        candidate = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(candidate, dict) and candidate.get("type") == "project_snapshot":
+                        baseline = {
+                            "date": candidate.get("scorecard_snapshot_date") or candidate.get("date"),
+                            "engineering_percent": candidate.get("engineering_percent"),
+                            "overall_percent": candidate.get("overall_percent"),
+                            "sha": candidate.get("sha"),
+                            "source": "scorecard-baseline",
+                        }
+                        break
+            baseline_temp = baseline_path.with_suffix(".json.tmp")
+            baseline_temp.write_text(json.dumps(baseline, ensure_ascii=False) + "\n", encoding="utf-8")
+            baseline_temp.replace(baseline_path)
+        same_scores = previous is not None and (
+            previous.get("engineering_percent") == signature["engineering_percent"]
+            and previous.get("overall_percent") == signature["overall_percent"]
+        )
+        if previous is not None and not same_scores:
+            record = {
+                "type": "project_snapshot", "date": datetime.now(timezone.utc).date().isoformat(),
+                **signature, "recorded_at": now(), "run_id": run_id, "run_attempt": run_attempt,
+            }
+            append_history(record)
+        temporary = state_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(signature, ensure_ascii=False) + "\n", encoding="utf-8")
+        temporary.replace(state_path)
     except OSError as exc:
         print(f"Could not persist scorecard snapshot: {type(exc).__name__}", file=sys.stderr)
+        return False
+    return True
 
 
 def main() -> int:
@@ -190,7 +330,6 @@ def main() -> int:
     record.add_argument("--phase", required=True)
     record.add_argument("--label", required=True)
     record.add_argument("--activity", required=True)
-    record.add_argument("--percent", type=int, required=True)
     record.add_argument("--status", default="running")
     codex = sub.add_parser("codex")
     codex.add_argument("--run-id", required=True)
@@ -203,17 +342,13 @@ def main() -> int:
     snapshot.add_argument("--run-attempt", default="1")
     args = parser.parse_args()
     if args.action == "record":
-        persist({
-            "run_id": args.run_id, "run_attempt": args.run_attempt,
-            "status": args.status, "phase": args.phase,
-            "phase_label": args.label, "activity": args.activity,
-            "percent": max(0, min(100, args.percent)),
-        })
-        return 0
+        return 0 if record_phase(
+            args.run_id, args.run_attempt, args.phase, args.label,
+            args.activity, status=args.status,
+        ) else 1
     if args.action == "codex":
         return run_codex(args)
-    snapshot_project(args.run_id, args.run_attempt)
-    return 0
+    return 0 if snapshot_project(args.run_id, args.run_attempt) else 1
 
 
 if __name__ == "__main__":

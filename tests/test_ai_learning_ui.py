@@ -160,3 +160,13 @@ def test_topic_checkbox_is_outside_summary_and_script_cache_is_busted():
     assert 'card.append(head);' in script
     assert 'const selection=el("div",undefined,"topic-select");selection.append(check);card.append(selection);' in script
     assert 'head.append(check,el("h4","اجرای #"+run.id' in script
+
+
+def test_ai_learning_page_contains_shared_main_navigation():
+    from pathlib import Path
+
+    page = Path(__file__).resolve().parents[1] / "app" / "ai_learning" / "static" / "index.html"
+    html = page.read_text(encoding="utf-8")
+    assert '<nav class="main-nav" aria-label="منوی اصلی">' in html
+    assert 'href="/autonomous-engineering"' in html
+    assert 'aria-current="page">یادگیری از هوش مصنوعی</a>' in html

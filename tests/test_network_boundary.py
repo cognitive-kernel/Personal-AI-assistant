@@ -10,7 +10,7 @@ from app.main import app
 
 def test_non_loopback_peers_cannot_access_ui_or_api():
     client = TestClient(app, client=("192.0.2.44", 54321))
-    for path in ("/", "/api/health", "/api/settings", "/api/learning/jobs"):
+    for path in ("/", "/api/health", "/api/settings", "/api/learning/jobs", "/api/autonomous-engineering/status"):
         response = client.get(path)
         assert response.status_code == 403, path
         assert response.json()["detail"] == "This application is available from localhost only."
@@ -167,3 +167,24 @@ def test_cross_site_api_reads_are_blocked_but_page_navigation_is_allowed():
     page_response = client.get("/", headers={"sec-fetch-site": "cross-site"})
     assert page_response.status_code == 200
 
+
+
+def test_cross_origin_requests_cannot_dispatch_or_cancel_autonomous_agent(monkeypatch):
+    from app import autonomous_engineering
+
+    calls = []
+    monkeypatch.setattr(autonomous_engineering, "dispatch_autonomous_engineering", lambda: calls.append("dispatch"))
+    monkeypatch.setattr(autonomous_engineering, "cancel_autonomous_engineering", lambda: calls.append("cancel"))
+    client = TestClient(
+        app,
+        client=("127.0.0.1", 54321),
+        base_url="http://127.0.0.1:8000",
+    )
+    for path in ("/api/autonomous-engineering/dispatch", "/api/autonomous-engineering/cancel"):
+        response = client.post(path, headers={
+            "origin": "https://attacker.example",
+            "sec-fetch-site": "cross-site",
+        })
+        assert response.status_code == 403
+        assert response.json()["code"] == "cross_origin_api_request"
+    assert calls == []
