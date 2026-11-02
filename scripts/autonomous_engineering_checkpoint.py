@@ -114,9 +114,6 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     state["directory"].mkdir(parents=True, exist_ok=True)
     state["stop"].unlink(missing_ok=True)
     while not state["stop"].exists():
-        current = git("rev-parse", "HEAD").stdout.strip()
-        if current != base_sha:
-            return 0
         try:
             write_snapshot(base_sha, run_id, task, os.getpid())
         except (OSError, RuntimeError) as exc:
