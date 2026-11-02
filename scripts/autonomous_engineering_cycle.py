@@ -430,10 +430,14 @@ def publish_pull_request(
     })
     number = pr.get("number")
     pr_head = (pr.get("head") or {}).get("sha")
+    pr_head_repository = ((pr.get("head") or {}).get("repo") or {}).get("full_name")
     pr_base = (pr.get("base") or {}).get("ref")
     pr_base_sha = (pr.get("base") or {}).get("sha")
+    pr_author = (pr.get("user") or {}).get("login")
     if (
         not isinstance(number, int)
+        or pr_author != "github-actions[bot]"
+        or pr_head_repository != repo
         or not isinstance(pr_head, str)
         or pr_head != head_sha
         or pr_base != "main"
