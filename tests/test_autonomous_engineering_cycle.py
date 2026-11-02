@@ -46,7 +46,7 @@ def test_validate_paths_rejects_protected_traversal_and_non_allowlisted_paths(pa
         cycle.validate_paths([path])
 
 
-def test_failed_local_and_github_checks_retry_same_task_then_wait_for_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
@@ -55,6 +55,7 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_review(tmp
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
     monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
     head = ["base-sha"]
 
@@ -84,7 +85,9 @@ def test_failed_local_and_github_checks_retry_same_task_then_wait_for_review(tmp
             "url": "https://github.com/owner/repository/pull/42",
             "head_sha": "candidate-sha",
             "base_sha": "base-sha",
-            "draft": True,
+            "draft": False,
+            "merged": True,
+            "merge_sha": "e" * 40,
         }
 
     monkeypatch.setattr(cycle, "publish_pr_subprocess", fake_publish)
@@ -160,11 +163,10 @@ def test_run_cycle_waits_for_open_task_pr_without_starting_duplicate_work(
     assert records[0][0][2] == "review"
 
 
-def test_publish_pull_request_merges_only_after_exact_sha_checks(
-    monkeypatch: pytest.MonkeyPatch,
-):
+def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
     base_sha = "b" * 40
     head_sha = "c" * 40
+    merge_sha = "e" * 40
     calls = []
     created = {
         "number": 12,
@@ -172,10 +174,7 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(
         "head": {"sha": head_sha},
         "base": {"ref": "main", "sha": base_sha},
     }
-    refreshed = {
-        **created,
-        "html_url": "https://github.com/owner/repository/pull/12",
-    }
+    refreshed = {**created, "html_url": "https://github.com/owner/repository/pull/12"}
 
     monkeypatch.setattr(cycle, "git_auth_env", lambda token: {})
     monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: calls.append(("git", command)) or "")
@@ -188,17 +187,17 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(
             assert payload["draft"] is False
             return created
         if method == "GET" and path == "pulls/12":
-            return refreshed
+            return {**refreshed, "merged": True} if any(x[0] == "PUT" for x in calls if len(x) > 1) else refreshed
         if method == "GET" and path == "branches/main":
-            return {"commit": {"sha": base_sha}}
+            return {"commit": {"sha": merge_sha if any(x[0] == "PUT" for x in calls if len(x) > 1) else base_sha}}
+        if method == "PUT" and path == "pulls/12/merge":
+            assert payload == {"sha": head_sha, "merge_method": "squash"}
+            return {"merged": True, "sha": merge_sha}
         raise AssertionError((method, path, payload))
 
     monkeypatch.setattr(cycle, "api", fake_api)
     validations = []
-    monkeypatch.setattr(
-        cycle, "dispatch_and_wait_all",
-        lambda *args: validations.append(args),
-    )
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
 
     result = cycle.publish_pull_request(
         "token", "owner/repository", "codex/local-engineering-1-1-task-1",
@@ -210,11 +209,12 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(
         "url": "https://github.com/owner/repository/pull/12",
         "head_sha": head_sha,
         "base_sha": base_sha,
+        "merge_sha": merge_sha,
+        "merged": True,
         "draft": False,
     }
     assert len(validations) == 1
-    assert any(call[0] == "PUT" for call in calls if len(call) > 1)
-
+    assert any(call[0] == "PUT" and call[1] == "pulls/12/merge" for call in calls if len(call) > 1)
 
 def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     monkeypatch: pytest.MonkeyPatch,
