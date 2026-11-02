@@ -30,14 +30,14 @@ router = APIRouter(
 _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_MODEL = "gpt-oss:20b"
-_DEFAULT_RUNS_PER_DAY = 1
-_ALLOWED_RUNS_PER_DAY = {1, 2, 3, 4, 6, 8, 12, 24}
+_DEFAULT_INTERVAL_HOURS = 24
+_ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
 _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 
 
 class EngineeringSettings(BaseModel):
     model: StrictStr
-    runs_per_day: StrictInt
+    interval_hours: StrictInt
     execution_mode: StrictStr = "scheduled"
 
 
@@ -135,7 +135,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": _model(), "runs_per_day": _DEFAULT_RUNS_PER_DAY, "execution_mode": "scheduled"}
+    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "scheduled"}
     if authenticated:
         result = _run(
             [
@@ -177,12 +177,12 @@ def _github_snapshot() -> dict[str, Any]:
                         for item in values if isinstance(item, dict)
                     }
                     candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
-                    candidate_runs = configured.get("AUTONOMOUS_ENGINEERING_RUNS_PER_DAY", "")
+                    candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
                     candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "scheduled")
                     if _MODEL_PATTERN.fullmatch(candidate_model):
                         settings["model"] = candidate_model
-                    if candidate_runs.isdigit() and int(candidate_runs) in _ALLOWED_RUNS_PER_DAY:
-                        settings["runs_per_day"] = int(candidate_runs)
+                    if candidate_interval.isdigit() and int(candidate_interval) in _ALLOWED_INTERVAL_HOURS:
+                        settings["interval_hours"] = int(candidate_interval)
                     if candidate_mode in {"scheduled", "continuous"}:
                         settings["execution_mode"] = candidate_mode
             except (ValueError, TypeError):
@@ -199,7 +199,7 @@ def collect_status() -> dict[str, Any]:
     github = _github_snapshot()
     settings = github.get("settings", {})
     model = settings.get("model", _model())
-    runs_per_day = settings.get("runs_per_day", _DEFAULT_RUNS_PER_DAY)
+    interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "scheduled")
     ollama = _ollama_status(model)
     codex = _codex_status()
@@ -225,7 +225,7 @@ def collect_status() -> dict[str, Any]:
         "workflow": _WORKFLOW,
         "model": model,
         "models": ollama.get("models", []),
-        "runs_per_day": runs_per_day,
+        "interval_hours": interval_hours,
         "execution_mode": execution_mode,
         "progress_storage_accessible": progress_storage,
         "platform": platform.platform(),
@@ -351,8 +351,8 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     model = payload.model.strip()
     if not _MODEL_PATTERN.fullmatch(model):
         raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
-    if payload.runs_per_day not in _ALLOWED_RUNS_PER_DAY:
-        raise HTTPException(status_code=422, detail="تعداد اجرا باید یکی از مقادیر مجاز روزانه باشد.")
+    if payload.interval_hours not in _ALLOWED_INTERVAL_HOURS:
+        raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
     if payload.execution_mode not in {"scheduled", "continuous"}:
         raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
     gh = shutil.which("gh")
@@ -363,7 +363,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
     updates = (
         ("AUTONOMOUS_ENGINEERING_MODEL", model),
-        ("AUTONOMOUS_ENGINEERING_RUNS_PER_DAY", str(payload.runs_per_day)),
+        ("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", str(payload.interval_hours)),
         ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
     )
     for name, value in updates:
@@ -376,7 +376,7 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     return {
         "saved": True,
         "model": model,
-        "runs_per_day": payload.runs_per_day,
+        "interval_hours": payload.interval_hours,
         "execution_mode": payload.execution_mode,
         "message": "تنظیمات عامل در متغیرهای مخزن GitHub ذخیره شد.",
     }
