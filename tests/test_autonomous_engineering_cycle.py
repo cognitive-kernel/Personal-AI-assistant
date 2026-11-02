@@ -228,7 +228,8 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: py
     created = {
         "number": 12,
         "draft": False,
-        "head": {"sha": head_sha},
+        "user": {"login": "github-actions[bot]"},
+        "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
         "base": {"ref": "main", "sha": base_sha},
     }
     refreshed = {**created, "html_url": "https://github.com/owner/repository/pull/12"}
@@ -282,7 +283,8 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     pr = {
         "number": 13,
         "draft": False,
-        "head": {"sha": head_sha},
+        "user": {"login": "github-actions[bot]"},
+        "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
         "base": {"ref": "main", "sha": base_sha},
         "html_url": "https://github.com/owner/repository/pull/13",
     }
