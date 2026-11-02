@@ -506,6 +506,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'id="progress-end"' in page
     assert 'id="progress-events"' in page
     assert "current.plan_percent" in script
+    assert "شروع صف پیوسته" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
     assert "Preserve and stop checkpoint watcher from an interrupted run" in workflow
