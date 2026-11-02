@@ -113,7 +113,7 @@ jobs:
           if plan.is_file(): shutil.copy2(plan, state / 'worktree-plan.json')
           meta['watcher_pid'] = None
           meta['updated_at'] = time.time()
-          meta['patch_bytes'] = len(diff)
+          meta['patch_bytes'] = patch_path.stat().st_size
           tmp = state / 'worktree-checkpoint.json.tmp'
           tmp.write_text(json.dumps(meta, ensure_ascii=False) + '\n', encoding='utf-8')
           tmp.replace(meta_path)
