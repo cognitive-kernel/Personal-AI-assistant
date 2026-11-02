@@ -29,14 +29,14 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 
 ## One-time Windows setup
 
-1. Install Ollama for Windows and keep its server available at \`http://127.0.0.1:11434\`. If it normally runs only in an interactive tray session, configure a persistent service/startup method before relying on unattended runs.
+1. Install Ollama for Windows and keep its server available at `http://127.0.0.1:11434`. If it normally runs only in an interactive tray session, configure a persistent service/startup method before relying on unattended runs.
 2. Download the configured model and set Ollama's context length to at least 64,000 tokens:
 
-   \`\`\`powershell
+   ```powershell
    ollama pull gpt-oss:20b
-   \`\`\`
+   ```
 
-   In the Ollama app, open **Settings → Context Length** and set at least 64k, then restart/reload the model. Ollama defaults to 4k when VRAM is below 24 GiB, so the target machine's integrated graphics does not meet this requirement by default. If the app setting is unavailable, configure \`OLLAMA_CONTEXT_LENGTH=64000\` for the Ollama server process and restart that server. After the model is loaded, verify the actual allocated context with \`ollama ps\`. See the [official Ollama context-length guide](https://docs.ollama.com/context-length). The larger context increases memory use; measure stability on the target host.
+   In the Ollama app, open **Settings → Context Length** and set at least 64k, then restart/reload the model. Ollama defaults to 4k when VRAM is below 24 GiB, so the target machine's integrated graphics does not meet this requirement by default. If the app setting is unavailable, configure `OLLAMA_CONTEXT_LENGTH=64000` for the Ollama server process and restart that server. After the model is loaded, verify the actual allocated context with `ollama ps`. See the [official Ollama context-length guide](https://docs.ollama.com/context-length). The larger context increases memory use; measure stability on the target host.
    
    The model can be pulled under the application/administrator account; the Runner service account only needs access to the local Ollama HTTP endpoint.
 3. Install Node.js LTS system-wide so the executable is available to the Windows Runner service.
@@ -63,19 +63,19 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. The autonomous workflow requires `contents: write`, `pull-requests: write`, and `actions: write` at the job level to publish isolated task branches/PRs and dispatch exact-commit validation workflows. It does not call GitHub's PR merge API and must not be granted a separate merge-bypass mechanism.
 7. From the application account and the application checkout, run the app-side readiness check:
 
-   \`\`\`powershell
+   ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_agent.ps1
-   \`\`\`
+   ```
 
    This checks the local Ollama endpoint/model, application-account GitHub CLI authentication, Runner.Listener visibility, and read access to shared progress storage. Pass the exact model selected in the dashboard via `-SelectedModel` if it is not `gpt-oss:20b`. It intentionally does not require Codex CLI to be installed in the application account.
 8. From the Runner service account, run the Runner-side check from its checked-out workspace:
 
-   \`\`\`powershell
+   ```powershell
    powershell -ExecutionPolicy Bypass -File .\\scripts\\check_autonomous_runner.ps1
-   \`\`\`
+   ```
 
    This checks that the Runner account is non-administrator, plus Codex CLI, Ollama CLI/server/model, Runner.Listener, and write access to shared progress storage. Pass the exact dashboard-selected model via `-SelectedModel` if it is not `gpt-oss:20b`. It does not require or use GitHub CLI authentication. The workflow repeats the critical Runner checks before every Codex session.
-9. Start the local app and open \`http://127.0.0.1:8000/autonomous-engineering\`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
+9. Start the local app and open `http://127.0.0.1:8000/autonomous-engineering`. When application-side readiness passes, use **شروع صف پیوسته** or start the workflow from GitHub Actions. The workflow performs its own Runner-side checks and fails closed if the Runner account is not configured correctly.
 
 ## Workflow behavior
 
@@ -96,9 +96,15 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 
 The local page at `/autonomous-engineering` reports Ollama reachability, selected-model presence, the Codex CLI visible to the application account (informational only), Runner.Listener process state, application-account GitHub CLI authentication, shared progress-storage access, and recent workflow runs. The workflow separately verifies Codex CLI and write access under the actual Runner service account before every coding session. It provides explicit manual dispatch and cancellation controls. It does not install the runner or silently start privileged Windows services.
 
-During each Codex session, a detached Windows checkpoint watcher atomically saves the allowlisted worktree diff and agent plan to `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering` every 20 seconds. Before the next checkout cleanup, the workflow stops the previous watcher and captures a final snapshot. A retry restores the checkpoint only when its immutable base SHA still matches `main`; otherwise it preserves the checkpoint and fails closed instead of applying it to a different code base. Checkpoint files stay outside the Git repository and never contain workflow credentials.\n\nThe separate `autonomous-codex-recovery.yml` workflow retries failed or timed-out continuous cycles from the last accepted `main` checkpoint. A submitted manual task is stored as a repository Actions variable until its PR is confirmed merged, so a retry receives the same task instead of silently switching to another. Four consecutive failed cycles set the durable pause flag to prevent an endless failure loop; resuming clears the failure counter. A retry does not count a failed task as complete.\n\nThe page provides durable pause/resume controls. Pause sets `AUTONOMOUS_ENGINEERING_PAUSED=true`; the current task reaches its safe boundary, and no new task starts. Resume clears the flag and dispatches a new run from the latest persisted project state. Emergency cancel remains separate and terminates the active run.\n\nThe page also separates two progress measures:
+During each Codex session, a detached Windows checkpoint watcher atomically saves the allowlisted worktree diff and agent plan to `%ProgramData%\\PersonalAIAssistant\\autonomous-engineering` every 20 seconds. Before the next checkout cleanup, the workflow stops the previous watcher and captures a final snapshot. A retry restores the checkpoint only when its immutable base SHA still matches `main`; otherwise it preserves the checkpoint and fails closed instead of applying it to a different code base. Checkpoint files stay outside the Git repository and never contain workflow credentials.
 
-- **Agent plan progress:** the percentage is the completed/total count of Codex's structured plan items (equal-weight task count, not estimated effort). The current workflow phase and active step are displayed separately; the plan can reach 100% before tests, independent validation, and draft-PR publication finish. Codex runs with `--json`; the wrapper records bounded activity events and never publishes raw command output or model reasoning. The plan file is temporary and excluded from the candidate patch.
+The separate `autonomous-codex-recovery.yml` workflow retries failed or timed-out continuous cycles from the last accepted `main` checkpoint. A submitted manual task is stored as a repository Actions variable until its PR is confirmed merged, so a retry receives the same task instead of silently switching to another. Four consecutive failed cycles set the durable pause flag to prevent an endless failure loop; resuming clears the failure counter. A retry does not count a failed task as complete.
+
+The page provides durable pause/resume controls. Pause sets `AUTONOMOUS_ENGINEERING_PAUSED=true`; the current task reaches its safe boundary, and no new task starts. Resume clears the flag and dispatches a new run from the latest persisted project state. Emergency cancel remains separate and terminates the active run.
+
+The page also separates two progress measures:
+
+- **Agent plan progress:** the percentage is the completed/total count of Codex's structured plan items (equal-weight task count, not estimated effort). The current workflow phase and active step are displayed separately; the plan can reach 100% before tests, independent validation, and automatic merge finish. Codex runs with `--json`; the wrapper records bounded activity events and never publishes raw command output or model reasoning. The plan file is temporary and excluded from the candidate patch.
 - **Project progress:** the engineering-completion and overall-acceptance percentages from `docs/ACCEPTANCE_SCORECARD.md`. The workflow snapshots the trusted `main`-branch scorecard before Codex starts. A dated chart point is recorded only when a later run observes changed accepted percentages on `main`; unmerged candidate changes are never recorded, and repeated runs with unchanged scores do not create artificial chart points. This keeps daily, weekly, and custom date-range charts limited to verified progress changes. Historical points are not fabricated or backfilled.
 
 The app polls the lightweight progress endpoint every five seconds and draws the chart with native SVG; no charting dependency or full-page reload is used. Activity details are collapsed by default. Progress state and its bounded event history are stored under `%ProgramData%\PersonalAIAssistant\autonomous-engineering`. The Runner service account and local app account must both have access, configured by the one-time ACL script above. If that directory is not accessible, the page reports that live telemetry is unavailable rather than inventing values.
