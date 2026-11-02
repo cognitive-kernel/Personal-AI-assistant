@@ -84,15 +84,13 @@
       $("model-detail").textContent = "مدل انتخاب‌شده: " + String(data.model || "نامشخص") +
         (checks.model_installed ? "" : "؛ نصب نشده است. برای نصب: ollama pull " + String(data.model || ""));
       renderModels(data.models, data.model);
+      const executionMode = data.execution_mode || "continuous";
       if (document.activeElement !== $("execution-mode")) {
-        $("execution-mode").value = data.execution_mode || "scheduled";
-      dispatchButton.textContent = (data.execution_mode || "scheduled") === "continuous"
-        ? "شروع صف پیوسته"
-        : "اجرای یک چرخهٔ مهندسی";
+        $("execution-mode").value = executionMode;
       }
-      dispatchButton.textContent = data.execution_mode === "continuous"
+      dispatchButton.textContent = executionMode === "continuous"
         ? "شروع صف پیوسته"
-        : "اجرای یک چرخهٔ خودکار از صف مهندسی";
+        : "اجرای یک چرخهٔ زمان‌بندی‌شده";
       if (document.activeElement !== $("interval-hours")) {
         $("interval-hours").value = String(data.interval_hours || 24);
       }
