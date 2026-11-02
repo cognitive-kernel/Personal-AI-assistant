@@ -62,22 +62,20 @@
     <label class="field">
       <span>حالت اجرای عامل</span>
       <select id="execution-mode" name="execution_mode">
-        <option value="scheduled">زمان‌بندی‌شده (طبق تعداد اجرا در روز)</option>
-        <option value="continuous">پیوسته (ادامهٔ صف پس از بازبینی و ادغام انسانی هر PR)</option>
+        <option value="scheduled">زمان‌بندی‌شده (طبق فاصلهٔ اجرای زمان‌بندی‌شده)</option>
+        <option value="continuous">پیوسته (ادغام خودکار پس از موفقیت کنترل‌ها)</option>
       </select>
-      <small>در حالت پیوسته، اجرا با دکمهٔ شروع صف آغاز می‌شود و حداکثر ۸ تسک در هر چرخه انجام می‌شود؛ اجرای زمان‌بندی‌شده غیرفعال است.</small>
+      <small>در حالت پیوسته، پس از موفقیت تست‌ها و ادغام هر وظیفه، چرخهٔ بعدی خودکار از main آغاز می‌شود.</small>
     </label>
     <label class="field">
-      <span>تعداد اجرا در روز</span>
-      <select id="runs-per-day" name="runs_per_day">
-        <option value="1">۱ بار در روز</option>
-        <option value="2">۲ بار در روز</option>
-        <option value="3">۳ بار در روز</option>
-        <option value="4">۴ بار در روز</option>
-        <option value="6">۶ بار در روز</option>
-        <option value="8">۸ بار در روز</option>
-        <option value="12">۱۲ بار در روز</option>
-        <option value="24">۲۴ بار در روز (هر ساعت)</option>
+      <span>فاصلهٔ اجرای زمان‌بندی‌شده</span>
+      <select id="interval-hours" name="interval_hours">
+        <option value="1">هر ۱ ساعت</option>
+        <option value="2">هر ۲ ساعت</option>
+        <option value="4">هر ۴ ساعت</option>
+        <option value="6">هر ۶ ساعت</option>
+        <option value="12">هر ۱۲ ساعت</option>
+        <option value="24">هر ۲۴ ساعت</option>
       </select>
     </label>
     <label class="field">
@@ -110,9 +108,11 @@
 </form>
 <div class="toolbar">
 <button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ خودکار از صف مهندسی</button>
-<button id="cancel-agent" type="button" class="secondary" disabled>لغو اجرای فعال</button>
+<button id="pause-agent" type="button" class="secondary" disabled>توقف ایمن</button>
+<button id="resume-agent" type="button" class="secondary" disabled>ادامه از آخرین وضعیت</button>
+<button id="cancel-agent" type="button" class="secondary" disabled>لغو اضطراری اجرای فعال</button>
 </div>
-<p class="hint">در حالت زمان‌بندی‌شده، عامل طبق تعداد اجرا در روز فعال می‌شود. در حالت پیوسته، صف را یک‌بار دستی آغاز کنید؛ هر اجرا فقط یک PR پیش‌نویس می‌سازد و پس از بازبینی و ادغام انسانی، اجرای بعدی از main تازه شروع می‌شود. تا زمانی که PR قبلی باز است، وظیفهٔ تکراری آغاز نمی‌شود. اجرای دستی فقط وقتی فعال می‌شود که Ollama، مدل، Codex CLI، Runner و احراز هویت GitHub آماده باشند. دکمهٔ اجرا یک درخواست Workflow به GitHub می‌فرستد؛ شروع واقعی را در فهرست اجراها تأیید کنید.</p>
+<p class="hint">در حالت زمان‌بندی‌شده، عامل طبق تعداد اجرا در روز فعال می‌شود. در حالت پیوسته، صف را یک‌بار دستی آغاز کنید؛ هر اجرا فقط یک PR پیش‌نویس می‌سازد و پس از ادغام خودکار، اجرای بعدی از main تازه شروع می‌شود. تا زمانی که PR قبلی باز است، وظیفهٔ تکراری آغاز نمی‌شود. اجرای دستی فقط وقتی فعال می‌شود که Ollama، مدل، Codex CLI، Runner و احراز هویت GitHub آماده باشند. دکمهٔ اجرا یک درخواست Workflow به GitHub می‌فرستد؛ شروع واقعی را در فهرست اجراها تأیید کنید.</p>
 <div id="recent-runs" class="run-list" aria-live="polite"><p class="muted">سوابق اجرا هنوز دریافت نشده‌اند.</p></div>
 </section>
 
