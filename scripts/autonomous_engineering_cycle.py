@@ -533,9 +533,9 @@ def run_cycle(args: argparse.Namespace) -> int:
             f"PR #{recovered['number']} پس از اعتبارسنجی مجدد ادغام شد؛ merge={recovered['merge_sha'][:12]}",
             status="completed",
         )
-        snapshot(args.run_id, args.run_attempt)
         clear_checkpoint()
         clear_pending_task(token, repo)
+        snapshot(args.run_id, args.run_attempt)
         if args.mode == "continuous":
             api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
                 "ref": "main",
@@ -734,8 +734,8 @@ def run_cycle(args: argparse.Namespace) -> int:
         status="completed",
     )
     clear_checkpoint()
-    snapshot(args.run_id, args.run_attempt)
     clear_pending_task(token, repo)
+    snapshot(args.run_id, args.run_attempt)
     request_file.unlink(missing_ok=True)
     if args.mode == "continuous":
         api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
