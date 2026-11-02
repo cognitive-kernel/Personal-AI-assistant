@@ -542,6 +542,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "non-administrator service account" in workflow
     assert "workflow_dispatch:" in workflow
     assert "Another autonomous run is already active or queued" in workflow
+    assert "push:" in workflow and 'branches: [main]' in workflow
+    assert 'if [[ "$EVENT_NAME" == "push" ]]' in workflow
     assert 'EXECUTION_MODE == "continuous"' in workflow
     assert 'echo "run_now=true"' in workflow
     assert "manual_task:" in workflow
