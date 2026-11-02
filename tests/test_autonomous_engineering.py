@@ -194,7 +194,7 @@ def test_resume_clears_pause_and_failure_counter_then_dispatches(monkeypatch):
     assert calls[3][1:3] == ["workflow", "run"]
 
 
-def test_autonomous_recovery_workflow_retries_continuous_failures_with_a_pause_limit():
+def test_autonomous_recovery_workflow_retries_continuous_failures_without_an_automatic_retry_limit():
     root = Path(__file__).resolve().parents[1]
     recovery = (root / ".github" / "workflows" / "autonomous-codex-recovery.yml").read_text(encoding="utf-8")
 
@@ -204,6 +204,8 @@ def test_autonomous_recovery_workflow_retries_continuous_failures_with_a_pause_l
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
     assert "continuous" in recovery
     assert "/dispatches" in recovery
+    assert "delay_seconds = min(1800, 30 * (2 ** min(streak - 1, 6)))" in recovery
+    assert "streak >= 4" not in recovery
 
 
 def test_ollama_status_bypasses_environment_proxies(monkeypatch):
