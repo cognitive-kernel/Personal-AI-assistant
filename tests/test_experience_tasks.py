@@ -1,19 +1,28 @@
+from types import SimpleNamespace
+
 import pytest
 
-from app import experience_tasks, sandbox_tasks
+from app import db, experience, experience_tasks, sandbox_tasks, task_manager
 from app.sandbox import SandboxResult
-from types import SimpleNamespace
+from app.task_worker import TaskContext, TaskWorker
 
 
 class FakeContext:
     def __init__(self):
         self.task_id = 501
         self.checkpoints = []
+        self.commits = []
         self.status = "running"
 
     def checkpoint(self, value):
         self.checkpoints.append(value)
         return {"status": "running", "checkpoint": value}
+
+    def complete_with_commit(self, checkpoint, operation):
+        self.checkpoints.append(checkpoint)
+        result = operation(None)
+        self.commits.append(result)
+        return result
 
     def control_status(self):
         return self.status
@@ -60,11 +69,13 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
     monkeypatch.setattr(experience_tasks.web_sources, "fetch_public_document", lambda *args, **kwargs: SimpleNamespace(text="Documented behavior"))
     captured = {}
 
-    def fake_update(experience_id, **changes):
-        captured.update(experience_id=experience_id, **changes)
-        return {"id": experience_id, "version": 2, **changes}
+    def fake_update(connection, experience_id, **changes):
+        captured.update(connection=connection, experience_id=experience_id, **changes)
+        return {"id": experience_id, "version": 2, "status": changes["status"]}
 
-    monkeypatch.setattr(experience_tasks.experience, "update_experience", fake_update)
+    monkeypatch.setattr(
+        experience_tasks.experience, "update_experience_in_transaction", fake_update
+    )
     monkeypatch.setattr(
         sandbox_tasks.sandbox,
         "run_python",
@@ -89,6 +100,7 @@ def test_controlled_runner_records_real_sandbox_success_and_verifies_only_with_e
     assert result["experience_status"] == "verified"
     assert captured["status"] == "verified"
     assert captured["_controlled_run"] is True
+    assert captured["expected_version"] == 1
     assert captured["test_results"][-1]["passed"] is True
     assert captured["test_results"][-1]["runner"] == "docker-sandbox"
     assert captured["test_results"][-1]["source_sha256"]
@@ -101,11 +113,13 @@ def test_controlled_runner_records_failure_without_verification(monkeypatch, tmp
     monkeypatch.setattr(experience_tasks.web_sources, "fetch_public_document", lambda *args, **kwargs: SimpleNamespace(text="Documented behavior"))
     captured = {}
 
-    def fake_update(experience_id, **changes):
-        captured.update(experience_id=experience_id, **changes)
-        return {"id": experience_id, "version": 2, **changes}
+    def fake_update(connection, experience_id, **changes):
+        captured.update(connection=connection, experience_id=experience_id, **changes)
+        return {"id": experience_id, "version": 2, "status": changes["status"]}
 
-    monkeypatch.setattr(experience_tasks.experience, "update_experience", fake_update)
+    monkeypatch.setattr(
+        experience_tasks.experience, "update_experience_in_transaction", fake_update
+    )
     monkeypatch.setattr(
         sandbox_tasks.sandbox,
         "run_python",
@@ -147,3 +161,151 @@ def test_runner_rejects_unverifiable_or_unplanned_tests(monkeypatch, tmp_path, i
             None,
             FakeContext(),
         )
+
+
+
+@pytest.fixture
+def experience_task_store(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    db.init_databases()
+    task_manager.initialize_task_store()
+    experience.init_experience_tables()
+
+
+def _persisted_experience():
+    item = experience.create_experience(
+        "Python", "An empty input should produce an empty result.", "Check the empty-input branch."
+    )
+    return experience.update_experience(
+        item["id"],
+        source_evidence=[{
+            "url": "https://docs.python.org/3/library/",
+            "claim": "Documented behavior",
+            "excerpt": "Documented behavior",
+        }],
+        test_plan=[{"test": "empty input regression"}],
+    )
+
+
+def _install_experience_test_stubs(monkeypatch):
+    monkeypatch.setattr(
+        experience_tasks.web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: SimpleNamespace(text="Documented behavior"),
+    )
+    monkeypatch.setattr(
+        sandbox_tasks.sandbox,
+        "run_python",
+        lambda _source, **_kwargs: SandboxResult("succeeded", 0, "assertion passed\\n", "", 12),
+    )
+
+
+def _create_experience_test_task(item):
+    return task_manager.create_task(
+        experience_tasks.EXPERIENCE_TEST_TASK_TYPE,
+        {
+            "experience_id": item["id"],
+            "test_name": "empty input regression",
+            "source_code": "assert [] == list()",
+            "timeout_seconds": 5,
+            "max_output_bytes": 1000,
+        },
+        max_attempts=1,
+    )
+
+
+def test_experience_test_and_durable_task_success_commit_atomically(
+    experience_task_store, monkeypatch, tmp_path
+):
+    _configure(monkeypatch, tmp_path)
+    _install_experience_test_stubs(monkeypatch)
+    item = _persisted_experience()
+    task = _create_experience_test_task(item)
+    handler = experience_tasks.handler_from_environment()
+    assert handler is not None
+
+    worker = TaskWorker(
+        "experience-atomic-worker",
+        {experience_tasks.EXPERIENCE_TEST_TASK_TYPE: handler},
+        lease_seconds=30,
+    )
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    saved_experience = experience.get_experience(item["id"])
+    assert saved_task["status"] == "succeeded"
+    assert saved_task["result"]["experience_version"] == saved_experience["version"]
+    assert saved_experience["status"] == "verified"
+    assert saved_experience["version"] == item["version"] + 1
+    assert saved_experience["test_results"][-1]["passed"] is True
+    assert any(
+        version["version"] == item["version"]
+        for version in experience.list_experience_versions(item["id"])
+    )
+
+
+def test_experience_pause_or_cancel_wins_before_atomic_domain_commit(
+    experience_task_store, monkeypatch, tmp_path
+):
+    _configure(monkeypatch, tmp_path)
+    _install_experience_test_stubs(monkeypatch)
+    item = _persisted_experience()
+    task = _create_experience_test_task(item)
+    original = TaskContext.complete_with_commit
+
+    def cancel_before_commit(context, checkpoint, operation):
+        task_manager.request_cancel(context.task_id)
+        return original(context, checkpoint, operation)
+
+    monkeypatch.setattr(TaskContext, "complete_with_commit", cancel_before_commit)
+    handler = experience_tasks.handler_from_environment()
+    assert handler is not None
+    worker = TaskWorker(
+        "experience-cancel-worker",
+        {experience_tasks.EXPERIENCE_TEST_TASK_TYPE: handler},
+        lease_seconds=30,
+    )
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    saved_experience = experience.get_experience(item["id"])
+    assert saved_task["status"] == "cancelled"
+    assert saved_experience["version"] == item["version"]
+    assert saved_experience["status"] == "identified"
+    assert saved_experience["test_results"] == []
+
+
+def test_experience_test_does_not_overwrite_a_concurrent_edit(
+    experience_task_store, monkeypatch, tmp_path
+):
+    _configure(monkeypatch, tmp_path)
+    item = _persisted_experience()
+
+    def concurrent_edit(_source, **_kwargs):
+        experience.update_experience(item["id"], takeaway="Concurrent edit")
+        return SandboxResult("succeeded", 0, "assertion passed\\n", "", 12)
+
+    monkeypatch.setattr(
+        experience_tasks.web_sources,
+        "fetch_public_document",
+        lambda *args, **kwargs: SimpleNamespace(text="Documented behavior"),
+    )
+    monkeypatch.setattr(sandbox_tasks.sandbox, "run_python", concurrent_edit)
+    task = _create_experience_test_task(item)
+    handler = experience_tasks.handler_from_environment()
+    assert handler is not None
+    worker = TaskWorker(
+        "experience-version-worker",
+        {experience_tasks.EXPERIENCE_TEST_TASK_TYPE: handler},
+        lease_seconds=30,
+    )
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    saved_experience = experience.get_experience(item["id"])
+    assert saved_task["status"] == "failed"
+    assert "changed while its test was running" in saved_task["error"]
+    assert saved_experience["version"] == item["version"] + 1
+    assert saved_experience["takeaway"] == "Concurrent edit"
+    assert saved_experience["test_results"] == []
