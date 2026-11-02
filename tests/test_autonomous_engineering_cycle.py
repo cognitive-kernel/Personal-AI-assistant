@@ -275,3 +275,57 @@ def test_git_auth_environment_keeps_token_out_of_child_environment(monkeypatch: 
     assert "GITHUB_TOKEN" not in env
     assert env["GIT_CONFIG_KEY_0"] == "http.extraheader"
     assert env["GIT_CONFIG_VALUE_0"].startswith("AUTHORIZATION: basic ")
+
+def test_durable_checkpoint_restores_modified_and_new_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import subprocess
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    root = tmp_path / "repo"
+    (root / "app").mkdir(parents=True)
+    (root / "tests").mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Checkpoint Test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
+    source = root / "app" / "module.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "app/module.py"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
+    base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    new_test = root / "tests" / "test_new.py"
+    new_test.write_text("def test_new():\n    assert True\n", encoding="utf-8")
+    state = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "ROOT", root)
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+
+    checkpoint.write_snapshot(base_sha, "101", 1)
+    subprocess.run(["git", "reset", "--hard", base_sha], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "clean", "-fd"], cwd=root, check=True, capture_output=True)
+
+    assert checkpoint.restore(base_sha) is True
+    assert source.read_text(encoding="utf-8") == "VALUE = 2\n"
+    assert new_test.read_text(encoding="utf-8") == "def test_new():\n    assert True\n"
+
+
+def test_durable_checkpoint_refuses_a_different_main_base(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import subprocess
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    root = tmp_path / "repo"
+    (root / "app").mkdir(parents=True)
+    subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Checkpoint Test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
+    source = root / "app" / "module.py"
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "app/module.py"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
+    base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    monkeypatch.setattr(checkpoint, "ROOT", root)
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path / "ProgramData")
+    checkpoint.write_snapshot(base_sha, "102", 1)
+
+    with pytest.raises(RuntimeError, match="base SHA differs"):
+        checkpoint.restore("f" * 40)
