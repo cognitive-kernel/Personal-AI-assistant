@@ -378,6 +378,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
     })
     if not isinstance(merged, dict) or merged.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm recovery merge of PR #{number}.")
+    clear_checkpoint()
     confirmed = api(token, repo, "GET", f"pulls/{number}")
     if confirmed.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm merged state for PR #{number}.")
@@ -457,6 +458,7 @@ def publish_pull_request(
     })
     if not isinstance(merged, dict) or merged.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm merge of validated PR #{number}.")
+    clear_checkpoint()
     confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
     if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
         raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
