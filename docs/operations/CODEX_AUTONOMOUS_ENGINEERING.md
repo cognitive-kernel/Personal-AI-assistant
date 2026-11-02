@@ -43,7 +43,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 4. Install GitHub CLI and authorize it once with the **same GitHub account already signed in to Chrome**. Use `gh auth login --web`; GitHub opens its browser authorization flow and the existing Chrome session can be used. This does not create another GitHub account or require a paid service. The authorization is stored locally for the application account and is reused by the dashboard; do not authenticate GitHub CLI as the Runner service account:
 
    ```powershell
-   gh auth login
+   gh auth login --web
    gh auth status
    ```
 
