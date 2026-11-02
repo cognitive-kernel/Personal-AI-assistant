@@ -362,6 +362,13 @@ jobs:
           manual_task = os.getenv("MANUAL_TASK", "")
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
+          if not manual_task:
+              try:
+                  pending = api("actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK")
+                  manual_task = str(pending.get("value", ""))
+              except urllib.error.HTTPError as exc:
+                  if exc.code != 404:
+                      raise
           if manual_task:
               set_variable("AUTONOMOUS_ENGINEERING_PENDING_TASK", manual_task)
           request = {
