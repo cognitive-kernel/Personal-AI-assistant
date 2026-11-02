@@ -378,13 +378,13 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
     })
     if not isinstance(merged, dict) or merged.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm recovery merge of PR #{number}.")
-    clear_checkpoint()
     confirmed = api(token, repo, "GET", f"pulls/{number}")
     if confirmed.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm merged state for PR #{number}.")
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError("GitHub returned an invalid recovery merge SHA.")
+    clear_checkpoint()
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The recovery merge was accepted but main does not point to the confirmed merge commit.")
@@ -458,13 +458,13 @@ def publish_pull_request(
     })
     if not isinstance(merged, dict) or merged.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm merge of validated PR #{number}.")
-    clear_checkpoint()
     confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
     if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
         raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError(f"GitHub returned an invalid merge commit for PR #{number}.")
+    clear_checkpoint()
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
