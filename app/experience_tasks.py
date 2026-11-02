@@ -181,30 +181,35 @@ def handler_from_environment() -> Callable[
             for evidence in verified_evidence
         ]
         all_results = list(item.get("test_results") or []) + [test_result]
-        updated = experience.update_experience(
-            experience_id,
-            status="verified" if passed else "failed",
-            source_evidence=verified_evidence,
-            test_plan=item["test_plan"],
-            test_results=all_results,
-            takeaway=item.get("takeaway", ""),
-            _controlled_run=True,
-        )
-        context.checkpoint({
+        checkpoint_value = {
             "phase": "experience_test_recorded",
             "experience_id": experience_id,
             "test_name": test_name,
             "passed": bool(passed),
-            "experience_version": updated["version"],
-            "experience_status": updated["status"],
-        })
-        return {
-            "experience_id": experience_id,
-            "test_name": test_name,
-            "passed": bool(passed),
-            "experience_version": updated["version"],
-            "experience_status": updated["status"],
-            "test_result": test_result,
+            "expected_experience_version": item["version"],
         }
+
+        def persist_experience(connection):
+            updated = experience.update_experience_in_transaction(
+                connection,
+                experience_id,
+                status="verified" if passed else "failed",
+                source_evidence=verified_evidence,
+                test_plan=item["test_plan"],
+                test_results=all_results,
+                takeaway=item.get("takeaway", ""),
+                expected_version=item["version"],
+                _controlled_run=True,
+            )
+            return {
+                "experience_id": experience_id,
+                "test_name": test_name,
+                "passed": bool(passed),
+                "experience_version": updated["version"],
+                "experience_status": updated["status"],
+                "test_result": test_result,
+            }
+
+        return context.complete_with_commit(checkpoint_value, persist_experience)
 
     return handle
