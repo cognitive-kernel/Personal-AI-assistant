@@ -77,15 +77,15 @@ jobs:
 
           streak += 1
           set_variable("AUTONOMOUS_ENGINEERING_FAILURE_STREAK", streak)
-          if streak >= 4:
-              set_variable("AUTONOMOUS_ENGINEERING_PAUSED", "true")
-              print("Four consecutive failed cycles detected; the queue was safely paused for diagnosis.")
-              raise SystemExit(0)
+          delay_seconds = min(1800, 30 * (2 ** min(streak - 1, 6)))
+          print(f"Cycle failed {streak} consecutive time(s); retrying after {delay_seconds} seconds.")
+          import time
+          time.sleep(delay_seconds)
 
           pending_task = variable("AUTONOMOUS_ENGINEERING_PENDING_TASK", "")
           request("POST", "/actions/workflows/autonomous-codex-engineering.yml/dispatches", {
               "ref": "main",
               "inputs": {"manual_task": pending_task},
           })
-          print(f"Dispatched recovery cycle {streak}/4 from the last accepted main checkpoint.")
+          print(f"Dispatched recovery cycle {streak} from the last accepted main checkpoint.")
           PY
