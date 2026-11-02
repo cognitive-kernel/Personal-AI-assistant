@@ -31,7 +31,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INTERVAL_HOURS: ${{ vars.AUTONOMOUS_ENGINEERING_INTERVAL_HOURS || '24' }}
-          EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
+          EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
           PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
         shell: bash
         run: |
