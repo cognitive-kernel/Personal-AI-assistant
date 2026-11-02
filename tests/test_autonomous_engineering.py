@@ -338,7 +338,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
 
     result = agent._github_snapshot()
 
-    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous"}
+    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous", "paused": False}
 
 
 def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(monkeypatch, tmp_path):
