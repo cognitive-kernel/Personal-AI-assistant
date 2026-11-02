@@ -510,6 +510,10 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'id="progress-events"' in page
     assert "current.plan_percent" in script
     assert "شروع صف پیوسته" in script
+    assert "در main ادغام می‌کند" in page
+    assert "یک Pull Request پیش‌نویس ساخته می‌شود" not in page
+    assert "gh auth login --web" in page
+    assert "Codex توکن GitHub را دریافت نمی‌کند" in page
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
     assert "Preserve and stop checkpoint watcher from an interrupted run" in workflow
