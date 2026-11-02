@@ -60,7 +60,7 @@ The autonomous-engineering page lets the operator select an installed Ollama mod
 
    The script requires an elevated shell and repository **Administration: write** permission. It refuses to overwrite an existing configured Runner or a non-empty unconfigured Runner directory. If a Runner is already configured, it verifies the service identity and starts it without re-registering.
 
-6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create pull requests. The autonomous workflow requires `contents: write`, `pull-requests: write`, and `actions: write` at the job level to publish isolated task branches/PRs and dispatch exact-commit validation workflows. It does not call GitHub's PR merge API and must not be granted a separate merge-bypass mechanism.
+6. In **Settings → Actions → General → Workflow permissions**, allow GitHub Actions to create and approve pull requests if the repository requires it. The autonomous job requests only `contents: write`, `pull-requests: write`, and `actions: write` for the trusted controller. That controller calls GitHub's merge API only after local tests, all three independent exact-SHA workflows, and unchanged head/base checks succeed. Do not disable branch protection or grant a bypass; if repository rules require a human approval that prevents the configured token from merging, the controller must fail closed and report that policy blocker.
 7. From the application account and the application checkout, run the app-side readiness check:
 
    ```powershell
