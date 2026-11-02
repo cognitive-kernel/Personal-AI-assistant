@@ -450,13 +450,24 @@ def _build_handler(
             "output_hash": log_hash,
         }
         summary_json = _bounded_summary_json(summary)
-        with learning_connection() as connection:
+        checkpoint_value = {
+            "phase": "factual_claim_test_recorded",
+            "knowledge_id": knowledge_id,
+            "test_name": test_name.strip(),
+            "test_source_sha256": original_hash,
+            "log_sha256": log_hash,
+            "outcome_at_sandbox_completion": outcome,
+        }
+
+        def persist_factual_result(connection):
             current = connection.execute(
                 """SELECT claim_hash, evidence_level, lifecycle_status,
                           domain_name, environment_name, environment_version
                    FROM factual_knowledge WHERE id=?""",
                 (knowledge_id,),
             ).fetchone()
+            final_outcome = outcome
+            final_summary_json = summary_json
             if (
                 current is None
                 or current["claim_hash"] != candidate["claim_hash"]
@@ -466,9 +477,12 @@ def _build_handler(
                 or current["environment_name"] != candidate["environment_name"]
                 or current["environment_version"] != candidate["environment_version"]
             ):
-                outcome = "inconclusive"
-                summary["reason"] = "Claim identity or eligibility changed during the sandbox run."
-                summary_json = json.dumps(summary, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                final_outcome = "inconclusive"
+                final_summary = {
+                    **summary,
+                    "reason": "Claim identity or eligibility changed during the sandbox run.",
+                }
+                final_summary_json = _bounded_summary_json(final_summary)
             factual_knowledge.record_test(
                 connection,
                 knowledge_id,
@@ -476,36 +490,35 @@ def _build_handler(
                 test_name=test_name.strip(),
                 environment_name=candidate["environment_name"],
                 environment_version=runtime_version or "unknown",
-                outcome=outcome,
-                result_summary=summary_json,
+                outcome=final_outcome,
+                result_summary=final_summary_json,
                 command_hash=original_hash,
                 log_hash=log_hash,
             )
             promoted = False
-            if outcome == "passed" and current is not None:
+            if final_outcome == "passed" and current is not None:
                 factual_knowledge.transition_evidence_level(connection, knowledge_id, "L2_tested")
                 promoted = True
+            return {
+                "knowledge_id": knowledge_id,
+                "test_name": test_name.strip(),
+                "outcome": final_outcome,
+                "evidence_level_promoted": promoted,
+                "runtime_version": runtime_version,
+                "test_source_sha256": original_hash,
+                "oracle_review_id": oracle_review_id,
+                "semantic_rubric_version": semantic_decision.rubric_version,
+                "semantic_review_score": semantic_decision.score,
+                "semantic_review_verdict": semantic_decision.verdict,
+                "semantic_evaluator_model": semantic_decision.evaluator_model,
+                "semantic_evaluator_digest": semantic_decision.evaluator_digest,
+                "semantic_review_rationale": semantic_decision.rationale,
+                "semantic_source_url": semantic_decision.source_url,
+                "semantic_source_excerpt_sha256": semantic_decision.source_excerpt_sha256,
+                "log_sha256": log_hash,
+            }
 
-        result_payload = {
-            "knowledge_id": knowledge_id,
-            "test_name": test_name.strip(),
-            "outcome": outcome,
-            "evidence_level_promoted": promoted,
-            "runtime_version": runtime_version,
-            "test_source_sha256": original_hash,
-            "oracle_review_id": oracle_review_id,
-            "semantic_rubric_version": semantic_decision.rubric_version,
-            "semantic_review_score": semantic_decision.score,
-            "semantic_review_verdict": semantic_decision.verdict,
-            "semantic_evaluator_model": semantic_decision.evaluator_model,
-            "semantic_evaluator_digest": semantic_decision.evaluator_digest,
-            "semantic_review_rationale": semantic_decision.rationale,
-            "semantic_source_url": semantic_decision.source_url,
-            "semantic_source_excerpt_sha256": semantic_decision.source_excerpt_sha256,
-            "log_sha256": log_hash,
-        }
-        context.checkpoint({"phase": "factual_claim_test_recorded", **result_payload})
-        return result_payload
+        return context.complete_with_commit(checkpoint_value, persist_factual_result)
 
     return handle
 
