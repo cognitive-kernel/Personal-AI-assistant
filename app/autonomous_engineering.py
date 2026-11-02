@@ -244,10 +244,6 @@ def autonomous_engineering_status() -> dict[str, Any]:
 def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(current, dict):
         return current
-    # A successful workflow only proves the candidate PR was published and its
-    # automated checks finished; human review/merge is a separate acceptance gate.
-    if current.get("status") == "awaiting_review":
-        return current
     run_id = str(current.get("run_id", ""))
     if not run_id.isdigit():
         return current
@@ -280,7 +276,7 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
         None,
     )
     queued_job = next(
-        (job for job in jobs if isinstance(job, dict) and job.get("status") == "queued" and job.get("name") in {"validate", "open-draft-pr"}),
+        (job for job in jobs if isinstance(job, dict) and job.get("status") == "queued" and job.get("name") == "codex"),
         None,
     )
     if active_job:
@@ -294,35 +290,21 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
             None,
         )
         step_name = str(active_step.get("name", "در حال اجرای مرحله")) if active_step else "در انتظار مرحلهٔ بعد"
-        if name == "validate":
-            updated.update({
-                "phase": "validation", "phase_label": "اعتبارسنجی مستقل روی GitHub",
-                "percent": 92 + (5 * completed // total),
-                "activity": step_name[:180], "status": "running",
-            })
-        elif name == "open-draft-pr":
-            updated.update({
-                "phase": "publication", "phase_label": "انتشار پیش‌نویس Pull Request",
-                "percent": 98 + (completed // total),
-                "activity": step_name[:180], "status": "running",
-            })
-        else:
-            updated["activity"] = step_name[:180]
+        updated["activity"] = step_name[:180]
+        updated["status"] = "running"
+        if name == "codex":
+            updated.setdefault("phase", "coding")
+            updated.setdefault("phase_label", "اجرای چرخهٔ مهندسی")
     elif failed_job:
         updated.update({
             "status": "failed",
             "phase_label": "چرخه با خطا پایان یافت",
             "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
         })
-    elif queued_job and queued_job.get("name") == "validate":
+    elif queued_job and queued_job.get("name") == "codex":
         updated.update({
-            "phase": "validation", "phase_label": "در انتظار اعتبارسنجی مستقل",
-            "percent": 92, "activity": "منتظر شروع job اعتبارسنجی روی GitHub", "status": "queued",
-        })
-    elif queued_job and queued_job.get("name") == "open-draft-pr":
-        updated.update({
-            "phase": "publication", "phase_label": "در انتظار انتشار پیش‌نویس",
-            "percent": 97, "activity": "اعتبارسنجی تمام شده؛ منتظر مرحلهٔ انتشار PR", "status": "queued",
+            "phase": "queued", "phase_label": "در انتظار Runner ویندوز",
+            "activity": "چرخه در صف اجرا قرار دارد", "status": "queued",
         })
     elif all(
         isinstance(job, dict) and job.get("status") == "completed"
