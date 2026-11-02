@@ -23,6 +23,18 @@ try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.P
 $null = Get-Command ollama -ErrorAction Stop
 $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 8
 if (@($tags.models | ForEach-Object { $_.name }) -notcontains $Model) { throw "Model $Model is not installed. Run ollama pull $Model first." }
+$node = Get-Command node -ErrorAction Stop
+$npm = Get-Command npm -ErrorAction Stop
+$git = Get-Command git -ErrorAction Stop
+$python = Get-Command python -ErrorAction Stop
+& $node.Source --version
+if ($LASTEXITCODE -ne 0) { throw "Node.js is not executable." }
+& $npm.Source --version
+if ($LASTEXITCODE -ne 0) { throw "npm is not executable." }
+& $git.Source --version
+if ($LASTEXITCODE -ne 0) { throw "Git is not executable." }
+$pythonVersion = (& $python.Source -c "import sys; print(sys.version_info.major, sys.version_info.minor, sep=chr(46))")
+if ($LASTEXITCODE -ne 0 -or [version]$pythonVersion -lt [version]"3.11") { throw "Python 3.11 or newer is required on the Runner host." }
 $gh = Get-Command gh -ErrorAction Stop
 & $gh.Source auth status --hostname github.com
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
