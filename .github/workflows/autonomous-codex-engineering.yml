@@ -122,7 +122,7 @@ jobs:
       actions: write
     env:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
-      AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
+      AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
       - name: Preserve and stop checkpoint watcher from an interrupted run
         shell: pwsh
