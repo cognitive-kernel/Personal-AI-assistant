@@ -141,6 +141,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
     assert 'value="continuous"' in page
+    assert 'value="continuous" selected' in page
     assert 'id="ollama-model"' in page
     assert 'id="custom-model"' in page
     assert 'id="agent-task-form"' in page
