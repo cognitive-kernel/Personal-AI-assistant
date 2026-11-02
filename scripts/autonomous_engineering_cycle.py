@@ -309,9 +309,13 @@ def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
             continue
         head = item.get("head") or {}
         base = item.get("base") or {}
+        author = (item.get("user") or {}).get("login")
+        head_repository = (head.get("repo") or {}).get("full_name")
         branch = head.get("ref")
         if (
-            isinstance(branch, str)
+            author == "github-actions[bot]"
+            and head_repository == repo
+            and isinstance(branch, str)
             and branch.startswith("codex/local-engineering-")
             and base.get("ref") == "main"
         ):
@@ -337,8 +341,12 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
     branch = head.get("ref")
     head_sha = head.get("sha")
     base_sha = base.get("sha")
+    author = (current.get("user") or {}).get("login")
+    head_repository = (head.get("repo") or {}).get("full_name")
     if (
-        current.get("state") != "open"
+        author != "github-actions[bot]"
+        or head_repository != repo
+        or current.get("state") != "open"
         or base.get("ref") != "main"
         or not isinstance(branch, str)
         or not branch.startswith("codex/local-engineering-")
