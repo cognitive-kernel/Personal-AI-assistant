@@ -129,3 +129,8 @@ The AI-learning page and autonomous-engineering page both include the primary na
 - **Workflow queued:** confirm the runner is online and has all required labels.
 - **Manual dispatch unavailable:** authenticate GitHub CLI for the same Windows account that runs the app and verify repository Actions permissions.
 - **Model context or memory errors:** check Ollama's loaded model/context configuration and reduce concurrent workloads; do not claim successful operation until a real run completes.
+
+
+## Automatic Codex CLI provisioning
+
+The autonomous workflow installs `@openai/codex` automatically on its first run under the dedicated Runner service account. Node.js LTS and npm must be installed system-wide and available in the Runner service PATH. The workflow uses that account's npm global prefix and does not require an OpenAI login or API key because it explicitly selects the local Ollama provider. No GitHub CLI credentials are stored in the Runner account.
