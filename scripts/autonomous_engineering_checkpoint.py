@@ -76,11 +76,17 @@ def read_metadata() -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def write_snapshot(base_sha: str, run_id: str, task: int) -> None:
+def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | None = None) -> None:
     state = paths()
     state["directory"].mkdir(parents=True, exist_ok=True)
     git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts")
-    result = git("diff", "--binary", base_sha, "--", "app", "tests", "docs", "scripts")
+    result = git(
+        "diff", "--binary", base_sha, "--",
+        "app", "tests", "docs", "scripts",
+        ":!scripts/autonomous_engineering_cycle.py",
+        ":!scripts/autonomous_engineering_checkpoint.py",
+        ":!scripts/autonomous_engineering_progress.py",
+    )
     patch_tmp = state["patch"].with_suffix(".patch.tmp")
     patch_tmp.write_text(result.stdout, encoding="utf-8", newline="")
     patch_tmp.replace(state["patch"])
@@ -94,7 +100,7 @@ def write_snapshot(base_sha: str, run_id: str, task: int) -> None:
         "base_sha": base_sha,
         "run_id": run_id,
         "task": task,
-        "watcher_pid": os.getpid(),
+        "watcher_pid": watcher_pid,
         "updated_at": time.time(),
         "patch_bytes": len(result.stdout.encode("utf-8")),
     }
@@ -112,7 +118,7 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
         if current != base_sha:
             return 0
         try:
-            write_snapshot(base_sha, run_id, task)
+            write_snapshot(base_sha, run_id, task, os.getpid())
         except (OSError, RuntimeError) as exc:
             print(f"Checkpoint snapshot skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
         time.sleep(max(5, min(interval, 120)))
@@ -126,7 +132,8 @@ def restore(base_sha: str) -> bool:
     state["stop"].write_text("stop\n", encoding="utf-8")
     if not metadata or not state["patch"].is_file():
         return False
-    if metadata.get("base_sha") != base_sha:
+    current_head = git("rev-parse", "HEAD").stdout.strip()
+    if current_head != base_sha or metadata.get("base_sha") != base_sha:
         raise RuntimeError(
             "A durable worktree checkpoint exists but its base SHA differs from current main; "
             "the checkpoint was preserved and must not be applied to a different base."
@@ -156,6 +163,17 @@ def restore(base_sha: str) -> bool:
     return True
 
 
+def snapshot(base_sha: str, run_id: str, task: int) -> None:
+    write_snapshot(base_sha, run_id, task, None)
+
+
+def stop() -> None:
+    state = paths()
+    stop_existing_watcher(read_metadata())
+    state["directory"].mkdir(parents=True, exist_ok=True)
+    state["stop"].write_text("stop\n", encoding="utf-8")
+
+
 def clear() -> None:
     state = paths()
     stop_existing_watcher(read_metadata())
@@ -174,12 +192,23 @@ def main() -> int:
     watcher.add_argument("--interval", type=int, default=POLL_SECONDS)
     restore_parser = subs.add_parser("restore")
     restore_parser.add_argument("--base-sha", required=True)
+    snapshot_parser = subs.add_parser("snapshot")
+    snapshot_parser.add_argument("--base-sha", required=True)
+    snapshot_parser.add_argument("--run-id", required=True)
+    snapshot_parser.add_argument("--task", required=True, type=int)
+    subs.add_parser("stop")
     subs.add_parser("clear")
     args = parser.parse_args()
     if args.command == "watch":
         return watch(args.base_sha, args.run_id, args.task, args.interval)
     if args.command == "restore":
         print("restored" if restore(args.base_sha) else "no-checkpoint")
+        return 0
+    if args.command == "snapshot":
+        snapshot(args.base_sha, args.run_id, args.task)
+        return 0
+    if args.command == "stop":
+        stop()
         return 0
     clear()
     return 0
