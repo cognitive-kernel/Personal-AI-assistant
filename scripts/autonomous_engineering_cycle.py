@@ -550,8 +550,8 @@ def run_cycle(args: argparse.Namespace) -> int:
     checked(["git", "reset", "--hard", "origin/main"])
     base_sha = checked(["git", "rev-parse", "HEAD"])
     checked(["git", "switch", "-c", branch])
-    restored = restore_checkpoint(base_sha)
-    if restored:
+    restored_checkpoint = restore_checkpoint(base_sha)
+    if restored_checkpoint:
         record(
             args.run_id, args.run_attempt, "recovery",
             f"بازیابی وظیفهٔ {task}",
@@ -582,6 +582,14 @@ def run_cycle(args: argparse.Namespace) -> int:
                 + failure_feedback + "\nFix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n",
                 encoding="utf-8",
             )
+        elif restored_checkpoint:
+            active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-resume-prompt-{task}.md"
+            original = Path(args.prompt).read_text(encoding="utf-8")
+            active_prompt.write_text(
+                original + "\n\n## Mandatory checkpoint recovery\n"
+                + "A durable worktree checkpoint from an interrupted run has been restored. Continue the SAME in-progress task represented by the restored diff and .agent-progress.json. Do not discard or overwrite the restored work. Do not select another task or report QUEUE_EMPTY. Inspect the restored changes, complete the task, add regression tests, and report TASK_COMPLETE only after verification.\n",
+                encoding="utf-8",
+            )
         report.unlink(missing_ok=True)
         record(
             args.run_id, args.run_attempt, "coding",
@@ -606,8 +614,8 @@ def run_cycle(args: argparse.Namespace) -> int:
 
         marker = task_marker(report)
         if marker == "QUEUE_EMPTY":
-            if attempt > 1:
-                raise RuntimeError("Codex reported QUEUE_EMPTY while retrying a failed task; refusing to skip the task.")
+            if attempt > 1 or restored_checkpoint:
+                raise RuntimeError("Codex reported QUEUE_EMPTY while recovering an unfinished task; refusing to discard the checkpoint.")
             checked(["git", "switch", "main"])
             checked(["git", "branch", "-D", branch])
             clear_checkpoint()
