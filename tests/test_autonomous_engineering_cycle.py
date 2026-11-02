@@ -334,3 +334,52 @@ def test_durable_checkpoint_refuses_a_different_main_base(monkeypatch: pytest.Mo
 
     with pytest.raises(RuntimeError, match="base SHA differs"):
         checkpoint.restore("f" * 40)
+
+def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
+    base_sha = "b" * 40
+    head_sha = "c" * 40
+    merge_sha = "e" * 40
+    current = {
+        "number": 77,
+        "state": "open",
+        "node_id": "PR_node",
+        "draft": True,
+        "head": {"ref": "codex/local-engineering-77-1-task-1", "sha": head_sha},
+        "base": {"ref": "main", "sha": base_sha},
+    }
+    ready = {**current, "draft": False}
+    confirmed = {**ready, "merged": True}
+    calls = []
+    responses = [current, ready, {"commit": {"sha": base_sha}}, {"merged": True, "sha": merge_sha}, confirmed]
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if method == "GET" and path in {"pulls/77", "branches/main"}:
+            return responses.pop(0)
+        if method == "PUT" and path == "pulls/77/merge":
+            assert payload == {"sha": head_sha, "merge_method": "squash"}
+            return responses.pop(0)
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "graphql", lambda token, query, variables: {
+        "convertPullRequestToReadyForReview": {"pullRequest": {"isDraft": False}}
+    })
+    validations = []
+    monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda: None)
+
+    result = cycle.complete_pending_pr("token", "owner/repository", {
+        "number": 77,
+        "url": "https://github.com/owner/repository/pull/77",
+        "head_sha": head_sha,
+        "base_sha": base_sha,
+        "branch": "codex/local-engineering-77-1-task-1",
+        "draft": True,
+        "node_id": "PR_node",
+    })
+
+    assert result["merged"] is True
+    assert result["merge_sha"] == merge_sha
+    assert len(validations) == 1
+    assert any(call[0] == "PUT" and call[1] == "pulls/77/merge" for call in calls)
