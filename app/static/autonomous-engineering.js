@@ -327,7 +327,7 @@
           $("cycle-progress").value = 0;
         }
         const statusLabels = {
-          awaiting_review: "در انتظار بازبینی انسانی",
+          awaiting_review: "وضعیت قدیمی؛ در انتظار همگام‌سازی",
           running: "در حال اجرا",
           queued: "در صف اجرا",
           completed: "پایان اجرا",
