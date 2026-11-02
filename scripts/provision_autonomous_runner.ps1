@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][ValidatePattern("^[^/]+/[^/]+$")][string]$Repository,
+    [Parameter(Mandatory=$true)][ValidatePattern("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")][string]$Repository,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$RunnerAccount,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$AppAccount,
     [string]$RunnerName = "$env:COMPUTERNAME-ollama",
@@ -14,7 +14,7 @@ $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Run from elevated PowerShell." }
 $RunnerAccount = $RunnerAccount.Trim()
 $AppAccount = $AppAccount.Trim()
-if ($RunnerAccount -match "[@\\]" -or $AppAccount -match "[@\\]" -or $RunnerAccount -ieq $AppAccount) { throw "Use two different local account names without domain prefixes." }
+if ($RunnerAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $AppAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $RunnerAccount -ieq $AppAccount) { throw "Use two different local account names containing only letters, digits, dot, underscore, or hyphen (max 20 characters)." }
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 $runnerIdentity = "$env:COMPUTERNAME\$RunnerAccount"
 $appIdentity = "$env:COMPUTERNAME\$AppAccount"
