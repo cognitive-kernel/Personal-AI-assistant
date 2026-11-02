@@ -649,3 +649,25 @@ def test_autonomous_cycle_rejects_protected_and_non_allowlisted_paths():
     ):
         with pytest.raises(RuntimeError, match="protected or non-allowlisted"):
             cycle.validate_paths([path])
+
+def test_live_progress_preserves_awaiting_review_after_workflow_success(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: calls.append("which") or "gh")
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda command, timeout=8: calls.append(command),
+    )
+    current = {
+        "run_id": "41400041710",
+        "status": "awaiting_review",
+        "phase": "review",
+        "phase_label": "در انتظار بازبینی و ادغام انسانی",
+        "activity": "PR #12 منتشر شد؛ ادغام خودکار انجام نمی‌شود",
+        "percent": 100,
+    }
+
+    result = agent._enrich_progress_from_github(current)
+
+    assert result == current
+    assert calls == []
+
