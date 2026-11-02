@@ -31,7 +31,7 @@ jobs:
         id: gate
         env:
           EVENT_NAME: ${{ github.event_name }}
-          RUNS_PER_DAY: ${{ vars.AUTONOMOUS_ENGINEERING_RUNS_PER_DAY || '1' }}
+          INTERVAL_HOURS: ${{ vars.AUTONOMOUS_ENGINEERING_INTERVAL_HOURS || '24' }}
           EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
           PR_MERGED: ${{ github.event.pull_request.merged || false }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref || '' }}
@@ -61,17 +61,16 @@ jobs:
             echo "Continuous mode starts manually and resumes only after a human merges a generated draft PR."
             exit 0
           fi
-          case "$RUNS_PER_DAY" in
-            1|2|3|4|6|8|12|24) ;;
-            *) echo "Invalid AUTONOMOUS_ENGINEERING_RUNS_PER_DAY; using safe default 1." ; RUNS_PER_DAY=1 ;;
+          case "$INTERVAL_HOURS" in
+            1|2|4|6|12|24) ;;
+            *) echo "Invalid AUTONOMOUS_ENGINEERING_INTERVAL_HOURS; using safe default 24." ; INTERVAL_HOURS=24 ;;
           esac
-          interval=$((24 / RUNS_PER_DAY))
           hour=$((10#$(date -u +%H)))
-          if (( hour % interval == 0 )); then
+          if (( hour % INTERVAL_HOURS == 0 )); then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_now=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping this hourly tick; configured frequency is $RUNS_PER_DAY run(s) per UTC day."
+            echo "Skipping this hourly tick; configured interval is every $INTERVAL_HOURS hour(s) UTC."
           fi
 
   codex:
