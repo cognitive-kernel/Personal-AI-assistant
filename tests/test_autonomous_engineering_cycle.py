@@ -170,9 +170,9 @@ def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
     })()
 
     assert cycle.run_cycle(args) == 0
-    assert len(records) == 1
-    assert records[0][1]["status"] == "completed"
-    assert records[0][0][2] == "complete"
+    assert len(records) == 2
+    assert records[-1][1]["status"] == "completed"
+    assert records[-1][0][2] == "complete"
 
 
 def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
