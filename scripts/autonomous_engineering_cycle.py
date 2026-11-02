@@ -220,6 +220,17 @@ def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]
     return data if isinstance(data, dict) else {}
 
 
+def clear_pending_task(token: str, repo: str) -> None:
+    try:
+        api(token, repo, "PATCH", "actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK", {
+            "name": "AUTONOMOUS_ENGINEERING_PENDING_TASK",
+            "value": "",
+        })
+    except RuntimeError as exc:
+        if "(404)" not in str(exc):
+            raise
+
+
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
     pulls = api(token, repo, "GET", "pulls?state=open&per_page=100")
     if not isinstance(pulls, list):
@@ -447,6 +458,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             status="completed",
         )
         snapshot(args.run_id, args.run_attempt)
+        clear_pending_task(token, repo)
         if args.mode == "continuous":
             api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
                 "ref": "main",
@@ -625,6 +637,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         status="completed",
     )
     snapshot(args.run_id, args.run_attempt)
+    clear_pending_task(token, repo)
     request_file.unlink(missing_ok=True)
     if args.mode == "continuous":
         api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
