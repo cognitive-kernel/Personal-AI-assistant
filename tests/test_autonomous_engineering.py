@@ -508,6 +508,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
+    assert "Preserve and stop checkpoint watcher from an interrupted run" in workflow
+    assert "scripts/autonomous_engineering_checkpoint.py" in workflow
     assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and merge after all gates pass")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
