@@ -552,7 +552,7 @@ def test_live_progress_uses_actual_github_validation_step(monkeypatch):
     monkeypatch.setattr(agent, "_RUN_PROGRESS_CACHE", {"run_id": None, "at": 0.0, "value": None})
     jobs = {
         "jobs": [{
-            "name": "validate",
+            "name": "codex",
             "status": "in_progress",
             "steps": [
                 {"name": "Checkout", "status": "completed"},
@@ -572,9 +572,9 @@ def test_live_progress_uses_actual_github_validation_step(monkeypatch):
         "phase": "packaging", "activity": "handoff",
     })
 
-    assert result["phase"] == "validation"
-    assert result["phase_label"] == "اعتبارسنجی مستقل روی GitHub"
-    assert result["percent"] == 94
+    assert result["phase"] == "packaging"
+    assert result["percent"] == 90
+    assert result["status"] == "running"
     assert result["activity"] == "Install dependencies"
 
 
@@ -584,8 +584,6 @@ def test_live_progress_marks_all_successful_workflow_jobs_complete(monkeypatch):
     jobs = {
         "jobs": [
             {"name": "codex", "status": "completed", "conclusion": "success", "steps": []},
-            {"name": "validate", "status": "completed", "conclusion": "success", "steps": []},
-            {"name": "open-draft-pr", "status": "completed", "conclusion": "success", "steps": []},
         ]
     }
     monkeypatch.setattr(
@@ -633,8 +631,7 @@ def test_live_progress_reports_queued_github_validation_phase(monkeypatch):
     monkeypatch.setattr(agent, "_RUN_PROGRESS_CACHE", {"run_id": None, "at": 0.0, "value": None})
     jobs = {
         "jobs": [
-            {"name": "codex", "status": "completed", "conclusion": "success", "steps": []},
-            {"name": "validate", "status": "queued", "conclusion": None, "steps": []},
+            {"name": "codex", "status": "queued", "conclusion": None, "steps": []},
         ]
     }
     monkeypatch.setattr(
@@ -644,8 +641,8 @@ def test_live_progress_reports_queued_github_validation_phase(monkeypatch):
 
     result = agent._enrich_progress_from_github({"run_id": "12347", "percent": 90})
 
-    assert result["phase"] == "validation"
-    assert result["percent"] == 92
+    assert result["phase"] == "queued"
+    assert result["phase_label"] == "در انتظار Runner ویندوز"
     assert result["status"] == "queued"
 
 
@@ -703,24 +700,25 @@ def test_autonomous_cycle_rejects_protected_and_non_allowlisted_paths():
         with pytest.raises(RuntimeError, match="protected or non-allowlisted"):
             cycle.validate_paths([path])
 
-def test_live_progress_preserves_awaiting_review_after_workflow_success(monkeypatch):
-    calls = []
-    monkeypatch.setattr(agent.shutil, "which", lambda _: calls.append("which") or "gh")
+def test_live_progress_does_not_freeze_legacy_awaiting_review_state(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_RUN_PROGRESS_CACHE", {"run_id": None, "at": 0.0, "value": None})
+    jobs = {"jobs": [{
+        "name": "codex", "status": "in_progress",
+        "steps": [{"name": "Execute isolated engineering task", "status": "in_progress"}],
+    }]}
     monkeypatch.setattr(
         agent, "_run",
-        lambda command, timeout=8: calls.append(command),
+        lambda command, timeout=8: subprocess.CompletedProcess(command, 0, json.dumps(jobs), ""),
     )
     current = {
-        "run_id": "41400041710",
-        "status": "awaiting_review",
-        "phase": "review",
-        "phase_label": "در انتظار بازبینی و ادغام انسانی",
-        "activity": "PR #12 منتشر شد؛ ادغام خودکار انجام نمی‌شود",
-        "percent": 100,
+        "run_id": "41400041710", "status": "awaiting_review",
+        "phase": "coding", "phase_label": "اجرای چرخهٔ مهندسی",
+        "activity": "در حال اجرا", "percent": 60,
     }
 
     result = agent._enrich_progress_from_github(current)
 
-    assert result == current
-    assert calls == []
+    assert result["status"] == "running"
+    assert result["activity"] == "Execute isolated engineering task"
 
