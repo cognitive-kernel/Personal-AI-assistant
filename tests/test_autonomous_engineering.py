@@ -133,6 +133,8 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'href="/autonomous-engineering" aria-current="page"' in page
     assert 'id="dispatch-agent"' in page
     assert 'id="cancel-agent"' in page
+    assert 'id="pause-agent"' in page
+    assert 'id="resume-agent"' in page
     assert "OPENAI_API_KEY" not in page
     assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
     assert "checks.github_runs_available" in agent_script
@@ -158,6 +160,8 @@ def test_autonomous_engineering_routes_are_registered():
     assert "/autonomous-engineering" in page_paths
     assert "/api/autonomous-engineering/status" in api_paths
     assert "/api/autonomous-engineering/progress" in api_paths
+    assert "/api/autonomous-engineering/pause" in api_paths
+    assert "/api/autonomous-engineering/resume" in api_paths
     assert "/api/autonomous-engineering/settings" in api_paths
     assert "/api/autonomous-engineering/dispatch" in api_paths
     assert "/api/autonomous-engineering/cancel" in api_paths
@@ -226,7 +230,7 @@ def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
 
 
 
-def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
+def test_save_settings_updates_model_and_hourly_interval(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
@@ -286,7 +290,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
             return subprocess.CompletedProcess(
                 command, 0,
                 '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
-                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"12"},'
+                '{"name":"AUTONOMOUS_ENGINEERING_INTERVAL_HOURS","value":"12"},'
                 '{"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"}]',
                 "",
             )
@@ -478,6 +482,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'pulls/{number}/merge' in cycle_controller
     assert '"draft": False' in cycle_controller
     assert "awaiting_review" in cycle_controller
+    assert "pulls/{number}/merge" in cycle_controller
+    assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
+    assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
     assert "types: [closed]" in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
     assert "open-draft-pr:" not in workflow and "  validate:" not in workflow
