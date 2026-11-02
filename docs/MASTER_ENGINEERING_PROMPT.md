@@ -300,7 +300,7 @@ Maintain a weighted acceptance matrix with explicit evidence. Use states such as
 - IMPLEMENTED
 - AUTOMATED TESTED
 - CI VERIFIED
-- HUMAN REVIEW REQUIRED
+- HUMAN TEST REQUIRED
 - EXTERNAL REVIEW REQUIRED
 - BLOCKED
 - ACCEPTED
