@@ -287,7 +287,7 @@ Every completion statement must cite evidence or be labeled unverified. Never co
 - Use the repository-permitted merge strategy.
 - After merge, verify PR state, merge commit, `main` SHA, and post-merge CI.
 - Do not close issues until their acceptance criteria and evidence are complete.
-- Do not bypass required human or independent approval.
+- Do not bypass required independent approval or external security review. Routine changes are pre-authorized by the repository owner for autonomous merge only after all exact-SHA local and GitHub quality gates pass; no per-task human confirmation is required.
 
 A successful merge-tool response alone is not sufficient proof; verify the repository state afterward.
 
