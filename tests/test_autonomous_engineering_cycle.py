@@ -274,6 +274,34 @@ def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: py
     assert len(validations) == 1
     assert any(call[0] == "PUT" and call[1] == "pulls/12/merge" for call in calls if len(call) > 1)
 
+def test_publish_pull_request_rejects_non_controller_authored_pr(monkeypatch: pytest.MonkeyPatch):
+    base_sha = "b" * 40
+    head_sha = "c" * 40
+    pr = {
+        "number": 14,
+        "draft": False,
+        "user": {"login": "untrusted-contributor"},
+        "head": {"sha": head_sha, "repo": {"full_name": "owner/repository"}},
+        "base": {"ref": "main", "sha": base_sha},
+    }
+    monkeypatch.setattr(cycle, "git_auth_env", lambda token: {})
+    monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: "")
+    monkeypatch.setattr(
+        cycle,
+        "api",
+        lambda token, repo, method, path, payload=None:
+            [] if method == "GET" and path.startswith("pulls?state=open")
+            else pr if method == "POST" and path == "pulls"
+            else None,
+    )
+
+    with pytest.raises(RuntimeError, match="Refusing publication"):
+        cycle.publish_pull_request(
+            "token", "owner/repository", "codex/local-engineering-1-1-task-1",
+            1, "123", head_sha, base_sha,
+        )
+
+
 def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     monkeypatch: pytest.MonkeyPatch,
 ):
