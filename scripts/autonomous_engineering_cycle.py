@@ -368,6 +368,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError("GitHub returned an invalid recovery merge SHA.")
+    clear_checkpoint()
     return {"number": number, "url": pending.get("url"), "head_sha": head_sha, "merge_sha": merge_sha, "merged": True}
 
 
@@ -446,6 +447,7 @@ def publish_pull_request(
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
+    clear_checkpoint()
 
     return {
         "number": number,
