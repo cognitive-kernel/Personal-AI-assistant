@@ -441,7 +441,8 @@ jobs:
           task when one can be safely completed in this same session.
 
           Only propose text changes under app/, tests/, docs/, or scripts/. Do not modify dependency or build configuration.
-          Never modify scripts/autonomous_engineering_cycle.py, scripts/autonomous_engineering_progress.py,\n          scripts/autonomous_engineering_checkpoint.py,
+          Never modify scripts/autonomous_engineering_cycle.py, scripts/autonomous_engineering_progress.py,
+          scripts/autonomous_engineering_checkpoint.py,
           .github/workflows/, .agent-request.json, or .agent-github-state.json. Do not add generated
           artifacts, local databases, logs, credentials, or temporary files.
 
