@@ -9,7 +9,7 @@
 
 A cooperative checkpoint immediately before a domain write narrows, but does not eliminate, the pause/cancel race. A control request can commit after the final checkpoint and before the handler persists its domain result. The worker may then settle the queue row as paused or cancelled even though the domain mutation has already been written.
 
-The knowledge-graph review handler and temporary-candidate validation exposed this boundary. The graph report/edge status and candidate pass/rejection state were stored before the task worker performed its separate `complete_task` transaction. Candidate rejection additionally scrubs temporary content and removes unverified domain rows, so a late cancellation must not leave the queue cancelled after that destructive outcome.
+The knowledge-graph review handler, temporary-candidate validation, and `experience.run_test` exposed this boundary. Their domain writes were stored before the task worker performed its separate `complete_task` transaction. Candidate rejection additionally scrubs temporary content and removes unverified domain rows; experience testing records a versioned evidence/result update. A late pause/cancel must not leave a task non-successful after its domain mutation has already committed.
 
 ## Decision
 
@@ -17,7 +17,7 @@ Add an optional `before_commit` callback to `task_manager.complete_task`. The ta
 
 Expose this contract through `TaskContext.complete_with_commit`. A handler using it commits its domain mutation, final checkpoint, task result, and terminal `succeeded` status in one transaction. `TaskWorker` recognizes the already-completed context and does not issue a second completion.
 
-The knowledge-graph review service uses this path for accepted, rejected, conflicting, and inconclusive edge outcomes. Temporary-candidate validation uses it for the final passed/test-review write and for the multi-source rejection/scrub operation. Source retrieval, model inference, and append-only reviewer evidence collection remain outside the short final transaction.
+The knowledge-graph review service uses this path for accepted, rejected, conflicting, and inconclusive edge outcomes. Temporary-candidate validation uses it for the final passed/test-review write and for the multi-source rejection/scrub operation. The controlled experience-test handler uses it to persist the versioned experience evidence/result update with task success; an expected-version check rejects stale results if the experience changed during source verification or sandbox execution. Source retrieval, model inference, sandbox execution, and append-only reviewer evidence collection remain outside the short final transaction.
 
 The transaction defines a clear ordering:
 
@@ -30,6 +30,7 @@ The transaction defines a clear ordering:
 - Use this API only when the domain mutation and `task_queue` are in the same SQLite database and transaction.
 - External side effects or writes to another database require an outbox/idempotency design; this callback does not make cross-system operations atomic.
 - Cooperative checkpoints remain necessary between long-running operations. An in-flight HTTP request or model call is not forcibly interrupted.
+- Experience source fetching and sandbox execution happen before the atomic commit. The expected-version guard prevents overwriting intervening experience edits; it does not make the separate settings-database sandbox-consent flag part of the learning-database transaction.
 
 ## Verification
 
@@ -41,6 +42,9 @@ Regression coverage is added for:
 - worker behavior when a handler completes atomically;
 - knowledge-graph review success and pause/cancel at the final commit boundary;
 - candidate validation success with task success in one transaction;
-- pause/cancel winning before either candidate pass persistence or rejection/content-scrub persistence.
+- pause/cancel winning before either candidate pass persistence or rejection/content-scrub persistence;
+- successful `experience.run_test` persistence and durable task success in one transaction;
+- cancellation winning after the handler's preliminary control check but before the atomic commit, leaving experience history unchanged;
+- rejection of a stale experience version when another update commits during sandbox execution.
 
 No database schema migration is required.
