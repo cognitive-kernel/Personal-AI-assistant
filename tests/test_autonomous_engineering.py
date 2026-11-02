@@ -546,6 +546,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert 'echo "run_now=true"' in workflow
     assert "manual_task:" in workflow
     assert "inputs.manual_task" in workflow
+    assert 'api("actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK")' in workflow
     assert '"${RunnerAccount}:(OI)(CI)M"' in acl_script
     assert '"${AppAccount}:(OI)(CI)RX"' in acl_script
     assert "/inheritance:r /T /C /grant:r" in acl_script
