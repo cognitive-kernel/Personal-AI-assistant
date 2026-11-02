@@ -21,6 +21,7 @@ PROTECTED = {
     ".github/workflows/autonomous-codex-engineering.yml",
     "scripts/autonomous_engineering_cycle.py",
     "scripts/autonomous_engineering_progress.py",
+    "scripts/autonomous_engineering_checkpoint.py",
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
@@ -54,6 +55,61 @@ def record(
         "--phase", phase, "--label", label, "--activity", activity,
         "--status", status,
     ])
+
+def checkpoint_command(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    return run([sys.executable, "scripts/autonomous_engineering_checkpoint.py", *args], capture=capture)
+
+
+def restore_checkpoint(base_sha: str) -> bool:
+    if os.name != "nt" or not os.getenv("PROGRAMDATA"):
+        return False
+    result = checkpoint_command("restore", "--base-sha", base_sha)
+    if result.returncode:
+        raise RuntimeError("Could not restore durable engineering checkpoint: " + (result.stderr or result.stdout or "")[-3000:])
+    return (result.stdout or "").strip() == "restored"
+
+
+def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subprocess.Popen[Any] | None:
+    if os.name != "nt" or not os.getenv("PROGRAMDATA"):
+        return None
+    command = [
+        sys.executable, "scripts/autonomous_engineering_checkpoint.py", "watch",
+        "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
+    ]
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    return subprocess.Popen(
+        command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags,
+    )
+
+
+def stop_checkpoint_watcher(
+    watcher: subprocess.Popen[Any] | None, base_sha: str, run_id: str, task: int,
+) -> None:
+    if watcher is not None and watcher.poll() is None:
+        watcher.terminate()
+        try:
+            watcher.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            watcher.kill()
+            watcher.wait(timeout=5)
+    if os.name == "nt" and os.getenv("PROGRAMDATA"):
+        stopped = checkpoint_command("stop")
+        if stopped.returncode:
+            raise RuntimeError("Could not stop the durable checkpoint watcher.")
+        saved = checkpoint_command(
+            "snapshot", "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
+        )
+        if saved.returncode:
+            raise RuntimeError("Could not save the final durable worktree checkpoint.")
+
+
+def clear_checkpoint() -> None:
+    if os.name == "nt" and os.getenv("PROGRAMDATA"):
+        result = checkpoint_command("clear")
+        if result.returncode:
+            raise RuntimeError("Could not clear the completed durable worktree checkpoint.")
+
 
 def snapshot(run_id: str, attempt: str) -> None:
     checked([
