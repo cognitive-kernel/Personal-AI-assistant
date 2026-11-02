@@ -44,7 +44,7 @@ jobs:
             echo "Autonomous engineering is safely paused; no new task will start."
             exit 0
           fi
-          python - <<'PY'
+          active_state=$(python - <<'PY'
           import json, os, urllib.request
           repo = os.environ["GH_REPO"]
           url = f"https://api.github.com/repos/{repo}/actions/workflows/autonomous-codex-engineering.yml/runs?per_page=30"
@@ -56,22 +56,18 @@ jobs:
           with urllib.request.urlopen(request, timeout=20) as response:
               runs = json.loads(response.read(2_000_000).decode("utf-8")).get("workflow_runs", [])
           current_id = int(os.environ["CURRENT_RUN_ID"])
-          active = [
-              run for run in runs
-              if int(run.get("id", 0)) != current_id
+          active = any(
+              int(run.get("id", 0)) != current_id
               and run.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
-          ]
-          if active:
-              print("Another autonomous run is already active or queued; suppressing this duplicate trigger.")
-              raise SystemExit(10)
+              for run in runs
+          )
+          print("active" if active else "clear")
           PY
-          active_status=$?
-          if [[ "$active_status" -eq 10 ]]; then
+          )
+          if [[ "$active_state" == "active" ]]; then
             echo "run_now=false" >> "$GITHUB_OUTPUT"
+            echo "Another autonomous run is already active or queued; suppressing this duplicate trigger."
             exit 0
-          elif [[ "$active_status" -ne 0 ]]; then
-            echo "Unable to verify active-run state; refusing to start a duplicate cycle."
-            exit "$active_status"
           fi
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
