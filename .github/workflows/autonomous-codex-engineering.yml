@@ -302,7 +302,26 @@ jobs:
           or complete for project progress until its PR is merged and post-merge evidence is recorded.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
 
+      - name: Recheck durable pause state immediately before task start
+        id: pause
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $uri = "https://api.github.com/repos/$env:GH_REPO/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"
+          try {
+            $variable = Invoke-RestMethod -Uri $uri -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; "X-GitHub-Api-Version" = "2022-11-28" } -TimeoutSec 15
+            $paused = ([string]$variable.value).ToLowerInvariant() -eq "true"
+          } catch {
+            if ($_.Exception.Response.StatusCode.value__ -eq 404) { $paused = $false } else { throw }
+          }
+          "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
+
       - name: Execute one isolated task, validate, and merge after all gates pass
+        if: steps.pause.outputs.paused != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
