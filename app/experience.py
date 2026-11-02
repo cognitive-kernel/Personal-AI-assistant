@@ -358,6 +358,7 @@ def update_experience_in_transaction(
         raise RuntimeError("Updated experience could not be read inside its transaction.")
     return _experience_from_row(updated)
 
+
 def _store_version_snapshot(conn, row) -> None:
     """Store an immutable snapshot before changing a learning experience."""
     conn.execute(
