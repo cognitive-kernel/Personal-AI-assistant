@@ -196,6 +196,30 @@ def git_auth_env(token: str) -> dict[str, str]:
     return env
 
 
+def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+    body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=body,
+        method="POST",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "Personal-AI-assistant-autonomous-engineering",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read(1_000_000).decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"GitHub GraphQL request failed: {type(exc).__name__}") from exc
+    if payload.get("errors"):
+        raise RuntimeError("GitHub rejected the pull request readiness transition.")
+    data = payload.get("data")
+    return data if isinstance(data, dict) else {}
+
+
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
     pulls = api(token, repo, "GET", "pulls?state=open&per_page=100")
     if not isinstance(pulls, list):
@@ -215,9 +239,68 @@ def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
                 "number": item.get("number"),
                 "url": item.get("html_url"),
                 "head_sha": head.get("sha"),
+                "base_sha": base.get("sha"),
                 "branch": branch,
+                "draft": bool(item.get("draft", False)),
+                "node_id": item.get("node_id"),
             }
     return None
+
+
+def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[str, Any]:
+    number = pending.get("number")
+    if not isinstance(number, int):
+        raise RuntimeError("The pending autonomous PR has no valid number.")
+    current = api(token, repo, "GET", f"pulls/{number}")
+    head = current.get("head") or {}
+    base = current.get("base") or {}
+    branch = head.get("ref")
+    head_sha = head.get("sha")
+    base_sha = base.get("sha")
+    if (
+        current.get("state") != "open"
+        or base.get("ref") != "main"
+        or not isinstance(branch, str)
+        or not branch.startswith("codex/local-engineering-")
+        or head_sha != pending.get("head_sha")
+        or base_sha != pending.get("base_sha")
+    ):
+        raise RuntimeError("Pending PR identity or base changed; refusing automatic recovery.")
+    if current.get("draft") is True:
+        node_id = current.get("node_id")
+        if not isinstance(node_id, str):
+            raise RuntimeError("Cannot safely convert the pending draft PR to ready-for-review.")
+        graphql(token, """
+          mutation($pullRequestId: ID!) {
+            convertPullRequestToReadyForReview(input: {pullRequestId: $pullRequestId}) {
+              pullRequest { isDraft }
+            }
+          }
+        """, {"pullRequestId": node_id})
+    dispatch_and_wait_all(
+        token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, head_sha
+    )
+    refreshed = api(token, repo, "GET", f"pulls/{number}")
+    main = api(token, repo, "GET", "branches/main")
+    if (
+        (refreshed.get("head") or {}).get("sha") != head_sha
+        or (refreshed.get("base") or {}).get("sha") != base_sha
+        or (main.get("commit") or {}).get("sha") != base_sha
+    ):
+        raise RuntimeError("Pending PR changed during revalidation; refusing automatic merge.")
+    merged = api(token, repo, "PUT", f"pulls/{number}/merge", {
+        "sha": head_sha,
+        "merge_method": "squash",
+    })
+    if not isinstance(merged, dict) or merged.get("merged") is not True:
+        raise RuntimeError(f"GitHub did not confirm recovery merge of PR #{number}.")
+    confirmed = api(token, repo, "GET", f"pulls/{number}")
+    if confirmed.get("merged") is not True:
+        raise RuntimeError(f"GitHub did not confirm merged state for PR #{number}.")
+    merge_sha = merged.get("sha")
+    if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
+        raise RuntimeError("GitHub returned an invalid recovery merge SHA.")
+    return {"number": number, "url": pending.get("url"), "head_sha": head_sha, "merge_sha": merge_sha, "merged": True}
 
 
 def publish_pull_request(
@@ -348,15 +431,23 @@ def run_cycle(args: argparse.Namespace) -> int:
     pending_pr = find_open_autonomous_pr(token, repo)
     if pending_pr:
         record(
-            args.run_id, args.run_attempt, "review",
-            "در انتظار بازبینی PR قبلی",
-            f"PR #{pending_pr.get('number')} هنوز باز است؛ تا بازبینی و ادغام انسانی وظیفهٔ جدیدی آغاز نمی‌شود",
-            status="awaiting_review",
+            args.run_id, args.run_attempt, "recovery",
+            "بازیابی PR تأییدشدهٔ قبلی",
+            f"اعتبارسنجی مجدد PR #{pending_pr.get('number')} و ادامه از آخرین تغییر منتشرشده",
         )
-        print(
-            f"Waiting for human review and merge of PR #{pending_pr.get('number')}: "
-            f"{pending_pr.get('url', '')}"
+        recovered = complete_pending_pr(token, repo, pending_pr)
+        record(
+            args.run_id, args.run_attempt, "complete",
+            f"وظیفهٔ بازیابی‌شده ادغام شد",
+            f"PR #{recovered['number']} پس از اعتبارسنجی مجدد ادغام شد؛ merge={recovered['merge_sha'][:12]}",
+            status="completed",
         )
+        snapshot(args.run_id, args.run_attempt)
+        if args.mode == "continuous":
+            api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+                "ref": "main",
+                "inputs": {"manual_task": ""},
+            })
         return 0
 
     started = time.monotonic()
