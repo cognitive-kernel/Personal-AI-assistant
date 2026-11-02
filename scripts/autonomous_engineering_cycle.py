@@ -237,14 +237,14 @@ def publish_pull_request(
         "title": f"Autonomous engineering task {task_index} (run {run_id})",
         "head": branch,
         "base": "main",
-        "draft": True,
+        "draft": False,
         "body": (
             f"## Autonomous engineering task {task_index}\\n\\n"
             f"- Workflow run: https://github.com/{repo}/actions/runs/{run_id}\\n"
             f"- Candidate commit: {head_sha}\\n"
             "- Windows full test suite and repository quality gates passed before publication.\\n"
             "- GitHub tests, browser E2E, and dependency audit are dispatched against this exact PR head.\\n"
-            "- This remains a draft PR for human review. The controller never merges PRs.\\n"
+            "- The trusted controller merges this PR automatically after exact-SHA validation succeeds.\\n"
             "- No deployment is performed.\\n"
         ),
     })
@@ -258,7 +258,7 @@ def publish_pull_request(
         or pr_head != head_sha
         or pr_base != "main"
         or pr_base_sha != base_sha
-        or pr.get("draft") is not True
+        or pr.get("draft") is not False
     ):
         raise RuntimeError(
             "Refusing publication: draft PR head or exact main base does not match the validated candidate."
@@ -279,12 +279,31 @@ def publish_pull_request(
     url = refreshed_pr.get("html_url")
     if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
         raise RuntimeError("GitHub returned an unexpected pull request URL.")
+
+    merged = api(token, repo, "PUT", f"pulls/{number}/merge", {
+        "sha": head_sha,
+        "merge_method": "squash",
+    })
+    if not isinstance(merged, dict) or merged.get("merged") is not True:
+        raise RuntimeError(f"GitHub did not confirm merge of validated PR #{number}.")
+    confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
+    if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
+        raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
+    merge_sha = merged.get("sha")
+    if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
+        raise RuntimeError(f"GitHub returned an invalid merge commit for PR #{number}.")
+    main_after_merge = api(token, repo, "GET", "branches/main")
+    if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
+        raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
+
     return {
         "number": number,
         "url": url,
         "head_sha": head_sha,
         "base_sha": base_sha,
-        "draft": True,
+        "merge_sha": merge_sha,
+        "merged": True,
+        "draft": False,
     }
 
 
@@ -501,18 +520,25 @@ def run_cycle(args: argparse.Namespace) -> int:
     if not isinstance(pr_number, int) or not isinstance(pr_url, str) or not isinstance(pr_head, str):
         raise RuntimeError("The published PR metadata is incomplete.")
 
+    if published_pr.get("merged") is not True:
+        raise RuntimeError("The candidate PR was not confirmed as merged; the engineering queue cannot advance.")
+    merge_sha = published_pr.get("merge_sha")
     record(
-        args.run_id, args.run_attempt, "review",
-        "در انتظار بازبینی و ادغام انسانی",
-        f"PR #{pr_number} منتشر شد؛ head={pr_head[:12]}؛ ادغام خودکار انجام نمی‌شود",
-        status="awaiting_review",
+        args.run_id, args.run_attempt, "complete",
+        f"وظیفهٔ {task} ادغام شد",
+        f"PR #{pr_number} با موفقیت و پس از اعتبارسنجی کامل در main ادغام شد؛ merge={str(merge_sha)[:12]}",
+        status="completed",
     )
     snapshot(args.run_id, args.run_attempt)
     request_file.unlink(missing_ok=True)
-    print(
-        f"Task {task} published as draft PR #{pr_number} at {pr_head}; "
-        f"awaiting human review and merge: {pr_url}"
-    )
+    if args.mode == "continuous":
+        api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+            "ref": "main",
+            "inputs": {"manual_task": ""},
+        })
+        print(f"Task {task} merged as PR #{pr_number}; the next continuous cycle was dispatched from main: {pr_url}")
+    else:
+        print(f"Task {task} merged as PR #{pr_number}; scheduled mode will resume at its next configured interval: {pr_url}")
     return 0
 
 def main() -> int:
