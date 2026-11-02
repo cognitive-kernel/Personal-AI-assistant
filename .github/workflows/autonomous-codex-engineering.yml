@@ -49,7 +49,7 @@ jobs:
           fi
           if [[ "$EXECUTION_MODE" == "continuous" ]]; then
             echo "run_now=false" >> "$GITHUB_OUTPUT"
-            echo "Continuous mode starts manually and resumes only after a human merges a generated draft PR."
+            echo "Continuous mode starts manually and resumes after each automatically validated merge by dispatching the next run from main."
             exit 0
           fi
           case "$INTERVAL_HOURS" in
