@@ -46,7 +46,7 @@ if (-not $user.Enabled) { Enable-LocalUser -Name $RunnerAccount }
 $adminMembers = @(Get-LocalGroupMember -Group "Administrators" -ErrorAction Stop | ForEach-Object { $_.Name })
 if ($adminMembers -contains $runnerIdentity) { throw "Runner account is a local administrator." }
 $usersGroup = Get-LocalGroup -SID "S-1-5-32-545"
-if (-not (Get-LocalGroupMember -Group $usersGroup | Where-Object { $_.Name -ieq $runnerIdentity })) { Add-LocalGroupMember -Group $usersGroup -Member $runnerIdentity }
+if (-not (Get-LocalGroupMember -Group $usersGroup.Name | Where-Object { $_.Name -ieq $runnerIdentity })) { Add-LocalGroupMember -Group $usersGroup -Member $runnerIdentity }
 New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
 New-Item -ItemType Directory -Path $progressPath -Force | Out-Null
 & icacls.exe $RunnerRoot /inheritance:r /grant:r "$($runnerIdentity):(OI)(CI)M" "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" | Out-Null
