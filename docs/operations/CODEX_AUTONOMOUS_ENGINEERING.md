@@ -134,3 +134,5 @@ The AI-learning page and autonomous-engineering page both include the primary na
 ## Automatic Codex CLI provisioning
 
 The autonomous workflow installs `@openai/codex` automatically on its first run under the dedicated Runner service account. Node.js LTS and npm must be installed system-wide and available in the Runner service PATH. The workflow uses that account's npm global prefix and does not require an OpenAI login or API key because it explicitly selects the local Ollama provider. No GitHub CLI credentials are stored in the Runner account.
+
+This automatic provisioning section supersedes the earlier step 5 instructions to sign in as the Runner account and install Codex CLI manually.
