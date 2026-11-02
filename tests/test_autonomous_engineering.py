@@ -465,7 +465,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
-    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute isolated tasks with per-task tests and main-branch merge")
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and publish a draft PR")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
@@ -474,7 +474,11 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert '"--local-provider", "ollama"' in progress_writer
     assert "scripts/autonomous_engineering_cycle.py run" in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
-    assert "publish_merge" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
+    assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
+    assert "pulls/{number}/merge" not in cycle_controller
+    assert '"draft": True' in cycle_controller
+    assert "awaiting_review" in cycle_controller
+    assert "types: [closed]" in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
     assert "open-draft-pr:" not in workflow and "  validate:" not in workflow
     assert "pytest" in cycle_controller and "tests.yml" in cycle_controller
