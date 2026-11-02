@@ -241,6 +241,10 @@ def autonomous_engineering_status() -> dict[str, Any]:
 def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(current, dict):
         return current
+    # A successful workflow only proves the candidate PR was published and its
+    # automated checks finished; human review/merge is a separate acceptance gate.
+    if current.get("status") == "awaiting_review":
+        return current
     run_id = str(current.get("run_id", ""))
     if not run_id.isdigit():
         return current
