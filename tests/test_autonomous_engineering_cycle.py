@@ -283,6 +283,8 @@ def test_durable_checkpoint_restores_modified_and_new_files(monkeypatch: pytest.
     root = tmp_path / "repo"
     (root / "app").mkdir(parents=True)
     (root / "tests").mkdir()
+    (root / "docs").mkdir()
+    (root / "scripts").mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Checkpoint Test"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
@@ -314,6 +316,9 @@ def test_durable_checkpoint_refuses_a_different_main_base(monkeypatch: pytest.Mo
 
     root = tmp_path / "repo"
     (root / "app").mkdir(parents=True)
+    (root / "tests").mkdir()
+    (root / "docs").mkdir()
+    (root / "scripts").mkdir()
     subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.name", "Checkpoint Test"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
