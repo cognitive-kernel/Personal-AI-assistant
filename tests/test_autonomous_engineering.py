@@ -200,7 +200,7 @@ def test_autonomous_recovery_workflow_retries_continuous_failures_with_a_pause_l
     assert "AUTONOMOUS_ENGINEERING_PENDING_TASK" in recovery
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
     assert "continuous" in recovery
-    assert "workflow_dispatch" in recovery
+    assert "/dispatches" in recovery
     assert "/api/autonomous-engineering/settings" in api_paths
     assert "/api/autonomous-engineering/dispatch" in api_paths
     assert "/api/autonomous-engineering/cancel" in api_paths
@@ -508,7 +508,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "current.plan_percent" in script
     assert "پیشرفت گام‌های برنامهٔ عامل" in page
     assert "Initialize live progress before prerequisite checks" in workflow
-    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and publish a draft PR")
+    assert workflow.index("Snapshot accepted scorecard from trusted main") < workflow.index("Execute one isolated task, validate, and merge after all gates pass")
     assert workflow.count("snapshot --run-id") == 1
     progress_writer = (root / "scripts" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     cycle_controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
