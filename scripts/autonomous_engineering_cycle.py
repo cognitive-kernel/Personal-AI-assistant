@@ -77,10 +77,26 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
         "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
     ]
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    return subprocess.Popen(
+    process = subprocess.Popen(
         command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags,
     )
+    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
+    state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+    metadata_path = state_dir / "worktree-checkpoint.json"
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError("The durable checkpoint watcher exited before becoming ready.")
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata.get("watcher_pid") == process.pid:
+                return process
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.2)
+    process.terminate()
+    raise RuntimeError("The durable checkpoint watcher did not become ready within ten seconds.")
 
 
 def stop_checkpoint_watcher(
