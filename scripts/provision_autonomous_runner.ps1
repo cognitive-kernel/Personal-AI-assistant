@@ -68,9 +68,9 @@ try {
     Remove-Item -LiteralPath $archive -Force
     $config = Join-Path $RunnerRoot "config.cmd"
     if (-not (Test-Path -LiteralPath $config)) { throw "config.cmd missing from official Runner archive." }
-    $args = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
+    $configArgs = @("--url", "https://github.com/$Repository", "--token", $token, "--name", $RunnerName, "--labels", "ollama", "--work", "_work", "--runasservice", "--windowslogonaccount", $runnerIdentity)
     Write-Host "Runner configuration will prompt for the service-account password; it is not passed as a process argument."
-    & $config @args
+    & $config @configArgs
     if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
     if ($services.Count -ne 1 -or $services[0].StartName -ine $runnerIdentity) { throw "Could not verify the Runner service identity." }
