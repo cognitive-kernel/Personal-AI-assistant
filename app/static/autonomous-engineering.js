@@ -4,6 +4,8 @@
   const message = $("agent-message");
   const dispatchButton = $("dispatch-agent");
   const cancelButton = $("cancel-agent");
+  const pauseButton = $("pause-agent");
+  const resumeButton = $("resume-agent");
   const saveButton = $("save-agent-settings");
   const settingsForm = $("agent-settings-form");
   const taskForm = $("agent-task-form");
@@ -88,8 +90,8 @@
       dispatchButton.textContent = data.execution_mode === "continuous"
         ? "شروع صف پیوسته"
         : "اجرای یک چرخهٔ خودکار از صف مهندسی";
-      if (document.activeElement !== $("runs-per-day")) {
-        $("runs-per-day").value = String(data.runs_per_day || 1);
+      if (document.activeElement !== $("interval-hours")) {
+        $("interval-hours").value = String(data.interval_hours || 24);
       }
       labels.codex.textContent = checks.codex_installed ? "موجود" : "در حساب برنامه نصب نیست";
       $("codex-detail").textContent = data.codex && data.codex.version
@@ -117,6 +119,8 @@
       dispatchButton.disabled = !ready || active;
       taskButton.disabled = !ready || active;
       cancelButton.disabled = !active;
+      pauseButton.disabled = Boolean(data.paused);
+      resumeButton.disabled = !data.paused;
       renderRuns(data.github && data.github.recent_runs);
       setMessage(ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید.", ready ? "success" : "");
     } catch (error) {
@@ -124,6 +128,8 @@
       dispatchButton.disabled = true;
       taskButton.disabled = true;
       cancelButton.disabled = true;
+      pauseButton.disabled = true;
+      resumeButton.disabled = true;
     } finally {
       $("refresh-agent").disabled = false;
     }
@@ -133,13 +139,13 @@
     saveButton.disabled = true;
     const customModel = $("custom-model").value.trim();
     const model = customModel || $("ollama-model").value;
-    const runsPerDay = Number($("runs-per-day").value);
+    const intervalHours = Number($("interval-hours").value);
     const executionMode = $("execution-mode").value;
     setMessage("در حال ذخیرهٔ مدل و حالت اجرای عامل در تنظیمات مخزن GitHub…");
     try {
       const result = await request("settings", {
         method: "POST",
-        body: JSON.stringify({model, runs_per_day: runsPerDay, execution_mode: executionMode})
+        body: JSON.stringify({model, interval_hours: intervalHours, execution_mode: executionMode})
       });
       $("custom-model").value = "";
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
@@ -188,6 +194,28 @@
       setMessage(error.message, "error");
     } finally {
       dispatchButton.disabled = false;
+    }
+  });
+  pauseButton.addEventListener("click", async () => {
+    pauseButton.disabled = true;
+    try {
+      const result = await request("pause", {method: "POST"});
+      setMessage(result.message || "توقف ایمن ثبت شد.", "success");
+      await refresh();
+    } catch (error) {
+      setMessage(error.message, "error");
+      pauseButton.disabled = false;
+    }
+  });
+  resumeButton.addEventListener("click", async () => {
+    resumeButton.disabled = true;
+    try {
+      const result = await request("resume", {method: "POST"});
+      setMessage(result.message || "ادامهٔ صف درخواست شد.", "success");
+      window.setTimeout(refresh, 1500);
+    } catch (error) {
+      setMessage(error.message, "error");
+      resumeButton.disabled = false;
     }
   });
   cancelButton.addEventListener("click", async () => {
