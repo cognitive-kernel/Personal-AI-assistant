@@ -108,7 +108,7 @@ The AI-learning page and autonomous-engineering page both include the primary na
 ## Security and operational limitations
 
 - A self-hosted runner executes repository workflow code on the local host. Use a dedicated, non-administrator service account, separate from the local app user's GitHub CLI account; do not store a personal GitHub CLI login or unrelated credentials in the runner account. Do not register this machine for arbitrary repositories or untrusted PR workflows.
-- This workflow intentionally has no `pull_request` or `pull_request_target` trigger. Do not add either trigger to the self-hosted job.
+- The self-hosted coding job never runs for untrusted `pull_request` opened/synchronize events. The only `pull_request` trigger is `closed`; the schedule gate permits continuation only when the PR was merged, its base is `main`, its head branch starts with `codex/local-engineering-`, and continuous mode is enabled. Never add `pull_request_target` or run untrusted PR code on the self-hosted runner.
 - Keep the runner's working directory and Windows account separate from personal documents, browser profiles, and unrelated credentials where practical.
 - Keep the app bound to loopback. The dashboard controls are not authentication; local processes on the computer can still access the local API.
 - A persistent runner can wait for jobs around the clock, but actual work occurs in finite workflow runs. The hourly schedule can be delayed, and the computer, network, Ollama server, and runner service must remain available.
