@@ -438,15 +438,16 @@ def publish_pull_request(
         not isinstance(number, int)
         or pr_author != "github-actions[bot]"
         or pr_head_repository != repo
-        or not isinstance(pr_head, str)
+    ):
+        raise RuntimeError("Refusing publication: PR was not created by the trusted controller in this repository.")
+    if (
+        not isinstance(pr_head, str)
         or pr_head != head_sha
         or pr_base != "main"
         or pr_base_sha != base_sha
         or pr.get("draft") is not False
     ):
-        raise RuntimeError(
-            "Refusing publication: PR head or exact main base does not match the validated candidate."
-        )
+        raise RuntimeError("The PR head or main base changed before publication could be validated.")
 
     dispatch_and_wait_all(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, pr_head
