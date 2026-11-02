@@ -33,11 +33,17 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INTERVAL_HOURS: ${{ vars.AUTONOMOUS_ENGINEERING_INTERVAL_HOURS || '24' }}
           EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'scheduled' }}
+          PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
           PR_MERGED: ${{ github.event.pull_request.merged || false }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref || '' }}
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "$PAUSED" == "true" ]]; then
+            echo "run_now=false" >> "$GITHUB_OUTPUT"
+            echo "Autonomous engineering is safely paused; no new task will start."
+            exit 0
+          fi
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
             exit 0
