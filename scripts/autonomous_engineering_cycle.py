@@ -270,13 +270,16 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
         node_id = current.get("node_id")
         if not isinstance(node_id, str):
             raise RuntimeError("Cannot safely convert the pending draft PR to ready-for-review.")
-        graphql(token, """
+        transition = graphql(token, """
           mutation($pullRequestId: ID!) {
             convertPullRequestToReadyForReview(input: {pullRequestId: $pullRequestId}) {
               pullRequest { isDraft }
             }
           }
         """, {"pullRequestId": node_id})
+        ready = (transition.get("convertPullRequestToReadyForReview") or {}).get("pullRequest") or {}
+        if ready.get("isDraft") is not False:
+            raise RuntimeError("GitHub did not confirm that the pending PR is ready for automatic validation.")
     dispatch_and_wait_all(
         token, repo, ("tests.yml", "browser-e2e.yml", "dependency-audit.yml"), branch, head_sha
     )
@@ -285,6 +288,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
     if (
         (refreshed.get("head") or {}).get("sha") != head_sha
         or (refreshed.get("base") or {}).get("sha") != base_sha
+        or refreshed.get("draft") is not False
         or (main.get("commit") or {}).get("sha") != base_sha
     ):
         raise RuntimeError("Pending PR changed during revalidation; refusing automatic merge.")
