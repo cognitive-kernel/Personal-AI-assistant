@@ -116,13 +116,13 @@
       pill.className = "status-pill " + (ready ? "status-ready" : "status-blocked");
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
-      dispatchButton.disabled = !ready || active;
-      taskButton.disabled = !ready || active;
+      dispatchButton.disabled = !ready || active || Boolean(data.paused);
+      taskButton.disabled = !ready || active || Boolean(data.paused);
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
       renderRuns(data.github && data.github.recent_runs);
-      setMessage(ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید.", ready ? "success" : "");
+      setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
     } catch (error) {
       setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
       dispatchButton.disabled = true;
