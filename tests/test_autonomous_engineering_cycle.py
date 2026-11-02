@@ -350,7 +350,7 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
     ready = {**current, "draft": False}
     confirmed = {**ready, "merged": True}
     calls = []
-    responses = [current, ready, {"commit": {"sha": base_sha}}, {"merged": True, "sha": merge_sha}, confirmed]
+    responses = [current, ready, {"commit": {"sha": base_sha}}, {"merged": True, "sha": merge_sha}, confirmed, {"commit": {"sha": merge_sha}}]
 
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
