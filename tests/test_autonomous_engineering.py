@@ -136,7 +136,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "OPENAI_API_KEY" not in page
     assert "حساب Windows اختصاصی و غیرمدیر" in agent_page
     assert "checks.github_runs_available" in agent_script
-    assert 'id="runs-per-day"' in page
+    assert 'id="interval-hours"' in page
     assert 'id="execution-mode"' in page
     assert 'value="continuous"' in page
     assert 'id="ollama-model"' in page
@@ -237,12 +237,12 @@ def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
     monkeypatch.setattr(agent, "_run", fake_run)
 
     result = agent.save_autonomous_engineering_settings(
-        agent.EngineeringSettings(model="qwen3:14b", runs_per_day=4, execution_mode="continuous")
+        agent.EngineeringSettings(model="qwen3:14b", interval_hours=4, execution_mode="continuous")
     )
 
     assert result["saved"] is True
     assert result["model"] == "qwen3:14b"
-    assert result["runs_per_day"] == 4
+    assert result["interval_hours"] == 4
     assert result["execution_mode"] == "continuous"
     assert calls[0][1:4] == ["auth", "status", "--hostname"]
     assert calls[1][1:] == [
@@ -250,7 +250,7 @@ def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
         "--body", "qwen3:14b", "--repo", "cognitive-kernel/Personal-AI-assistant",
     ]
     assert calls[2][1:] == [
-        "variable", "set", "AUTONOMOUS_ENGINEERING_RUNS_PER_DAY",
+        "variable", "set", "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS",
         "--body", "4", "--repo", "cognitive-kernel/Personal-AI-assistant",
     ]
     assert calls[3][1:] == [
@@ -260,15 +260,15 @@ def test_save_settings_updates_model_and_daily_frequency(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("model", "runs_per_day"),
+    ("model", "interval_hours"),
     [("bad model name", 1), ("qwen3:14b", 5), ("../unsafe", 2)],
 )
-def test_save_settings_rejects_invalid_values(monkeypatch, model, runs_per_day):
+def test_save_settings_rejects_invalid_values(monkeypatch, model, interval_hours):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
     with pytest.raises(HTTPException) as error:
         agent.save_autonomous_engineering_settings(
-            agent.EngineeringSettings(model=model, runs_per_day=runs_per_day)
+            agent.EngineeringSettings(model=model, interval_hours=interval_hours)
         )
 
     assert error.value.status_code == 422
@@ -286,7 +286,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
             return subprocess.CompletedProcess(
                 command, 0,
                 '[{"name":"AUTONOMOUS_ENGINEERING_MODEL","value":"qwen3:14b"},'
-                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"8"},'
+                '{"name":"AUTONOMOUS_ENGINEERING_RUNS_PER_DAY","value":"12"},'
                 '{"name":"AUTONOMOUS_ENGINEERING_MODE","value":"continuous"}]',
                 "",
             )
@@ -296,7 +296,7 @@ def test_github_snapshot_reads_saved_model_and_frequency(monkeypatch):
 
     result = agent._github_snapshot()
 
-    assert result["settings"] == {"model": "qwen3:14b", "runs_per_day": 8, "execution_mode": "continuous"}
+    assert result["settings"] == {"model": "qwen3:14b", "interval_hours": 12, "execution_mode": "continuous"}
 
 
 def test_progress_reader_uses_scorecard_baseline_and_date_filtered_snapshots(monkeypatch, tmp_path):
@@ -475,8 +475,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "scripts/autonomous_engineering_cycle.py run" in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
-    assert "pulls/{number}/merge" not in cycle_controller
-    assert '"draft": True' in cycle_controller
+    assert 'pulls/{number}/merge' in cycle_controller
+    assert '"draft": False' in cycle_controller
     assert "awaiting_review" in cycle_controller
     assert "types: [closed]" in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
