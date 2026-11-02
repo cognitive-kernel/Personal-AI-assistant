@@ -433,7 +433,7 @@ def publish_pull_request(
         or pr.get("draft") is not False
     ):
         raise RuntimeError(
-            "Refusing publication: draft PR head or exact main base does not match the validated candidate."
+            "Refusing publication: PR head or exact main base does not match the validated candidate."
         )
 
     dispatch_and_wait_all(
@@ -446,7 +446,7 @@ def publish_pull_request(
     current_main_sha = (current_main.get("commit") or {}).get("sha")
     if refreshed_head != head_sha or refreshed_base != base_sha or current_main_sha != base_sha:
         raise RuntimeError(
-            "The PR head or main base changed during validation; the draft PR remains open and must be revalidated."
+            "The PR head or main base changed during validation; the PR remains open and must be revalidated."
         )
     url = refreshed_pr.get("html_url")
     if not isinstance(url, str) or url != f"https://github.com/{repo}/pull/{number}":
@@ -493,7 +493,7 @@ def publish_pr_subprocess(
     ], env=env, capture=True)
     if result.returncode:
         raise RuntimeError(
-            "Per-task draft PR publication failed: " + (result.stderr or result.stdout or "")[-4000:]
+            "Per-task PR publication failed: " + (result.stderr or result.stdout or "")[-4000:]
         )
     try:
         value = json.loads((result.stdout or "").strip().splitlines()[-1])
@@ -692,8 +692,8 @@ def run_cycle(args: argparse.Namespace) -> int:
 
         record(
             args.run_id, args.run_attempt, "publication",
-            f"انتشار PR پیش‌نویس وظیفهٔ {task}",
-            "تست‌های محلی موفق شدند؛ در حال انتشار PR پیش‌نویس برای بازبینی انسانی",
+            f"انتشار PR وظیفهٔ {task}",
+            "تست‌های محلی موفق شدند؛ در حال انتشار PR و اجرای کنترل‌های مستقل پیش از ادغام خودکار",
         )
         try:
             published_pr = publish_pr_subprocess(
