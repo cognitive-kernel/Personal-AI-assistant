@@ -160,7 +160,7 @@ def test_run_cycle_waits_for_open_task_pr_without_starting_duplicate_work(
     assert records[0][0][2] == "review"
 
 
-def test_publish_pull_request_creates_draft_and_never_calls_merge_api(
+def test_publish_pull_request_merges_only_after_exact_sha_checks(
     monkeypatch: pytest.MonkeyPatch,
 ):
     base_sha = "b" * 40
@@ -168,7 +168,7 @@ def test_publish_pull_request_creates_draft_and_never_calls_merge_api(
     calls = []
     created = {
         "number": 12,
-        "draft": True,
+        "draft": False,
         "head": {"sha": head_sha},
         "base": {"ref": "main", "sha": base_sha},
     }
@@ -185,7 +185,7 @@ def test_publish_pull_request_creates_draft_and_never_calls_merge_api(
         if method == "GET" and path.startswith("pulls?state=open"):
             return []
         if method == "POST" and path == "pulls":
-            assert payload["draft"] is True
+            assert payload["draft"] is False
             return created
         if method == "GET" and path == "pulls/12":
             return refreshed
@@ -210,10 +210,10 @@ def test_publish_pull_request_creates_draft_and_never_calls_merge_api(
         "url": "https://github.com/owner/repository/pull/12",
         "head_sha": head_sha,
         "base_sha": base_sha,
-        "draft": True,
+        "draft": False,
     }
     assert len(validations) == 1
-    assert not any(call[0] == "PUT" for call in calls if len(call) > 1)
+    assert any(call[0] == "PUT" for call in calls if len(call) > 1)
 
 
 def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
@@ -224,7 +224,7 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
     changed_sha = "d" * 40
     pr = {
         "number": 13,
-        "draft": True,
+        "draft": False,
         "head": {"sha": head_sha},
         "base": {"ref": "main", "sha": base_sha},
         "html_url": "https://github.com/owner/repository/pull/13",
