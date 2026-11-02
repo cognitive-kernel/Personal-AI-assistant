@@ -5,6 +5,7 @@ import re
 import pytest
 
 from app import db, factual_knowledge, factual_semantic_review, factual_verification_routes, factual_verification_tasks, sandbox_consent, task_manager
+from app.task_worker import TaskContext, TaskWorker
 
 
 class FakeContext:
@@ -17,6 +18,13 @@ class FakeContext:
         self.checkpoints.append(value)
         return {"status": "running", "checkpoint": value}
 
+    def complete_with_commit(self, checkpoint, operation):
+        with db.learning_connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            result = operation(connection)
+        self.checkpoints.append(checkpoint)
+        return result
+
     def control_status(self):
         return self.status
 
@@ -26,6 +34,7 @@ def learning_store(tmp_path, monkeypatch):
     monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
     monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
     db.init_databases()
+    task_manager.initialize_task_store()
     monkeypatch.setattr(
         factual_semantic_review,
         "review_claim_against_source",
@@ -863,3 +872,95 @@ def test_language_runner_promotes_only_after_exact_runtime_and_completed_harness
         ).fetchone()
     assert row["evidence_level"] == "L2_tested"
     assert tuple(test) == ("passed", environment_name, version)
+
+
+
+def _factual_verification_payload(knowledge_id, source_code):
+    return {
+        "knowledge_id": knowledge_id,
+        "test_name": "assert semantics",
+        "source_code": source_code,
+        "oracle_reviewed": True,
+        "oracle_review_id": _oracle_review_id(knowledge_id, source_code),
+        "oracle_review_note": "Compared the test assertion against the official Python reference for assert semantics.",
+        "timeout_seconds": 5,
+        "max_output_bytes": 1000,
+    }
+
+
+def test_factual_test_record_promotion_and_task_success_commit_atomically(
+    learning_store, monkeypatch
+):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    source_code = "assert True"
+    payload = _factual_verification_payload(knowledge_id, source_code)
+
+    def sandbox_handler(sandbox_payload, _checkpoint, _context):
+        return _sandbox_result(completion_marker=_completion_marker(sandbox_payload["source_code"]))
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    task = task_manager.create_task(
+        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE, payload, max_attempts=1
+    )
+    worker = TaskWorker(
+        "factual-atomic-worker",
+        {factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE: handler},
+        lease_seconds=30,
+    )
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+        test = connection.execute(
+            "SELECT outcome FROM factual_tests WHERE knowledge_id=?", (knowledge_id,)
+        ).fetchone()
+    assert saved_task["status"] == "succeeded"
+    assert saved_task["result"]["outcome"] == "passed"
+    assert claim["evidence_level"] == "L2_tested"
+    assert test["outcome"] == "passed"
+
+
+def test_factual_test_cancel_before_atomic_commit_leaves_no_test_or_promotion(
+    learning_store, monkeypatch
+):
+    knowledge_id = _active_sourced_python_claim()
+    monkeypatch.setattr(sandbox_consent, "is_enabled", lambda: True)
+    source_code = "assert True"
+    payload = _factual_verification_payload(knowledge_id, source_code)
+
+    def sandbox_handler(sandbox_payload, _checkpoint, _context):
+        return _sandbox_result(completion_marker=_completion_marker(sandbox_payload["source_code"]))
+
+    handler = factual_verification_tasks._build_handler(sandbox_handler)
+    task = task_manager.create_task(
+        factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE, payload, max_attempts=1
+    )
+    original = TaskContext.complete_with_commit
+
+    def cancel_before_commit(context, checkpoint, operation):
+        task_manager.request_cancel(context.task_id)
+        return original(context, checkpoint, operation)
+
+    monkeypatch.setattr(TaskContext, "complete_with_commit", cancel_before_commit)
+    worker = TaskWorker(
+        "factual-cancel-worker",
+        {factual_verification_tasks.FACTUAL_VERIFY_TASK_TYPE: handler},
+        lease_seconds=30,
+    )
+    assert worker.run_once() is True
+
+    saved_task = task_manager.get_task(task["id"])
+    with db.learning_connection() as connection:
+        claim = connection.execute(
+            "SELECT evidence_level FROM factual_knowledge WHERE id=?", (knowledge_id,)
+        ).fetchone()
+        test_count = connection.execute(
+            "SELECT COUNT(*) FROM factual_tests WHERE knowledge_id=?", (knowledge_id,)
+        ).fetchone()[0]
+    assert saved_task["status"] == "cancelled"
+    assert claim["evidence_level"] == "L1_sourced"
+    assert test_count == 0
