@@ -297,7 +297,15 @@
           $("cycle-progress-value").textContent = "—";
           $("cycle-progress").value = 0;
         }
-        $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + " · " + String(current.status || "");
+        const statusLabels = {
+          awaiting_review: "در انتظار بازبینی انسانی",
+          running: "در حال اجرا",
+          queued: "در صف اجرا",
+          completed: "پایان اجرا",
+          failed: "ناموفق"
+        };
+        const status = statusLabels[current.status] || String(current.status || "");
+        $("current-phase").textContent = String(current.phase_label || "مرحلهٔ جاری") + (status ? " · " + status : "");
         $("current-activity").textContent = String(current.activity || "فعالیت جاری ثبت نشده است.");
         $("plan-progress").textContent = Number(current.plan_total) > 0
           ? "پیشرفت برنامه: " + Number(current.plan_completed || 0) + " از " + Number(current.plan_total) + " گام"
