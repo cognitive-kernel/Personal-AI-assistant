@@ -63,7 +63,7 @@ jobs:
               if result is None:
                   request("POST", "/actions/variables", payload)
 
-          if variable("AUTONOMOUS_ENGINEERING_MODE", "scheduled") != "continuous":
+          if variable("AUTONOMOUS_ENGINEERING_MODE", "continuous") != "continuous":
               print("Scheduled mode: automatic failure retry is not enabled.")
               raise SystemExit(0)
           if variable("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true":
