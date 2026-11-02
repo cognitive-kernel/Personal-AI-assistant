@@ -485,7 +485,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "pulls/{number}/merge" in cycle_controller
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
-    assert "types: [closed]" in workflow
+    assert "types: [closed]" not in workflow
     assert "TASK_COMPLETE" in cycle_controller and "QUEUE_EMPTY" in cycle_controller
     assert "open-draft-pr:" not in workflow and "  validate:" not in workflow
     assert "pytest" in cycle_controller and "tests.yml" in cycle_controller
