@@ -160,6 +160,9 @@ def test_autonomous_engineering_routes_are_registered():
     assert "/autonomous-engineering" in page_paths
     assert "/api/autonomous-engineering/status" in api_paths
     assert "/api/autonomous-engineering/progress" in api_paths
+    assert "/api/autonomous-engineering/settings" in api_paths
+    assert "/api/autonomous-engineering/dispatch" in api_paths
+    assert "/api/autonomous-engineering/cancel" in api_paths
     assert "/api/autonomous-engineering/pause" in api_paths
     assert "/api/autonomous-engineering/resume" in api_paths
 
@@ -201,9 +204,6 @@ def test_autonomous_recovery_workflow_retries_continuous_failures_with_a_pause_l
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
     assert "continuous" in recovery
     assert "/dispatches" in recovery
-    assert "/api/autonomous-engineering/settings" in api_paths
-    assert "/api/autonomous-engineering/dispatch" in api_paths
-    assert "/api/autonomous-engineering/cancel" in api_paths
 
 
 def test_ollama_status_bypasses_environment_proxies(monkeypatch):
@@ -522,7 +522,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
     assert 'pulls/{number}/merge' in cycle_controller
     assert '"draft": False' in cycle_controller
-    assert "awaiting_review" in cycle_controller
+    assert "complete_pending_pr" in cycle_controller
     assert "pulls/{number}/merge" in cycle_controller
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in workflow
     assert "AUTONOMOUS_ENGINEERING_INTERVAL_HOURS" in workflow
