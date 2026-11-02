@@ -38,7 +38,7 @@ _MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 class EngineeringSettings(BaseModel):
     model: StrictStr
     interval_hours: StrictInt
-    execution_mode: StrictStr = "scheduled"
+    execution_mode: StrictStr = "continuous"
 
 
 class ManualTaskRequest(BaseModel):
@@ -135,7 +135,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "scheduled", "paused": False}
+    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "continuous", "paused": False}
     if authenticated:
         result = _run(
             [
@@ -178,7 +178,7 @@ def _github_snapshot() -> dict[str, Any]:
                     }
                     candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
                     candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
-                    candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "scheduled")
+                    candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "continuous")
                     settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
                     if _MODEL_PATTERN.fullmatch(candidate_model):
                         settings["model"] = candidate_model
@@ -201,7 +201,7 @@ def collect_status() -> dict[str, Any]:
     settings = github.get("settings", {})
     model = settings.get("model", _model())
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
-    execution_mode = settings.get("execution_mode", "scheduled")
+    execution_mode = settings.get("execution_mode", "continuous")
     paused = bool(settings.get("paused", False))
     ollama = _ollama_status(model)
     codex = _codex_status()
