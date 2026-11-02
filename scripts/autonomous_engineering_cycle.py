@@ -511,6 +511,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             status="completed",
         )
         snapshot(args.run_id, args.run_attempt)
+        clear_checkpoint()
         clear_pending_task(token, repo)
         if args.mode == "continuous":
             api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
@@ -531,7 +532,14 @@ def run_cycle(args: argparse.Namespace) -> int:
     checked(["git", "reset", "--hard", "origin/main"])
     base_sha = checked(["git", "rev-parse", "HEAD"])
     checked(["git", "switch", "-c", branch])
-    record(args.run_id, args.run_attempt, "coding", f"وظیفهٔ مهندسی {task}", "شروع وظیفهٔ مهندسی از صف")
+    restored = restore_checkpoint(base_sha)
+    if restored:
+        record(
+            args.run_id, args.run_attempt, "recovery",
+            f"بازیابی وظیفهٔ {task}",
+            "آخرین تغییرات ذخیره‌شده از فضای پایدار ویندوز بازیابی شدند",
+        )
+    record(args.run_id, args.run_attempt, "coding", f"وظیفهٔ مهندسی {task}", "شروع یا ادامهٔ وظیفهٔ مهندسی از آخرین checkpoint")
 
     report = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-report-{task}.md"
     attempt = 0
@@ -562,11 +570,15 @@ def run_cycle(args: argparse.Namespace) -> int:
             f"وظیفهٔ {task}؛ تلاش {attempt}",
             f"اجرای نشست تازه برای همان وظیفه؛ تلاش {attempt}",
         )
-        result = run([
-            sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
-            "--run-id", args.run_id, "--run-attempt", args.run_attempt,
-            "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
-        ])
+        watcher = start_checkpoint_watcher(base_sha, args.run_id, task)
+        try:
+            result = run([
+                sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
+                "--run-id", args.run_id, "--run-attempt", args.run_attempt,
+                "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
+            ])
+        finally:
+            stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
         if result.returncode:
             failure_feedback = (
                 f"Attempt {attempt}: Codex exited with code {result.returncode}. "
@@ -580,6 +592,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 raise RuntimeError("Codex reported QUEUE_EMPTY while retrying a failed task; refusing to skip the task.")
             checked(["git", "switch", "main"])
             checked(["git", "branch", "-D", branch])
+            clear_checkpoint()
             print("Engineering queue is empty.")
             return 0
         if marker == "TASK_BLOCKED":
@@ -689,6 +702,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         f"PR #{pr_number} با موفقیت و پس از اعتبارسنجی کامل در main ادغام شد؛ merge={str(merge_sha)[:12]}",
         status="completed",
     )
+    clear_checkpoint()
     snapshot(args.run_id, args.run_attempt)
     clear_pending_task(token, repo)
     request_file.unlink(missing_ok=True)
