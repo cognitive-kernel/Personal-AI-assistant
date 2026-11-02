@@ -104,9 +104,11 @@ jobs:
           base = meta['base_sha']
           subprocess.run(['git', 'add', '-N', '-A', '--', 'app', 'tests', 'docs', 'scripts'], check=True)
           diff = subprocess.run(['git', 'diff', '--binary', base, '--', 'app', 'tests', 'docs', 'scripts', ':!scripts/autonomous_engineering_cycle.py', ':!scripts/autonomous_engineering_checkpoint.py', ':!scripts/autonomous_engineering_progress.py'], check=True, capture_output=True).stdout
-          temporary = state / 'worktree-checkpoint.patch.tmp'
-          temporary.write_bytes(diff)
-          temporary.replace(state / 'worktree-checkpoint.patch')
+          patch_path = state / 'worktree-checkpoint.patch'
+          if diff or not patch_path.exists() or patch_path.stat().st_size == 0:
+              temporary = state / 'worktree-checkpoint.patch.tmp'
+              temporary.write_bytes(diff)
+              temporary.replace(patch_path)
           plan = Path('.agent-progress.json')
           if plan.is_file(): shutil.copy2(plan, state / 'worktree-plan.json')
           meta['watcher_pid'] = None
