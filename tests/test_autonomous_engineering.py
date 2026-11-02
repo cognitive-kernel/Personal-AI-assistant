@@ -197,6 +197,7 @@ def test_autonomous_recovery_workflow_retries_continuous_failures_with_a_pause_l
 
     assert "workflow_run:" in recovery
     assert "AUTONOMOUS_ENGINEERING_FAILURE_STREAK" in recovery
+    assert "AUTONOMOUS_ENGINEERING_PENDING_TASK" in recovery
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
     assert "continuous" in recovery
     assert "workflow_dispatch" in recovery
