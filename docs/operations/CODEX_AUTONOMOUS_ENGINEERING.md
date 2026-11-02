@@ -112,7 +112,7 @@ The AI-learning page and autonomous-engineering page both include the primary na
 - Keep the runner's working directory and Windows account separate from personal documents, browser profiles, and unrelated credentials where practical.
 - Keep the app bound to loopback. The dashboard controls are not authentication; local processes on the computer can still access the local API.
 - A persistent runner can wait for jobs around the clock, but actual work occurs in finite workflow runs. The hourly schedule can be delayed, and the computer, network, Ollama server, and runner service must remain available.
-- Local CPU inference can be much slower than hosted inference. The target-host performance/soak run, security review, human review, and required repository acceptance gates remain mandatory.
+- Local CPU inference can be much slower than hosted inference. The target-host performance/soak run, independent security review, and required repository acceptance gates remain mandatory; routine task merges do not wait for owner confirmation.
 - The UI's readiness indicator is diagnostic only. A green state does not prove model quality, security, or successful workflow execution.
 
 ## Troubleshooting
