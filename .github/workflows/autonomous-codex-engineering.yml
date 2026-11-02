@@ -77,7 +77,7 @@ jobs:
           python - <<'PY'
           import json, os, urllib.error, urllib.request
           task = os.environ.get("MANUAL_TASK", "")
-          if len(task) > 2000 or "\\x00" in task:
+          if len(task) > 2000 or "\x00" in task:
               raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
           repo = os.environ["GH_REPO"]
           token = os.environ["GH_TOKEN"]
