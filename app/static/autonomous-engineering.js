@@ -86,6 +86,9 @@
       renderModels(data.models, data.model);
       if (document.activeElement !== $("execution-mode")) {
         $("execution-mode").value = data.execution_mode || "scheduled";
+      dispatchButton.textContent = (data.execution_mode || "scheduled") === "continuous"
+        ? "شروع صف پیوسته"
+        : "اجرای یک چرخهٔ مهندسی";
       }
       dispatchButton.textContent = data.execution_mode === "continuous"
         ? "شروع صف پیوسته"
