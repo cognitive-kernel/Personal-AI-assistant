@@ -135,7 +135,7 @@ def _github_snapshot() -> dict[str, Any]:
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
-    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "scheduled"}
+    settings = {"model": _model(), "interval_hours": _DEFAULT_INTERVAL_HOURS, "execution_mode": "scheduled", "paused": False}
     if authenticated:
         result = _run(
             [
@@ -179,6 +179,7 @@ def _github_snapshot() -> dict[str, Any]:
                     candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
                     candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
                     candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "scheduled")
+                    settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
                     if _MODEL_PATTERN.fullmatch(candidate_model):
                         settings["model"] = candidate_model
                     if candidate_interval.isdigit() and int(candidate_interval) in _ALLOWED_INTERVAL_HOURS:
@@ -201,6 +202,7 @@ def collect_status() -> dict[str, Any]:
     model = settings.get("model", _model())
     interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
     execution_mode = settings.get("execution_mode", "scheduled")
+    paused = bool(settings.get("paused", False))
     ollama = _ollama_status(model)
     codex = _codex_status()
     runner = _runner_status()
@@ -227,6 +229,7 @@ def collect_status() -> dict[str, Any]:
         "models": ollama.get("models", []),
         "interval_hours": interval_hours,
         "execution_mode": execution_mode,
+        "paused": paused,
         "progress_storage_accessible": progress_storage,
         "platform": platform.platform(),
         "local_only_inference": True,
@@ -421,6 +424,37 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
             "درخواست اجرای چرخهٔ خودکار ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
         ),
     }
+
+
+@router.post("/pause")
+def pause_autonomous_engineering() -> dict[str, Any]:
+    gh = shutil.which("gh")
+    if not gh:
+        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
+    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
+    if not auth or auth.returncode != 0:
+        raise HTTPException(status_code=503, detail="دسترسی GitHub در حساب برنامه آماده نیست.")
+    result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "true", "--repo", _repository()], timeout=15)
+    if not result or result.returncode != 0:
+        raise HTTPException(status_code=502, detail="ثبت توقف ایمن در GitHub ناموفق بود.")
+    return {"accepted": True, "paused": True, "message": "توقف ایمن ثبت شد؛ وظیفهٔ جاری تا مرز امن ادامه می‌یابد و وظیفهٔ جدید آغاز نمی‌شود."}
+
+
+@router.post("/resume")
+def resume_autonomous_engineering() -> dict[str, Any]:
+    gh = shutil.which("gh")
+    if not gh:
+        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
+    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
+    if not auth or auth.returncode != 0:
+        raise HTTPException(status_code=503, detail="دسترسی GitHub در حساب برنامه آماده نیست.")
+    result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
+    if not result or result.returncode != 0:
+        raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
+    dispatched = _run([gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"], timeout=20)
+    if not dispatched or dispatched.returncode != 0:
+        raise HTTPException(status_code=502, detail="ادامه ثبت شد اما اجرای چرخه به GitHub ارسال نشد.")
+    return {"accepted": True, "paused": False, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد."}
 
 
 @router.post("/cancel")
