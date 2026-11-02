@@ -127,8 +127,13 @@ def test_find_open_autonomous_pr_detects_pending_generated_review(monkeypatch: p
     monkeypatch.setattr(cycle, "api", lambda *args: [{
         "number": 77,
         "html_url": "https://github.com/owner/repository/pull/77",
-        "head": {"ref": "codex/local-engineering-100-1-task-1", "sha": "a" * 40},
+        "head": {
+            "ref": "codex/local-engineering-100-1-task-1",
+            "sha": "a" * 40,
+            "repo": {"full_name": "owner/repository"},
+        },
         "base": {"ref": "main", "sha": "b" * 40},
+        "user": {"login": "github-actions[bot]"},
         "draft": False,
         "node_id": "PR_node",
     }])
@@ -348,7 +353,12 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
         "state": "open",
         "node_id": "PR_node",
         "draft": True,
-        "head": {"ref": "codex/local-engineering-77-1-task-1", "sha": head_sha},
+        "user": {"login": "github-actions[bot]"},
+        "head": {
+            "ref": "codex/local-engineering-77-1-task-1",
+            "sha": head_sha,
+            "repo": {"full_name": "owner/repository"},
+        },
         "base": {"ref": "main", "sha": base_sha},
     }
     ready = {**current, "draft": False}
