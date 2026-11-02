@@ -82,9 +82,10 @@ jobs:
 
           streak += 1
           set_variable("AUTONOMOUS_ENGINEERING_FAILURE_STREAK", streak)
+          pending_task = variable("AUTONOMOUS_ENGINEERING_PENDING_TASK", "")
           request("POST", "/actions/workflows/autonomous-codex-engineering.yml/dispatches", {
               "ref": "main",
-              "inputs": {"manual_task": ""},
+              "inputs": {"manual_task": pending_task},
           })
           print(f"Dispatched recovery cycle {streak}/4 from the last accepted main checkpoint.")
           PY
