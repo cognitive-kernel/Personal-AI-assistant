@@ -167,6 +167,30 @@ def test_find_open_autonomous_pr_ignores_non_controller_authored_branches(monkey
     assert cycle.find_open_autonomous_pr("token", "owner/repository") is None
 
 
+def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.MonkeyPatch):
+    head_sha = "a" * 40
+    base_sha = "b" * 40
+    current = {
+        "number": 79,
+        "state": "open",
+        "user": {"login": "untrusted-contributor"},
+        "head": {
+            "ref": "codex/local-engineering-102-1-task-1",
+            "sha": head_sha,
+            "repo": {"full_name": "owner/repository"},
+        },
+        "base": {"ref": "main", "sha": base_sha},
+    }
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: current)
+
+    with pytest.raises(RuntimeError, match="Pending PR identity or base changed"):
+        cycle.complete_pending_pr("token", "owner/repository", {
+            "number": 79,
+            "head_sha": head_sha,
+            "base_sha": base_sha,
+        })
+
+
 def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
     monkeypatch: pytest.MonkeyPatch,
 ):
