@@ -128,7 +128,9 @@ def test_find_open_autonomous_pr_detects_pending_generated_review(monkeypatch: p
         "number": 77,
         "html_url": "https://github.com/owner/repository/pull/77",
         "head": {"ref": "codex/local-engineering-100-1-task-1", "sha": "a" * 40},
-        "base": {"ref": "main"},
+        "base": {"ref": "main", "sha": "b" * 40},
+        "draft": False,
+        "node_id": "PR_node",
     }])
 
     result = cycle.find_open_autonomous_pr("token", "owner/repository")
@@ -137,11 +139,14 @@ def test_find_open_autonomous_pr_detects_pending_generated_review(monkeypatch: p
         "number": 77,
         "url": "https://github.com/owner/repository/pull/77",
         "head_sha": "a" * 40,
+        "base_sha": "b" * 40,
         "branch": "codex/local-engineering-100-1-task-1",
+        "draft": False,
+        "node_id": "PR_node",
     }
 
 
-def test_run_cycle_waits_for_open_task_pr_without_starting_duplicate_work(
+def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
     monkeypatch: pytest.MonkeyPatch,
 ):
     records = []
@@ -149,7 +154,14 @@ def test_run_cycle_waits_for_open_task_pr_without_starting_duplicate_work(
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: {
         "number": 77, "url": "https://github.com/owner/repository/pull/77",
+        "head_sha": "a" * 40, "base_sha": "b" * 40, "branch": "codex/local-engineering-77-1-task-1",
     })
+    monkeypatch.setattr(cycle, "complete_pending_pr", lambda *args: {
+        "number": 77, "url": "https://github.com/owner/repository/pull/77",
+        "head_sha": "a" * 40, "merge_sha": "c" * 40, "merged": True,
+    })
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
 
     args = type("Args", (), {
@@ -159,8 +171,8 @@ def test_run_cycle_waits_for_open_task_pr_without_starting_duplicate_work(
 
     assert cycle.run_cycle(args) == 0
     assert len(records) == 1
-    assert records[0][1]["status"] == "awaiting_review"
-    assert records[0][0][2] == "review"
+    assert records[0][1]["status"] == "completed"
+    assert records[0][0][2] == "complete"
 
 
 def test_publish_pull_request_merges_only_after_exact_sha_checks(monkeypatch: pytest.MonkeyPatch):
