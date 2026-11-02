@@ -540,6 +540,9 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "WindowsBuiltInRole]::Administrator" in runner_check
     assert "non-administrator service account" in workflow
     assert "workflow_dispatch:" in workflow
+    assert "Another autonomous run is already active or queued" in workflow
+    assert 'EXECUTION_MODE == "continuous"' in workflow
+    assert 'echo "run_now=true"' in workflow
     assert "manual_task:" in workflow
     assert "inputs.manual_task" in workflow
     assert '"${RunnerAccount}:(OI)(CI)M"' in acl_script
