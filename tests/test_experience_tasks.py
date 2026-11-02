@@ -197,7 +197,7 @@ def _install_experience_test_stubs(monkeypatch):
     monkeypatch.setattr(
         sandbox_tasks.sandbox,
         "run_python",
-        lambda _source, **_kwargs: SandboxResult("succeeded", 0, "assertion passed\\n", "", 12),
+        lambda _source, **_kwargs: SandboxResult("succeeded", 0, "assertion passed\n", "", 12),
     )
 
 
@@ -284,7 +284,7 @@ def test_experience_test_does_not_overwrite_a_concurrent_edit(
 
     def concurrent_edit(_source, **_kwargs):
         experience.update_experience(item["id"], takeaway="Concurrent edit")
-        return SandboxResult("succeeded", 0, "assertion passed\\n", "", 12)
+        return SandboxResult("succeeded", 0, "assertion passed\n", "", 12)
 
     monkeypatch.setattr(
         experience_tasks.web_sources,
