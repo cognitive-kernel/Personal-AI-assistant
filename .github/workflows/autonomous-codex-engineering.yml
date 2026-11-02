@@ -21,6 +21,8 @@ concurrency:
 jobs:
   schedule-gate:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     outputs:
       run_now: ${{ steps.gate.outputs.run_now }}
     steps:
@@ -63,6 +65,39 @@ jobs:
             echo "run_now=false" >> "$GITHUB_OUTPUT"
             echo "Skipping this hourly tick; configured interval is every $INTERVAL_HOURS hour(s) UTC."
           fi
+
+      - name: Persist submitted manual task before the Windows runner starts
+        if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MANUAL_TASK: ${{ inputs.manual_task }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, urllib.error, urllib.request
+          task = os.environ.get("MANUAL_TASK", "")
+          if len(task) > 2000 or "\\x00" in task:
+              raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
+          repo = os.environ["GH_REPO"]
+          token = os.environ["GH_TOKEN"]
+          base = f"https://api.github.com/repos/{repo}/actions/variables"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "Content-Type": "application/json",
+          }
+          payload = json.dumps({"name": "AUTONOMOUS_ENGINEERING_PENDING_TASK", "value": task}).encode()
+          request = urllib.request.Request(base + "/AUTONOMOUS_ENGINEERING_PENDING_TASK", data=payload, method="PATCH", headers=headers)
+          try:
+              urllib.request.urlopen(request, timeout=20).close()
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              request = urllib.request.Request(base, data=payload, method="POST", headers=headers)
+              urllib.request.urlopen(request, timeout=20).close()
+          PY
 
   codex:
     needs: schedule-gate
