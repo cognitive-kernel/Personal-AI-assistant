@@ -6,6 +6,7 @@ are attached. This module deliberately does not equate an LLM's opinion with pro
 from __future__ import annotations
 
 import json
+import sqlite3
 from typing import Any
 
 from .db import learning_connection
@@ -234,6 +235,17 @@ def create_experience(topic: str, problem: str, hypothesis: str = "") -> dict[st
     return get_experience(experience_id)
 
 
+def _experience_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    result = dict(row)
+    for column, key in (
+        ("source_evidence_json", "source_evidence"),
+        ("test_plan_json", "test_plan"),
+        ("test_results_json", "test_results"),
+    ):
+        result[key] = json.loads(result.pop(column))
+    return result
+
+
 def update_experience(
     experience_id: int,
     *,
@@ -242,10 +254,51 @@ def update_experience(
     test_plan: list[dict[str, Any]] | None = None,
     test_results: list[dict[str, Any]] | None = None,
     takeaway: str | None = None,
+    expected_version: int | None = None,
     _controlled_run: bool = False,
 ) -> dict[str, Any]:
-    """Update a record. Verification is reserved for the internal controlled runner."""
+    """Update a record using a serialized write; verification is reserved for the controlled runner."""
     init_experience_tables()
+    with learning_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        return update_experience_in_transaction(
+            conn,
+            experience_id,
+            status=status,
+            source_evidence=source_evidence,
+            test_plan=test_plan,
+            test_results=test_results,
+            takeaway=takeaway,
+            expected_version=expected_version,
+            _controlled_run=_controlled_run,
+        )
+
+
+def update_experience_in_transaction(
+    conn: sqlite3.Connection,
+    experience_id: int,
+    *,
+    status: str | None = None,
+    source_evidence: list[dict[str, Any]] | None = None,
+    test_plan: list[dict[str, Any]] | None = None,
+    test_results: list[dict[str, Any]] | None = None,
+    takeaway: str | None = None,
+    expected_version: int | None = None,
+    _controlled_run: bool = False,
+) -> dict[str, Any]:
+    """Update an experience inside the caller's existing SQLite write transaction.
+
+    The caller must initialize the schema before opening the transaction. This
+    function never opens another connection, commits, or performs external I/O.
+    """
+    if not conn.in_transaction:
+        raise RuntimeError("Experience updates require an active database transaction.")
+    if expected_version is not None and (
+        isinstance(expected_version, bool)
+        or not isinstance(expected_version, int)
+        or expected_version < 1
+    ):
+        raise ValueError("expected_version must be a positive integer.")
     if status is not None and status not in STATUSES:
         raise ValueError("Unsupported experience status.")
     if source_evidence is not None:
@@ -268,39 +321,42 @@ def update_experience(
     if takeaway is not None and (not isinstance(takeaway, str) or len(takeaway) > 10000):
         raise ValueError("takeaway must be at most 10000 characters.")
 
-    with learning_connection() as conn:
-        row = conn.execute("SELECT * FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
-        if row is None:
-            raise KeyError(experience_id)
-        evidence = source_evidence if source_evidence is not None else json.loads(row["source_evidence_json"])
-        results = test_results if test_results is not None else json.loads(row["test_results_json"])
-        plan = test_plan if test_plan is not None else json.loads(row["test_plan_json"])
-        final_status = status if status is not None else row["status"]
-        # Public callers must not mutate a verified record by downgrading its status
-        # in the same request. Only the controlled runner may change verified history.
-        if row["status"] == "verified" and not _controlled_run:
-            raise ValueError("Only the controlled experience runner can modify a verified record.")
-        if final_status == "verified" and not _controlled_run:
-            raise ValueError("Only the controlled experience runner can modify a verified record.")
-        # A record cannot become a reusable verified experience without sources and
-        # at least one successful test; failed tests must remain visible in history.
-        if final_status == "verified":
-            if not evidence:
-                raise ValueError("Cannot verify an experience without source evidence.")
-            if not plan:
-                raise ValueError("Cannot verify an experience without a test plan.")
-            if not results or not any(item.get("passed") is True for item in results):
-                raise ValueError("Cannot verify an experience without a passing test result.")
-        _store_version_snapshot(conn, row)
-        conn.execute(
-            """UPDATE learning_experiences SET status=?, source_evidence_json=?, test_plan_json=?,
-               test_results_json=?, takeaway=?, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-            (final_status, json.dumps(evidence, ensure_ascii=False),
-             json.dumps(plan, ensure_ascii=False), json.dumps(results, ensure_ascii=False),
-             row["takeaway"] if takeaway is None else takeaway.strip(), experience_id),
-        )
-    return get_experience(experience_id)
-
+    row = conn.execute("SELECT * FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
+    if row is None:
+        raise KeyError(experience_id)
+    if expected_version is not None and int(row["version"]) != expected_version:
+        raise ValueError("Experience changed while its test was running; result was not recorded.")
+    evidence = source_evidence if source_evidence is not None else json.loads(row["source_evidence_json"])
+    results = test_results if test_results is not None else json.loads(row["test_results_json"])
+    plan = test_plan if test_plan is not None else json.loads(row["test_plan_json"])
+    final_status = status if status is not None else row["status"]
+    # Public callers must not mutate a verified record by downgrading its status
+    # in the same request. Only the controlled runner may change verified history.
+    if row["status"] == "verified" and not _controlled_run:
+        raise ValueError("Only the controlled experience runner can modify a verified record.")
+    if final_status == "verified" and not _controlled_run:
+        raise ValueError("Only the controlled experience runner can modify a verified record.")
+    # A record cannot become a reusable verified experience without sources and
+    # at least one successful test; failed tests must remain visible in history.
+    if final_status == "verified":
+        if not evidence:
+            raise ValueError("Cannot verify an experience without source evidence.")
+        if not plan:
+            raise ValueError("Cannot verify an experience without a test plan.")
+        if not results or not any(item.get("passed") is True for item in results):
+            raise ValueError("Cannot verify an experience without a passing test result.")
+    _store_version_snapshot(conn, row)
+    conn.execute(
+        """UPDATE learning_experiences SET status=?, source_evidence_json=?, test_plan_json=?,
+           test_results_json=?, takeaway=?, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+        (final_status, json.dumps(evidence, ensure_ascii=False),
+         json.dumps(plan, ensure_ascii=False), json.dumps(results, ensure_ascii=False),
+         row["takeaway"] if takeaway is None else takeaway.strip(), experience_id),
+    )
+    updated = conn.execute("SELECT * FROM learning_experiences WHERE id=?", (experience_id,)).fetchone()
+    if updated is None:
+        raise RuntimeError("Updated experience could not be read inside its transaction.")
+    return _experience_from_row(updated)
 
 def _store_version_snapshot(conn, row) -> None:
     """Store an immutable snapshot before changing a learning experience."""
