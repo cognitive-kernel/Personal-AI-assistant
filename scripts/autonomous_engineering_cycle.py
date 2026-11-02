@@ -222,10 +222,7 @@ def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]
 
 def clear_pending_task(token: str, repo: str) -> None:
     try:
-        api(token, repo, "PATCH", "actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK", {
-            "name": "AUTONOMOUS_ENGINEERING_PENDING_TASK",
-            "value": "",
-        })
+        api(token, repo, "DELETE", "actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK")
     except RuntimeError as exc:
         if "(404)" not in str(exc):
             raise
