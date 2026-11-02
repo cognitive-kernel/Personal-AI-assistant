@@ -75,13 +75,13 @@ jobs:
           except ValueError:
               streak = 0
 
+          streak += 1
+          set_variable("AUTONOMOUS_ENGINEERING_FAILURE_STREAK", streak)
           if streak >= 4:
               set_variable("AUTONOMOUS_ENGINEERING_PAUSED", "true")
               print("Four consecutive failed cycles detected; the queue was safely paused for diagnosis.")
               raise SystemExit(0)
 
-          streak += 1
-          set_variable("AUTONOMOUS_ENGINEERING_FAILURE_STREAK", streak)
           pending_task = variable("AUTONOMOUS_ENGINEERING_PENDING_TASK", "")
           request("POST", "/actions/workflows/autonomous-codex-engineering.yml/dispatches", {
               "ref": "main",
