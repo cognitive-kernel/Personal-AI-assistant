@@ -1,5 +1,7 @@
 name: Autonomous local Ollama engineering
 
+run-name: Autonomous local Ollama engineering${{ inputs.recovery_retry == 'true' && ' [recovery]' || '' }}
+
 on:
   push:
     branches: [main]
@@ -12,6 +14,11 @@ on:
         required: false
         type: string
         default: ""
+      recovery_retry:
+        description: "Internal marker: this run is the single automatic recovery retry"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
