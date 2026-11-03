@@ -15,64 +15,95 @@ concurrency:
 
 jobs:
   recover:
-    if: >-
-      contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) &&
-      github.event.workflow_run.head_branch == 'main' &&
-      !contains(github.event.workflow_run.display_title, '[recovery]')
+    if: contains(fromJSON('["failure", "timed_out"]'), github.event.workflow_run.conclusion) && github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Dispatch one bounded recovery retry without Variables API access
+      - name: Retry the durable pending task without repository Variables API access
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
           PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
+          FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$EXECUTION_MODE" != "continuous" ]]; then
-            echo "Scheduled mode: automatic failure retry is disabled."
+            echo "Scheduled mode: automatic failure retry is not enabled."
             exit 0
           fi
           if [[ "${PAUSED,,}" == "true" ]]; then
             echo "The owner has paused the queue; recovery will not dispatch another run."
             exit 0
           fi
-          sleep 30
           python - <<'PY'
           import json
           import os
+          import time
           import urllib.error
           import urllib.request
 
           repo = os.environ["GH_REPO"]
           token = os.environ["GH_TOKEN"]
-          url = f"https://api.github.com/repos/{repo}/actions/workflows/autonomous-codex-engineering.yml/dispatches"
-          payload = {
-              "ref": "main",
-              "inputs": {
-                  "manual_task": "",
-                  "recovery_retry": "true",
-              },
+          base = f"https://api.github.com/repos/{repo}"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "Content-Type": "application/json",
           }
-          request = urllib.request.Request(
-              url,
-              data=json.dumps(payload).encode("utf-8"),
-              method="POST",
-              headers={
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": f"Bearer {token}",
-                  "X-GitHub-Api-Version": "2022-11-28",
-                  "Content-Type": "application/json",
+
+          def request(method, path, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              req = urllib.request.Request(base + path, data=data, method=method, headers=headers)
+              try:
+                  with urllib.request.urlopen(req, timeout=25) as response:
+                      raw = response.read(2_000_000)
+                      return json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as exc:
+                  detail = exc.read(4000).decode("utf-8", errors="replace")
+                  raise SystemExit(f"GitHub Actions API failed: HTTP {exc.code}: {detail}") from exc
+
+          # Derive the failure streak from workflow history. This replaces the
+          # legacy AUTONOMOUS_ENGINEERING_FAILURE_STREAK repository variable,
+          # whose Variables API access caused HTTP 403 with GITHUB_TOKEN.
+          result = request(
+              "GET",
+              "/actions/workflows/autonomous-codex-engineering.yml/runs?branch=main&per_page=100",
+          )
+          runs = sorted(
+              result.get("workflow_runs", []),
+              key=lambda run: run.get("run_number", 0),
+              reverse=True,
+          )
+          streak = 0
+          failed_run_id = int(os.environ["FAILED_RUN_ID"])
+          for run in runs:
+              if int(run.get("id", 0)) != failed_run_id and streak == 0:
+                  continue
+              if run.get("conclusion") in ("failure", "timed_out"):
+                  streak += 1
+              elif run.get("conclusion") == "success":
+                  break
+          streak = max(streak, 1)
+          delay_seconds = min(240, 30 * (2 ** min(streak - 1, 3)))
+          print(f"Cycle failed {streak} consecutive time(s); retrying after {delay_seconds} seconds.")
+          time.sleep(delay_seconds)
+
+          # AUTONOMOUS_ENGINEERING_PENDING_TASK remains durable on the
+          # self-hosted Windows runner; an empty manual_task lets its atomic
+          # pending-task recovery resume the exact unaccepted task.
+          request(
+              "POST",
+              "/actions/workflows/autonomous-codex-engineering.yml/dispatches",
+              {
+                  "ref": "main",
+                  "inputs": {
+                      "manual_task": "",
+                      "recovery_attempt": str(streak),
+                  },
               },
           )
-          try:
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  if response.status not in (200, 201, 202, 204):
-                      raise SystemExit(f"Unexpected workflow dispatch status: {response.status}")
-          except urllib.error.HTTPError as exc:
-              detail = exc.read(4000).decode("utf-8", errors="replace")
-              raise SystemExit(f"Workflow recovery dispatch failed: HTTP {exc.code}: {detail}") from exc
-          print("Dispatched exactly one recovery retry. A failed recovery run is not retried again automatically.")
+          print(f"Dispatched recovery cycle {streak} from the last accepted main checkpoint.")
           PY
