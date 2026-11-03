@@ -18,6 +18,13 @@ if ($RunnerAccount -notmatch "^[A-Za-z0-9_.-]{1,20}$" -or $AppAccount -notmatch 
 if ($RunnerName -notmatch "^[A-Za-z0-9_.-]{1,64}$") { throw "Invalid RunnerName." }
 $runnerIdentity = "$env:COMPUTERNAME\$RunnerAccount"
 $appIdentity = "$env:COMPUTERNAME\$AppAccount"
+function Get-AccountSidValue([string]$AccountName) {
+    try {
+        return ([Security.Principal.NTAccount]$AccountName).Translate([Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        throw "Could not resolve Windows account '$AccountName' to a SID."
+    }
+}
 $progressPath = Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"
 try { $null = ([Security.Principal.NTAccount]$appIdentity).Translate([Security.Principal.SecurityIdentifier]) } catch { throw "Application account $appIdentity does not exist." }
 $null = Get-Command ollama -ErrorAction Stop
@@ -40,7 +47,7 @@ $gh = Get-Command gh -ErrorAction Stop
 if ($LASTEXITCODE -ne 0) { throw "Authenticate gh as an account with repository Administration: write permission." }
 if (Test-Path -LiteralPath (Join-Path $RunnerRoot ".runner")) {
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
-    if ($services.Count -ne 1 -or $services[0].StartName -ine $runnerIdentity) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
+    if ($services.Count -ne 1 -or (Get-AccountSidValue $services[0].StartName) -ne (Get-AccountSidValue $runnerIdentity)) { throw "Existing Runner configuration found; refusing to replace or reconfigure it." }
     if ($services[0].State -ne "Running") { Start-Service -Name $services[0].Name }
     Write-Host "Existing Runner configuration preserved and service verified."
     exit 0
@@ -85,7 +92,10 @@ try {
     & $config @configArgs
     if ($LASTEXITCODE -ne 0) { throw "Runner registration failed with exit code $LASTEXITCODE." }
     $services = @(Get-CimInstance Win32_Service | Where-Object { $_.PathName -like "*$RunnerRoot*" })
-    if ($services.Count -ne 1 -or $services[0].StartName -ine $runnerIdentity) { throw "Could not verify the Runner service identity." }
+    if ($services.Count -ne 1) { throw "Could not locate exactly one Runner service." }
+    $actualServiceSid = Get-AccountSidValue $services[0].StartName
+    $expectedRunnerSid = Get-AccountSidValue $runnerIdentity
+    if ($actualServiceSid -ne $expectedRunnerSid) { throw "Could not verify the Runner service identity." }
     if ($services[0].StartMode -eq "Disabled") { Set-Service -Name $services[0].Name -StartupType Automatic }
     Start-Service -Name $services[0].Name
     if ((Get-Service -Name $services[0].Name).Status -ne "Running") { throw "Runner service did not start." }
