@@ -292,12 +292,10 @@ def graphql(token: str, query: str, variables: dict[str, Any]) -> dict[str, Any]
     return data if isinstance(data, dict) else {}
 
 
-def clear_pending_task(token: str, repo: str) -> None:
-    try:
-        api(token, repo, "DELETE", "actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK")
-    except RuntimeError as exc:
-        if "(404)" not in str(exc):
-            raise
+def clear_pending_task() -> None:
+    if os.name == "nt" and os.getenv("PROGRAMDATA"):
+        state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+        (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
 
 
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
@@ -547,7 +545,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             status="completed",
         )
         clear_checkpoint()
-        clear_pending_task(token, repo)
+        clear_pending_task()
         snapshot(args.run_id, args.run_attempt)
         if args.mode == "continuous":
             api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
@@ -747,7 +745,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         status="completed",
     )
     clear_checkpoint()
-    clear_pending_task(token, repo)
+    clear_pending_task()
     snapshot(args.run_id, args.run_attempt)
     request_file.unlink(missing_ok=True)
     if args.mode == "continuous":

@@ -105,50 +105,6 @@ jobs:
             echo "Skipping this hourly tick; configured interval is every $INTERVAL_HOURS hour(s) UTC."
           fi
 
-      - name: Persist submitted manual task before the Windows runner starts
-        if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          MANUAL_TASK: ${{ inputs.manual_task }}
-        shell: bash
-        run: |
-          python - <<'PY'
-          import json, os, urllib.error, urllib.request
-          task = os.environ.get("MANUAL_TASK", "")
-          if len(task) > 2000 or "\x00" in task:
-              raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
-          repo = os.environ["GH_REPO"]
-          token = os.environ["GH_TOKEN"]
-          base = f"https://api.github.com/repos/{repo}/actions/variables"
-          headers = {
-              "Accept": "application/vnd.github+json",
-              "Authorization": f"Bearer {token}",
-              "X-GitHub-Api-Version": "2022-11-28",
-              "Content-Type": "application/json",
-          }
-          pending_request = urllib.request.Request(base + "/AUTONOMOUS_ENGINEERING_PENDING_TASK", headers=headers)
-          try:
-              with urllib.request.urlopen(pending_request, timeout=20) as response:
-                  pending = json.loads(response.read().decode("utf-8")).get("value", "")
-          except urllib.error.HTTPError as exc:
-              if exc.code == 404:
-                  pending = ""
-              else:
-                  raise
-          if pending and pending != task:
-              raise SystemExit("A different manual task is still unaccepted; it will be resumed automatically before a new manual task can replace it.")
-          payload = json.dumps({"name": "AUTONOMOUS_ENGINEERING_PENDING_TASK", "value": task}).encode()
-          request = urllib.request.Request(base + "/AUTONOMOUS_ENGINEERING_PENDING_TASK", data=payload, method="PATCH", headers=headers)
-          try:
-              urllib.request.urlopen(request, timeout=20).close()
-          except urllib.error.HTTPError as exc:
-              if exc.code != 404:
-                  raise
-              request = urllib.request.Request(base, data=payload, method="POST", headers=headers)
-              urllib.request.urlopen(request, timeout=20).close()
-          PY
-
   codex:
     needs: schedule-gate
     if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
@@ -301,26 +257,6 @@ jobs:
               with urllib.request.urlopen(request, timeout=25) as response:
                   return json.loads(response.read(4_000_000).decode("utf-8"))
 
-          def set_variable(name, value):
-              body = json.dumps({"name": name, "value": value}).encode("utf-8")
-              headers = {
-                  "Accept": "application/vnd.github+json",
-                  "Authorization": "Bearer " + token,
-                  "X-GitHub-Api-Version": "2022-11-28",
-                  "Content-Type": "application/json",
-              }
-              url = "https://api.github.com/repos/" + repo + "/actions/variables"
-              request = urllib.request.Request(url + "/" + name, data=body, method="PATCH", headers=headers)
-              try:
-                  with urllib.request.urlopen(request, timeout=25):
-                      return
-              except urllib.error.HTTPError as exc:
-                  if exc.code != 404:
-                      raise
-              request = urllib.request.Request(url, data=body, method="POST", headers=headers)
-              with urllib.request.urlopen(request, timeout=25):
-                  return
-
           metadata = api("")
           branch = api("branches/main")
           pulls = api("pulls?state=open&per_page=40")
@@ -373,15 +309,17 @@ jobs:
           manual_task = os.getenv("MANUAL_TASK", "")
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Manual engineering task must be at most 2000 characters and contain no NUL bytes.")
-          if not manual_task:
-              try:
-                  pending = api("actions/variables/AUTONOMOUS_ENGINEERING_PENDING_TASK")
-                  manual_task = str(pending.get("value", ""))
-              except urllib.error.HTTPError as exc:
-                  if exc.code != 404:
-                      raise
+          state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+          state_dir.mkdir(parents=True, exist_ok=True)
+          pending_path = state_dir / "pending-manual-task.txt"
           if manual_task:
-              set_variable("AUTONOMOUS_ENGINEERING_PENDING_TASK", manual_task)
+              temporary = pending_path.with_suffix(".txt.tmp")
+              temporary.write_text(manual_task, encoding="utf-8")
+              temporary.replace(pending_path)
+          elif pending_path.is_file():
+              manual_task = pending_path.read_text(encoding="utf-8")
+          if len(manual_task) > 2000 or "\x00" in manual_task:
+              raise SystemExit("Persisted manual engineering task is invalid.")
           request = {
               "event": os.getenv("EVENT_NAME", ""),
               "manual_task": manual_task,
@@ -461,18 +399,10 @@ jobs:
       - name: Recheck durable pause state immediately before task start
         id: pause
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
         shell: pwsh
         run: |
-          $ErrorActionPreference = "Stop"
-          $uri = "https://api.github.com/repos/$env:GH_REPO/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"
-          try {
-            $variable = Invoke-RestMethod -Uri $uri -Headers @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; "X-GitHub-Api-Version" = "2022-11-28" } -TimeoutSec 15
-            $paused = ([string]$variable.value).ToLowerInvariant() -eq "true"
-          } catch {
-            if ($_.Exception.Response.StatusCode.value__ -eq 404) { $paused = $false } else { throw }
-          }
+          $paused = ([string]$env:PAUSED).ToLowerInvariant() -eq "true"
           "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
 
@@ -487,22 +417,3 @@ jobs:
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
           python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or verified merge failed" }
-
-      - name: Reset consecutive failure counter after a verified merge
-        if: success() && steps.pause.outputs.paused != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Stop"
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; "X-GitHub-Api-Version" = "2022-11-28" }
-          $body = @{ name = "AUTONOMOUS_ENGINEERING_FAILURE_STREAK"; value = "0" } | ConvertTo-Json
-          $uri = "https://api.github.com/repos/$env:GH_REPO/actions/variables/AUTONOMOUS_ENGINEERING_FAILURE_STREAK"
-          try {
-            Invoke-RestMethod -Method Patch -Uri $uri -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 15 | Out-Null
-          } catch {
-            if ($_.Exception.Response.StatusCode.value__ -eq 404) {
-              Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$env:GH_REPO/actions/variables" -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 15 | Out-Null
-            } else { throw }
-          }
