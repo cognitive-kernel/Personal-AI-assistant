@@ -1,6 +1,6 @@
 name: Autonomous local Ollama engineering
 
-run-name: Autonomous local Ollama engineering${{ inputs.recovery_retry == 'true' && ' [recovery]' || '' }}
+run-name: Autonomous local Ollama engineering${{ inputs.recovery_retry && ' [recovery]' || '' }}
 
 on:
   push:
