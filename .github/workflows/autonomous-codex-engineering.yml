@@ -1,5 +1,7 @@
 name: Autonomous local Ollama engineering
 
+run-name: Autonomous local Ollama engineering${{ inputs.recovery_attempt > 0 && format(' [recovery:{0}]', inputs.recovery_attempt) || '' }}
+
 on:
   push:
     branches: [main]
@@ -12,6 +14,11 @@ on:
         required: false
         type: string
         default: ""
+      recovery_attempt:
+        description: "Internal recovery retry counter; managed by the recovery workflow"
+        required: false
+        type: number
+        default: 0
 
 permissions:
   contents: read
