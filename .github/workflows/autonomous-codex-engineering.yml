@@ -120,9 +120,27 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
       - name: Set up Python for the self-hosted Runner
+        id: setup-python
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
+
+      - name: Export the selected Python runtime to every Windows step
+        shell: powershell
+        env:
+          PYTHON_PATH: ${{ steps.setup-python.outputs.python-path }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pythonPath = $env:PYTHON_PATH
+          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "actions/setup-python did not provide a valid Python executable path: '$pythonPath'"
+          }
+          & $pythonPath --version
+          if ($LASTEXITCODE -ne 0) { throw "The Python executable installed by setup-python cannot run." }
+          $pythonDirectory = Split-Path -Parent $pythonPath
+          @($pythonDirectory, (Join-Path $pythonDirectory "Scripts")) |
+            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "Python runtime exported for subsequent steps: $pythonPath"
 
       - name: Preserve and stop checkpoint watcher from an interrupted run
         shell: powershell
