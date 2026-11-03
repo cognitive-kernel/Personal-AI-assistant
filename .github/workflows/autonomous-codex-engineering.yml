@@ -318,7 +318,7 @@ jobs:
               temporary.replace(pending_path)
           elif pending_path.is_file():
               manual_task = pending_path.read_text(encoding="utf-8")
-          if len(manual_task) > 2000 or "\\x00" in manual_task:
+          if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Persisted manual engineering task is invalid.")
           request = {
               "event": os.getenv("EVENT_NAME", ""),
