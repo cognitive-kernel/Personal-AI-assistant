@@ -126,14 +126,15 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
-      - name: Diagnose system Python under the Runner service identity
+      - name: Use preinstalled system Python under the Runner service identity
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
           Write-Host "Runner identity:"
           whoami
           $pythonPath = "C:\Program Files\Python311\python.exe"
-          $scriptsPath = "C:\Program Files\Python311\Scripts"
+          $pythonDirectory = Split-Path -Parent $pythonPath
+          $scriptsPath = Join-Path $pythonDirectory "Scripts"
           if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
             throw "System-wide Python was not found at: $pythonPath"
           }
@@ -144,36 +145,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Python cannot execute under the Runner service identity."
           }
-          $env:PATH = "C:\Program Files\Python311;C:\Program Files\Python311\Scripts;$env:PATH"
+          @($pythonDirectory, $scriptsPath) |
+            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $env:PATH = "$pythonDirectory;$scriptsPath;$env:PATH"
           python --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
           (Get-Command python).Source | Write-Host
-          Write-Host "System-wide Python is accessible to the Runner service."
-
-      - name: Set up Python for the self-hosted Runner
-        id: setup-python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-
-      - name: Export the selected Python runtime to every Windows step
-        shell: powershell
-        env:
-          PYTHON_PATH: ${{ steps.setup-python.outputs.python-path }}
-        run: |
-          $ErrorActionPreference = "Stop"
-          $pythonPath = $env:PYTHON_PATH
-          if ([string]::IsNullOrWhiteSpace($pythonPath) -or -not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
-            throw "actions/setup-python did not provide a valid Python executable path: '$pythonPath'"
-          }
-          & $pythonPath --version
-          if ($LASTEXITCODE -ne 0) { throw "The Python executable installed by setup-python cannot run." }
-          $pythonDirectory = Split-Path -Parent $pythonPath
-          @($pythonDirectory, (Join-Path $pythonDirectory "Scripts")) |
-            Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          Write-Host "Python runtime exported for subsequent steps: $pythonPath"
+          Write-Host "System-wide Python is accessible and configured for all subsequent workflow steps."
 
       - name: Preserve and stop checkpoint watcher from an interrupted run
         shell: powershell
