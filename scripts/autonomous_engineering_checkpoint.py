@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -66,9 +67,13 @@ def watcher_marker_paths(run_id: str, task: int) -> tuple[Path, Path]:
     return (state["directory"] / f"{stem}.ready", state["directory"] / f"{stem}.error")
 
 
-def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def git(
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        ["git", *args], cwd=ROOT, capture_output=True, text=True,
+        ["git", *args], cwd=ROOT, env=env, capture_output=True, text=True,
         encoding="utf-8", errors="replace", check=False,
     )
     if check and result.returncode:
@@ -127,15 +132,30 @@ def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
 def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | None = None) -> None:
     state = paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
-    git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts")
-    result = git(
-        "diff", "--binary", base_sha, "--",
-        "app", "tests", "docs", "scripts",
-        ":!scripts/autonomous_engineering_cycle.py",
-        ":!scripts/autonomous_engineering_checkpoint.py",
-        ":!scripts/autonomous_engineering_progress.py",
-        ":!scripts/autonomous_engineering_state.py",
+    # The watcher runs concurrently with Codex. Never use the repository's
+    # shared .git/index: even intent-to-add entries can race with Codex staging.
+    descriptor, index_name = tempfile.mkstemp(
+        prefix="checkpoint-index-", suffix=".tmp", dir=state["directory"],
     )
+    os.close(descriptor)
+    index_path = Path(index_name)
+    index_env = os.environ.copy()
+    index_env["GIT_INDEX_FILE"] = str(index_path)
+    try:
+        git("read-tree", base_sha, env=index_env)
+        git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts", env=index_env)
+        result = git(
+            "diff", "--binary", base_sha, "--",
+            "app", "tests", "docs", "scripts",
+            ":!scripts/autonomous_engineering_cycle.py",
+            ":!scripts/autonomous_engineering_checkpoint.py",
+            ":!scripts/autonomous_engineering_progress.py",
+            ":!scripts/autonomous_engineering_state.py",
+            env=index_env,
+        )
+    finally:
+        index_path.unlink(missing_ok=True)
+        index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
     previous = read_metadata(run_id, task)
     preserve_existing_patch = (
         not result.stdout
