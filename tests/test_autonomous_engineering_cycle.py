@@ -449,10 +449,10 @@ def test_durable_checkpoint_refreshes_watcher_metadata_when_patch_is_unchanged(m
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
 
     checkpoint.write_snapshot(base_sha, "103", 1)
-    original_patch = (state / "worktree-checkpoint.patch").read_bytes()
+    original_patch = checkpoint.paths("103", 1)["patch"].read_bytes()
     checkpoint.write_snapshot(base_sha, "103", 1, watcher_pid=4321)
 
-    metadata = json.loads((state / "worktree-checkpoint.json").read_text(encoding="utf-8"))
+    metadata = json.loads(checkpoint.paths("103", 1)["metadata"].read_text(encoding="utf-8"))
     assert metadata["watcher_pid"] == 4321
     assert (state / "worktree-checkpoint.patch").read_bytes() == original_patch
 
@@ -530,7 +530,7 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
             process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
         )
         ready = json.loads(ready_path.read_text(encoding="utf-8"))
-        metadata = json.loads((state / "worktree-checkpoint.json").read_text(encoding="utf-8"))
+        metadata = json.loads(checkpoint.paths(run_id, task)["metadata"].read_text(encoding="utf-8"))
         assert ready == {
             "base_sha": base_sha,
             "pid": process.pid,
@@ -543,7 +543,7 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         assert metadata["task"] == task
         assert metadata["watcher_pid"] == process.pid
     finally:
-        (state / "worktree-checkpoint.stop").write_text("stop\\n", encoding="utf-8")
+        checkpoint.paths(run_id, task)["stop"].write_text("stop\\n", encoding="utf-8")
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -607,7 +607,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
                 }),
                 encoding="utf-8",
             )
-            (state / "worktree-checkpoint.json").write_text(
+            checkpoint.paths("105", 1)["metadata"].write_text(
                 json.dumps({
                     "run_id": "105",
                     "task": 1,
@@ -668,7 +668,7 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
     })
     validations = []
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
-    monkeypatch.setattr(cycle, "clear_checkpoint", lambda: None)
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: None)
 
     result = cycle.complete_pending_pr("token", "owner/repository", {
         "number": 77,
