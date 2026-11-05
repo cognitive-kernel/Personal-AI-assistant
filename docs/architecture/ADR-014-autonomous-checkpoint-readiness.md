@@ -14,7 +14,7 @@ The existing execution controller already serializes worktree-mutating cycles wi
 
 1. The watcher writes the patch and optional plan first, then atomically replaces one metadata document. That replacement is the readiness commit point.
 2. The metadata contract is versioned and binds readiness to the exact `run_id`, `task`, immutable `base_sha`, and watcher PID. The controller accepts readiness only when all fields match and `watcher_ready` is explicitly true.
-3. The separate `.ready` file remains an observability/compatibility marker. Its failure is logged but does not invalidate an already committed metadata record.
+3. The separate `.ready` file is no longer written. Stale markers are removed during startup/cleanup for compatibility, but no synchronous secondary filesystem operation follows the readiness commit point.
 4. The `.error` marker remains the explicit startup-failure channel. The controller still fails closed if the watcher exits, reports an error, or does not publish matching readiness metadata before the bounded startup deadline.
 5. The controller retains exclusive ownership of the repository worktree through `repository_execution_lock`. The watcher owns only its run/task-scoped checkpoint files and does not mutate Git history or switch branches.
 6. Recovery remains controller-owned: while holding the execution lock, the controller identifies the latest checkpoint, stops its recorded watcher only after validating its process command line, verifies the checked-out HEAD against the immutable base SHA, and applies the saved patch only after `git apply --check` succeeds. Failed restores preserve the checkpoint.
@@ -36,4 +36,4 @@ The existing execution controller already serializes worktree-mutating cycles wi
 
 ## Consequences
 
-The startup decision no longer depends on two independent filesystem writes. The repository execution lock remains the single controller-level worktree ownership boundary, while checkpoint metadata provides run/task-level watcher ownership and recovery provenance. The marker file is diagnostic, not authoritative.
+The startup decision no longer depends on two independent filesystem writes. The repository execution lock remains the single controller-level worktree ownership boundary, while checkpoint metadata provides run/task-level watcher ownership and recovery provenance. The readiness marker is retired from the write path so it cannot block a watcher after its durable snapshot has committed.
