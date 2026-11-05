@@ -720,6 +720,7 @@ def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.
             capture_output=True,
             text=True,
             check=False,
+            timeout=10,
         )
         assert child.returncode != 0
         assert "Another autonomous execution owns this repository worktree" in child.stderr
