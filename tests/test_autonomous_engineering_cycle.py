@@ -563,7 +563,7 @@ def test_checkpoint_watcher_persists_readiness_marker_write_failure(
     original_write_text = Path.write_text
 
     def fail_ready_marker(path, data, *args, **kwargs):
-        if path.name.endswith(".ready.tmp"):
+        if ".ready." in path.name and path.name.endswith(".tmp"):
             raise PermissionError("simulated ready marker permission failure")
         return original_write_text(path, data, *args, **kwargs)
 
