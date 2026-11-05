@@ -27,8 +27,12 @@ def store_dir() -> Path:
 
 
 def _identity(run_id: str, task: int) -> str:
-    safe_run = "".join(ch for ch in str(run_id) if ch.isalnum() or ch in "-_")
-    if not safe_run or len(safe_run) > 100 or task < 1:
+    safe_run = str(run_id)
+    if (
+        not safe_run or len(safe_run) > 100
+        or any(not (ch.isalnum() or ch in "-_") for ch in safe_run)
+        or task < 1
+    ):
         raise ValueError("Invalid checkpoint run/task identity")
     return f"{safe_run}-{task}"
 
