@@ -601,14 +601,12 @@ def publish_pull_request(
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError(f"GitHub returned an invalid merge commit for PR #{number}.")
-    clear_checkpoint(run_id, task_index)
     confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
     if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
         raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint(run_id, task_index)
 
     return {
         "number": number,
