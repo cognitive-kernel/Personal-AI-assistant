@@ -133,10 +133,14 @@ def restore(base_sha: str) -> bool:
     if not metadata or not state["patch"].is_file():
         return False
     current_head = git("rev-parse", "HEAD").stdout.strip()
-    if current_head != base_sha or metadata.get("base_sha") != base_sha:
-        raise RuntimeError(
-            "A durable worktree checkpoint exists but its base SHA differs from current main; "
-            "the checkpoint was preserved and must not be applied to a different base."
+    if current_head != base_sha:
+        raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
+    saved_base = metadata.get("base_sha")
+    if saved_base != base_sha:
+        print(
+            "Checkpoint base differs from current main; attempting a strict context-checked restore. "
+            "The checkpoint will remain untouched if any hunk cannot be applied cleanly.",
+            file=sys.stderr,
         )
     patch = state["patch"].read_text(encoding="utf-8")
     if not patch.strip():
