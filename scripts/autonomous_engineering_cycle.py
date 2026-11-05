@@ -98,12 +98,24 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
             detail = error_path.read_text(encoding="utf-8", errors="replace").strip()
             if process.poll() is None:
                 process.terminate()
-            raise RuntimeError("The durable checkpoint watcher could not create its initial snapshot: " + detail[-2000:])
+            try:
+                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            except OSError:
+                log_detail = ""
+            raise RuntimeError(
+                "The durable checkpoint watcher failed during startup: "
+                + detail[-2000:] + (f" Watcher log: {log_detail}" if log_detail else "")
+            )
         if process.poll() is not None:
             detail = error_path.read_text(encoding="utf-8", errors="replace").strip() if error_path.is_file() else ""
+            try:
+                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            except OSError:
+                log_detail = ""
             raise RuntimeError(
                 "The durable checkpoint watcher exited before becoming ready."
                 + (f" Startup error: {detail[-2000:]}" if detail else "")
+                + (f" Watcher log: {log_detail}" if log_detail else "")
             )
         try:
             ready = json.loads(ready_path.read_text(encoding="utf-8"))
