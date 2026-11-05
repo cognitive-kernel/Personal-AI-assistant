@@ -512,37 +512,36 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         stderr=subprocess.STDOUT,
         text=True,
     )
-    ready_path, error_path = checkpoint.watcher_marker_paths(run_id, task)
-    # The helper above uses the current process environment; use the isolated path explicitly.
     ready_path = state / f"worktree-checkpoint-{run_id}-{task}.ready"
     error_path = state / f"worktree-checkpoint-{run_id}-{task}.error"
+    metadata_path = checkpoint.paths(run_id, task)["metadata"]
     try:
         deadline = time.monotonic() + 20
+        metadata = None
         while time.monotonic() < deadline and process.poll() is None:
             if error_path.is_file():
                 break
-            if ready_path.is_file():
-                break
+            if metadata_path.is_file():
+                try:
+                    candidate = json.loads(metadata_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    candidate = None
+                if isinstance(candidate, dict) and candidate.get("watcher_ready") is True:
+                    metadata = candidate
+                    break
             time.sleep(0.1)
         assert not error_path.exists(), (
             error_path.read_text(encoding="utf-8") if error_path.exists() else ""
         )
-        assert ready_path.is_file(), (
+        assert metadata is not None, (
             process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
         )
-        ready = json.loads(ready_path.read_text(encoding="utf-8"))
-        metadata = json.loads(checkpoint.paths(run_id, task)["metadata"].read_text(encoding="utf-8"))
-        assert ready == {
-            "base_sha": base_sha,
-            "pid": process.pid,
-            "ready_at": ready["ready_at"],
-            "run_id": run_id,
-            "schema_version": 3,
-            "task": task,
-        }
+        assert metadata["schema_version"] == 3
+        assert metadata["base_sha"] == base_sha
         assert metadata["run_id"] == run_id
         assert metadata["task"] == task
         assert metadata["watcher_pid"] == process.pid
+        assert not ready_path.exists(), "Readiness must not depend on a secondary marker file"
     finally:
         checkpoint.paths(run_id, task)["stop"].write_text("stop\\n", encoding="utf-8")
         try:
@@ -552,7 +551,7 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
             process.wait(timeout=5)
 
 
-def test_checkpoint_readiness_does_not_depend_on_optional_marker(
+def test_checkpoint_readiness_is_committed_without_a_secondary_marker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     import json
@@ -561,7 +560,6 @@ def test_checkpoint_readiness_does_not_depend_on_optional_marker(
 
     state = tmp_path / "ProgramData"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
-    original_write_text = Path.write_text
 
     def prepare_snapshot(base_sha, run_id, task, watcher_pid):
         paths = checkpoint.paths(run_id, task)
@@ -577,16 +575,9 @@ def test_checkpoint_readiness_does_not_depend_on_optional_marker(
         checkpoint._atomic_write(
             paths["metadata"], json.dumps(metadata, sort_keys=True) + "\n"
         )
-        original_write_text(paths["stop"], "stop\n", encoding="utf-8")
+        paths["stop"].write_text("stop\n", encoding="utf-8")
 
     monkeypatch.setattr(checkpoint, "write_snapshot", prepare_snapshot)
-
-    def fail_ready_marker(path, data, *args, **kwargs):
-        if ".ready." in path.name and path.name.endswith(".tmp"):
-            raise PermissionError("simulated ready marker permission failure")
-        return original_write_text(path, data, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "write_text", fail_ready_marker)
     assert checkpoint.watch("a" * 40, "106", 1, 5) == 0
 
     metadata = json.loads(
@@ -596,7 +587,6 @@ def test_checkpoint_readiness_does_not_depend_on_optional_marker(
     assert metadata["watcher_pid"] == __import__("os").getpid()
     assert not (state / "worktree-checkpoint-106-1.ready").exists()
     assert not (state / "worktree-checkpoint-106-1.error").exists()
-
 
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import json
