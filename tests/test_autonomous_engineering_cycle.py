@@ -475,6 +475,45 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     assert not (state / "worktree-checkpoint.ready").exists()
 
 
+def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import json
+    import os
+    from types import SimpleNamespace
+
+    state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    state.mkdir(parents=True)
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
+    monkeypatch.setattr(
+        cycle, "os",
+        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ),
+    )
+    ticks = iter((0.0, 0.0, 31.0))
+    monkeypatch.setattr(cycle.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(cycle.time, "sleep", lambda _: None)
+
+    class FakeProcess:
+        pid = 4321
+
+        def __init__(self, *args, **kwargs):
+            (state / "worktree-checkpoint.ready").write_text("4321\\n", encoding="utf-8")
+            (state / "worktree-checkpoint.json").write_text(
+                json.dumps({"watcher_pid": 4321}), encoding="utf-8"
+            )
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(cycle.subprocess, "Popen", FakeProcess)
+
+    assert cycle.start_checkpoint_watcher("a" * 40, "105", 1) is not None
+
+
 def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
     base_sha = "b" * 40
     head_sha = "c" * 40
