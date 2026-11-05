@@ -1,4 +1,12 @@
 # وضعیت یکپارچهٔ پروژه
+
+## وضعیت اصلاح Checkpoint Watcher — PR #689
+
+- PR #689 روی شاخهٔ fix/autonomous-checkpoint-readiness باز است؛ head فعلی هنگام ثبت این یادداشت هنوز باید از GitHub بازخوانی شود و هیچ تغییری در main ادغام نشده است.
+- readiness از یک Metadata اتمی و versioned تأیید می‌شود؛ نوشتن فایل جداگانهٔ .ready از مسیر watcher حذف شده است.
+- snapshotها از Git index موقت و جداگانه استفاده می‌کنند تا با staging/commit هم‌زمان Codex روی .git/index مشترک race نداشته باشند.
+- قفل repository_execution_lock و بازیابی run/task-scoped حفظ شده‌اند؛ قرارداد و محدودیت‌ها در docs/architecture/ADR-014-autonomous-checkpoint-readiness.md ثبت شده‌اند.
+- CI دقیق head نهایی PR، Windows storage regressions و نخستین اجرای مجدد روی Runner واقعی هنوز دروازه‌های باز هستند. تا تأیید آن‌ها، ماژول آمادهٔ استفادهٔ عملیاتی اعلام نمی‌شود.
 ## وضعیت فعلی عامل مهندسی خودکار — PR #680
 
 - شاخهٔ پیاده‌سازی: automation/codex-engineering-agent-rebased؛ head فعلی PR: c943990de467694bc39bcee06738d75446007a73؛ مبنای main: 60597e13e70a3014f6a1871290cf843d188ca45e. PR #680 باز، mergeable و هنوز ادغام‌نشده است.

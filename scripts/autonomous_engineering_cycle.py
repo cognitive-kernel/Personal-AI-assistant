@@ -15,6 +15,11 @@ from urllib.parse import quote
 from pathlib import Path
 from typing import Any, Iterator
 
+try:
+    from .autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
+
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = ("app/", "tests/", "docs/", "scripts/")
 RUNTIME_FILES = {".agent-request.json", ".agent-github-state.json", ".agent-progress.json"}
@@ -182,18 +187,13 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
                 + (f" Watcher log: {log_detail}" if log_detail else "")
             )
         try:
-            ready = json.loads(ready_path.read_text(encoding="utf-8"))
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if (
-                ready.get("schema_version") == 2
-                and ready.get("run_id") == run_id
-                and ready.get("task") == task
-                and ready.get("base_sha") == base_sha
-                and ready.get("pid") == process.pid
-                and metadata.get("run_id") == run_id
-                and metadata.get("task") == task
-                and metadata.get("base_sha") == base_sha
-                and metadata.get("watcher_pid") == process.pid
+            if metadata_confirms_watcher_ready(
+                metadata,
+                base_sha=base_sha,
+                run_id=run_id,
+                task=task,
+                watcher_pid=process.pid,
             ):
                 return process
         except (OSError, ValueError, AttributeError):

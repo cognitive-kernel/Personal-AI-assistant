@@ -5,15 +5,26 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
 import psutil
 
+try:
+    from .autonomous_engineering_checkpoint_contract import (
+        SCHEMA_VERSION,
+        build_checkpoint_metadata,
+    )
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_checkpoint_contract import (
+        SCHEMA_VERSION,
+        build_checkpoint_metadata,
+    )
+
 ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
-SCHEMA_VERSION = 2
 
 
 def store_dir() -> Path:
@@ -56,9 +67,13 @@ def watcher_marker_paths(run_id: str, task: int) -> tuple[Path, Path]:
     return (state["directory"] / f"{stem}.ready", state["directory"] / f"{stem}.error")
 
 
-def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def git(
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        ["git", *args], cwd=ROOT, capture_output=True, text=True,
+        ["git", *args], cwd=ROOT, env=env, capture_output=True, text=True,
         encoding="utf-8", errors="replace", check=False,
     )
     if check and result.returncode:
@@ -117,15 +132,30 @@ def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
 def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | None = None) -> None:
     state = paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
-    git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts")
-    result = git(
-        "diff", "--binary", base_sha, "--",
-        "app", "tests", "docs", "scripts",
-        ":!scripts/autonomous_engineering_cycle.py",
-        ":!scripts/autonomous_engineering_checkpoint.py",
-        ":!scripts/autonomous_engineering_progress.py",
-        ":!scripts/autonomous_engineering_state.py",
+    # The watcher runs concurrently with Codex. Never use the repository's
+    # shared .git/index: even intent-to-add entries can race with Codex staging.
+    descriptor, index_name = tempfile.mkstemp(
+        prefix="checkpoint-index-", suffix=".tmp", dir=state["directory"],
     )
+    os.close(descriptor)
+    index_path = Path(index_name)
+    index_env = os.environ.copy()
+    index_env["GIT_INDEX_FILE"] = str(index_path)
+    try:
+        git("read-tree", base_sha, env=index_env)
+        git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts", env=index_env)
+        result = git(
+            "diff", "--binary", base_sha, "--",
+            "app", "tests", "docs", "scripts",
+            ":!scripts/autonomous_engineering_cycle.py",
+            ":!scripts/autonomous_engineering_checkpoint.py",
+            ":!scripts/autonomous_engineering_progress.py",
+            ":!scripts/autonomous_engineering_state.py",
+            env=index_env,
+        )
+    finally:
+        index_path.unlink(missing_ok=True)
+        index_path.with_name(index_path.name + ".lock").unlink(missing_ok=True)
     previous = read_metadata(run_id, task)
     preserve_existing_patch = (
         not result.stdout
@@ -141,15 +171,16 @@ def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | Non
     plan = ROOT / ".agent-progress.json"
     if plan.is_file():
         _atomic_write(state["plan"], plan.read_bytes())
-    metadata = {
-        "schema_version": SCHEMA_VERSION,
-        "base_sha": base_sha,
-        "run_id": run_id,
-        "task": task,
-        "watcher_pid": watcher_pid,
-        "updated_at": time.time(),
-        "patch_bytes": state["patch"].stat().st_size if state["patch"].exists() else 0,
-    }
+    metadata = build_checkpoint_metadata(
+        base_sha=base_sha,
+        run_id=run_id,
+        task=task,
+        watcher_pid=watcher_pid,
+        updated_at=time.time(),
+        patch_bytes=state["patch"].stat().st_size if state["patch"].exists() else 0,
+    )
+    # This atomic metadata replacement is the readiness commit point. The
+    # controller must not depend on a second, separately published marker.
     _atomic_write(state["metadata"], json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n")
 
 
@@ -163,14 +194,9 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     error_path.unlink(missing_ok=True)
     try:
         write_snapshot(base_sha, run_id, task, os.getpid())
-        _atomic_write(ready_path, json.dumps({
-            "schema_version": SCHEMA_VERSION,
-            "run_id": run_id,
-            "task": task,
-            "pid": os.getpid(),
-            "base_sha": base_sha,
-            "ready_at": time.time(),
-        }, sort_keys=True) + "\n")
+        # The atomic metadata replacement above is the only readiness signal.
+        # Do not perform a second synchronous marker write here: a filesystem
+        # stall must not block the watcher after its durable snapshot is saved.
     except Exception as exc:
         try:
             _atomic_write(error_path, f"{type(exc).__name__}: {exc}\n")
