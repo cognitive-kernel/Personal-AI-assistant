@@ -581,8 +581,10 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     import json
     import os
     from types import SimpleNamespace
+    from scripts import autonomous_engineering_checkpoint as checkpoint
 
     state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
     state.mkdir(parents=True)
     monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
@@ -598,7 +600,8 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         pid = 4321
 
         def __init__(self, *args, **kwargs):
-            (state / "worktree-checkpoint-105-1.ready").write_text(
+            ready_path, _ = checkpoint.watcher_marker_paths("105", 1)
+            ready_path.write_text(
                 json.dumps({
                     "schema_version": 2,
                     "run_id": "105",
