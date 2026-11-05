@@ -518,7 +518,7 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The recovery merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task)
     return {"number": number, "url": pending.get("url"), "head_sha": head_sha, "merge_sha": merge_sha, "merged": True}
 
 
@@ -596,14 +596,14 @@ def publish_pull_request(
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError(f"GitHub returned an invalid merge commit for PR #{number}.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task_index)
     confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
     if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
         raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task_index)
 
     return {
         "number": number,
@@ -668,7 +668,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             f"PR #{recovered['number']} پس از اعتبارسنجی مجدد ادغام شد؛ merge={recovered['merge_sha'][:12]}",
             status="completed",
         )
-        clear_checkpoint()
+        clear_checkpoint(args.run_id, 1)
         clear_pending_task()
         snapshot(args.run_id, args.run_attempt)
         if args.mode == "continuous":
@@ -758,7 +758,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 raise RuntimeError("Codex reported QUEUE_EMPTY while recovering an unfinished task; refusing to discard the checkpoint.")
             checked(["git", "switch", "main"])
             checked(["git", "branch", "-D", branch])
-            clear_checkpoint()
+            clear_checkpoint(args.run_id, task)
             print("Engineering queue is empty.")
             return 0
         if marker == "TASK_BLOCKED":
@@ -868,7 +868,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         f"PR #{pr_number} با موفقیت و پس از اعتبارسنجی کامل در main ادغام شد؛ merge={str(merge_sha)[:12]}",
         status="completed",
     )
-    clear_checkpoint()
+    clear_checkpoint(args.run_id, task)
     clear_pending_task()
     snapshot(args.run_id, args.run_attempt)
     request_file.unlink(missing_ok=True)
