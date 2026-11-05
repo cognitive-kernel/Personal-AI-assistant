@@ -93,3 +93,7 @@ The earlier 12-day figure had no task-level hours, explicit contingency, file-le
 ## Historical progress-score note
 
 The older `docs/ACCEPTANCE_SCORECARD.md` reports 60.47% engineering progress using weighted gate-stage factors. That figure is preserved as a historical evidence-stage score; it is not converted into hours and is not used as the denominator for this delivery estimate. A granular engineering ledger must supersede it only when each work package has auditable status and evidence.
+
+## 2026-11-05 — Checkpoint Watcher remediation tracking
+
+The run-scoped checkpoint readiness and snapshot-index isolation defect is tracked as part of work package E-05 (durable tasks, fault injection, and resilience) in PR #689. The original 176-hour baseline, work-package allocations, and target forecast are unchanged. No actual engineering hours are entered in this note because elapsed chat/tool time is not a reliable labor-time measurement. Acceptance remains pending exact-head CI and target-runner operational verification.
