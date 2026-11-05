@@ -164,47 +164,13 @@ jobs:
           }
           Write-Host "System-wide Python and Ollama are accessible and configured for all subsequent workflow steps."
 
-      - name: Preserve and stop checkpoint watcher from an interrupted run
+      - name: Recover only the latest owned checkpoint through the run-scoped controller
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $stateDir = Join-Path $env:PROGRAMDATA "PersonalAIAssistant\autonomous-engineering"
-          $metadataPath = Join-Path $stateDir "worktree-checkpoint.json"
-          if ((Test-Path $metadataPath) -and (Test-Path (Join-Path $env:GITHUB_WORKSPACE ".git"))) {
-            $metadata = Get-Content -Raw -Encoding utf8 $metadataPath | ConvertFrom-Json
-            Set-Content -Path (Join-Path $stateDir "worktree-checkpoint.stop") -Value "stop" -Encoding utf8
-            $watcherPid = [int]$metadata.watcher_pid
-            if ($watcherPid -gt 0) {
-              $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $watcherPid" -ErrorAction SilentlyContinue
-              if ($processInfo -and $processInfo.CommandLine -match "autonomous_engineering_checkpoint.py.*watch") {
-                Stop-Process -Id $watcherPid -Force -ErrorAction SilentlyContinue
-              }
-            }
-            Set-Location $env:GITHUB_WORKSPACE
-            @'
-          import json, os, shutil, subprocess, time
-          from pathlib import Path
-          state = Path(os.environ['PROGRAMDATA']) / 'PersonalAIAssistant' / 'autonomous-engineering'
-          meta_path = state / 'worktree-checkpoint.json'
-          meta = json.loads(meta_path.read_text(encoding='utf-8'))
-          base = meta['base_sha']
-          subprocess.run(['git', 'add', '-N', '-A', '--', 'app', 'tests', 'docs', 'scripts'], check=True)
-          diff = subprocess.run(['git', 'diff', '--binary', base, '--', 'app', 'tests', 'docs', 'scripts', ':!scripts/autonomous_engineering_cycle.py', ':!scripts/autonomous_engineering_checkpoint.py', ':!scripts/autonomous_engineering_progress.py'], check=True, capture_output=True).stdout
-          patch_path = state / 'worktree-checkpoint.patch'
-          if diff or not patch_path.exists() or patch_path.stat().st_size == 0:
-              temporary = state / 'worktree-checkpoint.patch.tmp'
-              temporary.write_bytes(diff)
-              temporary.replace(patch_path)
-          plan = Path('.agent-progress.json')
-          if plan.is_file(): shutil.copy2(plan, state / 'worktree-plan.json')
-          meta['watcher_pid'] = None
-          meta['updated_at'] = time.time()
-          meta['patch_bytes'] = patch_path.stat().st_size
-          tmp = state / 'worktree-checkpoint.json.tmp'
-          tmp.write_text(json.dumps(meta, ensure_ascii=False) + '\n', encoding='utf-8')
-          tmp.replace(meta_path)
-          '@ | python -
-          }
+          Write-Host "Checkpoint recovery is performed by the run-scoped Python controller after repository ownership is acquired."
+          Write-Host "No workflow step may stop a watcher or edit checkpoint state through shared global filenames."
+
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

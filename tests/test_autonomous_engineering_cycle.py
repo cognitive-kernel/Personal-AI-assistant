@@ -188,7 +188,7 @@ def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.M
             "number": 79,
             "head_sha": head_sha,
             "base_sha": base_sha,
-        })
+        }, "102", 1)
 
 
 def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
@@ -449,12 +449,12 @@ def test_durable_checkpoint_refreshes_watcher_metadata_when_patch_is_unchanged(m
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
 
     checkpoint.write_snapshot(base_sha, "103", 1)
-    original_patch = (state / "worktree-checkpoint.patch").read_bytes()
+    original_patch = checkpoint.paths("103", 1)["patch"].read_bytes()
     checkpoint.write_snapshot(base_sha, "103", 1, watcher_pid=4321)
 
-    metadata = json.loads((state / "worktree-checkpoint.json").read_text(encoding="utf-8"))
+    metadata = json.loads(checkpoint.paths("103", 1)["metadata"].read_text(encoding="utf-8"))
     assert metadata["watcher_pid"] == 4321
-    assert (state / "worktree-checkpoint.patch").read_bytes() == original_patch
+    assert checkpoint.paths("103", 1)["patch"].read_bytes() == original_patch
 
 
 def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -475,12 +475,116 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     assert not (state / "worktree-checkpoint-104-1.ready").exists()
 
 
+def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import json
+    import os
+    import sys
+    import time
+
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    root = Path(__file__).resolve().parents[1]
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    state = tmp_path / "checkpoint-state"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
+    env = os.environ.copy()
+    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    run_id = f"integration-{os.getpid()}"
+    task = 91
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(root / "scripts" / "autonomous_engineering_checkpoint.py"),
+            "watch",
+            "--base-sha", base_sha,
+            "--run-id", run_id,
+            "--task", str(task),
+            "--interval", "5",
+        ],
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    ready_path, error_path = checkpoint.watcher_marker_paths(run_id, task)
+    # The helper above uses the current process environment; use the isolated path explicitly.
+    ready_path = state / f"worktree-checkpoint-{run_id}-{task}.ready"
+    error_path = state / f"worktree-checkpoint-{run_id}-{task}.error"
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and process.poll() is None:
+            if error_path.is_file():
+                break
+            if ready_path.is_file():
+                break
+            time.sleep(0.1)
+        assert not error_path.exists(), (
+            error_path.read_text(encoding="utf-8") if error_path.exists() else ""
+        )
+        assert ready_path.is_file(), (
+            process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
+        )
+        ready = json.loads(ready_path.read_text(encoding="utf-8"))
+        metadata = json.loads(checkpoint.paths(run_id, task)["metadata"].read_text(encoding="utf-8"))
+        assert ready == {
+            "base_sha": base_sha,
+            "pid": process.pid,
+            "ready_at": ready["ready_at"],
+            "run_id": run_id,
+            "schema_version": 2,
+            "task": task,
+        }
+        assert metadata["run_id"] == run_id
+        assert metadata["task"] == task
+        assert metadata["watcher_pid"] == process.pid
+    finally:
+        checkpoint.paths(run_id, task)["stop"].write_text("stop\\n", encoding="utf-8")
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
+def test_checkpoint_watcher_persists_readiness_marker_write_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    state = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    monkeypatch.setattr(checkpoint, "write_snapshot", lambda *args, **kwargs: None)
+    original_write_text = Path.write_text
+
+    def fail_ready_marker(path, data, *args, **kwargs):
+        if ".ready." in path.name and path.name.endswith(".tmp"):
+            raise PermissionError("simulated ready marker permission failure")
+        return original_write_text(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_ready_marker)
+    with pytest.raises(PermissionError, match="ready marker permission failure"):
+        checkpoint.watch("a" * 40, "106", 1, 5)
+
+    error = state / "worktree-checkpoint-106-1.error"
+    assert "PermissionError" in error.read_text(encoding="utf-8")
+    assert "ready marker permission failure" in error.read_text(encoding="utf-8")
+    assert not (state / "worktree-checkpoint-106-1.ready").exists()
+
+
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import json
     import os
     from types import SimpleNamespace
+    from scripts import autonomous_engineering_checkpoint as checkpoint
 
     state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
     state.mkdir(parents=True)
     monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
@@ -496,9 +600,25 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         pid = 4321
 
         def __init__(self, *args, **kwargs):
-            (state / "worktree-checkpoint-105-1.ready").write_text("4321\n", encoding="utf-8")
-            (state / "worktree-checkpoint.json").write_text(
-                json.dumps({"watcher_pid": 4321}), encoding="utf-8"
+            ready_path, _ = checkpoint.watcher_marker_paths("105", 1)
+            ready_path.write_text(
+                json.dumps({
+                    "schema_version": 2,
+                    "run_id": "105",
+                    "task": 1,
+                    "pid": 4321,
+                    "base_sha": "a" * 40,
+                }),
+                encoding="utf-8",
+            )
+            checkpoint.paths("105", 1)["metadata"].write_text(
+                json.dumps({
+                    "run_id": "105",
+                    "task": 1,
+                    "base_sha": "a" * 40,
+                    "watcher_pid": 4321,
+                }),
+                encoding="utf-8",
             )
 
         def poll(self):
@@ -552,7 +672,7 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
     })
     validations = []
     monkeypatch.setattr(cycle, "dispatch_and_wait_all", lambda *args: validations.append(args))
-    monkeypatch.setattr(cycle, "clear_checkpoint", lambda: None)
+    monkeypatch.setattr(cycle, "clear_checkpoint", lambda *args: None)
 
     result = cycle.complete_pending_pr("token", "owner/repository", {
         "number": 77,
@@ -562,9 +682,48 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
         "branch": "codex/local-engineering-77-1-task-1",
         "draft": True,
         "node_id": "PR_node",
-    })
+    }, "77", 1)
 
     assert result["merged"] is True
     assert result["merge_sha"] == merge_sha
     assert len(validations) == 1
     assert any(call[0] == "PUT" and call[1] == "pulls/77/merge" for call in calls)
+
+
+def test_checkpoint_paths_are_isolated_for_each_run_and_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    first = checkpoint.paths("run-100", 1)
+    second = checkpoint.paths("run-200", 1)
+    third = checkpoint.paths("run-100", 2)
+
+    assert first["patch"] != second["patch"]
+    assert first["metadata"] != second["metadata"]
+    assert first["stop"] != second["stop"]
+    assert first["patch"] != third["patch"]
+    assert first["plan"] != third["plan"]
+
+
+def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import os
+    import sys
+    from scripts import autonomous_engineering_cycle as cycle
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    code = (
+        "from scripts.autonomous_engineering_cycle import repository_execution_lock; "
+        "lock=repository_execution_lock('second-run','1'); lock.__enter__(); lock.__exit__(None,None,None)"
+    )
+    with cycle.repository_execution_lock("first-run", "1"):
+        child = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert child.returncode != 0
+        assert "Another autonomous execution owns this repository worktree" in child.stderr

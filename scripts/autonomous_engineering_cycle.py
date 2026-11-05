@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import base64
 import json
 import os
@@ -12,7 +13,7 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = ("app/", "tests/", "docs/", "scripts/")
@@ -25,6 +26,69 @@ PROTECTED = {
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
+
+
+@contextlib.contextmanager
+def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
+    """Serialize all worktree-mutating autonomous cycles across processes and workflow entry points."""
+    configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
+    if configured:
+        state_dir = Path(configured).expanduser()
+    elif os.getenv("PROGRAMDATA"):
+        state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
+    else:
+        state_dir = Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = state_dir / "repository-execution.lock"
+    handle = lock_path.open("a+b")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as exc:
+                raise RuntimeError(
+                    "Another autonomous execution owns this repository worktree. "
+                    "This run exited without touching its checkpoint or working tree."
+                ) from exc
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise RuntimeError(
+                    "Another autonomous execution owns this repository worktree. "
+                    "This run exited without touching its checkpoint or working tree."
+                ) from exc
+        handle.seek(0)
+        handle.truncate()
+        handle.write(json.dumps({
+            "pid": os.getpid(),
+            "run_id": run_id,
+            "run_attempt": run_attempt,
+            "host": __import__("socket").gethostname(),
+            "acquired_at": time.time(),
+        }).encode("utf-8"))
+        handle.flush()
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        handle.close()
+
 
 
 def run(command: list[str], *, env: dict[str, str] | None = None, capture: bool = False) -> subprocess.CompletedProcess[str]:
@@ -78,36 +142,61 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
     ]
     configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-    metadata_path = state_dir / "worktree-checkpoint.json"
+    metadata_path = state_dir / f"worktree-checkpoint-{run_id}-{task}.json"
     marker_id = f"{run_id}-{task}"
     ready_path = state_dir / f"worktree-checkpoint-{marker_id}.ready"
     error_path = state_dir / f"worktree-checkpoint-{marker_id}.error"
+    log_path = state_dir / f"worktree-checkpoint-{marker_id}.log"
+    state_dir.mkdir(parents=True, exist_ok=True)
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    process = subprocess.Popen(
-        command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags,
-    )
+    with log_path.open("w", encoding="utf-8") as watcher_log:
+        process = subprocess.Popen(
+            command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=watcher_log,
+            stderr=subprocess.STDOUT, close_fds=True, creationflags=flags,
+        )
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if error_path.is_file():
             detail = error_path.read_text(encoding="utf-8", errors="replace").strip()
             if process.poll() is None:
                 process.terminate()
-            raise RuntimeError("The durable checkpoint watcher could not create its initial snapshot: " + detail[-2000:])
+            try:
+                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            except OSError:
+                log_detail = ""
+            raise RuntimeError(
+                "The durable checkpoint watcher failed during startup: "
+                + detail[-2000:] + (f" Watcher log: {log_detail}" if log_detail else "")
+            )
         if process.poll() is not None:
             detail = error_path.read_text(encoding="utf-8", errors="replace").strip() if error_path.is_file() else ""
+            try:
+                log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-3000:]
+            except OSError:
+                log_detail = ""
             raise RuntimeError(
                 "The durable checkpoint watcher exited before becoming ready."
                 + (f" Startup error: {detail[-2000:]}" if detail else "")
+                + (f" Watcher log: {log_detail}" if log_detail else "")
             )
         try:
-            ready_pid = int(ready_path.read_text(encoding="utf-8").strip())
+            ready = json.loads(ready_path.read_text(encoding="utf-8"))
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if ready_pid == process.pid and metadata.get("watcher_pid") == process.pid:
+            if (
+                ready.get("schema_version") == 2
+                and ready.get("run_id") == run_id
+                and ready.get("task") == task
+                and ready.get("base_sha") == base_sha
+                and ready.get("pid") == process.pid
+                and metadata.get("run_id") == run_id
+                and metadata.get("task") == task
+                and metadata.get("base_sha") == base_sha
+                and metadata.get("watcher_pid") == process.pid
+            ):
                 return process
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError):
             pass
         time.sleep(0.2)
     metadata_detail = ""
@@ -122,9 +211,15 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+    log_detail = ""
+    try:
+        log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+    except OSError:
+        pass
     raise RuntimeError(
         "The durable checkpoint watcher did not become ready within thirty seconds. "
-        f"Metadata: {metadata_detail or 'unavailable'}"
+        f"Metadata: {metadata_detail or 'unavailable'}. "
+        f"Watcher log: {log_detail or 'unavailable'}"
     )
 
 
@@ -139,7 +234,7 @@ def stop_checkpoint_watcher(
             watcher.kill()
             watcher.wait(timeout=5)
     if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        stopped = checkpoint_command("stop")
+        stopped = checkpoint_command("stop", "--run-id", run_id, "--task", str(task))
         if stopped.returncode:
             raise RuntimeError("Could not stop the durable checkpoint watcher.")
         saved = checkpoint_command(
@@ -149,9 +244,14 @@ def stop_checkpoint_watcher(
             raise RuntimeError("Could not save the final durable worktree checkpoint.")
 
 
-def clear_checkpoint() -> None:
+def clear_checkpoint(run_id: str | None = None, task: int | None = None) -> None:
     if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        result = checkpoint_command("clear")
+        if run_id is None and task is None:
+            result = checkpoint_command("clear-latest")
+        elif run_id is not None and task is not None:
+            result = checkpoint_command("clear", "--run-id", run_id, "--task", str(task))
+        else:
+            raise ValueError("Checkpoint cleanup requires both run_id and task, or neither for latest-owner cleanup.")
         if result.returncode:
             raise RuntimeError("Could not clear the completed durable worktree checkpoint.")
 
@@ -358,7 +458,7 @@ def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
     return None
 
 
-def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[str, Any]:
+def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: str, task: int) -> dict[str, Any]:
     number = pending.get("number")
     if not isinstance(number, int):
         raise RuntimeError("The pending autonomous PR has no valid number.")
@@ -416,14 +516,14 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any]) -> dict[
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError("GitHub returned an invalid recovery merge SHA.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task)
     confirmed = api(token, repo, "GET", f"pulls/{number}")
     if confirmed.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm merged state for PR #{number}.")
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The recovery merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task)
     return {"number": number, "url": pending.get("url"), "head_sha": head_sha, "merge_sha": merge_sha, "merged": True}
 
 
@@ -501,14 +601,12 @@ def publish_pull_request(
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError(f"GitHub returned an invalid merge commit for PR #{number}.")
-    clear_checkpoint()
     confirmed_pr = api(token, repo, "GET", f"pulls/{number}")
     if not isinstance(confirmed_pr, dict) or confirmed_pr.get("merged") is not True:
         raise RuntimeError(f"GitHub merge confirmation is missing for PR #{number}.")
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint()
 
     return {
         "number": number,
@@ -566,14 +664,14 @@ def run_cycle(args: argparse.Namespace) -> int:
             "بازیابی PR تأییدشدهٔ قبلی",
             f"اعتبارسنجی مجدد PR #{pending_pr.get('number')} و ادامه از آخرین تغییر منتشرشده",
         )
-        recovered = complete_pending_pr(token, repo, pending_pr)
+        recovered = complete_pending_pr(token, repo, pending_pr, args.run_id, 1)
         record(
             args.run_id, args.run_attempt, "complete",
             f"وظیفهٔ بازیابی‌شده ادغام شد",
             f"PR #{recovered['number']} پس از اعتبارسنجی مجدد ادغام شد؛ merge={recovered['merge_sha'][:12]}",
             status="completed",
         )
-        clear_checkpoint()
+        clear_checkpoint(args.run_id, 1)
         clear_pending_task()
         snapshot(args.run_id, args.run_attempt)
         if args.mode == "continuous":
@@ -663,7 +761,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 raise RuntimeError("Codex reported QUEUE_EMPTY while recovering an unfinished task; refusing to discard the checkpoint.")
             checked(["git", "switch", "main"])
             checked(["git", "branch", "-D", branch])
-            clear_checkpoint()
+            clear_checkpoint(args.run_id, task)
             print("Engineering queue is empty.")
             return 0
         if marker == "TASK_BLOCKED":
@@ -773,7 +871,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         f"PR #{pr_number} با موفقیت و پس از اعتبارسنجی کامل در main ادغام شد؛ merge={str(merge_sha)[:12]}",
         status="completed",
     )
-    clear_checkpoint()
+    clear_checkpoint(args.run_id, task)
     clear_pending_task()
     snapshot(args.run_id, args.run_attempt)
     request_file.unlink(missing_ok=True)
@@ -803,7 +901,10 @@ def main() -> int:
     pub.add_argument("--sha", required=True)
     pub.add_argument("--base-sha", required=True)
     args = parser.parse_args()
-    return publish_command(args) if args.command == "publish" else run_cycle(args)
+    if args.command == "publish":
+        return publish_command(args)
+    with repository_execution_lock(args.run_id, args.run_attempt):
+        return run_cycle(args)
 
 
 if __name__ == "__main__":
