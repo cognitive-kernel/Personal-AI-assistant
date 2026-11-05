@@ -21,7 +21,7 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install -e ".[dev]"
       - name: Run focused checkpoint ownership and concurrency regressions
-        run: pytest -vv tests/test_autonomous_engineering_cycle.py -k "checkpoint or repository_execution_lock"
+        run: python -m pytest -vv tests/test_autonomous_engineering_cycle.py -k "checkpoint or repository_execution_lock"
       - name: Run test suite
         run: pytest -vv --durations=25 -o faulthandler_timeout=60
       - name: Verify generated learning artifacts
