@@ -476,7 +476,7 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
 
 
 def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
-    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     import json
     import os
@@ -491,6 +491,7 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
         capture_output=True, text=True,
     ).stdout.strip()
     state = tmp_path / "checkpoint-state"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state))
     env = os.environ.copy()
     env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
     run_id = f"integration-{os.getpid()}"
@@ -536,7 +537,7 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
             "pid": process.pid,
             "ready_at": ready["ready_at"],
             "run_id": run_id,
-            "schema_version": 1,
+            "schema_version": 2,
             "task": task,
         }
         assert metadata["run_id"] == run_id
@@ -599,7 +600,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         def __init__(self, *args, **kwargs):
             (state / "worktree-checkpoint-105-1.ready").write_text(
                 json.dumps({
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "run_id": "105",
                     "task": 1,
                     "pid": 4321,
