@@ -76,11 +76,6 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
         sys.executable, "scripts/autonomous_engineering_checkpoint.py", "watch",
         "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
     ]
-    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    process = subprocess.Popen(
-        command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags,
-    )
     configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
     metadata_path = state_dir / "worktree-checkpoint.json"
@@ -88,6 +83,11 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
     error_path = state_dir / "worktree-checkpoint.error"
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    process = subprocess.Popen(
+        command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags,
+    )
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if error_path.is_file():
