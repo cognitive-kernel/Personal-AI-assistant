@@ -454,7 +454,7 @@ def test_durable_checkpoint_refreshes_watcher_metadata_when_patch_is_unchanged(m
 
     metadata = json.loads(checkpoint.paths("103", 1)["metadata"].read_text(encoding="utf-8"))
     assert metadata["watcher_pid"] == 4321
-    assert (state / "worktree-checkpoint.patch").read_bytes() == original_patch
+    assert checkpoint.paths("103", 1)["patch"].read_bytes() == original_patch
 
 
 def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -684,3 +684,41 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
     assert result["merge_sha"] == merge_sha
     assert len(validations) == 1
     assert any(call[0] == "PUT" and call[1] == "pulls/77/merge" for call in calls)
+
+
+def test_checkpoint_paths_are_isolated_for_each_run_and_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+    first = checkpoint.paths("run-100", 1)
+    second = checkpoint.paths("run-200", 1)
+    third = checkpoint.paths("run-100", 2)
+
+    assert first["patch"] != second["patch"]
+    assert first["metadata"] != second["metadata"]
+    assert first["stop"] != second["stop"]
+    assert first["patch"] != third["patch"]
+    assert first["plan"] != third["plan"]
+
+
+def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import os
+    import sys
+    from scripts import autonomous_engineering_cycle as cycle
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
+    code = (
+        "from scripts.autonomous_engineering_cycle import repository_execution_lock; "
+        "with repository_execution_lock('second-run','1'): pass"
+    )
+    with cycle.repository_execution_lock("first-run", "1"):
+        child = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parents[1],
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert child.returncode != 0
+        assert "Another autonomous execution owns this repository worktree" in child.stderr
