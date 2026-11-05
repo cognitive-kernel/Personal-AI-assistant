@@ -33,9 +33,16 @@ def paths() -> dict[str, Path]:
         "metadata": directory / "worktree-checkpoint.json",
         "plan": directory / "worktree-plan.json",
         "stop": directory / "worktree-checkpoint.stop",
-        "ready": directory / "worktree-checkpoint.ready",
-        "error": directory / "worktree-checkpoint.error",
     }
+
+
+def watcher_marker_paths(run_id: str, task: int) -> tuple[Path, Path]:
+    directory = store_dir()
+    marker_id = f"{run_id}-{task}"
+    return (
+        directory / f"worktree-checkpoint-{marker_id}.ready",
+        directory / f"worktree-checkpoint-{marker_id}.error",
+    )
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -121,18 +128,19 @@ def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | Non
 
 def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     state = paths()
+    ready_path, error_path = watcher_marker_paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
     state["stop"].unlink(missing_ok=True)
-    state["ready"].unlink(missing_ok=True)
-    state["error"].unlink(missing_ok=True)
+    ready_path.unlink(missing_ok=True)
+    error_path.unlink(missing_ok=True)
     try:
         write_snapshot(base_sha, run_id, task, os.getpid())
     except (OSError, RuntimeError) as exc:
-        state["error"].write_text(
+        error_path.write_text(
             f"{type(exc).__name__}: {exc}\n", encoding="utf-8"
         )
         raise
-    state["ready"].write_text(f"{os.getpid()}\n", encoding="utf-8")
+    ready_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
     while not state["stop"].exists():
         try:
             write_snapshot(base_sha, run_id, task, os.getpid())
