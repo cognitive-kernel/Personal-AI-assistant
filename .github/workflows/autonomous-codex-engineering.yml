@@ -386,6 +386,9 @@ jobs:
           python "$env:RUNNER_TEMP\capture_state.py"
 
       - name: Install project dependencies for local test execution
+        env:
+          PIP_TIMEOUT: "120"
+          PIP_RETRIES: "10"
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
