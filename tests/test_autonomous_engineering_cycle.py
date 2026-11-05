@@ -53,6 +53,9 @@ def test_failed_local_and_github_checks_retry_same_task_then_auto_merge(tmp_path
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: None)
     monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
     monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
     monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: {})
@@ -192,9 +195,10 @@ def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.M
 
 
 def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
     records = []
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path / "autonomous-state"))
     monkeypatch.setenv("GH_TOKEN", "test-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: {

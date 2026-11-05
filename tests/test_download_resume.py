@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import shutil
 import urllib.request
 from pathlib import Path
 
@@ -506,6 +507,7 @@ def test_linux_installer_is_pinned_to_the_verified_release_tag(tmp_path, monkeyp
     assert download_call[2]["expected_sha256"] == "a" * 64
     assert download_call[2]["expected_size"] == 15902
 
+@pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell is required for Linux installer syntax validation")
 def test_linux_installer_patch_replaces_second_stage_curl_with_verified_helper(tmp_path):
     original = tmp_path / "ollama-install.sh"
     original.write_text(
