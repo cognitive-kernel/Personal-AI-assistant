@@ -126,6 +126,32 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODEL: ${{ vars.AUTONOMOUS_ENGINEERING_MODEL || 'gpt-oss:20b' }}
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
     steps:
+      - name: Diagnose system Python under the Runner service identity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "Runner identity:"
+          whoami
+          $pythonPath = "C:\Program Files\Python311\python.exe"
+          $scriptsPath = "C:\Program Files\Python311\Scripts"
+          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
+            throw "System-wide Python was not found at: $pythonPath"
+          }
+          if (-not (Test-Path -LiteralPath $scriptsPath -PathType Container)) {
+            throw "Python Scripts directory was not found at: $scriptsPath"
+          }
+          & $pythonPath --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Python cannot execute under the Runner service identity."
+          }
+          $env:PATH = "C:\Program Files\Python311;C:\Program Files\Python311\Scripts;$env:PATH"
+          python --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Python is not resolvable through PATH under the Runner service identity."
+          }
+          (Get-Command python).Source | Write-Host
+          Write-Host "System-wide Python is accessible to the Runner service."
+
       - name: Set up Python for the self-hosted Runner
         id: setup-python
         uses: actions/setup-python@v7
