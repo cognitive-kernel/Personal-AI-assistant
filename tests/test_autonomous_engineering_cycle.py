@@ -188,7 +188,7 @@ def test_complete_pending_pr_rejects_non_controller_author(monkeypatch: pytest.M
             "number": 79,
             "head_sha": head_sha,
             "base_sha": base_sha,
-        })
+        }, "102", 1)
 
 
 def test_run_cycle_recovers_open_task_pr_without_waiting_for_human(
@@ -682,7 +682,7 @@ def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: p
         "branch": "codex/local-engineering-77-1-task-1",
         "draft": True,
         "node_id": "PR_node",
-    })
+    }, "77", 1)
 
     assert result["merged"] is True
     assert result["merge_sha"] == merge_sha
