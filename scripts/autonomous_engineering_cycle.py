@@ -516,14 +516,14 @@ def complete_pending_pr(token: str, repo: str, pending: dict[str, Any], run_id: 
     merge_sha = merged.get("sha")
     if not isinstance(merge_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", merge_sha):
         raise RuntimeError("GitHub returned an invalid recovery merge SHA.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task)
     confirmed = api(token, repo, "GET", f"pulls/{number}")
     if confirmed.get("merged") is not True:
         raise RuntimeError(f"GitHub did not confirm merged state for PR #{number}.")
     main_after_merge = api(token, repo, "GET", "branches/main")
     if (main_after_merge.get("commit") or {}).get("sha") != merge_sha:
         raise RuntimeError("The recovery merge was accepted but main does not point to the confirmed merge commit.")
-    clear_checkpoint()
+    clear_checkpoint(run_id, task)
     return {"number": number, "url": pending.get("url"), "head_sha": head_sha, "merge_sha": merge_sha, "merged": True}
 
 
@@ -671,7 +671,7 @@ def run_cycle(args: argparse.Namespace) -> int:
             f"PR #{recovered['number']} پس از اعتبارسنجی مجدد ادغام شد؛ merge={recovered['merge_sha'][:12]}",
             status="completed",
         )
-        clear_checkpoint()
+        clear_checkpoint(args.run_id, 1)
         clear_pending_task()
         snapshot(args.run_id, args.run_attempt)
         if args.mode == "continuous":
