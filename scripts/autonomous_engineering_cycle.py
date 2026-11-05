@@ -103,11 +103,21 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
                 + (f" Startup error: {detail[-2000:]}" if detail else "")
             )
         try:
-            ready_pid = int(ready_path.read_text(encoding="utf-8").strip())
+            ready = json.loads(ready_path.read_text(encoding="utf-8"))
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if ready_pid == process.pid and metadata.get("watcher_pid") == process.pid:
+            if (
+                ready.get("schema_version") == 1
+                and ready.get("run_id") == run_id
+                and ready.get("task") == task
+                and ready.get("base_sha") == base_sha
+                and ready.get("pid") == process.pid
+                and metadata.get("run_id") == run_id
+                and metadata.get("task") == task
+                and metadata.get("base_sha") == base_sha
+                and metadata.get("watcher_pid") == process.pid
+            ):
                 return process
-        except (OSError, ValueError):
+        except (OSError, ValueError, AttributeError):
             pass
         time.sleep(0.2)
     metadata_detail = ""
