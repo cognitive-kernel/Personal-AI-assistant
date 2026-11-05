@@ -505,9 +505,12 @@ def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
     env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
     run_id = f"integration-{os.getpid()}"
     task = 91
+    # Match the production launch path: on Windows, bypass the venv launcher
+    # so the process PID recorded by the watcher is the Popen PID.
+    watcher_executable = getattr(sys, "_base_executable", sys.executable)
     process = subprocess.Popen(
         [
-            sys.executable,
+            watcher_executable,
             str(root / "scripts" / "autonomous_engineering_checkpoint.py"),
             "watch",
             "--base-sha", base_sha,
