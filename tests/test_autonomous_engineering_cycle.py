@@ -456,6 +456,24 @@ def test_durable_checkpoint_refreshes_watcher_metadata_when_patch_is_unchanged(m
     assert (state / "worktree-checkpoint.patch").read_bytes() == original_patch
 
 
+def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    state = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+
+    def fail_snapshot(*args, **kwargs):
+        raise RuntimeError("simulated snapshot failure")
+
+    monkeypatch.setattr(checkpoint, "write_snapshot", fail_snapshot)
+
+    with pytest.raises(RuntimeError, match="simulated snapshot failure"):
+        checkpoint.watch("a" * 40, "104", 1, 5)
+
+    assert "simulated snapshot failure" in (state / "worktree-checkpoint.error").read_text(encoding="utf-8")
+    assert not (state / "worktree-checkpoint.ready").exists()
+
+
 def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
     base_sha = "b" * 40
     head_sha = "c" * 40
