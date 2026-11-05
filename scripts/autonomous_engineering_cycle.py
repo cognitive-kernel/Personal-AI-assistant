@@ -21,6 +21,7 @@ except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_contract import metadata_confirms_watcher_ready
 
 ROOT = Path(__file__).resolve().parents[1]
+CHECKPOINT_SCRIPT = Path(__file__).resolve().with_name("autonomous_engineering_checkpoint.py")
 ALLOWED = ("app/", "tests/", "docs/", "scripts/")
 RUNTIME_FILES = {".agent-request.json", ".agent-github-state.json", ".agent-progress.json"}
 PROTECTED = {
@@ -126,7 +127,7 @@ def record(
     ])
 
 def checkpoint_command(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
-    return run([sys.executable, "scripts/autonomous_engineering_checkpoint.py", *args], capture=capture)
+    return run([sys.executable, str(CHECKPOINT_SCRIPT), *args], capture=capture)
 
 
 def restore_checkpoint(base_sha: str) -> bool:
@@ -142,7 +143,7 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
     if os.name != "nt" or not os.getenv("PROGRAMDATA"):
         return None
     command = [
-        sys.executable, "scripts/autonomous_engineering_checkpoint.py", "watch",
+        sys.executable, str(CHECKPOINT_SCRIPT), "watch",
         "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
     ]
     configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
