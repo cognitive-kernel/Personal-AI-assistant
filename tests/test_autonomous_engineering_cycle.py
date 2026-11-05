@@ -378,7 +378,12 @@ def test_durable_checkpoint_restores_modified_and_new_files(monkeypatch: pytest.
     monkeypatch.setattr(checkpoint, "ROOT", root)
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
 
+    shared_index = root / ".git" / "index"
+    index_before = shared_index.read_bytes()
     checkpoint.write_snapshot(base_sha, "101", 1)
+    assert shared_index.read_bytes() == index_before, (
+        "Checkpoint snapshotting must not mutate the shared Git index"
+    )
     subprocess.run(["git", "reset", "--hard", base_sha], cwd=root, check=True, capture_output=True)
     subprocess.run(["git", "clean", "-fd"], cwd=root, check=True, capture_output=True)
 
