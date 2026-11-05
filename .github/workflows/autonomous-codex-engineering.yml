@@ -210,9 +210,16 @@ jobs:
       - name: Initialize live progress before prerequisite checks
         shell: powershell
         run: |
-          python scripts/autonomous_engineering_progress.py record "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" --phase=preparation "--label=شروع چرخهٔ مهندسی" "--activity=Workflow شروع شد؛ در حال بررسی پیش‌نیازهای محیط"
+          $progressArgs = @(
+            "record",
+            "--run-id", $env:GITHUB_RUN_ID,
+            "--run-attempt", $env:GITHUB_RUN_ATTEMPT,
+            "--phase", "preparation",
+            "--label", "شروع چرخهٔ مهندسی",
+            "--activity", "Workflow started and environment prerequisites are being checked"
+          )
+          & python scripts/autonomous_engineering_progress.py @progressArgs
           if ($LASTEXITCODE -ne 0) { throw "Could not initialize engineering progress" }
-
       - name: Snapshot accepted scorecard from trusted main
         shell: powershell
         run: |
