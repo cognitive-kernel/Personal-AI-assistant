@@ -13,6 +13,7 @@ import psutil
 
 ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
+SCHEMA_VERSION = 2
 
 
 def store_dir() -> Path:
@@ -25,24 +26,30 @@ def store_dir() -> Path:
     return Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
 
 
-def paths() -> dict[str, Path]:
+def _identity(run_id: str, task: int) -> str:
+    safe_run = "".join(ch for ch in str(run_id) if ch.isalnum() or ch in "-_")
+    if not safe_run or len(safe_run) > 100 or task < 1:
+        raise ValueError("Invalid checkpoint run/task identity")
+    return f"{safe_run}-{task}"
+
+
+def paths(run_id: str, task: int) -> dict[str, Path]:
     directory = store_dir()
+    identity = _identity(run_id, task)
+    stem = f"worktree-checkpoint-{identity}"
     return {
         "directory": directory,
-        "patch": directory / "worktree-checkpoint.patch",
-        "metadata": directory / "worktree-checkpoint.json",
-        "plan": directory / "worktree-plan.json",
-        "stop": directory / "worktree-checkpoint.stop",
+        "patch": directory / f"{stem}.patch",
+        "metadata": directory / f"{stem}.json",
+        "plan": directory / f"worktree-plan-{identity}.json",
+        "stop": directory / f"{stem}.stop",
     }
 
 
 def watcher_marker_paths(run_id: str, task: int) -> tuple[Path, Path]:
-    directory = store_dir()
-    marker_id = f"{run_id}-{task}"
-    return (
-        directory / f"worktree-checkpoint-{marker_id}.ready",
-        directory / f"worktree-checkpoint-{marker_id}.error",
-    )
+    state = paths(run_id, task)
+    stem = state["metadata"].stem
+    return (state["directory"] / f"{stem}.ready", state["directory"] / f"{stem}.error")
 
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -55,16 +62,36 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return result
 
 
+def _atomic_write(path: Path, data: str | bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + f".{os.getpid()}.tmp")
+    if isinstance(data, bytes):
+        temporary.write_bytes(data)
+    else:
+        temporary.write_text(data, encoding="utf-8", newline="")
+    temporary.replace(path)
+
+
 def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
     if not isinstance(metadata, dict):
         return
     pid = metadata.get("watcher_pid")
-    if not isinstance(pid, int) or pid == os.getpid():
+    expected_run = metadata.get("run_id")
+    expected_task = metadata.get("task")
+    if not isinstance(pid, int) or pid <= 0 or pid == os.getpid():
         return
     try:
         process = psutil.Process(pid)
-        command = " ".join(process.cmdline()).casefold()
-        if "autonomous_engineering_checkpoint.py" in command and "watch" in command:
+        command = process.cmdline()
+        command_text = " ".join(command).casefold()
+        if (
+            "autonomous_engineering_checkpoint.py" in command_text
+            and "watch" in command_text
+            and expected_run is not None
+            and str(expected_run) in command
+            and expected_task is not None
+            and str(expected_task) in command
+        ):
             process.terminate()
             try:
                 process.wait(timeout=3)
@@ -75,17 +102,16 @@ def stop_existing_watcher(metadata: dict[str, Any] | None) -> None:
         return
 
 
-def read_metadata() -> dict[str, Any] | None:
-    target = paths()["metadata"]
+def read_metadata(run_id: str, task: int) -> dict[str, Any] | None:
     try:
-        value = json.loads(target.read_text(encoding="utf-8"))
+        value = json.loads(paths(run_id, task)["metadata"].read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return value if isinstance(value, dict) else None
 
 
 def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | None = None) -> None:
-    state = paths()
+    state = paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
     git("add", "-N", "-A", "--", "app", "tests", "docs", "scripts")
     result = git(
@@ -94,67 +120,56 @@ def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | Non
         ":!scripts/autonomous_engineering_cycle.py",
         ":!scripts/autonomous_engineering_checkpoint.py",
         ":!scripts/autonomous_engineering_progress.py",
+        ":!scripts/autonomous_engineering_state.py",
     )
-    previous = read_metadata()
+    previous = read_metadata(run_id, task)
     preserve_existing_patch = (
         not result.stdout
         and state["patch"].is_file()
         and state["patch"].stat().st_size > 0
         and previous
         and previous.get("base_sha") == base_sha
+        and previous.get("run_id") == run_id
+        and previous.get("task") == task
     )
     if not preserve_existing_patch:
-        patch_tmp = state["patch"].with_suffix(".patch.tmp")
-        patch_tmp.write_text(result.stdout, encoding="utf-8", newline="")
-        patch_tmp.replace(state["patch"])
+        _atomic_write(state["patch"], result.stdout)
     plan = ROOT / ".agent-progress.json"
     if plan.is_file():
-        plan_tmp = state["plan"].with_suffix(".json.tmp")
-        plan_tmp.write_bytes(plan.read_bytes())
-        plan_tmp.replace(state["plan"])
+        _atomic_write(state["plan"], plan.read_bytes())
     metadata = {
-        "schema_version": 1,
+        "schema_version": SCHEMA_VERSION,
         "base_sha": base_sha,
         "run_id": run_id,
         "task": task,
         "watcher_pid": watcher_pid,
         "updated_at": time.time(),
-        "patch_bytes": len(result.stdout.encode("utf-8")),
+        "patch_bytes": state["patch"].stat().st_size if state["patch"].exists() else 0,
     }
-    metadata_tmp = state["metadata"].with_suffix(".json.tmp")
-    metadata_tmp.write_text(json.dumps(metadata, ensure_ascii=False) + "\n", encoding="utf-8")
-    metadata_tmp.replace(state["metadata"])
+    _atomic_write(state["metadata"], json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n")
 
 
 def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
-    state = paths()
+    state = paths(run_id, task)
     ready_path, error_path = watcher_marker_paths(run_id, task)
     state["directory"].mkdir(parents=True, exist_ok=True)
+    # A watcher owns only its own stop/readiness/error markers and never clears another run's state.
     state["stop"].unlink(missing_ok=True)
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
     try:
         write_snapshot(base_sha, run_id, task, os.getpid())
-        ready_tmp = ready_path.with_suffix(".ready.tmp")
-        ready_tmp.write_text(
-            json.dumps({
-                "schema_version": 1,
-                "run_id": run_id,
-                "task": task,
-                "pid": os.getpid(),
-                "base_sha": base_sha,
-                "ready_at": time.time(),
-            }, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-        ready_tmp.replace(ready_path)
+        _atomic_write(ready_path, json.dumps({
+            "schema_version": SCHEMA_VERSION,
+            "run_id": run_id,
+            "task": task,
+            "pid": os.getpid(),
+            "base_sha": base_sha,
+            "ready_at": time.time(),
+        }, sort_keys=True) + "\n")
     except Exception as exc:
         try:
-            error_tmp = error_path.with_suffix(".error.tmp")
-            error_tmp.write_text(
-                f"{type(exc).__name__}: {exc}\n", encoding="utf-8"
-            )
-            error_tmp.replace(error_path)
+            _atomic_write(error_path, f"{type(exc).__name__}: {exc}\n")
         except OSError as marker_exc:
             print(
                 f"Watcher startup failed ({type(exc).__name__}: {exc}); "
@@ -171,13 +186,31 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     return 0
 
 
+def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
+    directory = store_dir()
+    candidates = []
+    for metadata_path in directory.glob("worktree-checkpoint-*.json"):
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            run_id, task = metadata["run_id"], int(metadata["task"])
+            state = paths(str(run_id), task)
+            if state["metadata"] == metadata_path and state["patch"].is_file():
+                candidates.append((float(metadata.get("updated_at", 0)), metadata, state))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    if not candidates:
+        return None
+    _, metadata, state = max(candidates, key=lambda item: item[0])
+    return metadata, state
+
+
 def restore(base_sha: str) -> bool:
-    state = paths()
-    metadata = read_metadata()
-    stop_existing_watcher(metadata)
-    state["stop"].write_text("stop\n", encoding="utf-8")
-    if not metadata or not state["patch"].is_file():
+    latest = _latest_checkpoint()
+    if latest is None:
         return False
+    metadata, state = latest
+    stop_existing_watcher(metadata)
+    _atomic_write(state["stop"], "stop\n")
     current_head = git("rev-parse", "HEAD").stdout.strip()
     if current_head != base_sha:
         raise RuntimeError("The checked-out HEAD does not match the immutable base SHA; checkpoint was preserved.")
@@ -185,7 +218,7 @@ def restore(base_sha: str) -> bool:
     if saved_base != base_sha:
         print(
             "Checkpoint base differs from current main; attempting a strict context-checked restore. "
-            "The checkpoint will remain untouched if any hunk cannot be applied cleanly.",
+            "The checkpoint remains untouched if any hunk cannot be applied cleanly.",
             file=sys.stderr,
         )
     patch = state["patch"].read_text(encoding="utf-8")
@@ -194,22 +227,19 @@ def restore(base_sha: str) -> bool:
             (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
         return False
     check = subprocess.run(
-        ["git", "apply", "--check", "--binary"],
-        input=patch, cwd=ROOT, capture_output=True, text=True,
-        encoding="utf-8", errors="replace", check=False,
+        ["git", "apply", "--check", "--binary"], input=patch, cwd=ROOT,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if check.returncode:
         raise RuntimeError("The saved worktree checkpoint no longer applies cleanly; it was preserved.")
     apply = subprocess.run(
-        ["git", "apply", "--binary"],
-        input=patch, cwd=ROOT, capture_output=True, text=True,
-        encoding="utf-8", errors="replace", check=False,
+        ["git", "apply", "--binary"], input=patch, cwd=ROOT,
+        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
     )
     if apply.returncode:
         raise RuntimeError("Could not restore the saved worktree checkpoint; it was preserved.")
     if state["plan"].is_file():
         (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
-    state["stop"].unlink(missing_ok=True)
     return True
 
 
@@ -217,19 +247,23 @@ def snapshot(base_sha: str, run_id: str, task: int) -> None:
     write_snapshot(base_sha, run_id, task, None)
 
 
-def stop() -> None:
-    state = paths()
-    stop_existing_watcher(read_metadata())
-    state["directory"].mkdir(parents=True, exist_ok=True)
-    state["stop"].write_text("stop\n", encoding="utf-8")
+def stop(run_id: str, task: int) -> None:
+    state = paths(run_id, task)
+    metadata = read_metadata(run_id, task)
+    stop_existing_watcher(metadata)
+    _atomic_write(state["stop"], "stop\n")
 
 
-def clear() -> None:
-    state = paths()
-    stop_existing_watcher(read_metadata())
-    state["stop"].write_text("stop\n", encoding="utf-8")
-    for key in ("patch", "metadata", "plan"):
+def clear(run_id: str, task: int) -> None:
+    state = paths(run_id, task)
+    metadata = read_metadata(run_id, task)
+    stop_existing_watcher(metadata)
+    _atomic_write(state["stop"], "stop\n")
+    for key in ("patch", "metadata", "plan", "stop"):
         state[key].unlink(missing_ok=True)
+    ready, error = watcher_marker_paths(run_id, task)
+    ready.unlink(missing_ok=True)
+    error.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -246,8 +280,12 @@ def main() -> int:
     snapshot_parser.add_argument("--base-sha", required=True)
     snapshot_parser.add_argument("--run-id", required=True)
     snapshot_parser.add_argument("--task", required=True, type=int)
-    subs.add_parser("stop")
-    subs.add_parser("clear")
+    stop_parser = subs.add_parser("stop")
+    stop_parser.add_argument("--run-id", required=True)
+    stop_parser.add_argument("--task", required=True, type=int)
+    clear_parser = subs.add_parser("clear")
+    clear_parser.add_argument("--run-id", required=True)
+    clear_parser.add_argument("--task", required=True, type=int)
     args = parser.parse_args()
     if args.command == "watch":
         return watch(args.base_sha, args.run_id, args.task, args.interval)
@@ -258,9 +296,9 @@ def main() -> int:
         snapshot(args.base_sha, args.run_id, args.task)
         return 0
     if args.command == "stop":
-        stop()
+        stop(args.run_id, args.task)
         return 0
-    clear()
+    clear(args.run_id, args.task)
     return 0
 
 
