@@ -174,24 +174,9 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     error_path.unlink(missing_ok=True)
     try:
         write_snapshot(base_sha, run_id, task, os.getpid())
-        try:
-            # Retained as an observability/compatibility marker only. Readiness
-            # is already committed atomically in the metadata written above.
-            _atomic_write(ready_path, json.dumps({
-                "schema_version": SCHEMA_VERSION,
-                "run_id": run_id,
-                "task": task,
-                "pid": os.getpid(),
-                "base_sha": base_sha,
-                "ready_at": time.time(),
-            }, sort_keys=True) + "\n")
-        except OSError as marker_error:
-            print(
-                f"Checkpoint readiness marker unavailable; atomic metadata is authoritative: "
-                f"{type(marker_error).__name__}: {marker_error}",
-                file=sys.stderr,
-                flush=True,
-            )
+        # The atomic metadata replacement above is the only readiness signal.
+        # Do not perform a second synchronous marker write here: a filesystem
+        # stall must not block the watcher after its durable snapshot is saved.
     except Exception as exc:
         try:
             _atomic_write(error_path, f"{type(exc).__name__}: {exc}\n")
