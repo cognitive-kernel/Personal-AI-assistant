@@ -392,7 +392,7 @@ jobs:
           python --version
           python -c "import sys; assert sys.version_info >= (3, 11)"
           python -m venv .venv
-          .\\.venv\\Scripts\\python.exe -m pip install -e ".[dev]"
+          .\\.venv\\Scripts\\python.exe -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
 
       - name: Prepare bounded engineering instructions
         shell: powershell
