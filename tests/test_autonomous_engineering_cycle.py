@@ -471,8 +471,8 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     with pytest.raises(RuntimeError, match="simulated snapshot failure"):
         checkpoint.watch("a" * 40, "104", 1, 5)
 
-    assert "simulated snapshot failure" in (state / "worktree-checkpoint.error").read_text(encoding="utf-8")
-    assert not (state / "worktree-checkpoint.ready").exists()
+    assert "simulated snapshot failure" in (state / "worktree-checkpoint-104-1.error").read_text(encoding="utf-8")
+    assert not (state / "worktree-checkpoint-104-1.ready").exists()
 
 
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -483,6 +483,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
     state.mkdir(parents=True)
     monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
         SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ),
@@ -495,7 +496,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         pid = 4321
 
         def __init__(self, *args, **kwargs):
-            (state / "worktree-checkpoint.ready").write_text("4321\\n", encoding="utf-8")
+            (state / "worktree-checkpoint-105-1.ready").write_text("4321\n", encoding="utf-8")
             (state / "worktree-checkpoint.json").write_text(
                 json.dumps({"watcher_pid": 4321}), encoding="utf-8"
             )
