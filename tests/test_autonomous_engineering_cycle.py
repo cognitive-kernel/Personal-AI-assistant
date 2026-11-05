@@ -709,7 +709,7 @@ def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(tmp_path))
     code = (
         "from scripts.autonomous_engineering_cycle import repository_execution_lock; "
-        "with repository_execution_lock('second-run','1'): pass"
+        "lock=repository_execution_lock('second-run','1'); lock.__enter__(); lock.__exit__(None,None,None)"
     )
     with cycle.repository_execution_lock("first-run", "1"):
         child = subprocess.run(
