@@ -285,20 +285,28 @@ def restore(base_sha: str) -> bool:
             "The checkpoint remains untouched if any hunk cannot be applied cleanly.",
             file=sys.stderr,
         )
-    patch = state["patch"].read_text(encoding="utf-8")
+    # Git patches are byte-oriented. Passing text input makes subprocess
+    # translate newlines on Windows, corrupting patch context before Git sees it.
+    patch = state["patch"].read_bytes()
     if not patch.strip():
         if state["plan"].is_file():
             (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
         return False
     check = subprocess.run(
-        ["git", "apply", "--check", "--binary"], input=patch, cwd=ROOT,
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+        ["git", "apply", "--check", "--binary"],
+        input=patch,
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
     )
     if check.returncode:
         raise RuntimeError("The saved worktree checkpoint no longer applies cleanly; it was preserved.")
     apply = subprocess.run(
-        ["git", "apply", "--binary"], input=patch, cwd=ROOT,
-        capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
+        ["git", "apply", "--binary"],
+        input=patch,
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
     )
     if apply.returncode:
         raise RuntimeError("Could not restore the saved worktree checkpoint; it was preserved.")
