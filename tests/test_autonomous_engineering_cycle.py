@@ -520,9 +520,24 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
         pid = 4321
 
         def __init__(self, *args, **kwargs):
-            (state / "worktree-checkpoint-105-1.ready").write_text("4321\n", encoding="utf-8")
+            (state / "worktree-checkpoint-105-1.ready").write_text(
+                json.dumps({
+                    "schema_version": 1,
+                    "run_id": "105",
+                    "task": 1,
+                    "pid": 4321,
+                    "base_sha": "a" * 40,
+                }),
+                encoding="utf-8",
+            )
             (state / "worktree-checkpoint.json").write_text(
-                json.dumps({"watcher_pid": 4321}), encoding="utf-8"
+                json.dumps({
+                    "run_id": "105",
+                    "task": 1,
+                    "base_sha": "a" * 40,
+                    "watcher_pid": 4321,
+                }),
+                encoding="utf-8",
             )
 
         def poll(self):
