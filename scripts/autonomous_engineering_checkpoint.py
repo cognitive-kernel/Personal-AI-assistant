@@ -135,12 +135,33 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     error_path.unlink(missing_ok=True)
     try:
         write_snapshot(base_sha, run_id, task, os.getpid())
-    except (OSError, RuntimeError) as exc:
-        error_path.write_text(
-            f"{type(exc).__name__}: {exc}\n", encoding="utf-8"
+        ready_tmp = ready_path.with_suffix(".ready.tmp")
+        ready_tmp.write_text(
+            json.dumps({
+                "schema_version": 1,
+                "run_id": run_id,
+                "task": task,
+                "pid": os.getpid(),
+                "base_sha": base_sha,
+                "ready_at": time.time(),
+            }, sort_keys=True) + "\\n",
+            encoding="utf-8",
         )
+        ready_tmp.replace(ready_path)
+    except Exception as exc:
+        try:
+            error_tmp = error_path.with_suffix(".error.tmp")
+            error_tmp.write_text(
+                f"{type(exc).__name__}: {exc}\\n", encoding="utf-8"
+            )
+            error_tmp.replace(error_path)
+        except OSError as marker_exc:
+            print(
+                f"Watcher startup failed ({type(exc).__name__}: {exc}); "
+                f"error marker also failed ({type(marker_exc).__name__}: {marker_exc})",
+                file=sys.stderr,
+            )
         raise
-    ready_path.write_text(f"{os.getpid()}\n", encoding="utf-8")
     while not state["stop"].exists():
         try:
             write_snapshot(base_sha, run_id, task, os.getpid())
