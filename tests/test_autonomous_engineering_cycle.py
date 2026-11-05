@@ -424,6 +424,7 @@ def test_durable_checkpoint_restores_onto_a_new_main_when_patch_context_is_uncha
 
 
 def test_durable_checkpoint_refreshes_watcher_metadata_when_patch_is_unchanged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import json
     import subprocess
     from scripts import autonomous_engineering_checkpoint as checkpoint
 
