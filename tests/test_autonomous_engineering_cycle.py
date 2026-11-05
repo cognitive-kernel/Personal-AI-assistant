@@ -575,9 +575,9 @@ def test_checkpoint_readiness_does_not_depend_on_optional_marker(
             patch_bytes=0,
         )
         checkpoint._atomic_write(
-            paths["metadata"], json.dumps(metadata, sort_keys=True) + "\\n"
+            paths["metadata"], json.dumps(metadata, sort_keys=True) + "\n"
         )
-        original_write_text(paths["stop"], "stop\\n", encoding="utf-8")
+        original_write_text(paths["stop"], "stop\n", encoding="utf-8")
 
     monkeypatch.setattr(checkpoint, "write_snapshot", prepare_snapshot)
 
