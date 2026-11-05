@@ -188,6 +188,40 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
 
 def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
     directory = store_dir()
+    # One-time, lock-protected migration from the pre-isolation shared checkpoint format.
+    legacy_metadata_path = directory / "worktree-checkpoint.json"
+    legacy_patch_path = directory / "worktree-checkpoint.patch"
+    legacy_plan_path = directory / "worktree-plan.json"
+    if legacy_metadata_path.is_file() and legacy_patch_path.is_file():
+        try:
+            legacy = json.loads(legacy_metadata_path.read_text(encoding="utf-8"))
+            legacy_run = str(legacy["run_id"])
+            legacy_task = int(legacy["task"])
+            destination = paths(legacy_run, legacy_task)
+            stop_existing_watcher(legacy)
+            if not destination["patch"].exists():
+                _atomic_write(destination["patch"], legacy_patch_path.read_bytes())
+            if legacy_plan_path.is_file() and not destination["plan"].exists():
+                _atomic_write(destination["plan"], legacy_plan_path.read_bytes())
+            migrated = {
+                **legacy,
+                "schema_version": SCHEMA_VERSION,
+                "run_id": legacy_run,
+                "task": legacy_task,
+                "watcher_pid": None,
+                "updated_at": float(legacy.get("updated_at", time.time())),
+                "patch_bytes": destination["patch"].stat().st_size,
+                "migrated_from_shared_state": True,
+            }
+            _atomic_write(destination["metadata"], json.dumps(migrated, ensure_ascii=False, sort_keys=True) + "\n")
+            legacy_metadata_path.unlink(missing_ok=True)
+            legacy_patch_path.unlink(missing_ok=True)
+            legacy_plan_path.unlink(missing_ok=True)
+            (directory / "worktree-checkpoint.stop").unlink(missing_ok=True)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            raise RuntimeError(
+                "The legacy shared checkpoint could not be migrated safely; original files were preserved."
+            ) from exc
     candidates = []
     for metadata_path in directory.glob("worktree-checkpoint-*.json"):
         try:
