@@ -144,7 +144,7 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
                 "pid": os.getpid(),
                 "base_sha": base_sha,
                 "ready_at": time.time(),
-            }, sort_keys=True) + "\\n",
+            }, sort_keys=True) + "\n",
             encoding="utf-8",
         )
         ready_tmp.replace(ready_path)
@@ -152,7 +152,7 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
         try:
             error_tmp = error_path.with_suffix(".error.tmp")
             error_tmp.write_text(
-                f"{type(exc).__name__}: {exc}\\n", encoding="utf-8"
+                f"{type(exc).__name__}: {exc}\n", encoding="utf-8"
             )
             error_tmp.replace(error_path)
         except OSError as marker_exc:
