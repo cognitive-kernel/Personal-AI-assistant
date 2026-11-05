@@ -387,7 +387,7 @@ def test_durable_checkpoint_restores_modified_and_new_files(monkeypatch: pytest.
     assert new_test.read_text(encoding="utf-8") == "def test_new():\n    assert True\n"
 
 
-def test_durable_checkpoint_refuses_a_different_main_base(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_durable_checkpoint_restores_onto_a_new_main_when_patch_context_is_unchanged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import subprocess
     from scripts import autonomous_engineering_checkpoint as checkpoint
 
@@ -402,17 +402,26 @@ def test_durable_checkpoint_refuses_a_different_main_base(monkeypatch: pytest.Mo
     subprocess.run(["git", "config", "user.name", "Checkpoint Test"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
     source = root / "app" / "module.py"
-    source.write_text("VALUE = 1\n", encoding="utf-8")
+    source.write_text("VALUE = 1\\n", encoding="utf-8")
     subprocess.run(["git", "add", "app/module.py"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
     base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
-    source.write_text("VALUE = 2\n", encoding="utf-8")
+    source.write_text("VALUE = 2\\n", encoding="utf-8")
     monkeypatch.setattr(checkpoint, "ROOT", root)
-    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path / "ProgramData")
+    state = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
     checkpoint.write_snapshot(base_sha, "102", 1)
 
-    with pytest.raises(RuntimeError, match="base SHA differs"):
-        checkpoint.restore("f" * 40)
+    (root / "docs" / "main-update.md").write_text("unrelated main update\\n", encoding="utf-8")
+    subprocess.run(["git", "add", "docs/main-update.md"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "unrelated main update"], cwd=root, check=True, capture_output=True)
+    current_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+
+    assert current_sha != base_sha
+    assert checkpoint.restore(current_sha) is True
+    assert source.read_text(encoding="utf-8") == "VALUE = 2\\n"
+    assert (root / "docs" / "main-update.md").read_text(encoding="utf-8") == "unrelated main update\\n"
+
 
 def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
     base_sha = "b" * 40
