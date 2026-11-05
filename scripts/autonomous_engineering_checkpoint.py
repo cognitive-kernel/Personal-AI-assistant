@@ -87,12 +87,17 @@ def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | Non
         ":!scripts/autonomous_engineering_progress.py",
     )
     previous = read_metadata()
-    if not result.stdout and state["patch"].is_file() and state["patch"].stat().st_size > 0:
-        if previous and previous.get("base_sha") == base_sha:
-            return
-    patch_tmp = state["patch"].with_suffix(".patch.tmp")
-    patch_tmp.write_text(result.stdout, encoding="utf-8", newline="")
-    patch_tmp.replace(state["patch"])
+    preserve_existing_patch = (
+        not result.stdout
+        and state["patch"].is_file()
+        and state["patch"].stat().st_size > 0
+        and previous
+        and previous.get("base_sha") == base_sha
+    )
+    if not preserve_existing_patch:
+        patch_tmp = state["patch"].with_suffix(".patch.tmp")
+        patch_tmp.write_text(result.stdout, encoding="utf-8", newline="")
+        patch_tmp.replace(state["patch"])
     plan = ROOT / ".agent-progress.json"
     if plan.is_file():
         plan_tmp = state["plan"].with_suffix(".json.tmp")
