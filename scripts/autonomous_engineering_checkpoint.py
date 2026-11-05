@@ -266,6 +266,21 @@ def clear(run_id: str, task: int) -> None:
     error.unlink(missing_ok=True)
 
 
+
+def clear_latest() -> None:
+    latest = _latest_checkpoint()
+    if latest is None:
+        return
+    metadata, state = latest
+    stop_existing_watcher(metadata)
+    _atomic_write(state["stop"], "stop\n")
+    for key in ("patch", "metadata", "plan", "stop"):
+        state[key].unlink(missing_ok=True)
+    ready, error = watcher_marker_paths(str(metadata["run_id"]), int(metadata["task"]))
+    ready.unlink(missing_ok=True)
+    error.unlink(missing_ok=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     subs = parser.add_subparsers(dest="command", required=True)
@@ -286,6 +301,7 @@ def main() -> int:
     clear_parser = subs.add_parser("clear")
     clear_parser.add_argument("--run-id", required=True)
     clear_parser.add_argument("--task", required=True, type=int)
+    subs.add_parser("clear-latest")
     args = parser.parse_args()
     if args.command == "watch":
         return watch(args.base_sha, args.run_id, args.task, args.interval)
@@ -297,6 +313,9 @@ def main() -> int:
         return 0
     if args.command == "stop":
         stop(args.run_id, args.task)
+        return 0
+    if args.command == "clear-latest":
+        clear_latest()
         return 0
     clear(args.run_id, args.task)
     return 0
