@@ -215,7 +215,7 @@ jobs:
             "--run-id", $env:GITHUB_RUN_ID,
             "--run-attempt", $env:GITHUB_RUN_ATTEMPT,
             "--phase", "preparation",
-            "--label", "شروع چرخهٔ مهندسی",
+            "--label", "Engineering cycle started",
             "--activity", "Workflow started and environment prerequisites are being checked"
           )
           & python scripts/autonomous_engineering_progress.py @progressArgs
