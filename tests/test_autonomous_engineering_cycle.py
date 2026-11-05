@@ -482,6 +482,7 @@ def test_checkpoint_watcher_persists_readiness_marker_write_failure(
 
     state = tmp_path / "ProgramData"
     monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    monkeypatch.setattr(checkpoint, "write_snapshot", lambda *args, **kwargs: None)
     original_write_text = Path.write_text
 
     def fail_ready_marker(path, data, *args, **kwargs):
