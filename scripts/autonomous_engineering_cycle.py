@@ -79,8 +79,9 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
     configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
     metadata_path = state_dir / "worktree-checkpoint.json"
-    ready_path = state_dir / "worktree-checkpoint.ready"
-    error_path = state_dir / "worktree-checkpoint.error"
+    marker_id = f"{run_id}-{task}"
+    ready_path = state_dir / f"worktree-checkpoint-{marker_id}.ready"
+    error_path = state_dir / f"worktree-checkpoint-{marker_id}.error"
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
