@@ -416,6 +416,7 @@ def test_durable_checkpoint_restores_onto_a_new_main_when_patch_context_is_uncha
     subprocess.run(["git", "add", "docs/main-update.md"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-m", "unrelated main update"], cwd=root, check=True, capture_output=True)
     current_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "reset", "--hard", current_sha], cwd=root, check=True, capture_output=True)
 
     assert current_sha != base_sha
     assert checkpoint.restore(current_sha) is True
