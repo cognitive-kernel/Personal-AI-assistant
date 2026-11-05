@@ -475,6 +475,82 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     assert not (state / "worktree-checkpoint-104-1.ready").exists()
 
 
+def test_checkpoint_watcher_real_process_publishes_run_scoped_readiness(
+    tmp_path: Path,
+):
+    import json
+    import os
+    import sys
+    import time
+
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    root = Path(__file__).resolve().parents[1]
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, check=True,
+        capture_output=True, text=True,
+    ).stdout.strip()
+    state = tmp_path / "checkpoint-state"
+    env = os.environ.copy()
+    env["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"] = str(state)
+    run_id = f"integration-{os.getpid()}"
+    task = 91
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(root / "scripts" / "autonomous_engineering_checkpoint.py"),
+            "watch",
+            "--base-sha", base_sha,
+            "--run-id", run_id,
+            "--task", str(task),
+            "--interval", "5",
+        ],
+        cwd=root,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    ready_path, error_path = checkpoint.watcher_marker_paths(run_id, task)
+    # The helper above uses the current process environment; use the isolated path explicitly.
+    ready_path = state / f"worktree-checkpoint-{run_id}-{task}.ready"
+    error_path = state / f"worktree-checkpoint-{run_id}-{task}.error"
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline and process.poll() is None:
+            if error_path.is_file():
+                break
+            if ready_path.is_file():
+                break
+            time.sleep(0.1)
+        assert not error_path.exists(), (
+            error_path.read_text(encoding="utf-8") if error_path.exists() else ""
+        )
+        assert ready_path.is_file(), (
+            process.stdout.read() if process.poll() is not None else "watcher readiness timed out"
+        )
+        ready = json.loads(ready_path.read_text(encoding="utf-8"))
+        metadata = json.loads((state / "worktree-checkpoint.json").read_text(encoding="utf-8"))
+        assert ready == {
+            "base_sha": base_sha,
+            "pid": process.pid,
+            "ready_at": ready["ready_at"],
+            "run_id": run_id,
+            "schema_version": 1,
+            "task": task,
+        }
+        assert metadata["run_id"] == run_id
+        assert metadata["task"] == task
+        assert metadata["watcher_pid"] == process.pid
+    finally:
+        (state / "worktree-checkpoint.stop").write_text("stop\\n", encoding="utf-8")
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def test_checkpoint_watcher_persists_readiness_marker_write_failure(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):
