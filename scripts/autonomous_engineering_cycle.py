@@ -84,19 +84,47 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
     configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     state_dir = Path(configured).expanduser() if configured else Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
     metadata_path = state_dir / "worktree-checkpoint.json"
-    deadline = time.monotonic() + 10
+    ready_path = state_dir / "worktree-checkpoint.ready"
+    error_path = state_dir / "worktree-checkpoint.error"
+    ready_path.unlink(missing_ok=True)
+    error_path.unlink(missing_ok=True)
+    deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
+        if error_path.is_file():
+            detail = error_path.read_text(encoding="utf-8", errors="replace").strip()
+            if process.poll() is None:
+                process.terminate()
+            raise RuntimeError("The durable checkpoint watcher could not create its initial snapshot: " + detail[-2000:])
         if process.poll() is not None:
-            raise RuntimeError("The durable checkpoint watcher exited before becoming ready.")
+            detail = error_path.read_text(encoding="utf-8", errors="replace").strip() if error_path.is_file() else ""
+            raise RuntimeError(
+                "The durable checkpoint watcher exited before becoming ready."
+                + (f" Startup error: {detail[-2000:]}" if detail else "")
+            )
         try:
+            ready_pid = int(ready_path.read_text(encoding="utf-8").strip())
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            if metadata.get("watcher_pid") == process.pid:
+            if ready_pid == process.pid and metadata.get("watcher_pid") == process.pid:
                 return process
         except (OSError, ValueError):
             pass
         time.sleep(0.2)
-    process.terminate()
-    raise RuntimeError("The durable checkpoint watcher did not become ready within ten seconds.")
+    metadata_detail = ""
+    try:
+        metadata_detail = metadata_path.read_text(encoding="utf-8")[:1000]
+    except OSError:
+        pass
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+    raise RuntimeError(
+        "The durable checkpoint watcher did not become ready within thirty seconds. "
+        f"Metadata: {metadata_detail or 'unavailable'}"
+    )
 
 
 def stop_checkpoint_watcher(
