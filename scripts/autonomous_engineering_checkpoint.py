@@ -11,9 +11,19 @@ from typing import Any
 
 import psutil
 
+try:
+    from .autonomous_engineering_checkpoint_contract import (
+        SCHEMA_VERSION,
+        build_checkpoint_metadata,
+    )
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_checkpoint_contract import (
+        SCHEMA_VERSION,
+        build_checkpoint_metadata,
+    )
+
 ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
-SCHEMA_VERSION = 2
 
 
 def store_dir() -> Path:
@@ -141,15 +151,16 @@ def write_snapshot(base_sha: str, run_id: str, task: int, watcher_pid: int | Non
     plan = ROOT / ".agent-progress.json"
     if plan.is_file():
         _atomic_write(state["plan"], plan.read_bytes())
-    metadata = {
-        "schema_version": SCHEMA_VERSION,
-        "base_sha": base_sha,
-        "run_id": run_id,
-        "task": task,
-        "watcher_pid": watcher_pid,
-        "updated_at": time.time(),
-        "patch_bytes": state["patch"].stat().st_size if state["patch"].exists() else 0,
-    }
+    metadata = build_checkpoint_metadata(
+        base_sha=base_sha,
+        run_id=run_id,
+        task=task,
+        watcher_pid=watcher_pid,
+        updated_at=time.time(),
+        patch_bytes=state["patch"].stat().st_size if state["patch"].exists() else 0,
+    )
+    # This atomic metadata replacement is the readiness commit point. The
+    # controller must not depend on a second, separately published marker.
     _atomic_write(state["metadata"], json.dumps(metadata, ensure_ascii=False, sort_keys=True) + "\n")
 
 
@@ -163,14 +174,24 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
     error_path.unlink(missing_ok=True)
     try:
         write_snapshot(base_sha, run_id, task, os.getpid())
-        _atomic_write(ready_path, json.dumps({
-            "schema_version": SCHEMA_VERSION,
-            "run_id": run_id,
-            "task": task,
-            "pid": os.getpid(),
-            "base_sha": base_sha,
-            "ready_at": time.time(),
-        }, sort_keys=True) + "\n")
+        try:
+            # Retained as an observability/compatibility marker only. Readiness
+            # is already committed atomically in the metadata written above.
+            _atomic_write(ready_path, json.dumps({
+                "schema_version": SCHEMA_VERSION,
+                "run_id": run_id,
+                "task": task,
+                "pid": os.getpid(),
+                "base_sha": base_sha,
+                "ready_at": time.time(),
+            }, sort_keys=True) + "\n")
+        except OSError as marker_error:
+            print(
+                f"Checkpoint readiness marker unavailable; atomic metadata is authoritative: "
+                f"{type(marker_error).__name__}: {marker_error}",
+                file=sys.stderr,
+                flush=True,
+            )
     except Exception as exc:
         try:
             _atomic_write(error_path, f"{type(exc).__name__}: {exc}\n")
