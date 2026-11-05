@@ -367,7 +367,7 @@ def test_durable_checkpoint_restores_modified_and_new_files(monkeypatch: pytest.
     subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
     source = root / "app" / "module.py"
     source.write_text("VALUE = 1\n", encoding="utf-8")
-    subprocess.run(["git", "add", "app/module.py"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
     base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
 
@@ -403,7 +403,7 @@ def test_durable_checkpoint_restores_onto_a_new_main_when_patch_context_is_uncha
     subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
     source = root / "app" / "module.py"
     source.write_text("VALUE = 1\\n", encoding="utf-8")
-    subprocess.run(["git", "add", "app/module.py"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
     base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
     source.write_text("VALUE = 2\\n", encoding="utf-8")
@@ -421,6 +421,38 @@ def test_durable_checkpoint_restores_onto_a_new_main_when_patch_context_is_uncha
     assert checkpoint.restore(current_sha) is True
     assert source.read_text(encoding="utf-8") == "VALUE = 2\\n"
     assert (root / "docs" / "main-update.md").read_text(encoding="utf-8") == "unrelated main update\\n"
+
+
+def test_durable_checkpoint_refreshes_watcher_metadata_when_patch_is_unchanged(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    import subprocess
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    root = tmp_path / "repo"
+    (root / "app").mkdir(parents=True)
+    (root / "tests").mkdir()
+    (root / "docs").mkdir()
+    (root / "scripts").mkdir()
+    source = root / "app" / "module.py"
+    source.write_text("VALUE = 1\\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Checkpoint Test"], cwd=root, check=True)
+    subprocess.run(["git", "config", "user.email", "checkpoint@example.invalid"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, capture_output=True)
+    base_sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+
+    source.write_text("VALUE = 2\\n", encoding="utf-8")
+    monkeypatch.setattr(checkpoint, "ROOT", root)
+    state = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+
+    checkpoint.write_snapshot(base_sha, "103", 1)
+    original_patch = (state / "worktree-checkpoint.patch").read_bytes()
+    checkpoint.write_snapshot(base_sha, "103", 1, watcher_pid=4321)
+
+    metadata = json.loads((state / "worktree-checkpoint.json").read_text(encoding="utf-8"))
+    assert metadata["watcher_pid"] == 4321
+    assert (state / "worktree-checkpoint.patch").read_bytes() == original_patch
 
 
 def test_complete_pending_draft_pr_revalidates_checks_then_merges(monkeypatch: pytest.MonkeyPatch):
