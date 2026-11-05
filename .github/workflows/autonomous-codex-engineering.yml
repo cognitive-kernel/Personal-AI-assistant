@@ -135,6 +135,11 @@ jobs:
           $pythonPath = "C:\Program Files\Python311\python.exe"
           $pythonDirectory = Split-Path -Parent $pythonPath
           $scriptsPath = Join-Path $pythonDirectory "Scripts"
+          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
+          $ollamaDirectory = Split-Path -Parent $ollamaPath
+          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) {
+            throw "Ollama executable was not found at: $ollamaPath"
+          }
           if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
             throw "System-wide Python was not found at: $pythonPath"
           }
@@ -145,15 +150,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Python cannot execute under the Runner service identity."
           }
-          @($pythonDirectory, $scriptsPath) |
+          @($pythonDirectory, $scriptsPath, $ollamaDirectory) |
             Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$pythonDirectory;$scriptsPath;$env:PATH"
+          $env:PATH = "$pythonDirectory;$scriptsPath;$ollamaDirectory;$env:PATH"
           python --version
           if ($LASTEXITCODE -ne 0) {
             throw "Python is not resolvable through PATH under the Runner service identity."
           }
           (Get-Command python).Source | Write-Host
-          Write-Host "System-wide Python is accessible and configured for all subsequent workflow steps."
+          & $ollamaPath --version
+          if ($LASTEXITCODE -ne 0) {
+            throw "Ollama CLI cannot execute under the Runner service identity."
+          }
+          Write-Host "System-wide Python and Ollama are accessible and configured for all subsequent workflow steps."
 
       - name: Preserve and stop checkpoint watcher from an interrupted run
         shell: powershell
