@@ -185,7 +185,7 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
             ready = json.loads(ready_path.read_text(encoding="utf-8"))
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
             if (
-                ready.get("schema_version") == 1
+                ready.get("schema_version") == 2
                 and ready.get("run_id") == run_id
                 and ready.get("task") == task
                 and ready.get("base_sha") == base_sha
