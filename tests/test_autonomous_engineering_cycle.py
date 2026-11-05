@@ -475,6 +475,30 @@ def test_checkpoint_watcher_persists_initial_snapshot_error(monkeypatch: pytest.
     assert not (state / "worktree-checkpoint-104-1.ready").exists()
 
 
+def test_checkpoint_watcher_persists_readiness_marker_write_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+
+    state = tmp_path / "ProgramData"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    original_write_text = Path.write_text
+
+    def fail_ready_marker(path, data, *args, **kwargs):
+        if path.name.endswith(".ready.tmp"):
+            raise PermissionError("simulated ready marker permission failure")
+        return original_write_text(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", fail_ready_marker)
+    with pytest.raises(PermissionError, match="ready marker permission failure"):
+        checkpoint.watch("a" * 40, "106", 1, 5)
+
+    error = state / "worktree-checkpoint-106-1.error"
+    assert "PermissionError" in error.read_text(encoding="utf-8")
+    assert "ready marker permission failure" in error.read_text(encoding="utf-8")
+    assert not (state / "worktree-checkpoint-106-1.ready").exists()
+
+
 def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     import json
     import os
