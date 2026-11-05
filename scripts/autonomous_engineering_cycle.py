@@ -82,13 +82,16 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
     marker_id = f"{run_id}-{task}"
     ready_path = state_dir / f"worktree-checkpoint-{marker_id}.ready"
     error_path = state_dir / f"worktree-checkpoint-{marker_id}.error"
+    log_path = state_dir / f"worktree-checkpoint-{marker_id}.log"
+    state_dir.mkdir(parents=True, exist_ok=True)
     ready_path.unlink(missing_ok=True)
     error_path.unlink(missing_ok=True)
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    process = subprocess.Popen(
-        command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL, close_fds=True, creationflags=flags,
-    )
+    with log_path.open("w", encoding="utf-8") as watcher_log:
+        process = subprocess.Popen(
+            command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=watcher_log,
+            stderr=subprocess.STDOUT, close_fds=True, creationflags=flags,
+        )
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if error_path.is_file():
@@ -132,9 +135,15 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+    log_detail = ""
+    try:
+        log_detail = log_path.read_text(encoding="utf-8", errors="replace")[-4000:]
+    except OSError:
+        pass
     raise RuntimeError(
         "The durable checkpoint watcher did not become ready within thirty seconds. "
-        f"Metadata: {metadata_detail or 'unavailable'}"
+        f"Metadata: {metadata_detail or 'unavailable'}. "
+        f"Watcher log: {log_detail or 'unavailable'}"
     )
 
 
