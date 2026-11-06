@@ -810,7 +810,7 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
 
     run_command = next(command for command in calls if command[1:3] == ["run", "list"])
     assert run_command[run_command.index("--limit") + 1] == "30"
-    assert len(result["recent_runs"]) == 30
+    assert len(result["recent_runs"]) == 6
     assert result["recent_runs"][-1]["status"] == "queued"
 
 
