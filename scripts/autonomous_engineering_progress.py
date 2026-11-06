@@ -157,14 +157,102 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
     return [executable, *arguments]
 
 
+def codex_arguments(model: str, report: str) -> list[str]:
+    # Pin both the OSS selector and the active provider. Some Codex CLI
+    # configurations retain model_provider="openai" from the service user's
+    # config.toml even when --local-provider is supplied, causing app-server
+    # turn/start to reject the Ollama-backed chat as a provider mismatch.
+    return [
+        "exec", "--oss", "--local-provider", "ollama",
+        "-c", 'model_provider="ollama"',
+        "--sandbox", "workspace-write",
+        "--model", model, "--cd", str(ROOT),
+        "--output-last-message", report, "--json", "-",
+    ]
+
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
         print("Codex CLI executable was not found on PATH.", file=sys.stderr)
         return 127
-    arguments = [
-        "exec", "--oss", "--local-provider", "ollama",
-        "--sandbox", "workspace-write",
+    arguments = codex_arguments(args.model, args.report)
+    command = codex_command(executable, arguments)
+    try:
+        prompt = Path(args.prompt).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Cannot read Codex prompt: {exc}", file=sys.stderr)
+        return 2
+    process = subprocess.Popen(
+        command, cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=None, text=True, encoding="utf-8", errors="replace", bufsize=1,
+    )
+    assert process.stdin is not None and process.stdout is not None
+    input_broken = False
+    try:
+        process.stdin.write(prompt)
+    except BrokenPipeError:
+        input_broken = True
+    finally:
+        try:
+            process.stdin.close()
+        except BrokenPipeError:
+            input_broken = True
+    if input_broken:
+        print(
+            "Codex CLI exited before accepting its prompt; inspect the Codex CLI error above.",
+            file=sys.stderr,
+        )
+    last_signature: tuple[Any, ...] | None = None
+    if not input_broken:
+        persist({
+            "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
+            "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
+            "activity": "عامل در حال شروع تحلیل است",
+            "plan_completed": 0, "plan_total": 0, "plan_percent": None,
+        })
+    try:
+        for line in process.stdout:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            completed, total, active_title = plan_state()
+            activity = active_title or codex_activity(event) or "عامل در حال کار روی وظیفهٔ جاری است"
+            signature = (activity, completed, total)
+            if signature != last_signature:
+                persist({
+                    "run_id": args.run_id, "run_attempt": args.run_attempt,
+                    "status": "running", "phase": "coding",
+                    "phase_label": "تحلیل و پیاده‌سازی",
+                    "activity": activity,
+                    "plan_completed": completed, "plan_total": total,
+                    "plan_percent": plan_percentage(completed, total),
+                })
+                last_signature = signature
+        return_code = process.wait()
+        if input_broken and return_code == 0:
+            return_code = 1
+        completed, total, active_title = plan_state()
+        persist({
+            "run_id": args.run_id, "run_attempt": args.run_attempt,
+            "status": "completed" if return_code == 0 else "failed",
+            "phase": "coding", "phase_label": "پایان مرحلهٔ کدنویسی",
+            "activity": "مرحلهٔ کدنویسی پایان یافت" if return_code == 0 else "مرحلهٔ کدنویسی با خطا متوقف شد",
+            "plan_completed": completed, "plan_total": total,
+            "plan_percent": plan_percentage(completed, total),
+        })
+        return return_code
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait(timeout=10)
+        try:
+            PLAN_FILE.unlink(missing_ok=True)
+        except OSError:
+            pass
         "--model", args.model, "--cd", str(ROOT),
         "--output-last-message", args.report, "--json", "-",
     ]
