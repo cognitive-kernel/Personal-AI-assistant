@@ -847,6 +847,19 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
     ]
 
 
+def test_codex_arguments_pin_ollama_as_the_active_provider():
+    from scripts import autonomous_engineering_progress as progress
+
+    arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
+
+    assert arguments[:8] == [
+        "exec", "--oss", "--local-provider", "ollama",
+        "-c", 'model_provider="ollama"',
+        "--sandbox", "workspace-write",
+    ]
+    assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
+
+
 def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
     from types import SimpleNamespace
     from scripts import autonomous_engineering_progress as progress
