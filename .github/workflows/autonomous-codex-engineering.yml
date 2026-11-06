@@ -262,6 +262,17 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+          Write-Host "Codex sandbox diagnostic identity:"
+          whoami
+          Write-Host "USERPROFILE=$env:USERPROFILE"
+          Write-Host "CODEX_HOME=$env:CODEX_HOME"
+          $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+          $configPath = Join-Path $codexHome "config.toml"
+          Write-Host "Effective Codex config path: $configPath"
+          Write-Host "User config exists: $(Test-Path -LiteralPath $configPath -PathType Leaf)"
+          $managedRequirements = Join-Path $env:ProgramData "OpenAI\Codex\requirements.toml"
+          Write-Host "Managed requirements path: $managedRequirements"
+          Write-Host "Managed requirements exist: $(Test-Path -LiteralPath $managedRequirements -PathType Leaf)"
           $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
           $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
           $smokePromptText = @'
@@ -277,6 +288,13 @@ jobs:
               Remove-Item -LiteralPath $probePath -Force
             }
             $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
+            if ($backend -eq "mxc") {
+              Write-Host "Running the official standalone MXC compatibility probe under the Runner service identity."
+              $mxcProbeOutput = & codex -c windows.sandbox=mxc sandbox --include-managed-config --permission-profile :workspace -- cmd.exe /d /c echo MXC_SERVICE_OK 2>&1
+              $mxcProbeExitCode = $LASTEXITCODE
+              $mxcProbeOutput | ForEach-Object { Write-Host $_ }
+              Write-Host "MXC service-account probe exit code: $mxcProbeExitCode"
+            }
             $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
             Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
             python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport"
@@ -284,7 +302,14 @@ jobs:
             $smokeOutput = ""
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
               $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
+              if ($smokeExitCode -ne 0 -or $smokeOutput -notmatch "OLLAMA_PROVIDER_AND_SANDBOX_OK") {
+                Write-Warning "Codex final smoke report for '$backend':"
+                Write-Host $smokeOutput
+              }
+            } else {
+              Write-Warning "Codex did not create the final smoke report for '$backend'."
             }
+            Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
             if (Test-Path -LiteralPath $probePath) {
               Remove-Item -LiteralPath $probePath -Force
             }
@@ -295,7 +320,7 @@ jobs:
             Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
           }
           if (-not $selectedBackend) {
-            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a real Codex exec_command workspace read/write/delete test. No unsandboxed fallback is permitted. Provision the elevated Codex sandbox for the Runner service identity or repair Windows sandbox policy, then rerun."
+            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a real Codex exec_command workspace read/write/delete test. No unsandboxed fallback is permitted. Review the service-account MXC probe, effective Codex paths, managed requirements, and final smoke report above."
           }
           "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
