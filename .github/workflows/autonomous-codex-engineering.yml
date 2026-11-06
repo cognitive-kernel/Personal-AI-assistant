@@ -248,6 +248,19 @@ jobs:
           ollama --version
           if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
+      - name: Verify Codex can start a real Ollama turn
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-ollama-smoke.md"
+          $smokeReport = Join-Path $env:RUNNER_TEMP "codex-ollama-smoke-report.md"
+          Set-Content -LiteralPath $smokePrompt -Value "Reply with exactly OLLAMA_PROVIDER_OK." -Encoding utf8
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-smoke" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport"
+          if ($LASTEXITCODE -ne 0) { throw "Codex could not start or complete a turn with the configured local Ollama provider." }
+          if (-not (Test-Path -LiteralPath $smokeReport -PathType Leaf)) { throw "Codex Ollama smoke test did not produce a final response report." }
+          $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
+          if ($smokeOutput -notmatch "OLLAMA_PROVIDER_OK") { throw "Codex Ollama smoke test returned an unexpected response." }
+
       - name: Capture live GitHub state with the read-only workflow token
         env:
           GH_TOKEN: ${{ github.token }}
