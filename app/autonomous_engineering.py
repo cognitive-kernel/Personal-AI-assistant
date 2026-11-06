@@ -442,9 +442,6 @@ def resume_autonomous_engineering() -> dict[str, Any]:
     result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
     if not result or result.returncode != 0:
         raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
-    reset = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_FAILURE_STREAK", "--body", "0", "--repo", _repository()], timeout=15)
-    if not reset or reset.returncode != 0:
-        raise HTTPException(status_code=502, detail="ادامه ثبت شد اما بازنشانی شمارندهٔ خطا ناموفق بود.")
     dispatched = _run([gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"], timeout=20)
     if not dispatched or dispatched.returncode != 0:
         raise HTTPException(status_code=502, detail="ادامه ثبت شد اما اجرای چرخه به GitHub ارسال نشد.")
