@@ -182,7 +182,7 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
     ]
 
 
-def test_resume_clears_pause_and_failure_counter_then_dispatches(monkeypatch):
+def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(command, 0, "", ""))
@@ -191,8 +191,8 @@ def test_resume_clears_pause_and_failure_counter_then_dispatches(monkeypatch):
 
     assert result["paused"] is False
     assert calls[1][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][2:5] == ["set", "AUTONOMOUS_ENGINEERING_FAILURE_STREAK", "--body"]
-    assert calls[3][1:3] == ["workflow", "run"]
+    assert calls[2][1:3] == ["workflow", "run"]
+    assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call for call in calls)
 
 
 def test_autonomous_recovery_workflow_retries_continuous_failures_without_an_automatic_retry_limit():
