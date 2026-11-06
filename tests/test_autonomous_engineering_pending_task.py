@@ -97,3 +97,17 @@ def test_manual_task_persistence_precedes_every_runner_prerequisite_check():
 
     assert persistence < first_preflight < capture
     assert "Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force" in workflow
+
+
+def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    script = (root / "scripts" / "persist_autonomous_manual_task.ps1").read_text(encoding="utf-8")
+    controller = (root / "scripts" / "autonomous_engineering_cycle.py").read_text(encoding="utf-8")
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+
+    assert "scripts/persist_autonomous_manual_task.ps1" in controller
+    assert "Invoke-RestMethod" in script
+    assert "Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force" in script
+    assert "persist_autonomous_manual_task.ps1" in workflow
