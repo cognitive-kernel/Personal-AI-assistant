@@ -613,7 +613,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
-        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ),
+        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ, path=os.path, pathsep=os.pathsep),
     )
     ticks = iter((0.0, 0.0, 31.0))
     monkeypatch.setattr(cycle.time, "monotonic", lambda: next(ticks))
