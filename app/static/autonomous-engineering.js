@@ -112,13 +112,15 @@
         ? "پوشهٔ مشترک پیشرفت برای برنامه قابل خواندن است."
         : "پوشهٔ مشترک را با scripts/configure_autonomous_engineering_progress.ps1 پیکربندی کنید.";
       const ready = data.ready === true;
+      const paused = data.paused === true;
+      const canDispatch = data.can_dispatch === true;
       const pill = $("agent-readiness");
-      pill.textContent = ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص";
-      pill.className = "status-pill " + (ready ? "status-ready" : "status-blocked");
+      pill.textContent = paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
+      pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
       const active = (data.github && data.github.recent_runs || []).some(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
-      dispatchButton.disabled = !ready || active || Boolean(data.paused);
-      taskButton.disabled = !ready || active || Boolean(data.paused);
+      dispatchButton.disabled = !canDispatch || active;
+      taskButton.disabled = !canDispatch || active;
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
       resumeButton.disabled = !data.paused;
