@@ -302,7 +302,7 @@ jobs:
             $smokeOutput = ""
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
               $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
-              if ($smokeExitCode -ne 0 -or $smokeOutput -notmatch "OLLAMA_PROVIDER_AND_SANDBOX_OK") {
+              if ($smokeExitCode -ne 0 -or $smokeOutput -notmatch "OLLAMA_PROVIDER_AND_SANDBOX_OK" -or $smokeOutput -notmatch "CODEX_WORKSPACE_SANDBOX_OK") {
                 Write-Warning "Codex final smoke report for '$backend':"
                 Write-Host $smokeOutput
               }
