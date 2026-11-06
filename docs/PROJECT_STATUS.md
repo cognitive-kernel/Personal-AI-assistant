@@ -305,3 +305,10 @@
 - PR [#680](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/680) remains unmerged and targets main. Local owner tests and human acceptance are deliberately deferred. Remaining operational gates: register/configure the Windows self-hosted Runner under a non-admin account, configure exact app/Runner ACL identities, verify Ollama/model access as that account, and perform target-host soak/recovery/rollback. Issue [#52](https://github.com/cognitive-kernel/Personal-AI-assistant/issues/52) still requires an independent reviewer.
 - Project-wide completion is not claimed. Existing human, target-host, staging/rollback, UI-parity, and independent-review gates remain open; scorecard values are not increased by this feature alone.
 
+
+
+## 2026-11-06 — Autonomous engineering reliability fixes in review
+
+- PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) contains code-level fixes for durable manual-task persistence/recovery, safe rejection of task replacement while work remains unaccepted, resume behavior after removing the obsolete failure-streak variable, and active-run visibility/cancellation parity with the workflow schedule gate.
+- The implementation had exact-head CI evidence at SHA `c8379f694c503a32ecabab0f53ff306fc26f840c`: 1,899 tests passed / 50 deselected; Windows storage regressions, browser smoke, dependency audit, artifact validation, Markdown links, import-cycle scan, and deterministic benchmarks passed. A subsequent test-only assertion correction requires fresh exact-head CI before readiness is declared.
+- PR #701 remains open and unmerged. The separate real Windows service-account Codex sandbox smoke remains an external blocker tracked in PR [#699](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/699); CI on GitHub-hosted runners is not evidence of successful execution on the self-hosted Runner.
