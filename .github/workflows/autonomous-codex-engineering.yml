@@ -264,37 +264,62 @@ jobs:
           $ErrorActionPreference = "Stop"
           $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
           $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
+          if (Test-Path -LiteralPath $probePath) {
+            throw "Workspace probe path already exists; refusing to overwrite it."
+          }
           $smokePromptText = @'
-          Use the exec_command tool exactly once. Execute this command verbatim:
+          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe and set login to false. Do not use the default PowerShell shell.
+          Execute this command verbatim:
           python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          For the exec_command arguments, set yield_time_ms to the integer 10000 (never null) and sandbox_permissions to "use_default". Never request escalation. Omit justification, prefix_rule, and additional_permissions. The command must run under the existing workspace-write sandbox.
           Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           '@
           Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
           $selectedBackend = $null
           foreach ($backend in @("mxc", "elevated")) {
-            if (Test-Path -LiteralPath $probePath) {
-              Remove-Item -LiteralPath $probePath -Force
-            }
             $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
+            if ($backend -eq "mxc") {
+              Write-Host "Running the official standalone MXC compatibility probe under the Runner service identity."
+              $mxcProbeOutput = & codex -c windows.sandbox=mxc sandbox --include-managed-config --permission-profile :workspace -- cmd.exe /d /c echo MXC_SERVICE_OK 2>&1
+              $mxcProbeExitCode = $LASTEXITCODE
+              $mxcProbeOutput | ForEach-Object { Write-Host $_ }
+              Write-Host "MXC service-account probe exit code: $mxcProbeExitCode"
+              if ($mxcProbeExitCode -ne 0 -or (($mxcProbeOutput | Out-String) -notmatch "MXC_SERVICE_OK")) {
+                Write-Warning "The standalone MXC compatibility probe failed; checking only the pre-provisioned elevated sandbox next."
+                continue
+              }
+            }
             $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
+            $evidenceReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-evidence.json"
             Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
-            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport"
+            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidenceReport" --require-command-fragment ".codex-sandbox-probe.tmp" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
             $smokeExitCode = $LASTEXITCODE
-            $smokeOutput = ""
+            Write-Host "Codex smoke exit code for '$backend': $smokeExitCode"
             if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
-              $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
+              Write-Host "Codex final agent message for '$backend':"
+              Get-Content -LiteralPath $smokeReport -Raw | Write-Host
+            } else {
+              Write-Warning "Codex did not create the final agent-message report for '$backend'."
+            }
+            $smokeEvidence = $null
+            if (Test-Path -LiteralPath $evidenceReport -PathType Leaf) {
+              $smokeEvidence = Get-Content -LiteralPath $evidenceReport -Raw | ConvertFrom-Json
+              Write-Host "Codex JSONL command-execution evidence for '$backend':"
+              $smokeEvidence | ConvertTo-Json -Depth 8 | Write-Host
+            } else {
+              Write-Warning "Codex did not create JSONL command-execution evidence for '$backend'."
             }
             if (Test-Path -LiteralPath $probePath) {
-              Remove-Item -LiteralPath $probePath -Force
+              throw "Workspace probe file remains after '$backend'; refusing to delete or overwrite an unverified artifact."
             }
-            if ($smokeExitCode -eq 0 -and $smokeOutput -match "OLLAMA_PROVIDER_AND_SANDBOX_OK" -and $smokeOutput -match "CODEX_WORKSPACE_SANDBOX_OK") {
+            if ($smokeExitCode -eq 0 -and $smokeEvidence -and $smokeEvidence.passed) {
               $selectedBackend = $backend
               break
             }
             Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
           }
           if (-not $selectedBackend) {
-            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a real Codex exec_command workspace read/write/delete test. No unsandboxed fallback is permitted. Provision the elevated Codex sandbox for the Runner service identity or repair Windows sandbox policy, then rerun."
+            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a verified Codex JSONL workspace create/read/delete test. No unsandboxed fallback is permitted."
           }
           "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
