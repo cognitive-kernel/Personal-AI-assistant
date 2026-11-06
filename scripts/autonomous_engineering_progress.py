@@ -320,7 +320,7 @@ def run_codex(args: argparse.Namespace) -> int:
                 smoke_events,
                 expected_output or "",
                 expected_message or "",
-                getattr(args, "required_command_fragments", None),
+                getattr(args, "require_command_fragment", None),
             )
             if evidence_path:
                 write_smoke_evidence(evidence_path, evidence)
