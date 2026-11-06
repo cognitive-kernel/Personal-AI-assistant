@@ -914,7 +914,14 @@ def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkey
 def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
     from scripts import autonomous_engineering_progress as progress
 
+    command_started = {"type": "item.started", "item": {
+        "id": "command-1",
+        "type": "command_execution",
+        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+        "status": "in_progress",
+    }}
     events = [
+        command_started,
         {"type": "item.completed", "item": {
             "id": "command-1",
             "type": "command_execution",
@@ -961,6 +968,7 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
     command = {
         "type": "item.completed",
         "item": {
+            "id": "command-1",
             "type": "command_execution",
             "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
             "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
