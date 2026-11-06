@@ -847,17 +847,29 @@ def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch)
     ]
 
 
-def test_codex_arguments_pin_ollama_as_the_active_provider():
+def test_codex_arguments_pin_ollama_and_selected_windows_sandbox(monkeypatch):
     from scripts import autonomous_engineering_progress as progress
 
+    monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "elevated")
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
-    assert arguments[:8] == [
+    assert arguments[:7] == [
         "exec", "-c", 'model_provider="ollama"',
-        "--oss", "--local-provider", "ollama",
-        "--sandbox", "workspace-write",
+        "-c", 'windows.sandbox="elevated"',
+        "--oss", "--local-provider",
     ]
+    assert arguments[7:9] == ["ollama", "--sandbox"]
+    assert arguments[9] == "workspace-write"
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
+
+
+def test_codex_arguments_reject_unverified_windows_sandbox_backend(monkeypatch):
+    import pytest
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setenv("CODEX_WINDOWS_SANDBOX_BACKEND", "danger-full-access")
+    with pytest.raises(ValueError, match="must be 'mxc' or 'elevated'"):
+        progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
 
 def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
