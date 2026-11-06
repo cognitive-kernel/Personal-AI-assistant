@@ -267,6 +267,7 @@ jobs:
           $smokePromptText = @'
           Use the exec_command tool exactly once. Execute this command verbatim:
           python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          For the exec_command arguments, set yield_time_ms to the integer 10000 (never null) and sandbox_permissions to "use_default". Do not set sandbox_permissions to "require_escalated". Omit justification, prefix_rule, and additional_permissions. The command is fully contained in the current workspace and must run under the existing workspace-write sandbox without requesting more access.
           Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           '@
           Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
