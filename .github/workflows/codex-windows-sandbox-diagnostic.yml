@@ -1,6 +1,9 @@
 name: Codex Windows Sandbox Diagnostic
 
 on:
+  push:
+    branches:
+      - fix/codex-jsonl-workspace-smoke-verification
   workflow_dispatch:
     inputs:
       model:
