@@ -96,7 +96,7 @@ def test_manual_task_persistence_precedes_every_runner_prerequisite_check():
     capture = workflow.index("Capture live GitHub state with the read-only workflow token")
 
     assert persistence < first_preflight < capture
-    assert "Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force" in workflow
+    assert "persist_autonomous_manual_task.ps1" in workflow
 
 
 def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci():
