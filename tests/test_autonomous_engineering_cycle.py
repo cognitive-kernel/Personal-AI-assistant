@@ -917,7 +917,7 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
     events = [
         {"type": "item.completed", "item": {
             "type": "command_execution",
-            "command": "python -c <workspace-probe>",
+            "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
             "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
             "exit_code": 0,
             "status": "completed",
@@ -990,7 +990,8 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
         message["item"]["text"] = "I think it worked"
 
     evidence = progress.codex_smoke_evidence(
-        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK"
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
     )
 
     assert evidence["passed"] is False
