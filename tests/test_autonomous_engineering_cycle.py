@@ -853,8 +853,8 @@ def test_codex_arguments_pin_ollama_as_the_active_provider():
     arguments = progress.codex_arguments("gpt-oss:20b", "codex-report.md")
 
     assert arguments[:8] == [
-        "exec", "--oss", "--local-provider", "ollama",
-        "-c", 'model_provider="ollama"',
+        "exec", "-c", 'model_provider="ollama"',
+        "--oss", "--local-provider", "ollama",
         "--sandbox", "workspace-write",
     ]
     assert arguments[arguments.index("--model") + 1] == "gpt-oss:20b"
