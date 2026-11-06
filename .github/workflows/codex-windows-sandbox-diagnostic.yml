@@ -84,22 +84,28 @@ jobs:
           }
           $prompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
           $report = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-report.md"
+          $evidence = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-evidence.json"
           @'
           Use the exec_command tool exactly once. Execute this command verbatim:
           python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
           Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           '@ | Set-Content -LiteralPath $prompt -Encoding utf8
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report"
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence"
           $smokeExitCode = $LASTEXITCODE
           Write-Host "Codex smoke exit code: $smokeExitCode"
           if (Test-Path -LiteralPath $report -PathType Leaf) {
-            $smokeOutput = Get-Content -LiteralPath $report -Raw
-            Write-Host "Codex final smoke report:"
-            Write-Host $smokeOutput
+            Write-Host "Codex final agent message:"
+            Get-Content -LiteralPath $report -Raw | Write-Host
           } else {
-            throw "Codex did not produce a final smoke report."
+            throw "Codex did not produce a final agent-message report."
           }
-          if ($smokeExitCode -ne 0 -or $smokeOutput -notmatch "OLLAMA_PROVIDER_AND_SANDBOX_OK" -or $smokeOutput -notmatch "CODEX_WORKSPACE_SANDBOX_OK") {
-            throw "MXC process probe passed, but Codex exec_command workspace read/write/delete smoke test failed."
+          if (-not (Test-Path -LiteralPath $evidence -PathType Leaf)) {
+            throw "Codex did not produce JSONL command-execution evidence."
+          }
+          $smokeEvidence = Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json
+          Write-Host "Codex JSONL smoke evidence:"
+          $smokeEvidence | ConvertTo-Json -Depth 8 | Write-Host
+          if ($smokeExitCode -ne 0 -or -not $smokeEvidence.passed) {
+            throw "MXC compatibility probe passed, but the actual Codex JSONL command-execution proof failed."
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
