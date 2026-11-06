@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import sysconfig
 import time
 import urllib.error
 import urllib.request
@@ -142,11 +143,17 @@ def restore_checkpoint(base_sha: str) -> bool:
 def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subprocess.Popen[Any] | None:
     if os.name != "nt" or not os.getenv("PROGRAMDATA"):
         return None
-    # On Windows, the venv's python.exe is a launcher. Popen.pid can identify
-    # that launcher rather than the Python process that writes watcher metadata.
-    # The checkpoint script uses only the standard library, so launch it with
-    # the base interpreter to keep Popen.pid and os.getpid() consistent.
+    # The venv's Windows python.exe may report a launcher PID instead of the
+    # child interpreter PID. Launch with the base interpreter so Popen.pid and
+    # the watcher's os.getpid() agree, while exposing this venv's dependencies.
     watcher_executable = getattr(sys, "_base_executable", sys.executable)
+    watcher_env = os.environ.copy()
+    venv_site_packages = sysconfig.get_paths().get("purelib")
+    if venv_site_packages:
+        existing_pythonpath = watcher_env.get("PYTHONPATH", "")
+        watcher_env["PYTHONPATH"] = os.pathsep.join(
+            item for item in (venv_site_packages, existing_pythonpath) if item
+        )
     command = [
         watcher_executable, str(CHECKPOINT_SCRIPT), "watch",
         "--base-sha", base_sha, "--run-id", run_id, "--task", str(task),
@@ -166,6 +173,7 @@ def start_checkpoint_watcher(base_sha: str, run_id: str, task: int) -> subproces
         process = subprocess.Popen(
             command, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=watcher_log,
             stderr=subprocess.STDOUT, close_fds=True, creationflags=flags,
+            env=watcher_env,
         )
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
