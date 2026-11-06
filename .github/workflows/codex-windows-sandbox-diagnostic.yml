@@ -85,12 +85,14 @@ jobs:
           $prompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
           $report = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-report.md"
           $evidence = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-evidence.json"
+          $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
+          if (Test-Path -LiteralPath $probePath) { throw "Workspace probe path already exists; refusing to overwrite it." }
           @'
           Use the exec_command tool exactly once. Execute this command verbatim:
           python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
           Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
           '@ | Set-Content -LiteralPath $prompt -Encoding utf8
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence"
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report" --require-command-output "CODEX_WORKSPACE_SANDBOX_OK" --expected-agent-message "OLLAMA_PROVIDER_AND_SANDBOX_OK" --events-report "$evidence" --require-command-fragment ".codex-sandbox-probe.tmp" --require-command-fragment "write_text" --require-command-fragment "read_text" --require-command-fragment "unlink"
           $smokeExitCode = $LASTEXITCODE
           Write-Host "Codex smoke exit code: $smokeExitCode"
           if (Test-Path -LiteralPath $report -PathType Leaf) {
@@ -107,5 +109,8 @@ jobs:
           $smokeEvidence | ConvertTo-Json -Depth 8 | Write-Host
           if ($smokeExitCode -ne 0 -or -not $smokeEvidence.passed) {
             throw "MXC compatibility probe passed, but the actual Codex JSONL command-execution proof failed."
+          }
+          if (Test-Path -LiteralPath $probePath) {
+            throw "Workspace probe file remains after the smoke test; cleanup was not verified."
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
