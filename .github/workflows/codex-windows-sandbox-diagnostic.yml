@@ -1,0 +1,105 @@
+name: Codex Windows Sandbox Diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Installed local Ollama model"
+        required: true
+        type: string
+        default: "gpt-oss:20b"
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox-diagnostic:
+    runs-on: [self-hosted, Windows]
+    timeout-minutes: 15
+    env:
+      AUTONOMOUS_ENGINEERING_MODEL: ${{ inputs.model }}
+      CODEX_WINDOWS_SANDBOX_BACKEND: mxc
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Prepare the same service-account runtime
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Host "Runner identity:"
+          whoami
+          $pythonPath = "C:\Program Files\Python311\python.exe"
+          $pythonDirectory = Split-Path -Parent $pythonPath
+          $scriptsPath = Join-Path $pythonDirectory "Scripts"
+          $ollamaPath = "C:\Users\Admin\AppData\Local\Programs\Ollama\ollama.exe"
+          if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) { throw "System-wide Python was not found: $pythonPath" }
+          if (-not (Test-Path -LiteralPath $ollamaPath -PathType Leaf)) { throw "Ollama executable was not found: $ollamaPath" }
+          $npm = Get-Command npm -ErrorAction Stop
+          $npmPrefix = (npm config get prefix).Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($npmPrefix)) { throw "Could not determine npm global prefix." }
+          $env:PATH = "$pythonDirectory;$scriptsPath;$npmPrefix;$(Split-Path -Parent $ollamaPath);$env:PATH"
+          @($pythonDirectory, $scriptsPath, $npmPrefix, (Split-Path -Parent $ollamaPath)) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          $requiredVersion = "0.167.0"
+          $version = (& codex --version 2>$null | Out-String).Trim()
+          if ($version -notmatch [regex]::Escape($requiredVersion)) {
+            npm install --global "@openai/codex@$requiredVersion"
+            if ($LASTEXITCODE -ne 0) { throw "Could not install Codex CLI $requiredVersion." }
+          }
+          $version = (& codex --version 2>&1 | Out-String).Trim()
+          Write-Host "Codex version: $version"
+          if ($LASTEXITCODE -ne 0 -or $version -notmatch [regex]::Escape($requiredVersion)) { throw "Unexpected Codex CLI version: $version" }
+          python --version
+          ollama --version
+          $tags = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
+          if (@($tags.models | ForEach-Object { $_.name }) -notcontains $env:AUTONOMOUS_ENGINEERING_MODEL) {
+            throw "Ollama model '$env:AUTONOMOUS_ENGINEERING_MODEL' is not installed."
+          }
+
+      - name: Probe MXC and Codex exec_command under the Runner identity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object System.Security.Principal.WindowsPrincipal($identity)
+          if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw "Diagnostic must run as the non-administrator Runner service identity."
+          }
+          Write-Host "USERPROFILE=$env:USERPROFILE"
+          Write-Host "CODEX_HOME=$env:CODEX_HOME"
+          $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+          $configPath = Join-Path $codexHome "config.toml"
+          Write-Host "Effective Codex config path: $configPath"
+          Write-Host "User config exists: $(Test-Path -LiteralPath $configPath -PathType Leaf)"
+          $requirementsPath = Join-Path $env:ProgramData "OpenAI\Codex\requirements.toml"
+          Write-Host "Managed requirements exist: $(Test-Path -LiteralPath $requirementsPath -PathType Leaf)"
+          $probeOutput = & codex -c windows.sandbox=mxc sandbox --include-managed-config --permission-profile :workspace -- cmd.exe /d /c echo MXC_SERVICE_OK 2>&1
+          $probeExitCode = $LASTEXITCODE
+          $probeOutput | ForEach-Object { Write-Host $_ }
+          Write-Host "MXC compatibility probe exit code: $probeExitCode"
+          if ($probeExitCode -ne 0 -or (($probeOutput | Out-String) -notmatch "MXC_SERVICE_OK")) {
+            throw "The official MXC compatibility probe failed under the Runner service identity."
+          }
+          $prompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
+          $report = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-report.md"
+          @'
+          Use the exec_command tool exactly once. Execute this command verbatim:
+          python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
+          '@ | Set-Content -LiteralPath $prompt -Encoding utf8
+          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-mxc" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$prompt" --report "$report"
+          $smokeExitCode = $LASTEXITCODE
+          Write-Host "Codex smoke exit code: $smokeExitCode"
+          if (Test-Path -LiteralPath $report -PathType Leaf) {
+            $smokeOutput = Get-Content -LiteralPath $report -Raw
+            Write-Host "Codex final smoke report:"
+            Write-Host $smokeOutput
+          } else {
+            throw "Codex did not produce a final smoke report."
+          }
+          if ($smokeExitCode -ne 0 -or $smokeOutput -notmatch "OLLAMA_PROVIDER_AND_SANDBOX_OK" -or $smokeOutput -notmatch "CODEX_WORKSPACE_SANDBOX_OK") {
+            throw "MXC process probe passed, but Codex exec_command workspace read/write/delete smoke test failed."
+          }
+          Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
