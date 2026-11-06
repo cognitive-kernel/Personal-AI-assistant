@@ -100,7 +100,7 @@ jobs:
           $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
           if (Test-Path -LiteralPath $probePath) { throw "Workspace probe path already exists; refusing to overwrite it." }
           @'
-          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\\Windows\\System32\\cmd.exe. Do not use the default PowerShell shell.
+          Use the exec_command tool exactly once. Set its shell parameter to the absolute executable C:\Windows\System32\cmd.exe. Do not use the default PowerShell shell.
           Execute this command verbatim:
           python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
           Set yield_time_ms to integer 10000 and sandbox_permissions to "use_default". Never request escalation. Do not run any other command. If successful, reply exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
