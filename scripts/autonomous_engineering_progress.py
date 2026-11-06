@@ -179,6 +179,7 @@ def codex_smoke_evidence(
     events: list[dict[str, Any]],
     expected_command_output: str,
     expected_agent_message: str,
+    required_command_fragments: list[str] | None = None,
 ) -> dict[str, Any]:
     completed_commands = [
         event["item"]
@@ -200,11 +201,14 @@ def codex_smoke_evidence(
     command = completed_commands[0] if len(completed_commands) == 1 else {}
     command_output = str(command.get("aggregated_output", ""))
     final_message = agent_messages[-1].strip() if agent_messages else ""
+    required_fragments = required_command_fragments or []
+    command_fragments_present = all(fragment in str(command.get("command", "")) for fragment in required_fragments)
     checks = {
         "exactly_one_command_execution": len(completed_commands) == 1,
         "command_completed": command.get("status") == "completed",
         "command_exit_code_zero": command.get("exit_code") == 0,
         "command_output_marker_present": expected_command_output in command_output,
+        "required_command_fragments_present": command_fragments_present,
         "turn_completed": turn_completed,
         "turn_not_failed": not turn_failed,
         "expected_agent_message": final_message == expected_agent_message,
@@ -216,6 +220,7 @@ def codex_smoke_evidence(
         "command_status": command.get("status"),
         "command_exit_code": command.get("exit_code"),
         "command_output_marker": expected_command_output in command_output,
+        "required_command_fragments_present": command_fragments_present,
         "agent_message": final_message,
         "turn_completed": turn_completed,
         "turn_failed": turn_failed,
@@ -315,6 +320,7 @@ def run_codex(args: argparse.Namespace) -> int:
                 smoke_events,
                 expected_output or "",
                 expected_message or "",
+                getattr(args, "required_command_fragments", None),
             )
             if evidence_path:
                 write_smoke_evidence(evidence_path, evidence)
@@ -459,6 +465,7 @@ def main() -> int:
     codex.add_argument("--require-command-output")
     codex.add_argument("--expected-agent-message")
     codex.add_argument("--events-report")
+    codex.add_argument("--require-command-fragment", action="append", default=[])
     snapshot = sub.add_parser("snapshot")
     snapshot.add_argument("--run-id", required=True)
     snapshot.add_argument("--run-attempt", default="1")
