@@ -140,7 +140,7 @@ def _github_snapshot() -> dict[str, Any]:
         result = _run(
             [
                 gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-                "--limit", "5", "--json",
+                "--limit", "30", "--json",
                 "databaseId,status,conclusion,createdAt,url,headBranch",
             ],
             timeout=12,
@@ -459,7 +459,7 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
     result = _run(
         [
             gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-            "--limit", "10", "--json", "databaseId,status",
+            "--limit", "30", "--json", "databaseId,status",
         ],
         timeout=12,
     )
