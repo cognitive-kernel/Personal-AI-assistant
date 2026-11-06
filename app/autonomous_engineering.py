@@ -149,7 +149,7 @@ def _github_snapshot() -> dict[str, Any]:
             try:
                 parsed = json.loads(result.stdout)
                 if isinstance(parsed, list):
-                    recent_runs = [
+                    mapped_runs = [
                         {
                             "id": item.get("databaseId"),
                             "status": item.get("status"),
@@ -158,9 +158,16 @@ def _github_snapshot() -> dict[str, Any]:
                             "url": item.get("url"),
                             "branch": item.get("headBranch"),
                         }
-                        for item in parsed[:5]
+                        for item in parsed
                         if isinstance(item, dict)
                     ]
+                    recent_runs = mapped_runs[:5]
+                    visible_ids = {item["id"] for item in recent_runs}
+                    active_states = {"queued", "in_progress", "waiting", "requested", "pending"}
+                    recent_runs.extend(
+                        item for item in mapped_runs[5:]
+                        if item.get("status") in active_states and item.get("id") not in visible_ids
+                    )
                     runs_available = True
             except ValueError:
                 recent_runs = []
