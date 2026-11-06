@@ -181,6 +181,13 @@ def codex_smoke_evidence(
     expected_agent_message: str,
     required_command_fragments: list[str] | None = None,
 ) -> dict[str, Any]:
+    started_commands = [
+        event["item"]
+        for event in events
+        if event.get("type") == "item.started"
+        and isinstance(event.get("item"), dict)
+        and event["item"].get("type") == "command_execution"
+    ]
     completed_commands = [
         event["item"]
         for event in events
@@ -199,12 +206,20 @@ def codex_smoke_evidence(
     turn_failed = any(event.get("type") in {"turn.failed", "error"} for event in events)
 
     command = completed_commands[0] if len(completed_commands) == 1 else {}
+    started_command = started_commands[0] if len(started_commands) == 1 else {}
     command_output = str(command.get("aggregated_output", ""))
     final_message = agent_messages[-1].strip() if agent_messages else ""
     required_fragments = required_command_fragments or []
     command_fragments_present = all(fragment in str(command.get("command", "")) for fragment in required_fragments)
     checks = {
+        "exactly_one_command_started": len(started_commands) == 1,
         "exactly_one_command_execution": len(completed_commands) == 1,
+        "command_start_matches_completion": (
+            len(started_commands) == 1
+            and len(completed_commands) == 1
+            and started_command.get("id") == command.get("id")
+            and started_command.get("command") == command.get("command")
+        ),
         "command_completed": command.get("status") == "completed",
         "command_exit_code_zero": command.get("exit_code") == 0,
         "command_output_marker_present": expected_command_output in command_output,
@@ -286,12 +301,12 @@ def run_codex(args: argparse.Namespace) -> int:
                 continue
             if getattr(args, "require_command_output", None) or getattr(args, "expected_agent_message", None):
                 if (
-                    event.get("type") in {"item.completed", "turn.completed", "turn.failed", "error"}
+                    event.get("type") in {"item.started", "item.completed", "turn.completed", "turn.failed", "error"}
                     and (
                         event.get("type") != "item.completed"
                         or (
                             isinstance(event.get("item"), dict)
-                            and event["item"].get("type") in {"command_execution", "agent_message"}
+                            and event["item"].get("type") == "command_execution"\n                            or event.get("type") == "item.completed"\n                            and isinstance(event.get("item"), dict)\n                            and event["item"].get("type") == "agent_message"
                         )
                     )
                 ):
