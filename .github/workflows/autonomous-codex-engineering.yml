@@ -383,12 +383,23 @@ jobs:
           state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
           state_dir.mkdir(parents=True, exist_ok=True)
           pending_path = state_dir / "pending-manual-task.txt"
+          pending_task = pending_path.read_text(encoding="utf-8") if pending_path.is_file() else ""
+          from scripts.autonomous_engineering_pending_task import validate_manual_task_submission
+          try:
+              validate_manual_task_submission(
+                  manual_task=manual_task,
+                  pending_task=pending_task,
+                  open_pull_requests=pulls,
+                  repository=repo,
+              )
+          except ValueError as exc:
+              raise SystemExit(str(exc)) from exc
           if manual_task:
               temporary = pending_path.with_suffix(".txt.tmp")
               temporary.write_text(manual_task, encoding="utf-8")
               temporary.replace(pending_path)
-          elif pending_path.is_file():
-              manual_task = pending_path.read_text(encoding="utf-8")
+          elif pending_task:
+              manual_task = pending_task
           if len(manual_task) > 2000 or "\x00" in manual_task:
               raise SystemExit("Persisted manual engineering task is invalid.")
           request = {
