@@ -71,3 +71,16 @@ def test_empty_recovery_dispatch_preserves_pending_task():
         open_pull_requests=[_open_pr()],
         repository=REPOSITORY,
     )
+
+
+def test_manual_task_is_persisted_before_codex_and_ollama_preflight():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    capture = workflow.index("Capture live GitHub state with the read-only workflow token")
+    codex_install = workflow.index("Ensure Codex CLI is installed for the Runner service account")
+    ollama_check = workflow.index("Verify local Ollama and Codex prerequisites")
+    sandbox_smoke = workflow.index("Verify Ollama and a real workspace-confined Codex tool call")
+
+    assert capture < codex_install < ollama_check < sandbox_smoke
