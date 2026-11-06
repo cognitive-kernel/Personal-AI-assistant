@@ -163,8 +163,8 @@ def codex_arguments(model: str, report: str) -> list[str]:
     # config.toml even when --local-provider is supplied, causing app-server
     # turn/start to reject the Ollama-backed chat as a provider mismatch.
     return [
-        "exec", "--oss", "--local-provider", "ollama",
-        "-c", 'model_provider="ollama"',
+        "exec", "-c", 'model_provider="ollama"',
+        "--oss", "--local-provider", "ollama",
         "--sandbox", "workspace-write",
         "--model", model, "--cd", str(ROOT),
         "--output-last-message", report, "--json", "-",
