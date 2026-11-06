@@ -916,6 +916,7 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
 
     events = [
         {"type": "item.completed", "item": {
+            "id": "command-1",
             "type": "command_execution",
             "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
             "aggregated_output": "CODEX_WORKSPACE_SANDBOX_OK\\n",
@@ -949,6 +950,8 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
         "turn_failed",
         "duplicate_command",
         "wrong_command",
+        "missing_command_start",
+        "mismatched_command_start",
         "wrong_agent_message",
     ],
 )
@@ -965,11 +968,17 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
             "status": "completed",
         },
     }
+    command_started = {"type": "item.started", "item": {
+        "id": "command-1",
+        "type": "command_execution",
+        "command": "python -c from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok'); assert p.read_text() == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')",
+        "status": "in_progress",
+    }}
     message = {
         "type": "item.completed",
         "item": {"type": "agent_message", "text": "OLLAMA_PROVIDER_AND_SANDBOX_OK"},
     }
-    events = [command, message, {"type": "turn.completed"}]
+    events = [command_started, command, message, {"type": "turn.completed"}]
 
     if mutation == "no_command":
         events.remove(command)
@@ -986,6 +995,10 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
         events.insert(1, dict(command))
     elif mutation == "wrong_command":
         command["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
+    elif mutation == "missing_command_start":
+        events.remove(command_started)
+    elif mutation == "mismatched_command_start":
+        command_started["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
     elif mutation == "wrong_agent_message":
         message["item"]["text"] = "I think it worked"
 
