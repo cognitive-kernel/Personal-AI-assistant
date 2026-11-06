@@ -217,14 +217,24 @@ jobs:
             throw "Could not determine the Runner account's npm global prefix."
           }
           $env:PATH = "$npmPrefix;$env:PATH"
-          if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
-            npm install --global @openai/codex
-            if ($LASTEXITCODE -ne 0) { throw "Automatic Codex CLI installation failed for the Runner service account." }
+          $requiredCodexVersion = "0.167.0"
+          $installedVersion = ""
+          if (Get-Command codex -ErrorAction SilentlyContinue) {
+            $installedVersion = (& codex --version 2>$null | Out-String).Trim()
           }
-          $env:PATH | Out-Null
+          if ($installedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            npm install --global "@openai/codex@$requiredCodexVersion"
+            if ($LASTEXITCODE -ne 0) { throw "Could not install the pinned Codex CLI $requiredCodexVersion for the Runner service account." }
+          }
           $npmPrefix | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          codex --version
-          if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable after installation." }
+          $env:PATH = "$npmPrefix;$env:PATH"
+          $codexCommand = Get-Command codex -ErrorAction Stop
+          $verifiedVersion = (& $codexCommand.Source --version 2>&1 | Out-String).Trim()
+          Write-Host "Codex executable: $($codexCommand.Source)"
+          Write-Host "Codex version: $verifiedVersion"
+          if ($LASTEXITCODE -ne 0 -or $verifiedVersion -notmatch [regex]::Escape($requiredCodexVersion)) {
+            throw "Runner must use exactly Codex CLI $requiredCodexVersion; found '$verifiedVersion'."
+          }
 
       - name: Verify local Ollama and Codex prerequisites
         shell: powershell
@@ -248,18 +258,46 @@ jobs:
           ollama --version
           if ($LASTEXITCODE -ne 0) { throw "Ollama CLI is not executable in the Runner service account" }
 
-      - name: Verify Codex can start a real Ollama turn
+      - name: Verify Ollama and a real workspace-confined Codex tool call
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-ollama-smoke.md"
-          $smokeReport = Join-Path $env:RUNNER_TEMP "codex-ollama-smoke-report.md"
-          Set-Content -LiteralPath $smokePrompt -Value "Reply with exactly OLLAMA_PROVIDER_OK." -Encoding utf8
-          python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-smoke" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport"
-          if ($LASTEXITCODE -ne 0) { throw "Codex could not start or complete a turn with the configured local Ollama provider." }
-          if (-not (Test-Path -LiteralPath $smokeReport -PathType Leaf)) { throw "Codex Ollama smoke test did not produce a final response report." }
-          $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
-          if ($smokeOutput -notmatch "OLLAMA_PROVIDER_OK") { throw "Codex Ollama smoke test returned an unexpected response." }
+          $smokePrompt = Join-Path $env:RUNNER_TEMP "codex-windows-sandbox-smoke.md"
+          $probePath = Join-Path $env:GITHUB_WORKSPACE ".codex-sandbox-probe.tmp"
+          $smokePromptText = @'
+          Use the exec_command tool exactly once. Execute this command verbatim:
+          python -c "from pathlib import Path; p=Path('.codex-sandbox-probe.tmp'); p.write_text('ok', encoding='utf-8'); assert p.read_text(encoding='utf-8') == 'ok'; p.unlink(); print('CODEX_WORKSPACE_SANDBOX_OK')"
+          Do not use recursive directory listings, PowerShell directory traversal, or any other command. If and only if the command succeeds, reply with exactly: OLLAMA_PROVIDER_AND_SANDBOX_OK
+          '@
+          Set-Content -LiteralPath $smokePrompt -Value $smokePromptText -Encoding utf8
+          $selectedBackend = $null
+          foreach ($backend in @("mxc", "elevated")) {
+            if (Test-Path -LiteralPath $probePath) {
+              Remove-Item -LiteralPath $probePath -Force
+            }
+            $env:CODEX_WINDOWS_SANDBOX_BACKEND = $backend
+            $smokeReport = Join-Path $env:RUNNER_TEMP "codex-sandbox-$backend-report.md"
+            Write-Host "Testing Codex exec_command with the Windows '$backend' sandbox backend."
+            python scripts/autonomous_engineering_progress.py codex --run-id "$env:GITHUB_RUN_ID-sandbox-$backend" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$smokePrompt" --report "$smokeReport"
+            $smokeExitCode = $LASTEXITCODE
+            $smokeOutput = ""
+            if (Test-Path -LiteralPath $smokeReport -PathType Leaf) {
+              $smokeOutput = Get-Content -LiteralPath $smokeReport -Raw
+            }
+            if (Test-Path -LiteralPath $probePath) {
+              Remove-Item -LiteralPath $probePath -Force
+            }
+            if ($smokeExitCode -eq 0 -and $smokeOutput -match "OLLAMA_PROVIDER_AND_SANDBOX_OK" -and $smokeOutput -match "CODEX_WORKSPACE_SANDBOX_OK") {
+              $selectedBackend = $backend
+              break
+            }
+            Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
+          }
+          if (-not $selectedBackend) {
+            throw "Neither MXC nor the pre-provisioned elevated Windows sandbox passed a real Codex exec_command workspace read/write/delete test. No unsandboxed fallback is permitted. Provision the elevated Codex sandbox for the Runner service identity or repair Windows sandbox policy, then rerun."
+          }
+          "CODEX_WINDOWS_SANDBOX_BACKEND=$selectedBackend" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
 
       - name: Capture live GitHub state with the read-only workflow token
         env:
