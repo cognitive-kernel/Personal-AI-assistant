@@ -806,9 +806,21 @@ def _ensure_ollama() -> None:
     if not executable:
         raise RuntimeError("Ollama در PATH یا مسیرهای نصب متداول پیدا نشد؛ نصب‌کننده در prerequisites/installers قرار دارد.")
 
-    listed = subprocess.run(
-        [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
-    )
+    print("بررسی اتصال به سرویس Ollama و فهرست مدل‌های نصب‌شده ...", flush=True)
+    try:
+        listed = subprocess.run(
+            [executable, "list"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            "پاسخ سرویس Ollama طی ۳۰ ثانیه دریافت نشد. "
+            "برنامه برای جلوگیری از توقف نامحدود متوقف شد؛ وضعیت سرویس Ollama را بررسی کنید."
+        ) from exc
     if listed.stdout:
         print(listed.stdout, end="" if listed.stdout.endswith("\n") else "\n", flush=True)
     if listed.stderr:
