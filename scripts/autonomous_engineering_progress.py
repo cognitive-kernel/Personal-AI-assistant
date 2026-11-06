@@ -168,16 +168,7 @@ def run_codex(args: argparse.Namespace) -> int:
         "--model", args.model, "--cd", str(ROOT),
         "--output-last-message", args.report, "--json", "-",
     ]
-    if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
-        # Invoke Windows command shims through CALL. Nesting quoted command
-        # strings inside cmd.exe /s /c makes cmd treat the entire line as the
-        # executable name on some runner environments.
-        command = [
-            os.getenv("COMSPEC", "cmd.exe"), "/d", "/c", "call",
-            executable, *arguments,
-        ]
-    else:
-        command = [executable, *arguments]
+    command = codex_command(executable, arguments)
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
     except OSError as exc:
@@ -206,9 +197,9 @@ def run_codex(args: argparse.Namespace) -> int:
     last_signature: tuple[Any, ...] | None = None
     if not input_broken:
         persist({
-        "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
-        "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
-        "activity": "عامل در حال شروع تحلیل است",
+            "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
+            "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
+            "activity": "عامل در حال شروع تحلیل است",
             "plan_completed": 0, "plan_total": 0, "plan_percent": None,
         })
     try:
