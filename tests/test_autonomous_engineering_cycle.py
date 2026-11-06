@@ -831,3 +831,54 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
         str(tmp_path / ".venv" / "Lib" / "site-packages"),
         "existing-python-path",
     ]
+
+
+
+def test_windows_codex_command_uses_call_without_nested_cmd_quoting(monkeypatch):
+    from scripts import autonomous_engineering_progress as progress
+
+    monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
+    executable = r"C:\Users\runner-svc\AppData\Roaming\npm\codex.CMD"
+    command = progress.codex_command(executable, ["exec", "--json", "-"])
+
+    assert command == [
+        r"C:\Windows\System32\cmd.exe", "/d", "/c", "call",
+        executable, "exec", "--json", "-",
+    ]
+
+
+def test_run_codex_handles_early_child_exit_without_broken_pipe_traceback(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+    from scripts import autonomous_engineering_progress as progress
+
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Do the task", encoding="utf-8")
+    monkeypatch.setattr(progress.shutil, "which", lambda _: r"C:\\npm\\codex.CMD")
+    monkeypatch.setattr(progress, "codex_command", lambda executable, arguments: ["cmd.exe", "/d", "/c", "call", executable, *arguments])
+    monkeypatch.setattr(progress, "persist", lambda record: True)
+
+    class BrokenInput:
+        def write(self, value):
+            raise BrokenPipeError(32, "pipe closed")
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        stdin = BrokenInput()
+        stdout = iter(())
+        returncode = 1
+
+        def wait(self):
+            return self.returncode
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr(progress.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    args = SimpleNamespace(
+        model="gpt-oss:20b", prompt=str(prompt), report=str(tmp_path / "report.md"),
+        run_id="123", run_attempt="1",
+    )
+
+    assert progress.run_codex(args) == 1
