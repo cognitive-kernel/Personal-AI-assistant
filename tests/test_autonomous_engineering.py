@@ -736,3 +736,36 @@ def test_live_progress_does_not_freeze_legacy_awaiting_review_state(monkeypatch)
     assert result["status"] == "running"
     assert result["activity"] == "Execute isolated engineering task"
 
+
+
+
+def test_status_distinguishes_prerequisite_readiness_from_paused_dispatch(monkeypatch):
+    monkeypatch.setattr(agent, "_ollama_status", lambda model: {
+        "online": True, "model": model, "model_installed": True, "models": [model]
+    })
+    monkeypatch.setattr(agent, "_codex_status", lambda: {"installed": True, "version": "codex test"})
+    monkeypatch.setattr(agent, "_runner_status", lambda: {"running": True, "process_detected": True})
+    monkeypatch.setattr(agent, "storage_accessible", lambda: True)
+    monkeypatch.setattr(agent, "_github_snapshot", lambda: {
+        "cli_installed": True, "authenticated": True, "runs_available": True,
+        "recent_runs": [], "settings": {"paused": True},
+    })
+
+    result = agent.collect_status()
+
+    assert result["ready"] is True
+    assert result["paused"] is True
+    assert result["can_dispatch"] is False
+
+
+def test_dispatch_rejects_safe_paused_state(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True, "paused": True,
+        "github": {"runs_available": True, "recent_runs": []},
+    })
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=""))
+
+    assert error.value.status_code == 409
+    assert "توقف ایمن" in error.value.detail

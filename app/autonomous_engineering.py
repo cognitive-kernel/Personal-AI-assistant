@@ -216,8 +216,17 @@ def collect_status() -> dict[str, Any]:
         "github_runs_available": github.get("runs_available", False),
         "progress_storage_accessible": progress_storage,
     }
+    ready = all(value for key, value in checks.items() if key != "codex_installed")
+    active_runs = github.get("recent_runs", [])
+    active = any(
+        isinstance(item, dict)
+        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+        for item in active_runs
+    )
+    can_dispatch = ready and not paused and not active
     return {
-        "ready": all(value for key, value in checks.items() if key != "codex_installed"),
+        "ready": ready,
+        "can_dispatch": can_dispatch,
         "checks": checks,
         "ollama": ollama,
         "codex": codex,
@@ -373,6 +382,8 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None) ->
     readiness = collect_status()
     if not readiness.get("github", {}).get("runs_available", False):
         raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ اجرای جدید به‌صورت ایمن متوقف شد.")
+    if readiness.get("paused", False):
+        raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف ایمن است؛ ابتدا ادامه را فعال کنید.")
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
     active_runs = readiness.get("github", {}).get("recent_runs", [])

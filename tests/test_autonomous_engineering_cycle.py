@@ -613,7 +613,7 @@ def test_checkpoint_watcher_cannot_lose_a_fast_readiness_signal(monkeypatch: pyt
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
-        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ),
+        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ, path=os.path, pathsep=os.pathsep),
     )
     ticks = iter((0.0, 0.0, 31.0))
     monkeypatch.setattr(cycle.time, "monotonic", lambda: next(ticks))
@@ -769,3 +769,65 @@ def test_repository_execution_lock_rejects_a_second_process(monkeypatch: pytest.
         )
         assert child.returncode != 0
         assert "Another autonomous execution owns this repository worktree" in child.stderr
+
+
+
+def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+):
+    import json
+    import os
+    import sys
+    from types import SimpleNamespace
+    from scripts import autonomous_engineering_checkpoint as checkpoint
+    from scripts import autonomous_engineering_cycle as cycle
+
+    state = tmp_path / "ProgramData" / "PersonalAIAssistant" / "autonomous-engineering"
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: state)
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path / "ProgramData"))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
+    monkeypatch.setattr(
+        cycle, "os",
+        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ, path=os.path, pathsep=os.pathsep),
+    )
+    monkeypatch.setattr(cycle.sys, "_base_executable", str(tmp_path / "python.exe"), raising=False)
+    monkeypatch.setattr(cycle.sys, "executable", str(tmp_path / ".venv" / "Scripts" / "python.exe"))
+    monkeypatch.setattr(cycle.sysconfig, "get_paths", lambda: {
+        "purelib": str(tmp_path / ".venv" / "Lib" / "site-packages")
+    })
+    monkeypatch.setenv("PYTHONPATH", "existing-python-path")
+    captured = {}
+
+    class FakeProcess:
+        pid = 4321
+
+        def __init__(self, command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs["env"]
+            checkpoint.paths("107", 1)["metadata"].write_text(
+                json.dumps({
+                    "schema_version": 3, "watcher_ready": True,
+                    "run_id": "107", "task": 1, "base_sha": "a" * 40,
+                    "watcher_pid": self.pid,
+                }),
+                encoding="utf-8",
+            )
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(cycle.subprocess, "Popen", FakeProcess)
+    monkeypatch.setattr(cycle.time, "monotonic", lambda: 0.0)
+
+    assert cycle.start_checkpoint_watcher("a" * 40, "107", 1) is not None
+    assert captured["command"][0] == str(tmp_path / "python.exe")
+    assert captured["env"]["PYTHONPATH"].split(os.pathsep) == [
+        str(tmp_path / ".venv" / "Lib" / "site-packages"),
+        "existing-python-path",
+    ]
