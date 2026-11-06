@@ -3383,3 +3383,59 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         assert request_info.value.post_data_json == {"task": task}
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+
+def test_chat_message_timestamps_are_rendered_in_browser_local_timezone():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    conversation = {
+        "id": 901,
+        "title": "Timezone display regression",
+        "created_at": "2026-11-06 08:46:28",
+        "updated_at": "2026-11-06 08:46:28",
+        "message_count": 1,
+        "last_message": "timezone test",
+    }
+    message = {
+        "id": 1901,
+        "conversation_id": 901,
+        "role": "user",
+        "content": "timezone test",
+        "task_id": None,
+        "created_at": "2026-11-06 08:46:28",
+    }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        context = browser.new_context(timezone_id="Asia/Tehran")
+        page = context.new_page()
+
+        def mock_api(route):
+            url = route.request.url
+            if route.request.method == "GET" and "/api/conversations?" in url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"conversations": [conversation]}),
+                )
+                return
+            if route.request.method == "GET" and "/api/conversations/901/messages" in url:
+                route.fulfill(
+                    status=200,
+                    content_type="application/json",
+                    body=json.dumps({"conversation": conversation, "messages": [message]}),
+                )
+                return
+            route.continue_()
+
+        page.route("**/api/**", mock_api)
+        response = page.goto(base_url, wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        timestamp = page.locator("#chat-messages .chat-message small")
+        timestamp.wait_for(timeout=5000)
+        assert timestamp.inner_text() == "2026-11-06 12:16:28"
+        context.close()
+        browser.close()
