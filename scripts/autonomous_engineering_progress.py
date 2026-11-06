@@ -148,6 +148,15 @@ def codex_activity(event: dict[str, Any]) -> str | None:
     return None
 
 
+def codex_command(executable: str, arguments: list[str]) -> list[str]:
+    if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
+        return [
+            os.getenv("COMSPEC", "cmd.exe"), "/d", "/c", "call",
+            executable, *arguments,
+        ]
+    return [executable, *arguments]
+
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
@@ -160,9 +169,12 @@ def run_codex(args: argparse.Namespace) -> int:
         "--output-last-message", args.report, "--json", "-",
     ]
     if Path(executable).suffix.casefold() in {".cmd", ".bat"}:
+        # Invoke Windows command shims through CALL. Nesting quoted command
+        # strings inside cmd.exe /s /c makes cmd treat the entire line as the
+        # executable name on some runner environments.
         command = [
-            os.getenv("COMSPEC", "cmd.exe"), "/d", "/s", "/c",
-            '""' + executable + '" ' + subprocess.list2cmdline(arguments) + '"',
+            os.getenv("COMSPEC", "cmd.exe"), "/d", "/c", "call",
+            executable, *arguments,
         ]
     else:
         command = [executable, *arguments]
@@ -176,15 +188,29 @@ def run_codex(args: argparse.Namespace) -> int:
         stderr=None, text=True, encoding="utf-8", errors="replace", bufsize=1,
     )
     assert process.stdin is not None and process.stdout is not None
-    process.stdin.write(prompt)
-    process.stdin.close()
+    input_broken = False
+    try:
+        process.stdin.write(prompt)
+    except BrokenPipeError:
+        input_broken = True
+    finally:
+        try:
+            process.stdin.close()
+        except BrokenPipeError:
+            input_broken = True
+    if input_broken:
+        print(
+            "Codex CLI exited before accepting its prompt; inspect the Codex CLI error above.",
+            file=sys.stderr,
+        )
     last_signature: tuple[Any, ...] | None = None
-    persist({
+    if not input_broken:
+        persist({
         "run_id": args.run_id, "run_attempt": args.run_attempt, "status": "running",
         "phase": "coding", "phase_label": "تحلیل و پیاده‌سازی",
         "activity": "عامل در حال شروع تحلیل است",
-        "plan_completed": 0, "plan_total": 0, "plan_percent": None,
-    })
+            "plan_completed": 0, "plan_total": 0, "plan_percent": None,
+        })
     try:
         for line in process.stdout:
             try:
@@ -207,6 +233,8 @@ def run_codex(args: argparse.Namespace) -> int:
                 })
                 last_signature = signature
         return_code = process.wait()
+        if input_broken and return_code == 0:
+            return_code = 1
         completed, total, active_title = plan_state()
         persist({
             "run_id": args.run_id, "run_attempt": args.run_attempt,
