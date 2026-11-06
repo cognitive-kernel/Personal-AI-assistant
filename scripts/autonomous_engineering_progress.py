@@ -157,17 +157,26 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
     return [executable, *arguments]
 
 
+def codex_arguments(model: str, report: str) -> list[str]:
+    # Pin both the OSS selector and the active provider. Some Codex CLI
+    # configurations retain model_provider="openai" from the service user's
+    # config.toml even when --local-provider is supplied, causing app-server
+    # turn/start to reject the Ollama-backed chat as a provider mismatch.
+    return [
+        "exec", "-c", 'model_provider="ollama"',
+        "--oss", "--local-provider", "ollama",
+        "--sandbox", "workspace-write",
+        "--model", model, "--cd", str(ROOT),
+        "--output-last-message", report, "--json", "-",
+    ]
+
+
 def run_codex(args: argparse.Namespace) -> int:
     executable = shutil.which("codex")
     if not executable:
         print("Codex CLI executable was not found on PATH.", file=sys.stderr)
         return 127
-    arguments = [
-        "exec", "--oss", "--local-provider", "ollama",
-        "--sandbox", "workspace-write",
-        "--model", args.model, "--cd", str(ROOT),
-        "--output-last-message", args.report, "--json", "-",
-    ]
+    arguments = codex_arguments(args.model, args.report)
     command = codex_command(executable, arguments)
     try:
         prompt = Path(args.prompt).read_text(encoding="utf-8")
