@@ -84,3 +84,16 @@ def test_manual_task_is_persisted_before_codex_and_ollama_preflight():
     sandbox_smoke = workflow.index("Verify Ollama and a real workspace-confined Codex tool call")
 
     assert capture < codex_install < ollama_check < sandbox_smoke
+
+
+def test_manual_task_persistence_precedes_every_runner_prerequisite_check():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(encoding="utf-8")
+    persistence = workflow.index("Persist manual task before any runner prerequisite checks")
+    first_preflight = workflow.index("Use preinstalled system Python under the Runner service identity")
+    capture = workflow.index("Capture live GitHub state with the read-only workflow token")
+
+    assert persistence < first_preflight < capture
+    assert "Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force" in workflow
