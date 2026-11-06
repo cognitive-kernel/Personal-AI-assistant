@@ -30,6 +30,7 @@ PROTECTED = {
     "scripts/autonomous_engineering_cycle.py",
     "scripts/autonomous_engineering_progress.py",
     "scripts/autonomous_engineering_checkpoint.py",
+    "scripts/autonomous_engineering_pending_task.py",
 }
 MARKERS = re.compile(r"(?m)^(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
