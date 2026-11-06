@@ -306,7 +306,7 @@ def run_codex(args: argparse.Namespace) -> int:
                         event.get("type") != "item.completed"
                         or (
                             isinstance(event.get("item"), dict)
-                            and event["item"].get("type") == "command_execution"\n                            or event.get("type") == "item.completed"\n                            and isinstance(event.get("item"), dict)\n                            and event["item"].get("type") == "agent_message"
+                            and (event["item"].get("type") == "command_execution" or (event.get("type") == "item.completed" and event["item"].get("type") == "agent_message"))
                         )
                     )
                 ):
