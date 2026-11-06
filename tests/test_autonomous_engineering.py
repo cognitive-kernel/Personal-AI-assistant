@@ -769,3 +769,76 @@ def test_dispatch_rejects_safe_paused_state(monkeypatch):
 
     assert error.value.status_code == 409
     assert "توقف ایمن" in error.value.detail
+
+
+def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    runs = [
+        {
+            "databaseId": index + 1,
+            "status": "completed",
+            "conclusion": "success",
+            "createdAt": "2026-11-06T00:00:00Z",
+            "url": f"https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/{index + 1}",
+            "headBranch": "main",
+        }
+        for index in range(29)
+    ]
+    runs.append({
+        "databaseId": 999,
+        "status": "queued",
+        "conclusion": None,
+        "createdAt": "2026-11-05T00:00:00Z",
+        "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/999",
+        "headBranch": "main",
+    })
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["variable", "list"]:
+            return subprocess.CompletedProcess(command, 0, "[]", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent._github_snapshot()
+
+    run_command = next(command for command in calls if command[1:3] == ["run", "list"])
+    assert run_command[run_command.index("--limit") + 1] == "30"
+    assert len(result["recent_runs"]) == 30
+    assert result["recent_runs"][-1]["status"] == "queued"
+
+
+def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [
+        {"databaseId": index + 1, "status": "completed"}
+        for index in range(30)
+    ]
+    runs[-1] = {"databaseId": 999, "status": "in_progress"}
+
+    def fake_run(command, timeout=8):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 999
+    list_command = next(command for command in calls if command[1:3] == ["run", "list"])
+    assert list_command[list_command.index("--limit") + 1] == "30"
+    assert calls[-1][1:3] == ["run", "cancel"]
+    assert calls[-1][3] == "999"
