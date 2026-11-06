@@ -158,12 +158,16 @@ def codex_command(executable: str, arguments: list[str]) -> list[str]:
 
 
 def codex_arguments(model: str, report: str) -> list[str]:
-    # Pin both the OSS selector and the active provider. Some Codex CLI
-    # configurations retain model_provider="openai" from the service user's
-    # config.toml even when --local-provider is supplied, causing app-server
-    # turn/start to reject the Ollama-backed chat as a provider mismatch.
+    # Pin the provider and the Windows sandbox backend explicitly. The native
+    # unelevated backend in affected Codex CLI releases can reject exec_command
+    # before process creation or refuse workspace-write root layouts. The
+    # workflow selects a backend only after a real in-workspace tool smoke test.
+    backend = os.getenv("CODEX_WINDOWS_SANDBOX_BACKEND", "mxc").strip().casefold()
+    if backend not in {"mxc", "elevated"}:
+        raise ValueError("CODEX_WINDOWS_SANDBOX_BACKEND must be 'mxc' or 'elevated'.")
     return [
         "exec", "-c", 'model_provider="ollama"',
+        "-c", f'windows.sandbox="{backend}"',
         "--oss", "--local-provider", "ollama",
         "--sandbox", "workspace-write",
         "--model", model, "--cd", str(ROOT),
