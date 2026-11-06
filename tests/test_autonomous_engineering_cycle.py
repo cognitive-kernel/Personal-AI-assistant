@@ -930,7 +930,8 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
     ]
 
     evidence = progress.codex_smoke_evidence(
-        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK"
+        events, "CODEX_WORKSPACE_SANDBOX_OK", "OLLAMA_PROVIDER_AND_SANDBOX_OK",
+        [".codex-sandbox-probe.tmp", "write_text", "read_text", "unlink"],
     )
 
     assert evidence["passed"] is True
@@ -947,6 +948,7 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
         "no_turn_completed",
         "turn_failed",
         "duplicate_command",
+        "wrong_command",
         "wrong_agent_message",
     ],
 )
@@ -982,6 +984,8 @@ def test_codex_smoke_evidence_rejects_unproven_or_failed_execution(mutation: str
         events.append({"type": "turn.failed", "error": {"message": "failed"}})
     elif mutation == "duplicate_command":
         events.insert(1, dict(command))
+    elif mutation == "wrong_command":
+        command["item"]["command"] = "python -c print(CODEX_WORKSPACE_SANDBOX_OK)"
     elif mutation == "wrong_agent_message":
         message["item"]["text"] = "I think it worked"
 
