@@ -788,7 +788,7 @@ def test_checkpoint_watcher_uses_base_interpreter_with_venv_dependencies(
     monkeypatch.delenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", raising=False)
     monkeypatch.setattr(
         cycle, "os",
-        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ, path=os.path),
+        SimpleNamespace(name="nt", getenv=os.getenv, environ=os.environ, path=os.path, pathsep=os.pathsep),
     )
     monkeypatch.setattr(cycle.sys, "_base_executable", str(tmp_path / "python.exe"), raising=False)
     monkeypatch.setattr(cycle.sys, "executable", str(tmp_path / ".venv" / "Scripts" / "python.exe"))
