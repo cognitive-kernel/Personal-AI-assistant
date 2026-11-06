@@ -113,7 +113,7 @@
         : "پوشهٔ مشترک را با scripts/configure_autonomous_engineering_progress.ps1 پیکربندی کنید.";
       const ready = data.ready === true;
       const paused = data.paused === true;
-      const canDispatch = data.can_dispatch === true;
+      const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
       const pill = $("agent-readiness");
       pill.textContent = paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
       pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
