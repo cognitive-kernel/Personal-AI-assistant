@@ -1,5 +1,28 @@
 # Engineering Continuity Log
 
+## 2026-11-07 — Owner Windows development environment baseline
+
+Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
+
+- Working directory: `D:\\Projects\\Personal-AI-assistant-main`
+- Shell: Windows PowerShell
+- Python: `3.11.9`
+- Codex CLI: `0.166.0`
+- Ollama: `0.40.13`
+- Installed Ollama models at capture time:
+  | Model | Model ID | Reported size |
+  |---|---|---:|
+  | `gpt-oss:20b-codex-64k` | `4830dbfde727` | 13 GB |
+  | `gpt-oss:20b` | `f38aa0c53da5` | 13 GB |
+  | `gemma4:12b` | `6114515d63c1` | 8.0 GB |
+  | `qwen3:14b` | `bdbd181c33f2` | 9.3 GB |
+  | `qwen3:8b` | `500a1f067a9f` | 5.2 GB |
+  | `qwen2.5:7b` | `845dbda0ea48` | 4.7 GB |
+
+Use this recorded baseline in subsequent troubleshooting instead of repeatedly asking for these version/model details. Recheck only when a relevant version or installed model is changed, or when fresh runtime evidence is specifically required. The model inventory and reported modification times are time-sensitive and must not be treated as permanent state.
+
+---
+
 ## 2026-11-07 — PR #702: persistent Ollama context and reliable Codex smoke evidence
 
 ### Evidence-based diagnosis
