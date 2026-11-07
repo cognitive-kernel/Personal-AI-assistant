@@ -125,3 +125,5 @@ def test_early_manual_task_persistence_script_is_protected_and_validated_in_ci()
     assert "Invoke-RestMethod" in script
     assert "Move-Item -LiteralPath $temporaryPath -Destination $pendingPath -Force" in script
     assert "persist_autonomous_manual_task.ps1" in workflow
+    assert "pending-autonomous-pr.json" in script
+    assert "awaiting owner merge or post-merge validation" in script
