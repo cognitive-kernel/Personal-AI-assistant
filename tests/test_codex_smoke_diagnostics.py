@@ -40,6 +40,7 @@ def test_codex_smoke_evidence_reports_each_command_without_logging_raw_commands(
             "id": "cmd-1",
             "status": "completed",
             "exit_code": 0,
+            "start_completed_match": True,
             "required_fragments": {
                 "probe": True, "create": True, "read": False, "unlink": False,
             },
