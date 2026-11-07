@@ -312,3 +312,9 @@
 - PR [#701](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/701) contains code-level fixes for durable manual-task persistence/recovery, safe rejection of task replacement while work remains unaccepted, resume behavior after removing the obsolete failure-streak variable, and active-run visibility/cancellation parity with the workflow schedule gate.
 - The implementation had exact-head CI evidence at SHA `c8379f694c503a32ecabab0f53ff306fc26f840c`: 1,899 tests passed / 50 deselected; Windows storage regressions, browser smoke, dependency audit, artifact validation, Markdown links, import-cycle scan, and deterministic benchmarks passed. A subsequent test-only assertion correction requires fresh exact-head CI before readiness is declared.
 - PR #701 remains open and unmerged. The separate real Windows service-account Codex sandbox smoke remains an external blocker tracked in PR [#699](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/699); CI on GitHub-hosted runners is not evidence of successful execution on the self-hosted Runner.
+
+## 2026-11-07 — Manual-task persistence clean-workspace correction
+
+- The task-persistence step now runs only after a pinned checkout of trusted `main`, so its PowerShell script is present on a fresh/clean Runner workspace. The checkout does not persist Git credentials.
+- The persistence step remains before Python/Ollama/Codex preflight. A regression assertion protects this order.
+- Follow-up commits: implementation `e1d47d05bc30cf536e1f8a98bd8e272d4590b53a`; test `0745b50e30a38a08421d6083af8b16eaa750e0c0`. Exact-head CI and target-runner verification remain pending.
