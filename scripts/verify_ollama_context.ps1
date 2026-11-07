@@ -95,6 +95,20 @@ if (-not $VerifyOnly) {
     if (-not $numCtx.Success -or [int64]$numCtx.Groups[1].Value -lt $MinimumContextLength) {
         throw "Codex model '$codexModel' no longer declares the required persistent context."
     }
+
+    # Re-load without request-level num_ctx. This proves the saved model default
+    # is sufficient even when the prior Codex process has already unloaded it.
+    $verifyBody = @{
+        model = $codexModel
+        prompt = "Reply with OK."
+        stream = $false
+        keep_alive = "10m"
+    } | ConvertTo-Json -Depth 4 -Compress
+    try {
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $verifyBody -TimeoutSec $TimeoutSeconds
+    } catch {
+        throw "Could not re-load persistent Codex model '$codexModel' using its saved context default. $($_.Exception.Message)"
+    }
 }
 
 $contextLength = Get-AllocatedContext -ModelName $codexModel
