@@ -85,6 +85,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "Use the exec_command tool exactly once" not in diagnostic
     assert "Use the exec_command tool exactly once" not in autonomous
     assert "single self-contained command" in diagnostic
+    assert "login set to false" in diagnostic
     assert "single self-contained command" in autonomous
     assert "--expected-agent-message" not in diagnostic
     assert "CODEX_WORKSPACE_SANDBOX_OK" in diagnostic
