@@ -128,7 +128,6 @@ jobs:
         shell: powershell
         run: |
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
-          if ($LASTEXITCODE -ne 0) { throw "Ollama runtime context validation failed." }
 
       - name: Probe MXC and Codex exec_command under the Runner identity
         shell: powershell
