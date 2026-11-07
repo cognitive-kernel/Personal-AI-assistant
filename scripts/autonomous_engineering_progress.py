@@ -218,15 +218,14 @@ def _sanitize_error_signature(value: Any) -> str:
     text = _diagnostic_error_text(value)
     if not text:
         return ""
-    text = re.sub(r"(?i)\\\\[^\\\\/\\s]+\\\\[^\\\\/\\s]+(?:\\\\[^\\\\/\\s]+)*", "<network-path>", text)
-    text = re.sub(r"(?i)\\b[A-Z]:\\\\[^\\s\"'<>]+", "<windows-path>", text)
-    text = re.sub(r'"[^"\\r\\n]{1,240}"', '"<quoted>"', text)
-    text = re.sub(r"'[^'\\r\\n]{1,240}'", "'<quoted>'", text)
-    text = re.sub(r"(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+", r"\\1<redacted>", text)
-    text = re.sub(r"(?i)\\b(?:api[_-]?key|token|password)(\\s*[:=]\\s*)[^\\s,;]+", r"\\1<redacted>", text)
-    text = re.sub(r"\\b[0-9a-fA-F]{16,}\\b", "<id>", text)
-    return re.sub(r"\\s+", " ", text).strip()[:240]
-
+    text = re.sub(r"(?i)\\\\[^\\/\s]+\\[^\\/\s]+(?:\\[^\\/\s]+)*", "<network-path>", text)
+    text = re.sub(r"(?i)\b[A-Z]:\\[^\s\"'<>]+", "<windows-path>", text)
+    text = re.sub(r'"[^"]{1,240}"', '"<quoted>"', text)
+    text = re.sub(r"'[^']{1,240}'", "'<quoted>'", text)
+    text = re.sub(r"(?i)bearer\s+\S+", "Bearer <redacted>", text)
+    text = re.sub(r"(?i)\b(?:api[_-]?key|token|password)\s*[:=]\s*\S+", "<redacted>", text)
+    text = re.sub(r"\b[0-9a-fA-F]{16,}\b", "<id>", text)
+    return " ".join(text.split())[:240]
 
 def diagnostic_failure_category(message: Any) -> str:
     """Classify an error without retaining command text or process output."""
