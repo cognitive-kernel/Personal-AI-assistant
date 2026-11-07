@@ -20,6 +20,8 @@
 - The diagnostic smoke no longer requires a final natural-language agent message: its contract is a completed, non-failed turn plus verified workspace command evidence. This does not weaken real autonomous task completion, which still requires the exact machine-readable task marker and owner-verified PR lifecycle.
 - Regression coverage now includes completion events without a repeated command, multiple successful command events with one verified probe, failed/mismatched/duplicate events, redaction, and persistent-context enforcement in both workflows.
 - The diagnostic workflow is enabled for this dedicated branch so the self-hosted Windows job can be dispatched against the PR head.
+- Diagnostic cleanup now queries the actual `GITHUB_REF_NAME`, cancels only older queued runs, and preserves an active sandbox job. The Codex probe uses non-login `cmd.exe`, a bounded 25-minute step/30-minute job timeout, and an exact branch/SHA run label.
+- Item-level Codex error events are retained in smoke evidence and fail closed; the diagnostic smoke's final natural-language message is optional, while actual autonomous task completion markers remain mandatory.
 
 ### Validation and residual risk
 
