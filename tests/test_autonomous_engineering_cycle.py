@@ -945,6 +945,12 @@ def test_codex_smoke_evidence_requires_real_successful_command_and_final_turn():
     assert evidence["passed"] is True
     assert all(evidence["checks"].values())
     assert evidence["command_exit_code"] == 0
+    assert evidence["event_types"] == ["item.started", "item.completed", "item.completed", "turn.completed"]
+    assert evidence["item_types"] == ["command_execution", "command_execution", "agent_message"]
+    assert evidence["command_started_count"] == 1
+    assert evidence["command_completed_count"] == 1
+    assert evidence["agent_message_count"] == 1
+    assert evidence["turn_usage"] == {"input_tokens": 10, "output_tokens": 2}
 
 
 @pytest.mark.parametrize(
