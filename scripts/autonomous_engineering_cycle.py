@@ -507,9 +507,8 @@ def clear_pending_pr() -> None:
 
 
 def clear_pending_task() -> None:
-    if os.name == "nt" and os.getenv("PROGRAMDATA"):
-        state_dir = Path(os.environ["PROGRAMDATA"]) / "PersonalAIAssistant" / "autonomous-engineering"
-        (state_dir / "pending-manual-task.txt").unlink(missing_ok=True)
+    if os.name == "nt":
+        (_autonomous_state_dir() / "pending-manual-task.txt").unlink(missing_ok=True)
 
 
 def find_open_autonomous_pr(token: str, repo: str) -> dict[str, Any] | None:
