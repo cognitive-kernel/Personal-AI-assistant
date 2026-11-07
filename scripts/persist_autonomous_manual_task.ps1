@@ -11,6 +11,18 @@ if ([string]::IsNullOrWhiteSpace($env:PROGRAMDATA)) {
 $stateDir = Join-Path $env:PROGRAMDATA "PersonalAIAssistant\autonomous-engineering"
 New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
 $pendingPath = Join-Path $stateDir "pending-manual-task.txt"
+$pendingPrPath = Join-Path $stateDir "pending-autonomous-pr.json"
+if (Test-Path -LiteralPath $pendingPrPath -PathType Leaf) {
+    try {
+        $pendingPrState = Get-Content -LiteralPath $pendingPrPath -Raw -Encoding utf8 | ConvertFrom-Json
+        if (-not $pendingPrState.number -or -not $pendingPrState.head_sha -or -not $pendingPrState.base_sha) {
+            throw "Pending PR metadata is incomplete."
+        }
+    } catch {
+        throw "A pending autonomous PR state exists but is unreadable; refusing to replace its task. $($_.Exception.Message)"
+    }
+    throw "Autonomous PR #$($pendingPrState.number) is awaiting owner merge or post-merge validation. Resume that PR before submitting a new task."
+}
 $existingTask = if (Test-Path -LiteralPath $pendingPath -PathType Leaf) {
     [System.IO.File]::ReadAllText($pendingPath, [System.Text.Encoding]::UTF8)
 } else {
