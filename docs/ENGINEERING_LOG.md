@@ -17,6 +17,7 @@
 - Both the Windows diagnostic and autonomous engineering workflows now pass the derived model to Codex and re-load/verify its saved 64k default after Codex execution.
 - `codex_smoke_evidence` now correlates command start/completion events by ID, uses the start event's command when the completion omits it, requires every observed command to complete successfully, and requires exactly one command to prove the complete workspace create/read/delete marker. It no longer requires the model to emit exactly one command overall.
 - Evidence JSON contains only bounded status/exit-code/fragment booleans and IDs; raw command text, output, and agent-message text are not persisted.
+- The diagnostic smoke no longer requires a final natural-language agent message: its contract is a completed, non-failed turn plus verified workspace command evidence. This does not weaken real autonomous task completion, which still requires the exact machine-readable task marker and owner-verified PR lifecycle.
 - Regression coverage now includes completion events without a repeated command, multiple successful command events with one verified probe, failed/mismatched/duplicate events, redaction, and persistent-context enforcement in both workflows.
 - The diagnostic workflow is enabled for this dedicated branch so the self-hosted Windows job can be dispatched against the PR head.
 
