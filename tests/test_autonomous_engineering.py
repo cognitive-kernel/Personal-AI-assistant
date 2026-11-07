@@ -855,6 +855,7 @@ def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_c
 
     assert "/api/generate" in context_gate
     assert "keep_alive" in context_gate
+    assert "options = @{ num_ctx = $MinimumContextLength }" in context_gate
     assert "/api/ps" in context_gate
     assert "context_length" in context_gate
     assert "64000" in context_gate
