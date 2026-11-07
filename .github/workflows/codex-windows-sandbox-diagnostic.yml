@@ -1,5 +1,5 @@
 name: Codex Windows Sandbox Diagnostic
-run-name: Codex Windows Sandbox Diagnostic - ${{ github.ref_name }} @ ${{ github.sha }}
+run-name: Codex Windows Sandbox Diagnostic #${{ github.run_number }} - ${{ github.ref_name }} @ ${{ github.sha }}
 
 on:
   push:
