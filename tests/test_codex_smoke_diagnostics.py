@@ -85,6 +85,9 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'run-name: "Codex Windows Sandbox Diagnostic #' in diagnostic
     cleanup_job = diagnostic.split("  sandbox-diagnostic:", 1)[0]
     assert '$branch = [uri]::EscapeDataString($env:GITHUB_REF_NAME)' in cleanup_job
+    sandbox_job = diagnostic.split("  sandbox-diagnostic:", 1)[1]
+    assert "timeout-minutes: 30" in sandbox_job
+    assert "timeout-minutes: 25" in sandbox_job
     assert "Use the exec_command tool exactly once" not in diagnostic
     assert "Use the exec_command tool exactly once" not in autonomous
     assert "single self-contained command" in diagnostic
