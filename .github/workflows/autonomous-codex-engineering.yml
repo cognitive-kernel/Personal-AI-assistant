@@ -117,7 +117,7 @@ jobs:
           fi
           if [[ "$EXECUTION_MODE" == "continuous" ]]; then
             echo "run_now=true" >> "$GITHUB_OUTPUT"
-            echo "Continuous mode is self-starting on the hourly heartbeat and chains the next run after every verified merge."
+            echo "Continuous mode is self-starting on the hourly heartbeat and chains the next run only after an owner-verified merge."
             exit 0
           fi
           case "$INTERVAL_HOURS" in
@@ -518,8 +518,9 @@ jobs:
           configuration, real databases, or user data. Do not force-push, commit, push branches,
           create PRs, merge, deploy, or perform irreversible actions. The trusted workflow
           controller alone commits and pushes the task branch, creates a PR, dispatches exact-head
-          GitHub checks, and may merge only after every required check succeeds and the exact PR
-          head and main base remain unchanged. The Codex process itself never receives the workflow
+          GitHub checks, and leave the PR open for owner review. The controller never merges a PR.
+          After the owner merges it, the controller verifies the exact merge SHA and post-merge checks
+          before accepting the task or advancing. The Codex process itself never receives the workflow
           token and never performs GitHub publication or merge operations.
           Do not start a dependent task while a prior generated PR is open. Do not weaken tests or
           security controls. If blocked, record the exact blocker and continue with an independent
@@ -536,9 +537,10 @@ jobs:
           QUEUE_EMPTY when no independently actionable task remains in the engineering ledger;
           TASK_BLOCKED when the task cannot safely be completed. Do not claim completion without evidence.
           Each workflow run handles one bounded task and publishes one PR after the full Windows
-          test suite and quality gates pass. The trusted controller merges it only after exact-SHA
-          GitHub checks pass, then dispatches the next isolated run from refreshed main in continuous
-          mode. The overall continuous queue is not capped at eight tasks or one workflow run.
+          test suite and quality gates pass. The trusted controller leaves the PR open for owner
+          review. Only after an owner merges it does the controller validate the exact merge SHA and
+          post-merge GitHub checks, clear the durable task, and dispatch the next isolated run from
+          refreshed main in continuous mode. The overall continuous queue is not capped at eight tasks or one workflow run.
           The submitted manual task is durable and must be continued across retries and restarts until its verified merge; the trusted controller clears it only after acceptance. No task is treated as accepted
           or complete for project progress until its PR is merged and post-merge evidence is recorded.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
@@ -553,7 +555,7 @@ jobs:
           "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
 
-      - name: Execute one isolated task, validate, and merge after all gates pass
+      - name: Execute one isolated task, validate, and publish for owner review
         if: steps.pause.outputs.paused != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -563,4 +565,4 @@ jobs:
           $ErrorActionPreference = "Stop"
           $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
           python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
-          if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or verified merge failed" }
+          if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
