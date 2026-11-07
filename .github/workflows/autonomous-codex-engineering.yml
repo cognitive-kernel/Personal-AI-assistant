@@ -23,10 +23,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: autonomous-local-engineering-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   persist-manual-task:
     if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
@@ -139,6 +135,9 @@ jobs:
   codex:
     needs: [persist-manual-task, schedule-gate]
     if: always() && needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main' && needs.persist-manual-task.result != 'failure' && needs.persist-manual-task.result != 'cancelled'
+    concurrency:
+      group: autonomous-local-engineering-${{ github.repository }}
+      cancel-in-progress: false
     runs-on: [self-hosted, Windows, X64, ollama]
     timeout-minutes: 360
     permissions:
