@@ -4,7 +4,7 @@
 
 Captured from the owner's PowerShell output on 2026-11-07. This is a user-reported workstation snapshot, not a CI-runner inventory.
 
-- Working directory: `D:\\Projects\\Personal-AI-assistant-main`
+- Working directory: `D:\Projects\Personal-AI-assistant-main`
 - Shell: Windows PowerShell
 - Python: `3.11.9`
 - Codex CLI: `0.166.0`
